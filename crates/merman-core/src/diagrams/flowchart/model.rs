@@ -101,19 +101,28 @@ impl FlowchartRenderLabelSources {
 /// Parser-owned CSS provenance used only while rendering a Flowchart model.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FlowchartRenderStyleSources {
-    subgraph_vertices: IndexMap<String, FlowSubgraphVertexStyle>,
+    subgraph_vertices: IndexMap<String, FlowSubgraphVertexStyleSource>,
 }
 
 impl FlowchartRenderStyleSources {
     /// Returns the CSS sources exposed by Mermaid for the rendered subgraph node.
     pub(crate) fn effective_subgraph_css<'a>(
         &'a self,
+        declaration_ordinal: usize,
         subgraph: &'a FlowSubgraph,
     ) -> (&'a [String], &'a [String]) {
-        self.subgraph_vertices.get(&subgraph.id).map_or_else(
-            || (subgraph.classes.as_slice(), subgraph.styles.as_slice()),
-            |vertex| (vertex.classes.as_slice(), vertex.styles.as_slice()),
-        )
+        self.subgraph_vertices
+            .get(&subgraph.id)
+            .filter(|source| source.declaration_ordinal == declaration_ordinal)
+            .map_or_else(
+                || (subgraph.classes.as_slice(), subgraph.styles.as_slice()),
+                |source| {
+                    (
+                        source.style.classes.as_slice(),
+                        source.style.styles.as_slice(),
+                    )
+                },
+            )
     }
 
     /// Returns whether parsing observed a FlowDB vertex with this subgraph ID.
@@ -121,18 +130,30 @@ impl FlowchartRenderStyleSources {
         self.subgraph_vertices.contains_key(id)
     }
 
-    pub(crate) fn entry_mut(&mut self, id: String) -> &mut FlowSubgraphVertexStyle {
-        self.subgraph_vertices.entry(id).or_default()
+    pub(crate) fn insert(
+        &mut self,
+        id: String,
+        declaration_ordinal: usize,
+        style: FlowSubgraphVertexStyle,
+    ) {
+        self.subgraph_vertices.insert(
+            id,
+            FlowSubgraphVertexStyleSource {
+                declaration_ordinal,
+                style,
+            },
+        );
     }
 
     pub(crate) fn retained_bytes(&self) -> usize {
         self.subgraph_vertices
             .iter()
-            .fold(0usize, |total, (id, vertex)| {
-                vertex
+            .fold(0usize, |total, (id, source)| {
+                source
+                    .style
                     .classes
                     .iter()
-                    .chain(&vertex.styles)
+                    .chain(&source.style.styles)
                     .fold(total.saturating_add(id.len()), |subtotal, value| {
                         subtotal.saturating_add(value.len())
                     })
@@ -174,9 +195,11 @@ impl FlowchartRenderContext {
     #[doc(hidden)]
     pub fn effective_subgraph_css<'a>(
         &'a self,
+        declaration_ordinal: usize,
         subgraph: &'a FlowSubgraph,
     ) -> (&'a [String], &'a [String]) {
-        self.styles.effective_subgraph_css(subgraph)
+        self.styles
+            .effective_subgraph_css(declaration_ordinal, subgraph)
     }
 
     #[doc(hidden)]
@@ -506,6 +529,12 @@ pub struct FlowSubgraph {
 pub(crate) struct FlowSubgraphVertexStyle {
     pub(crate) classes: Vec<String>,
     pub(crate) styles: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct FlowSubgraphVertexStyleSource {
+    declaration_ordinal: usize,
+    style: FlowSubgraphVertexStyle,
 }
 
 #[derive(Debug, Clone)]

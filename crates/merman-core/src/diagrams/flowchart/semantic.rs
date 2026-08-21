@@ -90,9 +90,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                         .or_insert_with(FlowSubgraphVertexStyle::default)
                         .styles
                         .extend(s.styles.iter().cloned());
-                    if let Some(&idx) = active_subgraphs.get(&s.target) {
-                        self.subgraphs[idx].styles.extend(s.styles.iter().cloned());
-                    } else {
+                    if !active_subgraphs.contains_key(&s.target) {
                         if is_new_vertex {
                             let mut warning = DiagramWarningFact::new(
                                 FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
@@ -340,8 +338,12 @@ impl<'a> FlowchartSemanticContext<'a> {
             if index % 128 == 0 {
                 self.control.checkpoint()?;
             }
-            if active_subgraphs.contains_key(&id) {
-                *self.subgraph_vertex_styles.entry_mut(id) = style;
+            if let Some(&declaration_ordinal) = active_subgraphs.get(&id) {
+                // FlowDB emits duplicate subgraphs in reverse declaration order, then applies
+                // the single vertex record to the first matching node. Preserve that exact
+                // declaration owner instead of broadcasting vertex CSS to every duplicate id.
+                self.subgraph_vertex_styles
+                    .insert(id, declaration_ordinal, style);
             }
         }
         self.control.checkpoint()?;

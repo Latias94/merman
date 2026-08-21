@@ -723,12 +723,14 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     let mut inserted_ids: HashSet<&str> = HashSet::new();
     // FlowDB emits subgraphs in reverse storage order before leaf vertices, and Mermaid derives
     // sibling lists by filtering that canonical array without sorting. Preserve that order here.
-    for sg in model.subgraphs.iter().rev() {
+    for subgraph_index in (0..model.subgraphs.len()).rev() {
+        let sg = &model.subgraphs[subgraph_index];
         charge_adapter_work(&mut work_control, 1)?;
         if !inserted_ids.insert(sg.id.as_str()) {
             continue;
         }
         graph.nodes.push(subgraph_to_elk_node(
+            subgraph_index,
             sg,
             parent_by_id.get(&sg.id).cloned(),
             &include_children_groups,
@@ -1529,10 +1531,14 @@ fn mark_include_children_path<'a>(
     Ok(())
 }
 
-fn subgraph_label(sg: &FlowSubgraph, ctx: &ElkMeasureContext<'_>) -> Option<elk::Label> {
+fn subgraph_label(
+    declaration_ordinal: usize,
+    sg: &FlowSubgraph,
+    ctx: &ElkMeasureContext<'_>,
+) -> Option<elk::Label> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
     let title = ctx.model.subgraph_title_for_render(sg);
-    let (classes, styles) = ctx.model.effective_subgraph_css(sg);
+    let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
     let text_style = flowchart_effective_text_style_for_classes(
         ctx.cluster_label_base_style,
         &ctx.model.class_defs,
@@ -1733,6 +1739,7 @@ fn flow_node_to_elk_node(
 }
 
 fn subgraph_to_elk_node(
+    declaration_ordinal: usize,
     sg: &FlowSubgraph,
     parent: Option<String>,
     include_children_groups: &HashSet<&str>,
@@ -1755,7 +1762,7 @@ fn subgraph_to_elk_node(
             None
         },
         layer_constraint: None,
-        label: subgraph_label(sg, ctx),
+        label: subgraph_label(declaration_ordinal, sg, ctx),
     }
 }
 

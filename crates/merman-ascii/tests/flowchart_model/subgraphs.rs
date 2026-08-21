@@ -53,6 +53,25 @@ fn flowchart_parser_duplicate_subgraph_ids_keep_first_presentation_and_all_membe
 }
 
 #[test]
+fn flowchart_duplicate_subgraph_vertex_css_does_not_leak_into_the_canonical_first_group() {
+    let rendered = render_flowchart(
+        concat!(
+            "flowchart TB\n",
+            "classDef hot stroke:#123456\n",
+            "subgraph X[First]\nA\nend\n",
+            "subgraph X[Second]\nB\nend\n",
+            "style X fill:#010203\n",
+            "class X hot\n",
+        ),
+        &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Html),
+    )
+    .expect("duplicate subgraph declarations should render");
+
+    assert!(!rendered.contains("#010203"), "{rendered}");
+    assert!(!rendered.contains("#123456"), "{rendered}");
+}
+
+#[test]
 fn flowchart_direct_model_duplicate_subgraph_ids_use_the_parser_semantics() {
     let mut model = single_node_flowchart_model("squareRect", "A");
     let mut second_node = model.nodes[0].clone();

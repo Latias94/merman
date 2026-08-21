@@ -218,7 +218,7 @@ impl FlowchartStylePlan {
             let mut style = GraphGroupStyle::default();
             let (classes, declarations) = render_context.map_or_else(
                 || (group.classes.as_slice(), group.styles.as_slice()),
-                |context| context.effective_subgraph_css(group),
+                |context| context.effective_subgraph_css(index, group),
             );
             for (class_index, class_name) in classes.iter().enumerate() {
                 checkpoint_style(execution, class_index)?;

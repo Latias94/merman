@@ -1756,6 +1756,43 @@ fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
 }
 
 #[test]
+fn duplicate_subgraph_vertex_css_does_not_leak_into_the_canonical_first_cluster() {
+    let svg = render_flowchart_svg_from_text(concat!(
+        "flowchart TD\n",
+        "classDef hot stroke:#123456\n",
+        "subgraph X[First title]\n  A\nend\n",
+        "subgraph X[Second title]\n  B\nend\n",
+        "style X fill:#010203\n",
+        "class X hot\n",
+    ));
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let cluster = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("id").is_some_and(|id| id.ends_with("-X"))
+                && node.attribute("class").is_some_and(|class| {
+                    class.split_ascii_whitespace().any(|part| part == "cluster")
+                })
+        })
+        .expect("canonical X cluster");
+    let classes = cluster
+        .attribute("class")
+        .expect("cluster class attribute")
+        .split_ascii_whitespace()
+        .collect::<Vec<_>>();
+    let shape_style = cluster
+        .children()
+        .find(|node| node.has_tag_name("rect") || node.has_tag_name("path"))
+        .and_then(|node| node.attribute("style"))
+        .unwrap_or_default();
+
+    assert!(!classes.contains(&"hot"), "{svg}");
+    assert!(!shape_style.contains("#010203"), "{svg}");
+    assert!(!shape_style.contains("#123456"), "{svg}");
+}
+
+#[test]
 fn flowchart_svg_uses_parser_owned_same_id_group_css_in_statement_order() {
     let cases = [
         (

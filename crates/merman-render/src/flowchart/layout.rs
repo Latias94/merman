@@ -1709,7 +1709,7 @@ fn layout_flowchart_with_model(
             continue;
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
-        let (classes, styles) = model.effective_subgraph_css(sg);
+        let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
         let sg_text_style = flowchart_effective_text_style_for_classes(
             cluster_label_base_style,
             &model.class_defs,
@@ -2196,7 +2196,8 @@ fn layout_flowchart_with_model(
         } else {
             ctx.text_style
         };
-        let (classes, styles) = ctx.model.effective_subgraph_css(sg);
+        let subgraph_index = ctx.subgraph_index_by_id.get(id).copied()?;
+        let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
         let text_style =
             flowchart_effective_text_style_for_classes(base_style, ctx.class_defs, classes, styles);
         let owner = ctx
@@ -3303,7 +3304,14 @@ fn layout_flowchart_with_model(
             } else {
                 ctx.text_style
             };
-            let (classes, styles) = ctx.model.effective_subgraph_css(sg);
+            let subgraph_index = ctx
+                .subgraph_index_by_id
+                .get(frame.id.as_str())
+                .copied()
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("missing canonical subgraph index for {}", frame.id),
+                })?;
+            let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
             let text_style = flowchart_effective_text_style_for_classes(
                 base_style,
                 ctx.class_defs,
@@ -3409,6 +3417,7 @@ fn layout_flowchart_with_model(
 
     fn adjust_cluster_rect_for_title(
         mut rect: Rect,
+        declaration_ordinal: usize,
         sg: &FlowSubgraph,
         title: &str,
         label_type: &str,
@@ -3421,7 +3430,7 @@ fn layout_flowchart_with_model(
         } else {
             ctx.text_style
         };
-        let (classes, styles) = ctx.model.effective_subgraph_css(sg);
+        let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
         let text_style =
             flowchart_effective_text_style_for_classes(base_style, ctx.class_defs, classes, styles);
         let owner = ctx
@@ -3536,6 +3545,7 @@ fn layout_flowchart_with_model(
                 .unwrap_or_else(|| rect.width());
             let rect = adjust_cluster_rect_for_title(
                 rect,
+                subgraph_index,
                 sg,
                 title,
                 sg.label_type.as_deref().unwrap_or("text"),
@@ -3547,6 +3557,7 @@ fn layout_flowchart_with_model(
             let base_width = r.width();
             let rect = adjust_cluster_rect_for_title(
                 r,
+                subgraph_index,
                 sg,
                 title,
                 sg.label_type.as_deref().unwrap_or("text"),
@@ -3566,7 +3577,7 @@ fn layout_flowchart_with_model(
         } else {
             &text_style
         };
-        let (classes, styles) = model.effective_subgraph_css(sg);
+        let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
         let title_text_style = flowchart_effective_text_style_for_classes(
             base_style,
             &model.class_defs,

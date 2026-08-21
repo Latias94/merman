@@ -292,7 +292,7 @@ fn preflight_flowchart_projection<'a>(
         }
         let (classes, declarations) = render_context.map_or_else(
             || (subgraph.classes.as_slice(), subgraph.styles.as_slice()),
-            |context| context.effective_subgraph_css(subgraph),
+            |context| context.effective_subgraph_css(index, subgraph),
         );
         for (declaration_index, declaration) in classes.iter().enumerate() {
             checkpoint_projection(execution, declaration_index)?;

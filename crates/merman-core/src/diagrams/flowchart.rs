@@ -1972,12 +1972,14 @@ mod tests {
         for (source, expected_vertex_classes) in cases {
             let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
                 .expect("same-ID group model");
-            let subgraph = model
+            let (subgraph_index, subgraph) = model
                 .subgraphs
                 .iter()
-                .find(|subgraph| subgraph.id == "G")
+                .enumerate()
+                .find(|(_, subgraph)| subgraph.id == "G")
                 .expect("subgraph G");
-            let (vertex_classes, vertex_styles) = context.effective_subgraph_css(subgraph);
+            let (vertex_classes, vertex_styles) =
+                context.effective_subgraph_css(subgraph_index, subgraph);
 
             assert_eq!(subgraph.classes, ["base"]);
             assert_eq!(vertex_classes, expected_vertex_classes, "{source}");
@@ -2002,7 +2004,8 @@ mod tests {
         let json = serde_json::to_value(&model).expect("serialize Flowchart model");
         assert!(json["subgraphs"][0].get("sameIdVertexStyle").is_none());
         let subgraph = &model.subgraphs[0];
-        let (classes, styles) = context.effective_subgraph_css(subgraph);
+        assert!(subgraph.styles.is_empty());
+        let (classes, styles) = context.effective_subgraph_css(0, subgraph);
         assert_eq!(classes, ["hot"]);
         assert_eq!(styles, ["fill:#f00"]);
 
@@ -2016,32 +2019,49 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_subgraph_ids_share_one_effective_css_owner() {
+    fn duplicate_subgraph_vertex_css_is_owned_by_the_last_declaration() {
         let meta = flowchart_test_meta("flowchart-v2");
-        let (model, context) = parse_flowchart_model_with_render_context(
+        let cases = [
             concat!(
                 "flowchart TD\n",
-                "subgraph X\n",
-                "  A\n",
-                "end\n",
-                "subgraph X\n",
-                "  B\n",
-                "end\n",
+                "style X fill:#f00\n",
+                "subgraph X\n  A\nend\n",
+                "subgraph X\n  B\nend\n",
+            ),
+            concat!(
+                "flowchart TD\n",
+                "subgraph X\n  A\nend\n",
+                "style X fill:#f00\n",
+                "subgraph X\n  B\nend\n",
+            ),
+            concat!(
+                "flowchart TD\n",
+                "subgraph X\n  A\nend\n",
+                "subgraph X\n  B\nend\n",
                 "style X fill:#f00\n",
             ),
-            &meta,
-        )
-        .expect("duplicate subgraph declarations should parse");
+        ];
 
-        let groups = model
-            .subgraphs
-            .iter()
-            .filter(|subgraph| subgraph.id == "X")
-            .collect::<Vec<_>>();
-        assert_eq!(groups.len(), 2);
-        for group in groups {
-            let (_, styles) = context.effective_subgraph_css(group);
-            assert_eq!(styles, ["fill:#f00"]);
+        for source in cases {
+            let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
+                .expect("duplicate subgraph declarations should parse");
+
+            assert_eq!(model.subgraphs.len(), 2, "{source}");
+            assert!(
+                model
+                    .subgraphs
+                    .iter()
+                    .all(|subgraph| subgraph.styles.is_empty()),
+                "style statements belong to FlowDB's vertex record, not FlowSubgraph: {source}"
+            );
+            let (_, first_styles) = context.effective_subgraph_css(0, &model.subgraphs[0]);
+            let (_, second_styles) = context.effective_subgraph_css(1, &model.subgraphs[1]);
+
+            assert!(
+                first_styles.is_empty(),
+                "Graphlib's later setNode replaces the styled later declaration: {source}"
+            );
+            assert_eq!(second_styles, ["fill:#f00"], "{source}");
         }
     }
 

@@ -157,8 +157,12 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     origin_y: f64,
 ) {
     let subgraph = ctx.subgraphs_by_id.get(cluster.id.as_str()).copied();
+    let subgraph_index = ctx.subgraph_indices_by_id.get(cluster.id.as_str()).copied();
     let (class_names, styles) = subgraph
-        .map(|subgraph| ctx.model.effective_subgraph_css(subgraph))
+        .zip(subgraph_index)
+        .map(|(subgraph, subgraph_index)| {
+            ctx.model.effective_subgraph_css(subgraph_index, subgraph)
+        })
         .unwrap_or_default();
     let compiled = flowchart_compile_styles(ctx.class_defs, class_names, styles, &[]);
     let node_style = compiled.node_style.trim();

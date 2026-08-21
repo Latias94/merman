@@ -45,9 +45,11 @@ impl<'a> FlowchartRenderModelRef<'a> {
 
     pub(crate) fn effective_subgraph_css<'b>(
         &'b self,
+        declaration_ordinal: usize,
         subgraph: &'b FlowSubgraph,
     ) -> (&'b [String], &'b [String]) {
-        self.render_context.effective_subgraph_css(subgraph)
+        self.render_context
+            .effective_subgraph_css(declaration_ordinal, subgraph)
     }
 
     pub(crate) fn requires_math(&self) -> bool {

@@ -214,6 +214,7 @@ fn working_edge(edge: &FlowEdge) -> WorkingEdge {
 }
 
 fn measure_group_title(
+    declaration_ordinal: usize,
     subgraph: &FlowSubgraph,
     render_title: &str,
     ctx: &MeasureContext<'_>,
@@ -231,7 +232,9 @@ fn measure_group_title(
     } else {
         &ctx.settings.text_style
     };
-    let (classes, styles) = ctx.model.effective_subgraph_css(subgraph);
+    let (classes, styles) = ctx
+        .model
+        .effective_subgraph_css(declaration_ordinal, subgraph);
     let style = flowchart_effective_text_style_for_classes(
         base_style,
         &ctx.model.class_defs,
@@ -288,9 +291,11 @@ pub(super) fn prepare(
     }
 
     let mut nodes = IndexMap::new();
-    for subgraph in model.subgraphs.iter().rev() {
+    for subgraph_index in (0..model.subgraphs.len()).rev() {
+        let subgraph = &model.subgraphs[subgraph_index];
         let render_title = model.subgraph_title_for_render(subgraph);
-        let (label_width, label_height) = measure_group_title(subgraph, render_title, &measure_ctx);
+        let (label_width, label_height) =
+            measure_group_title(subgraph_index, subgraph, render_title, &measure_ctx);
         nodes.insert(
             subgraph.id.clone(),
             WorkingNode {

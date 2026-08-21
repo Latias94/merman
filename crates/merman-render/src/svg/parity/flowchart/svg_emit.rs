@@ -167,11 +167,14 @@ pub(super) fn render_flowchart_svg_model(
     let mut subgraph_order: Vec<&str> = Vec::with_capacity(model.subgraphs.len());
     let mut subgraphs_by_id: FxHashMap<&str, &crate::flowchart::FlowSubgraph> =
         FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
+    let mut subgraph_indices_by_id: FxHashMap<&str, usize> =
+        FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
     let mut subgraph_ids_with_children: FxHashSet<&str> = FxHashSet::default();
-    for sg in &model.subgraphs {
+    for (subgraph_index, sg) in model.subgraphs.iter().enumerate() {
         let id = sg.id.as_str();
         if let std::collections::hash_map::Entry::Vacant(entry) = subgraphs_by_id.entry(id) {
             entry.insert(sg);
+            subgraph_indices_by_id.insert(id, subgraph_index);
             subgraph_order.push(id);
         }
         if !sg.nodes.is_empty() {
@@ -267,6 +270,7 @@ pub(super) fn render_flowchart_svg_model(
         nodes_by_id,
         edges_by_id,
         subgraphs_by_id,
+        subgraph_indices_by_id,
         subgraph_ids_with_children,
         tooltips: &model.tooltips,
         recursive_clusters,

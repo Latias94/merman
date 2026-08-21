@@ -46,6 +46,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
     pub(in crate::svg::parity::flowchart) subgraphs_by_id:
         FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
+    pub(in crate::svg::parity::flowchart) subgraph_indices_by_id: FxHashMap<&'a str, usize>,
     pub(in crate::svg::parity::flowchart) subgraph_ids_with_children: FxHashSet<&'a str>,
     pub(in crate::svg::parity::flowchart) tooltips: &'a FxHashMap<String, String>,
     pub(in crate::svg::parity::flowchart) recursive_clusters: FxHashSet<&'a str>,
