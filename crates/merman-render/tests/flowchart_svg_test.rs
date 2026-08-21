@@ -209,15 +209,16 @@ fn public_flowchart_artifact_replays_diagram_id_terminal_during_emit() {
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
         .expect("prepare public Flowchart artifact");
 
-    let error = artifact
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("terminal".to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect_err("diagram-ID projection must reject the public render path");
+    let error = match artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("terminal".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    ) {
+        Ok(_) => panic!("diagram-ID projection must reject the public render path"),
+        Err(error) => error,
+    };
 
     let merman_render::Error::ResourceLimitExceeded(details) = error else {
         panic!("expected SVG byte rejection, got {error}");

@@ -18,7 +18,7 @@ mod util;
 mod viewbox;
 mod viewbox_node_bounds;
 
-pub(super) use css::*;
+use css::*;
 use edge::*;
 pub(in crate::svg::parity::flowchart) use edge_geom::{
     FlowchartEdgePathGeomRequest, flowchart_compute_edge_path_geom,
