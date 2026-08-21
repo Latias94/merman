@@ -61,6 +61,10 @@ pub(super) struct SequenceLayoutGraph {
 struct OpenSequenceBlockLayout {
     id: String,
     start_y: f64,
+    /// Position of this control block in Mermaid's active `sequenceItems` stack.
+    sequence_item_index: usize,
+    start_x: Option<f64>,
+    stop_x: Option<f64>,
     section_ys_by_id: rustc_hash::FxHashMap<String, f64>,
 }
 
@@ -113,10 +117,14 @@ impl<'a> SequenceLayoutLoopState<'a> {
     }
 
     fn open_sequence_block(&mut self, id: &str, start_y: f64) {
+        let sequence_item_index = self.block_stopy_stack.len();
         self.open_content_block();
         self.open_sequence_blocks.push(OpenSequenceBlockLayout {
             id: id.to_string(),
             start_y,
+            sequence_item_index,
+            start_x: None,
+            stop_x: None,
             section_ys_by_id: rustc_hash::FxHashMap::default(),
         });
     }
@@ -135,6 +143,27 @@ impl<'a> SequenceLayoutLoopState<'a> {
         let nested_margin = self.block_stopy_stack.len() as f64 * box_margin;
         self.bounds_start_x = self.bounds_start_x.min(min_x - nested_margin);
         self.bounds_stop_x = self.bounds_stop_x.max(max_x + nested_margin);
+
+        // Mermaid updates every active sequence item for each insertion. The outermost item gets
+        // the largest margin, while the innermost item gets one box margin. `block_stopy_stack`
+        // mirrors that stack and also includes `rect` items, which do not have a control frame.
+        let sequence_item_depth = self.block_stopy_stack.len();
+        for block in &mut self.open_sequence_blocks {
+            let depth_margin =
+                sequence_item_depth.saturating_sub(block.sequence_item_index) as f64 * box_margin;
+            let frame_start_x = min_x - depth_margin;
+            let frame_stop_x = max_x + depth_margin;
+            block.start_x = Some(
+                block
+                    .start_x
+                    .map_or(frame_start_x, |current| current.min(frame_start_x)),
+            );
+            block.stop_x = Some(
+                block
+                    .stop_x
+                    .map_or(frame_stop_x, |current| current.max(frame_stop_x)),
+            );
+        }
     }
 
     fn close_content_block(&mut self, box_margin: f64) {
@@ -149,6 +178,8 @@ impl<'a> SequenceLayoutLoopState<'a> {
                 SequenceBlockLayout {
                     start_y: open.start_y,
                     stop_y: self.cursor_y,
+                    start_x: open.start_x,
+                    stop_x: open.stop_x,
                     section_ys_by_id: open.section_ys_by_id,
                 },
             );
