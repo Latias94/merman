@@ -750,6 +750,10 @@ pub struct ErDiagramLayout {
 pub struct SequenceBlockLayout {
     pub start_y: f64,
     pub stop_y: f64,
+    /// Mermaid expands every active sequence frame by its nesting depth.
+    /// These coordinates are captured during layout replay rather than inferred from SVG nodes.
+    pub start_x: Option<f64>,
+    pub stop_x: Option<f64>,
     pub section_ys_by_id: FxHashMap<String, f64>,
 }
 

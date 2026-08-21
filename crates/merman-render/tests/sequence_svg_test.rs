@@ -610,6 +610,48 @@ fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> Stri
         .to_string()
 }
 
+fn sequence_control_frame_x(svg: &str, label: &str) -> (f64, f64) {
+    let document = roxmltree::Document::parse(svg).expect("valid Sequence SVG");
+    let group = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node.attribute("data-et") == Some("control-structure")
+                && node
+                    .descendants()
+                    .filter(|descendant| descendant.is_text())
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text.contains(label))
+        })
+        .unwrap_or_else(|| panic!("missing control structure {label:?}: {svg}"));
+
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    for line in group.children().filter(|node| {
+        node.is_element()
+            && node.tag_name().name() == "line"
+            && node.attribute("class") == Some("loopLine")
+            && node.attribute("style").is_none()
+    }) {
+        let x1 = line
+            .attribute("x1")
+            .and_then(|value| value.parse::<f64>().ok())
+            .expect("numeric frame x1");
+        let x2 = line
+            .attribute("x2")
+            .and_then(|value| value.parse::<f64>().ok())
+            .expect("numeric frame x2");
+        min_x = min_x.min(x1).min(x2);
+        max_x = max_x.max(x1).max(x2);
+    }
+    assert!(
+        min_x.is_finite() && max_x.is_finite(),
+        "control structure {label:?} has no frame lines: {svg}"
+    );
+    (min_x, max_x)
+}
+
 #[test]
 fn sequence_actor_links_follow_mermaid_security_level() {
     let strict = render_sequence_svg_from_text(
@@ -1993,6 +2035,85 @@ fn sequence_zed_59651_nested_frame_headers_follow_the_preceding_note() {
             && inner_title_y + LABEL_BOX_HEIGHT < separator_y
             && separator_y < inner_bottom,
         "expected the alt section separator to advance below its title and stay inside the frame"
+    );
+}
+
+#[test]
+fn sequence_issue_86_nested_loop_and_alt_frames_follow_nested_depth() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+    participant A
+    participant B
+    loop Outer loop
+        alt Inner branch
+            A->>B: Message
+        end
+    end
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+
+    let title_y = |label: &str| {
+        document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "text"
+                    && node.attribute("class") == Some("loopText")
+                    && node
+                        .descendants()
+                        .filter(|descendant| descendant.is_text())
+                        .filter_map(|descendant| descendant.text())
+                        .any(|text| text.contains(label))
+            })
+            .and_then(|node| node.attribute("y"))
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or_else(|| panic!("missing numeric loop title {label:?}: {svg}"))
+    };
+
+    let outer_y = title_y("[Outer loop]");
+    let inner_y = title_y("[Inner branch]");
+    assert!(
+        inner_y - outer_y >= 20.0,
+        "nested loop and alt labels must occupy separate vertical bands, got outer y={outer_y}, inner y={inner_y}: {svg}"
+    );
+
+    let (outer_x1, outer_x2) = sequence_control_frame_x(&svg, "[Outer loop]");
+    let (inner_x1, inner_x2) = sequence_control_frame_x(&svg, "[Inner branch]");
+    assert!(
+        outer_x1 < inner_x1 && outer_x2 > inner_x2,
+        "nested frame sides must expand with depth, got outer x={outer_x1}..{outer_x2}, inner x={inner_x1}..{inner_x2}: {svg}"
+    );
+    assert!(
+        (inner_x1 - outer_x1 - 10.0).abs() < 0.0001 && (outer_x2 - inner_x2 - 10.0).abs() < 0.0001,
+        "nested frame sides must use Mermaid's box margin, got outer x={outer_x1}..{outer_x2}, inner x={inner_x1}..{inner_x2}: {svg}"
+    );
+}
+
+#[test]
+fn sequence_nested_rect_contributes_to_parent_frame_depth() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+    participant A
+    participant B
+    loop Outer loop
+        rect rgb(240,240,240)
+            alt Inner branch
+                A->>B: Message
+            end
+        end
+    end
+"#,
+    );
+    let (outer_x1, outer_x2) = sequence_control_frame_x(&svg, "[Outer loop]");
+    let (inner_x1, inner_x2) = sequence_control_frame_x(&svg, "[Inner branch]");
+    assert!(
+        outer_x1 < inner_x1 && outer_x2 > inner_x2,
+        "the parent frame must remain wider than the nested control frame: {svg}"
+    );
+    assert!(
+        (inner_x1 - outer_x1 - 20.0).abs() < 0.0001 && (outer_x2 - inner_x2 - 20.0).abs() < 0.0001,
+        "a nested rect must consume one additional Mermaid sequence-item margin, got outer x={outer_x1}..{outer_x2}, inner x={inner_x1}..{inner_x2}: {svg}"
     );
 }
 
