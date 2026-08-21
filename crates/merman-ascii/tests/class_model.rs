@@ -1906,6 +1906,12 @@ fn class_external_namespace_note_summary_keeps_interface_endpoint() {
         rendered.contains(r#"id(bytes=10)="interface0""#),
         "{rendered}"
     );
+    assert!(
+        rendered.contains(
+            r#"interfaceRef(id(bytes=10)="interface0" label(bytes=8)="IService" target(bytes=7)="Service" ordinal=1"#
+        ),
+        "{rendered}"
+    );
 }
 
 #[test]

@@ -151,6 +151,7 @@ struct ResolvedClassEndpoint<'a> {
     authored_id: &'a str,
     resolved_id: &'a str,
     owner: Option<&'a str>,
+    interface_identity: Option<ClassInterfaceIdentity<'a>>,
 }
 
 impl<'a> ResolvedClassEndpoint<'a> {
@@ -160,13 +161,23 @@ impl<'a> ResolvedClassEndpoint<'a> {
             resolved_id: self.resolved_id,
             render_id: self.resolved_id,
             owner: self.owner,
+            interface_identity: self.interface_identity,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ClassInterfaceIdentity<'a> {
+    render_id: &'a str,
+    authored_label: &'a str,
+    authored_target: &'a str,
+    declaration_ordinal: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClassEndpointMetadata<'a> {
     owner: Option<&'a str>,
+    interface_identity: Option<ClassInterfaceIdentity<'a>>,
 }
 
 #[derive(Debug)]
@@ -194,6 +205,7 @@ impl<'a> ClassEndpointIndex<'a> {
                 class.id.as_str(),
                 ClassEndpointMetadata {
                     owner: class.parent.as_deref(),
+                    interface_identity: None,
                 },
             )
         }));
@@ -202,7 +214,7 @@ impl<'a> ClassEndpointIndex<'a> {
         interface_endpoints
             .try_reserve(model.interfaces.len())
             .map_err(|_| layout_allocation_failed())?;
-        for interface in &model.interfaces {
+        for (declaration_ordinal, interface) in model.interfaces.iter().enumerate() {
             let resolved_target_id = model
                 .namespace_facade_aliases
                 .get(interface.class_id.as_str())
@@ -218,6 +230,14 @@ impl<'a> ClassEndpointIndex<'a> {
                 interface.id.as_str(),
                 ClassEndpointMetadata {
                     owner: target.owner,
+                    interface_identity: Some(ClassInterfaceIdentity {
+                        render_id: interface.id.as_str(),
+                        authored_label: interface.label.as_str(),
+                        authored_target: interface.class_id.as_str(),
+                        declaration_ordinal: declaration_ordinal
+                            .checked_add(1)
+                            .ok_or_else(|| work_overflow(resources))?,
+                    }),
                 },
             );
         }
@@ -241,6 +261,7 @@ impl<'a> ClassEndpointIndex<'a> {
                 authored_id,
                 resolved_id,
                 owner: metadata.owner,
+                interface_identity: metadata.interface_identity,
             })
     }
 
@@ -384,6 +405,7 @@ pub(super) struct RelationEndpoint<'a> {
     resolved_id: &'a str,
     render_id: &'a str,
     owner: Option<&'a str>,
+    interface_identity: Option<ClassInterfaceIdentity<'a>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1691,6 +1713,7 @@ fn note_relation_layouts_for_notes<'a>(
                     resolved_id: note.id.as_str(),
                     render_id: note.id.as_str(),
                     owner: note.parent.as_deref(),
+                    interface_identity: None,
                 },
                 bottom: target.into_layout_endpoint(),
                 top_marker: None,
@@ -1749,25 +1772,12 @@ fn external_namespace_note_summary_rows<'a>(
             width_profile,
             resources,
         )?;
-        let target = if target_endpoint.authored_id == target_endpoint.resolved_id {
-            deferred_text.try_register_framed_value(
-                "id(bytes=",
-                target_endpoint.resolved_id,
-                width_profile,
-                resources,
-            )?
-        } else {
-            deferred_text.try_register_parts(width_profile, resources, 8, |push| {
-                push(DeferredTextPart::Static("id(bytes="))?;
-                push(DeferredTextPart::Decimal(target_endpoint.resolved_id.len()))?;
-                push(DeferredTextPart::Static(")="))?;
-                push(DeferredTextPart::QuotedText(target_endpoint.resolved_id))?;
-                push(DeferredTextPart::Static(" targetRef(bytes="))?;
-                push(DeferredTextPart::Decimal(target_endpoint.authored_id.len()))?;
-                push(DeferredTextPart::Static(")="))?;
-                push(DeferredTextPart::QuotedText(target_endpoint.authored_id))
-            })?
-        };
+        let target = class_summary_endpoint(
+            target_endpoint.into_layout_endpoint(),
+            width_profile,
+            deferred_text,
+            resources,
+        )?;
         rows.push(RelationGraphSummaryRow::new(
             source,
             connector,
@@ -2256,20 +2266,10 @@ fn class_relation_summary_row<'a>(
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
 ) -> Result<RelationGraphSummaryRow> {
-    let source = deferred_text.try_register_framed_value(
-        "id(bytes=",
-        layout.top.render_id,
-        width_profile,
-        resources,
-    )?;
+    let source = class_summary_endpoint(layout.top, width_profile, deferred_text, resources)?;
     let connector =
         class_relation_summary_connector(layout, width_profile, resources, deferred_text)?;
-    let target = deferred_text.try_register_framed_value(
-        "id(bytes=",
-        layout.bottom.render_id,
-        width_profile,
-        resources,
-    )?;
+    let target = class_summary_endpoint(layout.bottom, width_profile, deferred_text, resources)?;
     let label = layout
         .label
         .as_ref()
@@ -2278,6 +2278,76 @@ fn class_relation_summary_row<'a>(
     Ok(RelationGraphSummaryRow::new(
         source, connector, target, label,
     ))
+}
+
+fn class_summary_endpoint<'a>(
+    endpoint: RelationEndpoint<'a>,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<DeferredTextLine> {
+    if endpoint.authored_id != endpoint.resolved_id {
+        if let Some(identity) = endpoint.interface_identity {
+            return deferred_text.try_register_parts(width_profile, resources, 16, |push| {
+                push(DeferredTextPart::Static("id(bytes="))?;
+                push(DeferredTextPart::Decimal(endpoint.render_id.len()))?;
+                push(DeferredTextPart::Static(")="))?;
+                push(DeferredTextPart::QuotedText(endpoint.render_id))?;
+                push(DeferredTextPart::Static(" targetRef(bytes="))?;
+                push(DeferredTextPart::Decimal(endpoint.authored_id.len()))?;
+                push(DeferredTextPart::Static(")="))?;
+                push(DeferredTextPart::QuotedText(endpoint.authored_id))?;
+                push_interface_identity(push, identity)
+            });
+        }
+        return deferred_text.try_register_parts(width_profile, resources, 8, |push| {
+            push(DeferredTextPart::Static("id(bytes="))?;
+            push(DeferredTextPart::Decimal(endpoint.render_id.len()))?;
+            push(DeferredTextPart::Static(")="))?;
+            push(DeferredTextPart::QuotedText(endpoint.render_id))?;
+            push(DeferredTextPart::Static(" targetRef(bytes="))?;
+            push(DeferredTextPart::Decimal(endpoint.authored_id.len()))?;
+            push(DeferredTextPart::Static(")="))?;
+            push(DeferredTextPart::QuotedText(endpoint.authored_id))
+        });
+    }
+
+    if let Some(identity) = endpoint.interface_identity {
+        return deferred_text.try_register_parts(width_profile, resources, 12, |push| {
+            push(DeferredTextPart::Static("id(bytes="))?;
+            push(DeferredTextPart::Decimal(endpoint.render_id.len()))?;
+            push(DeferredTextPart::Static(")="))?;
+            push(DeferredTextPart::QuotedText(endpoint.render_id))?;
+            push_interface_identity(push, identity)
+        });
+    }
+
+    deferred_text.try_register_framed_value(
+        "id(bytes=",
+        endpoint.render_id,
+        width_profile,
+        resources,
+    )
+}
+
+fn push_interface_identity<'part, 'text>(
+    push: &mut dyn FnMut(DeferredTextPart<'part, 'text>) -> Result<()>,
+    identity: ClassInterfaceIdentity<'text>,
+) -> Result<()> {
+    push(DeferredTextPart::Static(" interfaceRef(id(bytes="))?;
+    push(DeferredTextPart::Decimal(identity.render_id.len()))?;
+    push(DeferredTextPart::Static(")="))?;
+    push(DeferredTextPart::QuotedText(identity.render_id))?;
+    push(DeferredTextPart::Static(" label(bytes="))?;
+    push(DeferredTextPart::Decimal(identity.authored_label.len()))?;
+    push(DeferredTextPart::Static(")="))?;
+    push(DeferredTextPart::QuotedText(identity.authored_label))?;
+    push(DeferredTextPart::Static(" target(bytes="))?;
+    push(DeferredTextPart::Decimal(identity.authored_target.len()))?;
+    push(DeferredTextPart::Static(")="))?;
+    push(DeferredTextPart::QuotedText(identity.authored_target))?;
+    push(DeferredTextPart::Static(" ordinal="))?;
+    push(DeferredTextPart::Decimal(identity.declaration_ordinal))
 }
 
 fn class_relation_summary_row_for_reason<'a>(
