@@ -728,6 +728,16 @@ impl<'a> SvgExecution<'a> {
         self.session.work_meter().as_ref()
     }
 
+    /// Replays a terminal observed while an SVG ID was being projected.
+    ///
+    /// Family emitters call this at bounded loop boundaries so an early SVG-byte rejection or
+    /// cancellation stops the tail of a high-fanout render instead of waiting for finalization.
+    pub(crate) fn checkpoint_emit(&self) -> Result<()> {
+        self.work_meter()
+            .checkpoint(OperationPhase::Emit)
+            .map_err(Into::into)
+    }
+
     /// Counts a retained SVG component through its production writer, admits the exact byte count,
     /// and only then allocates and materializes it.
     ///
@@ -1307,6 +1317,32 @@ mod diagram_id_projection_tests {
         assert_eq!(details.limit, "max_svg_bytes");
         assert_eq!(details.actual, 6);
         assert_eq!(details.max, 5);
+        assert_eq!(
+            details.phase,
+            crate::resources::ResourceLimitPhase::SvgOutput
+        );
+    }
+
+    #[test]
+    fn diagram_id_projection_terminal_is_replayed_at_emit_boundaries() {
+        let request = SvgRenderOptions {
+            diagram_id: Some("abc".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let (session, debug) = bounded_execution(2);
+        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let diagram_id = execution.diagram_id_or("fallback");
+        assert_eq!(format!("{diagram_id}"), "");
+
+        let error = execution
+            .checkpoint_emit()
+            .expect_err("a failed ID projection must stop the next emit boundary");
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte resource rejection");
+        };
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.actual, 3);
+        assert_eq!(details.max, 2);
         assert_eq!(
             details.phase,
             crate::resources::ResourceLimitPhase::SvgOutput

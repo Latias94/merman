@@ -102,6 +102,7 @@ pub(crate) fn render_sankey_diagram_svg(
         "<style>{}</style>",
         sankey_css(diagram_id, effective_config)
     );
+    options.checkpoint_emit()?;
     out.push_str("<g/>");
 
     let scheme_tableau10: [&str; 10] = [
@@ -139,12 +140,14 @@ pub(crate) fn render_sankey_diagram_svg(
     let mut node_uid_by_id: std::collections::HashMap<String, SankeyNodeUid<'_>> =
         std::collections::HashMap::new();
     for n in &layout.nodes {
+        options.checkpoint_emit()?;
         node_uid_by_id.insert(n.id.clone(), next_generated_id("node-"));
         let _ = color_for(&n.id);
     }
 
     out.push_str(r#"<g class="nodes">"#);
     for n in &layout.nodes {
+        options.checkpoint_emit()?;
         let node_uid = node_uid_by_id
             .get(&n.id)
             .cloned()
@@ -178,14 +181,16 @@ pub(crate) fn render_sankey_diagram_svg(
     let mut max_value = 0.0;
     let mut central_node_layer = 0usize;
     for n in &layout.nodes {
+        options.checkpoint_emit()?;
         if n.value > max_value {
             max_value = n.value;
             central_node_layer = n.layer;
         }
     }
 
-    let append_labels = |out: &mut String, class_name: Option<&str>| {
+    let append_labels = |out: &mut String, class_name: Option<&str>| -> Result<()> {
         for n in &layout.nodes {
+            options.checkpoint_emit()?;
             let y = (n.y0 + n.y1) / 2.0;
             let (x, anchor) = if outlined_labels {
                 if n.layer < central_node_layer {
@@ -223,18 +228,20 @@ pub(crate) fn render_sankey_diagram_svg(
                 text = escape_xml(&text),
             );
         }
+        Ok(())
     };
     if outlined_labels {
-        append_labels(&mut out, Some("sankey-label-bg"));
-        append_labels(&mut out, Some("sankey-label-fg"));
+        append_labels(&mut out, Some("sankey-label-bg"))?;
+        append_labels(&mut out, Some("sankey-label-fg"))?;
     } else {
-        append_labels(&mut out, None);
+        append_labels(&mut out, None)?;
     }
     out.push_str("</g>");
 
     out.push_str(r#"<g class="links" fill="none" stroke-opacity="0.5">"#);
 
     for l in &layout.links {
+        options.checkpoint_emit()?;
         let source = layout
             .nodes
             .iter()
