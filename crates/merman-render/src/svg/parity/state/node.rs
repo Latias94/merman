@@ -26,87 +26,6 @@ pub(super) fn render_state_node_svg(
     let w = ln.width.max(1.0);
     let h = ln.height.max(1.0);
 
-    #[inline]
-    fn cached_circle(
-        ctx: &StateRenderCtx<'_>,
-        key: StateRoughCacheKey,
-        allow_cache: bool,
-        build: impl FnOnce() -> String,
-    ) -> Rc<String> {
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_draw_request(StateRoughGeometryKind::Circle);
-        if !allow_cache {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_bypass_build(StateRoughGeometryKind::Circle);
-            return Rc::new(build());
-        }
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_lookup(StateRoughGeometryKind::Circle);
-        let existing = ctx.rough_cache.get_circle(key);
-        if let Some(v) = existing {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_operation_hit(StateRoughGeometryKind::Circle);
-            return v;
-        }
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_miss(StateRoughGeometryKind::Circle);
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_build(StateRoughGeometryKind::Circle);
-        let built = Rc::new(build());
-        ctx.rough_cache.insert_circle(key, Rc::clone(&built));
-        #[cfg(test)]
-        state_rough_lifecycle_observe_operation_cache(ctx);
-        built
-    }
-
-    #[inline]
-    fn cached_paths(
-        ctx: &StateRenderCtx<'_>,
-        key: StateRoughCacheKey,
-        allow_cache: bool,
-        build: impl FnOnce() -> (String, String),
-    ) -> (Rc<String>, Rc<String>) {
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_draw_request(StateRoughGeometryKind::Paths);
-        if !allow_cache {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_bypass_build(StateRoughGeometryKind::Paths);
-            let (fill_d, stroke_d) = build();
-            return (Rc::new(fill_d), Rc::new(stroke_d));
-        }
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_lookup(StateRoughGeometryKind::Paths);
-        let existing = ctx.rough_cache.get_paths(key);
-        if let Some(v) = existing {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_operation_hit(StateRoughGeometryKind::Paths);
-            return v;
-        }
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_miss(StateRoughGeometryKind::Paths);
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_build(StateRoughGeometryKind::Paths);
-        let (fill_d, stroke_d) = build();
-        let built = (Rc::new(fill_d), Rc::new(stroke_d));
-        ctx.rough_cache
-            .insert_paths(key, (Rc::clone(&built.0), Rc::clone(&built.1)));
-        #[cfg(test)]
-        state_rough_lifecycle_observe_operation_cache(ctx);
-        built
-    }
-
     let node_class = if node.css_classes.trim().is_empty() {
         "node".to_string()
     } else {
@@ -114,10 +33,6 @@ pub(super) fn render_state_node_svg(
     };
     let node_dom_id = state_scoped_dom_id(ctx, &node.dom_id);
     let data_look = state_data_look(ctx);
-    // A fallback `Math.random()` stream is ordered across shapes, so cache hits would otherwise
-    // skip consumption and change subsequent output.
-    let allow_rough_cache = !ctx.hand_drawn_seed.seed().may_use_math_random();
-
     let style_parse_start = timing.start();
     let mut shape_decls: Vec<StateInlineDecl<'_>> = Vec::new();
     let mut text_decls: Vec<StateInlineDecl<'_>> = Vec::new();
@@ -200,11 +115,11 @@ pub(super) fn render_state_node_svg(
                 seed: ctx.hand_drawn_seed.seed(),
             };
 
-            let outer_d = cached_circle(ctx, outer_key, allow_rough_cache, || {
+            let outer_d = ctx.rough_cache.get_or_build_circle(outer_key, || {
                 roughjs_circle_path_d(14.0, &ctx.hand_drawn_seed)
                     .unwrap_or_else(|| "M0,0".to_string())
             });
-            let inner_d = cached_circle(ctx, inner_key, allow_rough_cache, || {
+            let inner_d = ctx.rough_cache.get_or_build_circle(inner_key, || {
                 roughjs_circle_path_d(5.0, &ctx.hand_drawn_seed)
                     .unwrap_or_else(|| "M0,0".to_string())
             });
@@ -249,7 +164,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+            let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_rect(StateRoughRectSpec {
                     x: -w / 2.0,
                     y: -h / 2.0,
@@ -302,7 +217,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+            let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_choice_diamond_path_data(w, h),
                     "#ECECFF",
@@ -374,7 +289,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+            let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_rect(StateRoughRectSpec {
                     x: -w / 2.0,
                     y: -h / 2.0,
@@ -774,7 +689,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+            let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_rounded_rect_path_data(w, h),
                     "#ECECFF",
