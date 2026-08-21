@@ -119,13 +119,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
                 .map(|edge| (edge.route_source_id(), edge.route_target_id())),
             resources,
         )?;
-        resources.charge_layout_work(lane_offsets.len().max(1))?;
-        let mut draw_order = Vec::new();
-        draw_order
-            .try_reserve_exact(lane_offsets.len())
-            .map_err(|_| snapshot_allocation_failed())?;
-        draw_order.extend(lane_offsets.into_iter().enumerate());
-        draw_order.sort_by_key(|(index, lane_offset)| (lane_offset.unsigned_abs(), *index));
+        let draw_order = plan_layered_draw_order(lane_offsets, resources)?;
 
         Ok(Self {
             plan,
@@ -403,6 +397,29 @@ impl<'boxes> LayeredRelationScene<'boxes> {
     }
 }
 
+fn admit_layered_draw_order(len: usize, resources: &ResourceContext) -> Result<()> {
+    let sort_work = super::comparison_sort_work(len, resources)?;
+    let work = resources.checked_work_add(len, sort_work)?;
+    resources.charge_layout_work(work.max(1))
+}
+
+fn plan_layered_draw_order(
+    lane_offsets: Vec<isize>,
+    resources: &ResourceContext,
+) -> Result<Vec<(usize, isize)>> {
+    resources.transaction(move |resources| {
+        admit_layered_draw_order(lane_offsets.len(), resources)?;
+        let mut draw_order = Vec::new();
+        draw_order
+            .try_reserve_exact(lane_offsets.len())
+            .map_err(|_| snapshot_allocation_failed())?;
+        draw_order.extend(lane_offsets.into_iter().enumerate());
+        draw_order
+            .sort_unstable_by_key(|(index, lane_offset)| (lane_offset.unsigned_abs(), *index));
+        Ok(draw_order)
+    })
+}
+
 pub(crate) fn plan_layered_relation_scene<'boxes>(
     boxes: &[&'boxes RelationGraphBox],
     edges: Vec<LayeredRelationEdge>,
@@ -550,6 +567,34 @@ mod tests {
         .expect("scene should be buildable");
 
         assert_eq!(scene.draw_order(), &[(1, 0), (2, 0), (0, -6), (3, 6)]);
+    }
+
+    #[test]
+    fn layered_draw_order_admits_comparison_work_before_allocation() {
+        const EDGE_COUNT: usize = 8;
+        const EXPECTED_WORK: usize = EDGE_COUNT + EDGE_COUNT * 3;
+
+        let exact_policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK)
+            .expect("exact draw-order work limit should be valid");
+        let exact = ResourceContext::new(exact_policy);
+        admit_layered_draw_order(EDGE_COUNT, &exact).expect("exact draw-order work should succeed");
+        assert_eq!(exact.layout_work_used(), EXPECTED_WORK);
+
+        let below_policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK - 1)
+            .expect("below draw-order work limit should be valid");
+        let below = ResourceContext::new(below_policy);
+        let error = admit_layered_draw_order(EDGE_COUNT, &below)
+            .expect_err("below draw-order work must fail before allocation");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == EXPECTED_WORK
+                    && details.max == EXPECTED_WORK - 1
+        ));
+        assert_eq!(below.layout_work_used(), 0);
     }
 
     #[test]

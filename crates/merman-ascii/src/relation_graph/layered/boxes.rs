@@ -998,8 +998,7 @@ fn apply_layered_relation_sweep<'a>(
     let node_map_work = resources.checked_work_mul(node_count, 2)?;
     let edge_scan_work = resources.checked_work_mul(node_count, edges.len())?;
     let barycenter_work = edges.len();
-    let sort_work =
-        resources.checked_work_mul(node_count, comparison_sort_levels(node_count, resources)?)?;
+    let sort_work = super::comparison_sort_work(node_count, resources)?;
     let work = resources.checked_work_add(
         resources.checked_work_add(level_work, node_map_work)?,
         resources.checked_work_add(
@@ -1016,19 +1015,6 @@ fn apply_layered_relation_sweep<'a>(
             order_layered_groups_upward(level_groups, edges, levels, resources, checkpoints)
         }
     }
-}
-
-fn comparison_sort_levels(
-    len: usize,
-    resources: &ResourceContext,
-) -> Result<usize, LayeredRelationPlanningError> {
-    if len <= 1 {
-        return Ok(0);
-    }
-    usize::try_from(len.ilog2())
-        .ok()
-        .and_then(|levels| levels.checked_add(1))
-        .ok_or_else(|| work_overflow(resources).into())
 }
 
 fn crossing_layered_relation_count(

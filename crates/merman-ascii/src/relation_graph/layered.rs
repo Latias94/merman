@@ -5,6 +5,19 @@ mod lanes;
 mod route;
 mod scene;
 
+use crate::Result;
+use crate::resource::ResourceContext;
+
+fn comparison_sort_work(len: usize, resources: &ResourceContext) -> Result<usize> {
+    if len <= 1 {
+        return Ok(0);
+    }
+    let levels = usize::try_from(usize::BITS - (len - 1).leading_zeros())
+        .ok()
+        .ok_or_else(|| resources.work_overflow())?;
+    resources.checked_work_mul(len, levels)
+}
+
 pub(super) use self::batch::plan_layered_relation_component_ref_result;
 #[cfg(test)]
 pub(super) use self::batch::{
