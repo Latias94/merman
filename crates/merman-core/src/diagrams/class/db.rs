@@ -5,7 +5,7 @@ use crate::utils::format_url;
 use crate::{MermaidConfig, ParseMetadata};
 use indexmap::IndexMap;
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::ast::{Action, RelationData};
 use super::{
@@ -357,6 +357,76 @@ pub(super) struct ClassDb<'a> {
 }
 
 impl<'a> ClassDb<'a> {
+    fn next_unique_synthetic_id(
+        prefix: &str,
+        ordinal: usize,
+        occupied: &mut BTreeSet<String>,
+    ) -> String {
+        let base = format!("{prefix}{ordinal}");
+        if occupied.insert(base.clone()) {
+            return base;
+        }
+
+        let mut disambiguator = 1usize;
+        loop {
+            let candidate = format!("{base}${disambiguator}");
+            if occupied.insert(candidate.clone()) {
+                return candidate;
+            }
+            disambiguator = disambiguator.saturating_add(1);
+        }
+    }
+
+    /// Keeps parser-synthesized routing ids outside the authored render-id domain.
+    ///
+    /// Mermaid names notes and lollipop interfaces `noteN`/`interfaceN`. Those names are not
+    /// reserved by the grammar, so a later authored class can otherwise collide with an earlier
+    /// synthetic endpoint. Finalizing the ids after the full model is known preserves the normal
+    /// Mermaid spelling while deterministically disambiguating only actual collisions.
+    fn disambiguate_synthetic_render_ids(&mut self) {
+        let mut occupied = self
+            .classes
+            .keys()
+            .cloned()
+            .chain(
+                self.namespaces
+                    .values()
+                    .map(|namespace| namespace.dom_id.clone()),
+            )
+            .collect::<BTreeSet<_>>();
+
+        for (ordinal, note) in self.notes.iter_mut().enumerate() {
+            note.id = Self::next_unique_synthetic_id("note", ordinal, &mut occupied);
+        }
+
+        let mut interface_id_remaps = BTreeMap::new();
+        for (ordinal, interface) in self.interfaces.iter_mut().enumerate() {
+            let previous_id = interface.id.clone();
+            let render_id = Self::next_unique_synthetic_id("interface", ordinal, &mut occupied);
+            if previous_id != render_id {
+                interface_id_remaps.insert(previous_id, render_id.clone());
+                interface.id = render_id;
+            }
+        }
+
+        if !interface_id_remaps.is_empty() {
+            for relation in &mut self.relations {
+                if relation.relation.type1 == REL_LOLLIPOP
+                    && let Some(render_id) = interface_id_remaps.get(relation.id1.as_str())
+                {
+                    relation.id1.clone_from(render_id);
+                }
+                if relation.relation.type2 == REL_LOLLIPOP
+                    && let Some(render_id) = interface_id_remaps.get(relation.id2.as_str())
+                {
+                    relation.id2.clone_from(render_id);
+                }
+            }
+        }
+
+        self.rebuild_namespace_memberships();
+    }
+
     pub(super) fn new(config: &'a MermaidConfig) -> Self {
         Self {
             direction: "TB".to_string(),
@@ -1055,6 +1125,7 @@ impl<'a> ClassDb<'a> {
 
     pub(super) fn into_typed_model(mut self, meta: &ParseMetadata) -> class_typed::ClassDiagram {
         self.apply_namespace_render_config();
+        self.disambiguate_synthetic_render_ids();
         let namespace_facade_aliases = self.namespace_facade_aliases();
 
         let classes = self

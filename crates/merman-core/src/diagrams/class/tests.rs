@@ -55,6 +55,25 @@ A "" --> B
 }
 
 #[test]
+fn synthetic_note_and_interface_ids_do_not_collide_with_authored_classes() {
+    let code = r#"classDiagram
+class note0
+note "standalone"
+class interface0
+IService ()-- Service
+"#;
+
+    let model = parse::parse_class_typed(code, &meta()).expect("class diagram should parse");
+
+    assert!(model.classes.contains_key("note0"));
+    assert!(model.classes.contains_key("interface0"));
+    assert_ne!(model.notes[0].id, "note0");
+    assert_ne!(model.interfaces[0].id, "interface0");
+    assert_eq!(model.relations[0].id1, model.interfaces[0].id);
+    assert_eq!(model.relations[0].id2, "Service");
+}
+
+#[test]
 fn namespace_qualified_relation_endpoints_create_facade_classes_like_mermaid() {
     let code = r#"classDiagram
 namespace Platform["Platform Layer"] {
