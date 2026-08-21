@@ -1997,6 +1997,47 @@ fn sequence_zed_59651_nested_frame_headers_follow_the_preceding_note() {
 }
 
 #[test]
+fn sequence_issue_86_nested_loop_and_alt_labels_keep_separate_vertical_positions() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+    participant A
+    participant B
+    loop Outer loop
+        alt Inner branch
+            A->>B: Message
+        end
+    end
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+
+    let title_y = |label: &str| {
+        document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "text"
+                    && node.attribute("class") == Some("loopText")
+                    && node
+                        .descendants()
+                        .filter(|descendant| descendant.is_text())
+                        .filter_map(|descendant| descendant.text())
+                        .any(|text| text.contains(label))
+            })
+            .and_then(|node| node.attribute("y"))
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or_else(|| panic!("missing numeric loop title {label:?}: {svg}"))
+    };
+
+    let outer_y = title_y("[Outer loop]");
+    let inner_y = title_y("[Inner branch]");
+    assert!(
+        inner_y - outer_y >= 20.0,
+        "nested loop and alt labels must occupy separate vertical bands, got outer y={outer_y}, inner y={inner_y}: {svg}"
+    );
+}
+
+#[test]
 fn sequence_rect_block_is_root_level_before_actors() {
     let svg = render_sequence_svg_from_fixture("upstream_rect_block_spec.mmd");
 
