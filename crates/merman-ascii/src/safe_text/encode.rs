@@ -12,7 +12,7 @@ pub(super) fn encode_budgeted_lines_with_expected(
 ) -> Result<String> {
     resources.transaction(|resources| {
         admit_and_validate_encoded_lines(&lines, color_mode, resources, expected_len)?;
-        materialize_encoded_lines(lines, color_mode, resources)
+        materialize_encoded_lines(lines, color_mode, resources, expected_len)
     })
 }
 
@@ -41,9 +41,10 @@ fn materialize_encoded_lines(
     lines: Vec<String>,
     color_mode: AsciiColorMode,
     resources: &ResourceContext,
+    expected_len: usize,
 ) -> Result<String> {
     resources.checkpoint()?;
-    let mut output = CheckedOutput::new(resources);
+    let mut output = CheckedOutput::try_prebudgeted(resources, expected_len)?;
     for (index, line) in lines.into_iter().enumerate() {
         resources.checkpoint()?;
         if index > 0 {
@@ -55,7 +56,14 @@ fn materialize_encoded_lines(
             push_text_with_resources(&mut output, &line, resources)?;
         }
     }
-    Ok(output.finish())
+    let output = output.finish();
+    if output.len() != expected_len {
+        return Err(crate::error::AsciiError::UnsupportedFeature {
+            diagram_type: "structured_text",
+            feature: "encoded output byte accounting",
+        });
+    }
+    Ok(output)
 }
 
 fn encoded_lines_len(
@@ -243,7 +251,12 @@ mod tests {
                     expected_len,
                 )?;
                 control.cancel();
-                materialize_encoded_lines(vec![line], AsciiColorMode::Plain, resources)
+                materialize_encoded_lines(
+                    vec![line],
+                    AsciiColorMode::Plain,
+                    resources,
+                    expected_len,
+                )
             })
             .expect_err("plain materialization should observe emit cancellation");
 

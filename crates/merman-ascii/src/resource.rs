@@ -487,15 +487,13 @@ impl ResourceContext {
 
     pub(crate) fn check(&self, id: AsciiResourceLimitId, actual: usize) -> Result<()> {
         self.resource_checkpoint()?;
-        self.policy
-            .check(id, actual)
-            .map_err(|error| self.terminate_resource_error(error))
+        self.check_after_checkpoint(id, actual)
     }
 
     pub(crate) fn overflow(&self, id: AsciiResourceLimitId) -> AsciiError {
         self.resource_checkpoint()
             .err()
-            .unwrap_or_else(|| self.terminate_resource_error(self.policy.overflow(id)))
+            .unwrap_or_else(|| self.overflow_after_checkpoint(id))
     }
 
     pub(crate) fn layout_work_used(&self) -> usize {
@@ -510,8 +508,8 @@ impl ResourceContext {
         self.resource_checkpoint()?;
         let cells = width
             .checked_mul(height)
-            .ok_or_else(|| self.overflow(AsciiResourceLimitId::MaxGridCells))?;
-        self.check(AsciiResourceLimitId::MaxGridCells, cells)?;
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxGridCells))?;
+        self.check_after_checkpoint(AsciiResourceLimitId::MaxGridCells, cells)?;
         Ok(LogicalExtent {
             width,
             height,
@@ -522,23 +520,25 @@ impl ResourceContext {
     pub(crate) fn checked_grid_add(&self, left: usize, right: usize) -> Result<usize> {
         self.resource_checkpoint()?;
         left.checked_add(right)
-            .ok_or_else(|| self.overflow(AsciiResourceLimitId::MaxGridCells))
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxGridCells))
     }
 
     pub(crate) fn checked_grid_mul(&self, left: usize, right: usize) -> Result<usize> {
         self.resource_checkpoint()?;
         left.checked_mul(right)
-            .ok_or_else(|| self.overflow(AsciiResourceLimitId::MaxGridCells))
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxGridCells))
     }
 
     pub(crate) fn checked_work_add(&self, left: usize, right: usize) -> Result<usize> {
         self.resource_checkpoint()?;
-        left.checked_add(right).ok_or_else(|| self.work_overflow())
+        left.checked_add(right)
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxLayoutWorkUnits))
     }
 
     pub(crate) fn checked_work_mul(&self, left: usize, right: usize) -> Result<usize> {
         self.resource_checkpoint()?;
-        left.checked_mul(right).ok_or_else(|| self.work_overflow())
+        left.checked_mul(right)
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxLayoutWorkUnits))
     }
 
     pub(crate) fn charge_layout_work(&self, delta: usize) -> Result<()> {
@@ -554,9 +554,9 @@ impl ResourceContext {
 
     pub(crate) fn charge_layout_work_product(&self, left: usize, right: usize) -> Result<()> {
         self.resource_checkpoint()?;
-        let work = left
-            .checked_mul(right)
-            .ok_or_else(|| self.work_overflow())?;
+        let work = left.checked_mul(right).ok_or_else(|| {
+            self.overflow_after_checkpoint(AsciiResourceLimitId::MaxLayoutWorkUnits)
+        })?;
         let actual = self.checked_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
@@ -698,6 +698,16 @@ impl ResourceContext {
         self.checkpoint()
     }
 
+    fn check_after_checkpoint(&self, id: AsciiResourceLimitId, actual: usize) -> Result<()> {
+        self.policy
+            .check(id, actual)
+            .map_err(|error| self.terminate_resource_error(error))
+    }
+
+    fn overflow_after_checkpoint(&self, id: AsciiResourceLimitId) -> AsciiError {
+        self.terminate_resource_error(self.policy.overflow(id))
+    }
+
     fn terminate_resource_error(&self, error: AsciiError) -> AsciiError {
         let Some(operation) = self.operation.as_ref() else {
             return error;
@@ -755,8 +765,8 @@ impl ResourceContext {
     ) -> Result<usize> {
         let actual = current
             .checked_add(delta)
-            .ok_or_else(|| self.overflow(id))?;
-        self.check(id, actual)?;
+            .ok_or_else(|| self.overflow_after_checkpoint(id))?;
+        self.check_after_checkpoint(id, actual)?;
         Ok(actual)
     }
 }
@@ -856,6 +866,7 @@ fn validate_ascii_overrides(provenance: &OperationResourceProvenance) -> Option<
 #[derive(Debug)]
 pub(crate) struct CheckedOutput {
     resources: ResourceContext,
+    expected_len: Option<usize>,
     output: String,
 }
 
@@ -863,11 +874,40 @@ impl CheckedOutput {
     pub(crate) fn new(resources: &ResourceContext) -> Self {
         Self {
             resources: resources.clone(),
+            expected_len: None,
             output: String::new(),
         }
     }
 
+    /// Creates an output buffer after the complete encoded byte count has been admitted.
+    pub(crate) fn try_prebudgeted(
+        resources: &ResourceContext,
+        expected_len: usize,
+    ) -> Result<Self> {
+        let mut output = String::new();
+        output
+            .try_reserve_exact(expected_len)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::Output.as_str(),
+            })?;
+        Ok(Self {
+            resources: resources.clone(),
+            expected_len: Some(expected_len),
+            output,
+        })
+    }
+
     pub(crate) fn push_str(&mut self, value: &str) -> Result<()> {
+        if let Some(expected_len) = self.expected_len {
+            let remaining = expected_len
+                .checked_sub(self.output.len())
+                .ok_or_else(|| invalid_prebudgeted_output_plan())?;
+            if value.len() > remaining {
+                return Err(invalid_prebudgeted_output_plan());
+            }
+            self.output.push_str(value);
+            return Ok(());
+        }
         let actual = self.output.len().checked_add(value.len()).ok_or_else(|| {
             self.resources
                 .overflow(AsciiResourceLimitId::MaxOutputBytes)
@@ -921,6 +961,22 @@ impl CheckedOutput {
 
     pub(crate) fn finish(self) -> String {
         self.output
+    }
+
+    #[cfg(test)]
+    fn finish_prebudgeted(self) -> Result<String> {
+        if self.expected_len == Some(self.output.len()) {
+            Ok(self.output)
+        } else {
+            Err(invalid_prebudgeted_output_plan())
+        }
+    }
+}
+
+fn invalid_prebudgeted_output_plan() -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "terminal_output",
+        feature: "encoded output byte accounting",
     }
 }
 
@@ -1067,6 +1123,76 @@ mod tests {
     }
 
     #[test]
+    fn prebudgeted_output_reuses_one_formal_admission() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 3)
+            .expect("valid override");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let resources = ResourceContext::new(policy).controlled(control, OperationPhase::Emit);
+
+        resources
+            .check(AsciiResourceLimitId::MaxOutputBytes, 3)
+            .expect("the exact encoded byte count should be admitted once");
+        let mut output = CheckedOutput::try_prebudgeted(&resources, 3)
+            .expect("the admitted buffer should reserve exactly once");
+        output
+            .push_str("abc")
+            .expect("prebudgeted appends should not repeat the formal admission");
+        assert_eq!(output.finish(), "abc");
+
+        let error = resources
+            .checkpoint()
+            .expect_err("the next controlled operation should observe cancellation");
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn prebudgeted_output_rejects_plan_overrun() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut output = CheckedOutput::try_prebudgeted(&resources, 3)
+            .expect("the admitted buffer should reserve");
+
+        output.push_str("abc").expect("the exact plan should fit");
+        let error = output
+            .push_char('d')
+            .expect_err("an encoder may not exceed its admitted byte count");
+
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "terminal_output",
+                feature: "encoded output byte accounting",
+            }
+        ));
+    }
+
+    #[test]
+    fn prebudgeted_output_rejects_plan_underrun() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut output = CheckedOutput::try_prebudgeted(&resources, 4)
+            .expect("the admitted buffer should reserve");
+        output.push_str("abc").expect("the prefix should fit");
+
+        let error = output
+            .finish_prebudgeted()
+            .expect_err("an encoder must fill its exact admitted byte count");
+
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "terminal_output",
+                feature: "encoded output byte accounting",
+            }
+        ));
+    }
+
+    #[test]
     fn transaction_restores_shared_ledgers_when_a_later_limit_fails() {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 10)
@@ -1124,6 +1250,32 @@ mod tests {
         ));
         assert_eq!(resources.layout_work_used(), 0);
         assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn controlled_compound_admission_uses_one_terminal_checkpoint() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let controlled = resources.controlled(control, OperationPhase::Layout);
+
+        controlled
+            .charge_usage(2, 3)
+            .expect("one compound admission should consume one checkpoint");
+        let error = controlled
+            .checkpoint()
+            .expect_err("the following operation should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 3);
     }
 
     #[test]

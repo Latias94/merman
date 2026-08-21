@@ -104,6 +104,7 @@ pub type OperationControlResult<T> = std::result::Result<T, OperationCancelled>;
 type Clock = Arc<dyn Fn() -> Instant + Send + Sync + 'static>;
 
 struct OperationState {
+    attention_required: AtomicBool,
     cancelled: AtomicBool,
     terminal: OnceLock<OperationLedgerError>,
     parent: Option<Arc<OperationState>>,
@@ -125,7 +126,9 @@ impl fmt::Debug for OperationState {
 
 impl OperationState {
     fn new(parent: Option<Arc<OperationState>>, clock: Clock) -> Self {
+        let attention_required = parent.is_some();
         Self {
+            attention_required: AtomicBool::new(attention_required),
             cancelled: AtomicBool::new(false),
             terminal: OnceLock::new(),
             parent,
@@ -137,7 +140,12 @@ impl OperationState {
     }
 
     fn latch_terminal(&self, error: OperationLedgerError) -> OperationLedgerError {
+        self.attention_required.store(true, Ordering::Release);
         self.terminal.get_or_init(|| error).clone()
+    }
+
+    fn attention_required(&self) -> bool {
+        self.attention_required.load(Ordering::Acquire)
     }
 }
 
@@ -214,6 +222,7 @@ impl OperationControl {
     ))]
     pub fn set_deadline(&self, timeout: Duration) -> bool {
         let now = (self.state.clock)();
+        self.state.attention_required.store(true, Ordering::Release);
         self.state
             .deadline
             .set(deadline_after(now, timeout))
@@ -222,6 +231,7 @@ impl OperationControl {
 
     /// Requests cancellation for this control and its clones.
     pub fn cancel(&self) {
+        self.state.attention_required.store(true, Ordering::Release);
         self.state.cancelled.store(true, Ordering::Release);
     }
 
@@ -249,6 +259,9 @@ impl OperationControl {
     /// this method does not replace it with a later cancellation. Target adapters use
     /// [`Self::terminal_checkpoint_at`] to replay the complete terminal value.
     pub fn checkpoint_at(&self, phase: OperationPhase) -> Result<(), OperationCancelled> {
+        if !self.state.attention_required() {
+            return Ok(());
+        }
         self.observe_cancellation_at(phase).map_or(Ok(()), Err)
     }
 
@@ -261,6 +274,9 @@ impl OperationControl {
         &self,
         phase: OperationPhase,
     ) -> Result<(), OperationLedgerError> {
+        if !self.state.attention_required() {
+            return Ok(());
+        }
         if let Some(error) = self.state.terminal.get() {
             return Err(error.clone());
         }
@@ -431,6 +447,7 @@ impl OperationControl {
     /// Schedules deterministic cancellation for tests after the requested successful checkpoints.
     #[cfg(any(test, feature = "test-support"))]
     pub fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
+        self.state.attention_required.store(true, Ordering::Release);
         self.state
             .successful_checkpoints_before_cancellation
             .store(successful_checkpoints as u64, Ordering::Relaxed);

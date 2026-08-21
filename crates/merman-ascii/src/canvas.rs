@@ -782,7 +782,7 @@ impl Canvas {
         encoded_bytes: usize,
     ) -> crate::Result<String> {
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        let mut output = CheckedOutput::new(&self.resources);
+        let mut output = CheckedOutput::try_prebudgeted(&self.resources, encoded_bytes)?;
         self.encode_to_sink(color_mode, color_theme, trim, execution, &mut output)?;
         let output = output.finish();
         if output.len() != encoded_bytes {
@@ -1243,7 +1243,7 @@ where
     I: Iterator<Item = &'a crate::text::StyledLine>,
 {
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    let mut output = CheckedOutput::new(resources);
+    let mut output = CheckedOutput::try_prebudgeted(resources, encoded_bytes)?;
     encode_styled_line_iter_to_sink(
         lines,
         options,
@@ -1520,7 +1520,7 @@ fn visit_primary_cells(
         execution.checkpoint(merman_core::OperationPhase::Emit)
     });
     while let Some(cell) = cells.get(offset).copied() {
-        checkpoints.force()?;
+        checkpoints.checkpoint_primary_cell()?;
         let width = primary_width_with_checkpoints(cells, offset, &mut checkpoints)?;
         if width == 0 {
             return Err(crate::AsciiError::allocation_failed(
@@ -2282,46 +2282,31 @@ mod tests {
     }
 
     #[test]
-    fn controlled_styled_finish_checks_each_primary_cell_in_colored_modes() {
-        for mode in [
-            AsciiColorMode::Ansi16,
-            AsciiColorMode::Ansi256,
-            AsciiColorMode::TrueColor,
-            AsciiColorMode::Html,
-        ] {
-            let options = AsciiRenderOptions::unicode().with_color_mode(mode);
-            let policy = AsciiResourcePolicy::default();
-            let mut resources = ResourceContext::new(policy);
-            let mut line =
-                crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &resources);
-            line.try_push_role_text("AB", AsciiColorRole::Text)
-                .expect("test cells should fit");
-            let control = OperationControl::new();
-            // Leave enough successful checkpoints to enter encoded-cell traversal; the
-            // controlled finalizer must still stop before either pass publishes output.
-            control.cancel_after_checkpoints(7);
-            let execution = AsciiExecution::new(&control, &policy);
+    fn controlled_styled_emission_uses_bounded_primary_cell_cadence() {
+        let policy = AsciiResourcePolicy::default();
+        let resources = ResourceContext::new(policy);
+        let mut line =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &resources);
+        line.try_push_role_text(&"A".repeat(130), AsciiColorRole::Text)
+            .expect("test cells should fit");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let execution = AsciiExecution::new(&control, &policy);
+        let visited = std::cell::Cell::new(0usize);
 
-            let error = finish_styled_line_iter(
-                std::iter::once(&line),
-                &options,
-                true,
-                &mut resources,
-                None,
-                execution,
-            )
-            .expect_err("colored emission must observe cancellation inside the row");
+        let error = visit_primary_cells(line.surface_cells(), execution, |_| {
+            visited.set(visited.get() + 1);
+            Ok(())
+        })
+        .expect_err("emission must observe cancellation at the next cell cadence");
 
-            assert!(
-                matches!(
-                    error,
-                    crate::AsciiError::Cancelled(cancelled)
-                        if cancelled.phase == OperationPhase::Emit
-                            && cancelled.reason == CancelReason::Requested
-                ),
-                "mode={mode:?}"
-            );
-        }
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(visited.get(), 64);
     }
 
     #[test]

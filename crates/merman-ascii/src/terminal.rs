@@ -61,6 +61,10 @@ where
         Ok(())
     }
 
+    pub(crate) fn checkpoint_primary_cell(&mut self) -> Result<()> {
+        self.checkpoint_cell()
+    }
+
     pub(crate) fn force(&mut self) -> Result<()> {
         (self.checkpoint)()?;
         self.cells_until_checkpoint = self.interval;
