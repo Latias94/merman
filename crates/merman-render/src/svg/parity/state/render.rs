@@ -339,8 +339,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         &mut out,
         &ctx,
         None,
-        origin_x,
-        origin_y,
+        (origin_x, origin_y),
         options,
         timing,
         &mut detail,
@@ -453,14 +452,14 @@ fn render_state_root(
     out: &mut String,
     ctx: &StateRenderCtx<'_>,
     root: Option<&str>,
-    parent_origin_x: f64,
-    parent_origin_y: f64,
+    parent_origin: (f64, f64),
     options: &SvgExecution<'_>,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
 ) -> Result<()> {
     details.root_calls += 1;
     options.checkpoint_emit()?;
+    let (parent_origin_x, parent_origin_y) = parent_origin;
 
     // Mermaid's dagre-wrapper uses a fixed graph margin (`marginx/marginy=8`). For nested state
     // roots (extracted cluster graphs), Mermaid keeps the root cluster frame at x/y=8 in the
@@ -681,8 +680,7 @@ fn render_state_root(
             out,
             ctx,
             Some(child_root),
-            origin_x,
-            origin_y,
+            (origin_x, origin_y),
             options,
             timing,
             details,

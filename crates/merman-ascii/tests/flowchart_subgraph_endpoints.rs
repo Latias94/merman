@@ -166,12 +166,11 @@ fn same_id_group_style_preserves_flowdb_class_and_style_statement_order() {
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .expect("same-id group style order should parse")
             .expect("flowchart should be detected");
-        let rendered = render_parsed(
+        render_parsed(
             &parsed,
             &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor),
         )
-        .expect("same-id group style order should render");
-        rendered
+        .expect("same-id group style order should render")
     };
 
     let class_before_style_rendered = render("class G base\nstyle G fill:#ff0000");

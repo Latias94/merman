@@ -699,13 +699,12 @@ fn write_expanded_selector<W: fmt::Write>(
 ) -> Result<()> {
     let mut input = ParserInput::new(selector);
     let mut input = Parser::new(&mut input);
-    write_expanded_selector_parser(&mut input, selector, scope, output, depth, cadence)
+    write_expanded_selector_parser(&mut input, scope, output, depth, cadence)
         .map_err(map_scoped_css_parse_error)
 }
 
 fn write_expanded_selector_parser<'i, 't, W: fmt::Write>(
     input: &mut Parser<'i, 't>,
-    source: &'i str,
     scope: &str,
     output: &mut W,
     depth: u8,
@@ -726,14 +725,7 @@ fn write_expanded_selector_parser<'i, 't, W: fmt::Write>(
                 write_css(output, input.slice(token_start..token_end), input)?;
                 let nested_depth = descend_scoped_css(input, depth)?;
                 input.parse_nested_block(|nested| {
-                    write_expanded_selector_parser(
-                        nested,
-                        source,
-                        scope,
-                        output,
-                        nested_depth,
-                        cadence,
-                    )
+                    write_expanded_selector_parser(nested, scope, output, nested_depth, cadence)
                 })?;
                 write_css(output, ")", input)?;
             }
@@ -741,14 +733,7 @@ fn write_expanded_selector_parser<'i, 't, W: fmt::Write>(
                 write_css(output, input.slice(token_start..token_end), input)?;
                 let nested_depth = descend_scoped_css(input, depth)?;
                 input.parse_nested_block(|nested| {
-                    write_expanded_selector_parser(
-                        nested,
-                        source,
-                        scope,
-                        output,
-                        nested_depth,
-                        cadence,
-                    )
+                    write_expanded_selector_parser(nested, scope, output, nested_depth, cadence)
                 })?;
                 write_css(output, "]", input)?;
             }
@@ -756,14 +741,7 @@ fn write_expanded_selector_parser<'i, 't, W: fmt::Write>(
                 write_css(output, input.slice(token_start..token_end), input)?;
                 let nested_depth = descend_scoped_css(input, depth)?;
                 input.parse_nested_block(|nested| {
-                    write_expanded_selector_parser(
-                        nested,
-                        source,
-                        scope,
-                        output,
-                        nested_depth,
-                        cadence,
-                    )
+                    write_expanded_selector_parser(nested, scope, output, nested_depth, cadence)
                 })?;
                 write_css(output, "}", input)?;
             }

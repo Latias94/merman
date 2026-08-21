@@ -264,8 +264,8 @@ fn operation_resource_limit_details(
             maximum,
             ..
         } => Some(ExportResourceLimitDetails {
-            limit_id: *id,
-            phase: *resource_phase,
+            limit_id: id,
+            phase: resource_phase,
             actual: *actual,
             max: *maximum,
             cause: ExportResourceLimitCause::ArithmeticOverflow,

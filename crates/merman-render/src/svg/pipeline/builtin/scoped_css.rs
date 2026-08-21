@@ -263,10 +263,11 @@ impl InjectionPlan {
     }
 
     fn projected_svg_bytes(self, svg_bytes: usize, css_bytes: usize) -> Option<usize> {
-        let wrapper_bytes = self
-            .wrapped
-            .then_some(STYLE_OPEN.len() + STYLE_CLOSE.len())
-            .unwrap_or(0);
+        let wrapper_bytes = if self.wrapped {
+            STYLE_OPEN.len() + STYLE_CLOSE.len()
+        } else {
+            0
+        };
         svg_bytes.checked_add(css_bytes)?.checked_add(wrapper_bytes)
     }
 }
