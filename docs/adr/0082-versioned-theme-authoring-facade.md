@@ -1,7 +1,8 @@
 # ADR 0082: Versioned Theme Authoring Facade
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-14
+- Accepted: 2026-08-21
 
 ## Context
 
@@ -34,14 +35,14 @@ theme formats. A complete `DiagramThemeSpec` remains the advanced share format w
 definition cannot express a recipe. Version 1 does not add theme packages, manifests, installation,
 lock files, or a remote registry.
 
-This ADR defines the proposed alpha authoring contract used by the C7a pre-freeze authoring
+This ADR defines the accepted alpha authoring design used by the C7a pre-freeze authoring
 witnesses. It does not declare a stable public interface, satisfy C6a, or unblock C7a. C7a remains
 blocked until the plan's compiler, family-writer, terminal-evidence, rollout, and author-task gates
-close. While this ADR is `proposed`, it is the sole candidate source of truth for the version 1
-authoring envelope and expansion tables. Moving it to `accepted` records design approval only; it
-does not certify the implementation, freeze an expansion row, or create a compatibility promise.
-Only `C7a-contract` begins the compatibility and expansion-version freeze after the required
-consumer, terminal-evidence, and rollout witnesses pass.
+close. This accepted ADR is the normative candidate source of truth for the version 1 authoring
+envelope and expansion tables. Acceptance records design approval only; it does not certify every
+implementation projection, freeze an expansion row, or create a compatibility promise. Only
+`C7a-contract` begins the compatibility and expansion-version freeze after the required consumer,
+terminal-evidence, and rollout witnesses pass.
 
 ## Decision
 
@@ -76,6 +77,27 @@ self-contained `ThemeDefinitionV1` when the preset has one lossless source defin
 returns a complete spec. Version 1 does not require reverse-engineering an arbitrary preset into a
 compact definition and does not add runtime preset-plus-patch semantics.
 
+The current built-in presets are definition-backed internally, but the catalog appends Mermaid
+`theme = base` and `dark_mode` compatibility values after materialization. Until those values are
+represented losslessly by `ThemeDefinitionV1`, preset export returns `complete_spec`, not a compact
+definition. That export is a catalog convenience operation; it is not a third authoring language or
+an additional low-level renderer input.
+
+### Candidate user workflows and non-claims
+
+The pre-freeze candidate must support these ordinary tasks through one Rust-owned contract:
+
+1. construct or decode a self-contained definition;
+2. persist readable JSON and recover identical canonical definition bytes;
+3. materialize the definition into an inspectable complete spec;
+4. compile and render through the existing closed renderer;
+5. query a bounded static support claim without confusing it with runtime application; and
+6. export a preset as either a lossless definition or an explicitly labeled complete spec.
+
+This candidate does not promise complete theming for every family, automatic contrast correction,
+browser/JPEG/PDF qualification, stable preset cells, a registry, or a frozen cross-language ABI.
+Those claims require their own family, target, rollout, and release gates.
+
 ### 2. Separate authoring, compilation, and execution authorities
 
 The only valid authority chain is:
@@ -93,8 +115,11 @@ RenderedDocument / export report
     -> actual application + residuals + portability + target admission
 ```
 
-`ThemeMaterializer` is a pure deterministic lowering module. It owns authoring defaults, token
-expansion, validation of its own input, and authoring diagnostics. It does not inspect renderer
+`ThemeMaterializer` is a pure deterministic lowering module. It consumes an admitted
+`ThemeDefinitionV1`, owns authoring defaults, token expansion, validation of its own input, and
+authoring diagnostics, and composes complete-spec wire entries. It does not decode authored rule
+entries into renderer-owned typed rules; `DiagramThemeCompiler` remains the sole typed rule decoder.
+It does not inspect renderer
 support, output targets, family implementations, host policy, or runtime resources. It does not
 produce authoritative capabilities, admission, portability, or execution evidence.
 
@@ -124,11 +149,11 @@ ThemeDefinitionV1 {
 
 `ThemeRuleSetWireV1[]` is the closed, flat tagged-array wire projection of the existing typed rule
 set. Each entry is either a `rule` entry or an `ordinal-palette` entry, matching the complete-spec
-wire rather than introducing an authoring-only container object. Decoding produces the in-memory
-typed `ThemeRuleSet` consumed by `ThemeMaterializer`. The wire permits the existing global, family,
-variant, and ordinal selector forms. Version 1 rejects a concrete effect ID because the authoring
-envelope does not carry effect graphs; authors who need effects use a complete
-`DiagramThemeSpec`.
+wire rather than introducing an authoring-only container object. `ThemeMaterializer` preserves and
+composes these admitted wire entries; the complete-spec compiler later performs the only decode into
+the in-memory typed `ThemeRuleSet`. The wire permits the existing global, family, variant, and
+ordinal selector forms. Version 1 rejects a concrete effect ID because the authoring envelope does
+not carry effect graphs; authors who need effects use a complete `DiagramThemeSpec`.
 
 Unknown top-level or nested fields are rejected. Serialized, cached, or cross-process definitions
 must carry both version fields. A Rust-only ephemeral builder may select the current versions before
@@ -154,15 +179,17 @@ second format. `DiagramThemeSpecWireV1` has its own canonical bytes for material
 Both serializers are distinct from the compiler's existing binary recipe-fingerprint encoder.
 
 The typed authoring facade is also a projection of the same wire value. It provides discoverable
-named setters for the small stable token set and typed constructors for family, target, variant,
+named setters for the small candidate token set and typed constructors for family, target, variant,
 ordinal, facet, and `Unspecified | Clear | Value` states. The common typed path does not require raw
 wire identifiers. These helpers only construct `ThemeDefinitionV1`; they do not own defaults,
 expansion, precedence, capability discovery, or execution policy. JSON-to-typed-to-JSON and
 typed-to-JSON-to-typed round trips must produce identical canonical definition bytes.
 
-Golden vectors cover Rust construction, JSON decode/re-encode, and generated SDK projections. Each
+Contract-owned light and dark golden vectors cover Rust construction, JSON decode/re-encode,
+bindings-core materialization, canonical complete-spec replay, and generated SDK projections. Each
 binding proves schema round-trip, tri-state preservation, bounded admission, and one end-to-end
-transport smoke against the shared vectors; it does not repeat the Rust-owned expansion matrix.
+transport smoke against those same vectors; it does not copy or recompute the Rust-owned expansion
+matrix.
 
 External materialization operations apply the host profile's encoded-byte and collection ceilings
 before typed decoding. They then validate string, rule, palette, and nested collection bounds while
@@ -221,7 +248,12 @@ Wire identifiers use `snake_case` and project from one Rust-owned executable con
 | 1 | `font_stack` | Non-empty list of font-family strings, maximum 32 | `["Inter", "ui-sans-serif", "system-ui", "sans-serif"]` |
 | 2 | `font_size_px` | Finite positive number | `16` |
 | 3 | `font_weight` | Integer from 1 through 1000 | `400` |
-| 4 | `line_height` | Existing `LineHeight` wire: `"normal"`, positive multiplier, or `{ "px": positive number }` | `"normal"` |
+
+`line_height` remains available in the advanced complete-spec typography wire, but is deliberately
+absent from the compact token vocabulary. No family currently has a direct portable base
+line-height consumer, so accepting it here would materialize an author request that every family
+must classify as unsupported or residual. A later expansion version may add it only after a direct
+measurement, layout, writer, and terminal-evidence path exists.
 
 Family-specific actor, note, activation, cluster, message, task, and similar fields are not part of
 `ThemeTokensV1`. Radius, content padding, stroke width, elevation/shadow, and spacing also remain
@@ -259,7 +291,7 @@ ignored. Built-in presets that relied on distinct values move those values into 
 Expansion version 1 creates a complete spec with:
 
 - `canvas.base = solid(tokens.canvas)`;
-- `typography.default` populated from the four authoring typography fields;
+- `typography.default` populated from the three authoring typography fields;
 - the generated rules and palettes below;
 - authored styles composed according to the rules below; and
 - default or empty values for every other `DiagramThemeSpec` section.
@@ -341,13 +373,27 @@ family-scoped ER rules must replace `family = "er", target = "requirement"` with
 version 1 remains an unfrozen alpha candidate, this correction updates expansion version 1 in place
 and does not add a compatibility alias or a second lowering path.
 
-The executable contract table in `merman-render` must generate or verify this expansion. Bindings do
-not copy these rows or implement the collision algorithm. Before `C7a-candidate`, every generated
-rule facet and palette target must appear in a row-coverage manifest that names at least one direct
-typed consumer and terminal witness. A row without coverage is removed from expansion version 1
-rather than retained as a convenience value that only creates a residual. Moving this ADR from
-`proposed` to `accepted` approves the design and ownership boundary only; it neither certifies that
+This ADR owns the normative candidate row order and semantics. The executable contract table in
+`merman-render` is the sole runtime expansion authority, and CI must compare it exactly with the
+normative table and shared canonical vectors. Bindings do not copy these rows or implement the
+collision algorithm. Before `C7a-candidate`, every generated rule facet, palette target,
+`canvas.base`, and compact typography property must appear in a row-coverage manifest that names at
+least one direct typed consumer and terminal witness. A row or token output without coverage is
+removed from expansion version 1 rather than retained as a convenience value that only creates a
+residual. ADR acceptance approves this design and ownership boundary only; it neither certifies all
 coverage nor freezes compatibility. Only `C7a-contract` does that.
+
+The pre-freeze family-shape review uses the same authoring wire and compiler rather than adding new
+sum types:
+
+| Family | Representative authored shape | Terminal proof before candidate |
+| --- | --- | --- |
+| Class | family-qualified `edge.stroke` | Real relation path and the referenced composition marker both carry the authored stroke. |
+| Gantt | family-qualified `task.fill` plus `task.radius` | The same task occurrence carries terminal fill and layout-owned `rx`/`ry`. |
+| Pie | `pie-slice` ordinal palette | Every slice and matching legend swatch carry the authored ordinal colors. |
+| ER | family-qualified rules plus generated `entity` row | Existing entity shell and relation receipts prove the current rule shape; no new authoring variant is required. |
+| Architecture | family-qualified cluster/edge rules | Existing target/facet/variant forms are sufficient; the review adds no expansion row or new wire case. |
+| C4 | family-qualified cluster rules with existing variants and clear semantics | Existing rule and `Specified::Clear` forms are sufficient; the review adds no expansion row or new wire case. |
 
 ### 7. Make the definition the share identity and keep preset governance separate
 
@@ -360,11 +406,11 @@ DiagramThemeSpec = advanced complete recipe and low-level render input
 DiagramTheme = compiled executable theme
 ```
 
-`MaterializedThemeWireV1` carries only the authoring and expansion versions, complete-spec schema
-version, and editable complete spec. Canonical `ThemeDefinitionV1` bytes identify the shared
-authored value; canonical complete-spec bytes identify the expanded value. Successful
-materialization does not carry diagnostics, provenance, capability results, portability claims, or
-render receipts.
+`MaterializedThemeWireV1` carries its own envelope `schema_version`, the authoring and expansion
+versions, the complete-spec schema version, and the editable complete spec. Canonical
+`ThemeDefinitionV1` bytes identify the shared authored value; canonical complete-spec bytes identify
+the expanded value. Successful materialization does not carry diagnostics, provenance, capability
+results, portability claims, or render receipts.
 
 Its serialized form is a closed object with five required, non-null fields:
 
@@ -383,6 +429,14 @@ Version 1 does not expose a materialization digest. No first-party cache or repl
 one, and freezing another identity beside canonical definition/spec bytes would add contract cost
 without user value. If a future real consumer needs a hash of only canonical spec bytes, that type
 must be proposed separately and named `CanonicalThemeSpecDigest`.
+
+Once `C7a-contract` freezes a legal version tuple, every later release that claims the same theme
+contract major must continue to decode that tuple and reproduce its canonical expansion. A newer
+default or row set uses a new `expansion_version`; a wire-shape change uses a new
+`authoring_schema_version`. Removing a frozen tuple requires a new theme-contract major, an explicit
+migration operation, a documented prior deprecation cycle, and retained old/new golden vectors.
+Catalog visibility may change independently, but stored definitions are never silently
+reinterpreted.
 
 Preset revision, maturity, and qualification metadata belong to the preset catalog and release
 governance, not to the version 1 authoring envelope. Version 1 therefore does not add
@@ -433,11 +487,11 @@ reorder rules, expose family writer ledgers, or claim runtime application or por
 
 ### 9. Keep discovery and runtime evidence separate
 
-The candidate operations are:
+The candidate authoring and discovery operations are:
 
 ```text
 materialize_theme(definition) -> MaterializedThemeWireV1
-describe_theme_support(query) -> ThemeCapabilityDescriptor
+describe_theme_support(query_v2) -> ThemeCapabilityDescriptorV2
 ```
 
 First-party render facades may additionally accept an admitted `ThemeDefinitionV1` and compose
@@ -445,19 +499,37 @@ materialization, compilation, and rendering in one call. That orchestration is a
 the same authorities, not a new renderer input or materialization implementation.
 
 `describe_theme_support` returns a C5-owned static upper bound such as `Unconditional`,
-`Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`. `Unconditional` requires an
-exhaustive value-domain argument and shared runtime admission predicate owned by the family or
-target module; the representative C6a ledger validates end-to-end integration and detects drift but
-cannot upgrade a descriptor merely because one fixture passed. `NotApplicable` means the semantic
-target or facet does not exist for the queried family. Missing, unknown, or newer additive rows
-normalize to `Unverified`, never to `Unsupported`.
+`Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`. The V2 query identifies family and
+output plus one tagged subject:
 
-The stable discovery seam is a versioned query and result envelope, not an exported copy of the
-private mechanism matrix. Its stable fields identify family, output target, semantic target, facet,
-coarse support state, and bounded reason IDs. Selector subclasses, value classes, label modes, and
-host-policy predicates remain alpha until at least one first-party authoring consumer proves that the
-additional dimension is required. The wire preserves unknown string IDs and additive rows so an old
-consumer can display a newer catalog without claiming it can execute the new family.
+```text
+rule { target, facet }
+ordinal-palette { target }
+base-typography { property }
+unknown { kind, bounded opaque fields }
+```
+
+This subject union is necessary because palettes and family-wide typography are not rule facets.
+The older four-axis V1 query remains an unfrozen compatibility projection during the alpha window;
+it is not the candidate discovery authority and cannot describe every authoring output.
+
+`Unconditional` requires an exhaustive value-domain argument and shared runtime admission predicate
+owned by the family or target module; the representative C6a ledger validates end-to-end
+integration and detects drift but cannot upgrade a descriptor merely because one fixture passed.
+`NotApplicable` means the subject does not exist for the queried family. Missing, unknown, or newer
+additive subjects normalize to `Unverified`, never to `Unsupported`.
+
+The candidate discovery seam is a versioned query and result envelope backed by an independently
+versioned support-claim projection, not a public copy of the private mechanism matrix. Candidate
+fields identify family, output target, tagged subject, coarse support state, and bounded reason IDs.
+Selector subclasses, value classes, label modes, and host-policy predicates remain alpha until at
+least one first-party authoring consumer proves that the additional dimension is required. The wire
+preserves bounded unknown subject fields so an old consumer can display and forward a newer query
+without claiming it can execute the new subject.
+
+`export_theme_preset` is a separate alpha catalog convenience. It returns the closed
+`PresetExportV1` union (`definition` or `complete_spec`) and follows the catalog's active resource
+policy. It is not part of token expansion, support discovery, or the low-level render input contract.
 
 Only a concrete render or export report can report actual `Applied`, residual, portability, and
 admission results.
@@ -468,10 +540,11 @@ admission results.
   `merman-bindings-core` owns every persisted `*WireV1` type, the legal version-tuple registry, and
   canonical wire serialization. It may be a small dedicated crate or an equally dependency-neutral
   lower shared module; it must not import renderer or binding types.
-- `merman-render` owns decoding `ThemeRuleSetWireV1[]` into the in-memory typed `ThemeRuleSet`, the
-  executable token contract table, `ThemeMaterializer`, expansion, materialization semantics, and
-  complete typed results. It consumes canonical bytes from the shared contract module and never
-  imports `merman-bindings-core`.
+- `merman-render` owns both stages behind distinct seams: `ThemeMaterializer` composes admitted wire
+  entries and the executable token contract table into a complete spec wire; then
+  `DiagramThemeCompiler` alone decodes `ThemeRuleSetWireV1[]` into the in-memory typed
+  `ThemeRuleSet`. It also owns materialization semantics and complete typed results. It consumes
+  canonical bytes from the shared contract module and never imports `merman-bindings-core`.
 - `merman-bindings-core` owns transport admission and external envelopes only; it projects or
   generates SDK types from the dependency-neutral wire contract and does not own a second
   serializer. Authoring wire ownership therefore introduces no dependency from
@@ -490,13 +563,14 @@ admission results.
 - Full asset-bearing complete specs remain subject to encoded-byte and effective runtime resource
   limits after materialization and during compilation/session admission.
 
-The Rust executable table and alpha materializer land after the current correctness gates and the
-representative native C6a checkpoint, then drive the C7a pre-freeze authoring witnesses. Those
+The Rust executable table and alpha materializer drive the C7a pre-freeze authoring witnesses. Those
 witnesses reuse production `RenderedDocument` receipts and shared observers; they prove authoring,
-materialization, and state isolation without establishing another rendering proof system. Public
-binding operations and authoring UI roll out only after the C7a candidate is backed by C5, C6a, the
-expansion row-coverage manifest, and the pre-freeze family consumers. This ADR alone does not make
-C7a eligible.
+materialization, canonical light/dark replay, root canvas, compact typography, representative
+family shapes, and state isolation without establishing another rendering proof system. Alpha
+transport scaffolds may exist before candidate eligibility, but they must remain explicitly
+unfrozen and outside stable release claims. Stable binding operations and authoring UI rollout begin
+only after the C7a candidate is backed by C5, C6a, the expansion/root/typography coverage manifest,
+and the pre-freeze family consumers. This ADR alone does not make C7a eligible.
 
 ## Consequences
 

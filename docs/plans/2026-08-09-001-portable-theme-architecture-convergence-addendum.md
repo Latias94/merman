@@ -19,7 +19,7 @@ execution: code
 | Objective | Converge Merman's visual customization layer inside the broader headless Mermaid engine. Merman continues to own parsing, analysis, layout, rendering, and editor-facing semantics with Mermaid parity as a quality target; the theme workstream adds typed custom themes, private family adapters, capability discovery, and target-specific portability evidence. Keep default Mermaid parity unchanged, retain a bounded opt-in built-in preset catalog, and prevent theme convenience features from becoming a second rendering architecture or an automated design product. |
 | Product contract | The August 6 R/A/F/AE identifiers remain the traceability source. This addendum is authoritative for the current-release scope, ownership, evidence gates, product boundary, preset admission, milestone sequencing, and public-surface timing; any conflicting current-release statement in the August 6 plan is superseded by the decisions below. Long-term capabilities remain future requirements until their named gate is closed. |
 | Authority | Mermaid `11.16.1@7ecca0cd` remains the semantic baseline. The compiled theme recipe describes visual intent; the render environment owns runtime ceilings; family and document evaluators prove what was actually applied. |
-| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Treat the three product milestones below as review and delivery themes, not three mandatory giant diffs. Keep making proof-first, independently reviewable Conventional Commits. Complete the proposed authoring-facade design now, finish core convergence and the representative native C6a checkpoint, then verify and implement the authoring candidate before C7a rollout and freeze. Unqualified cross-target claims require a later scoped release-qualification plan rather than completion of a standing 45-cell certification program. |
+| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Treat the three product milestones below as review and delivery themes, not three mandatory giant diffs. Keep making proof-first, independently reviewable Conventional Commits. Implement and verify the accepted but unfrozen authoring-facade design, finish core convergence and the representative native C6a checkpoint, then verify the authoring candidate before C7a rollout and freeze. Unqualified cross-target claims require a later scoped release-qualification plan rather than completion of a standing 45-cell certification program. |
 | Stop conditions | Do not expose a positive portability or capability conclusion from an unevaluated state, accept host-produced geometry without request/session evidence, let theme/config inputs widen renderer-owned policy, create preset-specific renderer branches, or add brand scanning, editorial rewriting, page-shell composition, bespoke routing, icon art direction, or motion playback to the core engine. |
 
 ## Why The Order Changes
@@ -112,10 +112,10 @@ envelope, not a third render selection and not a new renderer domain object. It 
 preset-plus-patch variant, output-target branches, runtime light/dark conditions, host policy, or
 family capability-dependent lowering.
 
-While proposed, ADR-0082 is the sole candidate source of truth for the version 1 authoring envelope,
-token defaults, expansion rows and order, palette-collision behavior, materialization result types,
-canonical identity domains, and trace maturity. Moving the ADR to `accepted` records design approval only; it
-does not certify the implementation or freeze those candidate tables. The exact C7a candidate and
+ADR-0082 is the accepted design authority for the version 1 authoring envelope, token defaults,
+expansion rows and order, palette-collision behavior, materialization result types, canonical
+identity domains, and trace maturity. Its accepted status records design approval only; it does not
+certify the implementation or freeze those candidate tables. The exact C7a candidate and
 rollout bind one executable table revision, but compatibility and expansion-version freezing begin
 only at `C7a-contract`. This plan owns sequencing and gates and does not define a second copy of
 those tables.
@@ -160,7 +160,7 @@ explicit clear remains the existing typed `Specified::Clear` behavior inside `Th
 required collections such as `series` are validation errors, and fatal authoring errors return no
 partial spec.
 
-The candidate stable `ThemeTokensV1` vocabulary is limited to cross-family roles with real consumers:
+The candidate `ThemeTokensV1` vocabulary is limited to cross-family roles with real consumers:
 canvas, surface, alternate or muted surface, text, border, line, accent, series, and basic
 typography. Radius, content padding, stroke width, elevation/shadow, and other
 geometry or effect conveniences remain alpha or rule-only until each has one unambiguous expansion,
@@ -169,9 +169,9 @@ the first contract. Family-specific roles such as actor, note, activation, or cl
 to deterministic token-to-rule defaults or explicit `ThemeRuleSet` entries; they do not keep
 expanding the stable token object.
 
-ADR-0082 is completed now as the proposed source of truth for the authoring design and does not bind
-C6a. Moving it to `accepted` approves that design only; acceptance neither waits for C6a nor freezes
-the candidate rows. After the C6a engine gate closes, one Rust-owned executable table and the C7a
+ADR-0082 passed design review and is accepted as the authoring design authority; it does not bind
+C6a. Acceptance neither waits for C6a nor freezes the candidate rows. After the C6a engine gate
+closes, one Rust-owned executable table and the C7a
 pre-freeze authoring witnesses verify the candidate contract. Every generated expansion row must
 be justified by the cross-family authoring model and representative semantic-shape probes. Missing
 family writers remain visible through capability discovery instead of forcing shallow direct
@@ -566,7 +566,7 @@ continue to land through small proof-first changes with local tests and Conventi
    retain every other bridge route until matching evidence or C7b removes it; repair
    residual/admission accounting; and preserve default Mermaid parity. Do not add brand onboarding,
    page-shell, animation, or other application product concerns while this milestone is open.
-2. **Custom authoring and capability discovery.** Complete the proposed Authoring Facade design while
+2. **Custom authoring and capability discovery.** Implement and verify the accepted but unfrozen Authoring Facade design while
    C6a remains open, then implement it after the C6a engine gate closes. Keep a small alpha
    `ThemeTokensV1` convenience candidate plus the expressive existing
    `ThemeRuleSet`/`DiagramThemeSpec` path. Build a versioned internal
@@ -763,7 +763,7 @@ Downstream products may build all of these capabilities around Merman's typed in
 coarse reports, and optional future semantic annotations. They do not require the core renderer to
 own those product decisions.
 
-## Implementation Checkpoint - 2026-08-17
+## Implementation Checkpoint - 2026-08-21
 
 | Gate | Status | Current evidence and remaining boundary |
 | --- | --- | --- |
@@ -776,7 +776,7 @@ own those product decisions.
 | C5 | In progress; program stages 1-2 and catalog authority converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly. Flowchart and Swimlane directly consume family-wide base `FontStack`/`FontSize` plus narrow Node/NodeLabel/Edge tranches while retaining bridge routes for uncovered mechanisms. Sequence directly consumes family-wide base `FontStack`/`FontSize`, selected Actor, Lifeline, Note, Activation, Loop label-box, Message stroke, four role-label paint/typography routes, and the direct-only SequenceNumberLabel fill route; message fill, loop-frame lines, remaining signal/control surfaces, and unsupported base or label typography siblings remain bridged or fail closed. Recent slices include Treemap `Title.fill`, Block `Node.stroke`, Pie `PieSlice.stroke`, Class `Edge.stroke`, ER `Relation.stroke`, Mindmap/GitGraph/Architecture `Edge.stroke`, Gantt `Task.fill`, C4 `Cluster.fill`/`Cluster.stroke`, Quadrant Chart `ChartSeries.fill`, the direct-only Sankey `Node` ordinal palette, Flowchart/Swimlane/Sequence/Railroad base `FontStack`/`FontSize`, Info/Error/Cynefin/Wardley base `FontStack`, ZenUML/Venn `Title.fill`, and Ishikawa/EventModeling `Text.fill`. All 33 families now have at least one direct typed surface; 29 remain partial typed plus bridge, none remain without a direct surface, and 29/33 may still enter compatibility. State, Packet, Error, and ZenUML are the four no-legacy families, with Packet, Error, and ZenUML intentionally narrow because most of their theme facets remain Unsupported. The version-12 72-route/88-artifact KTD17 manifest authorizes exact scalar ownership only and does not close C6a; SequenceNumberLabel has no legacy projection and remains outside KTD17, Sankey remains outside KTD18 because it replaces no legacy palette, each Flowchart/Swimlane/Sequence/Railroad KTD19 property pair retires one family-local bundled typography contribution atomically, and the Info/Error/Cynefin/Wardley KTD19 rows each retire only their family-local `FontStack` projection. KTD23 separately seals 56 historical dead-projection route shapes with 112 nonvisual bridge probes and uses family-owned occurrence facts to distinguish visible Unsupported residuals from absent or shadowed `NotApplicable` rules; it neither expands KTD17 nor creates C6 evidence. The core family catalog is the sole family-ID/alias/detection authority. Final surviving compatibility provenance, additional direct consumers, and parse/session theme binding remain convergence gates. |
 | C6a | Complete; `18/18` representative native cells execute and the eligibility receipt is issued | Schema v4 is the current 18-cell authority and binds the immutable schema-v3 predecessor, which remains fixed at its historical 12 enforced and 6 deferred cells. The loader rejects lineage shrinkage, and the private unique issuer emits `C6aEligibilityReceipt` only after all nine Brutalist/Spotless/Cyberpunk by Flowchart/State/Sequence render groups pass on Standalone SVG and PNG with target-owned receipts. Each render group projects both targets from one `RenderedDocument`; Flowchart and Sequence also retain prepared terminal text through their production font seals. The separate route-cutover manifest remains a non-cell ownership proof and does not increase C6a progress. |
 | C6b | Paused; no active denominator | Four historical Brutalist/State cross-target observations exist, but the 45-cell equal-depth certification program is not active. JPEG/PDF retain representative smoke coverage; Browser SVG starts only after a real adapter and release requirement exist. |
-| C7a | Not eligible; intentionally blocked | Coarse Rust support discovery, the contract-owned `MaterializedThemeWireV1`, the bounded typed/JSON materialization operations, the versioned authoring diagnostic envelope, independent tokens-only light/dark definitions, readable/canonical/materialized equivalence, Flowchart/State/Sequence SVG+PNG light-dark-light isolation and cross-renderer reuse, complete-spec cold start, the shared `series[0]` Flowchart/Pie terminal witness, and Rust/binding JSON equivalence have landed. Required first-party transport rollout, continued C5 family migration, and the mandatory author-task verification remain open. Browser SVG and native export discovery qualification also remain separate release work. Do not declare the alpha contract candidate or freeze the contract before those gates close. |
+| C7a | Not eligible; intentionally blocked | ADR-0082 is accepted as an unfrozen design authority. Coarse Rust support discovery, the contract-owned `MaterializedThemeWireV1`, bounded typed/JSON materialization, the versioned diagnostic envelope, shared light/dark readable/canonical/materialized vectors, Flowchart/State/Sequence SVG+PNG light-dark-light isolation and cross-renderer reuse, root canvas/base-typography terminal witnesses, complete-spec cold start, all generated expansion rows, and representative Class/Gantt/Pie shape probes have landed. Required first-party transport rollout, continued C5 family migration, the versioned public support-claim authority, and the mandatory non-Rust/CLI author-task verification remain open. Browser SVG and native export discovery qualification also remain separate release work. Do not declare the alpha contract candidate or freeze the contract before those gates close. |
 | C7b/C7c | Deferred independently | Remaining family/preset/showcase breadth proceeds under C7b without waiting for external assurance. External-host assurance fields remain a separately triggered C7c plan. |
 
 The public alpha migration scaffold already spans Rust, Options JSON, Web/UniFFI, Typst, Playground,
@@ -1086,10 +1086,10 @@ and public theme scope from the independent renderer taxonomy before adding face
 
 - **Covers:** Native-theme Rust/API, Options, binding, CLI, Typst, and design-system portions of the
   remaining R/AE items.
-- **Authoring Facade design gate:** Keep ADR-0082 `proposed` until its design review approves the
-  authoring boundary and candidate tables. Moving it to `accepted` records design approval only; it
-  neither waits for C6a nor creates a compatibility or expansion-version freeze. Before
-  `C7a-candidate`, land its executable Rust contract table, closed
+- **Authoring Facade design gate:** ADR-0082 passed design review on 2026-08-21 and is `accepted` as
+  the design authority for the authoring boundary and candidate tables. That status records design
+  approval only; it neither waits for C6a nor creates a compatibility or expansion-version freeze.
+  Before `C7a-candidate`, land its executable Rust contract table, closed
   `ThemeDefinitionV1` and `DiagramThemeSpecWireV1` projections, legal version-tuple registry,
   cross-transport omission/null/clear encoding, diagnostic code registry, canonical serializer, and
   golden definition/spec vectors. The design review must also approve the share contract: one
@@ -1373,7 +1373,7 @@ arbitrary CSS inheritance.
 2. `fix(theme): constrain compilation and refresh alpha resource contracts`
 3. `fix(text): bind terminal prepared text to retained evidence`
 4. `refactor(theme): complete family-scoped semantic programs`
-5. `docs(theme): define the proposed alpha authoring facade contract`
+5. `docs(theme): define and accept the pre-freeze authoring facade design`
 6. `feat(theme): complete the native C6a eligibility slices`
 7. `refactor(theme): prove the pre-freeze family and expansion consumers`
 8. `feat(theme): implement the versioned theme materializer and authoring witnesses`
