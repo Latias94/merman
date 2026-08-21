@@ -241,7 +241,9 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
 
     let handle = std::thread::Builder::new()
         .name("ascii-deep-flowchart-subgraph".to_string())
-        .stack_size(64 * 1024)
+        // The debug facade path keeps several fixed-size render frames alive at once. Keep the
+        // constrained-stack signal while leaving enough room for those frames across toolchains.
+        .stack_size(256 * 1024)
         .spawn(move || {
             let options = AsciiRenderOptions::ascii();
             let control = merman::OperationControl::new();
