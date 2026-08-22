@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 14;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 15;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 29] = [
+); 30] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -106,6 +106,10 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::PieSliceStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::PieSliceFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
     (
@@ -211,6 +215,8 @@ const REQUIREMENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::RequirementFill];
 const PIE_SLICE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::PieSliceStroke];
+const PIE_SLICE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::PieSliceFill];
 const TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TextFill];
 const GANTT_TASK_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
@@ -233,7 +239,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 88] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 90] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -611,6 +617,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 88] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         REQUIREMENT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::PIE,
+        ThemeTarget::PieSlice,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        PIE_SLICE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::PIE,
+        ThemeTarget::PieSlice,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        PIE_SLICE_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::PIE,

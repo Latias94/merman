@@ -1349,10 +1349,123 @@ fn pie_route_observation(
 ) -> C6ProofResult<PieRouteObservation> {
     c6_ensure!(
         "route-svg-proof",
-        route.target() == ThemeTarget::PieSlice && route.facet() == ThemeRouteCutoverFacet::Stroke,
+        route.target() == ThemeTarget::PieSlice,
         "unsupported Pie cutover route {}",
         route_label(route)
     );
+    match route.facet() {
+        ThemeRouteCutoverFacet::Fill => pie_fill_route_observation(document, route),
+        ThemeRouteCutoverFacet::Stroke => pie_stroke_route_observation(document, route),
+    }
+}
+
+fn pie_fill_route_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<PieRouteObservation> {
+    let expected = expected_svg_value(route)?;
+    let expected_rgb = (expected != "transparent")
+        .then(|| parse_css_rgb(expected))
+        .transpose()?;
+    let slices = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && class_contains(*node, "pieCircle"))
+        .collect::<Vec<_>>();
+    let legends = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .parent()
+                    .is_some_and(|parent| class_contains(parent, "legend"))
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        slices.len() == 2 && legends.len() == 2,
+        "Pie fill witness expected two slice paths and two legend swatches, found {} and {}",
+        slices.len(),
+        legends.len()
+    );
+
+    let mut terminal = b"merman.c6-route-pie-slice-fill.v1\0".to_vec();
+    let mut target_regions = Vec::with_capacity(slices.len() + legends.len());
+    for (index, surface) in slices.into_iter().enumerate() {
+        let value = surface.attribute("fill").ok_or_else(|| {
+            C6ProofError::new("route-svg-proof", "Pie slice path lacks its fill attribute")
+        })?;
+        c6_ensure!(
+            "route-svg-proof",
+            value == expected && style_value(surface, "fill").is_none(),
+            "Pie slice {index} fill owner emitted `{value}`, expected `{expected}`"
+        );
+        let region = element_bounds(surface, route.facet())?;
+        append_len_prefixed(&mut terminal, index.to_string().as_bytes());
+        append_len_prefixed(
+            &mut terminal,
+            surface.attribute("class").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(
+            &mut terminal,
+            surface.attribute("d").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(&mut terminal, value.as_bytes());
+        append_rect(&mut terminal, region);
+        target_regions.push(region);
+    }
+    for (index, surface) in legends.into_iter().enumerate() {
+        c6_ensure!(
+            "route-svg-proof",
+            surface.attribute("fill").is_none() && surface.attribute("stroke").is_none(),
+            "Pie legend swatch {index} bypasses its terminal inline-style owner"
+        );
+        let fill = style_value(surface, "fill").ok_or_else(|| {
+            C6ProofError::new("route-svg-proof", "Pie legend swatch lacks terminal fill")
+        })?;
+        let stroke = style_value(surface, "stroke").ok_or_else(|| {
+            C6ProofError::new("route-svg-proof", "Pie legend swatch lacks terminal stroke")
+        })?;
+        let values_match = match expected_rgb {
+            Some(expected_rgb) => {
+                parse_css_rgb(fill)? == expected_rgb && parse_css_rgb(stroke)? == expected_rgb
+            }
+            None => fill == "transparent" && stroke == "transparent",
+        };
+        c6_ensure!(
+            "route-svg-proof",
+            values_match,
+            "Pie legend swatch {index} emitted fill `{fill}` and stroke `{stroke}`, expected `{expected}`"
+        );
+        let parent = surface.parent().ok_or_else(|| {
+            C6ProofError::new(
+                "route-svg-proof",
+                "Pie legend swatch lacks its occurrence group",
+            )
+        })?;
+        let region = element_bounds(surface, route.facet())?;
+        append_len_prefixed(&mut terminal, index.to_string().as_bytes());
+        append_len_prefixed(
+            &mut terminal,
+            parent.attribute("transform").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(&mut terminal, visible_text_content(parent).as_bytes());
+        append_len_prefixed(&mut terminal, fill.as_bytes());
+        append_len_prefixed(&mut terminal, stroke.as_bytes());
+        append_rect(&mut terminal, region);
+        target_regions.push(region);
+    }
+
+    Ok(PieRouteObservation {
+        value: expected.to_owned(),
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
+fn pie_stroke_route_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<PieRouteObservation> {
     let root_id = document
         .root_element()
         .attribute("id")
@@ -1567,6 +1680,21 @@ mod tests {
 </g>
 </svg>"##;
 
+    const PIE_FILL_SVG: &str = r##"<svg id="fixture" viewBox="0 0 200 100">
+<g transform="translate(20 20)">
+  <path d="M0 0 L20 0 L20 20 Z" fill="#dc2626" class="pieCircle"/>
+  <path d="M25 0 L45 0 L45 20 Z" fill="#dc2626" class="pieCircle"/>
+</g>
+<g class="legend" transform="translate(100 20)">
+  <rect width="18" height="18" style="fill: rgb(220, 38, 38); stroke: rgb(220, 38, 38);"/>
+  <text x="22" y="14">Alpha</text>
+</g>
+<g class="legend" transform="translate(100 45)">
+  <rect width="18" height="18" style="fill: rgb(220, 38, 38); stroke: rgb(220, 38, 38);"/>
+  <text x="22" y="14">Beta</text>
+</g>
+</svg>"##;
+
     const ALL_POINT_MARKER_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 100">
 <style>#fixture .marker{fill:#333333;stroke:#333333;}</style>
 <defs>
@@ -1588,6 +1716,34 @@ mod tests {
         assert_eq!(observation.value, SOLID_FILL.css);
         assert_eq!(observation.target_regions, vec![[14.5, 24.5, 21.0, 11.0]]);
         assert_ne!(observation.terminal_digest, [0; 32]);
+    }
+
+    #[test]
+    fn pie_fill_observer_rejects_mutated_slice_or_legend_terminals() {
+        let route = legacy_replacing_typed_theme_routes()
+            .expect("derive cutover routes")
+            .into_iter()
+            .find(|route| {
+                route.family_id() == DiagramFamilyId::PIE
+                    && route.target() == ThemeTarget::PieSlice
+                    && route.facet() == ThemeRouteCutoverFacet::Fill
+                    && route.value() == ThemeRouteCutoverValue::Solid
+            })
+            .expect("Pie scalar-fill cutover route");
+        let document = roxmltree::Document::parse(PIE_FILL_SVG).expect("parse Pie fill SVG");
+        let observation = pie_fill_route_observation(&document, route).expect("observe Pie fill");
+        assert_eq!(observation.value, SOLID_FILL.css);
+        assert_eq!(observation.target_regions.len(), 4);
+        assert_ne!(observation.terminal_digest, [0; 32]);
+
+        let mutated_slice = PIE_FILL_SVG.replacen("fill=\"#dc2626\"", "fill=\"#000000\"", 1);
+        let document = roxmltree::Document::parse(&mutated_slice).expect("parse slice mutation");
+        assert!(pie_fill_route_observation(&document, route).is_err());
+
+        let mutated_legend =
+            PIE_FILL_SVG.replacen("fill: rgb(220, 38, 38)", "fill: rgb(0, 0, 0)", 1);
+        let document = roxmltree::Document::parse(&mutated_legend).expect("parse legend mutation");
+        assert!(pie_fill_route_observation(&document, route).is_err());
     }
 
     #[test]

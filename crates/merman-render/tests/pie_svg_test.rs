@@ -6,7 +6,7 @@ use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
     OrdinalSelector, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget,
+    ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
 use merman_render::family;
@@ -121,6 +121,68 @@ fn pie_slice_fill_and_palette_theme() -> DiagramTheme {
         .expect("compile Pie fill and palette theme")
 }
 
+fn pie_slice_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::PieSlice,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::PIE),
+                ),
+            ),
+        )
+        .expect("compile Pie fill theme")
+}
+
+fn pie_slice_default_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::PieSlice,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::PIE)
+                    .with_variant(ThemeVariant::Default),
+                ),
+            ),
+        )
+        .expect("compile explicit-Default Pie fill theme")
+}
+
+fn pie_slice_fill_with_later_ordinal_theme() -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::PieSlice,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#111827").expect("valid static Pie fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::PIE),
+                    )
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::PieSlice,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#7c3aed").expect("valid ordinal Pie fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::PIE)
+                        .with_ordinal(OrdinalSelector::exact(2).expect("valid Pie exact ordinal")),
+                    ),
+            ),
+        )
+        .expect("compile Pie static and ordinal fill theme")
+}
+
 fn pie_slice_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
@@ -156,11 +218,8 @@ fn pie_slice_ordinal_stroke_theme(selector: OrdinalSelector) -> DiagramTheme {
         .expect("compile Pie ordinal stroke theme")
 }
 
-#[test]
-fn pie_typed_palette_is_verified_from_every_terminal_slice_and_legend_swatch() {
-    let theme = pie_slice_palette_theme(&["transparent", "#22c55e"]);
-    let rendered = render_pie_with_theme("pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n", &theme);
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Pie SVG");
+fn pie_terminal_fills(svg: &str) -> (Vec<String>, Vec<String>) {
+    let document = roxmltree::Document::parse(svg).expect("valid themed Pie SVG");
     let slice_fills = document
         .descendants()
         .filter(|node| {
@@ -171,10 +230,8 @@ fn pie_typed_palette_is_verified_from_every_terminal_slice_and_legend_swatch() {
                         .any(|part| part == "pieCircle")
                 })
         })
-        .map(|node| node.attribute("fill").expect("Pie slice fill"))
-        .collect::<Vec<_>>();
-    assert_eq!(slice_fills, ["#00000000", "#22c55e"]);
-
+        .map(|node| node.attribute("fill").expect("Pie slice fill").to_string())
+        .collect();
     let legend_styles = document
         .descendants()
         .filter(|node| {
@@ -183,8 +240,21 @@ fn pie_typed_palette_is_verified_from_every_terminal_slice_and_legend_swatch() {
                     parent.has_tag_name("g") && parent.attribute("class") == Some("legend")
                 })
         })
-        .map(|node| node.attribute("style").expect("Pie legend style"))
-        .collect::<Vec<_>>();
+        .map(|node| {
+            node.attribute("style")
+                .expect("Pie legend style")
+                .to_string()
+        })
+        .collect();
+    (slice_fills, legend_styles)
+}
+
+#[test]
+fn pie_typed_palette_is_verified_from_every_terminal_slice_and_legend_swatch() {
+    let theme = pie_slice_palette_theme(&["transparent", "#22c55e"]);
+    let rendered = render_pie_with_theme("pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n", &theme);
+    let (slice_fills, legend_styles) = pie_terminal_fills(rendered.svg());
+    assert_eq!(slice_fills, ["#00000000", "#22c55e"]);
     assert_eq!(
         legend_styles,
         [
@@ -193,7 +263,6 @@ fn pie_typed_palette_is_verified_from_every_terminal_slice_and_legend_swatch() {
         ]
     );
 
-    drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(
@@ -647,32 +716,14 @@ pie
 #[test]
 fn pie_static_fill_rule_outranks_the_typed_palette_for_slices_and_legend() {
     let theme = pie_slice_fill_and_palette_theme();
-    let rendered = render_pie_with_theme("pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n", &theme);
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Pie SVG");
-    let slice_fills = document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("path")
-                && node.attribute("class").is_some_and(|class| {
-                    class
-                        .split_ascii_whitespace()
-                        .any(|part| part == "pieCircle")
-                })
-        })
-        .map(|node| node.attribute("fill").expect("Pie slice fill"))
-        .collect::<Vec<_>>();
+    let rendered = try_render_pie_with_theme_requirement(
+        "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("static Pie fill and shadowed palette must be portable");
+    let (slice_fills, legend_styles) = pie_terminal_fills(rendered.svg());
     assert_eq!(slice_fills, ["#111827", "#111827"]);
-
-    let legend_styles = document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("rect")
-                && node.parent().is_some_and(|parent| {
-                    parent.has_tag_name("g") && parent.attribute("class") == Some("legend")
-                })
-        })
-        .map(|node| node.attribute("style").expect("Pie legend style"))
-        .collect::<Vec<_>>();
     assert_eq!(
         legend_styles,
         [
@@ -685,13 +736,121 @@ fn pie_static_fill_rule_outranks_the_typed_palette_for_slices_and_legend() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(
         evidence.status(),
-        merman_render::__private::FamilyEvidenceStatus::Unverified
+        merman_render::__private::FamilyEvidenceStatus::Verified
     );
     assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_static_fill_preserves_per_slot_source_ownership() {
+    let theme = pie_slice_fill_theme(CanvasPaint::solid("#111827").expect("valid static Pie fill"));
+    let rendered = try_render_pie_with_theme_requirement(
+        r##"%%{init: {"themeVariables": {"pie1": "#f59e0b"}}}%%
+pie
+  "Alpha" : 1
+  "Beta" : 1
+"##,
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("one source-owned Pie slot must not suppress the independent typed slot");
+    let (slice_fills, legend_styles) = pie_terminal_fills(rendered.svg());
+    assert_eq!(slice_fills, ["#f59e0b", "#111827"]);
+    assert_eq!(
+        legend_styles,
+        [
+            "fill: rgb(245, 158, 11); stroke: rgb(245, 158, 11);",
+            "fill: rgb(17, 24, 39); stroke: rgb(17, 24, 39);",
+        ]
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_static_fill_is_not_applicable_when_every_slot_is_source_owned() {
+    let theme = pie_slice_fill_theme(CanvasPaint::solid("#111827").expect("valid static Pie fill"));
+    let rendered = try_render_pie_with_theme_requirement(
+        r##"%%{init: {"themeVariables": {"pie1": "#f59e0b", "pie2": "#0ea5e9"}}}%%
+pie
+  "Alpha" : 1
+  "Beta" : 1
+"##,
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("source ownership of every Pie slot must be portable NotApplicable");
+    let (slice_fills, _) = pie_terminal_fills(rendered.svg());
+    assert_eq!(slice_fills, ["#f59e0b", "#0ea5e9"]);
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_static_fill_is_not_applicable_without_visible_slices() {
+    let theme = pie_slice_fill_theme(CanvasPaint::solid("#111827").expect("valid static Pie fill"));
+    let rendered = try_render_pie_with_theme_requirement(
+        "pie\n",
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("an empty Pie has no scalar-fill terminal occurrence");
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_later_ordinal_fill_prevents_static_fill_from_claiming_that_occurrence() {
+    let theme = pie_slice_fill_with_later_ordinal_theme();
+    let rendered = render_pie_with_theme("pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n", &theme);
+    let (slice_fills, legend_styles) = pie_terminal_fills(rendered.svg());
+    assert_eq!(slice_fills, ["#111827", "#ffffde"]);
+    assert_eq!(
+        legend_styles,
+        [
+            "fill: rgb(17, 24, 39); stroke: rgb(17, 24, 39);",
+            "fill: rgb(255, 255, 222); stroke: rgb(255, 255, 222);",
+        ]
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_explicit_default_fill_remains_legacy_compatibility() {
+    let theme = pie_slice_default_fill_theme(
+        CanvasPaint::solid("#111827").expect("valid explicit-Default Pie fill"),
+    );
+    let rendered = render_pie_with_theme("pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n", &theme);
+    let (slice_fills, _) = pie_terminal_fills(rendered.svg());
+    assert_eq!(slice_fills, ["#111827", "#111827"]);
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 1);
 }
 

@@ -11,8 +11,8 @@ use crate::diagram_theme::{
     Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -43,7 +43,16 @@ const MERMAID_PIE_SLOT_PATHS: [&str; MERMAID_PIE_PALETTE_SIZE] = [
 #[derive(Debug)]
 struct PieSlicePaint {
     fill: String,
-    typed_capability: Option<ThemeCapability>,
+    typed_owner: Option<PieSlicePaintOwner>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PieSlicePaintOwner {
+    Palette(ThemeCapability),
+    Rule {
+        rule_index: usize,
+        capability: ThemeCapability,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +67,7 @@ struct PieSliceStroke {
 #[derive(Debug, Default)]
 struct PieTerminalEvidence {
     palette_capabilities: BTreeSet<ThemeCapability>,
+    fill_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     stroke_applied: bool,
     stroke_not_applicable: bool,
 }
@@ -71,7 +81,7 @@ pub(crate) struct PieThemePlan {
     stroke: Option<PieSliceStroke>,
     evidence: FamilyThemeEvidence,
     palette_key: Option<FamilyThemeMechanismKey>,
-    pending_stroke_key: Option<FamilyThemeMechanismKey>,
+    pending_rules: BTreeMap<FamilyThemeMechanismKey, PiePendingEvidence>,
     terminal_evidence: OnceLock<PieTerminalEvidence>,
 }
 
@@ -87,7 +97,7 @@ impl PieThemePlan {
             stroke: None,
             evidence: FamilyThemeEvidence::default(),
             palette_key: None,
-            pending_stroke_key: None,
+            pending_rules: BTreeMap::new(),
             terminal_evidence: OnceLock::new(),
         };
         for section in &model.sections {
@@ -110,7 +120,7 @@ impl PieThemePlan {
 
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
         plan.resolve_palette(effective_config, theme, work_meter)?;
-        plan.resolve_stroke(model, effective_config, theme, work_meter)?;
+        plan.resolve_rules(model, effective_config, theme, work_meter)?;
         Ok(plan)
     }
 
@@ -151,11 +161,12 @@ impl PieThemePlan {
                         continue;
                     };
                     paint.fill = color.as_css();
-                    paint.typed_capability = Some(if color.is_transparent() {
-                        ThemeCapability::TransparentPaint
-                    } else {
-                        ThemeCapability::SolidPaint
-                    });
+                    paint.typed_owner =
+                        Some(PieSlicePaintOwner::Palette(if color.is_transparent() {
+                            ThemeCapability::TransparentPaint
+                        } else {
+                            ThemeCapability::SolidPaint
+                        }));
                 }
                 if missing_typed_color {
                     self.evidence
@@ -172,13 +183,73 @@ impl PieThemePlan {
         Ok(())
     }
 
-    fn resolve_stroke(
+    fn resolve_rules(
         &mut self,
         model: &PieDiagramRenderModel,
         effective_config: &MermaidConfig,
         theme: &ResolvedDiagramTheme,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
+        let mut occurrence_fill_winners = BTreeSet::new();
+        let mut typed_fill_rules = BTreeSet::new();
+        let mut suppressed_fill_rules = BTreeSet::new();
+        let needs_occurrence_fill_winners =
+            theme
+                .family_mechanism_routes()
+                .iter()
+                .any(|route| match route.mechanism() {
+                    FamilyThemeMechanism::RuleFacet {
+                        target: ThemeTarget::PieSlice,
+                        selector: FamilyThemeSelectorShape::Ordinal { .. },
+                        facet: FamilyThemeRuleFacet::Fill(_),
+                        ..
+                    } => true,
+                    FamilyThemeMechanism::RuleFacet {
+                        target: ThemeTarget::PieSlice,
+                        selector: FamilyThemeSelectorShape::Static { variant: None },
+                        facet:
+                            FamilyThemeRuleFacet::Fill(
+                                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                            ),
+                        ..
+                    } => route.disposition() == FamilyThemeDisposition::TypedAdapter,
+                    _ => false,
+                });
+        if needs_occurrence_fill_winners {
+            for (index, paint) in self.paints.iter_mut().enumerate() {
+                let style = theme.style_with_work_meter(
+                    ThemeTarget::PieSlice,
+                    ThemeVariant::Default,
+                    Some(index + 1),
+                    work_meter,
+                )?;
+                if let Some(origin) = style.fill_resolution().winner() {
+                    occurrence_fill_winners.insert(origin.rule_index());
+                }
+                let Some(fill) = resolve_direct_static_fill(
+                    theme,
+                    &style,
+                    &[ThemeTarget::PieSlice],
+                    DirectStaticSelectorDomain::Unqualified,
+                ) else {
+                    continue;
+                };
+                if merman_core::__private::config_path_overrides_typed_default(
+                    effective_config,
+                    MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
+                ) {
+                    suppressed_fill_rules.insert(fill.rule_index());
+                    continue;
+                }
+                paint.fill = fill.css().to_owned();
+                paint.typed_owner = Some(PieSlicePaintOwner::Rule {
+                    rule_index: fill.rule_index(),
+                    capability: fill.capability(),
+                });
+                typed_fill_rules.insert(fill.rule_index());
+            }
+        }
+
         let slice_config_owned =
             explicit_config_owns_stroke_site(effective_config, PIE_SLICE_STROKE_PATH);
         let outer_config_owned =
@@ -248,6 +319,8 @@ impl PieThemePlan {
             }
             let route_won = winner_properties
                 .contains(&(rule_index, resolved_style_property_for_facet(facet)))
+                || (matches!(facet, FamilyThemeRuleFacet::Fill(_))
+                    && occurrence_fill_winners.contains(&rule_index))
                 || (matches!(facet, FamilyThemeRuleFacet::Stroke(_))
                     && occurrence_stroke_winners.contains(&rule_index));
             let qualified_variant = matches!(
@@ -270,10 +343,24 @@ impl PieThemePlan {
                     && !slice_site
                     && !outer_site);
             if matches!(facet, FamilyThemeRuleFacet::Stroke(_)) && stroke_is_owned_elsewhere {
-                observation.stroke_config_owned = true;
                 continue;
             }
             match (route.disposition(), selector, facet) {
+                (
+                    FamilyThemeDisposition::TypedAdapter,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(
+                        FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                    ),
+                ) if route_won => {
+                    if occurrence_count == 0 {
+                        // No slice path or legend swatch exists for this semantic surface.
+                    } else if typed_fill_rules.contains(&rule_index) {
+                        observation.pending.fill = true;
+                    } else if !suppressed_fill_rules.contains(&rule_index) {
+                        observation.incomplete = true;
+                    }
+                }
                 (
                     FamilyThemeDisposition::TypedAdapter,
                     FamilyThemeSelectorShape::Static { variant: None },
@@ -285,7 +372,7 @@ impl PieThemePlan {
                     .as_ref()
                     .is_some_and(|stroke| stroke.rule_index == rule_index) =>
                 {
-                    observation.stroke_pending = true;
+                    observation.pending.stroke = true;
                 }
                 (FamilyThemeDisposition::Unsupported, _, facet) => {
                     observation
@@ -310,11 +397,8 @@ impl PieThemePlan {
                 self.evidence.mark_residual(key, reason);
             } else if observation.incomplete {
                 // Mixed rules remain fail-closed until every winning facet has a terminal owner.
-            } else if observation.stroke_pending {
-                debug_assert!(self.pending_stroke_key.is_none());
-                self.pending_stroke_key = Some(key);
-            } else if observation.stroke_config_owned {
-                self.evidence.mark_not_applicable(key);
+            } else if observation.pending.requires_terminal_proof() {
+                self.pending_rules.insert(key, observation.pending);
             } else {
                 self.evidence.mark_not_applicable(key);
             }
@@ -336,7 +420,7 @@ impl PieThemePlan {
         self.label_indices.insert(label.to_string(), index);
         self.paints.push(PieSlicePaint {
             fill,
-            typed_capability: None,
+            typed_owner: None,
         });
         index
     }
@@ -364,7 +448,7 @@ impl PieThemePlan {
         &self,
         visible_slice_labels: impl IntoIterator<Item = &'a str>,
     ) -> Option<PieThemeReceipt> {
-        (self.palette_key.is_some() || self.stroke.is_some())
+        (self.palette_key.is_some() || !self.pending_rules.is_empty() || self.stroke.is_some())
             .then(|| PieThemeReceipt::new(self, visible_slice_labels))
     }
 
@@ -392,15 +476,44 @@ impl PieThemePlan {
                     .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette),
             }
         }
-        if let Some(key) = self.pending_stroke_key.clone()
-            && let Some(terminal) = self.terminal_evidence.get()
-        {
-            if terminal.stroke_applied {
-                if let Some(stroke) = self.stroke.as_ref() {
-                    evidence.mark_applied_with_capabilities(key, [stroke.capability]);
+        if let Some(terminal) = self.terminal_evidence.get() {
+            for (key, pending) in &self.pending_rules {
+                let FamilyThemeMechanismKey::Rule { index, .. } = key else {
+                    continue;
+                };
+                let mut capabilities = BTreeSet::new();
+                let mut complete = true;
+                if pending.fill {
+                    if let Some(fill_capabilities) = terminal.fill_capabilities.get(index) {
+                        capabilities.extend(fill_capabilities.iter().copied());
+                    } else {
+                        complete = false;
+                    }
                 }
-            } else if terminal.stroke_not_applicable {
-                evidence.mark_not_applicable(key);
+                if pending.stroke {
+                    if terminal.stroke_applied
+                        && self
+                            .stroke
+                            .as_ref()
+                            .is_some_and(|stroke| stroke.rule_index == *index)
+                    {
+                        if let Some(stroke) = self.stroke.as_ref() {
+                            capabilities.insert(stroke.capability);
+                        }
+                    } else if !terminal.stroke_not_applicable {
+                        complete = false;
+                    }
+                }
+                if complete {
+                    if capabilities.is_empty() {
+                        evidence.mark_not_applicable(key.clone());
+                    } else {
+                        evidence.mark_applied_with_capabilities(
+                            key.clone(),
+                            capabilities.iter().copied(),
+                        );
+                    }
+                }
             }
         }
         evidence
@@ -418,6 +531,7 @@ pub(crate) struct PieThemeReceipt {
     slice_classes_match: bool,
     outer_circle_class: Option<Box<str>>,
     palette_capabilities: BTreeSet<ThemeCapability>,
+    fill_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     slice_stroke_css: Option<Box<str>>,
     outer_stroke_css: Option<Box<str>>,
 }
@@ -450,6 +564,7 @@ impl PieThemeReceipt {
             slice_classes_match: true,
             outer_circle_class: None,
             palette_capabilities: BTreeSet::new(),
+            fill_capabilities: BTreeMap::new(),
             slice_stroke_css: None,
             outer_stroke_css: None,
         }
@@ -463,7 +578,7 @@ impl PieThemeReceipt {
         emitted_fill: Option<&str>,
         emitted_class: Option<&str>,
     ) {
-        let (matches, capability) = record_terminal_paint(
+        let (matches, owner) = record_terminal_paint(
             plan,
             &self.expected_slice_paints,
             &mut self.next_slice_index,
@@ -478,7 +593,7 @@ impl PieThemeReceipt {
                 .any(|part| part == PIE_SLICE_CLASS)
         });
         if matches {
-            self.palette_capabilities.extend(capability);
+            self.record_paint_owner(owner);
         }
     }
 
@@ -489,7 +604,7 @@ impl PieThemeReceipt {
         emitted_label: &str,
         emitted_fill: Option<&str>,
     ) {
-        let (matches, capability) = record_terminal_paint(
+        let (matches, owner) = record_terminal_paint(
             plan,
             &self.expected_legend_paints,
             &mut self.next_legend_index,
@@ -499,7 +614,25 @@ impl PieThemeReceipt {
         );
         self.values_match &= matches;
         if matches {
-            self.palette_capabilities.extend(capability);
+            self.record_paint_owner(owner);
+        }
+    }
+
+    fn record_paint_owner(&mut self, owner: Option<PieSlicePaintOwner>) {
+        match owner {
+            Some(PieSlicePaintOwner::Palette(capability)) => {
+                self.palette_capabilities.insert(capability);
+            }
+            Some(PieSlicePaintOwner::Rule {
+                rule_index,
+                capability,
+            }) => {
+                self.fill_capabilities
+                    .entry(rule_index)
+                    .or_default()
+                    .insert(capability);
+            }
+            None => {}
         }
     }
 
@@ -574,8 +707,11 @@ impl PieThemeReceipt {
         let stroke_is_applicable = plan.stroke.is_some() && !self.expected_slice_paints.is_empty();
         PieTerminalEvidence {
             palette_capabilities: self.palette_capabilities,
-            stroke_applied: plan.pending_stroke_key.is_some() && stroke_is_applicable,
-            stroke_not_applicable: plan.pending_stroke_key.is_some() && !stroke_is_applicable,
+            fill_capabilities: self.fill_capabilities,
+            stroke_applied: plan.pending_rules.values().any(|pending| pending.stroke)
+                && stroke_is_applicable,
+            stroke_not_applicable: plan.pending_rules.values().any(|pending| pending.stroke)
+                && !stroke_is_applicable,
         }
     }
 }
@@ -587,7 +723,7 @@ fn record_terminal_paint(
     emitted_index: usize,
     emitted_label: &str,
     emitted_fill: Option<&str>,
-) -> (bool, Option<ThemeCapability>) {
+) -> (bool, Option<PieSlicePaintOwner>) {
     if emitted_index != *next_index || emitted_index >= expected_paints.len() {
         return (false, None);
     }
@@ -600,7 +736,7 @@ fn record_terminal_paint(
     };
     let matches = plan.label_indices.get(emitted_label).copied() == Some(paint_index)
         && emitted_fill.is_some_and(|emitted_fill| paint.fill == emitted_fill);
-    (matches, matches.then_some(paint.typed_capability).flatten())
+    (matches, matches.then_some(paint.typed_owner).flatten())
 }
 
 fn mermaid_owns_stroke_site(effective_config: &MermaidConfig, path: &str) -> bool {
@@ -658,12 +794,23 @@ fn typed_static_stroke(
 }
 
 #[derive(Debug, Default)]
+struct PiePendingEvidence {
+    fill: bool,
+    stroke: bool,
+}
+
+impl PiePendingEvidence {
+    const fn requires_terminal_proof(&self) -> bool {
+        self.fill || self.stroke
+    }
+}
+
+#[derive(Debug, Default)]
 struct PieSliceRuleObservation {
     applicable: bool,
-    stroke_config_owned: bool,
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
-    stroke_pending: bool,
+    pending: PiePendingEvidence,
 }
 
 fn default_pie_palette() -> [&'static str; MERMAID_PIE_PALETTE_SIZE] {
@@ -690,7 +837,8 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue, ThemeRuleSet,
+        DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch,
     };
     use crate::resources::RenderResourcePolicy;
     use merman_core::diagrams::pie::PieRenderSection;
@@ -727,6 +875,42 @@ mod tests {
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let plan = PieThemePlan::resolve(&model, &config, Some(&theme), &work_meter)
             .expect("resolve Pie test palette");
+        let labels = model
+            .sections
+            .iter()
+            .map(|section| section.label.clone())
+            .collect();
+        (plan, labels)
+    }
+
+    fn static_fill_plan(fill: CanvasPaint) -> (PieThemePlan, Vec<String>) {
+        let mut model = PieDiagramRenderModel::default();
+        model.sections = ["Alpha", "Beta"]
+            .into_iter()
+            .map(|label| PieRenderSection {
+                label: label.to_string(),
+                value: 1.0,
+            })
+            .collect();
+        let config = MermaidConfig::from_value(json!({}));
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::PieSlice,
+                            ThemeStylePatch::default().with_fill(fill),
+                        )
+                        .for_family(DiagramFamilyId::PIE),
+                    ),
+                ),
+            )
+            .expect("compile Pie scalar fill")
+            .resolve(DiagramFamilyId::PIE);
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan = PieThemePlan::resolve(&model, &config, Some(&theme), &work_meter)
+            .expect("resolve Pie scalar fill");
         let labels = model
             .sections
             .iter()
@@ -791,6 +975,33 @@ mod tests {
             .expect("typed Pie palette receipt");
         missing_fill.record_slice(&plan, 0, &labels[0], None, Some(PIE_SLICE_CLASS));
         assert!(!missing_fill.proves_complete(&plan));
+    }
+
+    #[test]
+    fn scalar_fill_receipt_rejects_missing_or_mismatched_terminal_paint() {
+        let (plan, labels) =
+            static_fill_plan(CanvasPaint::solid("#111827").expect("valid Pie scalar fill"));
+
+        let mut missing_legend = plan
+            .begin_terminal_receipt(labels.iter().map(String::as_str))
+            .expect("typed Pie scalar-fill receipt");
+        for (index, label) in labels.iter().enumerate() {
+            let fill = plan.fill_for(label).expect("planned Pie scalar fill");
+            missing_legend.record_slice(&plan, index, label, Some(fill), Some(PIE_SLICE_CLASS));
+        }
+        missing_legend.record_legend(
+            &plan,
+            0,
+            &labels[0],
+            Some(plan.fill_for(&labels[0]).expect("first Pie legend fill")),
+        );
+        assert!(!missing_legend.proves_complete(&plan));
+
+        let mut mismatched = plan
+            .begin_terminal_receipt(labels.iter().map(String::as_str))
+            .expect("typed Pie scalar-fill receipt");
+        mismatched.record_slice(&plan, 0, &labels[0], Some("#000000"), Some(PIE_SLICE_CLASS));
+        assert!(!mismatched.proves_complete(&plan));
     }
 
     #[test]

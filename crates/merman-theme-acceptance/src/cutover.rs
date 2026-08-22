@@ -225,7 +225,7 @@ requirement req1 {
   verifymethod: analysis
 }
 "#;
-const PIE_STROKE_SOURCE: &str = r#"pie
+const PIE_SLICE_SOURCE: &str = r#"pie
   "Alpha" : 3
   "Beta" : 2
 "#;
@@ -433,9 +433,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::REQUIREMENT, ThemeTarget::Requirement, ThemeRouteCutoverFacet::Fill) => {
             Ok(REQUIREMENT_FILL_SOURCE)
         }
-        (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(PIE_STROKE_SOURCE)
-        }
+        (
+            DiagramFamilyId::PIE,
+            ThemeTarget::PieSlice,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(PIE_SLICE_SOURCE),
         (DiagramFamilyId::BLOCK, ThemeTarget::Node, ThemeRouteCutoverFacet::Stroke) => {
             Ok(BLOCK_STROKE_SOURCE)
         }
@@ -1304,7 +1306,8 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             | ThemeTarget::Activation
             | ThemeTarget::Requirement
             | ThemeTarget::Text
-            | ThemeTarget::Task,
+            | ThemeTarget::Task
+            | ThemeTarget::PieSlice,
             ThemeRouteCutoverFacet::Fill,
         ) => Ok(SOLID_FILL),
         (
@@ -1381,7 +1384,8 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 | ThemeTarget::Activation
                 | ThemeTarget::Requirement
                 | ThemeTarget::Text
-                | ThemeTarget::Task,
+                | ThemeTarget::Task
+                | ThemeTarget::PieSlice,
                 ThemeRouteCutoverFacet::Fill,
             ) => Ok(SOLID_FILL.css),
             (
@@ -1570,11 +1574,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_eighty_eight_routes_and_one_hundred_four_artifact_witnesses() {
+    fn route_inventory_retains_ninety_routes_and_one_hundred_six_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 88);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 104);
+        assert_eq!(inventory.len(), 90);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 106);
     }
 
     #[test]

@@ -393,6 +393,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::REQUIREMENT, ThemeTarget::Requirement, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_FILL)
         }
+        (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_PIE_SLICE_FILL)
+        }
         (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_PIE_SLICE_STROKE)
         }
@@ -1528,6 +1531,18 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::PIE
+        && target == ThemeTarget::PieSlice
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if matches!(
         (family, target),
         (DiagramFamilyId::PIE, ThemeTarget::PieSlice) | (DiagramFamilyId::BLOCK, ThemeTarget::Node)
@@ -1948,6 +1963,52 @@ mod tests {
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
+    }
+
+    #[test]
+    fn pie_owns_only_unqualified_scalar_fill() {
+        for kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::PIE,
+                    ThemeTarget::PieSlice,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(kind),
+                ),
+                FamilyThemeDisposition::TypedAdapter
+            );
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::PIE,
+                    ThemeTarget::PieSlice,
+                    FamilyThemeSelectorShape::Static {
+                        variant: Some(ThemeVariant::Default),
+                    },
+                    FamilyThemeRuleFacet::Fill(kind),
+                ),
+                FamilyThemeDisposition::LegacyCompatibility
+            );
+        }
+
+        for kind in [
+            FamilyThemePaintKind::Clear,
+            FamilyThemePaintKind::LinearGradient,
+            FamilyThemePaintKind::RadialGradient,
+            FamilyThemePaintKind::Pattern,
+        ] {
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::PIE,
+                    ThemeTarget::PieSlice,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(kind),
+                ),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
     }
 
     #[test]

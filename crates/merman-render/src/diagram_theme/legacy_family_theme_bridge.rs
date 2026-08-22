@@ -2238,7 +2238,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_pie_slice_fill_survives_typed_palette_bridge_suppression() {
+    fn direct_pie_slice_fill_suppresses_both_fill_and_palette_bridge_contributions() {
         let palette = super::super::OrdinalPalette::new([
             super::super::ThemeColorValue::parse("#ef4444").expect("valid palette color"),
             super::super::ThemeColorValue::parse("#22c55e").expect("valid palette color"),
@@ -2258,7 +2258,7 @@ mod tests {
         let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::PIE);
 
         assert!(
-            artifact
+            !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.pie.slice.fill")
         );
@@ -2266,6 +2266,27 @@ mod tests {
             !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.pie.slice.palette")
+        );
+    }
+
+    #[test]
+    fn explicit_default_pie_slice_fill_remains_on_the_bridge() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::PieSlice,
+                    ThemeStylePatch::default().with_fill(solid("#111827")),
+                )
+                .for_family(DiagramFamilyId::PIE)
+                .with_variant(ThemeVariant::Default),
+            ),
+        );
+        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::PIE);
+
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.pie.slice.fill")
         );
     }
 

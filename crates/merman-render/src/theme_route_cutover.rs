@@ -116,11 +116,12 @@ pub enum ThemeRouteCutoverProjection {
     GanttTaskSuccessFill = 26,
     GanttTaskErrorFill = 27,
     NodeLabelFill = 28,
+    PieSliceFill = 29,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 29] = [
+    const ALL: [Self; 30] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -150,6 +151,7 @@ impl ThemeRouteCutoverProjection {
         Self::GanttTaskSuccessFill,
         Self::GanttTaskErrorFill,
         Self::NodeLabelFill,
+        Self::PieSliceFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -183,6 +185,7 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskSuccessFill => "task.success.fill",
             Self::GanttTaskErrorFill => "task.error.fill",
             Self::NodeLabelFill => "node-label.fill",
+            Self::PieSliceFill => "slice.fill",
         }
     }
 
@@ -217,7 +220,8 @@ impl ThemeRouteCutoverProjection {
             | Self::GanttTaskActiveFill
             | Self::GanttTaskSuccessFill
             | Self::GanttTaskErrorFill
-            | Self::NodeLabelFill => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::NodeLabelFill
+            | Self::PieSliceFill => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -281,6 +285,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::RequirementFill);
     pub const REPLACE_PIE_SLICE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::PieSliceStroke);
+    pub const REPLACE_PIE_SLICE_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::PieSliceFill);
     pub const REPLACE_ACTOR_LABEL_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::ActorLabelFill);
     pub const REPLACE_MESSAGE_LABEL_FILL: Self =
@@ -559,6 +565,21 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(projection.contribution_id(), "slice.stroke");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(projections, vec![projection]);
+    }
+
+    #[test]
+    fn pie_slice_fill_projection_is_an_exact_replacement() {
+        let projection = ThemeRouteCutoverProjection::PieSliceFill;
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_PIE_SLICE_FILL
+            .iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(projection.contribution_id(), "slice.fill");
         assert_eq!(
             projection.action(),
             ThemeRouteCutoverProjectionAction::Replace
