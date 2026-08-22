@@ -58,8 +58,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) default_edge_interpolate: String,
     pub(in crate::svg::parity::flowchart) default_edge_style: Vec<String>,
     pub(in crate::svg::parity::flowchart) edge_theme: &'a crate::flowchart::FlowchartEdgeThemeStyle,
-    pub(in crate::svg::parity::flowchart) cluster_theme:
-        &'a crate::flowchart::FlowchartClusterThemeStyle,
     pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
     pub(in crate::svg::parity::flowchart) trace_collector:
         Option<&'a crate::svg::FlowchartEdgeTraceCollector>,
@@ -83,6 +81,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         Option<crate::model::SwimlaneDirection>,
     pub(in crate::svg::parity::flowchart) swimlane_lanes_by_id:
         FxHashMap<&'a str, &'a crate::model::SwimlaneLaneLayout>,
+    pub(in crate::svg::parity::flowchart) swimlane_lane_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) swimlane_edge_label_edges_by_node_id:
         FxHashMap<&'a str, FlowchartRenderEdgeRef<'a>>,
     pub(in crate::svg::parity::flowchart) dom_node_order_by_root:

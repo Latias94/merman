@@ -1,7 +1,7 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -33,11 +33,31 @@ fn compile_swimlane_cluster_theme(style: ThemeStylePatch) -> DiagramTheme {
         .expect("compile Swimlane Cluster theme")
 }
 
-fn render_swimlane_cluster(
+fn swimlane_cluster_ordinal_theme(ordinal: usize) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Cluster,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid("#a855f7").expect("valid ordinal Cluster fill"),
+                        ),
+                    )
+                    .for_family(DiagramFamilyId::SWIMLANE)
+                    .with_ordinal(OrdinalSelector::exact(ordinal).expect("valid Cluster ordinal")),
+                ),
+            ),
+        )
+        .expect("compile ordinal Swimlane Cluster theme")
+}
+
+fn try_render_swimlane_cluster(
     source: &str,
     theme: &DiagramTheme,
     site_config: MermaidConfig,
-) -> family::RenderedFamilySvg {
+    requirement: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
         Engine::new().with_site_config(site_config),
@@ -46,9 +66,9 @@ fn render_swimlane_cluster(
     .expect("parse themed Swimlane")
     .expect("detect themed Swimlane");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable Swimlane session");
+        .expect("begin themed Swimlane session");
 
     family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Swimlane")
@@ -59,7 +79,61 @@ fn render_swimlane_cluster(
             },
             &SvgDebugOptions::default(),
         )
-        .expect("render themed Swimlane")
+}
+
+fn render_swimlane_cluster(
+    source: &str,
+    theme: &DiagramTheme,
+    site_config: MermaidConfig,
+) -> family::RenderedFamilySvg {
+    try_render_swimlane_cluster(
+        source,
+        theme,
+        site_config,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render themed Swimlane")
+}
+
+#[test]
+fn swimlane_cluster_ordinal_routes_follow_visible_lane_occurrences() {
+    let matching = swimlane_cluster_ordinal_theme(1);
+    let rendered = try_render_swimlane_cluster(
+        SWIMLANE_SOURCE,
+        &matching,
+        MermaidConfig::from_value(json!({"layout": "swimlane"})),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render matching lane ordinal in best-effort mode");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert!(
+        try_render_swimlane_cluster(
+            SWIMLANE_SOURCE,
+            &matching,
+            MermaidConfig::from_value(json!({"layout": "swimlane"})),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .is_err(),
+        "a visible unsupported lane ordinal must fail closed"
+    );
+
+    let out_of_range = swimlane_cluster_ordinal_theme(2);
+    let rendered = try_render_swimlane_cluster(
+        SWIMLANE_SOURCE,
+        &out_of_range,
+        MermaidConfig::from_value(json!({"layout": "swimlane"})),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("an out-of-range lane ordinal is not applicable");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 fn lane_rect_style(

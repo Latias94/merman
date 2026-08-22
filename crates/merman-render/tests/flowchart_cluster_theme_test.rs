@@ -1,8 +1,8 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -29,7 +29,62 @@ fn cluster_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramTheme {
         .expect("compile Flowchart Cluster theme")
 }
 
-fn render_strict(source: &str, theme: &DiagramTheme, site_config: MermaidConfig) -> String {
+fn cluster_ordinal_theme(ordinal: usize) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Cluster,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid("#a855f7").expect("valid ordinal Cluster fill"),
+                        ),
+                    )
+                    .for_family(merman_render::DiagramFamilyId::FLOWCHART)
+                    .with_ordinal(OrdinalSelector::exact(ordinal).expect("valid Cluster ordinal")),
+                ),
+            ),
+        )
+        .expect("compile ordinal Flowchart Cluster theme")
+}
+
+fn cluster_static_then_ordinal_theme() -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Cluster,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#ef4444").expect("valid static Cluster fill"),
+                            ),
+                        )
+                        .for_family(merman_render::DiagramFamilyId::FLOWCHART),
+                    )
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Cluster,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#a855f7").expect("valid ordinal Cluster fill"),
+                            ),
+                        )
+                        .for_family(merman_render::DiagramFamilyId::FLOWCHART)
+                        .with_ordinal(
+                            OrdinalSelector::exact(1).expect("valid first Cluster ordinal"),
+                        ),
+                    ),
+            ),
+        )
+        .expect("compile mixed Flowchart Cluster theme")
+}
+
+fn try_render(
+    source: &str,
+    theme: &DiagramTheme,
+    site_config: MermaidConfig,
+    requirement: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
         Engine::new().with_site_config(site_config),
@@ -38,7 +93,7 @@ fn render_strict(source: &str, theme: &DiagramTheme, site_config: MermaidConfig)
     .expect("parse Flowchart source")
     .expect("detect Flowchart source");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
         .expect("begin strict themed session");
     family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
@@ -50,9 +105,81 @@ fn render_strict(source: &str, theme: &DiagramTheme, site_config: MermaidConfig)
             },
             &SvgDebugOptions::default(),
         )
-        .expect("render portable Flowchart Cluster theme")
-        .svg()
-        .to_string()
+}
+
+fn render_strict(source: &str, theme: &DiagramTheme, site_config: MermaidConfig) -> String {
+    try_render(
+        source,
+        theme,
+        site_config,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render portable Flowchart Cluster theme")
+    .svg()
+    .to_string()
+}
+
+#[test]
+fn flowchart_cluster_ordinal_routes_follow_visible_terminal_occurrences() {
+    let matching = cluster_ordinal_theme(1);
+    let rendered = try_render(
+        CLUSTER_SOURCE,
+        &matching,
+        MermaidConfig::default(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render matching ordinal Cluster theme in best-effort mode");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert!(
+        try_render(
+            CLUSTER_SOURCE,
+            &matching,
+            MermaidConfig::default(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .is_err(),
+        "a visible unsupported Cluster ordinal must fail closed"
+    );
+
+    let out_of_range = cluster_ordinal_theme(2);
+    let rendered = try_render(
+        CLUSTER_SOURCE,
+        &out_of_range,
+        MermaidConfig::default(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("an out-of-range Cluster ordinal is not applicable");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn flowchart_cluster_ordinal_winner_suppresses_the_shadowed_static_paint() {
+    let theme = cluster_static_then_ordinal_theme();
+    let rendered = try_render(
+        CLUSTER_SOURCE,
+        &theme,
+        MermaidConfig::default(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render mixed Cluster winner theme");
+
+    assert!(
+        !rendered.svg().contains("fill:#ef4444 !important"),
+        "the shadowed static fill must not reach the ordinal occurrence"
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
 }
 
 #[test]

@@ -143,6 +143,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     cluster: &LayoutCluster,
+    cluster_theme: &crate::flowchart::FlowchartClusterThemeStyle,
     lane: &SwimlaneLaneLayout,
     origin_x: f64,
     origin_y: f64,
@@ -160,8 +161,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         ctx.cluster_stroke_config_override,
     );
     let mut node_style = compiled.node_style.trim().to_string();
-    ctx.cluster_theme
-        .append_inline_style(&mut node_style, fill_precedence, stroke_precedence);
+    cluster_theme.append_inline_style(&mut node_style, fill_precedence, stroke_precedence);
     let label_style = compiled.label_style.trim();
     let render_title = subgraph
         .and_then(|subgraph| {
@@ -200,9 +200,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let lane_left = lane.x - width / 2.0 + ctx.tx - origin_x;
     let is_lr = direction == crate::model::SwimlaneDirection::Lr;
 
-    let typed_lane_fill = ctx.cluster_theme.fill_value(fill_precedence, true);
+    let typed_lane_fill = cluster_theme.fill_value(fill_precedence, true);
     let lane_fill = typed_lane_fill.unwrap_or(&ctx.cluster_fill_color);
-    let typed_lane_stroke = ctx.cluster_theme.stroke_value(stroke_precedence, true);
+    let typed_lane_stroke = cluster_theme.stroke_value(stroke_precedence, true);
     let lane_stroke = typed_lane_stroke.unwrap_or(&ctx.cluster_stroke_color);
     // The body has no compatibility fill path in hand-drawn output. Only a direct typed fill may
     // add one; a typed stroke owns the outline independently and must not recolor the body.
@@ -329,7 +329,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         shell_receipt.source_facets(),
     );
     ctx.theme_evidence.record_cluster_emission(
-        ctx.cluster_theme,
+        cluster_theme,
         FlowchartClusterThemeEmission {
             fill: FlowchartThemeFacetEmission::new(fill_precedence, shell_receipt.fill_verified()),
             stroke: FlowchartThemeFacetEmission::new(

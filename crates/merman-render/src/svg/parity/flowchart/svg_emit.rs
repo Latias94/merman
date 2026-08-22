@@ -174,6 +174,11 @@ pub(super) fn render_flowchart_svg_model(
         .flat_map(|layout| layout.lanes.iter())
         .map(|lane| (lane.id.as_str(), lane))
         .collect();
+    let swimlane_lane_order = swimlane_layout
+        .into_iter()
+        .flat_map(|layout| layout.lanes.iter())
+        .map(|lane| lane.id.as_str())
+        .collect::<Vec<_>>();
     let swimlane_edge_label_edges_by_node_id: FxHashMap<
         &str,
         super::render_input::FlowchartRenderEdgeRef<'_>,
@@ -277,10 +282,6 @@ pub(super) fn render_flowchart_svg_model(
     let node_theme_ordinals =
         flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
-    let cluster_theme = crate::flowchart::FlowchartClusterThemeStyle::resolve(
-        options.resolved_theme(),
-        options.work_meter(),
-    )?;
     let ctx = FlowchartRenderCtx {
         model,
         diagram_id,
@@ -324,7 +325,6 @@ pub(super) fn render_flowchart_svg_model(
         default_edge_interpolate,
         default_edge_style,
         edge_theme,
-        cluster_theme: &cluster_theme,
         trace_edge_id: flowchart_edge_trace.map(|(edge_id, _)| edge_id),
         trace_collector: flowchart_edge_trace.map(|(_, collector)| collector),
         subgraph_order,
@@ -341,6 +341,7 @@ pub(super) fn render_flowchart_svg_model(
         layout_clusters_by_id,
         swimlane_direction,
         swimlane_lanes_by_id,
+        swimlane_lane_order,
         swimlane_edge_label_edges_by_node_id,
         dom_node_order_by_root: &layout.dom_node_order_by_root,
         node_dom_index,
@@ -354,6 +355,15 @@ pub(super) fn render_flowchart_svg_model(
     };
 
     let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx)?;
+    let cluster_theme_plan = crate::flowchart::FlowchartClusterThemePlan::prepare(
+        ctx.resolved_theme,
+        ctx.subgraph_order
+            .iter()
+            .copied()
+            .chain(ctx.swimlane_lane_order.iter().copied()),
+        hierarchy_plan.rendered_cluster_ids(),
+        ctx.work_meter,
+    )?;
     let marker_plan = FlowchartMarkerEmissionPlan::prepare(&ctx, &hierarchy_plan)?;
 
     let mut edge_path_cache: FxHashMap<
@@ -435,19 +445,6 @@ pub(super) fn render_flowchart_svg_model(
     document.push_accessibility_metadata(&mut out);
     out.push_str("<style>");
     out.checkpoint()?;
-    // The shared Mermaid rule carries both Cluster fill and stroke. Suppress it only when the
-    // typed fill facet itself owns the terminal fill; a stroke-only theme must leave the
-    // compatibility/config fill available to the Swimlane body.
-    let omit_swimlane_cluster_paint = swimlane_layout.is_some()
-        && cluster_theme
-            .fill_value(
-                crate::flowchart::FlowchartFacetPrecedence::new(
-                    crate::flowchart::FlowchartSourceFacetStatus::Absent,
-                    cluster_fill_config_override,
-                ),
-                true,
-            )
-            .is_some();
     write_flowchart_css(
         &mut out,
         diagram_id,
@@ -457,7 +454,6 @@ pub(super) fn render_flowchart_svg_model(
         &font_family,
         font_size,
         &model.class_defs,
-        omit_swimlane_cluster_paint,
     )?;
     if swimlane_layout.is_some() {
         super::swimlane::write_swimlane_css(&mut out, diagram_id);
@@ -483,6 +479,7 @@ pub(super) fn render_flowchart_svg_model(
         details: &mut detail,
         edge_cache: &mut edge_path_cache,
         hierarchy_plan: &hierarchy_plan,
+        cluster_theme_plan: &cluster_theme_plan,
         marker_plan: &marker_plan,
     };
     if layout.uses_elk_adapter_dom {

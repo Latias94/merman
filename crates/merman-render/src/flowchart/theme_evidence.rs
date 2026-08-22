@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
+use rustc_hash::{FxHashMap, FxHashSet};
+
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedProperty, ResolvedStyleProperty,
@@ -487,6 +489,7 @@ pub(crate) struct FlowchartClusterThemeStyle {
 impl FlowchartClusterThemeStyle {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
+        ordinal: Option<usize>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let Some(theme) = theme else {
@@ -495,7 +498,7 @@ impl FlowchartClusterThemeStyle {
         let style = theme.style_with_work_meter(
             ThemeTarget::Cluster,
             ThemeVariant::Default,
-            None,
+            ordinal,
             work_meter,
         )?;
         let mut resolved = Self::default();
@@ -584,6 +587,68 @@ impl FlowchartClusterThemeStyle {
         if let Some(stroke) = self.stroke_value(stroke_precedence, true) {
             push_inline_declaration(out, "stroke", stroke);
         }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct FlowchartClusterThemePlan<'a> {
+    styles_by_id: FxHashMap<&'a str, FlowchartClusterThemeStyle>,
+}
+
+impl<'a> FlowchartClusterThemePlan<'a> {
+    pub(crate) fn prepare(
+        theme: Option<&ResolvedDiagramTheme>,
+        semantic_ids: impl IntoIterator<Item = &'a str>,
+        emitted_ids: impl IntoIterator<Item = &'a str>,
+        work_meter: &OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        let mut emitted = FxHashSet::default();
+        for id in emitted_ids {
+            work_meter.charge(1)?;
+            if !emitted.insert(id) {
+                return Err(crate::Error::InvalidModel {
+                    message: format!("Flowchart hierarchy emits cluster `{id}` more than once"),
+                });
+            }
+        }
+
+        let mut styles_by_id = FxHashMap::default();
+        styles_by_id.reserve(emitted.len());
+        let mut ordinal = 1usize;
+        for id in semantic_ids {
+            work_meter.charge(1)?;
+            if !emitted.remove(id) {
+                continue;
+            }
+            styles_by_id.insert(
+                id,
+                FlowchartClusterThemeStyle::resolve(theme, Some(ordinal), work_meter)?,
+            );
+            ordinal = ordinal
+                .checked_add(1)
+                .ok_or_else(|| work_meter.arithmetic_overflow())?;
+        }
+
+        if !emitted.is_empty() {
+            let mut missing = emitted.into_iter().collect::<Vec<_>>();
+            missing.sort_unstable();
+            return Err(crate::Error::InvalidModel {
+                message: format!(
+                    "Flowchart hierarchy emits clusters outside the semantic inventory: {}",
+                    missing.join(", ")
+                ),
+            });
+        }
+
+        Ok(Self { styles_by_id })
+    }
+
+    pub(crate) fn style(&self, id: &str) -> crate::Result<&FlowchartClusterThemeStyle> {
+        self.styles_by_id
+            .get(id)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing prepared Flowchart Cluster theme style for `{id}`"),
+            })
     }
 }
 
@@ -2049,7 +2114,7 @@ mod tests {
         let meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let style = FlowchartClusterThemeStyle::resolve(Some(&theme), &meter)
+        let style = FlowchartClusterThemeStyle::resolve(Some(&theme), None, &meter)
             .expect("resolve Flowchart Cluster theme");
 
         assert_eq!(style.fill_value(no_override(), true), Some("#ef4444"));
