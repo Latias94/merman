@@ -107,7 +107,9 @@ remain valid for custom current-contract libraries; the default artifact returns
 `.missingCapability` with the required descriptor ID.
 
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
-optional `MermanResourceErrorDetails`, and optional `MermanCancelledDetails`. `.unknownOperation` has no capability ID;
+and optional `resource`, `diagnostic`, `iconRegistry`, and `cancellation` details. The corresponding
+typed records are `MermanResourceErrorDetails`, `MermanDiagnosticErrorDetails`,
+`MermanIconRegistryErrorDetails`, and `MermanCancelledDetails`. `.unknownOperation` has no capability ID;
 `.missingCapability` preserves the exact descriptor capability required by the valid request.
 Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase,
 actual value, effective maximum, and selected profile. Do not distinguish these cases by matching

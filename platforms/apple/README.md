@@ -56,7 +56,14 @@ process isolation.
 
 Empty or omitted options select deterministic runtime state. The default XCFramework does not bundle native clock, time-zone, or random adapters. A custom source build may enable `native-runtime` and then pass `{"runtime_policy":"native"}`; the default artifact returns a typed unsupported-operation error for that request. Generic operation metadata records the selected `runtime_policy`.
 
-Generated binding errors expose `MermanErrorKind`, an optional `capabilityId`, optional `MermanResourceErrorDetails`, and optional `MermanCancelledDetails`. `.unknownOperation` has no capability ID, `.missingCapability` preserves the stable descriptor ID required by the request, resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`) plus typed limit evidence, and cancellation preserves its reason and checkpoint phase without message parsing.
+Generated binding errors expose `MermanErrorKind`, an optional `capabilityId`, and optional typed
+`MermanResourceErrorDetails`, `MermanDiagnosticErrorDetails`,
+`MermanIconRegistryErrorDetails`, and `MermanCancelledDetails`. `.unknownOperation` has no
+capability ID, `.missingCapability` preserves the stable descriptor ID required by the request,
+resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`) plus typed limit
+evidence, diagnostic failures preserve their stable code and optional source provenance, icon
+registry failures preserve their structured registration evidence, and cancellation preserves its
+reason and checkpoint phase without message parsing.
 
 The default XCFramework includes semantic and layout JSON, analysis, validation, document analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits math, PNG, JPEG, and PDF. The generated helpers remain available for custom current-contract libraries; the default artifact returns `.missingCapability` with `math`, `png`, `jpeg`, or `pdf` as appropriate. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `presentationCatalogJson()` when presenting theme or presentation-profile choices. Catalog IDs are open strings so a compatible native producer can add values without requiring a closed Swift enum update.
 
