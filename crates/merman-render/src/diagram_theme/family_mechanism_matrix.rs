@@ -4192,6 +4192,20 @@ mod tests {
                 vec!["edge.stroke"],
             ),
             (
+                DiagramFamilyId::INFO,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::INFO,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
                 DiagramFamilyId::ISHIKAWA,
                 ThemeTarget::Text,
                 Fill,
@@ -4218,6 +4232,20 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::PIE,
+                ThemeTarget::PieSlice,
+                Fill,
+                Transparent,
+                vec!["slice.fill"],
+            ),
+            (
+                DiagramFamilyId::PIE,
+                ThemeTarget::PieSlice,
+                Fill,
+                Solid,
+                vec!["slice.fill"],
             ),
             (
                 DiagramFamilyId::PIE,
