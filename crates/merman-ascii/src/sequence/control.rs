@@ -1113,7 +1113,9 @@ mod tests {
 
         let rendered_len = std::thread::Builder::new()
             .name("sequence-control-small-stack".to_string())
-            .stack_size(64 * 1024)
+            // Keep the stack bounded while allowing debug builds on Linux to
+            // retain their larger test frames.
+            .stack_size(128 * 1024)
             .spawn(|| {
                 let policy =
                     AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
