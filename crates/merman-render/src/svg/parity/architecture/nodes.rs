@@ -86,7 +86,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     .service_background_style(service_index, svc.id)
                     .map(ToOwned::to_owned)
             });
-            let service_title_bounds =
+            let service_title_emission =
                 if let Some(title) = svc.title.map(str::trim).filter(|t| !t.is_empty()) {
                     // Mermaid uses `width = iconSize * 1.5` for service titles.
                     Some(write_architecture_service_title(
@@ -103,6 +103,9 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 } else {
                     None
                 };
+            let service_title_bounds = service_title_emission
+                .as_ref()
+                .map(|emission| &emission.bounds);
 
             out.push_str("<g>");
             match (svc.icon, svc.icon_text) {
@@ -188,7 +191,15 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                             style: has_title
                                 .then_some(service_title_style.as_deref())
                                 .flatten(),
-                            bounds: service_title_bounds.as_ref(),
+                            bounds: service_title_bounds,
+                            #[cfg(feature = "internal-theme-acceptance")]
+                            fragment_digest: service_title_emission
+                                .as_ref()
+                                .map(|emission| emission.facts.fragment_digest),
+                            #[cfg(feature = "internal-theme-acceptance")]
+                            run_count: service_title_emission
+                                .as_ref()
+                                .map_or(0, |emission| emission.facts.run_count),
                         },
                         has_icon_text,
                     },
@@ -306,7 +317,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                     .group_title_style(group_index, grp.id)
                     .map(ToOwned::to_owned)
             });
-            let group_title_bounds = if let Some(title) =
+            let (group_title_bounds, group_writer_facts) = if let Some(title) =
                 grp.title.map(str::trim).filter(|t| !t.is_empty())
             {
                 let lines = wrap_svg_words_to_lines(title, w, text_measurer, &settings.text_style);
@@ -341,17 +352,14 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                     x = fmt(title_x),
                     y = fmt(title_y)
                 );
-                write_svg_text_lines(
-                    out,
-                    &lines,
-                    group_title_style.as_deref(),
-                    Some(&terminal_bounds),
-                );
+                let writer_facts = write_svg_text_lines(out, &lines, group_title_style.as_deref());
                 out.push_str("</g></g>");
-                Some(terminal_bounds)
+                (Some(terminal_bounds), Some(writer_facts))
             } else {
-                None
+                (None, None)
             };
+            #[cfg(not(feature = "internal-theme-acceptance"))]
+            let _ = group_writer_facts;
 
             out.push_str("</g>");
             out.checkpoint()?;
@@ -367,6 +375,10 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                             emitted: has_title,
                             style: has_title.then_some(group_title_style.as_deref()).flatten(),
                             bounds: group_title_bounds.as_ref(),
+                            #[cfg(feature = "internal-theme-acceptance")]
+                            fragment_digest: group_writer_facts.map(|facts| facts.fragment_digest),
+                            #[cfg(feature = "internal-theme-acceptance")]
+                            run_count: group_writer_facts.map_or(0, |facts| facts.run_count),
                         },
                     },
                 );

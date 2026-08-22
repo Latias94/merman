@@ -81,6 +81,12 @@ pub mod __private {
         PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
     };
 
+    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    pub use crate::theme_route_cutover::{
+        ArchitectureTextCutoverReceipt, ArchitectureTextCutoverRole,
+        ArchitectureTextCutoverTerminal,
+    };
+
     #[cfg(feature = "internal-theme-acceptance")]
     pub use crate::theme_route_cutover::{
         ThemeRouteCutoverDescriptor, ThemeRouteCutoverFacet, ThemeRouteCutoverId,
@@ -119,6 +125,14 @@ pub mod __private {
         ThemeLegacyProjectionRetirementInventoryError,
     > {
         crate::diagram_theme::legacy_projection_retirement_receipts()
+    }
+
+    /// Returns the renderer-owned Architecture Text cutover facts sealed by the final writer.
+    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    pub fn architecture_text_cutover_receipt(
+        report: &FamilyRenderReport,
+    ) -> Option<&ArchitectureTextCutoverReceipt> {
+        report.architecture_text_cutover_receipt()
     }
 
     /// Coarse family-evidence state used by the workspace facade.

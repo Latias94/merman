@@ -293,6 +293,13 @@ impl ArchitectureGroupThemePlan {
         self.surfaces.finish_evidence(&mut evidence);
         evidence
     }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fn architecture_text_cutover_receipt(
+        &self,
+    ) -> Option<crate::__private::ArchitectureTextCutoverReceipt> {
+        self.surfaces.architecture_text_cutover_receipt()
+    }
 }
 
 /// Writer-owned proof that every Architecture group rect emitted the resolved inline paint state.

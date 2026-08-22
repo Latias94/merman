@@ -268,25 +268,6 @@ fn stylesheet_property<'a>(css: &'a str, selector: &str, property: &str) -> Opti
     })
 }
 
-fn writer_owned_text_bbox(text: roxmltree::Node<'_, '_>) -> [f64; 4] {
-    let values = text
-        .attribute("data-merman-text-bbox")
-        .expect("Architecture writer-owned text bbox")
-        .split(',')
-        .map(|value| value.parse::<f64>().expect("finite Architecture text bbox"))
-        .collect::<Vec<_>>();
-    let [left, top, right, bottom] = values.as_slice() else {
-        panic!("Architecture text bbox must contain four values");
-    };
-    assert!(
-        [*left, *top, *right, *bottom]
-            .into_iter()
-            .all(f64::is_finite)
-    );
-    assert!(right > left && bottom > top);
-    [*left, *top, *right - *left, *bottom - *top]
-}
-
 fn try_render_architecture_svg_with_resource_policy(
     source: &str,
     resource_policy: RenderResourcePolicy,
@@ -757,15 +738,11 @@ fn architecture_service_text_and_arrow_surfaces_have_independent_terminal_owners
             .iter()
             .all(|text| { text.attribute("style") == Some("fill:#345678;") })
     );
-    let terminal_text_bounds = visible_svg_text
-        .iter()
-        .map(|text| writer_owned_text_bbox(*text))
-        .collect::<Vec<_>>();
-    assert_eq!(terminal_text_bounds.len(), 4);
     assert!(
-        terminal_text_bounds
+        visible_svg_text
             .iter()
-            .all(|bounds| bounds[2] > 0.0 && bounds[3] > 0.0)
+            .all(|text| text.attribute("data-merman-text-bbox").is_none()),
+        "writer-owned terminal bounds must stay in the production receipt, not the stable SVG DOM"
     );
 
     let arrows = architecture_arrow_polygons(&document);

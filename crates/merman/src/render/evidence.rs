@@ -127,6 +127,9 @@ pub struct RenderEvidence {
     theme_evidence: ThemeEvidenceSummary,
     root_applied_capabilities: Box<[merman_render::diagram_theme::ThemeCapability]>,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
+    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    architecture_text_cutover_receipt:
+        Option<merman_render::__private::ArchitectureTextCutoverReceipt>,
     #[cfg(feature = "internal-theme-acceptance")]
     theme_acceptance: ThemeAcceptanceEvidenceSnapshot,
 }
@@ -150,12 +153,17 @@ impl RenderEvidence {
         let root_applied_capabilities =
             merman_render::__private::root_applied_capabilities(&family);
         let native_filter_receipt = merman_render::__private::family_native_filter_receipt(&family);
+        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        let architecture_text_cutover_receipt =
+            merman_render::__private::architecture_text_cutover_receipt(&family).cloned();
         Self {
             session,
             family_id,
             theme_evidence,
             root_applied_capabilities,
             native_filter_receipt,
+            #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+            architecture_text_cutover_receipt,
             #[cfg(feature = "internal-theme-acceptance")]
             theme_acceptance: ThemeAcceptanceEvidenceSnapshot {
                 root,
@@ -191,6 +199,13 @@ impl RenderEvidence {
         &self,
     ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
         self.native_filter_receipt
+    }
+
+    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    pub(crate) fn architecture_text_cutover_receipt(
+        &self,
+    ) -> Option<&merman_render::__private::ArchitectureTextCutoverReceipt> {
+        self.architecture_text_cutover_receipt.as_ref()
     }
 
     pub fn measurement_routes(&self) -> &[merman_render::environment::TextMeasurementRoute; 4] {

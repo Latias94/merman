@@ -321,6 +321,8 @@ pub(crate) struct FamilyStyleReport {
     theme_required: Vec<FamilyThemeMechanismKey>,
     theme_applied: Vec<FamilyThemeMechanismKey>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
+    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
     theme_not_applicable: Vec<FamilyThemeMechanismKey>,
     theme_residuals: Vec<FamilyThemeResidual>,
     compatibility_residual_count: usize,
@@ -358,6 +360,8 @@ impl FamilyStyleReport {
             theme_required: plan.theme_evidence.required.clone(),
             theme_applied: plan.theme_evidence.applied.clone(),
             native_filter_receipt: plan.native_filter_receipt,
+            #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+            architecture_text_cutover_receipt: plan.architecture_text_cutover_receipt.clone(),
             theme_not_applicable: plan.theme_evidence.not_applicable.clone(),
             theme_residuals: plan.theme_evidence.residuals.clone(),
             compatibility_residual_count: plan.compatibility_residual_count,
@@ -381,6 +385,10 @@ impl FamilyStyleReport {
             }
         }
         self.native_filter_receipt = None;
+        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        {
+            self.architecture_text_cutover_receipt = None;
+        }
         self
     }
 
@@ -415,6 +423,13 @@ impl FamilyStyleReport {
         &self,
     ) -> Option<crate::__private::NativeSvgFilterReceipt> {
         self.native_filter_receipt
+    }
+
+    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    pub(crate) fn architecture_text_cutover_receipt(
+        &self,
+    ) -> Option<&crate::__private::ArchitectureTextCutoverReceipt> {
+        self.architecture_text_cutover_receipt.as_ref()
     }
 
     /// Returns recipe mechanisms evaluated against this document but not selected by any rendered
@@ -624,6 +639,13 @@ impl FamilyRenderReport {
         &self,
     ) -> Option<crate::__private::NativeSvgFilterReceipt> {
         self.style.native_filter_receipt()
+    }
+
+    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    pub(crate) fn architecture_text_cutover_receipt(
+        &self,
+    ) -> Option<&crate::__private::ArchitectureTextCutoverReceipt> {
+        self.style.architecture_text_cutover_receipt()
     }
 
     pub(crate) fn evidence_summary(&self) -> crate::__private::FamilyEvidenceSummary {
@@ -855,6 +877,8 @@ pub(crate) struct ResolvedFamilyStylePlan {
     theme_evidence: FamilyThemeEvidence,
     source_style_residuals: Vec<SourceStyleResidual>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
+    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
     output_mutated: bool,
     compatibility_residual_count: usize,
     mermaid_compatibility_residual_count: usize,
@@ -878,6 +902,8 @@ impl ResolvedFamilyStylePlan {
             theme_evidence,
             source_style_residuals: Vec::new(),
             native_filter_receipt: None,
+            #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+            architecture_text_cutover_receipt: None,
             output_mutated: false,
             compatibility_residual_count: 0,
             mermaid_compatibility_residual_count: 0,
@@ -988,6 +1014,15 @@ impl ResolvedFamilyStylePlan {
         };
     }
 
+    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    fn record_architecture_text_cutover_receipt(
+        &mut self,
+        receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
+    ) {
+        debug_assert_eq!(self.family_id, DiagramFamilyId::ARCHITECTURE);
+        self.architecture_text_cutover_receipt = receipt;
+    }
+
     fn reconcile_state_effect_evidence(
         &mut self,
         emitted: Option<crate::__private::NativeSvgFilterReceipt>,
@@ -1044,6 +1079,10 @@ impl ResolvedFamilyStylePlan {
     fn invalidate_for_output_mutation(&mut self) {
         self.output_mutated = true;
         self.native_filter_receipt = None;
+        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        {
+            self.architecture_text_cutover_receipt = None;
+        }
         self.theme_evidence.mark_output_mutated();
     }
 
@@ -3155,6 +3194,13 @@ impl FamilyRenderArtifact {
         let ishikawa_theme_evidence = self.family.ishikawa_theme_evidence();
         #[cfg(feature = "layout-cytoscape")]
         let architecture_theme_evidence = self.family.architecture_theme_evidence();
+        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        let architecture_text_cutover_receipt = match &self.family {
+            BuiltinFamilyArtifact::Architecture(artifact) => {
+                artifact.group_theme().architecture_text_cutover_receipt()
+            }
+            _ => None,
+        };
         let state_filter_receipt = match &self.family {
             BuiltinFamilyArtifact::State(artifact) => Some(artifact.effect_evidence().finish()),
             _ => None,
@@ -3263,6 +3309,12 @@ impl FamilyRenderArtifact {
         #[cfg(feature = "layout-cytoscape")]
         if let Some(evidence) = architecture_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::ARCHITECTURE, evidence);
+        }
+        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        if context.family_id() == DiagramFamilyId::ARCHITECTURE {
+            context
+                .style_plan
+                .record_architecture_text_cutover_receipt(architecture_text_cutover_receipt);
         }
         if context.family_id() == DiagramFamilyId::STATE {
             context.reconcile_state_terminal_evidence();

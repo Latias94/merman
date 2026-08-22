@@ -870,8 +870,11 @@ fn render_cutover_case(
         document_portability.is_host_dependent(),
         document_portability.reasons()
     );
-    let family_evidence =
-        merman::__theme_acceptance::theme_acceptance_evidence(render_evidence).family();
+    let acceptance_evidence =
+        merman::__theme_acceptance::theme_acceptance_evidence(render_evidence);
+    let family_evidence = acceptance_evidence.family();
+    let architecture_text_cutover_receipt =
+        merman::__theme_acceptance::architecture_text_cutover_receipt(render_evidence);
     c6_ensure!(
         "route-family-disposition",
         family_evidence.required_count() == 1
@@ -901,7 +904,13 @@ fn render_cutover_case(
     {
         prove_sequence_message_svg(case, &routes, svg)?
     } else {
-        prove_svg_routes(case, &routes, svg, &markers)?
+        prove_svg_routes(
+            case,
+            &routes,
+            svg,
+            &markers,
+            architecture_text_cutover_receipt,
+        )?
     };
 
     let raster_options = RasterOptions::default().with_scale(2.0);

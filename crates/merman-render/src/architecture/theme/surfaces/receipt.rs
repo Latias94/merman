@@ -56,6 +56,10 @@ pub(crate) struct ArchitectureTextTerminalEmission<'a> {
     pub(crate) emitted: bool,
     pub(crate) style: Option<&'a str>,
     pub(crate) bounds: Option<&'a Bounds>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fragment_digest: Option<[u8; 32]>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) run_count: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -121,6 +125,12 @@ struct ArchitectureServiceSurfaceExpectation {
     title_fill: Option<ArchitectureExpectedPaint>,
     has_icon_text: bool,
     checkpointed: bool,
+    #[cfg(feature = "internal-theme-acceptance")]
+    title_bounds: Option<Bounds>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    title_fragment_digest: Option<[u8; 32]>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    title_run_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -130,6 +140,12 @@ struct ArchitectureGroupTextExpectation {
     title_style: Option<Box<str>>,
     title_fill: Option<ArchitectureExpectedPaint>,
     checkpointed: bool,
+    #[cfg(feature = "internal-theme-acceptance")]
+    title_bounds: Option<Bounds>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    title_fragment_digest: Option<[u8; 32]>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    title_run_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +162,12 @@ struct ArchitectureEdgeSurfaceExpectation {
     rhs_arrow_style: Option<Box<str>>,
     rhs_arrow_fill: Option<ArchitectureExpectedPaint>,
     checkpointed: bool,
+    #[cfg(feature = "internal-theme-acceptance")]
+    label_bounds: Option<Bounds>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    label_fragment_digest: Option<[u8; 32]>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    label_run_count: usize,
 }
 
 #[derive(Debug, Default)]
@@ -283,6 +305,12 @@ impl ArchitectureSurfaceThemeReceipt {
                 title_fill,
                 has_icon_text: service.has_icon_text,
                 checkpointed: false,
+                #[cfg(feature = "internal-theme-acceptance")]
+                title_bounds: None,
+                #[cfg(feature = "internal-theme-acceptance")]
+                title_fragment_digest: None,
+                #[cfg(feature = "internal-theme-acceptance")]
+                title_run_count: 0,
             });
         }
 
@@ -310,6 +338,12 @@ impl ArchitectureSurfaceThemeReceipt {
                 title_style,
                 title_fill,
                 checkpointed: false,
+                #[cfg(feature = "internal-theme-acceptance")]
+                title_bounds: None,
+                #[cfg(feature = "internal-theme-acceptance")]
+                title_fragment_digest: None,
+                #[cfg(feature = "internal-theme-acceptance")]
+                title_run_count: 0,
             });
         }
 
@@ -386,6 +420,12 @@ impl ArchitectureSurfaceThemeReceipt {
                 rhs_arrow_style,
                 rhs_arrow_fill,
                 checkpointed: false,
+                #[cfg(feature = "internal-theme-acceptance")]
+                label_bounds: None,
+                #[cfg(feature = "internal-theme-acceptance")]
+                label_fragment_digest: None,
+                #[cfg(feature = "internal-theme-acceptance")]
+                label_run_count: 0,
             });
         }
 
@@ -473,6 +513,15 @@ impl ArchitectureSurfaceThemeReceipt {
             emission.title.bounds,
             &mut self.terminals_match,
         );
+        #[cfg(feature = "internal-theme-acceptance")]
+        {
+            expectation.title_bounds = emission.title.bounds.cloned();
+            expectation.title_fragment_digest = emission.title.fragment_digest;
+            expectation.title_run_count = emission.title.run_count;
+            self.terminals_match &= emission.title.emitted
+                == emission.title.fragment_digest.is_some()
+                && (!emission.title.emitted || emission.title.run_count != 0);
+        }
         self.terminals_match &= expectation.has_icon_text == emission.has_icon_text;
         record_paint(
             expectation.background_fill.as_ref(),
@@ -514,6 +563,15 @@ impl ArchitectureSurfaceThemeReceipt {
             emission.title.bounds,
             &mut self.terminals_match,
         );
+        #[cfg(feature = "internal-theme-acceptance")]
+        {
+            expectation.title_bounds = emission.title.bounds.cloned();
+            expectation.title_fragment_digest = emission.title.fragment_digest;
+            expectation.title_run_count = emission.title.run_count;
+            self.terminals_match &= emission.title.emitted
+                == emission.title.fragment_digest.is_some()
+                && (!emission.title.emitted || emission.title.run_count != 0);
+        }
         record_paint(
             expectation.title_fill.as_ref(),
             emission.title.style,
@@ -542,6 +600,15 @@ impl ArchitectureSurfaceThemeReceipt {
             emission.label.bounds,
             &mut self.terminals_match,
         );
+        #[cfg(feature = "internal-theme-acceptance")]
+        {
+            expectation.label_bounds = emission.label.bounds.cloned();
+            expectation.label_fragment_digest = emission.label.fragment_digest;
+            expectation.label_run_count = emission.label.run_count;
+            self.terminals_match &= emission.label.emitted
+                == emission.label.fragment_digest.is_some()
+                && (!emission.label.emitted || emission.label.run_count != 0);
+        }
         self.terminals_match &= expectation.has_lhs_arrow == emission.lhs_arrow.emitted;
         self.terminals_match &= expectation.lhs_arrow_style.as_deref() == emission.lhs_arrow.style;
         self.terminals_match &= expectation.has_rhs_arrow == emission.rhs_arrow.emitted;
@@ -612,6 +679,85 @@ impl ArchitectureSurfaceThemeReceipt {
             }
         }
     }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(super) fn architecture_text_cutover_receipt(
+        &self,
+    ) -> Option<crate::__private::ArchitectureTextCutoverReceipt> {
+        if !self.proves_complete() {
+            return None;
+        }
+        let mut terminals = Vec::new();
+        for service in &self.services {
+            append_text_cutover_terminal(
+                &mut terminals,
+                crate::__private::ArchitectureTextCutoverRole::Service,
+                service.id.as_ref(),
+                service.title_fill.as_ref(),
+                service.title_bounds.as_ref(),
+                service.title_fragment_digest,
+                service.title_run_count,
+            )?;
+        }
+        for group in &self.groups {
+            append_text_cutover_terminal(
+                &mut terminals,
+                crate::__private::ArchitectureTextCutoverRole::GroupTitle,
+                group.id.as_ref(),
+                group.title_fill.as_ref(),
+                group.title_bounds.as_ref(),
+                group.title_fragment_digest,
+                group.title_run_count,
+            )?;
+        }
+        for (index, edge) in self.edges.iter().enumerate() {
+            let identity = format!("{}->{}#{index}", edge.lhs_id, edge.rhs_id);
+            append_text_cutover_terminal(
+                &mut terminals,
+                crate::__private::ArchitectureTextCutoverRole::EdgeLabel,
+                &identity,
+                edge.label_fill.as_ref(),
+                edge.label_bounds.as_ref(),
+                edge.label_fragment_digest,
+                edge.label_run_count,
+            )?;
+        }
+        crate::__private::ArchitectureTextCutoverReceipt::seal(terminals)
+    }
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+fn append_text_cutover_terminal(
+    terminals: &mut Vec<crate::__private::ArchitectureTextCutoverTerminal>,
+    role: crate::__private::ArchitectureTextCutoverRole,
+    identity: &str,
+    paint: Option<&ArchitectureExpectedPaint>,
+    bounds: Option<&Bounds>,
+    fragment_digest: Option<[u8; 32]>,
+    run_count: usize,
+) -> Option<()> {
+    let paint = paint?;
+    if paint.target != ThemeTarget::Text {
+        return None;
+    }
+    let bounds = bounds?;
+    let fragment_digest = fragment_digest?;
+    terminals.push(
+        crate::__private::ArchitectureTextCutoverTerminal::with_writer_facts(
+            role,
+            identity,
+            paint.css.as_ref(),
+            [
+                bounds.min_x,
+                bounds.min_y,
+                bounds.max_x - bounds.min_x,
+                bounds.max_y - bounds.min_y,
+            ],
+            fragment_digest,
+            run_count,
+        )?,
+    );
+    Some(())
 }
 
 fn record_text_bounds(expected: bool, emitted: Option<&Bounds>, terminals_match: &mut bool) {

@@ -23,6 +23,9 @@ pub(super) fn prove_svg_routes(
     routes: &[ThemeRouteCutoverDescriptor],
     svg: &str,
     markers: &[FlowchartMarkerObservation],
+    architecture_text_cutover_receipt: Option<
+        &merman_render::__private::ArchitectureTextCutoverReceipt,
+    >,
 ) -> C6ProofResult<SvgCutoverProof> {
     let document = roxmltree::Document::parse(svg)
         .map_err(|error| C6ProofError::new("route-svg-parse", error.to_string()))?;
@@ -110,12 +113,73 @@ pub(super) fn prove_svg_routes(
                     observation.target_regions,
                 )
             }
+            DiagramFamilyId::ARCHITECTURE
+                if route.target() == ThemeTarget::Text
+                    && route.facet() == ThemeRouteCutoverFacet::Fill =>
+            {
+                let receipt = architecture_text_cutover_receipt.ok_or_else(|| {
+                    C6ProofError::new(
+                        "route-svg-proof",
+                        "Architecture Text witness lacks its renderer-owned cutover receipt",
+                    )
+                })?;
+                let terminals = receipt.terminals();
+                c6_ensure!(
+                    "route-svg-proof",
+                    terminals.len() == 5
+                        && terminals
+                            .iter()
+                            .filter(|terminal| {
+                                terminal.role()
+                                    == merman_render::__private::ArchitectureTextCutoverRole::Service
+                            })
+                            .count()
+                            == 3
+                        && terminals
+                            .iter()
+                            .filter(|terminal| {
+                                terminal.role()
+                                    == merman_render::__private::ArchitectureTextCutoverRole::GroupTitle
+                            })
+                            .count()
+                            == 1
+                        && terminals
+                            .iter()
+                            .filter(|terminal| {
+                                terminal.role()
+                                    == merman_render::__private::ArchitectureTextCutoverRole::EdgeLabel
+                            })
+                            .count()
+                            == 1,
+                    "Architecture Text receipt does not cover the canonical 3 service, 1 group-title, and 1 edge-label terminals"
+                );
+                let common_value = terminals
+                    .first()
+                    .map(|terminal| terminal.value())
+                    .ok_or_else(|| {
+                        C6ProofError::new(
+                            "route-svg-proof",
+                            "Architecture Text receipt has no terminal value",
+                        )
+                    })?;
+                c6_ensure!(
+                    "route-svg-proof",
+                    terminals
+                        .iter()
+                        .all(|terminal| terminal.value() == common_value),
+                    "Architecture Text receipt contains inconsistent terminal winners"
+                );
+                (
+                    common_value.to_owned(),
+                    receipt.digest(),
+                    terminals.iter().map(|terminal| terminal.region()).collect(),
+                )
+            }
             DiagramFamilyId::CLASS
             | DiagramFamilyId::ER
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::GANTT
-            | DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::SWIMLANE => {
                 let observation = deep_family_paint::deep_family_route_observation(
                     &document,
@@ -208,6 +272,9 @@ fn target_underlay_colors(
             let selector = format!("#{root_id} .cluster rect");
             let raw = stylesheet_property(document, &selector, "fill")?;
             std::iter::repeat_n(vec![parse_css_rgb(raw)?], region_count).collect()
+        }
+        (DiagramFamilyId::ARCHITECTURE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            std::iter::repeat_n(Vec::new(), region_count).collect()
         }
         (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,

@@ -123,6 +123,15 @@ impl ArchitectureSurfaceThemePlan {
         };
         receipt.apply_to_evidence(evidence);
     }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(super) fn architecture_text_cutover_receipt(
+        &self,
+    ) -> Option<crate::__private::ArchitectureTextCutoverReceipt> {
+        self.terminal_receipt
+            .get()?
+            .architecture_text_cutover_receipt()
+    }
 }
 
 fn mermaid_owns_arrow_fill(config: &MermaidConfig) -> bool {

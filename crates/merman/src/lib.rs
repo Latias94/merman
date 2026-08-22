@@ -299,6 +299,13 @@ pub mod __theme_acceptance {
     ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
         evidence.native_filter_receipt()
     }
+
+    #[cfg(feature = "layout-cytoscape")]
+    pub fn architecture_text_cutover_receipt(
+        evidence: &crate::RenderEvidence,
+    ) -> Option<&merman_render::__private::ArchitectureTextCutoverReceipt> {
+        evidence.architecture_text_cutover_receipt()
+    }
 }
 
 /// ASCII target-local types and model-level backend interface.

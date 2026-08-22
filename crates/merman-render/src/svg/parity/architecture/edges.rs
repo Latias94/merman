@@ -664,6 +664,10 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                 write_architecture_arrow_polygon(out, arrow, rhs_arrow_style.as_deref());
             }
 
+            #[cfg(feature = "internal-theme-acceptance")]
+            let mut label_fragment_digest = None;
+            #[cfg(feature = "internal-theme-acceptance")]
+            let mut label_run_count = 0;
             if let Some(label_plan) = label_plan {
                 let _ = write!(
                     out,
@@ -672,13 +676,16 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                     transform = label_plan.transform.as_str()
                 );
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                write_svg_text_lines(
-                    out,
-                    &label_plan.lines,
-                    label_style.as_deref(),
-                    Some(&label_plan.bounds),
-                );
+                let writer_facts =
+                    write_svg_text_lines(out, &label_plan.lines, label_style.as_deref());
                 out.push_str("</g></g>");
+                #[cfg(feature = "internal-theme-acceptance")]
+                {
+                    label_fragment_digest = Some(writer_facts.fragment_digest);
+                    label_run_count = writer_facts.run_count;
+                }
+                #[cfg(not(feature = "internal-theme-acceptance"))]
+                let _ = writer_facts;
             }
 
             out.push_str("</g>");
@@ -703,6 +710,10 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                             emitted: has_label,
                             style: label_style.as_deref(),
                             bounds: label_bounds.as_ref(),
+                            #[cfg(feature = "internal-theme-acceptance")]
+                            fragment_digest: label_fragment_digest,
+                            #[cfg(feature = "internal-theme-acceptance")]
+                            run_count: label_run_count,
                         },
                         lhs_arrow: crate::architecture::ArchitecturePaintTerminalEmission {
                             emitted: lhs_arrow.is_some(),

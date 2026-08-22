@@ -1,5 +1,8 @@
 use std::collections::VecDeque;
 
+#[cfg(feature = "internal-theme-acceptance")]
+use sha2::{Digest as _, Sha256};
+
 use crate::architecture_metrics::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX;
 use crate::model::Bounds;
 
@@ -21,6 +24,20 @@ pub(super) struct SvgWord {
 }
 
 pub(super) type SvgLine = Vec<SvgWord>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct ArchitectureTextWriterFacts {
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(super) fragment_digest: [u8; 32],
+    pub(super) run_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ArchitectureTextWriterEmission {
+    pub(super) bounds: Bounds,
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(super) facts: ArchitectureTextWriterFacts,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ArchitectureTextAnchor {
@@ -441,19 +458,9 @@ pub(super) fn write_svg_text_lines(
     out: &mut impl SvgOutput,
     lines: &[SvgLine],
     inline_style: Option<&str>,
-    terminal_bounds: Option<&Bounds>,
-) {
+) -> ArchitectureTextWriterFacts {
+    let start = out.len();
     out.push_str(r#"<text y="-10.1""#);
-    if let Some(bounds) = terminal_bounds {
-        let _ = write!(
-            out,
-            r#" data-merman-text-bbox="{},{},{},{}""#,
-            fmt(bounds.min_x),
-            fmt(bounds.min_y),
-            fmt(bounds.max_x),
-            fmt(bounds.max_y),
-        );
-    }
     out.push_str(r#" style=""#);
     if let Some(style) = inline_style {
         escape_attr_into(out, style);
@@ -462,7 +469,7 @@ pub(super) fn write_svg_text_lines(
     if lines.is_empty() || (lines.len() == 1 && lines[0].is_empty()) {
         out.push_str(r#"<tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"/>"#);
         out.push_str("</text>");
-        return;
+        return architecture_text_writer_facts(out, start, 1);
     }
     for (idx, line) in lines.iter().enumerate() {
         if idx == 0 {
@@ -501,6 +508,34 @@ pub(super) fn write_svg_text_lines(
         out.push_str("</tspan>");
     }
     out.push_str("</text>");
+    architecture_text_writer_facts(
+        out,
+        start,
+        lines
+            .len()
+            .saturating_add(lines.iter().map(Vec::len).sum::<usize>()),
+    )
+}
+
+fn architecture_text_writer_facts(
+    out: &impl SvgOutput,
+    start: usize,
+    run_count: usize,
+) -> ArchitectureTextWriterFacts {
+    #[cfg(feature = "internal-theme-acceptance")]
+    {
+        let fragment = out.as_str().get(start..).unwrap_or_default();
+        return ArchitectureTextWriterFacts {
+            fragment_digest: Sha256::digest(fragment.as_bytes()).into(),
+            run_count,
+        };
+    }
+
+    #[cfg(not(feature = "internal-theme-acceptance"))]
+    {
+        let _ = (out, start);
+        ArchitectureTextWriterFacts { run_count }
+    }
 }
 
 pub(super) fn write_architecture_service_title(
@@ -513,7 +548,7 @@ pub(super) fn write_architecture_service_title(
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
     inline_style: Option<&str>,
-) -> Bounds {
+) -> ArchitectureTextWriterEmission {
     let lines = wrap_svg_words_to_lines(title, title_width_px, measurer, style);
     let terminal_bounds = architecture_svg_text_terminal_bounds(
         &lines,
@@ -530,9 +565,16 @@ pub(super) fn write_architecture_service_title(
         x = fmt(icon_size_px / 2.0),
         y = fmt(icon_size_px)
     );
-    write_svg_text_lines(out, &lines, inline_style, Some(&terminal_bounds));
+    #[cfg(feature = "internal-theme-acceptance")]
+    let facts = write_svg_text_lines(out, &lines, inline_style);
+    #[cfg(not(feature = "internal-theme-acceptance"))]
+    let _ = write_svg_text_lines(out, &lines, inline_style);
     out.push_str("</g></g>");
-    terminal_bounds
+    ArchitectureTextWriterEmission {
+        bounds: terminal_bounds,
+        #[cfg(feature = "internal-theme-acceptance")]
+        facts,
+    }
 }
 
 #[cfg(test)]
@@ -633,15 +675,12 @@ mod tests {
             &mut out, "s1", 0.0, 0.0, 80.0, 120.0, &measurer, &style, None,
         );
 
+        assert!(
+            bounds.bounds.max_x > bounds.bounds.min_x && bounds.bounds.max_y > bounds.bounds.min_y
+        );
         assert_eq!(
             out,
-            format!(
-                r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate(40, 80)"><g><rect class="background" style="stroke: none"/><text y="-10.1" data-merman-text-bbox="{},{},{},{}" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">s1</tspan></tspan></text></g></g>"#,
-                fmt(bounds.min_x),
-                fmt(bounds.min_y),
-                fmt(bounds.max_x),
-                fmt(bounds.max_y),
-            )
+            r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate(40, 80)"><g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">s1</tspan></tspan></text></g></g>"#
         );
     }
 
@@ -654,7 +693,6 @@ mod tests {
         write_svg_text_lines(
             &mut out,
             &wrap_svg_words_to_lines("Service Farm", 120.0, &measurer, &style),
-            None,
             None,
         );
 
