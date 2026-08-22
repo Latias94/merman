@@ -11,6 +11,13 @@ pub(super) fn state_data_look<'a>(ctx: &'a StateRenderCtx<'_>) -> &'a str {
     if look.is_empty() { "classic" } else { look }
 }
 
+pub(super) fn state_note_owner_id(id: &str) -> &str {
+    id.rsplit_once("----parent")
+        .map(|(owner, _)| owner)
+        .filter(|owner| !owner.is_empty())
+        .unwrap_or(id)
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct StateScopedDomId<'a, 'b> {
     diagram_id: SvgDiagramId<'a>,

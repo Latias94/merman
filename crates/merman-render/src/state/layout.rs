@@ -140,6 +140,7 @@ struct StateDagreInput {
     rankdir: RankDir,
     hidden_prefixes: HiddenPrefixMatcher,
     dagre_id_by_semantic_id: HashMap<String, String>,
+    note_group_canonical_by_semantic_id: HashMap<String, String>,
     dir_by_dagre_id: HashMap<String, Option<String>>,
     explicit_dir_ids: HashSet<String>,
     text_style: TextStyle,
@@ -1441,6 +1442,11 @@ fn dagre_id_for_node(n: &StateNode) -> String {
     }
 }
 
+fn note_group_owner_id(id: &str) -> Option<&str> {
+    let (owner, _) = id.rsplit_once("----parent")?;
+    (!owner.is_empty()).then_some(owner)
+}
+
 fn build_state_diagram_dagre_input(
     model: &StateDiagramModel,
     effective_config: &Value,
@@ -1451,11 +1457,43 @@ fn build_state_diagram_dagre_input(
     // visible nodes/edges (and therefore do not affect root viewBox/max-width parity).
     let hidden_prefixes = state_hidden_prefixes(model);
 
+    // The semantic model keeps one generated note group per note so side-specific note metadata
+    // remains observable. Mermaid's layout graph, however, uses one physical parent cluster per
+    // state and lets the last note declaration replace that cluster's metadata. Keep both layers
+    // explicit: map all generated groups for an owner to the last declaration's layout identity.
+    let mut last_note_group_by_owner: HashMap<String, String> = HashMap::new();
+    for n in &model.nodes {
+        if n.shape == "noteGroup"
+            && let Some(owner) = note_group_owner_id(&n.id)
+        {
+            last_note_group_by_owner.insert(owner.to_string(), n.id.clone());
+        }
+    }
+    let mut note_group_canonical_by_semantic_id: HashMap<String, String> = HashMap::new();
+    for n in &model.nodes {
+        if n.shape == "noteGroup"
+            && let Some(owner) = note_group_owner_id(&n.id)
+            && let Some(canonical) = last_note_group_by_owner.get(owner)
+        {
+            note_group_canonical_by_semantic_id.insert(n.id.clone(), canonical.clone());
+        }
+    }
+
+    let mut raw_dagre_id_by_semantic_id: HashMap<String, String> = HashMap::new();
+    for n in &model.nodes {
+        raw_dagre_id_by_semantic_id.insert(n.id.clone(), dagre_id_for_node(n));
+    }
     let mut dagre_id_by_semantic_id: HashMap<String, String> = HashMap::new();
     let mut dir_by_dagre_id: HashMap<String, Option<String>> = HashMap::new();
     let mut explicit_dir_ids: HashSet<String> = HashSet::new();
     for n in &model.nodes {
-        let dagre_id = dagre_id_for_node(n);
+        let layout_semantic_id = note_group_canonical_by_semantic_id
+            .get(&n.id)
+            .unwrap_or(&n.id);
+        let dagre_id = raw_dagre_id_by_semantic_id
+            .get(layout_semantic_id)
+            .cloned()
+            .unwrap_or_else(|| dagre_id_for_node(n));
         dagre_id_by_semantic_id.insert(n.id.clone(), dagre_id.clone());
         dir_by_dagre_id.insert(dagre_id.clone(), n.dir.as_ref().map(|s| normalize_dir(s)));
         if n.explicit_dir == Some(true) {
@@ -1714,6 +1752,7 @@ fn build_state_diagram_dagre_input(
         rankdir: diagram_dir,
         hidden_prefixes,
         dagre_id_by_semantic_id,
+        note_group_canonical_by_semantic_id,
         dir_by_dagre_id,
         explicit_dir_ids,
         text_style,
@@ -1735,6 +1774,7 @@ fn layout_state_diagram_inner(
         rankdir,
         hidden_prefixes,
         dagre_id_by_semantic_id,
+        note_group_canonical_by_semantic_id,
         dir_by_dagre_id,
         explicit_dir_ids,
         text_style,
@@ -1835,6 +1875,12 @@ fn layout_state_diagram_inner(
             continue;
         }
         if !state_node_is_effective_group(n) {
+            continue;
+        }
+        if note_group_canonical_by_semantic_id
+            .get(&n.id)
+            .is_some_and(|canonical| canonical != &n.id)
+        {
             continue;
         }
         let dagre_id = dagre_id_by_semantic_id

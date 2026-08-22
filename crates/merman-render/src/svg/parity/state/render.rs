@@ -546,7 +546,7 @@ fn render_state_root(
         if node.shape != "noteGroup" {
             continue;
         }
-        let note_owner = cluster_id.strip_suffix("----parent").unwrap_or(cluster_id);
+        let note_owner = state_note_owner_id(cluster_id);
         if ctx.hidden_prefixes.iter().any(|p| p == note_owner) {
             continue;
         }
