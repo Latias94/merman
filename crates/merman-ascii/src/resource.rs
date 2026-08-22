@@ -867,6 +867,7 @@ fn validate_ascii_overrides(provenance: &OperationResourceProvenance) -> Option<
 pub(crate) struct CheckedOutput {
     resources: ResourceContext,
     expected_len: Option<usize>,
+    admit_each_append: bool,
     output: String,
 }
 
@@ -875,6 +876,27 @@ impl CheckedOutput {
         Self {
             resources: resources.clone(),
             expected_len: None,
+            admit_each_append: true,
+            output: String::new(),
+        }
+    }
+
+    /// Creates an output buffer for a policy without an encoded-output ceiling.
+    ///
+    /// The caller remains responsible for cooperative cancellation at bounded emission
+    /// intervals. Appends still use checked length arithmetic and fallible reservation, but they
+    /// do not repeat a resource-terminal checkpoint that cannot observe an output-byte ceiling.
+    pub(crate) fn new_unbounded(resources: &ResourceContext) -> Self {
+        debug_assert!(
+            resources
+                .policy()
+                .value(AsciiResourceLimitId::MaxOutputBytes)
+                .is_none()
+        );
+        Self {
+            resources: resources.clone(),
+            expected_len: None,
+            admit_each_append: false,
             output: String::new(),
         }
     }
@@ -893,6 +915,7 @@ impl CheckedOutput {
         Ok(Self {
             resources: resources.clone(),
             expected_len: Some(expected_len),
+            admit_each_append: false,
             output,
         })
     }
@@ -912,8 +935,12 @@ impl CheckedOutput {
             self.resources
                 .overflow(AsciiResourceLimitId::MaxOutputBytes)
         })?;
-        self.resources
-            .check(AsciiResourceLimitId::MaxOutputBytes, actual)?;
+        if self.admit_each_append {
+            self.resources
+                .check(AsciiResourceLimitId::MaxOutputBytes, actual)?;
+        } else if self.expected_len.is_none() && actual > self.output.capacity() {
+            self.resources.checkpoint()?;
+        }
         self.output
             .try_reserve(value.len())
             .map_err(|_| AsciiError::AllocationFailed {

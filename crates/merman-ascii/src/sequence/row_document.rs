@@ -199,7 +199,15 @@ fn finish_sequence_lines(
 ) -> Result<String> {
     if options.color_mode == AsciiColorMode::Plain {
         let document_resources = resources.scoped();
-        let mut output = CheckedOutput::new(resources);
+        let mut output = if resources
+            .policy()
+            .value(AsciiResourceLimitId::MaxOutputBytes)
+            .is_none()
+        {
+            CheckedOutput::new_unbounded(resources)
+        } else {
+            CheckedOutput::new(resources)
+        };
         if lines.is_empty() {
             checkpoints.before_charge()?;
             document_resources.charge_layout_work(1)?;
@@ -242,7 +250,7 @@ fn write_plain_sequence_line(
     let mut offset = 0usize;
     let mut surface_checkpoints = SurfaceCellCheckpoints::cadenced(|| checkpoints.before_charge());
     while let Some(cell) = line.surface_cells().get(offset).copied() {
-        surface_checkpoints.force()?;
+        surface_checkpoints.checkpoint_primary_cell()?;
         if let Some(text) = cell.try_output_text(line.surface_arena())? {
             match text {
                 TerminalCellText::Scalar(ch) => output.push_char(ch)?,
@@ -462,8 +470,9 @@ mod tests {
         let line =
             SequenceLine::plain_text_with_profile(&"x".repeat(128), options.terminal_width_profile);
         let control = OperationControl::new();
-        control.cancel_after_checkpoints(66);
         let execution = AsciiExecution::new(&control, &policy);
+        resources = execution.resource_context(&resources, OperationPhase::Emit);
+        control.cancel_after_checkpoints(70);
         let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Emit);
 
         let error = finish_sequence_lines(vec![line], &options, &mut resources, &mut checkpoints)
