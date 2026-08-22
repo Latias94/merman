@@ -2,7 +2,7 @@
   describe-theme-support,
   export-theme-preset,
   materialize-theme,
-  mermaid,
+  mermaid-theme-definition,
 )
 
 #let definition = (
@@ -16,7 +16,6 @@
   ),
 )
 
-#let materialized = materialize-theme(definition)
 #let support = describe-theme-support((
   schema_version: 2,
   family: "sequence",
@@ -25,9 +24,9 @@
 ))
 #let preset = export-theme-preset("editor-dark")
 
-#mermaid(
+#mermaid-theme-definition(
   "sequenceDiagram\n  Alice->>Bob: Shared theme definition",
-  diagram-theme: materialized.spec,
+  definition,
   width: 90%,
 )
 

@@ -4,6 +4,7 @@
 #import "options.typ": config-with-context-width, context-text-style, options-bytes, render-config
 #import "plugin.typ": merman-plugin
 #import "source.typ": source-text-value
+#import "theme.typ": materialize-theme
 #import "units.typ": context-width-css-px
 
 #let render-svg-result-with-config(source, config) = {
@@ -133,4 +134,9 @@
       ..args,
     )
   }
+}
+
+#let mermaid-theme-definition(source, definition, ..args) = {
+  let materialized = materialize-theme(definition)
+  mermaid(source, diagram-theme: materialized.spec, ..args)
 }

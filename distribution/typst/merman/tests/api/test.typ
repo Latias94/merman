@@ -4,6 +4,7 @@
   export-theme-preset,
   materialize-theme,
   mermaid,
+  mermaid-theme-definition,
   mermaid-figure,
   mermaid-profile,
   mermaid-result,
@@ -189,6 +190,86 @@
 #let preset-export = export-theme-preset("editor-light")
 #assert.eq(preset-export.kind, "complete_spec")
 #assert(type(preset-export.complete_spec) == dictionary)
+
+#let light-definition = (
+  authoring_schema_version: 1,
+  expansion_version: 1,
+  tokens: (
+    canvas: "#f8fafc",
+    surface: "#ffffff",
+    text: "#0f172a",
+    border: "#cbd5e1",
+    line: "#64748b",
+    accent: "#2563eb",
+  ),
+  styles: (
+    (
+      kind: "rule",
+      family: "flowchart",
+      target: "node",
+      style: (fill: "#dbeafe"),
+    ),
+  ),
+)
+#let dark-definition = (
+  authoring_schema_version: 1,
+  expansion_version: 1,
+  tokens: (
+    canvas: "#0f172a",
+    surface: "#1e293b",
+    text: "#e2e8f0",
+    border: "#475569",
+    line: "#94a3b8",
+    accent: "#38bdf8",
+  ),
+  styles: (
+    (
+      kind: "rule",
+      family: "flowchart",
+      target: "node",
+      style: (fill: "#1e3a8a"),
+    ),
+  ),
+)
+#let light-json = json.encode(light-definition)
+#let light-from-json = materialize-theme(light-json)
+#let light-from-typed = materialize-theme(light-definition)
+#let dark-json = json.encode(dark-definition)
+#let dark-from-json = materialize-theme(dark-json)
+#let dark-from-typed = materialize-theme(dark-definition)
+#assert.eq(
+  light-from-json.spec,
+  light-from-typed.spec,
+  message: "JSON import and typed construction must materialize identically",
+)
+#assert.eq(
+  dark-from-json.spec,
+  dark-from-typed.spec,
+  message: "dark JSON import and typed construction must materialize identically",
+)
+#assert(light-json != "", message: "the authoring definition must have a readable JSON export")
+#assert(dark-json != "", message: "the dark authoring definition must have a readable JSON export")
+
+#let unknown-support = describe-theme-support((
+  schema_version: 1,
+  family: "future-family",
+  output: "standalone-svg",
+  target: "node",
+  facet: "fill",
+))
+#assert.eq(unknown-support.state, "unverified")
+#assert(unknown-support.reason_ids.contains("theme-support.unknown-family"))
+
+#mermaid-theme-definition(
+  "flowchart LR\nA[Light] --> B[Authored]",
+  light-json,
+  width: 80%,
+)
+#mermaid-theme-definition(
+  "flowchart LR\nA[Dark] --> B[Authored]",
+  dark-definition,
+  width: 80%,
+)
 #assert(
   capabilities.capabilities.text_measurement.provider_ids.contains("vendored"),
   message: "capabilities should keep text measurement boundary",
