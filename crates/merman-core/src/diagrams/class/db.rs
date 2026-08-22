@@ -384,6 +384,10 @@ impl<'a> ClassDb<'a> {
     /// synthetic endpoint. Finalizing the ids after the full model is known preserves the normal
     /// Mermaid spelling while deterministically disambiguating only actual collisions.
     fn disambiguate_synthetic_render_ids(&mut self) {
+        if self.notes.is_empty() && self.interfaces.is_empty() {
+            return;
+        }
+
         let mut occupied = self
             .classes
             .keys()
