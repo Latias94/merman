@@ -1337,6 +1337,18 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::KANBAN
+        && target == ThemeTarget::Task
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::GANTT
         && target == ThemeTarget::Task
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
@@ -2964,6 +2976,31 @@ mod tests {
             .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
+        assert_eq!(
+            compile_rule_routes(
+                DiagramFamilyId::KANBAN,
+                0,
+                &ThemeRule::new(ThemeTarget::Task, task_fill.clone()),
+            )[0]
+            .disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        for variant in [
+            ThemeVariant::Default,
+            ThemeVariant::Active,
+            ThemeVariant::Success,
+            ThemeVariant::Error,
+        ] {
+            assert_eq!(
+                compile_rule_routes(
+                    DiagramFamilyId::KANBAN,
+                    0,
+                    &ThemeRule::new(ThemeTarget::Task, task_fill.clone()).with_variant(variant),
+                )[0]
+                .disposition(),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
         for variant in [
             ThemeVariant::Default,
             ThemeVariant::Active,

@@ -37,6 +37,13 @@ fn kanban_task_radius_theme(radius: Specified<f32>) -> DiagramTheme {
     )])
 }
 
+fn kanban_task_fill_theme(paint: CanvasPaint) -> DiagramTheme {
+    kanban_task_rules_theme([ThemeRule::new(
+        ThemeTarget::Task,
+        ThemeStylePatch::default().with_fill(paint),
+    )])
+}
+
 fn kanban_task_palette_styles(colors: &[&str]) -> ThemeRuleSet {
     let palette = OrdinalPalette::new(
         colors
@@ -357,6 +364,75 @@ fn kanban_static_task_radius_reaches_layout_priority_geometry_svg_and_evidence()
         y2,
         -item.height / 2.0 + item.height - (item.rx / 2.0).floor()
     );
+}
+
+#[test]
+fn kanban_static_task_fill_reaches_each_terminal_rect_without_palette_fallback() {
+    let source = concat!(
+        "kanban\n",
+        "  todo[Todo]\n",
+        "    first[First]\n",
+        "    second[Second]\n",
+    );
+
+    for (paint, expected_fill) in [
+        (
+            CanvasPaint::solid("#123456").expect("valid Kanban task fill"),
+            "fill:#123456;",
+        ),
+        (CanvasPaint::Transparent, "fill:transparent;"),
+    ] {
+        let theme = kanban_task_fill_theme(paint);
+        let rendered = render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Kanban fill SVG");
+        assert_eq!(
+            kanban_task_rect_style(&document, "kanban-palette-first"),
+            expected_fill
+        );
+        assert_eq!(
+            kanban_task_rect_style(&document, "kanban-palette-second"),
+            expected_fill
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn kanban_static_task_fill_respects_the_mermaid_background_owner() {
+    let theme =
+        kanban_task_fill_theme(CanvasPaint::solid("#123456").expect("valid Kanban task fill"));
+    let rendered = render_kanban_with_theme_and_engine(
+        "kanban\n  todo[Todo]\n    task[Task]\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": { "background": "#fedcba" }
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid Kanban background-owned SVG");
+    assert!(!kanban_task_rect_style(&document, "kanban-palette-task").contains("#123456"));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

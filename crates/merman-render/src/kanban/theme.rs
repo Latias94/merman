@@ -9,8 +9,8 @@ use crate::diagram_theme::{
     ResolvedDiagramTheme, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -26,6 +26,7 @@ pub(crate) struct KanbanTaskTheme {
     items: Box<[KanbanTaskResolvedItem]>,
     evidence: FamilyThemeEvidence,
     pending_radius_key: Option<FamilyThemeMechanismKey>,
+    pending_fill_keys: BTreeSet<FamilyThemeMechanismKey>,
     palette_key: Option<FamilyThemeMechanismKey>,
     pending_label_keys: BTreeSet<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<KanbanTaskThemeReceipt>,
@@ -35,6 +36,7 @@ pub(crate) struct KanbanTaskTheme {
 struct KanbanTaskResolvedItem {
     occurrence: KanbanTaskOccurrence,
     radius_px: f64,
+    typed_fill: Option<KanbanTaskTypedFill>,
     palette_fill: Option<KanbanTaskPaletteFill>,
     label_foreground: Option<KanbanTaskLabelForeground>,
 }
@@ -43,6 +45,13 @@ struct KanbanTaskResolvedItem {
 struct KanbanTaskPaletteFill {
     css: String,
     capability: ThemeCapability,
+}
+
+#[derive(Debug)]
+struct KanbanTaskTypedFill {
+    css: String,
+    capability: ThemeCapability,
+    rule_index: usize,
 }
 
 #[derive(Debug)]
@@ -148,7 +157,7 @@ impl KanbanTaskTheme {
         };
 
         let palette_disposition = theme.ordinal_palette_disposition(ThemeTarget::Task);
-        let source_owned_palette = merman_core::__private::config_path_overrides_typed_default(
+        let source_owned_card_fill = merman_core::__private::config_path_overrides_typed_default(
             effective_config,
             "themeVariables.background",
         );
@@ -160,6 +169,7 @@ impl KanbanTaskTheme {
             "themeVariables.textColor",
         );
         let mut items = Vec::with_capacity(item_count);
+        let mut typed_fill_rule_occurrences = BTreeMap::<usize, usize>::new();
         let mut label_rule_visible = BTreeSet::new();
         let mut label_rule_shadowed = BTreeSet::new();
         let mut winner_properties = BTreeSet::new();
@@ -177,7 +187,17 @@ impl KanbanTaskTheme {
                     .map(|(property, origin)| (origin.rule_index(), property)),
             );
             let radius_px = typed_radius_px(theme, &style);
-            let palette_fill = if !source_owned_palette
+            let typed_fill = if source_owned_card_fill {
+                None
+            } else {
+                typed_task_fill(theme, &style)
+            };
+            if let Some(fill) = typed_fill.as_ref() {
+                *typed_fill_rule_occurrences
+                    .entry(fill.rule_index)
+                    .or_default() += 1;
+            }
+            let palette_fill = if !source_owned_card_fill
                 && palette_disposition == Some(FamilyThemeDisposition::TypedAdapter)
                 && matches!(style.fill_resolution().specified(), Specified::Unspecified)
             {
@@ -232,6 +252,7 @@ impl KanbanTaskTheme {
             items.push(KanbanTaskResolvedItem {
                 occurrence,
                 radius_px,
+                typed_fill,
                 palette_fill,
                 label_foreground,
             });
@@ -240,6 +261,7 @@ impl KanbanTaskTheme {
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let mut observations = BTreeMap::<(usize, ThemeTarget), KanbanTaskRuleObservation>::new();
         let mut palette_key = None;
+        let mut pending_fill_keys = BTreeSet::new();
         let mut pending_label_keys = BTreeSet::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -279,6 +301,28 @@ impl KanbanTaskTheme {
                         (
                             ThemeTarget::Task,
                             FamilyThemeDisposition::TypedAdapter,
+                            FamilyThemeRuleFacet::Fill(
+                                crate::diagram_theme::FamilyThemePaintKind::Transparent
+                                | crate::diagram_theme::FamilyThemePaintKind::Solid,
+                            ),
+                        ) => {
+                            if source_owned_card_fill {
+                                observation.suppressed = true;
+                            } else {
+                                match typed_fill_rule_occurrences.get(&rule_index).copied() {
+                                    Some(count) if count == item_count => {
+                                        observation.fill_pending = true;
+                                    }
+                                    Some(_) | None => {
+                                        observation.residual =
+                                            Some(FamilyThemeResidualReason::UnsupportedPaint);
+                                    }
+                                }
+                            }
+                        }
+                        (
+                            ThemeTarget::Task,
+                            FamilyThemeDisposition::TypedAdapter,
                             FamilyThemeRuleFacet::Radius,
                         ) => {
                             observation.radius_pending = true;
@@ -302,7 +346,7 @@ impl KanbanTaskTheme {
                         evidence.mark_not_applicable(key);
                     } else {
                         match route.disposition() {
-                            FamilyThemeDisposition::TypedAdapter if source_owned_palette => {
+                            FamilyThemeDisposition::TypedAdapter if source_owned_card_fill => {
                                 evidence.mark_not_applicable(key);
                             }
                             FamilyThemeDisposition::TypedAdapter => palette_key = Some(key),
@@ -346,13 +390,24 @@ impl KanbanTaskTheme {
                 // A mixed rule cannot be signed Applied until every winning facet is accounted.
             } else if observation.suppressed {
                 evidence.mark_not_applicable(key);
-            } else if observation.radius_pending {
-                debug_assert!(pending_radius_key.is_none());
-                pending_radius_key = Some(key);
-            } else if observation.label_pending {
-                pending_label_keys.insert(key);
             } else {
-                evidence.mark_not_applicable(key);
+                let mut pending = false;
+                if observation.radius_pending {
+                    debug_assert!(pending_radius_key.is_none());
+                    pending_radius_key = Some(key.clone());
+                    pending = true;
+                }
+                if observation.fill_pending {
+                    pending_fill_keys.insert(key.clone());
+                    pending = true;
+                }
+                if observation.label_pending {
+                    pending_label_keys.insert(key.clone());
+                    pending = true;
+                }
+                if !pending {
+                    evidence.mark_not_applicable(key);
+                }
             }
         }
 
@@ -360,6 +415,7 @@ impl KanbanTaskTheme {
             items: items.into_boxed_slice(),
             evidence,
             pending_radius_key,
+            pending_fill_keys,
             palette_key,
             pending_label_keys,
             terminal_receipt: OnceLock::new(),
@@ -381,12 +437,14 @@ impl KanbanTaskTheme {
                 .map(|occurrence| KanbanTaskResolvedItem {
                     occurrence,
                     radius_px: MERMAID_TASK_RADIUS_PX,
+                    typed_fill: None,
                     palette_fill: None,
                     label_foreground: None,
                 })
                 .collect(),
             evidence: FamilyThemeEvidence::default(),
             pending_radius_key: None,
+            pending_fill_keys: BTreeSet::new(),
             palette_key: None,
             pending_label_keys: BTreeSet::new(),
             terminal_receipt: OnceLock::new(),
@@ -415,16 +473,27 @@ impl KanbanTaskTheme {
         item: &KanbanTaskResolvedItem,
         dark_mode: bool,
     ) -> crate::Result<KanbanTaskTerminalDecision> {
-        let fill = item.palette_fill.as_ref();
-        let fill_css = match fill {
-            Some(fill) if dark_mode => Some(darken(&fill.css, 10.0)?),
-            Some(fill) => Some(lighten(&fill.css, 10.0)?),
-            None => None,
-        };
+        let (fill_css, fill_capability, fill_rule_index) =
+            if let Some(fill) = item.typed_fill.as_ref() {
+                (
+                    Some(fill.css.clone()),
+                    Some(fill.capability),
+                    Some(fill.rule_index),
+                )
+            } else {
+                let fill = item.palette_fill.as_ref();
+                let fill_css = match fill {
+                    Some(fill) if dark_mode => Some(darken(&fill.css, 10.0)?),
+                    Some(fill) => Some(lighten(&fill.css, 10.0)?),
+                    None => None,
+                };
+                (fill_css, fill.map(|fill| fill.capability), None)
+            };
         let label = item.label_foreground.as_ref();
         Ok(KanbanTaskTerminalDecision {
             fill_css,
-            fill_capability: fill.map(|fill| fill.capability),
+            fill_capability,
+            fill_rule_index,
             label_css: label.map(|label| label.css.clone()),
             label_capability: label.map(|label| label.capability),
             label_rule_index: label.map(|label| label.rule_index),
@@ -436,6 +505,7 @@ impl KanbanTaskTheme {
         decisions: &[KanbanTaskTerminalDecision],
     ) -> Option<KanbanTaskThemeReceipt> {
         (self.pending_radius_key.is_some()
+            || !self.pending_fill_keys.is_empty()
             || self.palette_key.is_some()
             || !self.pending_label_keys.is_empty())
         .then(|| KanbanTaskThemeReceipt::new(&self.items, decisions))
@@ -443,6 +513,7 @@ impl KanbanTaskTheme {
 
     pub(crate) fn record_terminal(&self, receipt: KanbanTaskThemeReceipt) -> bool {
         (self.pending_radius_key.is_some()
+            || !self.pending_fill_keys.is_empty()
             || self.palette_key.is_some()
             || !self.pending_label_keys.is_empty())
             && receipt.proves(self.items.len())
@@ -465,6 +536,20 @@ impl KanbanTaskTheme {
                     );
                 }
             }
+            for key in &self.pending_fill_keys {
+                let FamilyThemeMechanismKey::Rule { index, .. } = key else {
+                    unreachable!("Kanban task fill evidence must be rule-backed")
+                };
+                if receipt.proves_fill_rule(*index) {
+                    evidence.mark_applied_with_capabilities(
+                        key.clone(),
+                        receipt.typed_fill_capabilities[index].iter().copied(),
+                    );
+                } else {
+                    evidence
+                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                }
+            }
             for key in &self.pending_label_keys {
                 let FamilyThemeMechanismKey::Rule { index, .. } = key else {
                     unreachable!("Kanban task-label evidence must be rule-backed")
@@ -480,6 +565,9 @@ impl KanbanTaskTheme {
                 }
             }
         } else {
+            for key in &self.pending_fill_keys {
+                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+            }
             if let Some(key) = self.palette_key.clone() {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
             }
@@ -495,6 +583,7 @@ impl KanbanTaskTheme {
 pub(crate) struct KanbanTaskTerminalDecision {
     fill_css: Option<String>,
     fill_capability: Option<ThemeCapability>,
+    fill_rule_index: Option<usize>,
     label_css: Option<String>,
     label_capability: Option<ThemeCapability>,
     label_rule_index: Option<usize>,
@@ -546,6 +635,24 @@ fn typed_label_foreground(
     }
 }
 
+fn typed_task_fill(
+    theme: &ResolvedDiagramTheme,
+    style: &crate::diagram_theme::ResolvedThemeStyle,
+) -> Option<KanbanTaskTypedFill> {
+    let fill = resolve_direct_static_fill(
+        theme,
+        style,
+        &[ThemeTarget::Task],
+        DirectStaticSelectorDomain::Unqualified,
+    )?;
+    let (css, rule_index, capability) = fill.into_parts();
+    Some(KanbanTaskTypedFill {
+        css: css.into(),
+        capability,
+        rule_index,
+    })
+}
+
 fn typed_radius_px(
     theme: &ResolvedDiagramTheme,
     style: &crate::diagram_theme::ResolvedThemeStyle,
@@ -570,6 +677,7 @@ pub(crate) struct KanbanTaskThemeReceipt {
     items: Vec<KanbanTaskReceiptItem>,
     schema_valid: bool,
     palette_capabilities: BTreeSet<ThemeCapability>,
+    typed_fill_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     label_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     unverified_label_rules: BTreeSet<usize>,
 }
@@ -601,6 +709,7 @@ impl KanbanTaskThemeReceipt {
                 .collect(),
             schema_valid,
             palette_capabilities: BTreeSet::new(),
+            typed_fill_capabilities: BTreeMap::new(),
             label_capabilities: BTreeMap::new(),
             unverified_label_rules: BTreeSet::new(),
         }
@@ -624,7 +733,14 @@ impl KanbanTaskThemeReceipt {
         item.rect_checkpointed = true;
         self.schema_valid &= item.semantic_id.as_ref() == semantic_id && attributes_match;
         if let Some(fill_capability) = terminal_decision.fill_capability {
-            self.palette_capabilities.insert(fill_capability);
+            if let Some(rule_index) = terminal_decision.fill_rule_index {
+                self.typed_fill_capabilities
+                    .entry(rule_index)
+                    .or_default()
+                    .insert(fill_capability);
+            } else {
+                self.palette_capabilities.insert(fill_capability);
+            }
         }
     }
 
@@ -681,6 +797,14 @@ impl KanbanTaskThemeReceipt {
                 .is_some_and(|capabilities| !capabilities.is_empty())
     }
 
+    fn proves_fill_rule(&self, rule_index: usize) -> bool {
+        self.schema_valid
+            && self
+                .typed_fill_capabilities
+                .get(&rule_index)
+                .is_some_and(|capabilities| !capabilities.is_empty())
+    }
+
     fn terminal_occurrences_complete(&self) -> bool {
         self.items
             .iter()
@@ -709,6 +833,7 @@ struct KanbanTaskRuleObservation {
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     radius_pending: bool,
+    fill_pending: bool,
     label_pending: bool,
     suppressed: bool,
 }
@@ -725,6 +850,7 @@ mod tests {
         KanbanTaskTerminalDecision {
             fill_css: None,
             fill_capability: None,
+            fill_rule_index: None,
             label_css: Some("#000000".to_string()),
             label_capability: Some(ThemeCapability::SolidPaint),
             label_rule_index: Some(7),
@@ -735,6 +861,7 @@ mod tests {
         KanbanTaskTerminalDecision {
             fill_css: Some("#ffffff".to_string()),
             fill_capability: Some(ThemeCapability::SolidPaint),
+            fill_rule_index: None,
             label_css: None,
             label_capability: None,
             label_rule_index: None,
@@ -745,6 +872,7 @@ mod tests {
         KanbanTaskResolvedItem {
             occurrence,
             radius_px: MERMAID_TASK_RADIUS_PX,
+            typed_fill: None,
             palette_fill: None,
             label_foreground: None,
         }
