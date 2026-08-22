@@ -609,6 +609,7 @@ fn prepare_er_family(
     let entity_theme = crate::er::ErEntityThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
+        crate::er::ErConfigView::new(meta.effective_config.as_value()).relationship_html_labels(),
         &model,
         &layout,
         execution.work_meter_ref(),

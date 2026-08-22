@@ -2164,6 +2164,8 @@ mod tests {
             let entity_theme = crate::er::ErEntityThemePlan::resolve(
                 None,
                 &effective_config,
+                crate::er::ErConfigView::new(effective_config.as_value())
+                    .relationship_html_labels(),
                 &model,
                 &layout,
                 options.work_meter(),

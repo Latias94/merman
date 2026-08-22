@@ -633,6 +633,34 @@ fn er_visible_text_and_relation_label_have_direct_terminal_receipts() {
 }
 
 #[test]
+fn er_native_relation_text_uses_text_color_owner_not_node_text_color() {
+    let theme = er_visible_text_theme();
+    let artifact = prepare_er_family_with_theme_and_engine(
+        "erDiagram\n  CUSTOMER ||--o{ ORDER : owns\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "htmlLabels": false,
+            "themeVariables": {
+                "nodeTextColor": "#dc2626"
+            }
+        }))),
+    );
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("nodeTextColor must not suppress native relation text ownership");
+    assert!(
+        Regex::new(r#"<text[^>]*style=\"color:#112233;fill:#112233\"[^>]*>.*?owns.*?</text>"#)
+            .expect("native ER relation label regex")
+            .is_match(rendered.svg()),
+        "the native relationship label must use the typed Text.fill winner: {}",
+        rendered.svg()
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn er_mixed_html_color_owners_cannot_prove_portable_typed_text_fill() {
     let theme = er_visible_text_theme();
     for (label, source_owned_marker) in [

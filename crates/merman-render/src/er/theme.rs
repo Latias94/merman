@@ -199,6 +199,7 @@ impl ErEntityThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
+        relationship_html_labels: bool,
         model: &merman_core::diagrams::er::ErDiagramRenderModel,
         layout: &crate::model::ErDiagramLayout,
         work_meter: &OperationWorkMeter,
@@ -248,7 +249,9 @@ impl ErEntityThemePlan {
 
         let mermaid_owns_fill = mermaid_owns_entity_fill(effective_config);
         let mermaid_owns_stroke = mermaid_owns_entity_stroke(effective_config);
-        let mermaid_owns_text = mermaid_owns_text_fill(effective_config);
+        let mermaid_owns_entity_text = mermaid_owns_entity_text_fill(effective_config);
+        let mermaid_owns_relation_text =
+            mermaid_owns_relation_text_fill(effective_config, relationship_html_labels);
         let relation_stroke_source_owned = mermaid_owns_relation_stroke(effective_config);
         let mut expectations = expectations;
         let mut winner_properties = BTreeSet::<(usize, ThemeTarget, ResolvedStyleProperty)>::new();
@@ -314,6 +317,11 @@ impl ErEntityThemePlan {
             {
                 continue;
             }
+            let mermaid_owns_text = if terminal_id.is_relation_label() {
+                mermaid_owns_relation_text
+            } else {
+                mermaid_owns_entity_text
+            };
             if let Some(expected) = typed_fill_expectation(theme, &text_style, mermaid_owns_text) {
                 expected_capabilities.insert(
                     (
@@ -879,12 +887,26 @@ fn mermaid_owns_relation_stroke(config: &merman_core::MermaidConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.lineColor")
 }
 
-fn mermaid_owns_text_fill(config: &merman_core::MermaidConfig) -> bool {
+fn mermaid_owns_entity_text_fill(config: &merman_core::MermaidConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.textColor")
         || merman_core::__private::config_path_overrides_typed_default(
             config,
             "themeVariables.nodeTextColor",
         )
+}
+
+fn mermaid_owns_relation_text_fill(
+    config: &merman_core::MermaidConfig,
+    relationship_html_labels: bool,
+) -> bool {
+    if relationship_html_labels {
+        mermaid_owns_entity_text_fill(config)
+    } else {
+        merman_core::__private::config_path_overrides_typed_default(
+            config,
+            "themeVariables.textColor",
+        )
+    }
 }
 
 fn mermaid_owns_table_fill(config: &merman_core::MermaidConfig, variant: ThemeVariant) -> bool {
