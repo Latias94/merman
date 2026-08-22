@@ -983,6 +983,25 @@ fn block_svg_xml_escapes_class_definition_values() {
 }
 
 #[test]
+fn block_svg_drops_unsafe_inline_css_without_losing_safe_siblings() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["Alpha"]
+  style A fill:url(https://example.test/paint.svg),stroke:#123456
+"#,
+    );
+
+    assert!(
+        !svg.contains("example.test") && !svg.contains("url(https://"),
+        "unsafe external CSS resources must not reach the SVG: {svg}"
+    );
+    let shells = terminal_shell_styles(&svg, "merman-A");
+    assert_eq!(shells.len(), 1, "expected one canonical Block shell");
+    assert_eq!(terminal_stroke(&shells[0].1), Some("#123456"));
+    assert_eq!(terminal_fill(&shells[0].1), None);
+}
+
+#[test]
 fn block_circle_edge_starts_on_the_rendered_circle_boundary() {
     let svg = render_block_svg_from_text(
         r##"block-beta

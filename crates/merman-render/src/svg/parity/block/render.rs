@@ -182,11 +182,6 @@ pub(crate) fn render_block_diagram_svg_model(
                 continue;
             }
             let Some((key, value)) = parse_style_decl(trimmed) else {
-                let decoded = decode_mermaid_entities_for_render_text(trimmed);
-                let decoded = decoded.as_ref().trim();
-                if !decoded.is_empty() {
-                    push_ordered_decl(&mut box_decls, decoded, decoded);
-                }
                 continue;
             };
             owns_fill |= key == "fill";
