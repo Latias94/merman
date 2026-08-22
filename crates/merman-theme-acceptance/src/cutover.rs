@@ -217,7 +217,7 @@ title Cutover treemap title
 "Section"
   "Leaf": 1
 "#;
-const REQUIREMENT_FILL_SOURCE: &str = r#"requirementDiagram
+const REQUIREMENT_PAINT_SOURCE: &str = r#"requirementDiagram
 requirement req1 {
   id: 1
   text: Cutover requirement
@@ -430,9 +430,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::TREEMAP, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(TREEMAP_TITLE_SOURCE)
         }
-        (DiagramFamilyId::REQUIREMENT, ThemeTarget::Requirement, ThemeRouteCutoverFacet::Fill) => {
-            Ok(REQUIREMENT_FILL_SOURCE)
-        }
+        (
+            DiagramFamilyId::REQUIREMENT,
+            ThemeTarget::Requirement,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(REQUIREMENT_PAINT_SOURCE),
         (
             DiagramFamilyId::PIE,
             ThemeTarget::PieSlice,
@@ -972,6 +974,7 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
                 | ThemeTarget::Message
+                | ThemeTarget::Requirement
                 | ThemeTarget::PieSlice => SOLID_STROKE.css,
                 target => {
                     return Err(C6ProofError::new(
@@ -1321,6 +1324,7 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             | ThemeTarget::Note
             | ThemeTarget::Activation
             | ThemeTarget::Message
+            | ThemeTarget::Requirement
             | ThemeTarget::PieSlice,
             ThemeRouteCutoverFacet::Stroke,
         ) => Ok(SOLID_STROKE),
@@ -1399,6 +1403,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
                 | ThemeTarget::Message
+                | ThemeTarget::Requirement
                 | ThemeTarget::PieSlice,
                 ThemeRouteCutoverFacet::Stroke,
             ) => Ok(SOLID_STROKE.css),
@@ -1576,11 +1581,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_ninety_two_routes_and_one_hundred_eight_artifact_witnesses() {
+    fn route_inventory_retains_ninety_four_routes_and_one_hundred_ten_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 92);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 108);
+        assert_eq!(inventory.len(), 94);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 110);
     }
 
     #[test]

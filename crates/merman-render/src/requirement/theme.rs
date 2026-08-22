@@ -1,37 +1,39 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use merman_core::MermaidConfig;
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    FamilyThemePaintKind, FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty,
-    ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
+    ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
+    DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
+    FamilyThemeEvidence, FamilyThemeResidualReason, resolve_direct_static_fill,
+    resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ExpectedFill {
-    rule_index: usize,
-    css: String,
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct NodeExpectation {
+    fill: Option<DirectPaintExpectation>,
+    stroke: Option<DirectPaintExpectation>,
 }
 
-/// Requirement box fill resolved once for semantic nodes and shared by SVG emission and evidence.
+/// Requirement box paint resolved once for semantic nodes and shared by SVG emission and evidence.
 #[derive(Debug)]
-pub(crate) struct RequirementFillThemePlan {
+pub(crate) struct RequirementPaintThemePlan {
     node_indices: BTreeMap<String, usize>,
-    expectations: Vec<Option<ExpectedFill>>,
+    expectations: Arc<[NodeExpectation]>,
     evidence: FamilyThemeEvidence,
-    pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
-    terminal_receipt: OnceLock<RequirementFillThemeReceipt>,
+    pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
+    terminal_receipt: OnceLock<RequirementPaintThemeReceipt>,
 }
 
-impl RequirementFillThemePlan {
+impl RequirementPaintThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
@@ -52,11 +54,11 @@ impl RequirementFillThemePlan {
                 .or_insert(next_index);
         }
         let node_count = node_indices.len();
-        let expectations = vec![None; node_count];
+        let expectations = vec![NodeExpectation::default(); node_count];
         let Some(theme) = theme else {
             return Ok(Self {
                 node_indices,
-                expectations,
+                expectations: expectations.into(),
                 evidence: FamilyThemeEvidence::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
@@ -64,6 +66,7 @@ impl RequirementFillThemePlan {
         };
 
         let mermaid_owns_fill = mermaid_owns_requirement_fill(effective_config);
+        let mermaid_owns_stroke = mermaid_owns_requirement_stroke(effective_config);
         let mut expectations = expectations;
         let mut winner_properties = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
         let mut expected_capabilities =
@@ -81,15 +84,22 @@ impl RequirementFillThemePlan {
             }
             if let Some(expected) = typed_fill_expectation(theme, &style, mermaid_owns_fill) {
                 expected_capabilities.insert(
-                    (expected.rule_index, ResolvedStyleProperty::Fill),
-                    paint_capability_from_css(&expected.css),
+                    (expected.rule_index(), ResolvedStyleProperty::Fill),
+                    expected.capability(),
                 );
-                expectations[node_index] = Some(expected);
+                expectations[node_index].fill = Some(expected);
+            }
+            if let Some(expected) = typed_stroke_expectation(theme, &style, mermaid_owns_stroke) {
+                expected_capabilities.insert(
+                    (expected.rule_index(), ResolvedStyleProperty::Stroke),
+                    expected.capability(),
+                );
+                expectations[node_index].stroke = Some(expected);
             }
         }
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        let mut observations = BTreeMap::<usize, RequirementFillRuleObservation>::new();
+        let mut observations = BTreeMap::<usize, RequirementPaintRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
@@ -104,19 +114,27 @@ impl RequirementFillThemePlan {
                         continue;
                     }
                     observation.applicable = true;
+                    if (mermaid_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)))
+                        || (mermaid_owns_stroke && matches!(facet, FamilyThemeRuleFacet::Stroke(_)))
+                    {
+                        continue;
+                    }
                     match (route.disposition(), facet) {
                         (
                             FamilyThemeDisposition::TypedAdapter,
                             FamilyThemeRuleFacet::Fill(
+                                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                            )
+                            | FamilyThemeRuleFacet::Stroke(
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                             ),
                         ) => {
                             if let Some(capability) =
                                 expected_capabilities.get(&(rule_index, property))
                             {
-                                observation.capabilities.insert(*capability);
+                                observation.capabilities.insert(property, *capability);
                             } else {
-                                observation.suppressed = true;
+                                observation.incomplete = true;
                             }
                         }
                         (FamilyThemeDisposition::Unsupported, facet) => {
@@ -175,8 +193,6 @@ impl RequirementFillThemePlan {
                 // Mixed rules remain fail-closed until every winning facet has a terminal owner.
             } else if !observation.capabilities.is_empty() {
                 pending.insert(key, observation.capabilities);
-            } else if observation.suppressed {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -184,7 +200,7 @@ impl RequirementFillThemePlan {
 
         Ok(Self {
             node_indices,
-            expectations,
+            expectations: expectations.into(),
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
@@ -201,16 +217,27 @@ impl RequirementFillThemePlan {
         source_owns_fill: bool,
     ) -> Option<(usize, &str)> {
         (!source_owns_fill)
-            .then(|| self.expectations.get(node_index)?.as_ref())
+            .then(|| self.expectations.get(node_index)?.fill.as_ref())
             .flatten()
-            .map(|expected| (expected.rule_index, expected.css.as_str()))
+            .map(|expected| (expected.rule_index(), expected.css()))
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> RequirementFillThemeReceipt {
-        RequirementFillThemeReceipt::new(self.expectations.clone())
+    pub(crate) fn typed_stroke(
+        &self,
+        node_index: usize,
+        source_owns_stroke: bool,
+    ) -> Option<(usize, &str)> {
+        (!source_owns_stroke)
+            .then(|| self.expectations.get(node_index)?.stroke.as_ref())
+            .flatten()
+            .map(|expected| (expected.rule_index(), expected.css()))
     }
 
-    pub(crate) fn record_terminal(&self, receipt: RequirementFillThemeReceipt) -> bool {
+    pub(crate) fn begin_terminal_receipt(&self) -> RequirementPaintThemeReceipt {
+        RequirementPaintThemeReceipt::new(Arc::clone(&self.expectations))
+    }
+
+    pub(crate) fn record_terminal(&self, receipt: RequirementPaintThemeReceipt) -> bool {
         receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
     }
 
@@ -219,15 +246,20 @@ impl RequirementFillThemePlan {
         let Some(receipt) = self.terminal_receipt.get() else {
             return evidence;
         };
-        for (key, capabilities) in &self.pending {
+        for (key, properties) in &self.pending {
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
                 FamilyThemeMechanismKey::Typography
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
-            if receipt.proves_rule(rule_index) {
-                evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
+            let capabilities = properties
+                .iter()
+                .filter(|(property, _)| receipt.proves_property(rule_index, **property))
+                .map(|(_, capability)| *capability)
+                .collect::<BTreeSet<_>>();
+            if !capabilities.is_empty() {
+                evidence.mark_applied_with_capabilities(key.clone(), capabilities);
             } else if receipt.proves_complete() && !receipt.has_effective_rule(rule_index) {
                 evidence.mark_not_applicable(key.clone());
             }
@@ -240,32 +272,34 @@ fn typed_fill_expectation(
     theme: &ResolvedDiagramTheme,
     style: &ResolvedThemeStyle,
     mermaid_owns: bool,
-) -> Option<ExpectedFill> {
+) -> Option<DirectPaintExpectation> {
     if mermaid_owns {
         return None;
     }
-    let origin = style.fill_resolution().winner()?;
-    let facet = FamilyThemeRuleFacet::fill(style.fill_resolution().specified())?;
-    if theme.rule_facet_disposition(origin.rule_index(), facet)
-        != Some(FamilyThemeDisposition::TypedAdapter)
-    {
+    resolve_direct_static_fill(
+        theme,
+        style,
+        &[ThemeTarget::Requirement],
+        DirectStaticSelectorDomain::Unqualified,
+    )
+    .map(DirectPaintExpectation::from_paint)
+}
+
+fn typed_stroke_expectation(
+    theme: &ResolvedDiagramTheme,
+    style: &ResolvedThemeStyle,
+    mermaid_owns: bool,
+) -> Option<DirectPaintExpectation> {
+    if mermaid_owns {
         return None;
     }
-    let css = match style.fill_resolution().specified() {
-        Specified::Value(CanvasPaint::Transparent) => "transparent".to_string(),
-        Specified::Value(CanvasPaint::Solid(color)) => color.as_css(),
-        Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(
-            CanvasPaint::LinearGradient(_)
-            | CanvasPaint::RadialGradient(_)
-            | CanvasPaint::Pattern(_),
-        ) => return None,
-    };
-    Some(ExpectedFill {
-        rule_index: origin.rule_index(),
-        css,
-    })
+    resolve_direct_static_stroke(
+        theme,
+        style,
+        &[ThemeTarget::Requirement],
+        DirectStaticSelectorDomain::Unqualified,
+    )
+    .map(DirectPaintExpectation::from_paint)
 }
 
 fn mermaid_owns_requirement_fill(config: &MermaidConfig) -> bool {
@@ -284,33 +318,42 @@ fn mermaid_owns_requirement_fill(config: &MermaidConfig) -> bool {
     ))
 }
 
+fn mermaid_owns_requirement_stroke(config: &MermaidConfig) -> bool {
+    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
+        || matches!(
+            config.get_str("theme"),
+            Some("redux-color" | "redux-dark-color")
+        )
+        || merman_core::__private::config_path_overrides_typed_default(
+            config,
+            "themeVariables.borderColorArray",
+        )
+}
+
 #[derive(Debug, Default)]
-struct RequirementFillRuleObservation {
+struct RequirementPaintRuleObservation {
     applicable: bool,
     incomplete: bool,
-    suppressed: bool,
     residual: Option<FamilyThemeResidualReason>,
-    capabilities: BTreeSet<ThemeCapability>,
+    capabilities: BTreeMap<ResolvedStyleProperty, ThemeCapability>,
 }
 
-/// Writer-owned proof that every semantic Requirement node reached its canonical fill path.
+/// Writer-owned proof that every semantic Requirement node reached its canonical paint paths.
 #[derive(Debug, Clone)]
-pub(crate) struct RequirementFillThemeReceipt {
-    expectations: Vec<Option<ExpectedFill>>,
+pub(crate) struct RequirementPaintThemeReceipt {
+    expectations: Arc<[NodeExpectation]>,
     checkpointed_nodes: Vec<bool>,
     attributes_match: bool,
-    effective_by_rule: BTreeMap<usize, usize>,
-    emitted_by_rule: BTreeMap<usize, usize>,
+    paint_ledger: DirectPaintTerminalLedger,
 }
 
-impl RequirementFillThemeReceipt {
-    fn new(expectations: Vec<Option<ExpectedFill>>) -> Self {
+impl RequirementPaintThemeReceipt {
+    fn new(expectations: Arc<[NodeExpectation]>) -> Self {
         Self {
             checkpointed_nodes: vec![false; expectations.len()],
             expectations,
             attributes_match: true,
-            effective_by_rule: BTreeMap::new(),
-            emitted_by_rule: BTreeMap::new(),
+            paint_ledger: DirectPaintTerminalLedger::default(),
         }
     }
 
@@ -319,6 +362,12 @@ impl RequirementFillThemeReceipt {
         node_index: usize,
         source_owns_fill: bool,
         emitted_fill: Option<(usize, &str)>,
+        terminal_fill: &str,
+        source_owns_stroke: bool,
+        emitted_stroke: Option<(usize, &str)>,
+        terminal_stroke: &str,
+        divider_expected: bool,
+        terminal_divider_stroke: Option<&str>,
     ) {
         let Some(checkpointed) = self.checkpointed_nodes.get_mut(node_index) else {
             self.attributes_match = false;
@@ -329,13 +378,36 @@ impl RequirementFillThemeReceipt {
             return;
         }
         *checkpointed = true;
-        let expected = self.expectations.get(node_index).and_then(Option::as_ref);
-        self.attributes_match &= record_fill_checkpoint(
-            expected,
+
+        let Some(expectation) = self.expectations.get(node_index) else {
+            self.attributes_match = false;
+            return;
+        };
+        if let Some(expected) = expectation.fill.as_ref()
+            && !source_owns_fill
+        {
+            self.attributes_match &= expected.css() == terminal_fill;
+        }
+        if let Some(expected) = expectation.stroke.as_ref()
+            && !source_owns_stroke
+        {
+            self.attributes_match &= expected.css() == terminal_stroke;
+            if let Some(divider_stroke) = terminal_divider_stroke {
+                self.attributes_match &= expected.css() == divider_stroke;
+            }
+        }
+        self.attributes_match &= divider_expected == terminal_divider_stroke.is_some();
+        self.attributes_match &= self.paint_ledger.record(
+            expectation.fill.as_ref(),
             source_owns_fill,
             emitted_fill,
-            &mut self.effective_by_rule,
-            &mut self.emitted_by_rule,
+            ResolvedStyleProperty::Fill,
+        );
+        self.attributes_match &= self.paint_ledger.record(
+            expectation.stroke.as_ref(),
+            source_owns_stroke,
+            emitted_stroke,
+            ResolvedStyleProperty::Stroke,
         );
     }
 
@@ -344,50 +416,11 @@ impl RequirementFillThemeReceipt {
     }
 
     fn has_effective_rule(&self, rule_index: usize) -> bool {
-        self.effective_by_rule
-            .get(&rule_index)
-            .copied()
-            .unwrap_or(0)
-            != 0
+        self.paint_ledger.has_effective_rule(rule_index)
     }
 
-    fn proves_rule(&self, rule_index: usize) -> bool {
-        self.proves_complete() && self.emitted_by_rule.get(&rule_index).copied().unwrap_or(0) != 0
-    }
-}
-
-fn record_fill_checkpoint(
-    expected: Option<&ExpectedFill>,
-    source_owns_fill: bool,
-    emitted_fill: Option<(usize, &str)>,
-    effective_by_rule: &mut BTreeMap<usize, usize>,
-    emitted_by_rule: &mut BTreeMap<usize, usize>,
-) -> bool {
-    if source_owns_fill {
-        return emitted_fill.is_none();
-    }
-    match (expected, emitted_fill) {
-        (None, None) => true,
-        (Some(expected), Some((rule_index, css))) => {
-            *effective_by_rule.entry(expected.rule_index).or_default() += 1;
-            let matches = expected.rule_index == rule_index && expected.css == css;
-            if matches {
-                *emitted_by_rule.entry(rule_index).or_default() += 1;
-            }
-            matches
-        }
-        (Some(expected), None) => {
-            *effective_by_rule.entry(expected.rule_index).or_default() += 1;
-            false
-        }
-        (None, Some(_)) => false,
-    }
-}
-
-fn paint_capability_from_css(css: &str) -> ThemeCapability {
-    if css == "transparent" {
-        ThemeCapability::TransparentPaint
-    } else {
-        ThemeCapability::SolidPaint
+    fn proves_property(&self, rule_index: usize, property: ResolvedStyleProperty) -> bool {
+        self.paint_ledger
+            .proves_property(self.proves_complete(), rule_index, property)
     }
 }

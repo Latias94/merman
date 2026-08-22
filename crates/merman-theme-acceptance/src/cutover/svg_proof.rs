@@ -263,6 +263,22 @@ fn target_underlay_colors(
                 parse_optional_css_rgb(stylesheet_property(document, &selector, "fill")?)?;
             std::iter::repeat_n(underlay.into_iter().collect(), region_count).collect()
         }
+        (
+            DiagramFamilyId::REQUIREMENT,
+            ThemeTarget::Requirement,
+            ThemeRouteCutoverFacet::Stroke,
+        ) => {
+            let terminals = requirement_terminal_nodes(document)?;
+            let underlay = parse_optional_css_rgb(
+                terminals.fill_path.attribute("fill").ok_or_else(|| {
+                    C6ProofError::new(
+                        "route-svg-proof",
+                        "Requirement fill underlay lacks its fill attribute",
+                    )
+                })?,
+            )?;
+            std::iter::repeat_n(underlay.into_iter().collect(), region_count).collect()
+        }
         (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Stroke) => {
             let mut colors = Vec::new();
             for color in document
@@ -1100,6 +1116,14 @@ struct RequirementRouteObservation {
     target_regions: Vec<[f64; 4]>,
 }
 
+struct RequirementTerminalNodes<'a, 'input> {
+    node: roxmltree::Node<'a, 'input>,
+    terminal_group: roxmltree::Node<'a, 'input>,
+    fill_path: roxmltree::Node<'a, 'input>,
+    stroke_path: roxmltree::Node<'a, 'input>,
+    divider_paths: Vec<roxmltree::Node<'a, 'input>>,
+}
+
 struct PieRouteObservation {
     value: String,
     terminal_digest: [u8; 32],
@@ -1254,16 +1278,86 @@ fn requirement_route_observation(
 ) -> C6ProofResult<RequirementRouteObservation> {
     c6_ensure!(
         "route-svg-proof",
-        route.target() == ThemeTarget::Requirement && route.facet() == ThemeRouteCutoverFacet::Fill,
+        route.target() == ThemeTarget::Requirement,
         "unsupported Requirement cutover route {}",
         route_label(route)
     );
-    requirement_fill_observation(document)
+    requirement_paint_observation(document, route.facet())
 }
 
-fn requirement_fill_observation(
+fn requirement_paint_observation(
     document: &roxmltree::Document<'_>,
+    facet: ThemeRouteCutoverFacet,
 ) -> C6ProofResult<RequirementRouteObservation> {
+    let terminals = requirement_terminal_nodes(document)?;
+    let (paint_path, divider_paths) = match facet {
+        ThemeRouteCutoverFacet::Fill => (terminals.fill_path, &[][..]),
+        ThemeRouteCutoverFacet::Stroke => {
+            (terminals.stroke_path, terminals.divider_paths.as_slice())
+        }
+    };
+    let property = facet_property(facet);
+    let value = paint_path.attribute(property).ok_or_else(|| {
+        C6ProofError::new(
+            "route-svg-proof",
+            format!("Requirement paint path lacks its {property} attribute"),
+        )
+    })?;
+    let path = paint_path.attribute("d").ok_or_else(|| {
+        C6ProofError::new("route-svg-proof", "Requirement paint path lacks geometry")
+    })?;
+    let region = element_bounds(paint_path, facet)?;
+
+    for divider in divider_paths {
+        c6_ensure!(
+            "route-svg-proof",
+            divider.attribute("stroke") == Some(value),
+            "Requirement divider stroke differs from its canonical border"
+        );
+    }
+
+    let mut terminal = b"merman.c6-route-requirement-paint-path.v2\0".to_vec();
+    append_len_prefixed(&mut terminal, property.as_bytes());
+    append_len_prefixed(
+        &mut terminal,
+        terminals
+            .node
+            .attribute("id")
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    append_len_prefixed(
+        &mut terminal,
+        terminals
+            .terminal_group
+            .attribute("class")
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    append_len_prefixed(&mut terminal, path.as_bytes());
+    append_len_prefixed(&mut terminal, value.as_bytes());
+    terminal.extend_from_slice(&usize_to_u64(divider_paths.len()).to_be_bytes());
+    for divider in divider_paths {
+        append_len_prefixed(
+            &mut terminal,
+            divider.attribute("d").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(
+            &mut terminal,
+            divider.attribute("stroke").unwrap_or_default().as_bytes(),
+        );
+    }
+    append_rect(&mut terminal, region);
+    Ok(RequirementRouteObservation {
+        value: value.to_owned(),
+        terminal_digest: sha256(terminal),
+        target_regions: vec![region],
+    })
+}
+
+fn requirement_terminal_nodes<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+) -> C6ProofResult<RequirementTerminalNodes<'a, 'input>> {
     let nodes = document
         .descendants()
         .filter(|node| {
@@ -1309,37 +1403,44 @@ fn requirement_fill_observation(
         "Requirement witness expected one canonical fill path, found {}",
         fill_paths.len()
     );
-    let fill_path = fill_paths[0];
-    let value = fill_path.attribute("fill").ok_or_else(|| {
-        C6ProofError::new(
-            "route-svg-proof",
-            "Requirement fill path lacks its fill attribute",
-        )
-    })?;
-    let path = fill_path.attribute("d").ok_or_else(|| {
-        C6ProofError::new("route-svg-proof", "Requirement fill path lacks geometry")
-    })?;
-    let region = element_bounds(fill_path, ThemeRouteCutoverFacet::Fill)?;
+    let stroke_paths = terminal_groups[0]
+        .children()
+        .filter(|child| {
+            child.has_tag_name("path")
+                && child.attribute("fill") == Some("none")
+                && child.attribute("stroke").is_some()
+                && child.attribute("stroke-width") != Some("0")
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        stroke_paths.len() == 1,
+        "Requirement witness expected one canonical stroke path, found {}",
+        stroke_paths.len()
+    );
+    let divider_paths = node
+        .descendants()
+        .filter(|candidate| {
+            candidate.has_tag_name("path")
+                && candidate.attribute("stroke").is_some()
+                && candidate.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("g") && class_contains(ancestor, "divider")
+                })
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        divider_paths.len() == 1,
+        "Requirement witness expected one canonical divider path, found {}",
+        divider_paths.len()
+    );
 
-    let mut terminal = b"merman.c6-route-requirement-fill-path.v1\0".to_vec();
-    append_len_prefixed(
-        &mut terminal,
-        node.attribute("id").unwrap_or_default().as_bytes(),
-    );
-    append_len_prefixed(
-        &mut terminal,
-        terminal_groups[0]
-            .attribute("class")
-            .unwrap_or_default()
-            .as_bytes(),
-    );
-    append_len_prefixed(&mut terminal, path.as_bytes());
-    append_len_prefixed(&mut terminal, value.as_bytes());
-    append_rect(&mut terminal, region);
-    Ok(RequirementRouteObservation {
-        value: value.to_owned(),
-        terminal_digest: sha256(terminal),
-        target_regions: vec![region],
+    Ok(RequirementTerminalNodes {
+        node,
+        terminal_group: terminal_groups[0],
+        fill_path: fill_paths[0],
+        stroke_path: stroke_paths[0],
+        divider_paths,
     })
 }
 
@@ -1674,7 +1775,7 @@ fn block_route_observation(
 mod tests {
     use super::*;
 
-    const REQUIREMENT_FILL_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 100">
+    const REQUIREMENT_PAINT_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 100">
 <style>#fixture .node path{fill:#000000;}</style>
 <g class="nodes">
   <g class="node default" id="fixture-req1" transform="translate(25,30)">
@@ -1682,6 +1783,7 @@ mod tests {
       <path d="M-10 -5 L10 -5 L10 5 L-10 5" stroke="none" stroke-width="0" fill="#dc2626"/>
       <path d="M-10 -5 L10 -5 L10 5 L-10 5" stroke="#9370DB" stroke-width="1.3" fill="none"/>
     </g>
+    <g class="divider"><path d="M-10 0 L10 0" stroke="#9370DB" stroke-width="1.3" fill="none"/></g>
     <text>Cutover requirement</text>
   </g>
 </g>
@@ -1716,13 +1818,41 @@ mod tests {
     #[test]
     fn requirement_fill_observer_reads_the_final_path_attribute_and_transformed_region() {
         let document =
-            roxmltree::Document::parse(REQUIREMENT_FILL_SVG).expect("parse Requirement SVG");
-        let observation =
-            requirement_fill_observation(&document).expect("observe Requirement fill path");
+            roxmltree::Document::parse(REQUIREMENT_PAINT_SVG).expect("parse Requirement SVG");
+        let observation = requirement_paint_observation(&document, ThemeRouteCutoverFacet::Fill)
+            .expect("observe Requirement fill path");
 
         assert_eq!(observation.value, SOLID_FILL.css);
         assert_eq!(observation.target_regions, vec![[14.5, 24.5, 21.0, 11.0]]);
         assert_ne!(observation.terminal_digest, [0; 32]);
+    }
+
+    #[test]
+    fn requirement_stroke_observer_binds_border_and_divider_to_one_terminal_value() {
+        let document =
+            roxmltree::Document::parse(REQUIREMENT_PAINT_SVG).expect("parse Requirement SVG");
+        let observation = requirement_paint_observation(&document, ThemeRouteCutoverFacet::Stroke)
+            .expect("observe Requirement stroke paths");
+
+        assert_eq!(observation.value, "#9370DB");
+        assert_eq!(observation.target_regions, vec![[12.0, 22.0, 26.0, 16.0]]);
+        assert_ne!(observation.terminal_digest, [0; 32]);
+
+        let mutated = REQUIREMENT_PAINT_SVG.replace(
+            r##"<g class="divider"><path d="M-10 0 L10 0" stroke="#9370DB""##,
+            r##"<g class="divider"><path d="M-10 0 L10 0" stroke="#000000""##,
+        );
+        let document = roxmltree::Document::parse(&mutated).expect("parse mutated Requirement SVG");
+        assert!(requirement_paint_observation(&document, ThemeRouteCutoverFacet::Stroke).is_err());
+
+        let missing_divider = REQUIREMENT_PAINT_SVG.replace(
+            r##"    <g class="divider"><path d="M-10 0 L10 0" stroke="#9370DB" stroke-width="1.3" fill="none"/></g>
+"##,
+            "",
+        );
+        let document = roxmltree::Document::parse(&missing_divider)
+            .expect("parse divider-less Requirement SVG");
+        assert!(requirement_paint_observation(&document, ThemeRouteCutoverFacet::Stroke).is_err());
     }
 
     #[test]

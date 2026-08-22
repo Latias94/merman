@@ -20,7 +20,7 @@ mod config;
 mod theme;
 
 pub(crate) use config::RequirementConfigView;
-pub(crate) use theme::RequirementFillThemePlan;
+pub(crate) use theme::RequirementPaintThemePlan;
 
 fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {
     let source_node_count = model

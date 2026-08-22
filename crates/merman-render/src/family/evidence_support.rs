@@ -1,13 +1,132 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
     ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeEffect, Specified, ThemeTarget,
-    ThemeVariant,
+    ThemeCapability, ThemeVariant,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-use super::{FamilyThemeEvidence, FamilyThemeResidualReason};
+use super::{DirectStaticPaint, FamilyThemeEvidence, FamilyThemeResidualReason};
+
+/// One direct paint value that a family writer must emit at a real terminal surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DirectPaintExpectation {
+    rule_index: usize,
+    css: Arc<str>,
+    capability: ThemeCapability,
+}
+
+impl DirectPaintExpectation {
+    pub(crate) fn new(
+        rule_index: usize,
+        css: impl Into<Arc<str>>,
+        capability: ThemeCapability,
+    ) -> Self {
+        Self {
+            rule_index,
+            css: css.into(),
+            capability,
+        }
+    }
+
+    pub(crate) fn from_paint(paint: DirectStaticPaint) -> Self {
+        let (css, rule_index, capability) = paint.into_parts();
+        Self::new(rule_index, Arc::<str>::from(css), capability)
+    }
+
+    pub(crate) const fn rule_index(&self) -> usize {
+        self.rule_index
+    }
+
+    pub(crate) fn css(&self) -> &str {
+        &self.css
+    }
+
+    pub(crate) const fn capability(&self) -> ThemeCapability {
+        self.capability
+    }
+}
+
+/// Exact per-property accounting shared by family-owned direct paint receipts.
+///
+/// Families retain ownership of terminal identity and geometry. This ledger only proves that
+/// every effective typed paint checkpoint emitted the same rule and value exactly once.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct DirectPaintTerminalLedger {
+    effective_by_property: BTreeMap<(usize, ResolvedStyleProperty), usize>,
+    emitted_by_property: BTreeMap<(usize, ResolvedStyleProperty), usize>,
+}
+
+impl DirectPaintTerminalLedger {
+    pub(crate) fn record(
+        &mut self,
+        expected: Option<&DirectPaintExpectation>,
+        source_owns: bool,
+        emitted: Option<(usize, &str)>,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        if source_owns {
+            return emitted.is_none();
+        }
+        match (expected, emitted) {
+            (None, None) => true,
+            (Some(expected), Some((rule_index, css))) => {
+                let expected_key = (expected.rule_index(), property);
+                *self.effective_by_property.entry(expected_key).or_default() += 1;
+                let matches = expected.rule_index() == rule_index && expected.css() == css;
+                if matches {
+                    *self
+                        .emitted_by_property
+                        .entry((rule_index, property))
+                        .or_default() += 1;
+                }
+                matches
+            }
+            (Some(expected), None) => {
+                *self
+                    .effective_by_property
+                    .entry((expected.rule_index(), property))
+                    .or_default() += 1;
+                false
+            }
+            (None, Some(_)) => false,
+        }
+    }
+
+    pub(crate) fn has_effective_rule(&self, rule_index: usize) -> bool {
+        self.effective_by_property
+            .iter()
+            .any(|((candidate, _), count)| *candidate == rule_index && *count != 0)
+    }
+
+    pub(crate) fn proves_property(
+        &self,
+        terminal_complete: bool,
+        rule_index: usize,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        let key = (rule_index, property);
+        let effective = self.effective_by_property.get(&key).copied().unwrap_or(0);
+        terminal_complete
+            && effective != 0
+            && self.emitted_by_property.get(&key).copied().unwrap_or(0) == effective
+    }
+
+    #[cfg(test)]
+    pub(crate) fn proves_rule(&self, terminal_complete: bool, rule_index: usize) -> bool {
+        let effective_properties = self
+            .effective_by_property
+            .keys()
+            .filter_map(|(candidate, property)| (*candidate == rule_index).then_some(*property))
+            .collect::<Vec<_>>();
+        !effective_properties.is_empty()
+            && effective_properties
+                .into_iter()
+                .all(|property| self.proves_property(terminal_complete, rule_index, property))
+    }
+}
 
 /// Family-owned variants for the real terminal occurrences of one semantic surface.
 #[derive(Debug, Clone, Copy)]

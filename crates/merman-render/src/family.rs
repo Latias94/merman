@@ -10,7 +10,8 @@ pub(crate) use direct_static_paint::{
     resolve_direct_static_stroke,
 };
 pub(crate) use evidence_support::{
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    DirectPaintExpectation, DirectPaintTerminalLedger, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 pub(crate) use inherited_font_stack::{
@@ -1733,7 +1734,7 @@ pub(crate) struct RequirementFamilyArtifact {
         diagrams::requirement::RequirementDiagramRenderModel,
         crate::requirement::RequirementPreparedArtifact,
     >,
-    fill_theme: crate::requirement::RequirementFillThemePlan,
+    paint_theme: crate::requirement::RequirementPaintThemePlan,
 }
 
 #[derive(Debug)]
@@ -1764,8 +1765,8 @@ impl RequirementFamilyArtifact {
         &self.pair
     }
 
-    pub(crate) const fn fill_theme(&self) -> &crate::requirement::RequirementFillThemePlan {
-        &self.fill_theme
+    pub(crate) const fn paint_theme(&self) -> &crate::requirement::RequirementPaintThemePlan {
+        &self.paint_theme
     }
 }
 
@@ -2333,7 +2334,7 @@ impl BuiltinFamilyArtifact {
 
     fn requirement_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Requirement(artifact) => Some(artifact.fill_theme().finish_evidence()),
+            Self::Requirement(artifact) => Some(artifact.paint_theme().finish_evidence()),
             _ => None,
         }
     }

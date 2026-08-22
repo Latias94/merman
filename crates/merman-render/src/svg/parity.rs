@@ -707,7 +707,7 @@ fn render_builtin_family_artifact_raw(
             requirement::render_requirement_diagram_svg_model(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
-                artifact.fill_theme(),
+                artifact.paint_theme(),
                 effective_config,
                 title,
                 measurer,

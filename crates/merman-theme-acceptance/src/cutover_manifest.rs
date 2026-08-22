@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 16;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 17;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 30] = [
+); 31] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -102,6 +102,10 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::RequirementFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::RequirementStroke,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
     (
@@ -213,6 +217,8 @@ const TITLE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TitleFill];
 const REQUIREMENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::RequirementFill];
+const REQUIREMENT_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::RequirementStroke];
 const PIE_SLICE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::PieSliceStroke];
 const PIE_SLICE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -239,7 +245,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 92] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 94] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -617,6 +623,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 92] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         REQUIREMENT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Requirement,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        REQUIREMENT_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Requirement,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        REQUIREMENT_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::PIE,

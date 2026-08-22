@@ -117,11 +117,12 @@ pub enum ThemeRouteCutoverProjection {
     GanttTaskErrorFill = 27,
     NodeLabelFill = 28,
     PieSliceFill = 29,
+    RequirementStroke = 30,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 30] = [
+    const ALL: [Self; 31] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -152,6 +153,7 @@ impl ThemeRouteCutoverProjection {
         Self::GanttTaskErrorFill,
         Self::NodeLabelFill,
         Self::PieSliceFill,
+        Self::RequirementStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -186,6 +188,7 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskErrorFill => "task.error.fill",
             Self::NodeLabelFill => "node-label.fill",
             Self::PieSliceFill => "slice.fill",
+            Self::RequirementStroke => "requirement.paint",
         }
     }
 
@@ -221,7 +224,8 @@ impl ThemeRouteCutoverProjection {
             | Self::GanttTaskSuccessFill
             | Self::GanttTaskErrorFill
             | Self::NodeLabelFill
-            | Self::PieSliceFill => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::PieSliceFill
+            | Self::RequirementStroke => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -283,6 +287,8 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_TEXT_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TextFill);
     pub const REPLACE_REQUIREMENT_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::RequirementFill);
+    pub const REPLACE_REQUIREMENT_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::RequirementStroke);
     pub const REPLACE_PIE_SLICE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::PieSliceStroke);
     pub const REPLACE_PIE_SLICE_FILL: Self =
@@ -550,6 +556,21 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(projection.contribution_id(), "requirement.fill");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(projections, vec![projection]);
+    }
+
+    #[test]
+    fn requirement_stroke_projection_is_an_exact_replacement() {
+        let projection = ThemeRouteCutoverProjection::RequirementStroke;
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_STROKE
+            .iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(projection.contribution_id(), "requirement.paint");
         assert_eq!(
             projection.action(),
             ThemeRouteCutoverProjectionAction::Replace

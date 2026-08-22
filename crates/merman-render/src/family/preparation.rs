@@ -760,7 +760,7 @@ fn prepare_requirement_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let fill_theme = crate::requirement::RequirementFillThemePlan::resolve(
+    let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         &model,
@@ -775,7 +775,7 @@ fn prepare_requirement_family(
     Ok(BuiltinFamilyArtifact::Requirement(Box::new(
         RequirementFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            fill_theme,
+            paint_theme,
         },
     )))
 }

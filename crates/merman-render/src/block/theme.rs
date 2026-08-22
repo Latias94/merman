@@ -10,8 +10,9 @@ use crate::diagram_theme::{
     ResolvedThemeStyle, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
+    DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
+    FamilyThemeEvidence, FamilyThemeResidualReason, resolve_direct_static_fill,
+    resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::model::BlockDiagramLayout;
@@ -19,17 +20,10 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::BlockShapeBoundary;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ExpectedPaint {
-    rule_index: usize,
-    css: Arc<str>,
-    capability: ThemeCapability,
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct NodeExpectation {
-    fill: Option<ExpectedPaint>,
-    stroke: Option<ExpectedPaint>,
+    fill: Option<DirectPaintExpectation>,
+    stroke: Option<DirectPaintExpectation>,
     shells: Box<[BlockNodeShellKind]>,
 }
 
@@ -287,7 +281,7 @@ impl BlockNodePaintThemePlan {
         (!source_owns)
             .then(|| self.expectations.get(node_index)?.paint(property))
             .flatten()
-            .map(|expected| (expected.rule_index, expected.css.as_ref()))
+            .map(|expected| (expected.rule_index(), expected.css()))
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> BlockNodePaintThemeReceipt {
@@ -326,7 +320,7 @@ impl BlockNodePaintThemePlan {
 }
 
 impl NodeExpectation {
-    fn paint(&self, property: ResolvedStyleProperty) -> Option<&ExpectedPaint> {
+    fn paint(&self, property: ResolvedStyleProperty) -> Option<&DirectPaintExpectation> {
         match property {
             ResolvedStyleProperty::Fill => self.fill.as_ref(),
             ResolvedStyleProperty::Stroke => self.stroke.as_ref(),
@@ -393,15 +387,15 @@ fn observe_node_style(
     );
     if let Some(expected) = typed_fill_expectation(theme, style, mermaid_owns_fill) {
         expected_capabilities.insert(
-            (expected.rule_index, ResolvedStyleProperty::Fill),
-            expected.capability,
+            (expected.rule_index(), ResolvedStyleProperty::Fill),
+            expected.capability(),
         );
         expectation.fill = Some(expected);
     }
     if let Some(expected) = typed_stroke_expectation(theme, style, mermaid_owns_stroke) {
         expected_capabilities.insert(
-            (expected.rule_index, ResolvedStyleProperty::Stroke),
-            expected.capability,
+            (expected.rule_index(), ResolvedStyleProperty::Stroke),
+            expected.capability(),
         );
         expectation.stroke = Some(expected);
     }
@@ -411,7 +405,7 @@ fn typed_stroke_expectation(
     theme: &ResolvedDiagramTheme,
     style: &ResolvedThemeStyle,
     mermaid_owns_stroke: bool,
-) -> Option<ExpectedPaint> {
+) -> Option<DirectPaintExpectation> {
     if mermaid_owns_stroke {
         return None;
     }
@@ -421,14 +415,14 @@ fn typed_stroke_expectation(
         &[ThemeTarget::Node],
         DirectStaticSelectorDomain::Unqualified,
     )
-    .map(expected_paint)
+    .map(DirectPaintExpectation::from_paint)
 }
 
 fn typed_fill_expectation(
     theme: &ResolvedDiagramTheme,
     style: &ResolvedThemeStyle,
     mermaid_owns_fill: bool,
-) -> Option<ExpectedPaint> {
+) -> Option<DirectPaintExpectation> {
     if mermaid_owns_fill {
         return None;
     }
@@ -438,16 +432,7 @@ fn typed_fill_expectation(
         &[ThemeTarget::Node],
         DirectStaticSelectorDomain::Unqualified,
     )
-    .map(expected_paint)
-}
-
-fn expected_paint(paint: DirectStaticPaint) -> ExpectedPaint {
-    let (css, rule_index, capability) = paint.into_parts();
-    ExpectedPaint {
-        rule_index,
-        css: Arc::from(css),
-        capability,
-    }
+    .map(DirectPaintExpectation::from_paint)
 }
 
 fn selector_matches_any_node(selector: FamilyThemeSelectorShape, node_count: usize) -> bool {
@@ -549,8 +534,7 @@ pub(crate) struct BlockNodePaintThemeReceipt {
     expectations: Arc<[NodeExpectation]>,
     checkpointed_nodes: Vec<bool>,
     attributes_match: bool,
-    effective_by_property: BTreeMap<(usize, ResolvedStyleProperty), usize>,
-    emitted_by_property: BTreeMap<(usize, ResolvedStyleProperty), usize>,
+    paint_ledger: DirectPaintTerminalLedger,
 }
 
 impl BlockNodePaintThemeReceipt {
@@ -560,8 +544,7 @@ impl BlockNodePaintThemeReceipt {
             checkpointed_nodes: vec![false; expectations.len()],
             expectations,
             attributes_match: true,
-            effective_by_property: BTreeMap::new(),
-            emitted_by_property: BTreeMap::new(),
+            paint_ledger: DirectPaintTerminalLedger::default(),
         }
     }
 
@@ -600,31 +583,27 @@ impl BlockNodePaintThemeReceipt {
             if let Some(expected) = expectation.fill.as_ref()
                 && !source_owns_fill
             {
-                shell_match &= actual_fill == Some(expected.css.as_ref());
+                shell_match &= actual_fill == Some(expected.css());
             }
             if let Some(expected) = expectation.stroke.as_ref()
                 && !source_owns_stroke
             {
-                shell_match &= actual_stroke == Some(expected.css.as_ref());
+                shell_match &= actual_stroke == Some(expected.css());
             }
         }
         shell_match &= actual_shells.next().is_none();
         self.attributes_match &= shell_match;
-        self.attributes_match &= record_paint_checkpoint(
+        self.attributes_match &= self.paint_ledger.record(
             expectation.fill.as_ref(),
             source_owns_fill,
             emitted_fill,
             ResolvedStyleProperty::Fill,
-            &mut self.effective_by_property,
-            &mut self.emitted_by_property,
         );
-        self.attributes_match &= record_paint_checkpoint(
+        self.attributes_match &= self.paint_ledger.record(
             expectation.stroke.as_ref(),
             source_owns_stroke,
             emitted_stroke,
             ResolvedStyleProperty::Stroke,
-            &mut self.effective_by_property,
-            &mut self.emitted_by_property,
         );
     }
 
@@ -633,30 +612,18 @@ impl BlockNodePaintThemeReceipt {
     }
 
     fn has_effective_rule(&self, rule_index: usize) -> bool {
-        self.effective_by_property
-            .iter()
-            .any(|((candidate, _), count)| *candidate == rule_index && *count != 0)
+        self.paint_ledger.has_effective_rule(rule_index)
     }
 
     #[cfg(test)]
     fn proves_rule(&self, rule_index: usize) -> bool {
-        let effective_properties = self
-            .effective_by_property
-            .keys()
-            .filter_map(|(candidate, property)| (*candidate == rule_index).then_some(*property))
-            .collect::<Vec<_>>();
-        !effective_properties.is_empty()
-            && effective_properties
-                .into_iter()
-                .all(|property| self.proves_property(rule_index, property))
+        self.paint_ledger
+            .proves_rule(self.proves_complete(), rule_index)
     }
 
     fn proves_property(&self, rule_index: usize, property: ResolvedStyleProperty) -> bool {
-        let key = (rule_index, property);
-        let effective = self.effective_by_property.get(&key).copied().unwrap_or(0);
-        self.proves_complete()
-            && effective != 0
-            && self.emitted_by_property.get(&key).copied().unwrap_or(0) == effective
+        self.paint_ledger
+            .proves_property(self.proves_complete(), rule_index, property)
     }
 }
 
@@ -676,54 +643,20 @@ fn terminal_paints(style: &str) -> (Option<&str>, Option<&str>) {
     (fill, stroke)
 }
 
-fn record_paint_checkpoint(
-    expected: Option<&ExpectedPaint>,
-    source_owns: bool,
-    emitted: Option<(usize, &str)>,
-    property: ResolvedStyleProperty,
-    effective_by_property: &mut BTreeMap<(usize, ResolvedStyleProperty), usize>,
-    emitted_by_property: &mut BTreeMap<(usize, ResolvedStyleProperty), usize>,
-) -> bool {
-    if source_owns {
-        return emitted.is_none();
-    }
-    match (expected, emitted) {
-        (None, None) => true,
-        (Some(expected), Some((rule_index, css))) => {
-            let expected_key = (expected.rule_index, property);
-            *effective_by_property.entry(expected_key).or_default() += 1;
-            let matches = expected.rule_index == rule_index && expected.css.as_ref() == css;
-            if matches {
-                *emitted_by_property
-                    .entry((rule_index, property))
-                    .or_default() += 1;
-            }
-            matches
-        }
-        (Some(expected), None) => {
-            *effective_by_property
-                .entry((expected.rule_index, property))
-                .or_default() += 1;
-            false
-        }
-        (None, Some(_)) => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn paint(rule_index: usize, css: &str) -> ExpectedPaint {
-        ExpectedPaint {
+    fn paint(rule_index: usize, css: &str) -> DirectPaintExpectation {
+        DirectPaintExpectation::new(
             rule_index,
-            css: Arc::from(css),
-            capability: if css == "transparent" {
+            css,
+            if css == "transparent" {
                 ThemeCapability::TransparentPaint
             } else {
                 ThemeCapability::SolidPaint
             },
-        }
+        )
     }
 
     fn paint_expectation(shells: &[BlockNodeShellKind]) -> NodeExpectation {

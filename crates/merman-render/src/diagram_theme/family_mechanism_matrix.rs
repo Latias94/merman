@@ -396,6 +396,11 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::REQUIREMENT, ThemeTarget::Requirement, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_FILL)
         }
+        (
+            DiagramFamilyId::REQUIREMENT,
+            ThemeTarget::Requirement,
+            ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_STROKE),
         (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_PIE_SLICE_FILL)
         }
@@ -1483,6 +1488,8 @@ pub(super) fn classify_rule_facet(
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -4239,6 +4246,20 @@ mod tests {
                 Fill,
                 Solid,
                 vec!["requirement.fill"],
+            ),
+            (
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Requirement,
+                Stroke,
+                Transparent,
+                vec!["requirement.paint"],
+            ),
+            (
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Requirement,
+                Stroke,
+                Solid,
+                vec!["requirement.paint"],
             ),
             (
                 DiagramFamilyId::SEQUENCE,

@@ -682,7 +682,7 @@ fn compile_requirement_family(
         )],
     );
     contributions.add_theme_variables(
-        "requirement.paint",
+        ThemeRouteCutoverProjection::RequirementStroke.contribution_id(),
         [
             (
                 "requirementBorderColor",
@@ -3496,7 +3496,9 @@ mod tests {
             requirement
                 .effective_config
                 .get_str("themeVariables.requirementBorderColor"),
-            Some("#94a3b8")
+            requirement_baseline
+                .effective_config
+                .get_str("themeVariables.requirementBorderColor")
         );
         assert_eq!(
             requirement
@@ -3512,7 +3514,7 @@ mod tests {
                 .contains("merman.legacy-family-theme.v1.requirement.requirement.fill")
         );
         assert!(
-            requirement_bridge
+            !requirement_bridge
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.requirement.requirement.paint")
         );
@@ -3520,6 +3522,38 @@ mod tests {
             requirement_bridge
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.requirement.relation.paint")
+        );
+    }
+
+    #[test]
+    fn explicit_default_requirement_stroke_keeps_its_legacy_projection() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Requirement,
+                    ThemeStylePatch::default().with_stroke(solid("#94a3b8")),
+                )
+                .for_family(DiagramFamilyId::REQUIREMENT)
+                .with_variant(ThemeVariant::Default),
+            ),
+        );
+        let parsed = parse(&spec, REQUIREMENT_FIXTURE);
+        let compiled = bridge(&spec).compile_for_family(DiagramFamilyId::REQUIREMENT);
+
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.requirementBorderColor"),
+            Some("#94a3b8")
+        );
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.nodeBorder"),
+            Some("#94a3b8")
+        );
+        assert!(
+            compiled
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.requirement.requirement.paint")
         );
     }
 

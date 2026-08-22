@@ -4,6 +4,8 @@ use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
 
+const REQUIREMENT_ROUGH_GEOMETRY_COLOR: &str = "#000000";
+
 fn requirement_color_id(border_colors: &[String], color_index: usize) -> Option<String> {
     (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
 }
@@ -84,7 +86,7 @@ fn insert_requirement_color_css(css: &mut String, diagram_id: &str, color_css: &
 pub(crate) fn render_requirement_diagram_svg_model(
     prepared: &crate::requirement::RequirementPreparedArtifact,
     model: &RequirementDiagramRenderModel,
-    fill_theme: &crate::requirement::RequirementFillThemePlan,
+    paint_theme: &crate::requirement::RequirementPaintThemePlan,
     sanitize_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -686,7 +688,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     }
     out.push_str("</g>");
 
-    let mut fill_theme_receipt = fill_theme.begin_terminal_receipt();
+    let mut paint_theme_receipt = paint_theme.begin_terminal_receipt();
     out.push_str(r#"<g class="nodes">"#);
     for n in &layout.nodes {
         if n.id == "__proto__" {
@@ -745,10 +747,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             node_classes = el.classes.iter().map(String::as_str).collect();
             css_styles = &el.css_styles;
         }
-        let Some(fill_theme_index) = fill_theme.index_for_node_id(&n.id) else {
+        let Some(paint_theme_index) = paint_theme.index_for_node_id(&n.id) else {
             return Err(Error::InvalidModel {
                 message: format!(
-                    "Requirement fill theme plan is missing semantic node {}",
+                    "Requirement paint theme plan is missing semantic node {}",
                     n.id
                 ),
             });
@@ -796,13 +798,30 @@ pub(crate) fn render_requirement_diagram_svg_model(
             stroke_override,
             stroke_width_override,
         ) = parse_node_style_overrides(css_styles);
-        let typed_fill = fill_theme.typed_fill(fill_theme_index, fill_override.is_some());
+        let typed_fill = paint_theme.typed_fill(paint_theme_index, fill_override.is_some());
+        let typed_stroke = paint_theme.typed_stroke(paint_theme_index, stroke_override.is_some());
         let fill_color = fill_override
             .as_deref()
             .or_else(|| typed_fill.map(|(_, fill)| fill))
             .unwrap_or(&default_fill_color);
-        let stroke_color = stroke_override.as_deref().unwrap_or(&default_stroke_color);
+        let stroke_color = stroke_override
+            .as_deref()
+            .or_else(|| typed_stroke.map(|(_, stroke)| stroke))
+            .unwrap_or(&default_stroke_color);
         let stroke_width = stroke_width_override.unwrap_or(1.3);
+        let fill_style_attr = (fill_override.is_some() || typed_fill.is_some())
+            .then(|| format!(r#" style="fill:{} !important""#, escape_xml(fill_color)))
+            .unwrap_or_default();
+        let stroke_style_attr = (stroke_override.is_some() || typed_stroke.is_some())
+            .then(|| format!(r#" style="stroke:{} !important""#, escape_xml(stroke_color)))
+            .unwrap_or_default();
+
+        // RoughJS path geometry does not depend on RGB values. Keep paint-only values such as
+        // `transparent` from selecting a different geometry fallback than an opaque color.
+        let geometry_fill_color = roughjs_parse_hex_color_to_srgba(fill_color)
+            .map_or(REQUIREMENT_ROUGH_GEOMETRY_COLOR, |_| fill_color);
+        let geometry_stroke_color = roughjs_parse_hex_color_to_srgba(stroke_color)
+            .map_or(REQUIREMENT_ROUGH_GEOMETRY_COLOR, |_| stroke_color);
 
         let x = -n.width / 2.0;
         let y = -n.height / 2.0;
@@ -822,8 +841,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
             y,
             w: n.width,
             h: n.height,
-            fill: fill_color,
-            stroke: stroke_color,
+            fill: geometry_fill_color,
+            stroke: geometry_stroke_color,
             stroke_width: stroke_width as f32,
             randomness: &hand_drawn_seed,
         })
@@ -837,21 +856,18 @@ pub(crate) fn render_requirement_diagram_svg_model(
         );
         let _ = write!(
             &mut out,
-            r##"<path d="{d}" stroke="none" stroke-width="0" fill="{fill}"/>"##,
+            r##"<path d="{d}" stroke="none" stroke-width="0" fill="{fill}"{style_attr}/>"##,
             d = escape_xml(&fill_path),
             fill = escape_xml(fill_color),
-        );
-        fill_theme_receipt.record_checkpointed_node(
-            fill_theme_index,
-            fill_override.is_some(),
-            typed_fill,
+            style_attr = fill_style_attr,
         );
         let _ = write!(
             &mut out,
-            r##"<path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/>"##,
+            r##"<path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{style_attr}/>"##,
             d = escape_xml(&stroke_path),
             stroke = escape_xml(stroke_color),
             stroke_width = fmt(stroke_width),
+            style_attr = stroke_style_attr,
         );
         out.push_str("</g>");
 
@@ -910,45 +926,62 @@ pub(crate) fn render_requirement_diagram_svg_model(
             out.push_str("</g>");
         }
 
+        let divider_expected = rendered_node.divider_y_offset.is_some();
+        let mut terminal_divider_stroke = None;
         if let Some(divider_y_offset) = rendered_node.divider_y_offset {
             let divider_y = y + divider_y_offset;
-            let divider_d = if let Some(stroke) = roughjs_parse_hex_color_to_srgba(stroke_color) {
-                if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
-                    .randomness(hand_drawn_seed.clone())
-                    .roughness(0.0)
-                    .fill_style(roughr::core::FillStyle::Solid)
-                    .stroke(stroke)
-                    .stroke_width(stroke_width as f32)
-                    .stroke_line_dash(vec![0.0, 0.0])
-                    .stroke_line_dash_offset(0.0)
-                    .fill_line_dash(vec![0.0, 0.0])
-                    .fill_line_dash_offset(0.0)
-                    .disable_multi_stroke(false)
-                    .disable_multi_stroke_fill(false)
-                    .build()
-                {
-                    roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
-                        x,
-                        divider_y,
-                        x + n.width,
-                        divider_y,
-                        &mut opts,
-                    ))
+            let divider_d =
+                if let Some(stroke) = roughjs_parse_hex_color_to_srgba(geometry_stroke_color) {
+                    if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
+                        .randomness(hand_drawn_seed.clone())
+                        .roughness(0.0)
+                        .fill_style(roughr::core::FillStyle::Solid)
+                        .stroke(stroke)
+                        .stroke_width(stroke_width as f32)
+                        .stroke_line_dash(vec![0.0, 0.0])
+                        .stroke_line_dash_offset(0.0)
+                        .fill_line_dash(vec![0.0, 0.0])
+                        .fill_line_dash_offset(0.0)
+                        .disable_multi_stroke(false)
+                        .disable_multi_stroke_fill(false)
+                        .build()
+                    {
+                        roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
+                            x,
+                            divider_y,
+                            x + n.width,
+                            divider_y,
+                            &mut opts,
+                        ))
+                    } else {
+                        rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
+                    }
                 } else {
                     rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
-                }
-            } else {
-                rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
-            };
+                };
             let _ = write!(
                 &mut out,
-                r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
+                r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{style_attr}/></g>"##,
                 style = escape_xml(&node_styles),
                 d = escape_xml(&divider_d),
                 stroke = escape_xml(stroke_color),
                 stroke_width = fmt(stroke_width),
+                style_attr = stroke_style_attr,
             );
+            terminal_divider_stroke = Some(stroke_color);
         }
+
+        paint_theme_receipt.record_checkpointed_node(
+            paint_theme_index,
+            fill_override.is_some(),
+            typed_fill,
+            fill_color,
+            stroke_override.is_some(),
+            typed_stroke,
+            stroke_color,
+            divider_expected,
+            terminal_divider_stroke,
+        );
 
         out.push_str("</g>");
     }
@@ -970,9 +1003,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if !fill_theme.record_terminal(fill_theme_receipt) {
+    if !paint_theme.record_terminal(paint_theme_receipt) {
         return Err(Error::InvalidModel {
-            message: "Requirement fill theme terminal evidence could not be sealed".to_string(),
+            message: "Requirement paint theme terminal evidence could not be sealed".to_string(),
         });
     }
     Ok(rooted_svg)
@@ -1279,7 +1312,7 @@ mod tests {
         request: &SvgRenderOptions,
     ) -> crate::Result<String> {
         with_test_svg_execution(DiagramFamilyId::REQUIREMENT, request, |options| {
-            let fill_theme = crate::requirement::RequirementFillThemePlan::resolve(
+            let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve(
                 None,
                 effective_config,
                 model,
@@ -1288,7 +1321,7 @@ mod tests {
             render_requirement_diagram_svg_model(
                 prepared,
                 model,
-                &fill_theme,
+                &paint_theme,
                 effective_config,
                 diagram_title,
                 measurer,
@@ -1324,7 +1357,7 @@ mod tests {
             DiagramFamilyId::REQUIREMENT,
         )
         .expect("SVG execution");
-        let fill_theme = crate::requirement::RequirementFillThemePlan::resolve(
+        let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve(
             None,
             &effective_config,
             &model,
@@ -1334,7 +1367,7 @@ mod tests {
         render_requirement_diagram_svg_model(
             &prepared,
             &model,
-            &fill_theme,
+            &paint_theme,
             &effective_config,
             None,
             &measurer,
