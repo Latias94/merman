@@ -6,6 +6,7 @@ use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::style_color::{parse_border_color, parse_css_color};
 use merman_core::OperationPhase;
 use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
+use std::collections::HashMap;
 
 #[derive(Clone, Copy)]
 struct StyleTargets {
@@ -139,10 +140,12 @@ impl FlowchartStylePlan {
         nodes
             .try_reserve_exact(model.nodes.len())
             .map_err(|_| style_allocation_failed())?;
-        let mut direct_group_overlays = Vec::new();
+        let mut direct_group_overlays = HashMap::new();
         if render_context.is_none() {
+            let overlay_capacity = model.nodes.len().min(model.subgraphs.len());
+            resources.charge_layout_work(overlay_capacity)?;
             direct_group_overlays
-                .try_reserve_exact(model.nodes.len())
+                .try_reserve(overlay_capacity)
                 .map_err(|_| style_allocation_failed())?;
         }
         for (index, node) in model.nodes.iter().enumerate() {
@@ -164,7 +167,8 @@ impl FlowchartStylePlan {
                         execution,
                     )?
                     .apply_group(&mut group_overlay);
-                    direct_group_overlays.push((node.id.as_str(), group_overlay));
+                    charge_style_index_access(resources, &node.id)?;
+                    direct_group_overlays.insert(node.id.as_str(), group_overlay);
                 }
                 nodes.push(style);
                 continue;
@@ -233,18 +237,18 @@ impl FlowchartStylePlan {
                 execution,
             )?
             .apply_group(&mut style);
-            if let Some((_, overlay)) = direct_group_overlays
-                .iter()
-                .find(|(node_id, _)| *node_id == group.id.as_str())
-            {
-                if overlay.title.is_some() {
-                    style.title = overlay.title;
-                }
-                if overlay.border.is_some() {
-                    style.border = overlay.border;
-                }
-                if overlay.background.is_some() {
-                    style.background = overlay.background;
+            if render_context.is_none() {
+                charge_style_index_access(resources, &group.id)?;
+                if let Some(overlay) = direct_group_overlays.get(group.id.as_str()) {
+                    if overlay.title.is_some() {
+                        style.title = overlay.title;
+                    }
+                    if overlay.border.is_some() {
+                        style.border = overlay.border;
+                    }
+                    if overlay.background.is_some() {
+                        style.background = overlay.background;
+                    }
                 }
             }
             groups.push(style);
@@ -442,6 +446,11 @@ fn charge_style_value_parse(
     parser_passes: usize,
 ) -> Result<()> {
     resources.charge_layout_work_product(value.len().max(1), parser_passes)
+}
+
+fn charge_style_index_access(resources: &ResourceContext, id: &str) -> Result<()> {
+    let work = resources.checked_work_add(id.len(), 1)?;
+    resources.charge_layout_work(work)
 }
 
 fn checkpoint_style(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
