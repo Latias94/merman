@@ -620,6 +620,11 @@ fn validate_supported_state_model(
 
     for (index, edge) in model.edges.iter().enumerate() {
         checkpoint_projection(execution, index)?;
+        if !node_index_by_id.contains_key(edge.start.as_str())
+            || !node_index_by_id.contains_key(edge.end.as_str())
+        {
+            return Err(unsupported("edges with missing endpoint nodes"));
+        }
         if !edge.arrow_type_end.is_empty()
             && !matches!(
                 edge.arrow_type_end.as_str(),

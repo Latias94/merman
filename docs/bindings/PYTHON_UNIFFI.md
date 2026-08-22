@@ -128,7 +128,7 @@ custom current-contract library and otherwise raise `MermanError.Binding` with
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
 underlying status code/name, `MermanErrorKind`, optional `capability_id`, optional
 `MermanResourceErrorDetails`, optional `MermanDiagnosticErrorDetails`, optional
-`MermanCancelledDetails`, and message from
+`MermanIconRegistryErrorDetails`, optional `MermanCancelledDetails`, and message from
 `merman-bindings-core`. `UNKNOWN_OPERATION` has no
 capability ID; `MISSING_CAPABILITY` preserves the exact descriptor ID. Resource failures expose the
 stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile. Consumers should not

@@ -1055,9 +1055,9 @@ impl<'a> ClassDb<'a> {
             let Some(parent) = class_node.parent.as_deref() else {
                 continue;
             };
-            if let Some(ns) = self.namespaces.get_mut(parent)
-                && !ns.class_ids.contains(id)
-            {
+            // `classes` is an IndexMap keyed by unique class IDs, so rebuilding
+            // membership cannot introduce a duplicate class entry.
+            if let Some(ns) = self.namespaces.get_mut(parent) {
                 ns.class_ids.push(id.clone());
             }
         }
@@ -1065,9 +1065,9 @@ impl<'a> ClassDb<'a> {
             let Some(parent) = note.parent.as_deref() else {
                 continue;
             };
-            if let Some(ns) = self.namespaces.get_mut(parent)
-                && !ns.note_ids.contains(&note.id)
-            {
+            // Notes receive monotonic synthetic IDs at insertion time, so the
+            // rebuild pass can append directly without an O(N^2) membership scan.
+            if let Some(ns) = self.namespaces.get_mut(parent) {
                 ns.note_ids.push(note.id.clone());
             }
         }

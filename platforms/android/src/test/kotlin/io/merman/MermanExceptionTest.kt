@@ -146,6 +146,18 @@ class MermanExceptionTest {
     }
 
     @Test
+    fun acceptsUnknownAdditiveDetailFieldsInSchemaOne() {
+        val error = MermanException(
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"future_context":{"source":"parser"}},"message":"invalid flowchart"}""",
+        )
+
+        assertEquals(5, error.code)
+        assertEquals("MERMAN_PARSE_ERROR", error.codeName)
+        assertEquals(MermanErrorKind.GENERIC, error.kind)
+        assertNull(error.diagnosticDetails)
+    }
+
+    @Test
     fun rejectsContradictoryCancellationTerminalsAsTransportContractFailures() {
         val conflictingDetails = listOf(
             """"resource":{"cause":"ceiling","limit_id":"max_source_bytes","phase":"source","actual":5,"max":4,"profile":"interactive"}""",
@@ -182,10 +194,19 @@ class MermanExceptionTest {
     }
 
     @Test
+    fun rejectsWrongTypeAndNonZeroInsertionPointDiagnosticSpans() {
+        listOf(
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":"bad","field":null,"diagram_type":null}},"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":{"start":3,"end":4,"kind":"insertion-point"},"field":null,"diagram_type":null}},"message":"invalid flowchart"}""",
+        ).forEach(::assertInvalidNativeErrorPayload)
+    }
+
+    @Test
     fun rejectsInvalidCancellationVocabularyAsTransportContractFailure() {
         listOf(
             """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"bogus","phase":"layout"}},"message":"operation cancelled"}""",
             """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"requested","phase":"unknown phase"}},"message":"operation cancelled"}""",
+            """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"requested","phase":"future_phase"}},"message":"operation cancelled"}""",
         ).forEach(::assertInvalidNativeErrorPayload)
     }
 

@@ -26,11 +26,11 @@ The older untracked closeout drafts remain untouched. They bind an obsolete revi
 
 The measured entry point is the public Renderer::render(RenderRequest::ascii(...)) path in crates/merman/benches/ascii_pipeline.rs. The runner is tools/bench/compare_self.py schema v2 with the ascii feature, plain ASCII output, one logical operation, a 10% relative threshold, a 50 microsecond absolute threshold, and Bonferroni-adjusted 95% simultaneous confidence.
 
-Evidence attachments are in docs/performance/evidence/ascii-u25/99c567e89/.
+The tracked evidence attachments are the Markdown projections in docs/performance/evidence/ascii-u25/99c567e89/. The schema-v2 JSON files are build artifacts, not durable repository files, in accordance with the performance runbook; their names, sizes, and SHA-256 values below identify the retained CI artifacts.
 
 ### Medium comparison against the benchmark backport
 
-medium-confirmation.json is 332381 bytes (SHA-256 9a0962b0326fa6890b7b5ec056c7c9c818a72cabf2ced09cad1ad473ac6256fd). Its Markdown projection is 1834 bytes (SHA-256 ed03661fe42480d7eed49482d894fff570622582b15852e5423d4e7ee92e9f7e). It contains two comparable rows and zero contract failures. Output identities matched. Both rows are statistically inconclusive: the relative intervals cross the registered decision boundary, while the absolute upper bounds remain below 50 microseconds.
+medium-confirmation.json (CI artifact) is 332381 bytes (SHA-256 9a0962b0326fa6890b7b5ec056c7c9c818a72cabf2ced09cad1ad473ac6256fd). Its tracked Markdown projection is 1834 bytes (SHA-256 ed03661fe42480d7eed49482d894fff570622582b15852e5423d4e7ee92e9f7e). It contains two comparable rows and zero contract failures. Output identities matched. Both rows are statistically inconclusive: the relative intervals cross the registered decision boundary, while the absolute upper bounds remain below 50 microseconds.
 
 | Fixture | Output identity | Base | Source | Absolute interval | Disposition |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -41,7 +41,7 @@ This is not a claim that the relative slowdown is zero.
 
 ### Five-family large A/A observation
 
-large-aa-discovery.json is 71341 bytes (SHA-256 0535cb0b431257666a540b9bf64fce58362453d0f4344ee508ab272f0680afad). large-aa-confirmation.json is 1903950 bytes (SHA-256 ba2ae40a24b99dea3ddeb1539c1a36513672fdc2662729cc6e494522f3c00450). Their Markdown projections are 2047 bytes (SHA-256 f0044a64a6dae2d8ff859cfc9bc9da35e0d975938ccd833777232c5dc6d3f3d3) and 2275 bytes (SHA-256 b39e2f7ab226d6926a8891062d61c5ad947682c87cd91f683209226c0b2eb7cf). Five rows were comparable, with zero contract failures and matched output identities.
+large-aa-discovery.json (CI artifact) is 71341 bytes (SHA-256 0535cb0b431257666a540b9bf64fce58362453d0f4344ee508ab272f0680afad), and large-aa-confirmation.json (CI artifact) is 1903950 bytes (SHA-256 ba2ae40a24b99dea3ddeb1539c1a36513672fdc2662729cc6e494522f3c00450). Their tracked Markdown projections are 2047 bytes (SHA-256 f0044a64a6dae2d8ff859cfc9bc9da35e0d975938ccd833777232c5dc6d3f3d3) and 2275 bytes (SHA-256 b39e2f7ab226d6926a8891062d61c5ad947682c87cd91f683209226c0b2eb7cf). Five rows were comparable, with zero contract failures and matched output identities.
 
 | Fixture | Output bytes / SHA-256 | Result |
 | --- | --- | --- |

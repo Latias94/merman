@@ -129,7 +129,17 @@ class MermanException private constructor(
             CANCELLED_ERROR_CODE to "MERMAN_CANCELLED",
         )
         private val CANCELLATION_REASONS = setOf("requested", "deadline_exceeded")
-        private val OPERATION_PHASE_IDENTIFIER = Regex("^[a-z][a-z0-9_-]{0,63}$")
+        private val CANCELLATION_PHASES = setOf(
+            "admission",
+            "parse",
+            "semantic",
+            "analysis",
+            "layout",
+            "emit",
+            "postprocess",
+            "export",
+            "unknown",
+        )
 
         fun iconPackCountLimit(
             limit: MermanBindingConstructorResourceLimitSpec,
@@ -256,15 +266,6 @@ class MermanException private constructor(
             val hasDiagnostic = details?.has("diagnostic") == true
             val hasIconRegistry = details?.has("icon_registry") == true
             val hasCancellation = details?.has("cancellation") == true
-            if (
-                details != null &&
-                !hasResource &&
-                !hasDiagnostic &&
-                !hasIconRegistry &&
-                !hasCancellation
-            ) {
-                return false
-            }
             if (hasResource && parseResourceDetails(payload) == null) {
                 return false
             }
@@ -371,12 +372,16 @@ class MermanException private constructor(
                 val diagnostic = payload.optJSONObject("details")?.optJSONObject("diagnostic")
                     ?: return null
                 val code = diagnostic.getString("code").takeIf(String::isNotEmpty) ?: return null
-                val span = diagnostic.optJSONObject("span")?.let { value ->
+                val span = if (!diagnostic.has("span") || diagnostic.isNull("span")) {
+                    null
+                } else {
+                    val value = diagnostic.opt("span") as? JSONObject ?: return null
                     val start = value.getLong("start").takeIf { it >= 0 } ?: return null
                     val end = value.getLong("end").takeIf { it >= start } ?: return null
                     val kind = value.getString("kind").takeIf {
                         it == "exact" || it == "insertion-point" || it == "fallback"
                     } ?: return null
+                    if (kind == "insertion-point" && end != start) return null
                     MermanDiagnosticSpan(start, end, kind)
                 }
                 val field = if (diagnostic.has("field") && !diagnostic.isNull("field")) {
@@ -425,7 +430,7 @@ class MermanException private constructor(
                 val reason = cancellation.getString("reason")
                     .takeIf(CANCELLATION_REASONS::contains) ?: return null
                 val phase = cancellation.getString("phase")
-                    .takeIf(OPERATION_PHASE_IDENTIFIER::matches) ?: return null
+                    .takeIf(CANCELLATION_PHASES::contains) ?: return null
                 MermanCancelledDetails(reason, phase)
             }.getOrNull()
     }

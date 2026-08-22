@@ -474,14 +474,29 @@ String? _validateNativeErrorEnvelope(
   }
 
   final hasCancellation = details?.containsKey('cancellation') ?? false;
+  final hasResource = details?.containsKey('resource') ?? false;
+  final hasDiagnostic = details?.containsKey('diagnostic') ?? false;
+  final hasIconRegistry = details?.containsKey('icon_registry') ?? false;
+  if (hasResource &&
+      (status != native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED ||
+          kind != MermanErrorKind.generic)) {
+    return 'resource details require a generic resource-limit terminal';
+  }
+  if (status == native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED &&
+      !hasResource) {
+    return 'resource-limit-exceeded requires resource details';
+  }
+  if (hasIconRegistry && capabilityId != null) {
+    return 'icon-registry details cannot accompany a capability terminal';
+  }
   if (status == native.MERMAN_NATIVE_STATUS_CANCELLED) {
     if (details == null ||
         kind != MermanErrorKind.generic ||
         capabilityId != null ||
         !hasCancellation ||
-        details.containsKey('resource') ||
-        details.containsKey('diagnostic') ||
-        details.containsKey('icon_registry')) {
+        hasResource ||
+        hasDiagnostic ||
+        hasIconRegistry) {
       return 'cancellation is not a disjoint generic terminal';
     }
   } else if (hasCancellation) {

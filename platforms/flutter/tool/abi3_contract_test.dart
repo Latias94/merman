@@ -1846,6 +1846,81 @@ void rejectsInconsistentNativeErrorRelations() {
       'inconsistent native terminal fields must fail closed as a contract error',
     );
   }
+
+  Map<String, Object?> nativeErrorEnvelope({
+    required int status,
+    required String statusName,
+    required String kind,
+    String? capabilityId,
+    Map<String, Object?> details = const {},
+  }) => {
+    'version': native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION,
+    'ok': false,
+    'status': status,
+    'status_name': statusName,
+    'kind': kind,
+    'capability_id': capabilityId,
+    'details': details,
+    'message': 'native failure',
+  };
+  Map<String, Object?> validResourceDetails() => {
+    'cause': 'ceiling',
+    'limit_id': 'max_source_bytes',
+    'phase': 'source_input',
+    'actual': 2,
+    'max': 1,
+    'profile': 'interactive',
+  };
+  Map<String, Object?> validIconRegistryDetails() => {
+    'kind_id': 'invalid_xml',
+    'pack_index': null,
+    'registration_name': null,
+  };
+  final terminalRelationCases =
+      <({String label, int status, Map<String, Object?> payload})>[
+        (
+          label: 'parse errors cannot carry resource details',
+          status: native.MERMAN_NATIVE_STATUS_PARSE_ERROR,
+          payload: nativeErrorEnvelope(
+            status: native.MERMAN_NATIVE_STATUS_PARSE_ERROR,
+            statusName: 'parse-error',
+            kind: 'generic',
+            details: {'resource': validResourceDetails()},
+          ),
+        ),
+        (
+          label: 'resource-limit errors require resource details',
+          status: native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+          payload: nativeErrorEnvelope(
+            status: native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+            statusName: 'resource-limit-exceeded',
+            kind: 'generic',
+          ),
+        ),
+        (
+          label: 'capability errors cannot carry icon-registry details',
+          status: native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+          payload: nativeErrorEnvelope(
+            status: native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+            statusName: 'unsupported-operation',
+            kind: 'missing-capability',
+            capabilityId: 'svg',
+            details: {'icon_registry': validIconRegistryDetails()},
+          ),
+        ),
+      ];
+  for (final testCase in terminalRelationCases) {
+    final error = MermanException.fromNative(
+      testCase.status,
+      Uint8List.fromList(utf8.encode(jsonEncode(testCase.payload))),
+    );
+    _expect(
+      error.codeName == 'DART_NATIVE_CONTRACT_ERROR' &&
+          error.kind == MermanErrorKind.generic &&
+          error.capabilityId == null,
+      testCase.label,
+    );
+  }
 }
 
 void rejectsMalformedNativeDiagnosticDetails() {

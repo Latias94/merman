@@ -56,10 +56,10 @@ cargo nextest run -p merman-wasm --features ascii -j 1
 cargo nextest run -p merman-cli --no-default-features --features ascii -j 1
 ```
 
-The implementation-package commands were observed during the phased work. This report does not
-contain an exact-current-HEAD receipt, so closeout remains provisional until a tracked receipt binds
-the final source revision, commands, environment, and results. Prose and untracked local drafts are
-not substitutes for that evidence.
+The implementation-package commands were observed during the phased work. This historical report
+does not duplicate closeout measurements; the tracked canonical receipt linked above binds the
+measured source revision, commands, environment, and results. The older local drafts remain
+non-authoritative and are not substitutes for that receipt.
 
 ## Phase 0-3 Gate
 
