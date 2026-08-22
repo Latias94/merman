@@ -1,14 +1,14 @@
 # ASCII U25 Closeout Receipt
 
-Status: exact-current-source evidence for the U25 closeout. The measured product source is commit 99c567e89b922401adaad7ad521783eead895834. This receipt and its attachments are documentation-only evidence for that source point.
+Status: exact-current-source evidence for the U25 closeout. The measured product source is commit 861fc0ba33ac6f0a724263b3a6f303a3f26eee15. This receipt and its attachments are documentation-only evidence for that source point.
 
 ## Evidence boundary
 
 | Item | Value |
 | --- | --- |
-| measured source commit | 99c567e89b922401adaad7ad521783eead895834 |
-| measured source tree | 26ed5a1d956649d381ce3b34fa57d2566d96696c |
-| measured tracked state | clean; protected legacy drafts and platform directories remained untracked and were excluded |
+| measured source commit | 861fc0ba33ac6f0a724263b3a6f303a3f26eee15 |
+| measured source tree | fc552d5c52f9555c619a67294d523baaf2c89203 |
+| measured tracked state | clean detached measurement worktrees; protected legacy drafts and platform directories in the main worktree remained untracked and were excluded |
 | merge-base | 16b84122615b2dd60c67577bd8708ef5f226f755 |
 | benchmark backport | 76bbe6f351dea54d378680b40248f8310803c6d3 |
 | benchmark backport product parent | 13d2ef8247c9b1cf679adb9679b8d333718d8269 |
@@ -20,36 +20,36 @@ Status: exact-current-source evidence for the U25 closeout. The measured product
 | Rust / nextest | rustc 1.95.0 / cargo-nextest 0.9.115 |
 | Node / npm / Python | v26.7.0 / 11.19.0 / 3.14.6 |
 
-The older untracked closeout drafts remain untouched. They bind an obsolete revision/API and contain Pending items; they are not evidence for this receipt.
+The benchmark projection, scorecard, and resource audit in this tree are indexes of this receipt; they do not carry independent revision or result authority.
 
 ## Performance evidence
 
-The measured entry point is the public Renderer::render(RenderRequest::ascii(...)) path in crates/merman/benches/ascii_pipeline.rs. The runner is tools/bench/compare_self.py schema v2 with the ascii feature, plain ASCII output, one logical operation, a 10% relative threshold, a 50 microsecond absolute threshold, and Bonferroni-adjusted 95% simultaneous confidence.
+The measured entry point is the public Renderer::render(RenderRequest::ascii(...)) path in crates/merman/benches/ascii_pipeline.rs. The runner is tools/bench/compare_self.py schema v2 with the ascii feature, plain ASCII output, one logical operation, a 10% relative threshold, and Bonferroni-adjusted 95% simultaneous confidence. The 50 microsecond absolute value is the preregistered materiality boundary for this low-latency lane, not a repository-wide hard limit; other lanes may register a profile-specific formula or structural objective as described in RUNBOOK.md.
 
-The tracked evidence attachments are the Markdown projections in docs/performance/evidence/ascii-u25/99c567e89/. The schema-v2 JSON files are build artifacts, not durable repository files, in accordance with the performance runbook; their names, sizes, and SHA-256 values below identify the retained CI artifacts.
+The tracked evidence attachments are the Markdown projections in docs/performance/evidence/ascii-u25/861fc0ba3/. The schema-v2 JSON files are build artifacts under target/performance/u25/, not durable repository files, in accordance with the performance runbook; their names, sizes, and SHA-256 values below identify the retained local/CI artifacts.
 
 ### Medium comparison against the benchmark backport
 
-medium-confirmation.json (CI artifact) is 332381 bytes (SHA-256 9a0962b0326fa6890b7b5ec056c7c9c818a72cabf2ced09cad1ad473ac6256fd). Its tracked Markdown projection is 1834 bytes (SHA-256 ed03661fe42480d7eed49482d894fff570622582b15852e5423d4e7ee92e9f7e). It contains two comparable rows and zero contract failures. Output identities matched. Both rows are statistically inconclusive: the relative intervals cross the registered decision boundary, while the absolute upper bounds remain below 50 microseconds.
+current-medium-861fc.json (target artifact) is 405318 bytes (SHA-256 1dc13406aa71ab9c6063f0f1462489fa6b4076d95318d374a80304a4493f7164). Its tracked Markdown projection is 1220 bytes (SHA-256 9a18f3c5b2b89cd21bf98e005c05d7149a12df8ed2376aacc2c088acdb61f3e2). It contains two comparable rows and zero contract failures. Output identities matched. Both rows are statistically inconclusive: relative intervals cross the registered decision boundary, while absolute upper bounds remain below 50 microseconds.
 
 | Fixture | Output identity | Base | Source | Absolute interval | Disposition |
 | --- | --- | ---: | ---: | ---: | --- |
-| sequence_medium | 3721 bytes / 4ac5a151d177b47e44b06b038d7496385dd066062b4e1032f54d8ce77ae488f0 | 120878.75 ns | 162705.00 ns | 40898.7..42637.5 ns | Accepted below absolute threshold; relative result inconclusive |
-| class_medium | 2695 bytes / 4313de5080beb30197158cee630f0d5f3bcf94a9e5dd6ae5bded7781100f7fd7 | 313327.50 ns | 351071.25 ns | 34615.0..40036.3 ns | Accepted below absolute threshold; relative result inconclusive |
+| sequence_medium | 3721 bytes / 4ac5a151d177b47e44b06b038d7496385dd066062b4e1032f54d8ce77ae488f0 | 118120 ns | 161000 ns | 41100..44850 ns | Accepted below this lane's absolute materiality boundary; relative result inconclusive |
+| class_medium | 2695 bytes / 4313de5080beb30197158cee630f0d5f3bcf94a9e5dd6ae5bded7781100f7fd7 | 307780 ns | 341940 ns | 32530..35910 ns | Accepted below this lane's absolute materiality boundary; relative result inconclusive |
 
 This is not a claim that the relative slowdown is zero.
 
 ### Five-family large A/A observation
 
-large-aa-discovery.json (CI artifact) is 71341 bytes (SHA-256 0535cb0b431257666a540b9bf64fce58362453d0f4344ee508ab272f0680afad), and large-aa-confirmation.json (CI artifact) is 1903950 bytes (SHA-256 ba2ae40a24b99dea3ddeb1539c1a36513672fdc2662729cc6e494522f3c00450). Their tracked Markdown projections are 2047 bytes (SHA-256 f0044a64a6dae2d8ff859cfc9bc9da35e0d975938ccd833777232c5dc6d3f3d3) and 2275 bytes (SHA-256 b39e2f7ab226d6926a8891062d61c5ad947682c87cd91f683209226c0b2eb7cf). Five rows were comparable, with zero contract failures and matched output identities.
+current-large-aa-861fc.json (target artifact) is 1079620 bytes (SHA-256 442225004208d2927e5f9e15bb23de3d52533e93424cad01c7a807e6205805ff). Its tracked Markdown projection is 1176 bytes (SHA-256 6ab83718731e85ef4125885a98f0b49688c214ee4ec08f711502b4592b4e7083). Five rows were comparable, with zero contract failures and matched output identities; Flowchart, Sequence, and Class A/A calibration remained inconclusive, while ER and XYChart were confirmed non-regressions.
 
 | Fixture | Output bytes / SHA-256 | Result |
 | --- | --- | --- |
-| flowchart_large | 66719 / 2640bece3a7df41c48b52e189845261d3ea1230ab78a7fa0a29786d48359ddae | Inconclusive: A/A calibration required 17890 pairs, above the 64-pair cap |
-| sequence_mermaid_api_large | 147450 / 8aae5385d292539f2d3052ea2d32f9b0cc0aa8e6d5ecb8a13cbca54816f9ffeb | Inconclusive: A/A calibration was not stable within the pair cap |
-| class_large | 16597 / 3e87c09709ca99dd5efaaf33147e8a26ff85e916643b3cfd020ce3e7034672a1 | Confirmed non-regression; relative interval -0.14%..+0.43% |
-| er_large | 21802 / 25ffc3983eae86ed61b966958208dde07cd646b78dd61272c557e3a7afc67b83 | Confirmed non-regression; relative interval -0.35%..+0.40% |
-| xychart_large | 11649 / 3637865ae01de610f9caf3dc55088bf6a65ec86a7dc28caa644e67e4b2aaeee | Confirmed non-regression; relative interval +0.13%..+0.85% |
+| flowchart_large | output identity matched | Inconclusive: A/A calibration did not stabilize within the registered pair cap |
+| sequence_mermaid_api_large | output identity matched | Inconclusive: A/A calibration did not stabilize within the registered pair cap |
+| class_large | output identity matched | Inconclusive: A/A calibration did not stabilize within the registered pair cap |
+| er_large | output identity matched | Confirmed non-regression; relative interval -0.44%..+0.84% |
+| xychart_large | output identity matched | Confirmed non-regression; relative interval -0.15%..+0.98% |
 
 The old baseline changes output identity for Class, ER, and XYChart. The runner correctly rejects those rows as causal A/B comparisons; this receipt does not claim old-version performance equivalence for them.
 
@@ -60,7 +60,7 @@ All commands used the repository default target directory and one build job wher
 - cargo fmt --all -- --check
 - cargo nextest run -p merman-core -j 1: 1539 passed
 - cargo nextest run -p merman-ascii -j 1: 1246 passed
-- cargo nextest run -p merman-render -j 1: 1589 passed, 1 skipped
+- cargo nextest run -p merman-render -j 1: 1591 passed, 1 skipped (after the Flowchart stylesheet preflight change)
 - cargo nextest run -p merman --no-default-features --features ascii -j 1: 30 passed
 - cargo nextest run -p merman-bindings-core --no-default-features --features ascii -j 1: 150 passed
 - cargo nextest run -p merman-uniffi --no-default-features --features ascii -j 1: 23 passed
@@ -75,7 +75,7 @@ All commands used the repository default target directory and one build job wher
 
 ## Safety, resource, and independent review
 
-The static resource/panic audit found no new production P0/P1. Failure-terminal precedence, cancellation precedence, exact/N-1 boundaries, binding envelopes, and trace staging are covered by the serial matrix above. Independent Standards review of 16b841226...99c567e89 found no P0/P1 or static compilation blocker.
+The static resource/panic audit found no new production P0/P1. Failure-terminal precedence, cancellation precedence, exact/N-1 boundaries, binding envelopes, and trace staging are covered by the serial matrix above. The independent review through the preceding source freeze found no P0/P1 or static compilation blocker; the current Flowchart stylesheet change then passed the full 1,591-test render package gate.
 
 Accepted P2 residuals:
 
@@ -86,8 +86,8 @@ Accepted P2 residuals:
 5. grapheme_safe_trim and some layered sorting/lane scans lack fine-grained mid-loop checkpoints; this receipt does not claim complete cancellation-latency closure.
 6. AsciiRenderer::render_model remains a documented downgrade boundary for parser-owned CSS/source provenance and is not claimed as parser parity.
 
-These are P2 follow-ups, not Pending items. The maintainer disposition is: accept the medium absolute-under-50-microsecond inconclusive observations; accept the large Flowchart/Sequence A/A statistical insufficiency; accept the confirmed Class/ER/XYChart large non-regressions; and exclude changed-output baseline rows from causal claims.
+These are P2 follow-ups, not unresolved closeout rows. The maintainer disposition is: accept the medium observations as below this lane's 50-microsecond materiality boundary while retaining their relative inconclusive status; accept the large Flowchart/Sequence/Class A/A statistical insufficiency; accept the confirmed ER/XYChart large non-regressions; and exclude any changed-output baseline rows from causal claims.
 
 ## Validity rule
 
-This receipt is valid only for product source commit 99c567e89. Any later product, lockfile, fixture, benchmark-harness, CI-contract, or performance-evidence change requires a new source freeze and affected evidence rerun. The documentation child commit carrying this receipt is not a new product measurement point.
+This receipt is valid only for product source commit 861fc0ba33ac6f0a724263b3a6f303a3f26eee15 and tree fc552d5c52f9555c619a67294d523baaf2c89203. Any later product, lockfile, fixture, benchmark-harness, CI-contract, or performance-evidence change requires a new source freeze and affected evidence rerun. The 50 microsecond value is lane-specific materiality, not a universal pass/fail promise.
