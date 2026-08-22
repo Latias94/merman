@@ -487,9 +487,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(GITGRAPH_EDGE_SOURCE)
         }
-        (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Fill) => {
-            Ok(GANTT_TASK_FILL_SOURCE)
-        }
+        (
+            DiagramFamilyId::GANTT,
+            ThemeTarget::Task,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(GANTT_TASK_FILL_SOURCE),
         _ => Err(C6ProofError::new(
             "route-source",
             format!("no route-cutover witness source for {}", route_label(route)),
@@ -976,7 +978,8 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
                 | ThemeTarget::Activation
                 | ThemeTarget::Message
                 | ThemeTarget::Requirement
-                | ThemeTarget::PieSlice => SOLID_STROKE.css,
+                | ThemeTarget::PieSlice
+                | ThemeTarget::Task => SOLID_STROKE.css,
                 target => {
                     return Err(C6ProofError::new(
                         "route-theme",
@@ -1326,7 +1329,8 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             | ThemeTarget::Activation
             | ThemeTarget::Message
             | ThemeTarget::Requirement
-            | ThemeTarget::PieSlice,
+            | ThemeTarget::PieSlice
+            | ThemeTarget::Task,
             ThemeRouteCutoverFacet::Stroke,
         ) => Ok(SOLID_STROKE),
         (ThemeTarget::Edge | ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
@@ -1405,7 +1409,8 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 | ThemeTarget::Activation
                 | ThemeTarget::Message
                 | ThemeTarget::Requirement
-                | ThemeTarget::PieSlice,
+                | ThemeTarget::PieSlice
+                | ThemeTarget::Task,
                 ThemeRouteCutoverFacet::Stroke,
             ) => Ok(SOLID_STROKE.css),
             (ThemeTarget::Edge | ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
@@ -1582,11 +1587,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_ninety_four_routes_and_one_hundred_ten_artifact_witnesses() {
+    fn route_inventory_retains_ninety_six_routes_and_one_hundred_twelve_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 94);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 110);
+        assert_eq!(inventory.len(), 96);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 112);
     }
 
     #[test]

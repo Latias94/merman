@@ -65,4 +65,13 @@ impl GanttTaskBarState {
             Self::Crit => "themeVariables.critBkgColor",
         }
     }
+
+    pub(super) const fn final_stroke_path(self) -> &'static str {
+        match self {
+            Self::Default => "themeVariables.taskBorderColor",
+            Self::Active | Self::ActiveCrit => "themeVariables.activeTaskBorderColor",
+            Self::Done | Self::DoneCrit => "themeVariables.doneTaskBorderColor",
+            Self::Crit => "themeVariables.critBorderColor",
+        }
+    }
 }

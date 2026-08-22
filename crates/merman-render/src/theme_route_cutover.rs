@@ -118,11 +118,15 @@ pub enum ThemeRouteCutoverProjection {
     NodeLabelFill = 28,
     PieSliceFill = 29,
     RequirementStroke = 30,
+    GanttTaskDefaultStroke = 31,
+    GanttTaskActiveStroke = 32,
+    GanttTaskSuccessStroke = 33,
+    GanttTaskErrorStroke = 34,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 31] = [
+    const ALL: [Self; 35] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -154,6 +158,10 @@ impl ThemeRouteCutoverProjection {
         Self::NodeLabelFill,
         Self::PieSliceFill,
         Self::RequirementStroke,
+        Self::GanttTaskDefaultStroke,
+        Self::GanttTaskActiveStroke,
+        Self::GanttTaskSuccessStroke,
+        Self::GanttTaskErrorStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -189,6 +197,10 @@ impl ThemeRouteCutoverProjection {
             Self::NodeLabelFill => "node-label.fill",
             Self::PieSliceFill => "slice.fill",
             Self::RequirementStroke => "requirement.paint",
+            Self::GanttTaskDefaultStroke => "task.default.stroke",
+            Self::GanttTaskActiveStroke => "task.active.stroke",
+            Self::GanttTaskSuccessStroke => "task.success.stroke",
+            Self::GanttTaskErrorStroke => "task.error.stroke",
         }
     }
 
@@ -225,7 +237,11 @@ impl ThemeRouteCutoverProjection {
             | Self::GanttTaskErrorFill
             | Self::NodeLabelFill
             | Self::PieSliceFill
-            | Self::RequirementStroke => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::RequirementStroke
+            | Self::GanttTaskDefaultStroke
+            | Self::GanttTaskActiveStroke
+            | Self::GanttTaskSuccessStroke
+            | Self::GanttTaskErrorStroke => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -308,6 +324,12 @@ impl ThemeRouteCutoverProjectionSet {
             | ThemeRouteCutoverProjection::GanttTaskActiveFill.bit()
             | ThemeRouteCutoverProjection::GanttTaskSuccessFill.bit()
             | ThemeRouteCutoverProjection::GanttTaskErrorFill.bit(),
+    );
+    pub const REPLACE_GANTT_TASK_STROKES: Self = Self(
+        ThemeRouteCutoverProjection::GanttTaskDefaultStroke.bit()
+            | ThemeRouteCutoverProjection::GanttTaskActiveStroke.bit()
+            | ThemeRouteCutoverProjection::GanttTaskSuccessStroke.bit()
+            | ThemeRouteCutoverProjection::GanttTaskErrorStroke.bit(),
     );
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {

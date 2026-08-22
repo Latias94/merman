@@ -10,7 +10,8 @@ use crate::diagram_theme::{
     ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
@@ -52,6 +53,37 @@ impl GanttTaskFillExpectation {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GanttTaskStrokeOwner {
+    Mermaid,
+    Typed {
+        rule_index: usize,
+        capability: ThemeCapability,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GanttTaskStrokeExpectation {
+    css: Box<str>,
+    owner: GanttTaskStrokeOwner,
+}
+
+impl GanttTaskStrokeExpectation {
+    const fn typed_rule_index(&self) -> Option<usize> {
+        match self.owner {
+            GanttTaskStrokeOwner::Mermaid => None,
+            GanttTaskStrokeOwner::Typed { rule_index, .. } => Some(rule_index),
+        }
+    }
+
+    const fn typed_capability(&self) -> Option<ThemeCapability> {
+        match self.owner {
+            GanttTaskStrokeOwner::Mermaid => None,
+            GanttTaskStrokeOwner::Typed { capability, .. } => Some(capability),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct GanttTaskTerminalExpectation {
     semantic_id: Box<str>,
@@ -59,6 +91,7 @@ struct GanttTaskTerminalExpectation {
     radius_px: f64,
     radius_rule_index: Option<usize>,
     fill: Option<GanttTaskFillExpectation>,
+    stroke: Option<GanttTaskStrokeExpectation>,
 }
 
 impl GanttTaskTerminalExpectation {
@@ -69,6 +102,7 @@ impl GanttTaskTerminalExpectation {
             radius_px: MERMAID_TASK_RADIUS_PX,
             radius_rule_index: None,
             fill: None,
+            stroke: None,
         }
     }
 }
@@ -102,6 +136,8 @@ impl GanttTaskTheme {
         let mut radius_rules = BTreeSet::new();
         let mut typed_fill_capabilities = BTreeMap::<usize, ThemeCapability>::new();
         let mut source_owned_fill_rules = BTreeSet::new();
+        let mut typed_stroke_capabilities = BTreeMap::<usize, ThemeCapability>::new();
+        let mut source_owned_stroke_rules = BTreeSet::new();
 
         for (task_index, expectation) in task_expectations.iter_mut().enumerate() {
             let style = theme.style_with_work_meter(
@@ -130,6 +166,17 @@ impl GanttTaskTheme {
                     typed_fill_capabilities.insert(rule_index, capability);
                 } else if let Some(origin) = style.fill_resolution().winner() {
                     source_owned_fill_rules.insert(origin.rule_index());
+                }
+            }
+            expectation.stroke =
+                typed_stroke_expectation(theme, effective_config, expectation.state, &style)?;
+            if let Some(stroke) = &expectation.stroke {
+                if let (Some(rule_index), Some(capability)) =
+                    (stroke.typed_rule_index(), stroke.typed_capability())
+                {
+                    typed_stroke_capabilities.insert(rule_index, capability);
+                } else if let Some(origin) = style.stroke_resolution().winner() {
+                    source_owned_stroke_rules.insert(origin.rule_index());
                 }
             }
         }
@@ -172,6 +219,21 @@ impl GanttTaskTheme {
                                 observation.pending.fill = true;
                                 observation.pending.capabilities.insert(*capability);
                             } else if source_owned_fill_rules.contains(&rule_index) {
+                                observation.suppressed = true;
+                            } else {
+                                observation.incomplete = true;
+                            }
+                        }
+                        (
+                            FamilyThemeDisposition::TypedAdapter,
+                            FamilyThemeRuleFacet::Stroke(
+                                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                            ),
+                        ) => {
+                            if let Some(capability) = typed_stroke_capabilities.get(&rule_index) {
+                                observation.pending.stroke = true;
+                                observation.pending.capabilities.insert(*capability);
+                            } else if source_owned_stroke_rules.contains(&rule_index) {
                                 observation.suppressed = true;
                             } else {
                                 observation.incomplete = true;
@@ -307,9 +369,18 @@ impl GanttTaskTheme {
             .map(|fill| fill.css.as_ref())
     }
 
+    pub(crate) fn terminal_stroke_for_layout_task(&self, layout_index: usize) -> Option<&str> {
+        self.layout_task(layout_index)
+            .and_then(|task| task.stroke.as_ref())
+            .map(|stroke| stroke.css.as_ref())
+    }
+
     pub(crate) fn begin_terminal_receipt(&self) -> Option<GanttTaskThemeReceipt> {
-        let requires_receipt =
-            !self.pending.is_empty() || self.tasks.iter().any(|task| task.fill.is_some());
+        let requires_receipt = !self.pending.is_empty()
+            || self
+                .tasks
+                .iter()
+                .any(|task| task.fill.is_some() || task.stroke.is_some());
         requires_receipt.then(|| {
             let Some(layout_occurrences) = self.layout_occurrences.get() else {
                 return GanttTaskThemeReceipt::invalid(self.task_count());
@@ -438,6 +509,52 @@ fn typed_fill_expectation(
     }))
 }
 
+fn typed_stroke_expectation(
+    theme: &ResolvedDiagramTheme,
+    effective_config: &MermaidConfig,
+    state: GanttTaskBarState,
+    style: &ResolvedThemeStyle,
+) -> crate::Result<Option<GanttTaskStrokeExpectation>> {
+    let Some(typed_stroke) = resolve_direct_static_stroke(
+        theme,
+        style,
+        &[ThemeTarget::Task],
+        DirectStaticSelectorDomain::Unqualified,
+    ) else {
+        return Ok(None);
+    };
+    let (typed_css, rule_index, capability) = typed_stroke.into_parts();
+
+    let final_stroke_path = state.final_stroke_path();
+    let owner = if merman_core::__private::config_path_overrides_typed_default(
+        effective_config,
+        final_stroke_path,
+    ) {
+        GanttTaskStrokeOwner::Mermaid
+    } else {
+        GanttTaskStrokeOwner::Typed {
+            rule_index,
+            capability,
+        }
+    };
+    let css = match owner {
+        GanttTaskStrokeOwner::Mermaid => effective_config
+            .get_str(final_stroke_path)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "Gantt terminal stroke owner `{final_stroke_path}` had no effective value"
+                ),
+            })?
+            .to_string(),
+        GanttTaskStrokeOwner::Typed { .. } => typed_css.to_string(),
+    };
+
+    Ok(Some(GanttTaskStrokeExpectation {
+        css: css.into_boxed_str(),
+        owner,
+    }))
+}
+
 #[derive(Debug, Default)]
 struct GanttTaskRuleObservation {
     applicable: bool,
@@ -451,12 +568,13 @@ struct GanttTaskRuleObservation {
 struct GanttTaskPendingEvidence {
     radius: bool,
     fill: bool,
+    stroke: bool,
     capabilities: BTreeSet<ThemeCapability>,
 }
 
 impl GanttTaskPendingEvidence {
     const fn requires_terminal_proof(&self) -> bool {
-        self.radius || self.fill
+        self.radius || self.fill || self.stroke
     }
 }
 
@@ -469,6 +587,7 @@ pub(crate) struct GanttTaskThemeReceipt {
     terminal_ids: BTreeSet<Box<str>>,
     radius_rules: BTreeSet<usize>,
     fill_rules: BTreeSet<usize>,
+    stroke_rules: BTreeSet<usize>,
 }
 
 impl GanttTaskThemeReceipt {
@@ -480,6 +599,7 @@ impl GanttTaskThemeReceipt {
             terminal_ids: BTreeSet::new(),
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
+            stroke_rules: BTreeSet::new(),
         }
     }
 
@@ -491,6 +611,7 @@ impl GanttTaskThemeReceipt {
             terminal_ids: BTreeSet::new(),
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
+            stroke_rules: BTreeSet::new(),
         }
     }
 
@@ -506,6 +627,7 @@ impl GanttTaskThemeReceipt {
         emitted_radius_x: f64,
         emitted_radius_y: f64,
         emitted_fill: Option<&str>,
+        emitted_stroke: Option<&str>,
     ) {
         let Some(checkpointed) = self.checkpointed_tasks.get_mut(layout_index) else {
             self.terminals_match = false;
@@ -532,12 +654,15 @@ impl GanttTaskThemeReceipt {
                 .split_ascii_whitespace()
                 .any(|class| class == expected_state_class.as_str());
         let fill_matches = emitted_fill == expected.fill.as_ref().map(|fill| fill.css.as_ref());
+        let stroke_matches =
+            emitted_stroke == expected.stroke.as_ref().map(|stroke| stroke.css.as_ref());
         let radius_matches =
             emitted_radius_x == expected.radius_px && emitted_radius_y == expected.radius_px;
         let terminal_matches = expected.semantic_id.as_ref() == semantic_id
             && expected_terminal_id == terminal_id
             && class_matches
             && fill_matches
+            && stroke_matches
             && radius_matches
             && self.terminal_ids.insert(terminal_id.into());
         self.terminals_match &= terminal_matches;
@@ -552,6 +677,13 @@ impl GanttTaskThemeReceipt {
                 .and_then(GanttTaskFillExpectation::typed_rule_index)
             {
                 self.fill_rules.insert(rule_index);
+            }
+            if let Some(rule_index) = expected
+                .stroke
+                .as_ref()
+                .and_then(GanttTaskStrokeExpectation::typed_rule_index)
+            {
+                self.stroke_rules.insert(rule_index);
             }
         }
     }
@@ -570,6 +702,7 @@ impl GanttTaskThemeReceipt {
         self.proves_complete()
             && (!pending.radius || self.radius_rules.contains(&rule_index))
             && (!pending.fill || self.fill_rules.contains(&rule_index))
+            && (!pending.stroke || self.stroke_rules.contains(&rule_index))
     }
 }
 
@@ -638,8 +771,15 @@ mod tests {
                     capability: ThemeCapability::SolidPaint,
                 },
             }),
+            stroke: Some(GanttTaskStrokeExpectation {
+                css: "#654321".into(),
+                owner: GanttTaskStrokeOwner::Typed {
+                    rule_index: 1,
+                    capability: ThemeCapability::SolidPaint,
+                },
+            }),
         };
-        let mut missing = GanttTaskThemeReceipt::new(vec![expectation.clone()]);
+        let missing = GanttTaskThemeReceipt::new(vec![expectation.clone()]);
         assert!(!missing.proves_complete());
 
         let mut wrong = GanttTaskThemeReceipt::new(vec![expectation.clone()]);
@@ -653,8 +793,24 @@ mod tests {
             7.0,
             7.0,
             Some("#abcdef"),
+            Some("#654321"),
         );
         assert!(!wrong.proves_complete());
+
+        let mut wrong_stroke = GanttTaskThemeReceipt::new(vec![expectation.clone()]);
+        wrong_stroke.record_checkpointed_task(
+            0,
+            "gantt",
+            "task-a",
+            "gantt-task-a",
+            "0",
+            "task active0",
+            7.0,
+            7.0,
+            Some("#123456"),
+            Some("#abcdef"),
+        );
+        assert!(!wrong_stroke.proves_complete());
 
         let mut duplicate = GanttTaskThemeReceipt::new(vec![expectation]);
         for _ in 0..2 {
@@ -668,6 +824,7 @@ mod tests {
                 7.0,
                 7.0,
                 Some("#123456"),
+                Some("#654321"),
             );
         }
         assert!(!duplicate.proves_complete());

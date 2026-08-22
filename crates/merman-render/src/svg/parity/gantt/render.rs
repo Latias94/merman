@@ -331,14 +331,22 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let ry = fmt(t.bar.ry);
             let terminal_id = gantt_dom_id(diagram_id, &t.bar.id);
             let terminal_fill = task_theme.terminal_fill_for_layout_task(*task_index);
+            let terminal_stroke = task_theme.terminal_stroke_for_layout_task(*task_index);
             let section_suffix = crate::gantt::gantt_section_class_suffix(
                 &t.task_type,
                 &layout.categories,
                 layout.number_section_styles,
             );
             let _ = write!(&mut out, r#" id="{}""#, escape_attr(&terminal_id));
-            if let Some(fill) = terminal_fill {
-                let _ = write!(&mut out, r#" style="fill:{};""#, escape_attr(fill));
+            if terminal_fill.is_some() || terminal_stroke.is_some() {
+                let mut style = String::new();
+                if let Some(fill) = terminal_fill {
+                    let _ = write!(&mut style, "fill:{fill};");
+                }
+                if let Some(stroke) = terminal_stroke {
+                    let _ = write!(&mut style, "stroke:{stroke};");
+                }
+                let _ = write!(&mut out, r#" style="{}""#, escape_attr(&style));
             }
             let _ = write!(
                 &mut out,
@@ -364,6 +372,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                     t.bar.rx,
                     t.bar.ry,
                     terminal_fill,
+                    terminal_stroke,
                 );
             }
         }

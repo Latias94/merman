@@ -51,6 +51,9 @@ pub(super) fn deep_family_route_observation(
         DiagramFamilyId::ER => er_relation_observation(document, route, profile),
         DiagramFamilyId::MINDMAP => mindmap_edge_observation(document, route, profile),
         DiagramFamilyId::GIT_GRAPH => gitgraph_edge_observation(document, route, profile),
+        DiagramFamilyId::GANTT if route.facet() == ThemeRouteCutoverFacet::Stroke => {
+            gantt_task_stroke_observation(document, route, profile)
+        }
         DiagramFamilyId::GANTT => gantt_task_fill_observation(document, route, profile),
         family => Err(C6ProofError::new(
             "route-svg-proof",
@@ -92,6 +95,9 @@ pub(super) fn deep_family_underlay_colors(
         }
         DiagramFamilyId::MINDMAP => Vec::new(),
         DiagramFamilyId::GIT_GRAPH => Vec::new(),
+        DiagramFamilyId::GANTT if route.facet() == ThemeRouteCutoverFacet::Stroke => {
+            gantt_task_fill_underlay_colors(document)?
+        }
         DiagramFamilyId::GANTT => {
             prove_gantt_transparent_underlay(document)?;
             gantt_task_text_underlay_colors(document)?
@@ -1540,6 +1546,153 @@ fn gantt_task_fill_observation(
     })
 }
 
+fn gantt_task_stroke_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+    profile: CutoverWitnessProfile,
+) -> C6ProofResult<DeepFamilyRouteObservation> {
+    require_route(route, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke)?;
+    require_classic_profile(profile, "Gantt Task.stroke")?;
+    for projection in [
+        ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
+        ThemeRouteCutoverProjection::GanttTaskActiveStroke,
+        ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
+        ThemeRouteCutoverProjection::GanttTaskErrorStroke,
+    ] {
+        c6_ensure!(
+            "route-svg-proof",
+            route.projections().contains(projection),
+            "Gantt Task.stroke route lacks {}",
+            projection.contribution_id()
+        );
+    }
+    c6_ensure!(
+        "route-svg-proof",
+        route.projections().len() == 4,
+        "Gantt Task.stroke route has an unexpected projection"
+    );
+
+    let tasks = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .attribute("class")
+                    .and_then(|classes| classes.split_ascii_whitespace().next())
+                    == Some("task")
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        tasks.len() == 6,
+        "Gantt Task.stroke witness expected six state rects, found {}",
+        tasks.len()
+    );
+
+    let expected = [
+        (
+            "default-task",
+            "task0",
+            ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
+            "themeVariables.taskBorderColor",
+        ),
+        (
+            "active-task",
+            "active0",
+            ThemeRouteCutoverProjection::GanttTaskActiveStroke,
+            "themeVariables.activeTaskBorderColor",
+        ),
+        (
+            "done-task",
+            "done0",
+            ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
+            "themeVariables.doneTaskBorderColor",
+        ),
+        (
+            "crit-task",
+            "crit0",
+            ThemeRouteCutoverProjection::GanttTaskErrorStroke,
+            "themeVariables.critBorderColor",
+        ),
+        (
+            "active-crit-task",
+            "activeCrit0",
+            ThemeRouteCutoverProjection::GanttTaskActiveStroke,
+            "themeVariables.activeTaskBorderColor",
+        ),
+        (
+            "done-crit-task",
+            "doneCrit0",
+            ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
+            "themeVariables.doneTaskBorderColor",
+        ),
+    ];
+    let mut common_value = None;
+    let mut seen = BTreeSet::new();
+    let mut target_regions = Vec::with_capacity(tasks.len());
+    let mut terminal = b"merman.c6-route-gantt-task-stroke.v1\0".to_vec();
+    for task in tasks {
+        let id = task.attribute("id").ok_or_else(|| {
+            C6ProofError::new("route-svg-proof", "Gantt task rect lacks a terminal id")
+        })?;
+        let (semantic_id, state_class, projection, final_stroke_path) = expected
+            .iter()
+            .copied()
+            .filter(|(semantic_id, _, _, _)| {
+                id == *semantic_id
+                    || id
+                        .strip_suffix(semantic_id)
+                        .is_some_and(|prefix| prefix.ends_with('-'))
+            })
+            .max_by_key(|(semantic_id, _, _, _)| semantic_id.len())
+            .ok_or_else(|| {
+                C6ProofError::new(
+                    "route-svg-proof",
+                    format!("unexpected Gantt task terminal {id}"),
+                )
+            })?;
+        c6_ensure!(
+            "route-svg-proof",
+            seen.insert(semantic_id)
+                && task.attribute("class") == Some(format!("task {state_class}").as_str()),
+            "Gantt task {id} lost or duplicated state class {state_class}"
+        );
+        let value = required_style_value(task, "stroke", "Gantt task rect")?;
+        observe_common_value(&mut common_value, value, "Gantt task rect")?;
+        c6_ensure!(
+            "route-svg-proof",
+            task.attribute("stroke").is_none()
+                && ["x", "y", "width", "height", "rx", "ry", "transform-origin"]
+                    .into_iter()
+                    .all(|attribute| task.attribute(attribute).is_some()),
+            "Gantt task {id} lost its final inline stroke owner or geometry"
+        );
+        let region = raw_element_bounds(task)?.rect(0.0)?;
+        target_regions.push(region);
+        append_node_terminal(&mut terminal, task, value, region);
+        append_len_prefixed(&mut terminal, semantic_id.as_bytes());
+        append_len_prefixed(&mut terminal, state_class.as_bytes());
+        append_len_prefixed(&mut terminal, projection.contribution_id().as_bytes());
+        append_len_prefixed(&mut terminal, final_stroke_path.as_bytes());
+    }
+    c6_ensure!(
+        "route-svg-proof",
+        seen.len() == expected.len(),
+        "Gantt Task.stroke did not cover every canonical state terminal"
+    );
+
+    Ok(DeepFamilyRouteObservation {
+        value: common_value.ok_or_else(|| {
+            C6ProofError::new(
+                "route-svg-proof",
+                "Gantt Task.stroke witness has no stroke value",
+            )
+        })?,
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
 fn class_underlay_colors(document: &roxmltree::Document<'_>) -> C6ProofResult<Vec<[u8; 3]>> {
     let root_id = root_id(document, "Class")?;
     let selector = format!(
@@ -1634,6 +1787,33 @@ fn gantt_task_text_underlay_colors(
         !colors.is_empty(),
         "Gantt Task.fill witness lacks independently observed task-text underlay colors"
     );
+    Ok(colors)
+}
+
+fn gantt_task_fill_underlay_colors(
+    document: &roxmltree::Document<'_>,
+) -> C6ProofResult<Vec<[u8; 3]>> {
+    let root_id = root_id(document, "Gantt")?;
+    let mut colors = Vec::new();
+    for task in document.descendants().filter(|node| {
+        node.has_tag_name("rect")
+            && node
+                .attribute("class")
+                .is_some_and(|classes| classes.split_ascii_whitespace().next() == Some("task"))
+    }) {
+        if let Some(raw) = style_value(task, "fill").or_else(|| task.attribute("fill")) {
+            push_optional_color(&mut colors, raw)?;
+        }
+        for class in task
+            .attribute("class")
+            .unwrap_or_default()
+            .split_ascii_whitespace()
+        {
+            for raw in gantt_stylesheet_fill_values_for_class(document, &root_id, class) {
+                push_optional_color(&mut colors, raw)?;
+            }
+        }
+    }
     Ok(colors)
 }
 

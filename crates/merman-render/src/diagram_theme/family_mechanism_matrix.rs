@@ -327,6 +327,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_FILLS)
         }
+        (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_STROKES)
+        }
         (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
             ThemeTarget::Cluster,
@@ -1340,6 +1343,18 @@ pub(super) fn classify_rule_facet(
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::GANTT
+        && target == ThemeTarget::Task
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -2975,6 +2990,34 @@ mod tests {
             .disposition(),
             FamilyThemeDisposition::Unsupported
         );
+
+        let task_stroke = ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid("#334455").expect("valid task stroke"));
+        assert_eq!(
+            compile_rule_routes(
+                DiagramFamilyId::GANTT,
+                0,
+                &ThemeRule::new(ThemeTarget::Task, task_stroke.clone()),
+            )[0]
+            .disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        for variant in [
+            ThemeVariant::Default,
+            ThemeVariant::Active,
+            ThemeVariant::Success,
+            ThemeVariant::Error,
+        ] {
+            assert_eq!(
+                compile_rule_routes(
+                    DiagramFamilyId::GANTT,
+                    0,
+                    &ThemeRule::new(ThemeTarget::Task, task_stroke.clone()).with_variant(variant),
+                )[0]
+                .disposition(),
+                FamilyThemeDisposition::LegacyCompatibility
+            );
+        }
     }
 
     #[test]
@@ -4178,6 +4221,30 @@ mod tests {
                 ],
             ),
             (
+                DiagramFamilyId::GANTT,
+                ThemeTarget::Task,
+                Stroke,
+                Transparent,
+                vec![
+                    "task.default.stroke",
+                    "task.active.stroke",
+                    "task.success.stroke",
+                    "task.error.stroke",
+                ],
+            ),
+            (
+                DiagramFamilyId::GANTT,
+                ThemeTarget::Task,
+                Stroke,
+                Solid,
+                vec![
+                    "task.default.stroke",
+                    "task.active.stroke",
+                    "task.success.stroke",
+                    "task.error.stroke",
+                ],
+            ),
+            (
                 DiagramFamilyId::GIT_GRAPH,
                 ThemeTarget::Edge,
                 Stroke,
@@ -4713,6 +4780,35 @@ mod tests {
                 ThemeRouteCutoverProjection::GanttTaskActiveFill,
                 ThemeRouteCutoverProjection::GanttTaskSuccessFill,
                 ThemeRouteCutoverProjection::GanttTaskErrorFill,
+            ]
+        );
+        assert!(projections.iter().all(|projection| {
+            projection.action()
+                == crate::theme_route_cutover::ThemeRouteCutoverProjectionAction::Replace
+        }));
+    }
+
+    #[test]
+    fn gantt_task_stroke_cutover_replaces_each_state_projection_exactly() {
+        let route = legacy_replacing_typed_routes()
+            .expect("derive typed legacy-replacing routes")
+            .into_iter()
+            .find(|route| {
+                route.family_id() == DiagramFamilyId::GANTT
+                    && route.target() == ThemeTarget::Task
+                    && route.facet() == ThemeRouteCutoverFacet::Stroke
+                    && route.value() == ThemeRouteCutoverValue::Solid
+            })
+            .expect("Gantt Task.stroke solid route");
+        let projections = route.projections().iter().collect::<Vec<_>>();
+
+        assert_eq!(
+            projections,
+            vec![
+                ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
+                ThemeRouteCutoverProjection::GanttTaskActiveStroke,
+                ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
+                ThemeRouteCutoverProjection::GanttTaskErrorStroke,
             ]
         );
         assert!(projections.iter().all(|projection| {

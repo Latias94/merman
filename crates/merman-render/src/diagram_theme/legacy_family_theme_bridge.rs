@@ -597,30 +597,30 @@ fn compile_task_family(
 
     match family {
         DiagramFamilyId::GANTT => {
-            for (stroke_mapping, fill_projection, variant, fill_key, stroke_key) in [
+            for (stroke_projection, fill_projection, variant, fill_key, stroke_key) in [
                 (
-                    "task.default",
+                    ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
                     ThemeRouteCutoverProjection::GanttTaskDefaultFill,
                     ThemeVariant::Default,
                     "taskBkgColor",
                     "taskBorderColor",
                 ),
                 (
-                    "task.active",
+                    ThemeRouteCutoverProjection::GanttTaskActiveStroke,
                     ThemeRouteCutoverProjection::GanttTaskActiveFill,
                     ThemeVariant::Active,
                     "activeTaskBkgColor",
                     "activeTaskBorderColor",
                 ),
                 (
-                    "task.success",
+                    ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
                     ThemeRouteCutoverProjection::GanttTaskSuccessFill,
                     ThemeVariant::Success,
                     "doneTaskBkgColor",
                     "doneTaskBorderColor",
                 ),
                 (
-                    "task.error",
+                    ThemeRouteCutoverProjection::GanttTaskErrorStroke,
                     ThemeRouteCutoverProjection::GanttTaskErrorFill,
                     ThemeVariant::Error,
                     "critBkgColor",
@@ -632,7 +632,7 @@ fn compile_task_family(
                     [(fill_key, reader.fill_variant(ThemeTarget::Task, variant))],
                 );
                 contributions.add_theme_variables(
-                    stroke_mapping,
+                    stroke_projection.contribution_id(),
                     [(
                         stroke_key,
                         reader.stroke_variant(ThemeTarget::Task, variant),
@@ -3448,7 +3448,9 @@ mod tests {
             gantt
                 .effective_config
                 .get_str("themeVariables.taskBorderColor"),
-            Some("#94a3b8")
+            gantt_baseline
+                .effective_config
+                .get_str("themeVariables.taskBorderColor")
         );
         assert_eq!(
             gantt
@@ -3474,12 +3476,26 @@ mod tests {
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.gantt.task.active.fill")
         );
-        for mapping in ["task.default", "task.active", "task.success", "task.error"] {
+        for mapping in ["task.success.fill", "task.error.fill"] {
             assert!(
-                gantt_bridge
+                !gantt_bridge
                     .contribution_ids
                     .contains(&format!("merman.legacy-family-theme.v1.gantt.{mapping}"))
             );
+        }
+        assert!(!gantt_bridge.contribution_ids.contains(&format!(
+            "merman.legacy-family-theme.v1.gantt.{}",
+            ThemeRouteCutoverProjection::GanttTaskDefaultStroke.contribution_id()
+        )));
+        for projection in [
+            ThemeRouteCutoverProjection::GanttTaskActiveStroke,
+            ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
+            ThemeRouteCutoverProjection::GanttTaskErrorStroke,
+        ] {
+            assert!(gantt_bridge.contribution_ids.contains(&format!(
+                "merman.legacy-family-theme.v1.gantt.{}",
+                projection.contribution_id()
+            )));
         }
 
         let requirement_baseline = parse(&DiagramThemeSpec::new(), REQUIREMENT_FIXTURE);

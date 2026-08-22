@@ -79,6 +79,13 @@ fn gantt_task_fill_theme(fill: CanvasPaint) -> DiagramTheme {
     ))
 }
 
+fn gantt_task_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+    gantt_task_rule_theme(ThemeRule::new(
+        ThemeTarget::Task,
+        ThemeStylePatch::default().with_stroke(stroke),
+    ))
+}
+
 fn prepare_gantt_family_with_theme(
     text: &str,
     theme: &DiagramTheme,
@@ -160,6 +167,32 @@ fn gantt_task_terminal_fills(svg: &str) -> Vec<(String, String, String)> {
                 .and_then(|style| style_property(style, "fill"))
                 .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal fill: {svg}"));
             (id.to_string(), class.to_string(), fill.to_string())
+        })
+        .collect()
+}
+
+fn gantt_task_terminal_strokes(svg: &str) -> Vec<(String, String, String)> {
+    let document = roxmltree::Document::parse(svg).expect("valid themed Gantt SVG XML");
+    document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.split_ascii_whitespace().next() == Some("task"))
+        })
+        .map(|node| {
+            let id = node
+                .attribute("id")
+                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal id: {svg}"));
+            let class = node
+                .attribute("class")
+                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal class: {svg}"));
+            let stroke = node
+                .attribute("style")
+                .and_then(|style| style_property(style, "stroke"))
+                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal stroke: {svg}"));
+            (id.to_string(), class.to_string(), stroke.to_string())
         })
         .collect()
 }
@@ -317,6 +350,151 @@ fn gantt_static_task_fill_reaches_every_terminal_state_and_shape() {
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
     }
+}
+
+#[test]
+fn gantt_static_task_stroke_reaches_every_terminal_state_and_shape() {
+    for (stroke, expected_stroke) in [
+        (
+            CanvasPaint::solid("#654321").expect("valid Gantt task stroke"),
+            "#654321",
+        ),
+        (CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = gantt_task_stroke_theme(stroke);
+        let artifact = prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-config".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render strict portable Gantt task stroke");
+        let terminals = gantt_task_terminal_strokes(rendered.svg());
+
+        assert_eq!(terminals.len(), 8, "unexpected Gantt task terminal domain");
+        for (id, class, actual_stroke) in &terminals {
+            assert_eq!(actual_stroke, expected_stroke, "incorrect stroke for {id}");
+            let expected_state = match id.as_str() {
+                "gantt-config-default-task" => "task0",
+                "gantt-config-active-task" => "active0",
+                "gantt-config-done-task" => "done0",
+                "gantt-config-crit-task" => "crit0",
+                "gantt-config-active-crit-task" => "activeCrit0",
+                "gantt-config-done-crit-task" => "doneCrit0",
+                "gantt-config-active-milestone-task" => "active0",
+                "gantt-config-done-vert-task" => "done0",
+                _ => panic!("unexpected Gantt task rect {id}"),
+            };
+            assert!(
+                class
+                    .split_ascii_whitespace()
+                    .any(|token| token == expected_state),
+                "Gantt task state class drifted for {id}: {class}"
+            );
+        }
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gantt_final_mermaid_stroke_keys_own_their_states_independently() {
+    let theme = gantt_task_stroke_theme(
+        CanvasPaint::solid("#654321").expect("valid source-precedence Gantt task stroke"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "taskBorderColor": "#111111",
+            "activeTaskBorderColor": "#222222",
+            "doneTaskBorderColor": "#333333",
+            "critBorderColor": "#444444"
+        }
+    })));
+    let artifact =
+        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render source-owned Gantt task strokes");
+    let terminals = gantt_task_terminal_strokes(rendered.svg());
+
+    for (id, _, stroke) in &terminals {
+        let expected = match id.as_str() {
+            "gantt-config-default-task" => "#111111",
+            "gantt-config-active-task"
+            | "gantt-config-active-crit-task"
+            | "gantt-config-active-milestone-task" => "#222222",
+            "gantt-config-done-task"
+            | "gantt-config-done-crit-task"
+            | "gantt-config-done-vert-task" => "#333333",
+            "gantt-config-crit-task" => "#444444",
+            _ => panic!("unexpected Gantt task rect {id}"),
+        };
+        assert_eq!(stroke, expected, "incorrect final-key owner for {id}");
+    }
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_task_stroke_stays_bound_to_semantic_state_after_date_sorting() {
+    let source = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Late plain: late-task, 2024-01-03, 1d\n",
+        "Early active: active, early-task, 2024-01-01, 1d\n",
+    );
+    let theme = gantt_task_stroke_theme(
+        CanvasPaint::solid("#654321").expect("valid semantic Gantt task stroke"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "activeTaskBorderColor": "#abcdef" }
+    })));
+    let artifact = prepare_gantt_family_with_theme_and_engine(source, &theme, engine);
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render sorted Gantt task strokes");
+    let terminals = gantt_task_terminal_strokes(rendered.svg());
+    let by_id = terminals
+        .into_iter()
+        .map(|(id, _, stroke)| (id, stroke))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    assert_eq!(
+        by_id.get("gantt-config-late-task").map(String::as_str),
+        Some("#654321")
+    );
+    assert_eq!(
+        by_id.get("gantt-config-early-task").map(String::as_str),
+        Some("#abcdef")
+    );
 }
 
 #[test]

@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 17;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 18;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 31] = [
+); 35] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -140,6 +140,22 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjection::NodeLabelFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
+    (
+        ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::GanttTaskActiveStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::GanttTaskErrorStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
 ];
 
 #[derive(Clone, Copy)]
@@ -231,6 +247,12 @@ const GANTT_TASK_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::GanttTaskSuccessFill,
     ThemeRouteCutoverProjection::GanttTaskErrorFill,
 ];
+const GANTT_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
+    ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
+    ThemeRouteCutoverProjection::GanttTaskActiveStroke,
+    ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
+    ThemeRouteCutoverProjection::GanttTaskErrorStroke,
+];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -245,7 +267,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 94] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 96] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -903,6 +925,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 94] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         GANTT_TASK_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_STROKE_PROJECTIONS,
     ),
 ];
 
