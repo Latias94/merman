@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeEffect, Specified, ThemeTarget,
-    ThemeCapability, ThemeVariant,
+    ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeEffect, Specified, ThemeCapability,
+    ThemeTarget, ThemeVariant,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
