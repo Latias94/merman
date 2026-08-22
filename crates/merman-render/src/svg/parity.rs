@@ -755,7 +755,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            artifact.node_stroke_theme(),
+            artifact.node_paint_theme(),
             effective_config_value,
             options,
         ),

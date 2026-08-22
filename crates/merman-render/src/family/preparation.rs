@@ -129,7 +129,7 @@ fn prepare_block_family(
         meta.effective_config.as_value(),
         execution.text_measurer(),
     )?;
-    let node_stroke_theme = crate::block::BlockNodeStrokeThemePlan::resolve(
+    let node_paint_theme = crate::block::BlockNodePaintThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
@@ -138,7 +138,7 @@ fn prepare_block_family(
     Ok(BuiltinFamilyArtifact::Block(Box::new(
         BlockFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            node_stroke_theme,
+            node_paint_theme,
         },
     )))
 }

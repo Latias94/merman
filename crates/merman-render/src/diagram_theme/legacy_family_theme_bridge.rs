@@ -2714,6 +2714,53 @@ mod tests {
     }
 
     #[test]
+    fn block_unqualified_fill_retires_only_its_direct_projection() {
+        let contribution_id = "merman.legacy-family-theme.v1.block.node.fill";
+        let direct_spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(solid("#654321")),
+                )
+                .for_family(DiagramFamilyId::BLOCK),
+            ),
+        );
+        let direct_bridge = bridge(&direct_spec);
+        let direct = direct_bridge.compile_for_family(DiagramFamilyId::BLOCK);
+
+        assert!(direct.overlay.is_empty());
+        assert!(!direct.contribution_ids.contains(contribution_id));
+        assert!(!direct_bridge.owns_contribution_id(contribution_id));
+
+        let legacy_spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(solid("#654321")),
+                )
+                .with_variant(ThemeVariant::Default)
+                .for_family(DiagramFamilyId::BLOCK),
+            ),
+        );
+        let legacy_bridge = bridge(&legacy_spec);
+        let legacy = legacy_bridge.compile_for_family(DiagramFamilyId::BLOCK);
+
+        let parsed = parse(&legacy_spec, "block\n  A[\"Alpha\"]\n");
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.primaryColor"),
+            Some("#654321")
+        );
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.mainBkg"),
+            Some("#654321")
+        );
+        assert!(legacy.contribution_ids.contains(contribution_id));
+        assert!(legacy_bridge.owns_contribution_id(contribution_id));
+    }
+
+    #[test]
     fn unsupported_base_typography_does_not_emit_unrelated_legacy_fields() {
         let sequence_typography = TextStyle::default()
             .with_font_weight(700)

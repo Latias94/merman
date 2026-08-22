@@ -4,7 +4,7 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -116,19 +116,67 @@ fn block_node_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
         .expect("compile Block node stroke theme")
 }
 
+fn block_node_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::BLOCK),
+                ),
+            ),
+        )
+        .expect("compile Block node fill theme")
+}
+
+fn block_node_fill_and_stroke_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(fill)
+                            .with_stroke(stroke),
+                    )
+                    .for_family(DiagramFamilyId::BLOCK),
+                ),
+            ),
+        )
+        .expect("compile Block node fill and stroke theme")
+}
+
 fn render_block_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
     engine: Engine,
+) -> family::RenderedFamilySvg {
+    render_block_with_theme_requirement(
+        source,
+        theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn render_block_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    requirement: ThemePortabilityRequirement,
 ) -> family::RenderedFamilySvg {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Block")
         .expect("detect themed Block");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable Block session");
+        .expect("begin themed Block session");
 
     family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Block")
@@ -163,6 +211,19 @@ fn terminal_shell_styles(svg: &str, node_id: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+fn terminal_node_has_class(svg: &str, node_id: &str, expected_class: &str) -> bool {
+    let document = roxmltree::Document::parse(svg).expect("valid Block SVG");
+    document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(node_id))
+        .and_then(|node| node.attribute("class"))
+        .is_some_and(|classes| {
+            classes
+                .split_ascii_whitespace()
+                .any(|class| class == expected_class)
+        })
+}
+
 fn terminal_stroke(style: &str) -> Option<&str> {
     style
         .split(';')
@@ -170,6 +231,323 @@ fn terminal_stroke(style: &str) -> Option<&str> {
         .filter(|(property, _)| property.trim().eq_ignore_ascii_case("stroke"))
         .map(|(_, value)| value.trim())
         .next_back()
+}
+
+fn terminal_fill(style: &str) -> Option<&str> {
+    style
+        .split(';')
+        .filter_map(|declaration| declaration.trim().split_once(':'))
+        .filter(|(property, _)| property.trim().eq_ignore_ascii_case("fill"))
+        .map(|(_, value)| value.trim())
+        .next_back()
+}
+
+#[test]
+fn block_typed_node_fill_reaches_every_terminal_shape() {
+    let source = r#"block-beta
+  columns 5
+  rect["Rect"] circle(("Circle")) double((("Double"))) cylinder[("Cylinder")] polygon{{"Polygon"}}
+"#;
+    let cases = [
+        (
+            CanvasPaint::solid("#654321").expect("valid Block node fill"),
+            "#654321",
+        ),
+        (CanvasPaint::Transparent, "transparent"),
+    ];
+
+    for (fill, expected_fill) in cases {
+        let theme = block_node_fill_theme(fill);
+        let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+        let expected_shells = [
+            ("block-theme-rect", ["rect"].as_slice()),
+            ("block-theme-circle", ["circle"].as_slice()),
+            ("block-theme-double", ["circle", "circle"].as_slice()),
+            ("block-theme-cylinder", ["path"].as_slice()),
+            ("block-theme-polygon", ["polygon"].as_slice()),
+        ];
+
+        for (node_id, expected_tags) in expected_shells {
+            let shells = terminal_shell_styles(rendered.svg(), node_id);
+            assert_eq!(
+                shells
+                    .iter()
+                    .map(|(tag, _)| tag.as_str())
+                    .collect::<Vec<_>>(),
+                expected_tags,
+                "unexpected terminal shells for {node_id}: {}",
+                rendered.svg()
+            );
+            assert!(
+                shells
+                    .iter()
+                    .all(|(_, style)| terminal_fill(style) == Some(expected_fill)),
+                "typed fill must reach every terminal shell for {node_id}: {shells:?}"
+            );
+        }
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn block_typed_node_fill_and_stroke_share_the_same_shell_truth() {
+    let theme = block_node_fill_and_stroke_theme(
+        CanvasPaint::solid("#654321").expect("valid Block node fill"),
+        CanvasPaint::solid("#123456").expect("valid Block node stroke"),
+    );
+    let rendered = render_block_with_theme_and_engine(
+        "block-beta\n  double(((\"Double\")))\n",
+        &theme,
+        Engine::new(),
+    );
+    let shells = terminal_shell_styles(rendered.svg(), "block-theme-double");
+
+    assert_eq!(shells.len(), 2, "expected both circle shells: {shells:?}");
+    assert!(
+        shells.iter().all(|(_, style)| {
+            terminal_fill(style) == Some("#654321") && terminal_stroke(style) == Some("#123456")
+        }),
+        "fill and stroke must be proved on every shell: {shells:?}"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_mixed_node_paint_rule_reconciles_source_ownership_per_property_and_node() {
+    let source = r#"block-beta
+  columns 2
+  fillOwned["Fill owned"] strokeOwned(("Stroke owned"))
+  style fillOwned fill:#0000bb
+  style strokeOwned stroke:#00bb00
+"#;
+    let theme = block_node_fill_and_stroke_theme(
+        CanvasPaint::solid("#654321").expect("valid Block node fill"),
+        CanvasPaint::solid("#123456").expect("valid Block node stroke"),
+    );
+    let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+
+    let fill_owned = terminal_shell_styles(rendered.svg(), "block-theme-fillOwned");
+    assert_eq!(terminal_fill(&fill_owned[0].1), Some("#0000bb"));
+    assert_eq!(terminal_stroke(&fill_owned[0].1), Some("#123456"));
+
+    let stroke_owned = terminal_shell_styles(rendered.svg(), "block-theme-strokeOwned");
+    assert_eq!(terminal_fill(&stroke_owned[0].1), Some("#654321"));
+    assert_eq!(terminal_stroke(&stroke_owned[0].1), Some("#00bb00"));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_source_owned_fill_does_not_hide_direct_stroke_evidence() {
+    let source = r#"block-beta
+  columns 2
+  first["First"] second(("Second"))
+  classDef default fill:#bb0000
+"#;
+    let theme = block_node_fill_and_stroke_theme(
+        CanvasPaint::Transparent,
+        CanvasPaint::solid("#123456").expect("valid Block node stroke"),
+    );
+    let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+
+    for node_id in ["block-theme-first", "block-theme-second"] {
+        assert!(
+            terminal_node_has_class(rendered.svg(), node_id, "default"),
+            "source-owned default class must be attached to {node_id}: {}",
+            rendered.svg()
+        );
+        let shells = terminal_shell_styles(rendered.svg(), node_id);
+        assert!(
+            shells.iter().all(|(_, style)| {
+                terminal_fill(style) != Some("transparent")
+                    && terminal_stroke(style) == Some("#123456")
+            }),
+            "source fill and typed stroke must remain property-local for {node_id}: {shells:?}"
+        );
+    }
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_inline_and_class_fills_outrank_typed_node_fill_per_node() {
+    let source = r#"block-beta
+  columns 3
+  bare["Bare"] assigned(("Assigned")) inline{{"Inline"}}
+  classDef accent fill:#00bb00
+  class assigned accent
+  style inline fill:#0000bb
+"#;
+    let theme =
+        block_node_fill_theme(CanvasPaint::solid("#654321").expect("valid Block node fill"));
+    let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+
+    let bare = terminal_shell_styles(rendered.svg(), "block-theme-bare");
+    assert_eq!(terminal_fill(&bare[0].1), Some("#654321"), "{bare:?}");
+    let inline = terminal_shell_styles(rendered.svg(), "block-theme-inline");
+    assert_eq!(terminal_fill(&inline[0].1), Some("#0000bb"), "{inline:?}");
+    let assigned = terminal_shell_styles(rendered.svg(), "block-theme-assigned");
+    assert!(
+        assigned
+            .iter()
+            .all(|(_, style)| terminal_fill(style) != Some("#654321")),
+        "assigned class must suppress typed inline fill: {assigned:?}"
+    );
+    assert!(
+        terminal_node_has_class(rendered.svg(), "block-theme-assigned", "accent"),
+        "the source-owned class must be attached to the assigned node: {}",
+        rendered.svg()
+    );
+    assert!(
+        rendered
+            .svg()
+            .contains(r#"#block-theme .accent&gt;*{fill:#00bb00!important;}"#),
+        "assigned class fill must retain source ownership: {}",
+        rendered.svg()
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_default_class_fill_makes_typed_node_fill_not_applicable() {
+    let source = r#"block
+  A["Alpha"]
+  classDef default fill:#bb0000
+"#;
+    let theme = block_node_fill_theme(
+        CanvasPaint::solid("#654321").expect("valid suppressed Block node fill"),
+    );
+    let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+    let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
+
+    assert!(
+        shells
+            .iter()
+            .all(|(_, style)| terminal_fill(style) != Some("#654321")),
+        "default class must suppress typed inline fill: {shells:?}"
+    );
+    assert!(
+        terminal_node_has_class(rendered.svg(), "block-theme-A", "default"),
+        "the implicit default class must be attached to the node: {}",
+        rendered.svg()
+    );
+    assert!(
+        rendered
+            .svg()
+            .contains(r#"#block-theme .default&gt;*{fill:#bb0000!important;}"#),
+        "default class fill must retain source ownership: {}",
+        rendered.svg()
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_explicit_main_background_outranks_typed_node_fill() {
+    let theme = block_node_fill_theme(
+        CanvasPaint::solid("#654321").expect("valid config-suppressed Block node fill"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "mainBkg": "#445566" }
+    })));
+    let rendered = render_block_with_theme_and_engine("block\n  A[\"Alpha\"]\n", &theme, engine);
+    let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
+
+    assert!(
+        shells
+            .iter()
+            .all(|(_, style)| terminal_fill(style) != Some("#654321")),
+        "explicit mainBkg must suppress typed inline fill: {shells:?}"
+    );
+    assert!(
+        rendered.svg().contains("fill:#445566;stroke:"),
+        "explicit mainBkg must remain the Block base fill: {}",
+        rendered.svg()
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_explicit_default_fill_remains_compatibility_owned() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid("#654321")
+                                .expect("valid legacy-compatible Block node fill"),
+                        ),
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .for_family(DiagramFamilyId::BLOCK),
+                ),
+            ),
+        )
+        .expect("compile explicit Default Block node fill");
+    let rendered = render_block_with_theme_requirement(
+        "block\n  A[\"Alpha\"]\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
+
+    assert!(
+        shells
+            .iter()
+            .all(|(_, style)| terminal_fill(style) != Some("#654321")),
+        "explicit Default must not use the unqualified typed writer: {shells:?}"
+    );
+    assert!(
+        rendered.svg().contains("fill:#654321;stroke:"),
+        "explicit Default must retain the legacy Block fill projection: {}",
+        rendered.svg()
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
 }
 
 #[test]
@@ -250,6 +628,11 @@ fn block_inline_and_class_strokes_outrank_typed_node_stroke_per_node() {
         "assigned class must suppress typed inline stroke: {assigned:?}"
     );
     assert!(
+        terminal_node_has_class(rendered.svg(), "block-theme-assigned", "accent"),
+        "the source-owned class must be attached to the assigned node: {}",
+        rendered.svg()
+    );
+    assert!(
         rendered
             .svg()
             .contains(r#"#block-theme .accent&gt;*{stroke:#00bb00!important;}"#),
@@ -282,6 +665,11 @@ fn block_default_class_stroke_makes_typed_node_stroke_not_applicable() {
             .iter()
             .all(|(_, style)| terminal_stroke(style) != Some("#123456")),
         "default class must suppress typed inline stroke: {shells:?}"
+    );
+    assert!(
+        terminal_node_has_class(rendered.svg(), "block-theme-A", "default"),
+        "the implicit default class must be attached to the node: {}",
+        rendered.svg()
     );
     assert!(
         rendered

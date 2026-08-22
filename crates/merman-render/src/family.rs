@@ -7,6 +7,7 @@ mod preparation;
 pub use capability::{RenderCapabilityPlan, plan_render};
 pub(crate) use direct_static_paint::{
     DirectStaticPaint, DirectStaticSelectorDomain, resolve_direct_static_fill,
+    resolve_direct_static_stroke,
 };
 pub(crate) use evidence_support::{
     TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
@@ -1585,7 +1586,7 @@ impl VennFamilyArtifact {
 #[derive(Debug)]
 pub(crate) struct BlockFamilyArtifact {
     pair: FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
-    node_stroke_theme: crate::block::BlockNodeStrokeThemePlan,
+    node_paint_theme: crate::block::BlockNodePaintThemePlan,
 }
 
 impl BlockFamilyArtifact {
@@ -1595,8 +1596,8 @@ impl BlockFamilyArtifact {
         &self.pair
     }
 
-    pub(crate) const fn node_stroke_theme(&self) -> &crate::block::BlockNodeStrokeThemePlan {
-        &self.node_stroke_theme
+    pub(crate) const fn node_paint_theme(&self) -> &crate::block::BlockNodePaintThemePlan {
+        &self.node_paint_theme
     }
 }
 
@@ -2283,7 +2284,7 @@ impl BuiltinFamilyArtifact {
 
     fn block_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Block(artifact) => Some(artifact.node_stroke_theme().finish_evidence()),
+            Self::Block(artifact) => Some(artifact.node_paint_theme().finish_evidence()),
             _ => None,
         }
     }

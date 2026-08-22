@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::block::{
-    BlockNodeShellKind, BlockNodeStrokeSourceOwnership, BlockNodeStrokeThemePlan,
-    BlockRectangleKind, BlockShapeBoundary, block_label_is_effectively_empty,
+    BlockNodePaintSourceOwnership, BlockNodePaintThemePlan, BlockNodeShellKind, BlockRectangleKind,
+    BlockShapeBoundary, block_label_is_effectively_empty,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 
@@ -45,7 +45,7 @@ fn write_important_declarations<'a>(
 pub(crate) fn render_block_diagram_svg_model(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
-    node_stroke_theme: &BlockNodeStrokeThemePlan,
+    node_paint_theme: &BlockNodePaintThemePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -115,8 +115,8 @@ pub(crate) fn render_block_diagram_svg_model(
         .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
-    let node_stroke_source_ownership = BlockNodeStrokeSourceOwnership::new(&model.class_defs);
-    let mut node_stroke_receipt = node_stroke_theme.begin_terminal_receipt();
+    let node_paint_source_ownership = BlockNodePaintSourceOwnership::new(&model.class_defs);
+    let mut node_paint_receipt = node_paint_theme.begin_terminal_receipt();
 
     fn marker_id(diagram_id: &str, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
@@ -162,9 +162,19 @@ pub(crate) fn render_block_diagram_svg_model(
         out.push((key.to_string(), raw.to_string()));
     }
 
-    fn compile_block_inline_styles(styles: &[String]) -> (String, String, String) {
+    struct CompiledBlockInlineStyles {
+        box_style: String,
+        text_style: String,
+        div_style_prefix: String,
+        owns_fill: bool,
+        owns_stroke: bool,
+    }
+
+    fn compile_block_inline_styles(styles: &[String]) -> CompiledBlockInlineStyles {
         let mut box_decls: Vec<(String, String)> = Vec::new();
         let mut text_decls: Vec<(String, String)> = Vec::new();
+        let mut owns_fill = false;
+        let mut owns_stroke = false;
 
         for raw in styles {
             let trimmed = raw.trim().trim_end_matches(';').trim();
@@ -179,6 +189,8 @@ pub(crate) fn render_block_diagram_svg_model(
                 }
                 continue;
             };
+            owns_fill |= key == "fill";
+            owns_stroke |= key == "stroke";
             if is_rect_style_key(key) {
                 push_ordered_decl(&mut box_decls, key, trimmed);
             }
@@ -214,7 +226,13 @@ pub(crate) fn render_block_diagram_svg_model(
             }
         }
 
-        (style_attr(&box_decls), style_attr(&text_decls), div_prefix)
+        CompiledBlockInlineStyles {
+            box_style: style_attr(&box_decls),
+            text_style: style_attr(&text_decls),
+            div_style_prefix: div_prefix,
+            owns_fill,
+            owns_stroke,
+        }
     }
 
     fn block_edge_start_marker_inset(arrow: Option<&str>) -> f64 {
@@ -507,13 +525,18 @@ pub(crate) fn render_block_diagram_svg_model(
             continue;
         };
         let node_index =
-            node_stroke_theme
+            node_paint_theme
                 .index_for_node_id(&n.id)
                 .ok_or_else(|| Error::InvalidModel {
                     message: format!("missing Block theme occurrence for node `{}`", n.id),
                 })?;
-        let source_owns_stroke = node_stroke_source_ownership.owns(&node.styles, &node.classes);
-        let typed_stroke = node_stroke_theme.typed_stroke(node_index, source_owns_stroke);
+        let compiled_styles = compile_block_inline_styles(&node.styles);
+        let source_owns_fill =
+            node_paint_source_ownership.owns_fill(compiled_styles.owns_fill, &node.classes);
+        let source_owns_stroke =
+            node_paint_source_ownership.owns_stroke(compiled_styles.owns_stroke, &node.classes);
+        let typed_fill = node_paint_theme.typed_fill(node_index, source_owns_fill);
+        let typed_stroke = node_paint_theme.typed_stroke(node_index, source_owns_stroke);
 
         let class_str = if node.classes.is_empty() {
             "default".to_string()
@@ -521,8 +544,14 @@ pub(crate) fn render_block_diagram_svg_model(
             node.classes.join(" ")
         };
         let class_str = format!("{class_str} flowchart-label");
-        let (mut node_box_style, node_text_style, node_div_style_prefix) =
-            compile_block_inline_styles(&node.styles);
+        let mut node_box_style = compiled_styles.box_style;
+        let node_text_style = compiled_styles.text_style;
+        let node_div_style_prefix = compiled_styles.div_style_prefix;
+        if let Some((_, css)) = typed_fill {
+            node_box_style.push_str("fill:");
+            node_box_style.push_str(css);
+            node_box_style.push(';');
+        }
         if let Some((_, css)) = typed_stroke {
             node_box_style.push_str("stroke:");
             node_box_style.push_str(css);
@@ -676,8 +705,10 @@ pub(crate) fn render_block_diagram_svg_model(
             }
         }
         out.checkpoint()?;
-        node_stroke_receipt.record_checkpointed_node(
+        node_paint_receipt.record_checkpointed_node(
             node_index,
+            source_owns_fill,
+            typed_fill,
             source_owns_stroke,
             typed_stroke,
             shell_kinds
@@ -804,226 +835,13 @@ pub(crate) fn render_block_diagram_svg_model(
 
     out.push_str("</g></svg>\n");
     let rooted = root_document.complete(out.finish()?)?;
-    if !node_stroke_theme.record_terminal(node_stroke_receipt) {
+    if !node_paint_theme.record_terminal(node_paint_receipt) {
         return Err(Error::InvalidModel {
-            message: "Block node stroke terminal receipt was incomplete".to_string(),
+            message: "Block node shell paint terminal receipt was incomplete".to_string(),
         });
     }
     Ok(rooted)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::resources::{
-        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
-    };
-    use crate::text::DeterministicTextMeasurer;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
-    use std::cell::Cell;
-    use std::fmt;
-    use std::ops::Range;
-
-    const BOUNDED_BLOCK_SOURCE: &str = r#"block
-  A["Alpha"] --> B["Beta"]
-  classDef branded fill:#696,stroke:#333
-  class A branded
-"#;
-
-    fn layout_edge(id: &str) -> LayoutEdge {
-        LayoutEdge {
-            id: id.to_string(),
-            from: "from".to_string(),
-            to: "to".to_string(),
-            from_cluster: None,
-            to_cluster: None,
-            points: Vec::new(),
-            label: None,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        }
-    }
-
-    #[test]
-    fn block_layout_edge_index_preserves_first_match_and_missing_behavior() {
-        let edges = [
-            layout_edge("duplicate"),
-            layout_edge("other"),
-            layout_edge("duplicate"),
-        ];
-        let index = BlockLayoutEdgeIndex::new(&edges);
-
-        assert!(std::ptr::eq(
-            index.get("duplicate").expect("duplicate edge lookup"),
-            &edges[0],
-        ));
-        assert!(std::ptr::eq(
-            index.get("other").expect("unique edge lookup"),
-            &edges[1],
-        ));
-        assert!(index.get("missing").is_none());
-    }
-
-    fn render_block_direct_with_policy(
-        policy: RenderResourcePolicy,
-    ) -> crate::Result<root_svg::RootedSvg> {
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_sync(BOUNDED_BLOCK_SOURCE, ParseOptions::strict())
-            .expect("parse Block resource-bound fixture")
-            .expect("detect Block resource-bound fixture");
-        let RenderSemanticModel::Block(model) = parsed.model() else {
-            panic!("expected a typed Block render model");
-        };
-        let effective_config = parsed.metadata().effective_config.as_value();
-        let layout = crate::block::layout_block_diagram_typed(
-            model,
-            effective_config,
-            &DeterministicTextMeasurer::default(),
-        )?;
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(policy)
-            .begin_session()
-            .expect("render session");
-        let request = SvgRenderOptions::default();
-        let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::unthemed_for_test(
-            &request,
-            &debug,
-            &session,
-            crate::DiagramFamilyId::BLOCK,
-        )
-        .expect("SVG execution");
-        let node_stroke_theme = BlockNodeStrokeThemePlan::baseline(&layout);
-
-        render_block_diagram_svg_model(
-            &layout,
-            model,
-            &node_stroke_theme,
-            effective_config,
-            &execution,
-        )
-    }
-
-    #[derive(Default)]
-    struct RejectEscapedAmpersand {
-        rejected: bool,
-        writes_after_rejection: usize,
-        retained: String,
-    }
-
-    impl RejectEscapedAmpersand {
-        fn record_write(&mut self, value: &str) -> fmt::Result {
-            if self.rejected {
-                self.writes_after_rejection += 1;
-                return Err(fmt::Error);
-            }
-            if value == "&amp;" {
-                self.rejected = true;
-                return Err(fmt::Error);
-            }
-            self.retained.push_str(value);
-            Ok(())
-        }
-    }
-
-    impl fmt::Write for RejectEscapedAmpersand {
-        fn write_str(&mut self, value: &str) -> fmt::Result {
-            self.record_write(value)
-        }
-    }
-
-    impl SvgOutput for RejectEscapedAmpersand {
-        fn push_str(&mut self, value: &str) {
-            let _ = self.record_write(value);
-        }
-
-        fn push(&mut self, value: char) {
-            let mut encoded = [0u8; 4];
-            let _ = self.record_write(value.encode_utf8(&mut encoded));
-        }
-
-        fn len(&self) -> usize {
-            self.retained.len()
-        }
-
-        fn as_str(&self) -> &str {
-            self.retained.as_str()
-        }
-
-        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
-            self.retained.replace_range(range, replacement);
-            Ok(())
-        }
-
-        fn checkpoint(&mut self) -> crate::Result<()> {
-            if self.rejected {
-                Err(crate::Error::InvalidModel {
-                    message: "test SVG sink rejected the escaped ampersand".to_string(),
-                })
-            } else {
-                Ok(())
-            }
-        }
-    }
-
-    #[test]
-    fn block_important_declarations_stop_at_first_svg_sink_failure() {
-        let polls = Cell::new(0);
-        let mut out = RejectEscapedAmpersand::default();
-        let declarations = [("fill", "alpha&beta<gamma"), ("stroke", "red")]
-            .into_iter()
-            .inspect(|_| polls.set(polls.get() + 1));
-
-        let error = write_important_declarations(&mut out, declarations)
-            .expect_err("the rejecting sink must stop Block class declaration emission");
-
-        assert!(matches!(error, crate::Error::InvalidModel { .. }));
-        assert_eq!(polls.get(), 1, "remaining declarations must not be parsed");
-        assert_eq!(
-            out.writes_after_rejection, 0,
-            "escaped output must stop at the first failed sink write"
-        );
-    }
-
-    #[test]
-    fn block_svg_sink_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
-        let baseline =
-            render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
-                .expect("render unbounded Block SVG directly");
-        let exact_bytes = baseline.len();
-        assert!(exact_bytes > 1);
-
-        let exact = render_block_direct_with_policy(
-            RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
-                .expect("valid exact Block SVG ceiling"),
-        )
-        .expect("exact Block SVG sink ceiling must succeed");
-        assert_eq!(exact.as_bytes(), baseline.as_bytes());
-
-        let below_exact = exact_bytes - 1;
-        let error = render_block_direct_with_policy(
-            RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
-                .expect("valid below-exact Block SVG ceiling"),
-        )
-        .expect_err("one byte below the direct Block SVG size must fail inside the renderer");
-        let crate::Error::ResourceLimitExceeded(limit) = error else {
-            panic!("expected Block MaxSvgBytes rejection, got {error}");
-        };
-        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
-        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
-        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
-        assert_eq!(limit.max, below_exact);
-        assert!(limit.actual > limit.max);
-        assert!(limit.explicit_overrides.iter().any(|resource_override| {
-            resource_override.id == ResourceLimitId::MaxSvgBytes
-                && resource_override.value == below_exact
-        }));
-    }
-}
+mod tests;

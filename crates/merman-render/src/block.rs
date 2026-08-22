@@ -9,7 +9,7 @@ mod theme;
 
 use config::{BlockConfigView, BlockLayoutSettings};
 pub(crate) use theme::{
-    BlockNodeShellKind, BlockNodeStrokeSourceOwnership, BlockNodeStrokeThemePlan,
+    BlockNodePaintSourceOwnership, BlockNodePaintThemePlan, BlockNodeShellKind,
 };
 
 mod geometry;

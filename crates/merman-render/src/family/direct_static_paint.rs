@@ -1,6 +1,6 @@
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeRuleFacet, ResolvedDiagramTheme,
-    ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    ResolvedProperty, ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,15 +49,43 @@ pub(crate) fn resolve_direct_static_fill(
     accepted_targets: &[ThemeTarget],
     selector_domain: DirectStaticSelectorDomain,
 ) -> Option<DirectStaticPaint> {
-    let resolution = style.fill_resolution();
+    resolve_direct_static_paint(
+        theme,
+        style.fill_resolution(),
+        FamilyThemeRuleFacet::fill,
+        accepted_targets,
+        selector_domain,
+    )
+}
+
+pub(crate) fn resolve_direct_static_stroke(
+    theme: &ResolvedDiagramTheme,
+    style: &ResolvedThemeStyle,
+    accepted_targets: &[ThemeTarget],
+    selector_domain: DirectStaticSelectorDomain,
+) -> Option<DirectStaticPaint> {
+    resolve_direct_static_paint(
+        theme,
+        style.stroke_resolution(),
+        FamilyThemeRuleFacet::stroke,
+        accepted_targets,
+        selector_domain,
+    )
+}
+
+fn resolve_direct_static_paint(
+    theme: &ResolvedDiagramTheme,
+    resolution: &ResolvedProperty<CanvasPaint>,
+    facet: fn(&Specified<CanvasPaint>) -> Option<FamilyThemeRuleFacet>,
+    accepted_targets: &[ThemeTarget],
+    selector_domain: DirectStaticSelectorDomain,
+) -> Option<DirectStaticPaint> {
     let origin = resolution.winner()?;
     if !accepted_targets.contains(&origin.target())
         || !selector_domain.accepts(origin.variant())
         || origin.ordinal().is_some()
-        || theme.rule_facet_disposition(
-            origin.rule_index(),
-            FamilyThemeRuleFacet::fill(resolution.specified())?,
-        ) != Some(FamilyThemeDisposition::TypedAdapter)
+        || theme.rule_facet_disposition(origin.rule_index(), facet(resolution.specified())?)
+            != Some(FamilyThemeDisposition::TypedAdapter)
     {
         return None;
     }

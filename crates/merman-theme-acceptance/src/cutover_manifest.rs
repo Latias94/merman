@@ -10,7 +10,7 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 15;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 16;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
@@ -239,7 +239,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 90] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 92] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -645,6 +645,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 90] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         PIE_SLICE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::BLOCK,

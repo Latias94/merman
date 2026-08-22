@@ -1552,10 +1552,11 @@ fn block_route_observation(
 ) -> C6ProofResult<BlockRouteObservation> {
     c6_ensure!(
         "route-svg-proof",
-        route.target() == ThemeTarget::Node && route.facet() == ThemeRouteCutoverFacet::Stroke,
+        route.target() == ThemeTarget::Node,
         "unsupported Block cutover route {}",
         route_label(route)
     );
+    let property = facet_property(route.facet());
     let root_id = document
         .root_element()
         .attribute("id")
@@ -1569,7 +1570,8 @@ fn block_route_observation(
     ];
     let mut common_value = None;
     let mut target_regions = Vec::with_capacity(6);
-    let mut terminal = b"merman.c6-route-block-node-stroke.v1\0".to_vec();
+    let mut terminal = b"merman.c6-route-block-node-paint.v1\0".to_vec();
+    append_len_prefixed(&mut terminal, property.as_bytes());
     for (semantic_id, expected_shells) in expected_nodes {
         let node_id = format!("{root_id}-{semantic_id}");
         let nodes = document
@@ -1583,7 +1585,7 @@ fn block_route_observation(
         c6_ensure!(
             "route-svg-proof",
             nodes.len() == 1,
-            "Block stroke witness expected one node `{node_id}`, found {}",
+            "Block paint witness expected one node `{node_id}`, found {}",
             nodes.len()
         );
         let shells = nodes[0]
@@ -1594,7 +1596,7 @@ fn block_route_observation(
                         surface.tag_name().name(),
                         "rect" | "circle" | "path" | "polygon"
                     )
-                    && style_value(*surface, "stroke").is_some()
+                    && style_value(*surface, property).is_some()
             })
             .collect::<Vec<_>>();
         let actual_shells = shells
@@ -1611,20 +1613,20 @@ fn block_route_observation(
         for shell in shells {
             c6_ensure!(
                 "route-svg-proof",
-                shell.attribute("stroke").is_none(),
-                "Block node `{node_id}` bypassed its terminal inline-style stroke owner"
+                shell.attribute(property).is_none(),
+                "Block node `{node_id}` bypassed its terminal inline-style {property} owner"
             );
-            let value = style_value(shell, "stroke").ok_or_else(|| {
+            let value = style_value(shell, property).ok_or_else(|| {
                 C6ProofError::new(
                     "route-svg-proof",
-                    format!("Block node `{node_id}` lacks its terminal stroke"),
+                    format!("Block node `{node_id}` lacks its terminal {property}"),
                 )
             })?;
             if let Some(common) = common_value {
                 c6_ensure!(
                     "route-svg-proof",
                     common == value,
-                    "Block terminal shell strokes disagree: `{common}` != `{value}`"
+                    "Block terminal shell {property} values disagree: `{common}` != `{value}`"
                 );
             } else {
                 common_value = Some(value);
@@ -1650,13 +1652,18 @@ fn block_route_observation(
     c6_ensure!(
         "route-svg-proof",
         target_regions.len() == 6,
-        "Block stroke witness expected six terminal shells, found {}",
+        "Block paint witness expected six terminal shells, found {}",
         target_regions.len()
     );
 
     Ok(BlockRouteObservation {
         value: common_value
-            .ok_or_else(|| C6ProofError::new("route-svg-proof", "missing Block stroke value"))?
+            .ok_or_else(|| {
+                C6ProofError::new(
+                    "route-svg-proof",
+                    format!("missing Block terminal {property} value"),
+                )
+            })?
             .to_owned(),
         terminal_digest: sha256(terminal),
         target_regions,

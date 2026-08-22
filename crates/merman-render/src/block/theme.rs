@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use indexmap::IndexMap;
 use merman_core::diagrams::block::BlockClassDefRenderModel;
@@ -7,10 +7,11 @@ use merman_core::diagrams::block::BlockClassDefRenderModel;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
     FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty,
-    ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    ResolvedThemeStyle, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::model::BlockDiagramLayout;
@@ -19,14 +20,16 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 use super::BlockShapeBoundary;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ExpectedStroke {
+struct ExpectedPaint {
     rule_index: usize,
-    css: String,
+    css: Arc<str>,
+    capability: ThemeCapability,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct NodeExpectation {
-    stroke: Option<ExpectedStroke>,
+    fill: Option<ExpectedPaint>,
+    stroke: Option<ExpectedPaint>,
     shells: Box<[BlockNodeShellKind]>,
 }
 
@@ -39,17 +42,17 @@ pub(crate) enum BlockNodeShellKind {
     Polygon,
 }
 
-/// Block node stroke resolved once and shared by the SVG writer and terminal evidence.
+/// Block node shell paint resolved once and shared by the SVG writer and terminal evidence.
 #[derive(Debug)]
-pub(crate) struct BlockNodeStrokeThemePlan {
+pub(crate) struct BlockNodePaintThemePlan {
     node_indices: BTreeMap<String, usize>,
-    expectations: Vec<NodeExpectation>,
+    expectations: Arc<[NodeExpectation]>,
     evidence: FamilyThemeEvidence,
-    pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
-    terminal_receipt: OnceLock<BlockNodeStrokeThemeReceipt>,
+    pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
+    terminal_receipt: OnceLock<BlockNodePaintThemeReceipt>,
 }
 
-impl BlockNodeStrokeThemePlan {
+impl BlockNodePaintThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
@@ -62,6 +65,7 @@ impl BlockNodeStrokeThemePlan {
         };
 
         let node_count = expectations.len();
+        let mermaid_owns_fill = mermaid_owns_node_fill(effective_config);
         let mermaid_owns_stroke = mermaid_owns_node_stroke(effective_config);
         let has_ordinal_node_rules = theme.family_rules().any(|(_, rule)| {
             rule.target() == ThemeTarget::Node
@@ -82,8 +86,8 @@ impl BlockNodeStrokeThemePlan {
         let mut expected_capabilities =
             BTreeMap::<(usize, ResolvedStyleProperty), ThemeCapability>::new();
 
-        for (node_index, expectation) in expectations.iter_mut().enumerate() {
-            if has_ordinal_node_rules {
+        if has_ordinal_node_rules {
+            for (node_index, expectation) in expectations.iter_mut().enumerate() {
                 let style = theme.style_with_work_meter(
                     ThemeTarget::Node,
                     ThemeVariant::Default,
@@ -93,20 +97,27 @@ impl BlockNodeStrokeThemePlan {
                 observe_node_style(
                     theme,
                     &style,
+                    mermaid_owns_fill,
                     mermaid_owns_stroke,
                     expectation,
                     &mut winner_properties,
                     &mut expected_capabilities,
                 );
-            } else if let Some(style) = static_style.as_ref() {
-                observe_node_style(
-                    theme,
-                    style,
-                    mermaid_owns_stroke,
-                    expectation,
-                    &mut winner_properties,
-                    &mut expected_capabilities,
-                );
+            }
+        } else if let Some(style) = static_style.as_ref() {
+            let mut static_expectation = NodeExpectation::default();
+            observe_node_style(
+                theme,
+                style,
+                mermaid_owns_fill,
+                mermaid_owns_stroke,
+                &mut static_expectation,
+                &mut winner_properties,
+                &mut expected_capabilities,
+            );
+            for expectation in &mut expectations {
+                expectation.fill = static_expectation.fill.clone();
+                expectation.stroke = static_expectation.stroke.clone();
             }
         }
 
@@ -130,8 +141,9 @@ impl BlockNodeStrokeThemePlan {
                     }
 
                     observation.applicable = true;
-                    if mermaid_owns_stroke && matches!(facet, FamilyThemeRuleFacet::Stroke(_)) {
-                        observation.suppressed = true;
+                    if (mermaid_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)))
+                        || (mermaid_owns_stroke && matches!(facet, FamilyThemeRuleFacet::Stroke(_)))
+                    {
                         continue;
                     }
 
@@ -139,16 +151,19 @@ impl BlockNodeStrokeThemePlan {
                         (
                             FamilyThemeDisposition::TypedAdapter,
                             FamilyThemeSelectorShape::Static { variant: None },
-                            FamilyThemeRuleFacet::Stroke(
+                            FamilyThemeRuleFacet::Fill(
+                                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                            )
+                            | FamilyThemeRuleFacet::Stroke(
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                             ),
                         ) => {
-                            if let Some(capability) = expected_capabilities
-                                .get(&(rule_index, ResolvedStyleProperty::Stroke))
+                            if let Some(capability) =
+                                expected_capabilities.get(&(rule_index, property))
                             {
-                                observation.capabilities.insert(*capability);
+                                observation.capabilities.insert(property, *capability);
                             } else {
-                                observation.suppressed = true;
+                                observation.incomplete = true;
                             }
                         }
                         (FamilyThemeDisposition::Unsupported, _, facet) => {
@@ -207,8 +222,6 @@ impl BlockNodeStrokeThemePlan {
                 // A mixed rule remains fail-closed until every winning facet has a terminal owner.
             } else if !observation.capabilities.is_empty() {
                 pending.insert(key, observation.capabilities);
-            } else if observation.suppressed {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -216,7 +229,7 @@ impl BlockNodeStrokeThemePlan {
 
         Ok(Self {
             node_indices,
-            expectations,
+            expectations: expectations.into(),
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
@@ -234,7 +247,7 @@ impl BlockNodeStrokeThemePlan {
     ) -> Self {
         Self {
             node_indices,
-            expectations,
+            expectations: expectations.into(),
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
@@ -250,17 +263,38 @@ impl BlockNodeStrokeThemePlan {
         node_index: usize,
         source_owns_stroke: bool,
     ) -> Option<(usize, &str)> {
-        (!source_owns_stroke)
-            .then(|| self.expectations.get(node_index)?.stroke.as_ref())
+        self.typed_paint(
+            node_index,
+            source_owns_stroke,
+            ResolvedStyleProperty::Stroke,
+        )
+    }
+
+    pub(crate) fn typed_fill(
+        &self,
+        node_index: usize,
+        source_owns_fill: bool,
+    ) -> Option<(usize, &str)> {
+        self.typed_paint(node_index, source_owns_fill, ResolvedStyleProperty::Fill)
+    }
+
+    fn typed_paint(
+        &self,
+        node_index: usize,
+        source_owns: bool,
+        property: ResolvedStyleProperty,
+    ) -> Option<(usize, &str)> {
+        (!source_owns)
+            .then(|| self.expectations.get(node_index)?.paint(property))
             .flatten()
-            .map(|expected| (expected.rule_index, expected.css.as_str()))
+            .map(|expected| (expected.rule_index, expected.css.as_ref()))
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> BlockNodeStrokeThemeReceipt {
-        BlockNodeStrokeThemeReceipt::new(self.expectations.clone())
+    pub(crate) fn begin_terminal_receipt(&self) -> BlockNodePaintThemeReceipt {
+        BlockNodePaintThemeReceipt::new(Arc::clone(&self.expectations))
     }
 
-    pub(crate) fn record_terminal(&self, receipt: BlockNodeStrokeThemeReceipt) -> bool {
+    pub(crate) fn record_terminal(&self, receipt: BlockNodePaintThemeReceipt) -> bool {
         receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
     }
 
@@ -269,20 +303,35 @@ impl BlockNodeStrokeThemePlan {
         let Some(receipt) = self.terminal_receipt.get() else {
             return evidence;
         };
-        for (key, capabilities) in &self.pending {
+        for (key, properties) in &self.pending {
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
                 FamilyThemeMechanismKey::Typography
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
-            if receipt.proves_rule(rule_index) {
-                evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
+            let capabilities = properties
+                .iter()
+                .filter(|(property, _)| receipt.proves_property(rule_index, **property))
+                .map(|(_, capability)| *capability)
+                .collect::<BTreeSet<_>>();
+            if !capabilities.is_empty() {
+                evidence.mark_applied_with_capabilities(key.clone(), capabilities);
             } else if receipt.proves_complete() && !receipt.has_effective_rule(rule_index) {
                 evidence.mark_not_applicable(key.clone());
             }
         }
         evidence
+    }
+}
+
+impl NodeExpectation {
+    fn paint(&self, property: ResolvedStyleProperty) -> Option<&ExpectedPaint> {
+        match property {
+            ResolvedStyleProperty::Fill => self.fill.as_ref(),
+            ResolvedStyleProperty::Stroke => self.stroke.as_ref(),
+            _ => None,
+        }
     }
 }
 
@@ -302,6 +351,7 @@ fn terminal_domain(layout: &BlockDiagramLayout) -> (BTreeMap<String, usize>, Vec
         .nodes
         .iter()
         .map(|node| NodeExpectation {
+            fill: None,
             stroke: None,
             shells: geometries
                 .get(node.id.as_str())
@@ -329,6 +379,7 @@ fn expected_node_shell_kinds(boundary: &BlockShapeBoundary) -> &'static [BlockNo
 fn observe_node_style(
     theme: &ResolvedDiagramTheme,
     style: &ResolvedThemeStyle,
+    mermaid_owns_fill: bool,
     mermaid_owns_stroke: bool,
     expectation: &mut NodeExpectation,
     winner_properties: &mut BTreeSet<(usize, ResolvedStyleProperty)>,
@@ -340,10 +391,17 @@ fn observe_node_style(
             .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property)),
     );
+    if let Some(expected) = typed_fill_expectation(theme, style, mermaid_owns_fill) {
+        expected_capabilities.insert(
+            (expected.rule_index, ResolvedStyleProperty::Fill),
+            expected.capability,
+        );
+        expectation.fill = Some(expected);
+    }
     if let Some(expected) = typed_stroke_expectation(theme, style, mermaid_owns_stroke) {
         expected_capabilities.insert(
             (expected.rule_index, ResolvedStyleProperty::Stroke),
-            paint_capability_from_css(&expected.css),
+            expected.capability,
         );
         expectation.stroke = Some(expected);
     }
@@ -353,51 +411,43 @@ fn typed_stroke_expectation(
     theme: &ResolvedDiagramTheme,
     style: &ResolvedThemeStyle,
     mermaid_owns_stroke: bool,
-) -> Option<ExpectedStroke> {
+) -> Option<ExpectedPaint> {
     if mermaid_owns_stroke {
         return None;
     }
-    let origin = style.stroke_resolution().winner()?;
-    let facet = FamilyThemeRuleFacet::stroke(style.stroke_resolution().specified())?;
-    if !has_direct_static_stroke_route(theme, origin.rule_index(), facet) {
-        return None;
-    }
-    let css = match style.stroke_resolution().specified() {
-        Specified::Value(crate::diagram_theme::CanvasPaint::Transparent) => "transparent".into(),
-        Specified::Value(crate::diagram_theme::CanvasPaint::Solid(color)) => color.as_css(),
-        Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(crate::diagram_theme::CanvasPaint::LinearGradient(_))
-        | Specified::Value(crate::diagram_theme::CanvasPaint::RadialGradient(_))
-        | Specified::Value(crate::diagram_theme::CanvasPaint::Pattern(_)) => return None,
-    };
-    Some(ExpectedStroke {
-        rule_index: origin.rule_index(),
-        css,
-    })
+    resolve_direct_static_stroke(
+        theme,
+        style,
+        &[ThemeTarget::Node],
+        DirectStaticSelectorDomain::Unqualified,
+    )
+    .map(expected_paint)
 }
 
-fn has_direct_static_stroke_route(
+fn typed_fill_expectation(
     theme: &ResolvedDiagramTheme,
-    expected_rule_index: usize,
-    expected_facet: FamilyThemeRuleFacet,
-) -> bool {
-    theme
-        .family_mechanism_routes()
-        .iter()
-        .copied()
-        .any(|route| {
-            route.disposition() == FamilyThemeDisposition::TypedAdapter
-                && matches!(
-                    route.mechanism(),
-                    FamilyThemeMechanism::RuleFacet {
-                        rule_index,
-                        target: ThemeTarget::Node,
-                        selector: FamilyThemeSelectorShape::Static { variant: None },
-                        facet,
-                    } if rule_index == expected_rule_index && facet == expected_facet
-                )
-        })
+    style: &ResolvedThemeStyle,
+    mermaid_owns_fill: bool,
+) -> Option<ExpectedPaint> {
+    if mermaid_owns_fill {
+        return None;
+    }
+    resolve_direct_static_fill(
+        theme,
+        style,
+        &[ThemeTarget::Node],
+        DirectStaticSelectorDomain::Unqualified,
+    )
+    .map(expected_paint)
+}
+
+fn expected_paint(paint: DirectStaticPaint) -> ExpectedPaint {
+    let (css, rule_index, capability) = paint.into_parts();
+    ExpectedPaint {
+        rule_index,
+        css: Arc::from(css),
+        capability,
+    }
 }
 
 fn selector_matches_any_node(selector: FamilyThemeSelectorShape, node_count: usize) -> bool {
@@ -417,78 +467,109 @@ fn mermaid_owns_node_stroke(config: &merman_core::MermaidConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
 }
 
-fn paint_capability_from_css(css: &str) -> ThemeCapability {
-    if css == "transparent" {
-        ThemeCapability::TransparentPaint
-    } else {
-        ThemeCapability::SolidPaint
-    }
+fn mermaid_owns_node_fill(config: &merman_core::MermaidConfig) -> bool {
+    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
 }
 
 #[derive(Debug, Default)]
 struct NodeRuleObservation {
     applicable: bool,
     incomplete: bool,
-    suppressed: bool,
     residual: Option<FamilyThemeResidualReason>,
-    capabilities: BTreeSet<ThemeCapability>,
+    capabilities: BTreeMap<ResolvedStyleProperty, ThemeCapability>,
 }
 
-/// Precomputed Mermaid source-style owners for Block node stroke.
-pub(crate) struct BlockNodeStrokeSourceOwnership {
+/// Precomputed Mermaid source-style owners for Block node shell paint.
+pub(crate) struct BlockNodePaintSourceOwnership {
+    fill_classes: BTreeSet<String>,
     stroke_classes: BTreeSet<String>,
 }
 
-impl BlockNodeStrokeSourceOwnership {
+impl BlockNodePaintSourceOwnership {
     pub(crate) fn new(class_defs: &IndexMap<String, BlockClassDefRenderModel>) -> Self {
-        let stroke_classes = class_defs
-            .values()
-            .filter(|class_def| {
-                class_def.styles.iter().any(|declaration| {
-                    crate::mermaid_style::parse_style_declaration(declaration)
-                        .is_some_and(|parsed| parsed.property() == "stroke")
-                })
-            })
-            .map(|class_def| class_def.id.clone())
-            .collect();
-        Self { stroke_classes }
+        let (fill_classes, stroke_classes) = classes_owning_node_paint(class_defs);
+        Self {
+            fill_classes,
+            stroke_classes,
+        }
     }
 
-    pub(crate) fn owns(&self, inline_styles: &[String], assigned_classes: &[String]) -> bool {
-        inline_styles.iter().any(|declaration| {
-            crate::mermaid_style::parse_safe_style_decl(declaration)
-                .is_some_and(|(property, _)| property == "stroke")
-        }) || self.stroke_classes.contains("default")
-            || assigned_classes
-                .iter()
-                .any(|assigned| self.stroke_classes.contains(assigned))
+    pub(crate) fn owns_fill(&self, inline_owns_fill: bool, assigned_classes: &[String]) -> bool {
+        source_owns_property(inline_owns_fill, assigned_classes, &self.fill_classes)
     }
+
+    pub(crate) fn owns_stroke(
+        &self,
+        inline_owns_stroke: bool,
+        assigned_classes: &[String],
+    ) -> bool {
+        source_owns_property(inline_owns_stroke, assigned_classes, &self.stroke_classes)
+    }
+}
+
+fn classes_owning_node_paint(
+    class_defs: &IndexMap<String, BlockClassDefRenderModel>,
+) -> (BTreeSet<String>, BTreeSet<String>) {
+    let mut fill_classes = BTreeSet::new();
+    let mut stroke_classes = BTreeSet::new();
+    for class_def in class_defs.values() {
+        for declaration in &class_def.styles {
+            let Some(parsed) = crate::mermaid_style::parse_style_declaration(declaration) else {
+                continue;
+            };
+            match parsed.property() {
+                "fill" => {
+                    fill_classes.insert(class_def.id.clone());
+                }
+                "stroke" => {
+                    stroke_classes.insert(class_def.id.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+    (fill_classes, stroke_classes)
+}
+
+fn source_owns_property(
+    inline_owns_property: bool,
+    assigned_classes: &[String],
+    owning_classes: &BTreeSet<String>,
+) -> bool {
+    inline_owns_property
+        || owning_classes.contains("default")
+        || assigned_classes
+            .iter()
+            .any(|assigned| owning_classes.contains(assigned))
 }
 
 /// Writer-owned proof that every semantic Block node reached every canonical SVG shell.
 #[derive(Debug, Clone)]
-pub(crate) struct BlockNodeStrokeThemeReceipt {
-    expectations: Vec<NodeExpectation>,
+pub(crate) struct BlockNodePaintThemeReceipt {
+    expectations: Arc<[NodeExpectation]>,
     checkpointed_nodes: Vec<bool>,
     attributes_match: bool,
-    effective_by_rule: BTreeMap<usize, usize>,
-    emitted_by_rule: BTreeMap<usize, usize>,
+    effective_by_property: BTreeMap<(usize, ResolvedStyleProperty), usize>,
+    emitted_by_property: BTreeMap<(usize, ResolvedStyleProperty), usize>,
 }
 
-impl BlockNodeStrokeThemeReceipt {
-    fn new(expectations: Vec<NodeExpectation>) -> Self {
+impl BlockNodePaintThemeReceipt {
+    fn new(expectations: impl Into<Arc<[NodeExpectation]>>) -> Self {
+        let expectations = expectations.into();
         Self {
             checkpointed_nodes: vec![false; expectations.len()],
             expectations,
             attributes_match: true,
-            effective_by_rule: BTreeMap::new(),
-            emitted_by_rule: BTreeMap::new(),
+            effective_by_property: BTreeMap::new(),
+            emitted_by_property: BTreeMap::new(),
         }
     }
 
     pub(crate) fn record_checkpointed_node<'a>(
         &mut self,
         node_index: usize,
+        source_owns_fill: bool,
+        emitted_fill: Option<(usize, &str)>,
         source_owns_stroke: bool,
         emitted_stroke: Option<(usize, &str)>,
         shells: impl IntoIterator<Item = (BlockNodeShellKind, &'a str)>,
@@ -503,11 +584,10 @@ impl BlockNodeStrokeThemeReceipt {
         }
         *checkpointed = true;
 
-        let expectation = self
-            .expectations
-            .get(node_index)
-            .cloned()
-            .unwrap_or_default();
+        let Some(expectation) = self.expectations.get(node_index) else {
+            self.attributes_match = false;
+            return;
+        };
         let mut actual_shells = shells.into_iter();
         let mut shell_match = true;
         for expected_kind in expectation.shells.iter().copied() {
@@ -516,20 +596,35 @@ impl BlockNodeStrokeThemeReceipt {
                 break;
             };
             shell_match &= expected_kind == actual_kind;
+            let (actual_fill, actual_stroke) = terminal_paints(style);
+            if let Some(expected) = expectation.fill.as_ref()
+                && !source_owns_fill
+            {
+                shell_match &= actual_fill == Some(expected.css.as_ref());
+            }
             if let Some(expected) = expectation.stroke.as_ref()
                 && !source_owns_stroke
             {
-                shell_match &= terminal_stroke(style) == Some(expected.css.as_str());
+                shell_match &= actual_stroke == Some(expected.css.as_ref());
             }
         }
         shell_match &= actual_shells.next().is_none();
         self.attributes_match &= shell_match;
-        self.attributes_match &= record_stroke_checkpoint(
+        self.attributes_match &= record_paint_checkpoint(
+            expectation.fill.as_ref(),
+            source_owns_fill,
+            emitted_fill,
+            ResolvedStyleProperty::Fill,
+            &mut self.effective_by_property,
+            &mut self.emitted_by_property,
+        );
+        self.attributes_match &= record_paint_checkpoint(
             expectation.stroke.as_ref(),
             source_owns_stroke,
             emitted_stroke,
-            &mut self.effective_by_rule,
-            &mut self.emitted_by_rule,
+            ResolvedStyleProperty::Stroke,
+            &mut self.effective_by_property,
+            &mut self.emitted_by_property,
         );
     }
 
@@ -538,49 +633,77 @@ impl BlockNodeStrokeThemeReceipt {
     }
 
     fn has_effective_rule(&self, rule_index: usize) -> bool {
-        self.effective_by_rule
-            .get(&rule_index)
-            .copied()
-            .unwrap_or(0)
-            != 0
+        self.effective_by_property
+            .iter()
+            .any(|((candidate, _), count)| *candidate == rule_index && *count != 0)
     }
 
+    #[cfg(test)]
     fn proves_rule(&self, rule_index: usize) -> bool {
-        self.proves_complete() && self.emitted_by_rule.get(&rule_index).copied().unwrap_or(0) != 0
+        let effective_properties = self
+            .effective_by_property
+            .keys()
+            .filter_map(|(candidate, property)| (*candidate == rule_index).then_some(*property))
+            .collect::<Vec<_>>();
+        !effective_properties.is_empty()
+            && effective_properties
+                .into_iter()
+                .all(|property| self.proves_property(rule_index, property))
+    }
+
+    fn proves_property(&self, rule_index: usize, property: ResolvedStyleProperty) -> bool {
+        let key = (rule_index, property);
+        let effective = self.effective_by_property.get(&key).copied().unwrap_or(0);
+        self.proves_complete()
+            && effective != 0
+            && self.emitted_by_property.get(&key).copied().unwrap_or(0) == effective
     }
 }
 
-fn terminal_stroke(style: &str) -> Option<&str> {
-    style
+fn terminal_paints(style: &str) -> (Option<&str>, Option<&str>) {
+    let mut fill = None;
+    let mut stroke = None;
+    for declaration in style
         .split(';')
         .filter_map(crate::mermaid_style::parse_style_declaration)
-        .filter(|declaration| declaration.property() == "stroke")
-        .map(|declaration| declaration.value())
-        .next_back()
+    {
+        match declaration.property() {
+            "fill" => fill = Some(declaration.value()),
+            "stroke" => stroke = Some(declaration.value()),
+            _ => {}
+        }
+    }
+    (fill, stroke)
 }
 
-fn record_stroke_checkpoint(
-    expected: Option<&ExpectedStroke>,
-    source_owns_stroke: bool,
-    emitted_stroke: Option<(usize, &str)>,
-    effective_by_rule: &mut BTreeMap<usize, usize>,
-    emitted_by_rule: &mut BTreeMap<usize, usize>,
+fn record_paint_checkpoint(
+    expected: Option<&ExpectedPaint>,
+    source_owns: bool,
+    emitted: Option<(usize, &str)>,
+    property: ResolvedStyleProperty,
+    effective_by_property: &mut BTreeMap<(usize, ResolvedStyleProperty), usize>,
+    emitted_by_property: &mut BTreeMap<(usize, ResolvedStyleProperty), usize>,
 ) -> bool {
-    if source_owns_stroke {
-        return emitted_stroke.is_none();
+    if source_owns {
+        return emitted.is_none();
     }
-    match (expected, emitted_stroke) {
+    match (expected, emitted) {
         (None, None) => true,
         (Some(expected), Some((rule_index, css))) => {
-            *effective_by_rule.entry(expected.rule_index).or_default() += 1;
-            let matches = expected.rule_index == rule_index && expected.css == css;
+            let expected_key = (expected.rule_index, property);
+            *effective_by_property.entry(expected_key).or_default() += 1;
+            let matches = expected.rule_index == rule_index && expected.css.as_ref() == css;
             if matches {
-                *emitted_by_rule.entry(rule_index).or_default() += 1;
+                *emitted_by_property
+                    .entry((rule_index, property))
+                    .or_default() += 1;
             }
             matches
         }
         (Some(expected), None) => {
-            *effective_by_rule.entry(expected.rule_index).or_default() += 1;
+            *effective_by_property
+                .entry((expected.rule_index, property))
+                .or_default() += 1;
             false
         }
         (None, Some(_)) => false,
@@ -591,40 +714,56 @@ fn record_stroke_checkpoint(
 mod tests {
     use super::*;
 
-    fn expectation(shells: &[BlockNodeShellKind]) -> NodeExpectation {
+    fn paint(rule_index: usize, css: &str) -> ExpectedPaint {
+        ExpectedPaint {
+            rule_index,
+            css: Arc::from(css),
+            capability: if css == "transparent" {
+                ThemeCapability::TransparentPaint
+            } else {
+                ThemeCapability::SolidPaint
+            },
+        }
+    }
+
+    fn paint_expectation(shells: &[BlockNodeShellKind]) -> NodeExpectation {
         NodeExpectation {
-            stroke: Some(ExpectedStroke {
-                rule_index: 3,
-                css: "#123456".to_string(),
-            }),
+            fill: Some(paint(3, "#654321")),
+            stroke: Some(paint(3, "#123456")),
             shells: shells.into(),
         }
     }
 
     #[test]
-    fn receipt_requires_every_real_shell_with_the_final_stroke() {
+    fn receipt_requires_every_real_shell_with_the_final_paints() {
         let mut rect =
-            BlockNodeStrokeThemeReceipt::new(vec![expectation(&[BlockNodeShellKind::Rect])]);
+            BlockNodePaintThemeReceipt::new(vec![paint_expectation(&[BlockNodeShellKind::Rect])]);
         rect.record_checkpointed_node(
             0,
             false,
+            Some((3, "#654321")),
+            false,
             Some((3, "#123456")),
-            [(BlockNodeShellKind::Rect, "fill:#fff;stroke:#123456;")],
+            [(BlockNodeShellKind::Rect, "fill:#654321;stroke:#123456;")],
         );
         assert!(rect.proves_complete());
         assert!(rect.proves_rule(3));
+        assert!(rect.proves_property(3, ResolvedStyleProperty::Fill));
+        assert!(rect.proves_property(3, ResolvedStyleProperty::Stroke));
 
-        let mut double_circle = BlockNodeStrokeThemeReceipt::new(vec![expectation(&[
+        let mut double_circle = BlockNodePaintThemeReceipt::new(vec![paint_expectation(&[
             BlockNodeShellKind::Circle,
             BlockNodeShellKind::Circle,
         ])]);
         double_circle.record_checkpointed_node(
             0,
             false,
+            Some((3, "#654321")),
+            false,
             Some((3, "#123456")),
             [
-                (BlockNodeShellKind::Circle, "stroke:#123456;"),
-                (BlockNodeShellKind::Circle, "stroke:#123456;"),
+                (BlockNodeShellKind::Circle, "fill:#654321;stroke:#123456;"),
+                (BlockNodeShellKind::Circle, "fill:#654321;stroke:#123456;"),
             ],
         );
         assert!(double_circle.proves_complete());
@@ -633,87 +772,156 @@ mod tests {
 
     #[test]
     fn receipt_rejects_missing_wrong_duplicate_and_unwritten_shells() {
-        let expected = vec![expectation(&[
+        let expected = vec![paint_expectation(&[
             BlockNodeShellKind::Circle,
             BlockNodeShellKind::Circle,
         ])];
 
-        let mut missing = BlockNodeStrokeThemeReceipt::new(expected.clone());
+        let mut missing = BlockNodePaintThemeReceipt::new(expected.clone());
         missing.record_checkpointed_node(
             0,
             false,
+            Some((3, "#654321")),
+            false,
             Some((3, "#123456")),
-            [(BlockNodeShellKind::Circle, "stroke:#123456;")],
+            [(BlockNodeShellKind::Circle, "fill:#654321;stroke:#123456;")],
         );
         assert!(!missing.proves_complete());
 
-        let mut wrong = BlockNodeStrokeThemeReceipt::new(expected.clone());
+        let mut wrong = BlockNodePaintThemeReceipt::new(expected.clone());
         wrong.record_checkpointed_node(
             0,
             false,
+            Some((3, "#654321")),
+            false,
             Some((3, "#123456")),
             [
-                (BlockNodeShellKind::Path, "stroke:#123456;"),
-                (BlockNodeShellKind::Circle, "stroke:#abcdef;"),
+                (BlockNodeShellKind::Path, "fill:#654321;stroke:#123456;"),
+                (BlockNodeShellKind::Circle, "fill:#abcdef;stroke:#123456;"),
             ],
         );
         assert!(!wrong.proves_complete());
 
-        let mut duplicate = BlockNodeStrokeThemeReceipt::new(expected);
+        let mut duplicate = BlockNodePaintThemeReceipt::new(expected);
         duplicate.record_checkpointed_node(
             0,
             false,
+            Some((3, "#654321")),
+            false,
             Some((3, "#123456")),
             [
-                (BlockNodeShellKind::Circle, "stroke:#123456;"),
-                (BlockNodeShellKind::Circle, "stroke:#123456;"),
+                (BlockNodeShellKind::Circle, "fill:#654321;stroke:#123456;"),
+                (BlockNodeShellKind::Circle, "fill:#654321;stroke:#123456;"),
             ],
         );
         duplicate.record_checkpointed_node(
             0,
             false,
+            Some((3, "#654321")),
+            false,
             Some((3, "#123456")),
             [
-                (BlockNodeShellKind::Circle, "stroke:#123456;"),
-                (BlockNodeShellKind::Circle, "stroke:#123456;"),
+                (BlockNodeShellKind::Circle, "fill:#654321;stroke:#123456;"),
+                (BlockNodeShellKind::Circle, "fill:#654321;stroke:#123456;"),
             ],
         );
         assert!(!duplicate.proves_complete());
+
+        let unwritten =
+            BlockNodePaintThemeReceipt::new(vec![paint_expectation(&[BlockNodeShellKind::Rect])]);
+        assert!(!unwritten.proves_complete());
     }
 
     #[test]
-    fn source_owned_stroke_is_complete_but_not_effective_typed_work() {
-        let mut receipt =
-            BlockNodeStrokeThemeReceipt::new(vec![expectation(&[BlockNodeShellKind::Polygon])]);
+    fn receipt_rejects_missing_or_wrong_fill_emission_even_when_terminal_style_matches() {
+        let expectation = vec![paint_expectation(&[BlockNodeShellKind::Polygon])];
+        let mut missing = BlockNodePaintThemeReceipt::new(expectation.clone());
+        missing.record_checkpointed_node(
+            0,
+            false,
+            None,
+            false,
+            Some((3, "#123456")),
+            [(BlockNodeShellKind::Polygon, "fill:#654321;stroke:#123456;")],
+        );
+        assert!(!missing.proves_complete());
+
+        let mut wrong = BlockNodePaintThemeReceipt::new(expectation);
+        wrong.record_checkpointed_node(
+            0,
+            false,
+            Some((3, "#abcdef")),
+            false,
+            Some((3, "#123456")),
+            [(BlockNodeShellKind::Polygon, "fill:#654321;stroke:#123456;")],
+        );
+        assert!(!wrong.proves_complete());
+    }
+
+    #[test]
+    fn source_owned_fill_is_independent_from_effective_typed_stroke() {
+        let mut receipt = BlockNodePaintThemeReceipt::new(vec![paint_expectation(&[
+            BlockNodeShellKind::Polygon,
+        ])]);
         receipt.record_checkpointed_node(
             0,
             true,
             None,
-            [(BlockNodeShellKind::Polygon, "stroke:#abcdef;")],
+            false,
+            Some((3, "#123456")),
+            [(BlockNodeShellKind::Polygon, "fill:#abcdef;stroke:#123456;")],
         );
 
         assert!(receipt.proves_complete());
-        assert!(!receipt.has_effective_rule(3));
-        assert!(!receipt.proves_rule(3));
+        assert!(receipt.has_effective_rule(3));
+        assert!(receipt.proves_rule(3));
+        assert!(!receipt.proves_property(3, ResolvedStyleProperty::Fill));
+        assert!(receipt.proves_property(3, ResolvedStyleProperty::Stroke));
     }
 
     #[test]
-    fn source_ownership_includes_inline_assigned_and_default_class_strokes() {
+    fn source_owned_stroke_is_independent_from_effective_typed_fill() {
+        let mut receipt =
+            BlockNodePaintThemeReceipt::new(vec![paint_expectation(&[BlockNodeShellKind::Rect])]);
+        receipt.record_checkpointed_node(
+            0,
+            false,
+            Some((3, "#654321")),
+            true,
+            None,
+            [(BlockNodeShellKind::Rect, "fill:#654321;stroke:#abcdef;")],
+        );
+
+        assert!(receipt.proves_complete());
+        assert!(receipt.has_effective_rule(3));
+        assert!(receipt.proves_rule(3));
+        assert!(receipt.proves_property(3, ResolvedStyleProperty::Fill));
+        assert!(!receipt.proves_property(3, ResolvedStyleProperty::Stroke));
+    }
+
+    #[test]
+    fn source_ownership_tracks_fill_and_stroke_independently() {
         let mut class_defs = IndexMap::new();
         let mut accent = BlockClassDefRenderModel::default();
         accent.id = "accent".to_string();
-        accent.styles = vec!["stroke:#abcdef".to_string()];
+        accent.styles = vec!["fill:#abcdef".to_string()];
         class_defs.insert("accent".to_string(), accent);
 
-        let ownership = BlockNodeStrokeSourceOwnership::new(&class_defs);
-        assert!(ownership.owns(&["stroke:#112233".to_string()], &[]));
-        assert!(ownership.owns(&[], &["accent".to_string()]));
-        assert!(!ownership.owns(&[], &["other".to_string()]));
+        let ownership = BlockNodePaintSourceOwnership::new(&class_defs);
+        assert!(ownership.owns_fill(true, &[]));
+        assert!(ownership.owns_stroke(true, &[]));
+        assert!(ownership.owns_fill(false, &["accent".to_string()]));
+        assert!(!ownership.owns_stroke(false, &["accent".to_string()]));
+        assert!(!ownership.owns_fill(false, &["other".to_string()]));
 
         let mut default_class = BlockClassDefRenderModel::default();
         default_class.id = "default".to_string();
-        default_class.styles = vec!["STROKE:#fedcba".to_string()];
+        default_class.styles = vec!["FILL:#fedcba".to_string(), "STROKE:#abcdef".to_string()];
         class_defs.insert("default".to_string(), default_class);
-        assert!(BlockNodeStrokeSourceOwnership::new(&class_defs).owns(&[], &[]));
+        let ownership = BlockNodePaintSourceOwnership::new(&class_defs);
+        assert!(ownership.owns_fill(false, &[]));
+        assert!(ownership.owns_stroke(false, &[]));
+        assert!(ownership.owns_fill(false, &["other".to_string()]));
+        assert!(ownership.owns_stroke(false, &["other".to_string()]));
     }
 }
