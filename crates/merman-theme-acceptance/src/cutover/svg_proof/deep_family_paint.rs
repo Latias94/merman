@@ -113,37 +113,75 @@ fn architecture_text_observation(
 ) -> C6ProofResult<DeepFamilyRouteObservation> {
     require_route(route, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill)?;
     require_classic_profile(profile, "Architecture Text")?;
-    let mut groups = document
+    let service_groups = document
         .descendants()
         .filter(|node| node.has_tag_name("g") && class_contains(*node, "architecture-service"))
         .collect::<Vec<_>>();
-    let title_group = document.descendants().find(|node| {
-        node.has_tag_name("g")
-            && node
-                .ancestors()
-                .any(|ancestor| class_contains(ancestor, "architecture-groups"))
-            && node.descendants().any(|descendant| {
-                descendant.has_tag_name("text") && style_value(descendant, "fill").is_some()
-            })
-            && node
-                .descendants()
-                .any(|descendant| descendant.has_tag_name("svg"))
-    });
-    if let Some(title_group) = title_group {
-        groups.push(title_group);
-    }
     c6_ensure!(
         "route-svg-proof",
-        groups.len() == 4,
-        "Architecture Text witness expected four terminal groups, found {}",
-        groups.len()
+        service_groups.len() == 3,
+        "Architecture Text witness expected three service terminals, found {}",
+        service_groups.len()
     );
+    let title_groups = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && !class_contains(*node, "architecture-groups")
+                && node
+                    .ancestors()
+                    .any(|ancestor| class_contains(ancestor, "architecture-groups"))
+                && node.descendants().any(|descendant| {
+                    descendant.has_tag_name("text") && style_value(descendant, "fill").is_some()
+                })
+                && node
+                    .descendants()
+                    .any(|descendant| descendant.has_tag_name("svg"))
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        title_groups.len() == 1,
+        "Architecture Text witness expected one group-title terminal, found {}",
+        title_groups.len()
+    );
+    let edge_label_groups = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node
+                    .parent()
+                    .is_some_and(|parent| class_contains(parent, "architecture-edges"))
+                && node.descendants().any(|descendant| {
+                    descendant.has_tag_name("text")
+                        && descendant.attribute("data-merman-text-bbox").is_some()
+                        && has_visible_text_content(descendant)
+                })
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        edge_label_groups.len() == 1,
+        "Architecture Text witness expected one edge-label terminal, found {}",
+        edge_label_groups.len()
+    );
+
+    let groups = service_groups
+        .into_iter()
+        .map(|group| ("service", group))
+        .chain(title_groups.into_iter().map(|group| ("group-title", group)))
+        .chain(
+            edge_label_groups
+                .into_iter()
+                .map(|group| ("edge-label", group)),
+        )
+        .collect::<Vec<_>>();
 
     let property = facet_property(route.facet());
     let mut common_value = None;
     let mut target_regions = Vec::with_capacity(groups.len());
-    let mut terminal = b"merman.c6-route-architecture-text-surface.v2\0".to_vec();
-    for group in groups {
+    let mut terminal = b"merman.c6-route-architecture-text-surface.v3\0".to_vec();
+    for (surface, group) in groups {
         let text_nodes = group
             .descendants()
             .filter(|node| {
@@ -168,6 +206,7 @@ fn architecture_text_observation(
         observe_common_value(&mut common_value, value, "Architecture Text")?;
         let region = architecture_emitted_text_bounds(text)?;
         target_regions.push(region);
+        append_len_prefixed(&mut terminal, surface.as_bytes());
         append_len_prefixed(
             &mut terminal,
             group.attribute("id").unwrap_or_default().as_bytes(),
@@ -2065,4 +2104,58 @@ fn push_optional_color(colors: &mut Vec<[u8; 3]>, raw: &str) -> C6ProofResult<()
         colors.push(color);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ARCHITECTURE_TEXT_SVG: &str = r##"<svg id="fixture" viewBox="0 0 200 200">
+<g class="architecture-edges"><g><path id="fixture-L_api_worker_0" class="edge"/><g><text data-merman-text-bbox="70,80,120,100" style="fill:#dc2626">calls</text></g></g></g>
+<g class="architecture-services">
+  <g id="fixture-service-api" class="architecture-service"><text data-merman-text-bbox="10,20,40,40" style="fill:#dc2626">API</text></g>
+  <g id="fixture-service-worker" class="architecture-service"><text data-merman-text-bbox="80,20,130,40" style="fill:#dc2626">Worker</text></g>
+  <g id="fixture-service-db" class="architecture-service"><text data-merman-text-bbox="145,20,175,40" style="fill:#dc2626">DB</text></g>
+</g>
+<g class="architecture-groups"><g><g><svg/></g><g><text data-merman-text-bbox="10,150,50,170" style="fill:#dc2626">Core</text></g></g></g>
+</svg>"##;
+
+    fn architecture_text_solid_route() -> ThemeRouteCutoverDescriptor {
+        legacy_replacing_typed_theme_routes()
+            .expect("derive cutover routes")
+            .into_iter()
+            .find(|route| {
+                route.family_id() == DiagramFamilyId::ARCHITECTURE
+                    && route.target() == ThemeTarget::Text
+                    && route.facet() == ThemeRouteCutoverFacet::Fill
+                    && route.value() == ThemeRouteCutoverValue::Solid
+            })
+            .expect("Architecture Text.fill solid cutover route")
+    }
+
+    #[test]
+    fn architecture_text_observer_requires_the_edge_label_terminal() {
+        let route = architecture_text_solid_route();
+        let document =
+            roxmltree::Document::parse(ARCHITECTURE_TEXT_SVG).expect("parse Architecture SVG");
+        let observation =
+            architecture_text_observation(&document, route, CutoverWitnessProfile::ClassicStatic)
+                .expect("observe all Architecture text terminals");
+
+        assert_eq!(observation.value, SOLID_FILL.css);
+        assert_eq!(observation.target_regions.len(), 5);
+
+        let missing_edge_label = ARCHITECTURE_TEXT_SVG.replace(">calls</text>", "></text>");
+        let document =
+            roxmltree::Document::parse(&missing_edge_label).expect("parse edge-label mutation");
+        let error = match architecture_text_observation(
+            &document,
+            route,
+            CutoverWitnessProfile::ClassicStatic,
+        ) {
+            Ok(_) => panic!("missing Architecture edge label must invalidate the cutover proof"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("edge-label terminal"));
+    }
 }

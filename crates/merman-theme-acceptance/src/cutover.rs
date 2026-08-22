@@ -134,6 +134,7 @@ const ARCHITECTURE_TEXT_SOURCE: &str = r#"architecture-beta
   service api(server)[API] in core
   service worker(server)[Worker] in core
   service db(database)[Database] in core
+  api:R -[calls]-> L:worker
 "#;
 const SEQUENCE_FILL_SOURCE: &str = r#"sequenceDiagram
 participant Plain
