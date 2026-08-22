@@ -38,7 +38,6 @@ pub(in crate::svg::parity::flowchart) fn flowchart_css(
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
-    class_defs: &IndexMap<String, Vec<String>>,
     emit: FlowchartEmitCheckpoint<'_>,
 ) -> Result<String> {
     flowchart_css_for_id(
@@ -46,7 +45,6 @@ pub(in crate::svg::parity::flowchart) fn flowchart_css(
         effective_config,
         font_family,
         font_size,
-        class_defs,
         &|| emit.checkpoint(),
     )
 }
@@ -56,7 +54,6 @@ fn flowchart_css_for_id(
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
-    class_defs: &IndexMap<String, Vec<String>>,
     checkpoint: &dyn Fn() -> Result<()>,
 ) -> Result<String> {
     let theme = PresentationTheme::new(effective_config).node_diagram();
@@ -207,15 +204,23 @@ fn flowchart_css_for_id(
         checkpoint()?;
     }
 
-    // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
-    // - HTML labels: `.classDef > *` + `.classDef span`
-    // - SVG labels: `.classDef rect|polygon|ellipse|circle|path`
+    Ok(out)
+}
+
+// Writes the amplified class-definition component separately so callers can count and admit it
+// before materializing repeated selectors.
+pub(super) fn write_flowchart_class_defs_css<W: std::fmt::Write + ?Sized>(
+    out: &mut W,
+    diagram_id: impl std::fmt::Display + Copy,
+    effective_config: &serde_json::Value,
+    class_defs: &IndexMap<String, Vec<String>>,
+) -> std::fmt::Result {
+    // Mermaid chooses different selectors based on htmlLabels.
     let html_labels =
         crate::flowchart::FlowchartConfigView::new(effective_config).effective_html_labels();
     let shape_elements: &[&str] = &["rect", "polygon", "ellipse", "circle", "path"];
 
     for (class, decls) in class_defs {
-        checkpoint()?;
         if decls.is_empty() {
             continue;
         }
@@ -233,46 +238,33 @@ fn flowchart_css_for_id(
         if style.is_empty() {
             continue;
         }
+        let escaped_class = escape_xml(class);
         if html_labels {
-            // Mermaid (via Stylis) ends up serializing the `>` combinator inside `<style>` as
-            // `&gt;` in the final SVG string (see upstream baselines).
-            let _ = write!(
-                &mut out,
+            write!(
+                out,
                 r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                id,
-                escape_xml(class),
-                style,
-                id,
-                escape_xml(class),
-                style
-            );
-            checkpoint()?;
+                diagram_id, escaped_class, style, diagram_id, escaped_class, style
+            )?;
         } else {
             for css_element in shape_elements {
-                let _ = write!(
-                    &mut out,
+                write!(
+                    out,
                     r#"#{} .{} {}{{{}}}"#,
-                    id,
-                    escape_xml(class),
-                    css_element,
-                    style
-                );
-                checkpoint()?;
+                    diagram_id, escaped_class, css_element, style
+                )?;
             }
         }
         if let Some(c) = text_color.as_deref() {
-            let _ = write!(
-                &mut out,
+            write!(
+                out,
                 r#"#{} .{} tspan{{fill:{}!important;}}"#,
-                id,
-                escape_xml(class),
+                diagram_id,
+                escaped_class,
                 escape_xml(c)
-            );
-            checkpoint()?;
+            )?;
         }
     }
-
-    Ok(out)
+    Ok(())
 }
 
 #[inline]
@@ -336,7 +328,6 @@ mod tests {
             }),
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
-            &IndexMap::new(),
             &|| Ok(()),
         )
         .expect("valid khroma color");
@@ -357,7 +348,6 @@ mod tests {
             }),
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
-            &IndexMap::new(),
             &|| Ok(()),
         )
         .expect_err("unsupported khroma color must fail");

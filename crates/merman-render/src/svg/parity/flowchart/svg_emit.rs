@@ -406,9 +406,28 @@ pub(super) fn render_flowchart_svg_model(
         effective_config_value,
         &font_family,
         font_size,
-        &model.class_defs,
         emit,
     )?;
+    let class_defs_css = options.materialize_counted_svg_component(
+        "Flowchart class-definition stylesheet",
+        |out| {
+            write_flowchart_class_defs_css(
+                out,
+                diagram_id,
+                effective_config_value,
+                &model.class_defs,
+            )
+        },
+        |out| {
+            write_flowchart_class_defs_css(
+                out,
+                diagram_id,
+                effective_config_value,
+                &model.class_defs,
+            )
+        },
+    )?;
+    css.push_str(&class_defs_css);
     emit.checkpoint()?;
     if swimlane_layout.is_some() {
         css.push_str(&super::swimlane::swimlane_css(diagram_id, effective_config));

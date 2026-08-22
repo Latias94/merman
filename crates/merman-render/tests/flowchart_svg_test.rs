@@ -191,8 +191,13 @@ fn failed_flowchart_render_does_not_publish_staged_edge_trace() {
 
 #[test]
 fn public_flowchart_artifact_replays_diagram_id_terminal_during_emit() {
-    let mut source = String::from("flowchart TD\n");
+    let mut source = String::from(
+        "flowchart TD\nclassDef hot fill:#123456,stroke:#654321,color:#fff\nN0:::hot --> N1\n",
+    );
     for index in 0..256 {
+        if index == 0 {
+            continue;
+        }
         source.push_str(&format!("N{index} --> N{}\n", index + 1));
     }
     let parsed =
