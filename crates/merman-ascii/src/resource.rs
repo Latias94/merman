@@ -901,7 +901,7 @@ impl CheckedOutput {
         if let Some(expected_len) = self.expected_len {
             let remaining = expected_len
                 .checked_sub(self.output.len())
-                .ok_or_else(|| invalid_prebudgeted_output_plan())?;
+                .ok_or_else(invalid_prebudgeted_output_plan)?;
             if value.len() > remaining {
                 return Err(invalid_prebudgeted_output_plan());
             }
