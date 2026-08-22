@@ -1853,6 +1853,20 @@ mod tests {
         let document = roxmltree::Document::parse(&missing_divider)
             .expect("parse divider-less Requirement SVG");
         assert!(requirement_paint_observation(&document, ThemeRouteCutoverFacet::Stroke).is_err());
+
+        let duplicated_divider = REQUIREMENT_PAINT_SVG.replace(
+            r##"    <g class="divider"><path d="M-10 0 L10 0" stroke="#9370DB" stroke-width="1.3" fill="none"/></g>
+"##,
+            r##"    <g class="divider"><path d="M-10 0 L10 0" stroke="#9370DB" stroke-width="1.3" fill="none"/></g>
+    <g class="divider"><path d="M-10 0 L10 0" stroke="#9370DB" stroke-width="1.3" fill="none"/></g>
+"##,
+        );
+        let document = roxmltree::Document::parse(&duplicated_divider)
+            .expect("parse duplicated-divider Requirement SVG");
+        assert!(
+            requirement_paint_observation(&document, ThemeRouteCutoverFacet::Stroke).is_err(),
+            "a duplicate divider must not satisfy the exact-one terminal witness"
+        );
     }
 
     #[test]

@@ -812,8 +812,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let fill_style_attr = (fill_override.is_some() || typed_fill.is_some())
             .then(|| format!(r#" style="fill:{} !important""#, escape_xml(fill_color)))
             .unwrap_or_default();
-        let stroke_style_attr = (stroke_override.is_some() || typed_stroke.is_some())
-            .then(|| format!(r#" style="stroke:{} !important""#, escape_xml(stroke_color)))
+        let stroke_style_declaration = (stroke_override.is_some() || typed_stroke.is_some())
+            .then(|| format!("stroke:{} !important", stroke_color));
+        let stroke_style_attr = stroke_style_declaration
+            .as_deref()
+            .map(|declaration| format!(r#" style="{}""#, escape_xml(declaration)))
             .unwrap_or_default();
 
         // RoughJS path geometry does not depend on RGB values. Keep paint-only values such as
@@ -927,7 +930,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         }
 
         let divider_expected = rendered_node.divider_y_offset.is_some();
-        let mut terminal_divider_stroke = None;
+        let mut divider_emissions = Vec::new();
         if let Some(divider_y_offset) = rendered_node.divider_y_offset {
             let divider_y = y + divider_y_offset;
             let divider_d =
@@ -959,7 +962,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 } else {
                     rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
                 };
-            let _ = write!(
+            write!(
                 &mut out,
                 r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{style_attr}/></g>"##,
                 style = escape_xml(&node_styles),
@@ -967,8 +970,18 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 stroke = escape_xml(stroke_color),
                 stroke_width = fmt(stroke_width),
                 style_attr = stroke_style_attr,
+            )
+            .map_err(|_| Error::InvalidModel {
+                message: "Requirement divider terminal emission failed".to_string(),
+            })?;
+            out.checkpoint()?;
+            divider_emissions.push(
+                crate::requirement::RequirementDividerEmission::from_successful_write(
+                    paint_theme_index,
+                    stroke_color,
+                    stroke_style_declaration.as_deref().unwrap_or_default(),
+                ),
             );
-            terminal_divider_stroke = Some(stroke_color);
         }
 
         paint_theme_receipt.record_checkpointed_node(
@@ -979,8 +992,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
             stroke_override.is_some(),
             typed_stroke,
             stroke_color,
+            stroke_style_declaration.as_deref().unwrap_or_default(),
             divider_expected,
-            terminal_divider_stroke,
+            &divider_emissions,
         );
 
         out.push_str("</g>");

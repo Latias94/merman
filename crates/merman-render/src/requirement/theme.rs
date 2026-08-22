@@ -23,6 +23,28 @@ struct NodeExpectation {
     stroke: Option<DirectPaintExpectation>,
 }
 
+/// Token issued only after the writer has successfully emitted one divider terminal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RequirementDividerEmission {
+    node_index: usize,
+    stroke: Arc<str>,
+    style: Arc<str>,
+}
+
+impl RequirementDividerEmission {
+    pub(crate) fn from_successful_write(
+        node_index: usize,
+        stroke: impl Into<Arc<str>>,
+        style: impl Into<Arc<str>>,
+    ) -> Self {
+        Self {
+            node_index,
+            stroke: stroke.into(),
+            style: style.into(),
+        }
+    }
+}
+
 /// Requirement box paint resolved once for semantic nodes and shared by SVG emission and evidence.
 #[derive(Debug)]
 pub(crate) struct RequirementPaintThemePlan {
@@ -366,8 +388,9 @@ impl RequirementPaintThemeReceipt {
         source_owns_stroke: bool,
         emitted_stroke: Option<(usize, &str)>,
         terminal_stroke: &str,
+        terminal_stroke_style: &str,
         divider_expected: bool,
-        terminal_divider_stroke: Option<&str>,
+        divider_emissions: &[RequirementDividerEmission],
     ) {
         let Some(checkpointed) = self.checkpointed_nodes.get_mut(node_index) else {
             self.attributes_match = false;
@@ -392,11 +415,25 @@ impl RequirementPaintThemeReceipt {
             && !source_owns_stroke
         {
             self.attributes_match &= expected.css() == terminal_stroke;
-            if let Some(divider_stroke) = terminal_divider_stroke {
-                self.attributes_match &= expected.css() == divider_stroke;
-            }
+            self.attributes_match &=
+                important_style_value(terminal_stroke_style, "stroke") == Some(expected.css());
         }
-        self.attributes_match &= divider_expected == terminal_divider_stroke.is_some();
+        self.attributes_match &= match (divider_expected, divider_emissions) {
+            (false, []) => true,
+            (true, [emission]) => {
+                let paint_matches = match expectation.stroke.as_ref() {
+                    None => true,
+                    Some(expected) => {
+                        source_owns_stroke
+                            || (emission.stroke.as_ref() == expected.css()
+                                && important_style_value(emission.style.as_ref(), "stroke")
+                                    == Some(expected.css()))
+                    }
+                };
+                emission.node_index == node_index && paint_matches
+            }
+            _ => false,
+        };
         self.attributes_match &= self.paint_ledger.record(
             expectation.fill.as_ref(),
             source_owns_fill,
@@ -422,5 +459,120 @@ impl RequirementPaintThemeReceipt {
     fn proves_property(&self, rule_index: usize, property: ResolvedStyleProperty) -> bool {
         self.paint_ledger
             .proves_property(self.proves_complete(), rule_index, property)
+    }
+}
+
+fn important_style_value<'a>(style: &'a str, property: &str) -> Option<&'a str> {
+    style.split(';').find_map(|declaration| {
+        let (candidate, raw_value) = declaration.split_once(':')?;
+        if candidate.trim() != property {
+            return None;
+        }
+        let value = raw_value.trim();
+        let (value, important) = value
+            .strip_suffix("!important")
+            .map_or((value, false), |value| (value.trim(), true));
+        important.then_some(value)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::ThemeCapability;
+
+    fn stroke_receipt() -> RequirementPaintThemeReceipt {
+        RequirementPaintThemeReceipt::new(
+            vec![NodeExpectation {
+                stroke: Some(DirectPaintExpectation::new(
+                    7,
+                    "#123456",
+                    ThemeCapability::SolidPaint,
+                )),
+                ..NodeExpectation::default()
+            }]
+            .into(),
+        )
+    }
+
+    #[test]
+    fn typed_stroke_receipt_requires_the_inline_cascade_winner() {
+        let mut receipt = stroke_receipt();
+        receipt.record_checkpointed_node(
+            0,
+            false,
+            None,
+            "#ececff",
+            false,
+            Some((7, "#123456")),
+            "#123456",
+            "stroke:#123456",
+            false,
+            &[],
+        );
+
+        assert!(
+            !receipt.proves_complete(),
+            "a stylesheet-only stroke must not be treated as the final typed winner"
+        );
+    }
+
+    #[test]
+    fn divider_receipt_requires_one_successful_writer_emission() {
+        for emissions in [
+            Vec::new(),
+            vec![
+                RequirementDividerEmission::from_successful_write(
+                    0,
+                    "#123456",
+                    "stroke:#123456 !important",
+                ),
+                RequirementDividerEmission::from_successful_write(
+                    0,
+                    "#123456",
+                    "stroke:#123456 !important",
+                ),
+            ],
+        ] {
+            let mut receipt = stroke_receipt();
+            receipt.record_checkpointed_node(
+                0,
+                false,
+                None,
+                "#ececff",
+                false,
+                Some((7, "#123456")),
+                "#123456",
+                "stroke:#123456 !important",
+                true,
+                &emissions,
+            );
+
+            assert!(
+                !receipt.proves_complete(),
+                "divider emission count {} must fail closed",
+                emissions.len()
+            );
+        }
+
+        let mut receipt = stroke_receipt();
+        let emissions = [RequirementDividerEmission::from_successful_write(
+            0,
+            "#123456",
+            "stroke:#123456 !important",
+        )];
+        receipt.record_checkpointed_node(
+            0,
+            false,
+            None,
+            "#ececff",
+            false,
+            Some((7, "#123456")),
+            "#123456",
+            "stroke:#123456 !important",
+            true,
+            &emissions,
+        );
+        assert!(receipt.proves_complete());
     }
 }
