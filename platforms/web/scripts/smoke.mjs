@@ -411,7 +411,14 @@ const expectedResourceLimitIds = [
   "max_model_nesting_depth",
   "max_model_text_bytes",
   "max_source_bytes",
-  ...(hasCapability("svg") ? ["max_svg_bytes", "max_svg_elements"] : []),
+  ...(hasCapability("svg")
+    ? [
+        "max_svg_bytes",
+        "max_svg_elements",
+        "svg_backend_tree_depth",
+        "svg_backend_tree_nodes",
+      ]
+    : []),
 ].sort();
 assert.deepEqual(resourceLimitIds, expectedResourceLimitIds);
 assert.equal(Object.isFrozen(api.RESOURCE_PROFILES), true);

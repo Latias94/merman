@@ -554,11 +554,14 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
     };
 
     let baseline = renderer(None)
-        .render_svg_result(source)
-        .expect("unbounded parity render")
+        .render_resvg_safe_result(source)
+        .expect("unbounded safe render")
         .expect("flowchart detected");
     let mut low = 1usize;
-    let mut high = baseline.len();
+    // The safe pipeline projects each of the two maximum icon bodies before
+    // the final serialized SVG is returned, so the plain serialized length
+    // is not itself a valid admission upper bound.
+    let mut high = baseline.len().saturating_add(maximum.saturating_mul(2));
     assert!(
         renderer(Some(high))
             .render_resvg_safe_result(source)
