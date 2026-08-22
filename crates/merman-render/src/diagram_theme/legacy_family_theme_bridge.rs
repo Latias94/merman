@@ -156,10 +156,14 @@ fn compile_selected_family(
         DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
-        | DiagramFamilyId::MINDMAP
-        | DiagramFamilyId::TREE_VIEW
         | DiagramFamilyId::BLOCK => {
             compile_node_family(&mut builder, family_programs, family);
+        }
+        DiagramFamilyId::MINDMAP => {
+            compile_mindmap_family(&mut builder, family_programs);
+        }
+        DiagramFamilyId::TREE_VIEW => {
+            compile_tree_view_family(&mut builder, family_programs);
         }
         DiagramFamilyId::GIT_GRAPH => {
             compile_gitgraph_family(&mut builder, family_programs);
@@ -344,20 +348,10 @@ fn compile_node_family(
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
     let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
-    if family == DiagramFamilyId::GIT_GRAPH {
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-            [
-                ("lineColor", edge_paint.clone()),
-                ("commitLineColor", edge_paint),
-            ],
-        );
-    } else {
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-            [("lineColor", edge_paint)],
-        );
-    }
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+        [("lineColor", edge_paint)],
+    );
     let marker_paint = reader.marker_paint_contribution();
     contributions.add_theme_variables(
         marker_paint.contribution_id,
@@ -395,36 +389,91 @@ fn compile_node_family(
         ],
     );
 
-    match family {
-        DiagramFamilyId::TREE_VIEW => {
-            let mut tree_view = Map::new();
-            if let Some(value) = reader.text_fill(ThemeTarget::NodeLabel) {
-                tree_view.insert("labelColor".to_string(), Value::String(value));
-            }
-            if let Some(value) = reader.stroke_or_fill(ThemeTarget::Edge) {
-                tree_view.insert("lineColor".to_string(), Value::String(value));
-            }
-            if let Some(value) = reader.stroke_or_fill(ThemeTarget::Marker) {
-                tree_view.insert("iconColor".to_string(), Value::String(value));
-            }
-            contributions.add_theme_variable_object("tree-view", "treeView", tree_view);
-        }
-        DiagramFamilyId::GIT_GRAPH => {
-            contributions.add_theme_variables(
-                "git.commit",
-                [
-                    ("commitLabelColor", reader.text_fill(ThemeTarget::EdgeLabel)),
-                    (
-                        "commitLabelBackground",
-                        reader.fill(ThemeTarget::EdgeLabelBackground),
-                    ),
-                    ("tagLabelColor", reader.text_fill(ThemeTarget::NodeLabel)),
-                    ("tagLabelBackground", reader.fill(ThemeTarget::Node)),
-                    ("tagLabelBorder", reader.stroke(ThemeTarget::Node)),
-                ],
-            );
-        }
-        _ => {}
+    contributions.finish_into(builder);
+}
+
+/// 仅投影 Mindmap writer 仍然消费的 legacy 变量。
+///
+/// 分支 palette 与边 stroke 已由 typed adapter 接管；这里仅保留节点填充和边框实际读取的
+/// Mermaid token，避免通用 node-family bridge 再生成 writer 不会读取的全局字段。
+fn compile_mindmap_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
+    let family = DiagramFamilyId::MINDMAP;
+    let reader = FamilyStyleReader::new(family_programs, family);
+    let mut contributions = FamilyContributions::new(family);
+
+    contributions.add_typography(&reader);
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::NodeFill.contribution_id(),
+        [("mainBkg", reader.fill(ThemeTarget::Node))],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
+        [("nodeBorder", reader.stroke(ThemeTarget::Node))],
+    );
+    contributions.finish_into(builder);
+}
+
+/// 仅投影 Tree View writer 使用的三个嵌套 Mermaid 变量。
+///
+/// 每条 route 保留独立 contribution provenance，同时删除 node-family compiler 过去生成的
+/// 无效 `textColor`、`lineColor` 和 `arrowheadColor` 全局赋值。
+fn compile_tree_view_family(
+    builder: &mut OverlayBuilder,
+    family_programs: &FamilyThemeProgramCache,
+) {
+    let family = DiagramFamilyId::TREE_VIEW;
+    let reader = FamilyStyleReader::new(family_programs, family);
+    let mut contributions = FamilyContributions::new(family);
+
+    contributions.add_typography(&reader);
+
+    let mut label = Map::new();
+    if let Some(value) = reader.text_fill(ThemeTarget::NodeLabel) {
+        label.insert(
+            "treeView".to_string(),
+            Value::Object(Map::from_iter([(
+                "labelColor".to_string(),
+                Value::String(value),
+            )])),
+        );
+    }
+    if !label.is_empty() {
+        contributions.add_root_object(
+            ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
+            "themeVariables",
+            label,
+        );
+    }
+
+    let mut line = Map::new();
+    if let Some(value) = reader.stroke_or_fill(ThemeTarget::Edge) {
+        line.insert(
+            "treeView".to_string(),
+            Value::Object(Map::from_iter([(
+                "lineColor".to_string(),
+                Value::String(value),
+            )])),
+        );
+    }
+    if !line.is_empty() {
+        contributions.add_root_object(
+            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+            "themeVariables",
+            line,
+        );
+    }
+
+    let marker = reader.marker_paint_contribution();
+    if let Some(value) = marker.value {
+        let mut icon = Map::new();
+        icon.insert(
+            "treeView".to_string(),
+            Value::Object(Map::from_iter([(
+                "iconColor".to_string(),
+                Value::String(value),
+            )])),
+        );
+        contributions.add_root_object(marker.contribution_id, "themeVariables", icon);
     }
 
     contributions.finish_into(builder);
@@ -1530,7 +1579,7 @@ mod tests {
                 .iter()
                 .map(ThemeLegacyProjectionObservation::assignment_path)
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["themeVariables.mainBkg", "themeVariables.primaryColor",])
+            BTreeSet::from(["themeVariables.mainBkg"])
         );
     }
 
@@ -1737,9 +1786,7 @@ mod tests {
         let parsed = parse(&spec, source);
 
         for (path, value) in [
-            ("themeVariables.primaryColor", fill),
             ("themeVariables.mainBkg", fill),
-            ("themeVariables.primaryBorderColor", stroke),
             ("themeVariables.nodeBorder", stroke),
         ] {
             assert_eq!(
@@ -1861,22 +1908,12 @@ mod tests {
                 .flat_map(|contribution| contribution.surviving_assignment_paths())
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from([
-                "themeVariables.arrowheadColor",
-                "themeVariables.lineColor",
-                "themeVariables.nodeTextColor",
-                "themeVariables.primaryTextColor",
-                "themeVariables.textColor",
                 "themeVariables.treeView.iconColor",
                 "themeVariables.treeView.labelColor",
                 "themeVariables.treeView.lineColor",
             ])
         );
         for (path, value) in [
-            ("themeVariables.primaryTextColor", label),
-            ("themeVariables.nodeTextColor", label),
-            ("themeVariables.textColor", label),
-            ("themeVariables.lineColor", line),
-            ("themeVariables.arrowheadColor", icon),
             ("themeVariables.treeView.labelColor", label),
             ("themeVariables.treeView.lineColor", line),
             ("themeVariables.treeView.iconColor", icon),
