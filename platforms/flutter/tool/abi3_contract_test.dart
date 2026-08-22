@@ -46,6 +46,7 @@ void main() {
   rejectsMalformedResourceDescriptors();
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
+  rejectsInconsistentNativeErrorRelations();
   rejectsMalformedNativeDiagnosticDetails();
   rejectsMismatchedNativeErrorSchema();
   preservesAllocationTokenExhaustionStatus();
@@ -1579,7 +1580,7 @@ void decodesMachineReadableNativeErrors() {
           label: 'generic unsupported operation',
           status: native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
           statusName: 'unsupported-operation',
-          kind: 'future-kind',
+          kind: 'generic',
           capabilityId: null,
           additionalDetails: const {},
           matches: (error) =>
@@ -1624,6 +1625,8 @@ void decodesMachineReadableNativeErrors() {
         ),
       ];
   for (final testCase in specializedCases) {
+    final preservesDiagnostic =
+        testCase.status != native.MERMAN_NATIVE_STATUS_CANCELLED;
     final error = MermanException.fromNative(
       testCase.status,
       Uint8List.fromList(
@@ -1636,7 +1639,7 @@ void decodesMachineReadableNativeErrors() {
             'kind': testCase.kind,
             'capability_id': testCase.capabilityId,
             'details': {
-              'diagnostic': diagnosticJson(),
+              if (preservesDiagnostic) 'diagnostic': diagnosticJson(),
               ...testCase.additionalDetails,
             },
             'message': '${testCase.label} failed',
@@ -1645,8 +1648,11 @@ void decodesMachineReadableNativeErrors() {
       ),
     );
     _expect(
-      testCase.matches(error) && preservesExpectedDiagnostic(error),
-      '${testCase.label} should preserve its classification and diagnostic',
+      testCase.matches(error) &&
+          (preservesDiagnostic
+              ? preservesExpectedDiagnostic(error)
+              : error.diagnosticDetails == null),
+      '${testCase.label} should preserve its valid terminal classification',
     );
   }
 
@@ -1764,6 +1770,84 @@ void decodesMachineReadableNativeErrors() {
   );
 }
 
+void rejectsInconsistentNativeErrorRelations() {
+  Map<String, Object?> cancellationEnvelope({
+    int? status,
+    String statusName = 'cancelled',
+    String kind = 'generic',
+    String? capabilityId,
+    String reason = 'requested',
+    String phase = 'layout',
+    Map<String, Object?> additionalDetails = const {},
+  }) => {
+    'version': native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION,
+    'ok': false,
+    'status': status ?? native.MERMAN_NATIVE_STATUS_CANCELLED,
+    'status_name': statusName,
+    'kind': kind,
+    'capability_id': capabilityId,
+    'details': {
+      'cancellation': {'reason': reason, 'phase': phase},
+      ...additionalDetails,
+    },
+    'message': 'cancelled',
+  };
+
+  final inconsistentPayloads = <Map<String, Object?>>[
+    cancellationEnvelope(
+      additionalDetails: {
+        'resource': {
+          'cause': 'ceiling',
+          'limit_id': 'max_source_bytes',
+          'phase': 'source_input',
+          'actual': 2,
+          'max': 1,
+          'profile': 'interactive',
+        },
+      },
+    ),
+    cancellationEnvelope(
+      additionalDetails: {
+        'diagnostic': {
+          'code': 'merman.test',
+          'span': null,
+          'field': null,
+          'diagram_type': null,
+        },
+      },
+    ),
+    cancellationEnvelope(
+      additionalDetails: {
+        'icon_registry': {
+          'kind_id': 'invalid_xml',
+          'pack_index': null,
+          'registration_name': null,
+        },
+      },
+    ),
+    cancellationEnvelope(status: native.MERMAN_NATIVE_STATUS_PARSE_ERROR),
+    cancellationEnvelope(statusName: 'parse-error'),
+    cancellationEnvelope(reason: 'bogus'),
+    cancellationEnvelope(phase: 'future-phase'),
+    cancellationEnvelope(kind: 'missing-capability', capabilityId: 'svg'),
+    cancellationEnvelope(kind: 'future-kind'),
+  ];
+
+  for (final payload in inconsistentPayloads) {
+    final error = MermanException.fromNative(
+      native.MERMAN_NATIVE_STATUS_CANCELLED,
+      Uint8List.fromList(utf8.encode(jsonEncode(payload))),
+    );
+    _expect(
+      error.codeName == 'DART_NATIVE_CONTRACT_ERROR' &&
+          error.kind == MermanErrorKind.generic &&
+          error.capabilityId == null &&
+          error.cancellationDetails == null,
+      'inconsistent native terminal fields must fail closed as a contract error',
+    );
+  }
+}
+
 void rejectsMalformedNativeDiagnosticDetails() {
   for (final diagnostic in <Map<String, Object?>>[
     {'code': '', 'span': null, 'field': null, 'diagram_type': null},
@@ -1818,8 +1902,9 @@ void rejectsMalformedNativeDiagnosticDetails() {
       ),
     );
     _expect(
-      error.diagnosticDetails == null,
-      'malformed diagnostic metadata must not enter the public exception',
+      error.codeName == 'DART_NATIVE_CONTRACT_ERROR' &&
+          error.diagnosticDetails == null,
+      'malformed diagnostic metadata must fail closed as a contract error',
     );
   }
 }
@@ -1910,7 +1995,7 @@ void fuzzesNativeErrorPayloadDecoding() {
         : native.MERMAN_NATIVE_STATUS_REENTRANT_CALL;
     final error = MermanException.fromNative(status, payload);
     _expect(
-      error.code == status || error.code == -1,
+      error.code == (payload.isEmpty ? status : -1),
       'malformed native error payload escaped fail-closed decoding',
     );
   }

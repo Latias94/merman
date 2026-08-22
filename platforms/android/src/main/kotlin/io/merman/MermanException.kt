@@ -1,5 +1,6 @@
 package io.merman
 
+import org.json.JSONTokener
 import org.json.JSONObject
 
 /** Compatibility projection for resource counts that fit a signed [Long]. */
@@ -25,6 +26,13 @@ data class MermanExactResourceErrorDetails(
 private data class ParsedResourceErrorDetails(
     val exact: MermanExactResourceErrorDetails,
     val compatible: MermanResourceErrorDetails?,
+)
+
+private data class DecodedMermanErrorMessage(
+    val message: String,
+    val payload: JSONObject?,
+    val localCode: Int?,
+    val localCodeName: String?,
 )
 
 data class MermanDiagnosticSpan(
@@ -60,7 +68,17 @@ class MermanException private constructor(
     localDiagnosticDetails: MermanDiagnosticErrorDetails?,
     localIconRegistryDetails: MermanIconRegistryErrorDetails?,
 ) : RuntimeException(payload?.optString("message")?.takeIf(String::isNotEmpty) ?: rawMessage) {
-    constructor(message: String) : this(message, parsePayload(message), null, null, null, null, null)
+    private constructor(decoded: DecodedMermanErrorMessage) : this(
+        rawMessage = decoded.message,
+        payload = decoded.payload,
+        localCode = decoded.localCode,
+        localCodeName = decoded.localCodeName,
+        localResourceDetails = null,
+        localDiagnosticDetails = null,
+        localIconRegistryDetails = null,
+    )
+
+    constructor(message: String) : this(decodeErrorMessage(message))
 
     val code: Int? = payload
         ?.takeIf { it.has("code") && !it.isNull("code") }
@@ -93,6 +111,25 @@ class MermanException private constructor(
         private const val INTERNAL_ERROR_CODE_NAME = "MERMAN_INTERNAL_ERROR"
         private const val RESOURCE_LIMIT_ERROR_CODE = 10
         private const val RESOURCE_LIMIT_ERROR_CODE_NAME = "MERMAN_RESOURCE_LIMIT_EXCEEDED"
+        private const val CANCELLED_ERROR_CODE = 12
+        private const val INVALID_NATIVE_ERROR_MESSAGE =
+            "Merman Android transport returned an invalid error payload"
+        private val STATUS_CODE_NAMES = mapOf(
+            1 to "MERMAN_INVALID_ARGUMENT",
+            2 to "MERMAN_UTF8_ERROR",
+            3 to "MERMAN_OPTIONS_JSON_ERROR",
+            4 to "MERMAN_NO_DIAGRAM",
+            5 to "MERMAN_PARSE_ERROR",
+            6 to "MERMAN_RENDER_ERROR",
+            7 to "MERMAN_UNSUPPORTED_OPERATION",
+            8 to "MERMAN_PANIC",
+            INTERNAL_ERROR_CODE to INTERNAL_ERROR_CODE_NAME,
+            RESOURCE_LIMIT_ERROR_CODE to RESOURCE_LIMIT_ERROR_CODE_NAME,
+            11 to "MERMAN_BUSY",
+            CANCELLED_ERROR_CODE to "MERMAN_CANCELLED",
+        )
+        private val CANCELLATION_REASONS = setOf("requested", "deadline_exceeded")
+        private val OPERATION_PHASE_IDENTIFIER = Regex("^[a-z][a-z0-9_-]{0,63}$")
 
         fun iconPackCountLimit(
             limit: MermanBindingConstructorResourceLimitSpec,
@@ -128,8 +165,149 @@ class MermanException private constructor(
             localIconRegistryDetails = null,
         )
 
-        private fun parsePayload(message: String): JSONObject? =
-            runCatching { JSONObject(message) }.getOrNull()
+        private fun decodeErrorMessage(message: String): DecodedMermanErrorMessage {
+            val looksLikeJsonObject = message.dropWhile(Char::isWhitespace).startsWith('{')
+            val payload = parseJsonObject(message)
+            if (payload == null) {
+                return if (looksLikeJsonObject) invalidNativeErrorMessage() else {
+                    DecodedMermanErrorMessage(message, null, null, null)
+                }
+            }
+            return if (isValidNativeErrorPayload(payload)) {
+                DecodedMermanErrorMessage(message, payload, null, null)
+            } else {
+                invalidNativeErrorMessage()
+            }
+        }
+
+        private fun parseJsonObject(message: String): JSONObject? = runCatching {
+            val tokenizer = JSONTokener(message)
+            val payload = tokenizer.nextValue() as? JSONObject ?: return null
+            if (tokenizer.nextClean() != '\u0000') {
+                return null
+            }
+            payload
+        }.getOrNull()
+
+        private fun invalidNativeErrorMessage(): DecodedMermanErrorMessage =
+            DecodedMermanErrorMessage(
+                message = INVALID_NATIVE_ERROR_MESSAGE,
+                payload = null,
+                localCode = INTERNAL_ERROR_CODE,
+                localCodeName = INTERNAL_ERROR_CODE_NAME,
+            )
+
+        private fun isValidNativeErrorPayload(payload: JSONObject): Boolean {
+            if (
+                payload.strictInt("version") !=
+                MERMAN_REQUIRED_PAYLOAD_SCHEMA_VERSIONS["binding-result"] ||
+                payload.opt("ok") != false
+            ) {
+                return false
+            }
+            val code = payload.strictInt("code") ?: return false
+            val codeName = payload.strictString("code_name") ?: return false
+            if (STATUS_CODE_NAMES[code] != codeName) {
+                return false
+            }
+            val kind = payload.strictString("kind") ?: return false
+            if (!payload.has("capability_id")) {
+                return false
+            }
+            val capabilityId = if (payload.isNull("capability_id")) {
+                null
+            } else {
+                payload.strictString("capability_id") ?: return false
+            }
+            if (payload.opt("message") !is String) {
+                return false
+            }
+            if (!hasValidKindRelation(code, kind, capabilityId)) {
+                return false
+            }
+            return hasValidDetailsRelation(payload, code, kind, capabilityId)
+        }
+
+        private fun hasValidKindRelation(
+            code: Int,
+            kind: String,
+            capabilityId: String?,
+        ): Boolean = when (kind) {
+            "generic" -> capabilityId == null
+            "unknown-operation" -> code == 7 && capabilityId == null
+            "missing-capability" -> code == 7 && capabilityId != null
+            "busy" -> code == 11 && capabilityId == null
+            "reentrant-call" -> code == 1 && capabilityId == null
+            else -> false
+        }
+
+        private fun hasValidDetailsRelation(
+            payload: JSONObject,
+            code: Int,
+            kind: String,
+            capabilityId: String?,
+        ): Boolean {
+            val details = if (payload.has("details")) {
+                payload.optJSONObject("details") ?: return false
+            } else {
+                null
+            }
+            val hasResource = details?.has("resource") == true
+            val hasDiagnostic = details?.has("diagnostic") == true
+            val hasIconRegistry = details?.has("icon_registry") == true
+            val hasCancellation = details?.has("cancellation") == true
+            if (
+                details != null &&
+                !hasResource &&
+                !hasDiagnostic &&
+                !hasIconRegistry &&
+                !hasCancellation
+            ) {
+                return false
+            }
+            if (hasResource && parseResourceDetails(payload) == null) {
+                return false
+            }
+            if (hasDiagnostic && parseDiagnosticDetails(payload) == null) {
+                return false
+            }
+            if (hasIconRegistry && parseIconRegistryDetails(payload) == null) {
+                return false
+            }
+            if (hasCancellation && parseCancellationDetails(payload) == null) {
+                return false
+            }
+            if (hasResource && (code != RESOURCE_LIMIT_ERROR_CODE || kind != "generic")) {
+                return false
+            }
+            if (code == RESOURCE_LIMIT_ERROR_CODE && !hasResource) {
+                return false
+            }
+            if (hasIconRegistry && capabilityId != null) {
+                return false
+            }
+            return if (code == CANCELLED_ERROR_CODE) {
+                kind == "generic" &&
+                    capabilityId == null &&
+                    hasCancellation &&
+                    !hasResource &&
+                    !hasDiagnostic &&
+                    !hasIconRegistry
+            } else {
+                !hasCancellation
+            }
+        }
+
+        private fun JSONObject.strictInt(key: String): Int? = when (val value = opt(key)) {
+            is Byte -> value.toInt()
+            is Short -> value.toInt()
+            is Int -> value
+            is Long -> value.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE }?.toInt()
+            else -> null
+        }
+
+        private fun JSONObject.strictString(key: String): String? =
+            (opt(key) as? String)?.takeIf(String::isNotEmpty)
 
         private fun parseResourceDetails(payload: JSONObject): ParsedResourceErrorDetails? =
             runCatching {
@@ -245,9 +423,9 @@ class MermanException private constructor(
                 val cancellation = payload.optJSONObject("details")?.optJSONObject("cancellation")
                     ?: return null
                 val reason = cancellation.getString("reason")
-                    .takeIf(String::isNotEmpty) ?: return null
+                    .takeIf(CANCELLATION_REASONS::contains) ?: return null
                 val phase = cancellation.getString("phase")
-                    .takeIf(String::isNotEmpty) ?: return null
+                    .takeIf(OPERATION_PHASE_IDENTIFIER::matches) ?: return null
                 MermanCancelledDetails(reason, phase)
             }.getOrNull()
     }

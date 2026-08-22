@@ -59,7 +59,7 @@ class MermanExceptionTest {
     @Test
     fun keepsLongCompatibilityForStringEncodedLongRangeCounts() {
         val error = MermanException(
-            """{"details":{"resource":{"cause":"ceiling","limit_id":"max_layout_work_units","phase":"layout_model","actual":"9007199254740992","max":"9007199254740991","profile":"interactive"}}}""",
+            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"cause":"ceiling","limit_id":"max_layout_work_units","phase":"layout_model","actual":"9007199254740992","max":"9007199254740991","profile":"interactive"}},"message":"layout work exceeded"}""",
         )
 
         assertEquals("9007199254740992", error.exactResourceDetails?.actual)
@@ -70,12 +70,9 @@ class MermanExceptionTest {
 
     @Test
     fun rejectsResourceCountsOutsideUnsignedLongRange() {
-        val error = MermanException(
-            """{"details":{"resource":{"cause":"ceiling","limit_id":"max_source_bytes","phase":"source","actual":"18446744073709551616","max":"4","profile":"interactive"}}}""",
+        assertInvalidNativeErrorPayload(
+            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"cause":"ceiling","limit_id":"max_source_bytes","phase":"source","actual":"18446744073709551616","max":"4","profile":"interactive"}},"message":"source exceeded"}""",
         )
-
-        assertNull(error.exactResourceDetails)
-        assertNull(error.resourceDetails)
     }
 
     @Test
@@ -100,11 +97,9 @@ class MermanExceptionTest {
 
     @Test
     fun rejectsMalformedIconRegistryFailureDetails() {
-        val error = MermanException(
-            """{"details":{"icon_registry":{"kind_id":"","pack_index":-1}}}""",
+        assertInvalidNativeErrorPayload(
+            """{"version":1,"ok":false,"code":1,"code_name":"MERMAN_INVALID_ARGUMENT","kind":"generic","capability_id":null,"details":{"icon_registry":{"kind_id":"","pack_index":-1}},"message":"invalid icon registry"}""",
         )
-
-        assertNull(error.iconRegistryDetails)
     }
 
     @Test
@@ -138,12 +133,60 @@ class MermanExceptionTest {
     }
 
     @Test
-    fun rejectsMalformedCancellationFailureDetails() {
+    fun parsesCanonicalMissingCapabilityFailure() {
         val error = MermanException(
-            """{"details":{"cancellation":{"reason":"","phase":"admission"}}}""",
+            """{"version":1,"ok":false,"code":7,"code_name":"MERMAN_UNSUPPORTED_OPERATION","kind":"missing-capability","capability_id":"svg","details":{"diagnostic":{"code":"merman.svg.missing-capability","span":null,"field":null,"diagram_type":null}},"message":"SVG is unavailable"}""",
         )
 
-        assertNull(error.cancellationDetails)
+        assertEquals(7, error.code)
+        assertEquals("MERMAN_UNSUPPORTED_OPERATION", error.codeName)
+        assertEquals(MermanErrorKind.MISSING_CAPABILITY, error.kind)
+        assertEquals("svg", error.capabilityId)
+        assertEquals("merman.svg.missing-capability", error.diagnosticDetails?.code)
+    }
+
+    @Test
+    fun rejectsContradictoryCancellationTerminalsAsTransportContractFailures() {
+        val conflictingDetails = listOf(
+            """"resource":{"cause":"ceiling","limit_id":"max_source_bytes","phase":"source","actual":5,"max":4,"profile":"interactive"}""",
+            """"diagnostic":{"code":"merman.test","span":null,"field":null,"diagram_type":null}""",
+        )
+
+        conflictingDetails.forEach { conflictingDetail ->
+            assertInvalidNativeErrorPayload(
+                """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"requested","phase":"layout"},$conflictingDetail},"message":"operation cancelled"}""",
+            )
+        }
+    }
+
+    @Test
+    fun rejectsInconsistentNativeErrorIdentityAsTransportContractFailure() {
+        listOf(
+            """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"requested","phase":"layout"}},"message":"operation cancelled"}""",
+            """{"version":1,"ok":false,"code":7,"code_name":"MERMAN_UNSUPPORTED_OPERATION","kind":"missing-capability","capability_id":null,"message":"missing capability"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":"svg","message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"resource":{"cause":"ceiling","limit_id":"max_source_bytes","phase":"source","actual":5,"max":4,"profile":"interactive"}},"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"message":"source exceeded"}""",
+            """{"version":1,"ok":false,"code":11,"code_name":"MERMAN_BUSY","kind":"busy","capability_id":"svg","message":"engine busy"}""",
+        ).forEach(::assertInvalidNativeErrorPayload)
+    }
+
+    @Test
+    fun rejectsInvalidNativeErrorEnvelopeHeaderAsTransportContractFailure() {
+        listOf(
+            """{"version":2,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"message":"invalid flowchart"}""",
+            """{"version":1,"ok":true,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"message":"invalid flowchart"""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"message":"invalid flowchart"} trailing""",
+        ).forEach(::assertInvalidNativeErrorPayload)
+    }
+
+    @Test
+    fun rejectsInvalidCancellationVocabularyAsTransportContractFailure() {
+        listOf(
+            """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"bogus","phase":"layout"}},"message":"operation cancelled"}""",
+            """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"requested","phase":"unknown phase"}},"message":"operation cancelled"}""",
+        ).forEach(::assertInvalidNativeErrorPayload)
     }
 
     @Test
@@ -192,5 +235,20 @@ class MermanExceptionTest {
                 MermanIconPack("""{"prefix":"test","icons":{}}""", "")
             }.exceptionOrNull() is IllegalArgumentException,
         )
+    }
+
+    private fun assertInvalidNativeErrorPayload(payload: String) {
+        val error = MermanException(payload)
+
+        assertEquals(9, error.code)
+        assertEquals("MERMAN_INTERNAL_ERROR", error.codeName)
+        assertEquals(MermanErrorKind.GENERIC, error.kind)
+        assertNull(error.capabilityId)
+        assertNull(error.exactResourceDetails)
+        assertNull(error.resourceDetails)
+        assertNull(error.diagnosticDetails)
+        assertNull(error.iconRegistryDetails)
+        assertNull(error.cancellationDetails)
+        assertEquals("Merman Android transport returned an invalid error payload", error.message)
     }
 }

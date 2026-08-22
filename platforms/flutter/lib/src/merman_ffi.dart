@@ -263,77 +263,46 @@ class MermanException implements Exception {
     if (metadata.isNotEmpty) {
       try {
         final decoded = _decodeJsonObject(metadata, 'native error metadata');
-        final decodedVersion = decoded['version'];
-        if (decodedVersion != native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION) {
+        final contractViolation = _validateNativeErrorEnvelope(status, decoded);
+        if (contractViolation != null) {
           return MermanException.contract(
-            'unsupported native error payload schema `$decodedVersion`; expected '
-            '${native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION}',
+            'invalid native error payload: $contractViolation',
           );
         }
-        final decodedCodeName = decoded['status_name'];
-        final decodedMessage = decoded['message'];
+        final decodedCodeName = decoded['status_name'] as String;
+        final decodedMessage = decoded['message'] as String;
         kind = MermanErrorKind.fromWireName(decoded['kind']);
         final decodedCapabilityId = decoded['capability_id'];
-        if (decodedCapabilityId is String && decodedCapabilityId.isNotEmpty) {
-          capabilityId = decodedCapabilityId;
-        }
+        capabilityId = decodedCapabilityId as String?;
         final details = decoded['details'];
         if (details is Map) {
           final resource = details['resource'];
           if (resource is Map) {
-            final parsed = _parseResourceErrorDetails(resource);
-            if (parsed != null) {
-              exactResourceDetails = parsed.exact;
-              resourceDetails = parsed.compatible;
-            }
+            final parsed = _parseResourceErrorDetails(resource)!;
+            exactResourceDetails = parsed.exact;
+            resourceDetails = parsed.compatible;
           }
           final diagnostic = details['diagnostic'];
           if (diagnostic is Map) {
-            diagnosticDetails = _parseDiagnosticErrorDetails(diagnostic);
+            diagnosticDetails = _parseDiagnosticErrorDetails(diagnostic)!;
           }
           final iconRegistry = details['icon_registry'];
           if (iconRegistry is Map) {
-            final kindId = iconRegistry['kind_id'];
-            final packIndex = iconRegistry['pack_index'];
-            final registrationName = iconRegistry['registration_name'];
-            if (kindId is String &&
-                kindId.isNotEmpty &&
-                (packIndex == null || (packIndex is int && packIndex >= 0)) &&
-                (registrationName == null || registrationName is String)) {
-              iconRegistryDetails = MermanIconRegistryErrorDetails(
-                kindId: kindId,
-                packIndex: packIndex as int?,
-                registrationName: registrationName as String?,
-              );
-            }
+            iconRegistryDetails = _parseIconRegistryErrorDetails(iconRegistry)!;
           }
           final cancellation = details['cancellation'];
           if (cancellation is Map) {
-            final reason = cancellation['reason'];
-            final phase = cancellation['phase'];
-            if (reason is String &&
-                reason.isNotEmpty &&
-                phase is String &&
-                phase.isNotEmpty) {
-              cancellationDetails = MermanCancellationErrorDetails(
-                reason: reason,
-                phase: phase,
-              );
-            }
+            cancellationDetails = _parseCancellationErrorDetails(cancellation)!;
           }
         }
-        if (decodedCodeName is String) {
-          codeName = decodedCodeName;
-        }
-        if (decodedMessage is String) {
-          message = decodedMessage;
-        }
-      } on FormatException {
-        // Preserve the native numeric status when a broken library cannot encode
-        // its optional error metadata.
-      } on MermanException {
-        // Preserve the native numeric status when a broken library cannot encode
-        // its optional error metadata.
+        codeName = decodedCodeName;
+        message = decodedMessage;
+      } on FormatException catch (error) {
+        return MermanException.contract(
+          'invalid native error payload: ${error.message}',
+        );
+      } on MermanException catch (error) {
+        return error;
       }
     }
     if (status == native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION) {
@@ -407,6 +376,143 @@ class MermanException implements Exception {
   String toString() => 'MermanException($codeName, $code): $message';
 }
 
+String? _validateNativeErrorEnvelope(
+  int status,
+  Map<String, Object?> envelope,
+) {
+  final version = envelope['version'];
+  if (version is! int ||
+      version != native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION) {
+    return 'unsupported schema `$version`; expected '
+        '${native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION}';
+  }
+  if (envelope['ok'] != false) {
+    return '`ok` must be false';
+  }
+  final expectedStatusName = _nativeStatusName(status);
+  if (expectedStatusName == null || status == native.MERMAN_NATIVE_STATUS_OK) {
+    return 'outer status `$status` is not a known failure status';
+  }
+  final payloadStatus = envelope['status'];
+  if (payloadStatus is! int || payloadStatus != status) {
+    return 'payload status `$payloadStatus` does not match outer status '
+        '`$status`';
+  }
+  if (envelope['status_name'] != expectedStatusName) {
+    return 'status `${envelope['status_name']}` does not match '
+        '`$expectedStatusName`';
+  }
+  final kindValue = envelope['kind'];
+  if (kindValue is! String ||
+      !MermanErrorKind.values.any((kind) => kind.wireName == kindValue)) {
+    return '`kind` is not a known native error kind';
+  }
+  if (!envelope.containsKey('capability_id')) {
+    return '`capability_id` is required';
+  }
+  final capabilityId = envelope['capability_id'];
+  if (capabilityId != null &&
+      (capabilityId is! String || capabilityId.isEmpty)) {
+    return '`capability_id` must be null or a non-empty string';
+  }
+  if (envelope['message'] is! String) {
+    return '`message` must be a string';
+  }
+
+  final kind = MermanErrorKind.fromWireName(kindValue);
+  final invalidKindRelation = switch (kind) {
+    MermanErrorKind.unknownOperation =>
+      status != native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION ||
+          capabilityId != null,
+    MermanErrorKind.missingCapability =>
+      status != native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION ||
+          capabilityId is! String,
+    MermanErrorKind.reentrantCall =>
+      status != native.MERMAN_NATIVE_STATUS_REENTRANT_CALL ||
+          capabilityId != null,
+    MermanErrorKind.busy =>
+      status != native.MERMAN_NATIVE_STATUS_BUSY || capabilityId != null,
+    MermanErrorKind.generic => capabilityId != null,
+  };
+  if (invalidKindRelation) {
+    return 'status, kind, and capability_id are inconsistent';
+  }
+
+  final detailsValue = envelope['details'];
+  if (envelope.containsKey('details') && detailsValue is! Map) {
+    return '`details` must be an object when present';
+  }
+  final details = detailsValue is Map ? detailsValue : null;
+  if (details != null) {
+    if (details.containsKey('resource')) {
+      final resource = details['resource'];
+      if (resource is! Map || _parseResourceErrorDetails(resource) == null) {
+        return '`details.resource` is invalid';
+      }
+    }
+    if (details.containsKey('diagnostic')) {
+      final diagnostic = details['diagnostic'];
+      if (diagnostic is! Map ||
+          _parseDiagnosticErrorDetails(diagnostic) == null) {
+        return '`details.diagnostic` is invalid';
+      }
+    }
+    if (details.containsKey('icon_registry')) {
+      final iconRegistry = details['icon_registry'];
+      if (iconRegistry is! Map ||
+          _parseIconRegistryErrorDetails(iconRegistry) == null) {
+        return '`details.icon_registry` is invalid';
+      }
+    }
+    if (details.containsKey('cancellation')) {
+      final cancellation = details['cancellation'];
+      if (cancellation is! Map ||
+          _parseCancellationErrorDetails(cancellation) == null) {
+        return '`details.cancellation` is invalid';
+      }
+    }
+  }
+
+  final hasCancellation = details?.containsKey('cancellation') ?? false;
+  if (status == native.MERMAN_NATIVE_STATUS_CANCELLED) {
+    if (details == null ||
+        kind != MermanErrorKind.generic ||
+        capabilityId != null ||
+        !hasCancellation ||
+        details.containsKey('resource') ||
+        details.containsKey('diagnostic') ||
+        details.containsKey('icon_registry')) {
+      return 'cancellation is not a disjoint generic terminal';
+    }
+  } else if (hasCancellation) {
+    return 'cancellation details require the cancelled status';
+  }
+  return null;
+}
+
+String? _nativeStatusName(int status) => switch (status) {
+  native.MERMAN_NATIVE_STATUS_OK => 'ok',
+  native.MERMAN_NATIVE_STATUS_INVALID_ARGUMENT => 'invalid-argument',
+  native.MERMAN_NATIVE_STATUS_UTF8_ERROR => 'utf8-error',
+  native.MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR => 'options-json-error',
+  native.MERMAN_NATIVE_STATUS_NO_DIAGRAM => 'no-diagram',
+  native.MERMAN_NATIVE_STATUS_PARSE_ERROR => 'parse-error',
+  native.MERMAN_NATIVE_STATUS_RENDER_ERROR => 'render-error',
+  native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION => 'unsupported-operation',
+  native.MERMAN_NATIVE_STATUS_PANIC => 'panic',
+  native.MERMAN_NATIVE_STATUS_INTERNAL_ERROR => 'internal-error',
+  native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED =>
+    'resource-limit-exceeded',
+  native.MERMAN_NATIVE_STATUS_ABI_MISMATCH => 'abi-mismatch',
+  native.MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH => 'abi-layout-mismatch',
+  native.MERMAN_NATIVE_STATUS_CALLBACK_ERROR => 'callback-error',
+  native.MERMAN_NATIVE_STATUS_REENTRANT_CALL => 'reentrant-call',
+  native.MERMAN_NATIVE_STATUS_INVALID_ENGINE => 'invalid-engine',
+  native.MERMAN_NATIVE_STATUS_BUSY => 'busy',
+  native.MERMAN_NATIVE_STATUS_CANCELLED => 'cancelled',
+  _ => null,
+};
+
 _ParsedResourceErrorDetails? _parseResourceErrorDetails(
   Map<Object?, Object?> resource,
 ) {
@@ -458,7 +564,11 @@ MermanDiagnosticErrorDetails? _parseDiagnosticErrorDetails(
   Map<Object?, Object?> diagnostic,
 ) {
   final code = diagnostic['code'];
-  if (code is! String || code.isEmpty) {
+  if (code is! String ||
+      code.isEmpty ||
+      !diagnostic.containsKey('span') ||
+      !diagnostic.containsKey('field') ||
+      !diagnostic.containsKey('diagram_type')) {
     return null;
   }
 
@@ -497,9 +607,58 @@ MermanDiagnosticErrorDetails? _parseDiagnosticErrorDetails(
   );
 }
 
+MermanIconRegistryErrorDetails? _parseIconRegistryErrorDetails(
+  Map<Object?, Object?> iconRegistry,
+) {
+  final kindId = iconRegistry['kind_id'];
+  final packIndex = iconRegistry['pack_index'];
+  final registrationName = iconRegistry['registration_name'];
+  if (kindId is! String ||
+      kindId.isEmpty ||
+      !iconRegistry.containsKey('pack_index') ||
+      !iconRegistry.containsKey('registration_name') ||
+      (packIndex != null && (packIndex is! int || packIndex < 0)) ||
+      (registrationName != null && registrationName is! String)) {
+    return null;
+  }
+  return MermanIconRegistryErrorDetails(
+    kindId: kindId,
+    packIndex: packIndex as int?,
+    registrationName: registrationName as String?,
+  );
+}
+
+const _nativeCancellationReasons = {'requested', 'deadline_exceeded'};
+const _nativeCancellationPhases = {
+  'admission',
+  'parse',
+  'semantic',
+  'analysis',
+  'layout',
+  'emit',
+  'postprocess',
+  'export',
+  'unknown',
+};
+
+MermanCancellationErrorDetails? _parseCancellationErrorDetails(
+  Map<Object?, Object?> cancellation,
+) {
+  final reason = cancellation['reason'];
+  final phase = cancellation['phase'];
+  if (reason is! String ||
+      !_nativeCancellationReasons.contains(reason) ||
+      phase is! String ||
+      !_nativeCancellationPhases.contains(phase)) {
+    return null;
+  }
+  return MermanCancellationErrorDetails(reason: reason, phase: phase);
+}
+
 String? _canonicalUnsigned64(Object? value) {
   final decimal = switch (value) {
-    int value when value >= 0 => value.toString(),
+    int value when value >= 0 && value <= _maxSafeJsonInteger =>
+      value.toString(),
     String value => value,
     _ => null,
   };
@@ -526,6 +685,7 @@ int? _signed64ResourceCount(String decimal) {
 
 final BigInt _maxSigned64 = BigInt.parse('9223372036854775807');
 final BigInt _maxUnsigned64 = BigInt.parse('18446744073709551615');
+const int _maxSafeJsonInteger = 9007199254740991;
 
 /// The same engine was re-entered or closed while its callback was active.
 class MermanReentrantCallException extends MermanException {
