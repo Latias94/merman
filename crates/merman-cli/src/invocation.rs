@@ -34,7 +34,7 @@ use crate::cli::{NativeRenderOptions, RenderArgs, RenderFormat};
 #[cfg(feature = "rustdoc")]
 use crate::cli::{RustdocArgs, RustdocCommand};
 #[cfg(feature = "ascii")]
-use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
+use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs, TextWidthProfile};
 use crate::error::CliError;
 use crate::resources::ResolvedResourcePolicy;
 use merman::runtime::RuntimePolicy;
@@ -43,6 +43,8 @@ use std::collections::BTreeSet;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub(crate) struct InvocationFacts {
@@ -100,6 +102,7 @@ pub(crate) enum RustdocAction {
 pub(crate) struct ResolvedRustdoc {
     pub(crate) action: RustdocAction,
     pub(crate) quiet: bool,
+    pub(crate) operation_timeout: Option<Duration>,
     pub(crate) resources: ResolvedResourcePolicy,
     config: ResolvedRustdocConfig,
 }
@@ -173,8 +176,9 @@ pub(crate) struct ResolvedParse {
 pub(crate) struct ResolvedLayout {
     pub(crate) input: ResolvedInput,
     pub(crate) pretty: bool,
-    pub(crate) parse: ParseCliArgs,
-    pub(crate) render: crate::cli::LayoutRenderCliArgs,
+    pub(crate) operation_timeout: Option<Duration>,
+    pub(crate) parse: ResolvedParseOptions,
+    pub(crate) render: ResolvedRenderOptions,
     pub(crate) resources: ResolvedResourcePolicy,
 }
 
@@ -269,7 +273,7 @@ pub(crate) enum ResolvedOutput {
     #[cfg(feature = "ascii")]
     Text {
         destination: ResolvedDestination,
-        options: merman::ascii::AsciiRenderOptions,
+        options: Box<merman::ascii::AsciiRenderOptions>,
         resources: merman::ascii::AsciiResourcePolicy,
     },
     #[cfg(feature = "png")]
@@ -378,6 +382,7 @@ pub(crate) struct ResolvedEmbeddedImageOptions {
 #[derive(Debug)]
 pub(crate) struct ResolvedRenderCommon {
     pub(crate) cwd: PathBuf,
+    pub(crate) operation_timeout: Option<Duration>,
     pub(crate) parse: ResolvedParseOptions,
     #[cfg(feature = "svg")]
     pub(crate) render: ResolvedRenderOptions,
@@ -517,6 +522,7 @@ fn normalize_rustdoc(args: RustdocArgs) -> Result<ResolvedRustdoc, CliError> {
     Ok(ResolvedRustdoc {
         action,
         quiet: args.quiet,
+        operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
         resources: resolve_resource_policy(ResourceCliArgs::default())?,
         config: ResolvedRustdocConfig::Requested(args.config),
     })
@@ -546,12 +552,13 @@ fn normalize_parse(args: ParseArgs, facts: &InvocationFacts) -> Result<ResolvedP
 
 #[cfg(feature = "svg")]
 fn normalize_layout(args: LayoutArgs, facts: &InvocationFacts) -> Result<ResolvedLayout, CliError> {
-    validate_parse_args(&args.parse)?;
+    let runtime_policy = resolve_render_runtime_policy(&args.parse, false)?;
     Ok(ResolvedLayout {
         input: resolve_native_input(args.input, facts.stdin_is_terminal, "layout")?,
         pretty: args.pretty,
-        parse: args.parse,
-        render: args.render,
+        operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
+        parse: resolve_parse_options(args.parse, runtime_policy),
+        render: resolve_render_options(args.render.into_render_args()),
         resources: resolve_resource_policy(args.resources)?,
     })
 }
@@ -780,6 +787,7 @@ fn normalize_render(
     let output = resolved_native_output(format, destination, &args.options, facts)?;
     let common = resolve_native_common(
         args.options.graphical,
+        args.operation,
         runtime_policy,
         resources,
         working_directory(facts)?,
@@ -868,6 +876,7 @@ fn normalize_batch(
     let jobs = resolve_parallel_jobs(args.jobs, &resources)?;
     let common = resolve_native_common(
         args.options.graphical,
+        args.operation,
         runtime_policy,
         resources,
         working_directory(facts)?,
@@ -976,15 +985,35 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     } else {
         1
     };
-    let common = resolve_mmdc_common(
-        parse,
-        runtime_policy,
-        render,
-        &args,
-        output_is_stdout,
+    let common = ResolvedRenderCommon {
+        cwd: working_directory(facts)?.to_path_buf(),
+        operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
+        parse: resolve_parse_options(parse, runtime_policy),
+        render: resolve_render_options(render),
         resources,
-        working_directory(facts)?,
-    );
+        background: Some(
+            args.background_color
+                .clone()
+                .unwrap_or_else(|| "white".to_string()),
+        ),
+        css_file: args.css_file.clone(),
+        #[cfg(any(
+            feature = "markdown",
+            feature = "png",
+            feature = "jpeg",
+            feature = "pdf"
+        ))]
+        quiet: args.quiet || output_is_stdout,
+        #[cfg(feature = "icons")]
+        icons: ResolvedIconSources {
+            packages: args.icons.icon_packs.clone(),
+            named_sources: args.icons.icon_packs_names_and_urls.clone(),
+            #[cfg(feature = "network-icons")]
+            allow_network: args.icons.allow_network,
+            #[cfg(feature = "network-icons")]
+            allow_private_network: args.icons.allow_private_network,
+        },
+    };
     let compatibility = MmdcCompatibilityInputs {
         puppeteer_config_file: args.puppeteer_config_file.clone(),
         #[cfg(feature = "markdown")]
@@ -1171,15 +1200,21 @@ fn resolved_native_output(
     match format {
         #[cfg(feature = "ascii")]
         RenderFormat::Ascii | RenderFormat::Unicode => {
-            let resources = options
-                .text
-                .ascii_max_grid_cells
-                .map(merman::ascii::AsciiResourcePolicy::with_max_grid_cells)
-                .unwrap_or_default();
+            let mut resources = merman::ascii::AsciiResourcePolicy::default();
+            if let Some(max_grid_cells) = options.text.ascii_max_grid_cells {
+                resources
+                    .apply_limit(
+                        merman::ascii::AsciiResourceLimitId::MaxGridCells,
+                        max_grid_cells,
+                    )
+                    .map_err(|error| {
+                        CliError::InvalidInput(format!("invalid ASCII resource limit: {error}"))
+                    })?;
+            }
             let options = resolve_text_output_options(format, &options.text, &destination, facts)?;
             Ok(ResolvedOutput::Text {
                 destination,
-                options,
+                options: Box::new(options),
                 resources,
             })
         }
@@ -1245,6 +1280,12 @@ fn resolve_text_output_options(
         options.charset = match charset {
             TextCharset::Ascii => merman::ascii::AsciiCharset::Ascii,
             TextCharset::Unicode => merman::ascii::AsciiCharset::Unicode,
+        };
+    }
+    if let Some(profile) = args.ascii_width_profile {
+        options.terminal_width_profile = match profile {
+            TextWidthProfile::Unicode => merman::ascii::TerminalWidthProfile::Unicode,
+            TextWidthProfile::Cjk => merman::ascii::TerminalWidthProfile::Cjk,
         };
     }
     if let Some(direction) = args.ascii_direction {
@@ -1380,6 +1421,7 @@ fn resolve_mmdc_pdf_fit_width(args: &MmdcArgs) -> Result<Option<f32>, CliError> 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 fn resolve_native_common(
     options: crate::cli::GraphicalRenderCliArgs,
+    operation: crate::cli::OperationCliArgs,
     runtime_policy: RuntimePolicy,
     resources: ResolvedResourcePolicy,
     cwd: &Path,
@@ -1405,6 +1447,7 @@ fn resolve_native_common(
     } = options;
     ResolvedRenderCommon {
         cwd: cwd.to_path_buf(),
+        operation_timeout: operation.timeout_ms.map(Duration::from_millis),
         parse: resolve_parse_options(parse, runtime_policy),
         #[cfg(feature = "svg")]
         render: resolve_render_options(render),
@@ -1428,46 +1471,6 @@ fn resolve_native_common(
             allow_network: icons.allow_network,
             #[cfg(feature = "network-icons")]
             allow_private_network: icons.allow_private_network,
-        },
-    }
-}
-
-#[cfg(feature = "svg")]
-fn resolve_mmdc_common(
-    parse: ParseCliArgs,
-    runtime_policy: RuntimePolicy,
-    render: RenderCliArgs,
-    args: &MmdcArgs,
-    _output_is_stdout: bool,
-    resources: ResolvedResourcePolicy,
-    cwd: &Path,
-) -> ResolvedRenderCommon {
-    ResolvedRenderCommon {
-        cwd: cwd.to_path_buf(),
-        parse: resolve_parse_options(parse, runtime_policy),
-        render: resolve_render_options(render),
-        resources,
-        background: Some(
-            args.background_color
-                .clone()
-                .unwrap_or_else(|| "white".to_string()),
-        ),
-        css_file: args.css_file.clone(),
-        #[cfg(any(
-            feature = "markdown",
-            feature = "png",
-            feature = "jpeg",
-            feature = "pdf"
-        ))]
-        quiet: args.quiet || _output_is_stdout,
-        #[cfg(feature = "icons")]
-        icons: ResolvedIconSources {
-            packages: args.icons.icon_packs.clone(),
-            named_sources: args.icons.icon_packs_names_and_urls.clone(),
-            #[cfg(feature = "network-icons")]
-            allow_network: args.icons.allow_network,
-            #[cfg(feature = "network-icons")]
-            allow_private_network: args.icons.allow_private_network,
         },
     }
 }
@@ -1820,6 +1823,7 @@ fn runtime_options_are_configured(options: &RuntimeCliArgs) -> bool {
 fn text_options_are_configured(options: &TextOutputCliArgs) -> bool {
     options.sequence_mirror_actors
         || options.ascii_charset.is_some()
+        || options.ascii_width_profile.is_some()
         || options.ascii_direction.is_some()
         || options.ascii_color.is_some()
         || options.xychart_vertical_plot_height.is_some()
@@ -2064,6 +2068,28 @@ mod tests {
         assert_eq!(resolved.color_mode, merman::ascii::AsciiColorMode::Ansi16);
     }
 
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn text_output_options_resolve_cjk_width_profile() {
+        let args = TextOutputCliArgs {
+            ascii_width_profile: Some(crate::cli::TextWidthProfile::Cjk),
+            ..TextOutputCliArgs::default()
+        };
+
+        let resolved = resolve_text_output_options(
+            RenderFormat::Unicode,
+            &args,
+            &ResolvedDestination::Stdout,
+            &facts(false),
+        )
+        .expect("resolve text options");
+
+        assert_eq!(
+            resolved.terminal_width_profile,
+            merman::ascii::TerminalWidthProfile::Cjk
+        );
+    }
+
     #[test]
     fn content_commands_resolve_one_canonical_resource_policy() {
         let cli = Cli::try_parse_from([
@@ -2131,6 +2157,113 @@ mod tests {
                 .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
             Some(31)
         );
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    #[test]
+    fn render_resolves_the_host_operation_timeout() {
+        let cli =
+            Cli::try_parse_from(["merman-cli", "render", "-", "--operation-timeout-ms", "37"])
+                .expect("parse operation timeout");
+
+        let ResolvedInvocation::Render(resolved) =
+            resolve(cli, &facts(false)).expect("resolve operation timeout")
+        else {
+            panic!("expected render invocation");
+        };
+
+        assert_eq!(
+            resolved.common.operation_timeout,
+            Some(Duration::from_millis(37))
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn layout_resolves_the_same_host_operation_timeout() {
+        let cli =
+            Cli::try_parse_from(["merman-cli", "layout", "-", "--operation-timeout-ms", "39"])
+                .expect("parse layout operation timeout");
+
+        let ResolvedInvocation::Layout(resolved) =
+            resolve(cli, &facts(false)).expect("resolve layout operation timeout")
+        else {
+            panic!("expected layout invocation");
+        };
+
+        assert_eq!(resolved.operation_timeout, Some(Duration::from_millis(39)));
+    }
+
+    #[cfg(feature = "markdown")]
+    #[test]
+    fn batch_resolves_one_deadline_for_the_complete_generation() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "batch",
+            "input.md",
+            "--operation-timeout-ms",
+            "41",
+        ])
+        .expect("parse batch operation timeout");
+
+        let ResolvedInvocation::Batch(resolved) =
+            resolve(cli, &facts(false)).expect("resolve batch operation timeout")
+        else {
+            panic!("expected batch invocation");
+        };
+
+        assert_eq!(
+            resolved.common.operation_timeout,
+            Some(Duration::from_millis(41))
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn mmdc_resolves_the_same_host_operation_timeout() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "mmdc",
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--operation-timeout-ms",
+            "43",
+        ])
+        .expect("parse mmdc operation timeout");
+
+        let ResolvedInvocation::Mmdc(resolved) =
+            resolve(cli, &facts(false)).expect("resolve mmdc operation timeout")
+        else {
+            panic!("expected mmdc invocation");
+        };
+
+        assert_eq!(
+            resolved.common.operation_timeout,
+            Some(Duration::from_millis(43))
+        );
+    }
+
+    #[cfg(feature = "rustdoc")]
+    #[test]
+    fn rustdoc_resolves_the_same_host_operation_timeout() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "rustdoc",
+            "check",
+            "--operation-timeout-ms",
+            "47",
+        ])
+        .expect("parse Rustdoc operation timeout");
+
+        let ResolvedInvocation::Rustdoc(resolved) =
+            resolve(cli, &facts(false)).expect("resolve Rustdoc operation timeout")
+        else {
+            panic!("expected Rustdoc invocation");
+        };
+
+        assert_eq!(resolved.operation_timeout, Some(Duration::from_millis(47)));
     }
 
     #[test]

@@ -46,12 +46,7 @@
         ],
         "title": "Bar",
         "classes": [],
-        "styles": [
-          "fill:#999",
-          "stroke-width:10px",
-          "stroke:#0F0",
-          "color:blue"
-        ],
+        "styles": [],
         "dir": null,
         "hasExplicitDir": false,
         "labelType": "text"

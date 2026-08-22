@@ -2,7 +2,6 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
-use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
@@ -14,6 +13,10 @@ use merman_render::family;
 use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, WrapMode};
+use merman_render::{
+    Error, LayoutOptions, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+    ResourceLimitPhase,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -590,8 +593,24 @@ fn sequence_layout_json_from_fixture(fixture: &str) -> serde_json::Value {
 }
 
 fn render_sequence_svg_from_text(text: &str) -> String {
+    render_sequence_svg_from_text_with_options(text, &SvgRenderOptions::default())
+}
+
+fn render_sequence_svg_from_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
     let engine = Engine::new();
-    render_sequence_svg_from_text_with_engine(engine, text)
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session()
+        .unwrap();
+    let parsed = parse_sequence_for_render(&engine, text);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+
+    artifact
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render Sequence artifact")
+        .svg()
+        .to_string()
 }
 
 fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
@@ -650,6 +669,101 @@ fn sequence_control_frame_x(svg: &str, label: &str) -> (f64, f64) {
         "control structure {label:?} has no frame lines: {svg}"
     );
     (min_x, max_x)
+}
+
+#[test]
+fn sequence_root_id_is_safe_for_direct_css_selectors() {
+    for raw_id in ["a.b", "a:b"] {
+        let svg = render_sequence_svg_from_text_with_options(
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: hello\n",
+            &SvgRenderOptions {
+                diagram_id: Some(raw_id.to_string()),
+                ..SvgRenderOptions::default()
+            },
+        );
+
+        assert!(svg.contains(r#"id="a-b""#), "{raw_id}: {svg}");
+        assert!(svg.contains("<style>#a-b{"), "{raw_id}: {svg}");
+        assert!(!svg.contains(&format!("#{raw_id}{{")), "{raw_id}: {svg}");
+    }
+}
+
+#[test]
+fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
+    fn render_with_limit(text: &str, diagram_id: &str, maximum: usize) -> Result<String, Error> {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+            .begin_session()
+            .unwrap();
+        let parsed = parse_sequence_for_render(&Engine::new(), text);
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare Sequence artifact");
+        artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some(diagram_id.to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .map(|rendered| rendered.svg().to_string())
+    }
+
+    let diagram_id = "diagram".repeat(128);
+    let base = "sequenceDiagram\nparticipant A\nparticipant B\n";
+    let options = SvgRenderOptions {
+        diagram_id: Some(diagram_id.clone()),
+        ..SvgRenderOptions::default()
+    };
+    let base_svg = render_sequence_svg_from_text_with_options(base, &options);
+    let base_occurrences = base_svg.matches(&diagram_id).count();
+    assert!(
+        base_occurrences > 0,
+        "base Sequence SVG must use the diagram ID"
+    );
+
+    let message_count = 96usize;
+    let mut messages = String::from(base);
+    messages.push_str("autonumber\n");
+    for _ in 0..message_count {
+        messages.push_str("A->>B: hello\n");
+    }
+    let fanout_ceiling = base_occurrences * diagram_id.len();
+    let Error::ResourceLimitExceeded(fanout) =
+        render_with_limit(&messages, &diagram_id, fanout_ceiling)
+            .expect_err("message ID fanout must exceed the base-only contribution")
+    else {
+        panic!("expected dynamic diagram-ID projection error");
+    };
+    assert_eq!(fanout.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(fanout.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(fanout.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(fanout.actual, fanout_ceiling + diagram_id.len());
+    assert_eq!(fanout.max, fanout_ceiling);
+
+    let full_svg = render_sequence_svg_from_text_with_options(&messages, &options);
+    let exact_bytes = full_svg.len();
+    let exact = render_with_limit(&messages, &diagram_id, exact_bytes)
+        .expect("exact final SVG byte ceiling must succeed");
+    assert_eq!(exact, full_svg);
+
+    let Error::ResourceLimitExceeded(n_minus_one) = render_with_limit(
+        &messages,
+        &diagram_id,
+        exact_bytes.checked_sub(1).expect("non-empty Sequence SVG"),
+    )
+    .expect_err("N-1 final SVG byte ceiling must fail") else {
+        panic!("expected N-1 SVG byte projection error");
+    };
+    assert_eq!(n_minus_one.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(n_minus_one.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(n_minus_one.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(n_minus_one.actual, exact_bytes);
+    assert_eq!(n_minus_one.max, exact_bytes - 1);
 }
 
 #[test]
@@ -1447,6 +1561,93 @@ fn sequence_actor_lifecycle_adjustment_survives_block_close() {
 }
 
 #[test]
+fn sequence_svg_uses_resolved_add_message_lifecycle_ownership() {
+    let layout = layout_sequence_from_environment(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "participant C\n",
+            "create participant B\n",
+            "destroy A\n",
+            "loop pending\n",
+            "Note over C: pending\n",
+            "end\n",
+            "autonumber\n",
+            "activate C\n",
+            "deactivate C\n",
+            "C->>B: create\n",
+            "A--xC: destroy\n",
+        ),
+        &RenderEnvironment::deterministic(),
+    );
+    let actor = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing lifecycle actor {id}"))
+    };
+
+    assert!(
+        actor("actor-top-B").y > actor("actor-top-A").y.max(actor("actor-top-C").y),
+        "the create signal after intervening records must own B's top actor"
+    );
+    assert!(
+        actor("actor-bottom-A").y < actor("actor-bottom-B").y.min(actor("actor-bottom-C").y),
+        "the signal following the shared create anchor must own A's destruction"
+    );
+}
+
+#[test]
+fn sequence_svg_supersedes_consecutive_same_kind_lifecycle_declarations() {
+    let created = layout_sequence_from_environment(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "create participant B\n",
+            "create participant C\n",
+            "A->>C: create\n",
+        ),
+        &RenderEnvironment::deterministic(),
+    );
+    let created_actor = |id: &str| {
+        created
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing created actor {id}"))
+    };
+    assert_eq!(
+        created_actor("actor-top-B").y,
+        created_actor("actor-top-A").y
+    );
+    assert!(created_actor("actor-top-C").y > created_actor("actor-top-A").y);
+
+    let destroyed = layout_sequence_from_environment(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "participant B\n",
+            "destroy A\n",
+            "destroy B\n",
+            "A--xB: destroy\n",
+        ),
+        &RenderEnvironment::deterministic(),
+    );
+    let destroyed_actor = |id: &str| {
+        destroyed
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing destroyed actor {id}"))
+    };
+    assert!(
+        destroyed_actor("actor-bottom-B").y < destroyed_actor("actor-bottom-A").y,
+        "only the latest pending destroy declaration should shorten its actor lifeline"
+    );
+}
+
+#[test]
 fn sequence_font_size_precedence_matches_fresh_mermaid_11_16_root() {
     let svg = render_sequence_svg_from_fixture_with_options(
         "stress_sequence_font_size_precedence_090.mmd",
@@ -1754,6 +1955,104 @@ Bob->>Alice:Again"#,
         !svg.contains("10.019999"),
         "expected decimal sequence numbers to avoid floating point artifacts"
     );
+}
+
+#[test]
+fn sequence_autonumber_off_preserves_and_advances_hidden_state() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+participant A
+participant B
+autonumber 10 5
+A->>B: Visible first
+autonumber off
+A->>B: Hidden first
+B-->>A: Hidden second
+autonumber
+A->>B: Visible resumed"#,
+    );
+
+    assert_eq!(
+        text_rows_by_class(&svg, "sequenceNumber"),
+        vec!["10".to_string(), "25".to_string()],
+        "reenabling autonumber should preserve its step and include hidden signals in the counter"
+    );
+}
+
+#[test]
+fn sequence_open_line_types_render_without_svg_endpoint_markers() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+participant A
+participant B
+A->B: Headless solid
+A-->B: Headless dotted
+A->>B: Filled"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+    let message = |id: &str| {
+        document
+            .descendants()
+            .find(|node| node.is_element() && node.attribute("data-id") == Some(id))
+            .unwrap_or_else(|| panic!("missing Sequence message {id}: {svg}"))
+    };
+
+    let solid_headless = message("i0");
+    assert_eq!(solid_headless.attribute("class"), Some("messageLine0"));
+    assert_eq!(solid_headless.attribute("marker-start"), None);
+    assert_eq!(solid_headless.attribute("marker-end"), None);
+
+    let dotted_headless = message("i1");
+    assert_eq!(dotted_headless.attribute("class"), Some("messageLine1"));
+    assert_eq!(dotted_headless.attribute("marker-start"), None);
+    assert_eq!(dotted_headless.attribute("marker-end"), None);
+    assert!(
+        dotted_headless
+            .attribute("style")
+            .is_some_and(|style| style.contains("stroke-dasharray: 3, 3")),
+        "dotted headless signal should preserve its stroke style: {svg}"
+    );
+
+    let filled = message("i2");
+    assert_eq!(filled.attribute("marker-start"), None);
+    assert!(
+        filled
+            .attribute("marker-end")
+            .is_some_and(|marker| marker.contains("-arrowhead)")),
+        "filled signal should retain its target marker: {svg}"
+    );
+}
+
+#[test]
+fn sequence_neo_headless_strokes_share_typed_endpoint_geometry() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "neo"
+    })));
+    let svg = render_sequence_svg_from_text_with_engine(
+        engine,
+        r#"sequenceDiagram
+participant A
+participant B
+A->B: Headless solid
+A-->B: Headless dotted"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+    let endpoints = |id: &str| {
+        let message = document
+            .descendants()
+            .find(|node| node.is_element() && node.attribute("data-id") == Some(id))
+            .unwrap_or_else(|| panic!("missing Sequence message {id}: {svg}"));
+        let coordinate = |name: &str| {
+            message
+                .attribute(name)
+                .unwrap_or_else(|| panic!("missing {name} for Sequence message {id}: {svg}"))
+                .parse::<f64>()
+                .unwrap_or_else(|_| panic!("invalid {name} for Sequence message {id}: {svg}"))
+        };
+        (coordinate("x1"), coordinate("x2"))
+    };
+
+    assert_eq!(endpoints("i0"), endpoints("i1"));
 }
 
 #[test]

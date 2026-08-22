@@ -12,7 +12,7 @@ not linked into the Kotlin AAR.
 ## Layers
 
 ```text
-Kotlin Merman / MermanEngine / MermanEngineServices / MermanOperationResult
+Kotlin Merman / MermanEngine / MermanEngineServices / MermanOperationControl / MermanOperationResult
                  |
                  v
 JNI_OnLoad + RegisterNatives (libmerman_android_jni.so)
@@ -21,7 +21,7 @@ JNI_OnLoad + RegisterNatives (libmerman_android_jni.so)
 merman-bindings-core BindingEngine::execute
 ```
 
-The Android transport API version is `1`. It is independent of native ABI 3, UniFFI, or browser
+The Android transport API version is `2`. It is independent of native ABI 3, UniFFI, or browser
 WASM transport versions.
 
 ## Kotlin Surface
@@ -43,6 +43,16 @@ validation. The default AAR supports SVG, ASCII, semantic/layout operations, ana
 and document analysis. Binary methods remain in the generated API for custom artifacts and return
 typed missing-capability errors against the default AAR.
 
+Construct `MermanOperationControl(timeoutMs)` to install an optional relative monotonic
+deadline, retain the same object across threads, and call `cancel()` to request cooperative
+termination. Both `Merman.execute` and `MermanEngine.execute` keep their uncontrolled signatures
+and add overloads that accept the control. JNI clones the shared native `OperationControl` before
+synchronous execution and releases the registry lock, so `cancel()` remains available from another
+thread and `release()` cannot invalidate an already in-flight clone. Tokens are monotonic and never
+reused; `close()` and `release()` are idempotent, while later use of a released control returns a
+typed invalid-argument failure. Cancellation errors preserve the binding payload's separate reason
+and checkpoint phase in `MermanException.cancellationDetails`.
+
 Use the direct `MermanEngine(optionsJson, services)` constructor when calls share base options or
 host services. Its `execute` method accepts per-call `optionsJson` overlays and uses the same
 operation IDs while retaining a native engine for its lifetime. `MermanEngineServices` is immutable
@@ -57,7 +67,7 @@ During initialization, Kotlin loads `libmerman_android_jni.so`, requests the dir
 validates:
 
 - flat runtime-catalog schema `1`;
-- Android transport API version `1`;
+- Android transport API version `2`;
 - non-empty native package metadata;
 - Options JSON schema `2` and both binding payload schemas;
 - the generated default-native Android capability/output/operation/metadata identity and capability
@@ -84,7 +94,7 @@ Read the validated catalog with `Merman.runtimeCatalogJson()`:
 ```json
 {
   "schema_version": 1,
-  "transport_api_version": 1,
+  "transport_api_version": 2,
   "package_version": "<loaded artifact version>",
   "options_schema_versions": [2],
   "payload_schemas": [
@@ -111,9 +121,13 @@ the final authority and reports a typed `MermanException` instead of silently se
 format.
 
 `MermanException.kind` is `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, `REENTRANT_CALL`, or `GENERIC`.
-Resource failures populate `MermanException.resourceDetails` with the stable cause (`ceiling` or
-`arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile;
-other failures leave it `null`.
+Resource failures populate `MermanException.exactResourceDetails` with the stable cause (`ceiling`
+or `arithmetic_overflow`), limit ID, phase, canonical unsigned-decimal `actual` and `max` values,
+and selected profile. JNI emits safely representable counts as JSON numbers and wider native `u64`
+counts as decimal strings; the Kotlin projection normalizes both forms without loss. The existing
+`resourceDetails` property remains a signed-`Long` compatibility view and is `null` if either count
+exceeds `Long.MAX_VALUE`; migrate overflow-sensitive consumers to `exactResourceDetails`. Other
+failures leave both properties `null`.
 `capabilityId` is non-null only for `MISSING_CAPABILITY` and preserves the descriptor ID emitted by
 bindings-core. Local wrapper and lifecycle failures remain `GENERIC`; consumers should branch on
 these fields rather than parse `message`.

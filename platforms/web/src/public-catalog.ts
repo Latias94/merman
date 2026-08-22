@@ -77,10 +77,21 @@ export const SUPPORTED_ASCII_DIAGRAMS = [
   "timeline",
   "treeView",
   "xychart",
-  "zenuml",
 ] as const;
 
 export type AsciiDiagramType = (typeof SUPPORTED_ASCII_DIAGRAMS)[number];
+
+export const DIAGRAMMATIC_ASCII_DIAGRAMS = [
+  "class",
+  "er",
+  "flowchart",
+  "sequence",
+  "state",
+  "xychart",
+] as const satisfies readonly AsciiDiagramType[];
+
+export type DiagrammaticAsciiDiagramType =
+  (typeof DIAGRAMMATIC_ASCII_DIAGRAMS)[number];
 
 export const BINDING_STATUS_CODE_NAMES = [
   "MERMAN_OK",
@@ -94,6 +105,8 @@ export const BINDING_STATUS_CODE_NAMES = [
   "MERMAN_PANIC",
   "MERMAN_INTERNAL_ERROR",
   "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+  "MERMAN_BUSY",
+  "MERMAN_CANCELLED",
 ] as const;
 
 export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
@@ -101,7 +114,9 @@ export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
 export type BindingErrorKind =
   | "generic"
   | "unknown-operation"
-  | "missing-capability";
+  | "missing-capability"
+  | "busy"
+  | "reentrant-call";
 
 /**
  * A lossless unsigned resource count. Safe integers use `number`; wider `u64` values use a
@@ -118,6 +133,24 @@ export interface BindingResourceErrorDetails {
   profile: string;
 }
 
+export interface BindingDiagnosticSpan {
+  start: number;
+  end: number;
+  kind: "exact" | "insertion-point" | "fallback" | string;
+}
+
+export interface BindingDiagnosticErrorDetails {
+  code: string;
+  span: BindingDiagnosticSpan | null;
+  field: string | null;
+  diagram_type: string | null;
+}
+
+export interface BindingCancellationErrorDetails {
+  reason: string;
+  phase: string;
+}
+
 export interface BindingErrorPayload {
   version: number;
   ok: false;
@@ -126,7 +159,10 @@ export interface BindingErrorPayload {
   kind: BindingErrorKind | string;
   capability_id: RuntimeCapabilityId | string | null;
   details?: {
-    resource: BindingResourceErrorDetails;
+    resource?: BindingResourceErrorDetails;
+    diagnostic?: BindingDiagnosticErrorDetails;
+    icon_registry?: Record<string, unknown>;
+    cancellation?: BindingCancellationErrorDetails;
   };
   message: string;
 }
@@ -222,6 +258,11 @@ export interface LintBindingOptions {
 }
 
 export type AsciiSupportLevel = "full" | "partial" | "summary" | "unsupported";
+export type AsciiSemanticCoverage = "full" | "partial" | null;
+export type AsciiPrimaryProjection =
+  | "diagrammatic"
+  | "structured_text"
+  | "none";
 
 export type AsciiEvidenceKind =
   | "mermaid_ascii_oracle"
@@ -240,8 +281,11 @@ export interface AsciiCapabilityEvidence {
 export interface AsciiCapability {
   diagram_type: AsciiDiagramType | string;
   display_name: string;
+  semantic_coverage: AsciiSemanticCoverage;
+  primary_projection: AsciiPrimaryProjection;
+  structured_text_fallback: boolean;
+  /** Compatibility view derived from semantic coverage and the primary projection. */
   support_level: AsciiSupportLevel;
-  summary_fallback: boolean;
   supported_semantics: string[];
   limits: string[];
   evidence: AsciiCapabilityEvidence[];
@@ -276,6 +320,11 @@ export function isBindingStatusCodeName(
 const MAX_SAFE_RESOURCE_COUNT_DECIMAL = String(RUNTIME_CATALOG_MAX_SAFE_INTEGER);
 const U64_MAX_DECIMAL = "18446744073709551615";
 const CANONICAL_WIDE_UNSIGNED_DECIMAL = /^[1-9]\d*$/;
+const BINDING_CANCELLATION_REASONS = new Set([
+  "requested",
+  "deadline_exceeded",
+]);
+const OPERATION_PHASE_IDENTIFIER = /^[a-z][a-z0-9_]*$/;
 
 function isBindingResourceCount(value: unknown): value is BindingResourceCount {
   if (typeof value === "number") {
@@ -299,28 +348,110 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
     return false;
   }
   const payload = error as Record<string, unknown>;
-  const resource =
+  const details =
     payload.details && typeof payload.details === "object"
-      ? (payload.details as Record<string, unknown>).resource
+      ? (payload.details as Record<string, unknown>)
       : undefined;
+  const resource = details?.resource;
+  const diagnostic = details?.diagnostic;
+  const iconRegistry = details?.icon_registry;
+  const cancellation = details?.cancellation;
+  const resourceRecord =
+    resource && typeof resource === "object"
+      ? (resource as Record<string, unknown>)
+      : undefined;
+  const validResource =
+    resource === undefined ||
+    (!!resourceRecord &&
+      typeof resourceRecord.cause === "string" &&
+      resourceRecord.cause.length > 0 &&
+      typeof resourceRecord.limit_id === "string" &&
+      resourceRecord.limit_id.length > 0 &&
+      typeof resourceRecord.phase === "string" &&
+      resourceRecord.phase.length > 0 &&
+      isBindingResourceCount(resourceRecord.actual) &&
+      isBindingResourceCount(resourceRecord.max) &&
+      typeof resourceRecord.profile === "string" &&
+      resourceRecord.profile.length > 0);
+  const diagnosticRecord =
+    diagnostic && typeof diagnostic === "object"
+      ? (diagnostic as Record<string, unknown>)
+      : undefined;
+  const diagnosticSpan = diagnosticRecord?.span;
+  const diagnosticSpanRecord =
+    diagnosticSpan && typeof diagnosticSpan === "object"
+      ? (diagnosticSpan as Record<string, unknown>)
+      : undefined;
+  const validDiagnosticSpan =
+    diagnosticSpan === null ||
+    (!!diagnosticSpanRecord &&
+      Number.isSafeInteger(diagnosticSpanRecord.start) &&
+      Number.isSafeInteger(diagnosticSpanRecord.end) &&
+      Number(diagnosticSpanRecord.start) >= 0 &&
+      Number(diagnosticSpanRecord.end) >= Number(diagnosticSpanRecord.start) &&
+      ["exact", "insertion-point", "fallback"].includes(
+        diagnosticSpanRecord.kind as string
+      ) &&
+      (diagnosticSpanRecord.kind !== "insertion-point" ||
+        Number(diagnosticSpanRecord.start) === Number(diagnosticSpanRecord.end)));
+  const validDiagnostic =
+    diagnostic === undefined ||
+    (!!diagnosticRecord &&
+      typeof diagnosticRecord.code === "string" &&
+      diagnosticRecord.code.length > 0 &&
+      validDiagnosticSpan &&
+      (diagnosticRecord.field === null ||
+        typeof diagnosticRecord.field === "string") &&
+      (diagnosticRecord.diagram_type === null ||
+        typeof diagnosticRecord.diagram_type === "string"));
+  const validCancellation =
+    cancellation === undefined ||
+    (() => {
+      if (!cancellation || typeof cancellation !== "object") return false;
+      const cancellationRecord = cancellation as Record<string, unknown>;
+      return (
+        typeof cancellationRecord.reason === "string" &&
+        BINDING_CANCELLATION_REASONS.has(cancellationRecord.reason) &&
+        typeof cancellationRecord.phase === "string" &&
+        OPERATION_PHASE_IDENTIFIER.test(cancellationRecord.phase)
+      );
+    })();
+  const hasConsistentCancellationTerminal =
+    cancellation === undefined ||
+    (payload.kind === "generic" &&
+      payload.capability_id === null &&
+      resource === undefined &&
+      diagnostic === undefined &&
+      iconRegistry === undefined);
   const hasValidDetails =
     payload.details === undefined ||
-    (!!resource &&
-      typeof resource === "object" &&
-      typeof (resource as Record<string, unknown>).cause === "string" &&
-      typeof (resource as Record<string, unknown>).limit_id === "string" &&
-      typeof (resource as Record<string, unknown>).phase === "string" &&
-      isBindingResourceCount((resource as Record<string, unknown>).actual) &&
-      isBindingResourceCount((resource as Record<string, unknown>).max) &&
-      typeof (resource as Record<string, unknown>).profile === "string");
+    (!!details &&
+      (resource !== undefined ||
+        diagnostic !== undefined ||
+        iconRegistry !== undefined ||
+        cancellation !== undefined) &&
+    validResource &&
+      validDiagnostic &&
+      validCancellation &&
+      (iconRegistry === undefined ||
+        (!!iconRegistry && typeof iconRegistry === "object")));
   return (
     payload.ok === false &&
     typeof payload.version === "number" &&
+    Number.isSafeInteger(payload.version) &&
+    payload.version >= 1 &&
     typeof payload.code === "number" &&
+    Number.isSafeInteger(payload.code) &&
+    payload.code > 0 &&
+    payload.code < BINDING_STATUS_CODE_NAMES.length &&
     typeof payload.code_name === "string" &&
+    BINDING_STATUS_CODE_NAMES[payload.code] === payload.code_name &&
     typeof payload.kind === "string" &&
     (payload.capability_id === null ||
       typeof payload.capability_id === "string") &&
+    (payload.code_name !== "MERMAN_CANCELLED" || cancellation !== undefined) &&
+    (cancellation === undefined || payload.code_name === "MERMAN_CANCELLED") &&
+    hasConsistentCancellationTerminal &&
     hasValidDetails &&
     typeof payload.message === "string"
   );

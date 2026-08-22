@@ -10,6 +10,7 @@ import type {
   EditorLanguageIdentity,
   MermanLanguageWorkerClient,
 } from "../editor/worker-client.ts";
+import { MERMAN_WEB_TRANSPORT_API_VERSION } from "../editor/protocol.ts";
 import type {
   MermaidSyntaxWorkerClient,
 } from "../editor/syntax-worker-client.ts";
@@ -22,7 +23,7 @@ import {
 
 const IDENTITY: EditorLanguageIdentity = Object.freeze({
   completionTriggerCharacters: Object.freeze([" ", "\n", "-", ":"]),
-  transportApiVersion: 5,
+  transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
 });
 
 test("Tree-sitter supplies Monaco tokens while semantic updates flush on demand", async () => {

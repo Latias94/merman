@@ -19,23 +19,21 @@ pub(crate) fn execute_render(
         PreparedWorkflow::Single(single) => {
             let artifact = match &single.output {
                 #[cfg(feature = "ascii")]
-                PreparedSingleOutput::Text {
-                    renderer,
-                    options,
-                    resources,
-                    admission,
-                    ..
-                } => {
-                    let permit = admission.acquire_controlled(&single.control)?;
+                PreparedSingleOutput::Text(text) => {
+                    let permit = text.admission.acquire_controlled(&single.control)?;
                     let request = merman::AsciiRequest {
-                        options: *options,
-                        resources: *resources,
+                        options: text.options,
+                        resources: text.resources,
                     };
-                    let output = renderer.renderer.render(renderer.request(
-                        &single.source,
-                        merman::RenderTarget::Ascii(request),
-                        single.control.clone(),
-                    ))?;
+                    let output = text
+                        .renderer
+                        .renderer
+                        .render(text.renderer.request(
+                            &single.source,
+                            merman::RenderTarget::Ascii(request),
+                            single.control.clone(),
+                        ))
+                        .map_err(|error| map_ascii_render_error(error, text.resources))?;
                     let merman::RenderOutput::Ascii(Some(rendered)) = output else {
                         return Err(CliError::NoDiagram);
                     };
@@ -48,13 +46,14 @@ pub(crate) fn execute_render(
             };
             let destination = match &single.output {
                 #[cfg(feature = "ascii")]
-                PreparedSingleOutput::Text { destination, .. } => destination,
+                PreparedSingleOutput::Text(text) => &text.destination,
                 #[cfg(feature = "svg")]
                 PreparedSingleOutput::Graphical { destination, .. } => destination,
             };
             write_output(
                 destination,
                 &artifact.bytes,
+                &single.control,
                 &single.publications,
                 &context.stdout,
                 context.publication.as_mut(),
@@ -62,6 +61,25 @@ pub(crate) fn execute_render(
         }
         #[cfg(feature = "markdown")]
         PreparedWorkflow::Markdown(batch) => crate::batch::execute(*batch, context),
+    }
+}
+
+#[cfg(feature = "ascii")]
+fn map_ascii_render_error(
+    error: merman::RenderError,
+    resources: merman::ascii::AsciiResourcePolicy,
+) -> CliError {
+    match error {
+        merman::RenderError::Ascii(error) => {
+            CliError::Ascii(merman::ascii::AsciiDiagnostic::from(error))
+        }
+        merman::RenderError::ResourceLimitExceeded(error) => {
+            if merman::ascii::AsciiResourceLimitId::from_stable_id(error.id).is_none() {
+                return CliError::Render(merman::RenderError::ResourceLimitExceeded(error));
+            }
+            CliError::ascii_resource(error, resources.profile())
+        }
+        other => CliError::from(other),
     }
 }
 
@@ -78,11 +96,12 @@ pub(crate) fn execute_graphical(
 #[cfg(feature = "rustdoc")]
 pub(crate) fn execute_rustdoc_svg_raw(
     prepared: &PreparedGraphicalRender,
+    pipeline: &merman::svg::SvgPipeline,
     source: &str,
     control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<Vec<u8>, CliError> {
-    execute_graphical_with_pipeline(prepared, &prepared.pipeline, source, control, stderr)
+    execute_graphical_with_pipeline(prepared, pipeline, source, control, stderr)
         .map(ExecutedArtifact::into_bytes)
 }
 
@@ -183,10 +202,10 @@ fn execute_graphical_with_pipeline(
         PreparedGraphicalSource::RawSvg(environment) => {
             let session = environment
                 .begin_session_with_control(control.clone())
-                .map_err(|error| CliError::Render(merman::RenderError::RuntimePolicy(error)))?;
+                .map_err(merman::RenderError::from)?;
             let svg = pipeline
                 .process_resvg_compatible(source, &session)
-                .map_err(|error| CliError::Render(merman::RenderError::Svg(error)))?;
+                .map_err(merman::RenderError::from)?;
             execute_encoded_svg(prepared, svg, permit, control, stderr)
         }
     }
@@ -210,7 +229,7 @@ fn execute_encoded_svg(
         PreparedGraphicalOutput::Png { options } => {
             let prepared_raster =
                 merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?;
+                    .map_err(merman::RenderError::from)?;
             let actual_weight = super::admission::actual_raster_weight(
                 prepared_raster.plan(),
                 prepared_raster.embedded_image_plan(),
@@ -221,7 +240,7 @@ fn execute_encoded_svg(
             Ok(ExecutedArtifact {
                 bytes: prepared_raster
                     .encode_png()
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?,
+                    .map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
                 title: metadata.0,
@@ -233,7 +252,7 @@ fn execute_encoded_svg(
         PreparedGraphicalOutput::Jpeg { options } => {
             let prepared_raster =
                 merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?;
+                    .map_err(merman::RenderError::from)?;
             let actual_weight = super::admission::actual_raster_weight(
                 prepared_raster.plan(),
                 prepared_raster.embedded_image_plan(),
@@ -244,7 +263,7 @@ fn execute_encoded_svg(
             Ok(ExecutedArtifact {
                 bytes: prepared_raster
                     .encode_jpeg()
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?,
+                    .map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
                 title: metadata.0,
@@ -256,7 +275,7 @@ fn execute_encoded_svg(
         PreparedGraphicalOutput::Pdf { options } => {
             let prepared_pdf =
                 merman::svg::export::prepare_pdf_controlled(&svg, options, control.clone())
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?;
+                    .map_err(merman::RenderError::from)?;
             let actual_weight = super::admission::actual_pdf_weight(
                 prepared_pdf.filter_plan(),
                 prepared_pdf.embedded_image_plan(),
@@ -264,9 +283,7 @@ fn execute_encoded_svg(
             prepared.admission.ensure_actual_weight(actual_weight)?;
             report_pdf_filter_plan(prepared.quiet, prepared_pdf.filter_plan(), stderr);
             Ok(ExecutedArtifact {
-                bytes: prepared_pdf
-                    .encode()
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?,
+                bytes: prepared_pdf.encode().map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
                 title: metadata.0,
@@ -336,6 +353,7 @@ impl ExecutedArtifact {
         self,
         slot: crate::transaction::StageSlot,
         staged_bytes: &std::sync::Mutex<CheckedBytes>,
+        control: &merman::OperationControl,
     ) -> Result<ExecutedMetadata, CliError> {
         // Until this charge succeeds, the bytes remain backend working memory
         // covered by the live permit rather than staged publication memory.
@@ -345,7 +363,7 @@ impl ExecutedArtifact {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .try_add(bytes)?;
-        slot.write_bytes(&self.bytes)?;
+        slot.write_bytes_controlled(&self.bytes, control)?;
         Ok(ExecutedMetadata {
             title: self.title,
             desc: self.desc,

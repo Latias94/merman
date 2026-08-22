@@ -3,7 +3,7 @@ package io.merman
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal const val ANDROID_TRANSPORT_API_VERSION: Int = 1
+internal const val ANDROID_TRANSPORT_API_VERSION: Int = 2
 
 /** Validates the generated Android artifact contract while preserving additive unknown IDs. */
 internal object MermanRuntimeCatalogValidator {

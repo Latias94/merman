@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 
-const READ_CHUNK_BYTES: usize = 8 * 1024;
+pub(crate) const IO_CHUNK_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct InputLimit {
@@ -63,6 +63,8 @@ pub(crate) enum InputReadError {
         #[source]
         source: std::collections::TryReserveError,
     },
+    #[error("{0}")]
+    Cancelled(merman::OperationCancelled),
 }
 
 impl InputReadError {
@@ -92,17 +94,20 @@ pub(crate) fn read_bytes(
         &resource,
         InputLimit::new("test_byte_limit", limit),
         length_hint,
+        None,
     )
 }
 
-pub(crate) fn read_bytes_with_limit(
+#[cfg(feature = "icons")]
+pub(crate) fn read_bytes_with_limit_controlled(
     reader: impl Read,
     resource: impl Into<String>,
     limit: InputLimit,
     length_hint: Option<u64>,
+    control: &merman::OperationControl,
 ) -> Result<Vec<u8>, InputReadError> {
     let resource = resource.into();
-    read_bytes_impl(reader, &resource, limit, length_hint)
+    read_bytes_impl(reader, &resource, limit, length_hint, Some(control))
 }
 
 pub(crate) fn read_utf8(
@@ -111,8 +116,28 @@ pub(crate) fn read_utf8(
     limit: InputLimit,
     length_hint: Option<u64>,
 ) -> Result<String, InputReadError> {
+    read_utf8_impl(reader, resource, limit, length_hint, None)
+}
+
+pub(crate) fn read_utf8_controlled(
+    reader: impl Read,
+    resource: impl Into<String>,
+    limit: InputLimit,
+    length_hint: Option<u64>,
+    control: &merman::OperationControl,
+) -> Result<String, InputReadError> {
+    read_utf8_impl(reader, resource, limit, length_hint, Some(control))
+}
+
+fn read_utf8_impl(
+    reader: impl Read,
+    resource: impl Into<String>,
+    limit: InputLimit,
+    length_hint: Option<u64>,
+    control: Option<&merman::OperationControl>,
+) -> Result<String, InputReadError> {
     let resource = resource.into();
-    let bytes = read_bytes_impl(reader, &resource, limit, length_hint)?;
+    let bytes = read_bytes_impl(reader, &resource, limit, length_hint, control)?;
     String::from_utf8(bytes).map_err(|error| {
         let utf8_error = error.utf8_error();
         InputReadError::InvalidUtf8 {
@@ -128,7 +153,9 @@ fn read_bytes_impl(
     resource: &str,
     limit: InputLimit,
     length_hint: Option<u64>,
+    control: Option<&merman::OperationControl>,
 ) -> Result<Vec<u8>, InputReadError> {
+    checkpoint_input(control)?;
     if let (Some(max_bytes), Some(length_hint)) = (limit.max_bytes, length_hint)
         && u128::from(length_hint) > max_bytes as u128
     {
@@ -144,9 +171,10 @@ fn read_bytes_impl(
         .max_bytes
         .and_then(|max_bytes| max_bytes.checked_add(1));
     let mut bytes = Vec::new();
-    let mut chunk = [0_u8; READ_CHUNK_BYTES];
+    let mut chunk = [0_u8; IO_CHUNK_BYTES];
 
     loop {
+        checkpoint_input(control)?;
         let requested = match read_ceiling {
             Some(ceiling) => {
                 let remaining = ceiling - bytes.len();
@@ -169,6 +197,7 @@ fn read_bytes_impl(
                 });
             }
         };
+        checkpoint_input(control)?;
         bytes
             .try_reserve(count)
             .map_err(|source| InputReadError::Allocation {
@@ -178,6 +207,7 @@ fn read_bytes_impl(
         bytes.extend_from_slice(&chunk[..count]);
     }
 
+    checkpoint_input(control)?;
     if let Some(max_bytes) = limit.max_bytes
         && bytes.len() > max_bytes
     {
@@ -192,9 +222,19 @@ fn read_bytes_impl(
     Ok(bytes)
 }
 
+fn checkpoint_input(control: Option<&merman::OperationControl>) -> Result<(), InputReadError> {
+    control.map_or(Ok(()), |control| {
+        control
+            .checkpoint_at(merman::OperationPhase::Admission)
+            .map_err(InputReadError::Cancelled)
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{InputLimit, InputReadError, ObservedSize, read_bytes, read_utf8};
+    use super::{
+        InputLimit, InputReadError, ObservedSize, read_bytes, read_utf8, read_utf8_controlled,
+    };
     use std::io::{self, Cursor, Read};
 
     #[test]
@@ -297,6 +337,24 @@ mod tests {
             .expect("unbounded mode should ignore the length hint");
 
         assert_eq!(actual, bytes);
+    }
+
+    #[test]
+    fn controlled_read_observes_cancellation_before_polling_the_reader() {
+        let control = merman::OperationControl::new();
+        control.cancel();
+
+        let error = read_utf8_controlled(
+            PanicReader,
+            "stdin",
+            InputLimit::new("max_source_bytes", None),
+            None,
+            &control,
+        )
+        .expect_err("cancelled input acquisition must stop before reading");
+
+        assert!(matches!(error, InputReadError::Cancelled(cancelled)
+            if cancelled.phase == merman::OperationPhase::Admission));
     }
 
     struct ShortReader {

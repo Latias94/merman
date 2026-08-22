@@ -1,4 +1,4 @@
-use crate::environment::RenderSession;
+use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::model::*;
 use crate::presentation::{
     FlowchartPresentationPolicy, PresentationAspectResolution, PresentationProfile,
@@ -6,7 +6,8 @@ use crate::presentation::{
 };
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
-    ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
+    FlowchartEdgeTraceCollector, ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline,
+    SvgPostprocessExecution, SvgPostprocessMetadata, SvgRenderOptions,
 };
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
@@ -207,7 +208,7 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 #[derive(Debug)]
 pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
-    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    render_context: diagrams::flowchart::FlowchartRenderContext,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     policy: Option<FlowchartPresentationPolicy>,
 }
@@ -217,8 +218,8 @@ impl<L> FlowchartFamilyArtifact<L> {
         &self.pair
     }
 
-    pub(crate) fn label_sources(&self) -> &diagrams::flowchart::FlowchartRenderLabelSources {
-        &self.label_sources
+    pub(crate) fn render_context(&self) -> &diagrams::flowchart::FlowchartRenderContext {
+        &self.render_context
     }
 
     pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
@@ -548,6 +549,7 @@ pub struct FamilyRenderArtifact {
     metadata: ParseMetadata,
     compatibility_projection: OnceLock<std::result::Result<serde_json::Value, String>>,
     family: BuiltinFamilyArtifact,
+    required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
 }
 
@@ -671,6 +673,7 @@ pub struct RenderedFamilySvg {
     svg: String,
     family_kind: RenderFamilyKind,
     metadata: ParseMetadata,
+    required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
 }
 
@@ -687,18 +690,25 @@ impl RenderedFamilySvg {
         self.family_kind
     }
 
+    /// Returns the optional capabilities admitted during this artifact's preparation.
+    pub fn required_capabilities(&self) -> &[RenderCapability] {
+        &self.required_capabilities
+    }
+
     /// Applies an output pipeline while retaining the renderer-owned family capability.
     pub fn apply_pipeline(mut self, pipeline: &SvgPipeline) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
-        let output_metadata = self.output_metadata();
+        let output_metadata = self.output_metadata()?;
         self.svg = pipeline.process_owned_to_string_with_metadata(
             self.svg,
             &output_metadata,
             &self.session,
         )?;
-        self.session
-            .resource_policy()
-            .check_svg_bytes(&self.svg, ResourceLimitPhase::SvgPostprocess)?;
+        self.session.work_meter().preflight_svg_byte_count(
+            self.svg.len(),
+            ResourceLimitPhase::SvgPostprocess,
+            OperationPhase::Postprocess,
+        )?;
         self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(self)
     }
@@ -706,15 +716,17 @@ impl RenderedFamilySvg {
     /// Finalizes the typed family output for resvg/raster consumption.
     pub fn finalize_resvg(self, pipeline: &SvgPipeline) -> Result<RenderedResvgCompatibleSvg> {
         self.session.checkpoint(OperationPhase::Export)?;
-        let output_metadata = self.output_metadata();
+        let output_metadata = self.output_metadata()?;
         let svg = pipeline.process_owned_resvg_compatible_with_metadata(
             self.svg,
             &output_metadata,
             &self.session,
         )?;
-        self.session
-            .resource_policy()
-            .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
+        self.session.work_meter().preflight_svg_byte_count(
+            svg.as_str().len(),
+            ResourceLimitPhase::SvgPostprocess,
+            OperationPhase::Export,
+        )?;
         self.session.checkpoint(OperationPhase::Export)?;
         Ok(RenderedResvgCompatibleSvg {
             svg,
@@ -724,11 +736,15 @@ impl RenderedFamilySvg {
         })
     }
 
-    fn output_metadata(&self) -> SvgPostprocessMetadata {
-        SvgPostprocessMetadata::from_svg(&self.svg)
+    fn output_metadata(&self) -> Result<SvgPostprocessMetadata> {
+        let metadata = SvgPostprocessMetadata::from_svg_with_execution(
+            &self.svg,
+            SvgPostprocessExecution::new(&self.session),
+        )?;
+        Ok(metadata
             .with_family_kind(self.family_kind)
             .with_diagram_type(self.metadata.diagram_type.clone())
-            .with_optional_diagram_title(self.metadata.title.clone())
+            .with_optional_diagram_title(self.metadata.title.clone()))
     }
 
     pub fn into_parts(self) -> (String, RenderFamilyKind, ParseMetadata, RenderSession) {
@@ -837,16 +853,30 @@ impl FamilyRenderArtifact {
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
         self.session.checkpoint(OperationPhase::Emit)?;
-        let svg = render_family_artifact_svg(&self, options, debug)?;
-        self.session
-            .resource_policy()
-            .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)?;
+        let trace_stage = debug.flowchart_edge_trace().map(|(edge_id, destination)| {
+            let staging = FlowchartEdgeTraceCollector::default();
+            let staged_debug = debug
+                .clone()
+                .with_flowchart_edge_trace(edge_id.to_owned(), staging.clone());
+            (destination.clone(), staging, staged_debug)
+        });
+        let render_debug = trace_stage
+            .as_ref()
+            .map_or(debug, |(_, _, staged_debug)| staged_debug);
+        let svg = render_family_artifact_svg(&self, options, render_debug)?;
+        admit_rendered_svg_output(&self.session, &svg)?;
         self.session.checkpoint(OperationPhase::Emit)?;
+        if let Some((destination, staging, _)) = trace_stage {
+            for trace in staging.drain() {
+                destination.record(trace);
+            }
+        }
         let family_kind = self.family.kind();
         let Self {
             metadata,
             compatibility_projection: _,
             family: _,
+            required_capabilities,
             session,
         } = self;
 
@@ -854,9 +884,21 @@ impl FamilyRenderArtifact {
             svg,
             family_kind,
             metadata,
+            required_capabilities,
             session,
         })
     }
+}
+
+fn admit_rendered_svg_output(session: &RenderSession, svg: &str) -> Result<()> {
+    // Termination wins over the final output ceiling when both become observable during emit.
+    session.checkpoint(OperationPhase::Emit)?;
+    session.work_meter().preflight_svg_byte_count(
+        svg.len(),
+        ResourceLimitPhase::SvgOutput,
+        OperationPhase::Emit,
+    )?;
+    Ok(())
 }
 
 #[inline(never)]
@@ -865,7 +907,7 @@ fn render_family_artifact_svg(
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
-    let options = request.normalized();
+    let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
     #[cfg(feature = "layout-cytoscape")]
     if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
@@ -908,25 +950,25 @@ const DEFAULT_FLOWCHART_SVG_LABEL_PREPARATION: FlowchartSvgLabelPreparation =
 
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
-    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    render_context: diagrams::flowchart::FlowchartRenderContext,
     policy: Option<FlowchartPresentationPolicy>,
     svg_label_preparation: FlowchartSvgLabelPreparation,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
-        &diagrams::flowchart::FlowchartRenderLabelSources,
+        &diagrams::flowchart::FlowchartRenderContext,
         Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<L>>> {
     let svg_label_sidecar = svg_label_preparation
         .enabled()
         .then(crate::flowchart::FlowchartSvgLabelSidecarBuilder::default);
-    let layout = layout(&semantic, &label_sources, svg_label_sidecar.as_ref())?;
+    let layout = layout(&semantic, &render_context, svg_label_sidecar.as_ref())?;
     let svg_label_sidecar = svg_label_sidecar
         .map(crate::flowchart::FlowchartSvgLabelSidecarBuilder::finish)
         .unwrap_or_default();
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
-        label_sources,
+        render_context,
         svg_label_sidecar,
         policy,
     }))
@@ -968,15 +1010,13 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
 fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
     match parsed.model() {
         RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
-        RenderSemanticModel::Flowchart(model) => {
-            parsed.flowchart_render_label_sources().map_or_else(
-                || semantic_flowchart_requires_math(model),
-                |label_sources| {
-                    crate::flowchart::FlowchartRenderModelRef::new(model, label_sources)
-                        .requires_math()
-                },
-            )
-        }
+        RenderSemanticModel::Flowchart(model) => parsed.flowchart_render_context().map_or_else(
+            || semantic_flowchart_requires_math(model),
+            |render_context| {
+                crate::flowchart::FlowchartRenderModelRef::new(model, render_context)
+                    .requires_math()
+            },
+        ),
         RenderSemanticModel::Mindmap(model) => mindmap_requires_math(model),
         RenderSemanticModel::Sequence(model) => sequence_requires_math(model),
         _ => false,
@@ -1019,6 +1059,7 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
 }
 
 fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) -> Result<()> {
+    session.checkpoint(OperationPhase::Layout)?;
     let meta = parsed.metadata();
     let model = parsed.model();
     let diagram_type = meta.diagram_type.as_str();
@@ -1039,7 +1080,9 @@ fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) 
         });
     }
 
-    session.resource_policy().check_parsed_render(parsed)?;
+    session
+        .work_meter()
+        .preflight_parsed_render(parsed, OperationPhase::Layout)?;
     Ok(())
 }
 
@@ -1107,6 +1150,7 @@ fn prepare_class_family(
 fn prepare_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
+    required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model) = parsed.into_parts();
@@ -1121,6 +1165,7 @@ fn prepare_class_render(
         metadata: meta,
         compatibility_projection: OnceLock::new(),
         family,
+        required_capabilities,
         session,
     })
 }
@@ -1179,11 +1224,13 @@ fn prepare_with_render_policy_impl(
     flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
     session.checkpoint(OperationPhase::Layout)?;
-    plan_render_with_policy(&parsed, &session, render_policy)?.ensure_available()?;
+    let capability_plan = plan_render_with_policy(&parsed, &session, render_policy)?;
+    capability_plan.ensure_available()?;
+    let required_capabilities = capability_plan.required_capabilities().to_vec();
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
-        let artifact = prepare_class_render(parsed, options, session)?;
+        let artifact = prepare_class_render(parsed, options, required_capabilities, session)?;
         artifact.session.checkpoint(OperationPhase::Layout)?;
         return Ok(artifact);
     }
@@ -1192,6 +1239,7 @@ fn prepare_with_render_policy_impl(
         options,
         session,
         render_policy,
+        required_capabilities,
         flowchart_svg_label_preparation,
     )?;
     artifact.session.checkpoint(OperationPhase::Layout)?;
@@ -1204,10 +1252,11 @@ fn prepare_non_class_render(
     options: &LayoutOptions,
     session: RenderSession,
     render_policy: PresentationRenderPolicy,
+    required_capabilities: Vec<RenderCapability>,
     flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model, render_context) = parsed.into_render_parts();
-    let flowchart_label_sources = render_context.into_flowchart_label_sources();
+    let flowchart_label_sources = render_context.into_flowchart_render_context();
     let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, &session);
     let effective_config = meta.effective_config.as_value();
@@ -1244,12 +1293,14 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Sequence(model) => {
+            let text_measurer = session
+                .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout);
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
                 crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
                     model,
                     title,
                     effective_config,
-                    execution.text_measurer(),
+                    &text_measurer,
                     execution.math_renderer(),
                     execution.work_meter_ref(),
                 )
@@ -1577,6 +1628,7 @@ fn prepare_non_class_render(
         metadata: meta,
         compatibility_projection: OnceLock::new(),
         family,
+        required_capabilities,
         session,
     })
 }
@@ -1584,6 +1636,7 @@ fn prepare_non_class_render(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
     use crate::environment::{
@@ -1593,7 +1646,9 @@ mod tests {
         TextMeasurementResultKind,
     };
     use crate::text::{TextMetrics, WrapMode};
-    use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
+    use merman_core::{
+        CustomJsonProvenance, CustomJsonRenderModel, Engine, OperationControl, ParseOptions,
+    };
     use serde_json::{Value, json};
 
     fn custom_semantic_parser(
@@ -1623,6 +1678,124 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn final_svg_admission_prefers_emit_cancellation_to_byte_limit() {
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, 1)
+            .unwrap();
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let svg = "<svg/>";
+
+        let limit = session
+            .resource_policy()
+            .check_svg_bytes(svg, ResourceLimitPhase::SvgOutput)
+            .unwrap_err();
+        assert_eq!(limit.limit, "max_svg_bytes");
+
+        control.cancel();
+        let error = admit_rendered_svg_output(&session, svg).unwrap_err();
+        let Error::Cancelled(error) = error else {
+            panic!("expected final SVG admission cancellation");
+        };
+        assert_eq!(error.phase, OperationPhase::Emit);
+    }
+
+    #[test]
+    fn final_svg_resource_terminal_replays_before_later_cancellation() {
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, 1)
+            .unwrap();
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let svg = "<svg/>";
+
+        let first = admit_rendered_svg_output(&session, svg)
+            .expect_err("the formal SVG output admission must reject");
+        let Error::ResourceLimitExceeded(first_limit) = first else {
+            panic!("expected a resource rejection");
+        };
+        assert_eq!(first_limit.limit, "max_svg_bytes");
+        assert_eq!(first_limit.actual, svg.len());
+        assert_eq!(first_limit.max, 1);
+
+        control.cancel();
+        let replayed = admit_rendered_svg_output(&session, svg)
+            .expect_err("the first SVG output terminal must remain sticky");
+        let Error::ResourceLimitExceeded(replayed_limit) = replayed else {
+            panic!("expected the resource terminal to replay");
+        };
+        assert_eq!(replayed_limit, first_limit);
+    }
+
+    #[test]
+    fn requested_diagram_id_fanout_is_admitted_per_output_occurrence() {
+        let diagram_id = "d".repeat(256);
+        let maximum = diagram_id.len() * 4;
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, maximum)
+            .unwrap();
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
+            .expect("parse info diagram")
+            .expect("detect info diagram");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+        let artifact =
+            prepare(parsed, &LayoutOptions::default(), session).expect("prepare info diagram");
+        let error = match artifact.render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.clone()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        ) {
+            Ok(_) => panic!("the diagram ID fanout must exceed the SVG byte ceiling"),
+            Err(error) => error,
+        };
+
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected the family fanout preflight to reject");
+        };
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.max, maximum);
+        assert_eq!(details.actual, maximum + diagram_id.len());
+    }
+
+    #[test]
+    fn renderer_owned_metadata_scan_observes_the_artifact_session_control() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
+            .expect("parse info diagram")
+            .expect("detect info diagram");
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(control.clone())
+            .expect("begin render session");
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare info diagram")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render info diagram");
+
+        control.cancel();
+        let error = rendered
+            .output_metadata()
+            .expect_err("metadata extraction must observe the artifact session control");
+
+        let Error::Cancelled(cancelled) = error else {
+            panic!("expected structured postprocess cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
     }
 
     fn text_measurement_call_count(session: &RenderSession) -> u64 {
@@ -1695,6 +1868,19 @@ mod tests {
         }
     }
 
+    struct CancellingSuccessfulHost {
+        calls: AtomicUsize,
+        control: OperationControl,
+    }
+
+    impl HostTextMeasurer for CancellingSuccessfulHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            self.control.cancel();
+            Ok(Some(sidecar_host_measurement(request, 0)))
+        }
+    }
+
     fn sidecar_host_measurement(
         request: HostTextMeasurementRequest<'_>,
         ordinal: usize,
@@ -1747,6 +1933,42 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn family_layout_stops_host_measurement_after_callback_cancellation() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    First child\n    Second child\n",
+                ParseOptions::strict(),
+            )
+            .expect("parse mindmap")
+            .expect("detect mindmap");
+        let control = OperationControl::new();
+        let host = Arc::new(CancellingSuccessfulHost {
+            calls: AtomicUsize::new(0),
+            control: control.clone(),
+        });
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.family-cancelling-host").expect("profile id"),
+            "1",
+        )
+        .expect("profile identity");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                host.clone(),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session_with_control(control)
+            .expect("begin render session");
+
+        let result = prepare(parsed, &LayoutOptions::default(), session);
+        let Err(Error::Cancelled(cancelled)) = result else {
+            panic!("family preparation must surface callback cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert_eq!(host.calls.load(Ordering::Relaxed), 1);
     }
 
     fn render_with_sidecar_host_control(
@@ -1937,7 +2159,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
             };
             let model = crate::flowchart::FlowchartRenderModelRef::new(
                 flowchart.pair().semantic(),
-                flowchart.label_sources(),
+                flowchart.render_context(),
             );
             let edge = model.edges.get(1).expect("self-loop edge");
             assert_eq!(edge.id, "self-loop-edge");
@@ -2077,7 +2299,7 @@ linkStyle 0 font-size:12px,font-style:italic
             };
             let model = crate::flowchart::FlowchartRenderModelRef::new(
                 swimlane.pair().semantic(),
-                swimlane.label_sources(),
+                swimlane.render_context(),
             );
             let edge = model.edges.first().expect("styled Swimlane edge");
             assert_eq!(edge.id, "styled");
@@ -2635,10 +2857,11 @@ mindmap
         assert!(plan.missing_capabilities().is_empty());
         assert!(plan.is_ready());
 
-        let rendered = prepare(parsed, &LayoutOptions::default(), session)
-            .unwrap()
+        let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
+        assert_eq!(rendered.required_capabilities(), &[RenderCapability::Math]);
         assert!(rendered.svg().contains("rendered-mindmap-math"));
         assert!(!rendered.svg().contains("$$x^2$$"));
     }

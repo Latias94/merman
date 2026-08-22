@@ -168,7 +168,7 @@ fn write_circle(
 
 fn write_accessibility(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     acc_title: Option<&str>,
     acc_descr: Option<&str>,
 ) {
@@ -176,7 +176,7 @@ fn write_accessibility(
         let _ = write!(
             out,
             r#"<title id="chart-title-{}">{}</title>"#,
-            escape_attr_display(diagram_id),
+            diagram_id,
             escape_xml_display(title)
         );
     }
@@ -184,7 +184,7 @@ fn write_accessibility(
         let _ = write!(
             out,
             r#"<desc id="chart-desc-{}">{}</desc>"#,
-            escape_attr_display(diagram_id),
+            diagram_id,
             escape_xml_display(description)
         );
     }
@@ -318,12 +318,12 @@ fn write_links(
     out: &mut String,
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
-    diagram_id: &str,
-) {
+    diagram_id: SvgDiagramId<'_>,
+    options: &SvgExecution<'_>,
+) -> Result<()> {
     out.push_str(r#"<g class="wardley-links">"#);
-    let marker_end = format!("url(#link-arrow-end-{diagram_id})");
-    let marker_start = format!("url(#link-arrow-start-{diagram_id})");
     for link in &layout.links {
+        options.checkpoint_emit()?;
         let class = if link.dashed {
             "wardley-link wardley-link--dashed"
         } else {
@@ -342,18 +342,17 @@ fn write_links(
         if link.markers.end {
             let _ = write!(
                 marker_attrs,
-                r#" marker-end="{}""#,
-                escape_attr_display(&marker_end)
+                r#" marker-end="url(#link-arrow-end-{diagram_id})""#,
             );
         }
         if link.markers.start {
             let _ = write!(
                 marker_attrs,
-                r#" marker-start="{}""#,
-                escape_attr_display(&marker_start)
+                r#" marker-start="url(#link-arrow-start-{diagram_id})""#,
             );
         }
         out.insert_str(insert_at, &marker_attrs);
+        options.checkpoint_emit()?;
     }
     for link in &layout.links {
         if let Some(label) = &link.label {
@@ -367,17 +366,19 @@ fn write_links(
         }
     }
     out.push_str("</g>");
+    Ok(())
 }
 
 fn write_trends(
     out: &mut String,
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
-    diagram_id: &str,
-) {
+    diagram_id: SvgDiagramId<'_>,
+    options: &SvgExecution<'_>,
+) -> Result<()> {
     out.push_str(r#"<g class="wardley-trends">"#);
-    let marker = format!("url(#arrow-{diagram_id})");
     for trend in &layout.trends {
+        options.checkpoint_emit()?;
         write_line(
             out,
             trend.line,
@@ -389,10 +390,12 @@ fn write_trends(
         let insert_at = out.len() - 2;
         out.insert_str(
             insert_at,
-            &format!(r#" marker-end="{}""#, escape_attr_display(&marker)),
+            &format!(r#" marker-end="url(#arrow-{diagram_id})""#),
         );
+        options.checkpoint_emit()?;
     }
     out.push_str("</g>");
+    Ok(())
 }
 
 fn write_source_overlay(
@@ -631,8 +634,7 @@ fn write_arrows(
     out.push_str("</g>");
 }
 
-fn write_defs(out: &mut String, diagram_id: &str, theme: &WardleyTheme) {
-    let diagram_id = escape_attr_display(diagram_id);
+fn write_defs(out: &mut String, diagram_id: SvgDiagramId<'_>, theme: &WardleyTheme) {
     let _ = write!(
         out,
         r#"<defs><marker id="arrow-{diagram_id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="{}" stroke="none"/></marker><marker id="link-arrow-end-{diagram_id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="{}" stroke="none"/></marker><marker id="link-arrow-start-{diagram_id}" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="{}" stroke="none"/></marker></defs>"#,
@@ -649,7 +651,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
     _diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("wardley");
+    let diagram_id = options.diagram_id_or("wardley");
     let acc_title = model.acc_title.as_deref().filter(|value| !value.is_empty());
     let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
@@ -668,6 +670,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Wardley, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
     write_accessibility(&mut out, diagram_id, acc_title, acc_descr);
+    options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="wardley-map">"#);
     let _ = write!(
@@ -690,8 +693,8 @@ pub(crate) fn render_wardley_diagram_svg_model(
     write_stages(&mut out, layout, &theme);
     write_grid(&mut out, layout, &theme);
     write_pipelines(&mut out, layout, model, &theme);
-    write_links(&mut out, layout, &theme, diagram_id);
-    write_trends(&mut out, layout, &theme, diagram_id);
+    write_links(&mut out, layout, &theme, diagram_id, options)?;
+    write_trends(&mut out, layout, &theme, diagram_id, options)?;
     write_nodes(&mut out, layout, &theme);
     write_annotations(&mut out, layout, &theme);
     write_notes(&mut out, layout, &theme);
@@ -710,5 +713,6 @@ pub(crate) fn render_wardley_diagram_svg_model(
     out.push_str("</g>");
     write_defs(&mut out, diagram_id, &theme);
     out.push_str("</svg>");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }

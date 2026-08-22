@@ -2,6 +2,8 @@ use super::*;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneLayout,
 };
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 
@@ -23,7 +25,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             layout: &flowchart_layout,
             swimlane_layout: Some(layout),
             model,
-            render_label_sources: artifact.label_sources(),
+            render_context: artifact.render_context(),
             effective_config: &metadata.effective_config,
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
@@ -253,7 +255,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
 }
 
 pub(super) fn swimlane_css(
-    diagram_id: &str,
+    diagram_id: super::super::SvgDiagramId<'_>,
     effective_config: &merman_core::MermaidConfig,
 ) -> String {
     let theme = PresentationTheme::new(effective_config.as_value()).node_diagram();
@@ -292,8 +294,12 @@ mod tests {
             label_type: None,
             edge_type: Some("arrow_open".to_string()),
             arrow: String::new(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::None,
             is_user_defined_id: false,
             stroke: Some("normal".to_string()),
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
             interpolate: Some("linear".to_string()),
             classes: Vec::new(),
             style: Vec::new(),

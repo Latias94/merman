@@ -1,20 +1,18 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceMathHeightMode, sequence_activation_stack_bounds,
     sequence_text_line_step_px,
 };
+use merman_core::diagrams::sequence::{
+    SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageKind,
+    SequenceMessageMarker, SequenceMessageStroke,
+};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 
-const LINETYPE_NOTE: i32 = 2;
-const LINETYPE_ACTIVE_START: i32 = 17;
-const LINETYPE_ACTIVE_END: i32 = 18;
-const LINETYPE_AUTONUMBER: i32 = 26;
-const LINETYPE_CENTRAL_CONNECTION: i32 = 59;
-const LINETYPE_CENTRAL_CONNECTION_REVERSE: i32 = 60;
-const LINETYPE_CENTRAL_CONNECTION_DUAL: i32 = 61;
 const CENTRAL_CONNECTION_CIRCLE_OFFSET: f64 = 16.5;
 
 pub(super) struct SequenceMessageRenderContext<'a> {
@@ -25,7 +23,7 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) message_align: &'a str,
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) actor_height: f64,
     pub(super) actor_label_font_size: f64,
     pub(super) sequence_width: f64,
@@ -33,13 +31,38 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) wrap_padding: f64,
     pub(super) right_angles: bool,
     pub(super) loop_text_style: &'a TextStyle,
+    pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
-fn marker_attr(attr_name: &str, diagram_id: &str, local_id: &str) -> String {
+fn marker_attr(attr_name: &str, diagram_id: SvgDiagramId<'_>, local_id: &str) -> String {
     format!(
         r#" {attr_name}="{}""#,
-        escape_attr(&scoped_svg_url(diagram_id, local_id))
+        escape_attr_display(scoped_svg_url(diagram_id, local_id))
     )
+}
+
+fn endpoint_marker_local_id(
+    marker: SequenceMessageMarker,
+    source_endpoint: bool,
+) -> Option<&'static str> {
+    use SequenceMessageMarker as Marker;
+
+    match (marker, source_endpoint) {
+        (Marker::None, _) => None,
+        (Marker::Filled, _) => Some("arrowhead"),
+        (Marker::Cross, _) => Some("crosshead"),
+        (Marker::Point, _) => Some("filled-head"),
+        (Marker::FilledHalfTop, false) | (Marker::FilledHalfBottom, true) => {
+            Some("solidTopArrowHead")
+        }
+        (Marker::FilledHalfBottom, false) | (Marker::FilledHalfTop, true) => {
+            Some("solidBottomArrowHead")
+        }
+        (Marker::OpenHalfTop, false) | (Marker::OpenHalfBottom, true) => Some("stickTopArrowHead"),
+        (Marker::OpenHalfBottom, false) | (Marker::OpenHalfTop, true) => {
+            Some("stickBottomArrowHead")
+        }
+    }
 }
 
 fn message_data_attrs(msg_id: &str, from: &str, to: &str) -> String {
@@ -50,17 +73,9 @@ fn message_data_attrs(msg_id: &str, from: &str, to: &str) -> String {
     )
 }
 
-fn has_central_connection(msg: &merman_core::diagrams::sequence::SequenceMessage) -> bool {
-    matches!(
-        msg.central_connection,
-        LINETYPE_CENTRAL_CONNECTION
-            | LINETYPE_CENTRAL_CONNECTION_REVERSE
-            | LINETYPE_CENTRAL_CONNECTION_DUAL
-    )
-}
-
-fn is_reverse_arrow_type(msg_type: i32) -> bool {
-    matches!(msg_type, 45 | 46 | 47 | 48 | 55 | 56 | 57 | 58)
+fn is_reverse_arrow_type(msg: &merman_core::diagrams::sequence::SequenceMessage) -> bool {
+    msg.signal_semantics()
+        .is_some_and(|semantics| semantics.direction == SequenceMessageDirection::Reverse)
 }
 
 fn actor_center_x(ctx: &SequenceMessageRenderContext<'_>, actor_id: &str) -> Option<f64> {
@@ -87,8 +102,8 @@ impl SequenceAutonumberActivationBounds {
         msg: &merman_core::diagrams::sequence::SequenceMessage,
         ctx: &SequenceMessageRenderContext<'_>,
     ) -> bool {
-        match msg.message_type {
-            LINETYPE_ACTIVE_START => {
+        match msg.semantic_kind() {
+            SequenceMessageKind::ActivationStart => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     return true;
                 };
@@ -99,7 +114,7 @@ impl SequenceAutonumberActivationBounds {
                 *depth = depth.saturating_add(1);
                 true
             }
-            LINETYPE_ACTIVE_END => {
+            SequenceMessageKind::ActivationEnd => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     return true;
                 };
@@ -141,7 +156,7 @@ fn sequence_number_marker_x(
 
     Some(if is_self_message {
         from_bounds + 1.0
-    } else if is_reverse_arrow_type(msg.message_type) {
+    } else if is_reverse_arrow_type(msg) {
         if is_left_to_right {
             to_bounds - 1.0
         } else {
@@ -163,7 +178,10 @@ fn write_central_connection_circles(
     line_y: f64,
     sequence_number_visible: bool,
 ) {
-    if !has_central_connection(msg) {
+    let Some(decoration) = msg.central_decoration() else {
+        return;
+    };
+    if decoration == SequenceCentralDecoration::None {
         return;
     }
 
@@ -173,7 +191,7 @@ fn write_central_connection_circles(
         return;
     };
     let is_left_to_right = from_center <= to_center;
-    let is_reverse = is_reverse_arrow_type(msg.message_type);
+    let is_reverse = is_reverse_arrow_type(msg);
     let circle_offset = |is_left_to_right: bool, is_reverse: bool| {
         let base_offset = if is_left_to_right {
             CENTRAL_CONNECTION_CIRCLE_OFFSET
@@ -188,14 +206,14 @@ fn write_central_connection_circles(
     };
 
     if sequence_number_visible {
-        match msg.central_connection {
-            LINETYPE_CENTRAL_CONNECTION if is_reverse => {
+        match decoration {
+            SequenceCentralDecoration::Target if is_reverse => {
                 to_center += circle_offset(is_left_to_right, true);
             }
-            LINETYPE_CENTRAL_CONNECTION_REVERSE if !is_reverse => {
+            SequenceCentralDecoration::Source if !is_reverse => {
                 from_center += circle_offset(is_left_to_right, false);
             }
-            LINETYPE_CENTRAL_CONNECTION_DUAL => {
+            SequenceCentralDecoration::Both => {
                 if is_reverse {
                     to_center += circle_offset(is_left_to_right, true);
                 } else {
@@ -208,8 +226,8 @@ fn write_central_connection_circles(
 
     out.push_str("<g>");
     if matches!(
-        msg.central_connection,
-        LINETYPE_CENTRAL_CONNECTION_REVERSE | LINETYPE_CENTRAL_CONNECTION_DUAL
+        decoration,
+        SequenceCentralDecoration::Source | SequenceCentralDecoration::Both
     ) {
         let _ = write!(
             out,
@@ -219,8 +237,8 @@ fn write_central_connection_circles(
         );
     }
     if matches!(
-        msg.central_connection,
-        LINETYPE_CENTRAL_CONNECTION | LINETYPE_CENTRAL_CONNECTION_DUAL
+        decoration,
+        SequenceCentralDecoration::Target | SequenceCentralDecoration::Both
     ) {
         let _ = write!(
             out,
@@ -232,24 +250,31 @@ fn write_central_connection_circles(
     out.push_str("</g>");
 }
 
-pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRenderContext<'_>) {
+pub(super) fn render_sequence_messages(
+    out: &mut String,
+    ctx: &SequenceMessageRenderContext<'_>,
+) -> Result<()> {
     let mut sequence_number_visible = false;
     let mut sequence_number = 1.0;
     let mut sequence_number_step = 1.0;
     let mut activation_bounds = SequenceAutonumberActivationBounds::new(ctx.activation_width);
 
-    for _ in ctx.model.messages.iter().filter(|msg| {
-        matches!(
-            msg.message_type,
-            LINETYPE_CENTRAL_CONNECTION | LINETYPE_CENTRAL_CONNECTION_REVERSE
-        )
-    }) {
+    for (decoration_index, _) in ctx
+        .model
+        .messages
+        .iter()
+        .filter(|msg| msg.semantic_kind() == SequenceMessageKind::CentralDecorationRecord)
+        .enumerate()
+    {
+        ctx.checkpoints.checkpoint_loop(decoration_index)?;
         out.push_str("<g/>");
     }
+    ctx.checkpoints.checkpoint()?;
 
-    for msg in &ctx.model.messages {
-        match msg.message_type {
-            LINETYPE_AUTONUMBER => {
+    for (message_index, msg) in ctx.model.messages.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(message_index)?;
+        match msg.semantic_kind() {
+            SequenceMessageKind::Autonumber => {
                 if let SequenceSvgMessagePayload::Autonumber(autonumber) = &msg.message {
                     sequence_number_visible = autonumber.visible;
                     if let Some(start) = autonumber.start {
@@ -261,17 +286,24 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 }
                 continue;
             }
-            LINETYPE_ACTIVE_START | LINETYPE_ACTIVE_END => {
+            SequenceMessageKind::ActivationStart | SequenceMessageKind::ActivationEnd => {
                 let _ = activation_bounds.handle_directive(msg, ctx);
                 continue;
             }
-            LINETYPE_NOTE => continue,
-            // CENTRAL_CONNECTION / CENTRAL_CONNECTION_REVERSE. Upstream routes these through
-            // the activation drawing path, which leaves an empty group even without a visible
-            // activation rectangle.
-            LINETYPE_CENTRAL_CONNECTION | LINETYPE_CENTRAL_CONNECTION_REVERSE => continue,
-            _ => {}
+            SequenceMessageKind::Note => continue,
+            // Central decoration records are routed through the activation drawing path by
+            // upstream Mermaid, which leaves an empty group without a visible rectangle.
+            SequenceMessageKind::CentralDecorationRecord => continue,
+            SequenceMessageKind::Signal => {}
+            SequenceMessageKind::Control | SequenceMessageKind::Unknown => continue,
         }
+
+        let Some(signal_semantics) = msg.signal_semantics() else {
+            continue;
+        };
+        let current_sequence_number = sequence_number;
+        // Mermaid advances the sequence index for every signal, even while autonumber is hidden.
+        sequence_number = round_sequence_number(sequence_number + sequence_number_step);
 
         let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
             continue;
@@ -311,7 +343,8 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 ctx.sanitize_config,
                 ctx.math_renderer,
                 SequenceMathHeightMode::Draw,
-            ) {
+                ctx.checkpoints,
+            )? {
                 let center_x = (p0.x + p1.x) / 2.0;
                 write_sequence_katex_foreign_object(
                     out,
@@ -331,52 +364,50 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                     ctx.measurer,
                     ctx.loop_text_style,
                     wrap_w,
-                );
+                    ctx.checkpoints.text(),
+                )?;
                 render_sequence_message_text_lines(
                     out,
                     raw_lines.iter().map(String::as_str),
-                    lbl.y,
-                    label_x,
-                    label_anchor,
-                    line_step,
-                    ctx.actor_label_font_size,
-                );
+                    SequenceMessageTextLayout {
+                        label_y: lbl.y,
+                        label_x,
+                        label_anchor,
+                        line_step,
+                        actor_label_font_size: ctx.actor_label_font_size,
+                    },
+                    ctx.checkpoints,
+                )?;
             } else {
                 render_sequence_message_text_lines(
                     out,
                     crate::text::split_html_br_lines(text),
-                    lbl.y,
-                    label_x,
-                    label_anchor,
-                    line_step,
-                    ctx.actor_label_font_size,
-                );
+                    SequenceMessageTextLayout {
+                        label_y: lbl.y,
+                        label_x,
+                        label_anchor,
+                        line_step,
+                        actor_label_font_size: ctx.actor_label_font_size,
+                    },
+                    ctx.checkpoints,
+                )?;
             }
         }
 
-        let class = match msg.message_type {
-            1 | 4 | 6 | 25 | 34 => "messageLine1",
-            _ => "messageLine0",
-        };
-        let style = match msg.message_type {
-            1 | 4 | 6 | 25 | 34 => r#" style="stroke-dasharray: 3, 3; fill: none;""#,
-            _ => r#" style="fill: none;""#,
+        let (class, style) = if signal_semantics.stroke == SequenceMessageStroke::Dotted {
+            (
+                "messageLine1",
+                r#" style="stroke-dasharray: 3, 3; fill: none;""#,
+            )
+        } else {
+            ("messageLine0", r#" style="fill: none;""#)
         };
 
-        let marker_start = match msg.message_type {
-            33 | 34 => Some(marker_attr("marker-start", ctx.diagram_id, "arrowhead")),
-            _ => None,
-        };
-        let marker_end = match msg.message_type {
-            // open arrow variants: no marker.
-            5 | 6 => None,
-            // cross arrow variants
-            3 | 4 => Some(marker_attr("marker-end", ctx.diagram_id, "crosshead")),
-            // filled-head variants
-            24 | 25 => Some(marker_attr("marker-end", ctx.diagram_id, "filled-head")),
-            // default arrowhead variants
-            _ => Some(marker_attr("marker-end", ctx.diagram_id, "arrowhead")),
-        };
+        let marker_start = endpoint_marker_local_id(signal_semantics.source_marker, true)
+            .map(|local_id| marker_attr("marker-start", ctx.diagram_id, local_id));
+        let marker_end = endpoint_marker_local_id(signal_semantics.target_marker, false)
+            .map(|local_id| marker_attr("marker-end", ctx.diagram_id, local_id));
+        ctx.checkpoints.checkpoint()?;
         let data_attrs = message_data_attrs(&msg.id, from, to);
 
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
@@ -460,7 +491,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
         }
 
         if sequence_number_visible {
-            let sequence_number_text = format_sequence_number(sequence_number);
+            let sequence_number_text = format_sequence_number(current_sequence_number);
             let font_size = if sequence_number_text.len() > 5 {
                 "7px"
             } else if sequence_number_text.len() > 3 {
@@ -475,8 +506,10 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 r#"<line x1="{x}" y1="{y}" x2="{x}" y2="{y}" stroke-width="0" marker-start="{marker_start}"/>"#,
                 x = fmt(x),
                 y = fmt(y),
-                marker_start = escape_attr(&scoped_svg_url(ctx.diagram_id, "sequencenumber")),
+                marker_start =
+                    escape_attr_display(scoped_svg_url(ctx.diagram_id, "sequencenumber")),
             );
+            ctx.checkpoints.checkpoint()?;
             let _ = write!(
                 out,
                 r#"<text x="{x}" y="{y}" font-family="sans-serif" font-size="{font_size}" text-anchor="middle" class="sequenceNumber">{n}</text>"#,
@@ -484,11 +517,12 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 y = fmt(y + 4.0),
                 n = sequence_number_text,
             );
-            sequence_number = round_sequence_number(sequence_number + sequence_number_step);
         }
 
         let _ = (from, to);
+        ctx.checkpoints.checkpoint()?;
     }
+    ctx.checkpoints.checkpoint()
 }
 
 fn round_sequence_number(value: f64) -> f64 {
@@ -503,17 +537,24 @@ fn format_sequence_number(value: f64) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SequenceMessageTextLayout<'a> {
+    label_y: f64,
+    label_x: f64,
+    label_anchor: &'a str,
+    line_step: f64,
+    actor_label_font_size: f64,
+}
+
 fn render_sequence_message_text_lines<'a>(
     out: &mut String,
     raw_lines: impl IntoIterator<Item = &'a str>,
-    label_y: f64,
-    label_x: f64,
-    label_anchor: &str,
-    line_step: f64,
-    actor_label_font_size: f64,
-) {
+    layout: SequenceMessageTextLayout<'_>,
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<()> {
     for (i, raw) in raw_lines.into_iter().enumerate() {
-        let y = label_y + (i as f64) * line_step;
+        checkpoints.checkpoint_loop(i)?;
+        let y = layout.label_y + (i as f64) * layout.line_step;
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
         let line = if decoded.as_ref().is_empty() {
             "\u{200B}"
@@ -523,11 +564,77 @@ fn render_sequence_message_text_lines<'a>(
         let _ = write!(
             out,
             r#"<text x="{x}" y="{y}" text-anchor="{anchor}" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
-            x = fmt(label_x.round()),
+            x = fmt(layout.label_x.round()),
             y = fmt(y),
-            anchor = label_anchor,
-            fs = fmt(actor_label_font_size),
+            anchor = layout.label_anchor,
+            fs = fmt(layout.actor_label_font_size),
             text = escape_xml(line)
         );
+    }
+    checkpoints.checkpoint()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_sequence_message_text_lines;
+    use crate::Error;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use merman_core::{OperationControl, OperationPhase};
+
+    struct CancellingLines {
+        control: OperationControl,
+        index: usize,
+        len: usize,
+    }
+
+    impl Iterator for CancellingLines {
+        type Item = &'static str;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.index >= self.len {
+                return None;
+            }
+            if self.index == 64 {
+                self.control.cancel();
+            }
+            self.index += 1;
+            Some("message")
+        }
+    }
+
+    #[test]
+    fn message_text_emit_loop_observes_mid_loop_cancellation() {
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control.clone(),
+        );
+        let checkpoints = super::SequenceEmitCheckpoints::new(&meter);
+        let lines = CancellingLines {
+            control,
+            index: 0,
+            len: 130,
+        };
+        let mut out = String::new();
+
+        let error = render_sequence_message_text_lines(
+            &mut out,
+            lines,
+            super::SequenceMessageTextLayout {
+                label_y: 10.0,
+                label_x: 20.0,
+                label_anchor: "middle",
+                line_step: 19.0,
+                actor_label_font_size: 16.0,
+            },
+            checkpoints,
+        )
+        .unwrap_err();
+        let Error::Cancelled(error) = error else {
+            panic!("expected Sequence message emit cancellation");
+        };
+
+        assert_eq!(error.phase, OperationPhase::Emit);
+        assert_eq!(out.matches("<text ").count(), 64);
     }
 }

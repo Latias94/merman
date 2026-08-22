@@ -78,6 +78,7 @@ thiserror.workspace = true
 [dev-dependencies]
 base64.workspace = true
 criterion = "0.8.2"
+merman-ascii-test-contracts = { path = "../merman-ascii-test-contracts" }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 png.workspace = true
 roxmltree.workspace = true
@@ -111,6 +112,11 @@ required-features = ["layout-elk"]
 name = "pipeline"
 harness = false
 required-features = ["svg"]
+
+[[bench]]
+name = "ascii_pipeline"
+harness = false
+required-features = ["ascii"]
 
 [[bench]]
 name = "native_memory"

@@ -1,6 +1,7 @@
 //! Shared root SVG viewport reporting helpers for compare commands.
 
 use crate::XtaskError;
+use crate::svgdom::ParsedSvgDom;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
@@ -119,22 +120,17 @@ pub(crate) fn parse_style_max_width_px(style: &str) -> Option<f64> {
     num.trim().parse::<f64>().ok()
 }
 
-pub(crate) fn parse_root_attrs(svg: &str) -> Result<RootAttrs, String> {
-    let svg = crate::svgdom::normalize_xml_entities(svg);
-    let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|e| e.to_string())?;
-    let root = doc
-        .descendants()
-        .find(|n| n.has_tag_name("svg"))
-        .ok_or_else(|| "missing <svg> root".to_string())?;
+fn parse_root_attrs_from_dom(document: &ParsedSvgDom<'_>) -> RootAttrs {
+    let root = document.svg_root();
     let viewbox = root.attribute("viewBox").and_then(parse_viewbox);
     let max_width_px = root
         .attribute("style")
         .and_then(parse_style_max_width_px)
         .filter(|v| v.is_finite() && *v > 0.0);
-    Ok(RootAttrs {
+    RootAttrs {
         viewbox,
         max_width_px,
-    })
+    }
 }
 
 pub(crate) fn parse_root_delta_report_limit(
@@ -156,18 +152,28 @@ pub(crate) fn collect_root_delta(
     upstream_svg: &str,
     local_svg: &str,
 ) -> Result<RootDelta, String> {
-    let upstream = parse_root_attrs(upstream_svg).map_err(|e| format!("upstream {stem}: {e}"))?;
-    let local = parse_root_attrs(local_svg).map_err(|e| format!("local {stem}: {e}"))?;
+    with_parsed_svg_pair(stem, upstream_svg, local_svg, |upstream, local| {
+        Ok(collect_root_delta_from_dom(stem, upstream, local))
+    })
+}
+
+pub(crate) fn collect_root_delta_from_dom(
+    stem: &str,
+    upstream_document: &ParsedSvgDom<'_>,
+    local_document: &ParsedSvgDom<'_>,
+) -> RootDelta {
+    let upstream = parse_root_attrs_from_dom(upstream_document);
+    let local = parse_root_attrs_from_dom(local_document);
     let max_width_delta = match (upstream.max_width_px, local.max_width_px) {
         (Some(a), Some(b)) => Some(b - a),
         _ => None,
     };
-    Ok(RootDelta {
+    RootDelta {
         stem: stem.to_string(),
         upstream,
         local,
         max_width_delta,
-    })
+    }
 }
 
 pub(crate) fn validate_browser_measured_math_root_contract(
@@ -175,9 +181,19 @@ pub(crate) fn validate_browser_measured_math_root_contract(
     upstream_svg: &str,
     local_svg: &str,
 ) -> Result<RootDelta, String> {
-    let upstream = parse_browser_math_root_contract(upstream_svg)
+    with_parsed_svg_pair(stem, upstream_svg, local_svg, |upstream, local| {
+        validate_browser_measured_math_root_contract_from_dom(stem, upstream, local)
+    })
+}
+
+pub(crate) fn validate_browser_measured_math_root_contract_from_dom(
+    stem: &str,
+    upstream_document: &ParsedSvgDom<'_>,
+    local_document: &ParsedSvgDom<'_>,
+) -> Result<RootDelta, String> {
+    let upstream = parse_browser_math_root_contract(upstream_document)
         .map_err(|error| format!("upstream {stem}: {error}"))?;
-    let local = parse_browser_math_root_contract(local_svg)
+    let local = parse_browser_math_root_contract(local_document)
         .map_err(|error| format!("local {stem}: {error}"))?;
 
     if upstream.width != local.width {
@@ -205,7 +221,11 @@ pub(crate) fn validate_browser_measured_math_root_contract(
         ));
     }
 
-    collect_root_delta(stem, upstream_svg, local_svg)
+    Ok(collect_root_delta_from_dom(
+        stem,
+        upstream_document,
+        local_document,
+    ))
 }
 
 pub(crate) fn record_fixture_root_evidence(
@@ -215,6 +235,59 @@ pub(crate) fn record_fixture_root_evidence(
     upstream_svg: &str,
     local_svg: &str,
     policy: RootEvidencePolicy,
+) -> Result<(), String> {
+    record_fixture_root_evidence_with(
+        coverage,
+        reported_deltas,
+        stem,
+        policy,
+        |browser_math_dimensions_are_diagnostic| {
+            if browser_math_dimensions_are_diagnostic {
+                validate_browser_measured_math_root_contract(stem, upstream_svg, local_svg)
+            } else {
+                collect_root_delta(stem, upstream_svg, local_svg)
+            }
+        },
+    )
+}
+
+pub(crate) fn record_fixture_root_evidence_from_dom(
+    coverage: &mut RootCoverageSummary,
+    reported_deltas: &mut Vec<RootDelta>,
+    stem: &str,
+    upstream_document: &ParsedSvgDom<'_>,
+    local_document: &ParsedSvgDom<'_>,
+    policy: RootEvidencePolicy,
+) -> Result<(), String> {
+    record_fixture_root_evidence_with(
+        coverage,
+        reported_deltas,
+        stem,
+        policy,
+        |browser_math_dimensions_are_diagnostic| {
+            if browser_math_dimensions_are_diagnostic {
+                validate_browser_measured_math_root_contract_from_dom(
+                    stem,
+                    upstream_document,
+                    local_document,
+                )
+            } else {
+                Ok(collect_root_delta_from_dom(
+                    stem,
+                    upstream_document,
+                    local_document,
+                ))
+            }
+        },
+    )
+}
+
+fn record_fixture_root_evidence_with(
+    coverage: &mut RootCoverageSummary,
+    reported_deltas: &mut Vec<RootDelta>,
+    stem: &str,
+    policy: RootEvidencePolicy,
+    collect_delta: impl FnOnce(bool) -> Result<RootDelta, String>,
 ) -> Result<(), String> {
     if policy.browser_math_dimensions_are_diagnostic && !policy.parity_root_requested {
         return Err(format!(
@@ -226,14 +299,12 @@ pub(crate) fn record_fixture_root_evidence(
     }
 
     let delta = if policy.browser_math_dimensions_are_diagnostic {
-        Some(
-            validate_browser_measured_math_root_contract(stem, upstream_svg, local_svg).map_err(
-                |error| format!("browser-measured math root contract failed for {stem}: {error}"),
-            )?,
-        )
+        Some(collect_delta(true).map_err(|error| {
+            format!("browser-measured math root contract failed for {stem}: {error}")
+        })?)
     } else if policy.report_delta {
         Some(
-            collect_root_delta(stem, upstream_svg, local_svg)
+            collect_delta(false)
                 .map_err(|error| format!("root parse failed for {stem}: {error}"))?,
         )
     } else {
@@ -258,13 +329,10 @@ pub(crate) fn record_fixture_root_evidence(
     Ok(())
 }
 
-fn parse_browser_math_root_contract(svg: &str) -> Result<BrowserMathRootContract, String> {
-    let svg = crate::svgdom::normalize_xml_entities(svg);
-    let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|error| error.to_string())?;
-    let root = doc
-        .descendants()
-        .find(|node| node.has_tag_name("svg"))
-        .ok_or_else(|| "missing <svg> root".to_string())?;
+fn parse_browser_math_root_contract(
+    document: &ParsedSvgDom<'_>,
+) -> Result<BrowserMathRootContract, String> {
+    let root = document.svg_root();
     let viewbox_raw = root
         .attribute("viewBox")
         .ok_or_else(|| "missing required viewBox".to_string())?;
@@ -293,6 +361,21 @@ fn parse_browser_math_root_contract(svg: &str) -> Result<BrowserMathRootContract
         height: root.attribute("height").map(str::to_string),
         style_without_max_width,
     })
+}
+
+fn with_parsed_svg_pair<T>(
+    stem: &str,
+    upstream_svg: &str,
+    local_svg: &str,
+    inspect: impl FnOnce(&ParsedSvgDom<'_>, &ParsedSvgDom<'_>) -> Result<T, String>,
+) -> Result<T, String> {
+    let upstream_svg = crate::svgdom::normalize_xml_entities(upstream_svg);
+    let upstream_document = ParsedSvgDom::parse_normalized(upstream_svg.as_ref())
+        .map_err(|error| format!("upstream {stem}: {error}"))?;
+    let local_svg = crate::svgdom::normalize_xml_entities(local_svg);
+    let local_document = ParsedSvgDom::parse_normalized(local_svg.as_ref())
+        .map_err(|error| format!("local {stem}: {error}"))?;
+    inspect(&upstream_document, &local_document)
 }
 
 fn parse_browser_math_root_style(style: &str) -> Result<(f64, BTreeMap<String, String>), String> {
@@ -425,10 +508,16 @@ fn write_root_delta_rows(report: &mut String, root_deltas: &[RootDelta]) {
 mod tests {
     use super::*;
 
+    fn parse_test_root_attrs(svg: &str) -> Result<RootAttrs, String> {
+        let svg = crate::svgdom::normalize_xml_entities(svg);
+        let document = ParsedSvgDom::parse_normalized(svg.as_ref())?;
+        Ok(parse_root_attrs_from_dom(&document))
+    }
+
     #[test]
     fn parses_svg_root_viewbox_and_max_width() {
         let svg = r#"<svg viewBox="-50 -10 1144 259" style="max-width: 1144px; background-color: white;"><g/></svg>"#;
-        let attrs = parse_root_attrs(svg).expect("root attrs");
+        let attrs = parse_test_root_attrs(svg).expect("root attrs");
 
         assert_eq!(attrs.viewbox, Some((-50.0, -10.0, 1144.0, 259.0)));
         assert_eq!(attrs.max_width_px, Some(1144.0));
@@ -437,7 +526,7 @@ mod tests {
     #[test]
     fn parses_root_attrs_after_dom_compare_xml_normalization() {
         let svg = r#"<svg viewBox="0 0 10 20" style="max-width: 10px;"><foreignObject><div><img src=x>&nbsp;</div></foreignObject></svg>"#;
-        let attrs = parse_root_attrs(svg).expect("root attrs");
+        let attrs = parse_test_root_attrs(svg).expect("root attrs");
 
         assert_eq!(attrs.viewbox, Some((0.0, 0.0, 10.0, 20.0)));
         assert_eq!(attrs.max_width_px, Some(10.0));

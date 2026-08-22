@@ -1,5 +1,8 @@
-use merman_bindings_core::BindingEngine;
-use napi::{Env, Task, bindgen_prelude::AsyncTask};
+use merman_bindings_core::{BindingEngine, OperationControl};
+use napi::{
+    Env, Task,
+    bindgen_prelude::{AbortSignal, AsyncTask},
+};
 use napi_derive::napi;
 
 use crate::wire;
@@ -29,9 +32,23 @@ impl NativeEngine {
     }
 
     #[napi]
-    pub fn execute(&self, request_json: String) -> napi::Result<AsyncTask<ExecuteTask>> {
+    pub fn execute(
+        &self,
+        request_json: String,
+        signal: Option<AbortSignal>,
+        timeout_ms: Option<u32>,
+    ) -> napi::Result<AsyncTask<ExecuteTask>> {
         let engine = self.engine()?.clone();
+        let control = wire::admitted_operation_control(timeout_ms);
+        if let Some(signal) = signal.as_ref() {
+            let cancellation = control.clone();
+            signal.on_abort(move || cancellation.cancel());
+        }
+        // Do not attach the signal to AsyncTask itself. N-API may cancel queued async work before
+        // compute(), which would bypass the canonical BindingError cancellation envelope.
         Ok(AsyncTask::new(ExecuteTask {
+            admitted_timeout_ms: timeout_ms,
+            control,
             engine,
             request_json,
         }))
@@ -52,8 +69,17 @@ impl NativeEngine {
     }
 
     #[napi(js_name = "executeSync")]
-    pub fn execute_sync(&self, request_json: String) -> napi::Result<String> {
-        Ok(wire::execute_wire(self.engine()?, &request_json))
+    pub fn execute_sync(
+        &self,
+        request_json: String,
+        timeout_ms: Option<u32>,
+    ) -> napi::Result<String> {
+        Ok(wire::execute_wire_with_admitted_control(
+            self.engine()?,
+            &request_json,
+            wire::admitted_operation_control(timeout_ms),
+            timeout_ms,
+        ))
     }
 
     #[napi]
@@ -63,6 +89,8 @@ impl NativeEngine {
 }
 
 pub struct ExecuteTask {
+    admitted_timeout_ms: Option<u32>,
+    control: OperationControl,
     engine: BindingEngine,
     request_json: String,
 }
@@ -72,7 +100,12 @@ impl Task for ExecuteTask {
     type JsValue = String;
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        Ok(wire::execute_wire(&self.engine, &self.request_json))
+        Ok(wire::execute_wire_with_admitted_control(
+            &self.engine,
+            &self.request_json,
+            self.control.clone(),
+            self.admitted_timeout_ms,
+        ))
     }
 
     fn resolve(&mut self, _env: Env, output: Self::Output) -> napi::Result<Self::JsValue> {

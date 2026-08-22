@@ -7,7 +7,8 @@ use crate::architecture_metrics::{
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
 
-use super::super::{escape_xml_into, fmt, fmt_into, fmt_string};
+use super::super::{SvgDiagramId, escape_xml_into, fmt, fmt_into, fmt_string};
+use super::ArchitectureEmitCheckpoints;
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::{
     svg_line_formatted_bbox_width_px, svg_line_plain_text, wrap_svg_words_to_lines,
@@ -19,7 +20,7 @@ use crate::model::ArchitectureDiagramLayout;
 
 pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> {
     pub(super) out: &'a mut String,
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) layout: &'a ArchitectureDiagramLayout,
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
@@ -27,6 +28,7 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
+    pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
 struct ArchitectureEdgeLabelPlan {
@@ -99,13 +101,13 @@ struct ArchitectureArrowGeometry<'a> {
 
 fn write_architecture_edge_id_attr(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     prefix: &str,
     from: &str,
     to: &str,
     counter: usize,
 ) {
-    escape_xml_into(out, diagram_id);
+    let _ = write!(out, "{diagram_id}");
     out.push('-');
     escape_xml_into(out, prefix);
     out.push('_');
@@ -118,7 +120,7 @@ fn write_architecture_edge_id_attr(
 
 fn write_architecture_edge_path(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     edge: super::model::ArchitectureEdgeRef<'_>,
     points: ArchitectureEdgePoints,
 ) {
@@ -406,7 +408,9 @@ fn architecture_edge_label_plan(
 
 pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
     ctx: &mut ArchitectureEdgeRenderContext<'_, M>,
-) {
+) -> crate::Result<()> {
+    let checkpoints = ctx.checkpoints;
+    checkpoints.checkpoint()?;
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let layout = ctx.layout;
@@ -600,6 +604,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
 
             out.push_str("<g>");
             write_architecture_edge_path(out, diagram_id, edge, points);
+            checkpoints.checkpoint()?;
 
             if let Some(arrow) = lhs_arrow.as_ref() {
                 write_architecture_arrow_polygon(out, arrow);
@@ -624,4 +629,5 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
             out.push_str("</g>");
         }
     }
+    Ok(())
 }

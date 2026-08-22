@@ -350,7 +350,6 @@ pub(crate) struct TimelineTheme {
     pub(crate) font_weight: String,
     pub(crate) main_bkg: String,
     pub(crate) node_border: String,
-    pub(crate) drop_shadow: String,
     pub(crate) disabled_fill: String,
     pub(crate) disabled_text_fill: String,
     pub(crate) root_fill: String,

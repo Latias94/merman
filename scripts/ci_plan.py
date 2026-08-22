@@ -34,6 +34,227 @@ OWNER_NAMES = (
 )
 
 _ALL_OWNERS = frozenset(OWNER_NAMES)
+_CORE_OWNERS = frozenset({"core", "hygiene"})
+_SVG_PARITY_CRATE_PREFIXES = (
+    "crates/dugong/",
+    "crates/dugong-graphlib/",
+    "crates/manatee/",
+    "crates/merman-core/",
+    "crates/merman-elk-layered/",
+    "crates/merman-fixture-render-context/",
+    "crates/merman-layout-elk/",
+    "crates/merman-render/",
+    "crates/roughr/",
+)
+_SVG_PARITY_PREFIXES = (
+    "crates/xtask/src/cmd/compare/",
+    "crates/xtask/src/cmd/upstream_svg_provenance/",
+    "tools/upstreams/",
+)
+_SVG_PARITY_EXACT_PATHS = frozenset(
+    {
+        "crates/merman/Cargo.toml",
+        "crates/merman/src/operation.rs",
+        "crates/merman/src/render.rs",
+        "crates/merman/src/svg/mod.rs",
+        "crates/xtask/src/cmd/admission.rs",
+        "crates/xtask/src/cmd/fixtures.rs",
+        "crates/xtask/src/cmd/flowchart_elk_corpus.rs",
+        "crates/xtask/src/cmd/import/mod.rs",
+        "crates/xtask/src/cmd/mermaid_reference.rs",
+        "crates/xtask/src/cmd/mod.rs",
+        "crates/xtask/src/cmd/paths.rs",
+        "crates/xtask/src/cmd/snapshots.rs",
+        "crates/xtask/src/cmd/upstream_svg_policy.rs",
+        "crates/xtask/src/cmd/upstream_svg_provenance.rs",
+        "crates/xtask/src/cmd/upstream_svg_support.rs",
+        "crates/xtask/src/generated/mermaid_reference.rs",
+        "crates/xtask/src/main.rs",
+        "crates/xtask/src/svgdom.rs",
+        "fixtures/_upstream/flowchart-elk-11.16.1/_manifest.json",
+        "playground/tests/.npmrc",
+        "playground/tests/package-lock.json",
+        "playground/tests/package.json",
+        "playground/tests/root-viewport-oracle.spec.ts",
+        "playground/tests/root-viewport-oracle.ts",
+        "playground/tests/run-root-viewport-oracle.mjs",
+    }
+)
+_SVG_PARITY_EXCLUDED_FIXTURE_PREFIXES = (
+    "fixtures/_deferred/",
+    "fixtures/_upstream/",
+    "fixtures/bindings/",
+)
+_CRATE_OWNER_RULES = (
+    ("crates/merman-android-jni/", {"core", "hygiene", "platform"}),
+    (
+        "crates/merman-ascii-test-contracts/",
+        {"core", "hygiene", "node", "npm", "platform", "python", "web"},
+    ),
+    (
+        "crates/merman-bindings-core/",
+        {"core", "hygiene", "node", "npm", "platform", "python", "web"},
+    ),
+    ("crates/merman-cli/", {"cli", "core", "hygiene"}),
+    ("crates/merman-export/", {"cli", "core", "hygiene"}),
+    ("crates/merman-ffi/", {"core", "hygiene", "platform"}),
+    ("crates/merman-node/", {"core", "hygiene", "node", "npm", "security"}),
+    ("crates/merman-typst-plugin/", {"core", "hygiene", "typst"}),
+    ("crates/merman-uniffi/", {"core", "hygiene", "platform", "python"}),
+    ("crates/merman-wasm/", {"core", "hygiene", "npm", "web"}),
+    (
+        "crates/merman-analysis/",
+        {"core", "hygiene", "npm", "vscode", "web"},
+    ),
+    (
+        "crates/merman-editor-core/",
+        {"core", "hygiene", "npm", "vscode", "web"},
+    ),
+    ("crates/merman-lsp/", {"core", "hygiene", "npm", "vscode", "web"}),
+    ("crates/merman/", {"core", "hygiene"}),
+    ("crates/dugong/", _CORE_OWNERS),
+    ("crates/dugong-graphlib/", _CORE_OWNERS),
+    ("crates/manatee/", _CORE_OWNERS),
+    ("crates/merman-ascii/", _CORE_OWNERS),
+    ("crates/merman-core/", {"core", "fuzz", "hygiene"}),
+    ("crates/merman-elk-layered/", _CORE_OWNERS),
+    ("crates/merman-fixture-render-context/", _CORE_OWNERS),
+    ("crates/merman-layout-elk/", _CORE_OWNERS),
+    ("crates/merman-render/", _CORE_OWNERS),
+    ("crates/merman-rustdoc/", _CORE_OWNERS),
+    ("crates/roughr/", _CORE_OWNERS),
+    ("crates/xtask/src/cmd/typst_", {"core", "hygiene", "typst"}),
+    (
+        "crates/xtask/src/cmd/editor_",
+        {"core", "hygiene", "npm", "vscode", "web"},
+    ),
+    (
+        "crates/xtask/src/cmd/playground_",
+        {"core", "hygiene", "npm", "vscode", "web"},
+    ),
+    ("crates/xtask/src/cmd/native_abi.rs", {"core", "hygiene", "platform"}),
+    ("crates/xtask/", _CORE_OWNERS),
+)
+_SCRIPT_EXACT_OWNER_RULES = {
+    "scripts/audit_plan.py": frozenset({"hygiene", "npm", "security"}),
+    "scripts/artifact_profile_recipe.py": frozenset(
+        {"cli", "core", "hygiene", "platform", "python"}
+    ),
+    "scripts/strict_json.py": frozenset({"hygiene"}),
+    "scripts/test_audit_plan.py": frozenset({"hygiene", "npm", "security"}),
+    "scripts/test_build_android.py": frozenset({"hygiene", "platform"}),
+    "scripts/test_publish.py": frozenset({"hygiene"}),
+}
+_SCRIPT_PREFIX_OWNER_RULES = (
+    ("scripts/build-python-", {"hygiene", "python"}),
+    ("scripts/python_", {"hygiene", "python"}),
+    ("scripts/test_python_", {"hygiene", "python"}),
+    ("scripts/build-apple-", {"hygiene", "platform"}),
+    ("scripts/flutter_", {"hygiene", "platform"}),
+    ("scripts/native_symbol_", {"hygiene", "platform"}),
+    ("scripts/test_flutter_", {"hygiene", "platform"}),
+    ("scripts/test_native_symbol_", {"hygiene", "platform"}),
+    ("scripts/test_verify_platform_", {"hygiene", "platform"}),
+    ("scripts/test_verify_flutter_", {"hygiene", "platform"}),
+    ("scripts/node_", {"hygiene", "node", "npm"}),
+    ("scripts/test_node_", {"hygiene", "node", "npm"}),
+    ("scripts/npm_", {"hygiene", "npm"}),
+    ("scripts/test_web_", {"hygiene", "npm", "web"}),
+    ("scripts/web_", {"hygiene", "npm", "web"}),
+    ("scripts/check-svg-", {"hygiene", "npm", "vscode", "web"}),
+    ("scripts/generate-svg-", {"hygiene", "npm", "vscode", "web"}),
+    ("scripts/svg-", {"hygiene", "npm", "vscode", "web"}),
+    ("scripts/cli_", {"cli", "hygiene"}),
+    ("scripts/generate_cli_", {"cli", "hygiene"}),
+    ("scripts/test_cli_", {"cli", "hygiene"}),
+    ("scripts/test_generate_cli_", {"cli", "hygiene"}),
+    ("scripts/test_nix_", {"cli", "hygiene"}),
+    ("scripts/test_verify_cli_", {"cli", "hygiene"}),
+    ("scripts/test_verify_homebrew_", {"cli", "hygiene"}),
+    ("scripts/verify_rustsec_", {"hygiene", "security"}),
+    ("scripts/test_verify_rustsec_", {"hygiene", "security"}),
+)
+_GENERATED_CONTRACT_PREFIX_RULES = (
+    (
+        "platforms/web/src/generated/",
+        {"core", "hygiene", "npm", "web"},
+    ),
+    (
+        "platforms/node/src/generated/",
+        {"core", "hygiene", "node", "npm", "security"},
+    ),
+    (
+        "platforms/flutter/lib/src/generated/",
+        {"core", "hygiene", "platform"},
+    ),
+    (
+        "platforms/apple/Sources/Merman/Generated/",
+        {"core", "hygiene", "platform"},
+    ),
+)
+_GENERATED_CONTRACT_EXACT_RULES = {
+    "platforms/android/src/main/kotlin/io/merman/MermanBindingContract.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+    "platforms/android/src/main/kotlin/io/merman/MermanResourceOptions.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+    "platforms/android/src/main/kotlin/io/merman/MermanTextMeasurementOperation.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+    "platforms/android/src/main/kotlin/io/merman/MermanTextMeasurementResultKind.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+    "platforms/android/src/main/kotlin/io/merman/MermanTextMeasurementVocabulary.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+}
+_PLAYGROUND_EXAMPLE_CATALOG_OWNERS = frozenset({"core", "hygiene", "npm", "web"})
+_PLAYGROUND_EXAMPLE_CATALOG_INPUT_PREFIX = "playground/examples/"
+_PLAYGROUND_EXAMPLE_CATALOG_OUTPUT = "playground/src/generated/examples.ts"
+_HYGIENE_SCRIPT_PREFIXES = (
+    "scripts/adr_",
+    "scripts/artifact_",
+    "scripts/capability_",
+    "scripts/crates_io_",
+    "scripts/generate-npm-license-",
+    "scripts/generate-rust-license-",
+    "scripts/release-",
+    "scripts/release_",
+    "scripts/sync-release-",
+    "scripts/test_adr_",
+    "scripts/test_artifact_",
+    "scripts/test_crates_io_",
+    "scripts/test_generate_rust_license_",
+    "scripts/test_release_",
+    "scripts/test_sync_",
+    "scripts/test_verify_artifact_",
+    "scripts/test_verify_crate_",
+    "scripts/test_verify_independent_",
+    "scripts/test_verify_third_",
+    "scripts/verify-independent-",
+    "scripts/verify_artifact_",
+    "scripts/verify_crate_",
+    "scripts/verify-third-",
+)
+_NONCANONICAL_SCRIPT_SUFFIXES = (
+    ".backup",
+    ".bak",
+    ".generated",
+    ".orig",
+    ".tmp",
+    "~",
+)
 _STATUS_PATH_COUNTS = {
     "A": 1,
     "B": 1,
@@ -92,6 +313,7 @@ def plan_changes(changes: Sequence[Change], *, base: str, head: str) -> dict[str
 
     owners = {name: False for name in OWNER_NAMES}
     reasons: dict[str, list[str]] = {name: [] for name in OWNER_NAMES}
+    svg_parity = False
     if not changes:
         return _plan_document(
             base=base,
@@ -99,6 +321,7 @@ def plan_changes(changes: Sequence[Change], *, base: str, head: str) -> dict[str
             changes=[],
             owners=owners,
             reasons=reasons,
+            svg_parity=False,
             fallback=False,
             fallback_reason=None,
             empty=True,
@@ -114,12 +337,18 @@ def plan_changes(changes: Sequence[Change], *, base: str, head: str) -> dict[str
             for owner in selected:
                 owners[owner] = True
                 reasons[owner].append(reason)
+            if _requires_svg_parity(path):
+                selector_reason = f"SVG parity input changed: {path}"
+                svg_parity = True
+                owners["core"] = True
+                reasons["core"].append(selector_reason)
         if fallback_reason is not None:
             break
 
     if fallback_reason is not None:
         owners = {name: True for name in OWNER_NAMES}
         reasons = {name: [fallback_reason] for name in OWNER_NAMES}
+        svg_parity = True
 
     return _plan_document(
         base=base,
@@ -127,6 +356,7 @@ def plan_changes(changes: Sequence[Change], *, base: str, head: str) -> dict[str
         changes=[{"status": change.status, "paths": list(change.paths)} for change in changes],
         owners=owners,
         reasons=reasons,
+        svg_parity=svg_parity,
         fallback=fallback_reason is not None,
         fallback_reason=fallback_reason,
         empty=False,
@@ -175,6 +405,7 @@ def plan_all(*, base: str, head: str, reason: str) -> dict[str, Any]:
         changes=[],
         owners={name: True for name in OWNER_NAMES},
         reasons={name: [reason] for name in OWNER_NAMES},
+        svg_parity=True,
         fallback=False,
         fallback_reason=None,
         empty=False,
@@ -182,7 +413,12 @@ def plan_all(*, base: str, head: str, reason: str) -> dict[str, Any]:
 
 
 def plan_selected(
-    *, base: str, head: str, selected: Iterable[str], reason: str
+    *,
+    base: str,
+    head: str,
+    selected: Iterable[str],
+    reason: str,
+    svg_parity: bool = False,
 ) -> dict[str, Any]:
     """Select explicit owners for a non-PR lifecycle such as a host safety-net run."""
 
@@ -194,12 +430,15 @@ def plan_selected(
         raise ValueError("explicit CI owner selection must not be empty")
     if not reason.strip():
         raise ValueError("explicit CI owner reason must not be empty")
+    if svg_parity and "core" not in selected_owners:
+        raise ValueError("SVG parity selection requires the core owner")
     return _plan_document(
         base=base,
         head=head,
         changes=[],
         owners={name: name in selected_owners for name in OWNER_NAMES},
         reasons={name: [reason] if name in selected_owners else [] for name in OWNER_NAMES},
+        svg_parity=svg_parity,
         fallback=False,
         fallback_reason=None,
         empty=False,
@@ -280,6 +519,18 @@ def _decode_and_validate_path(raw: bytes) -> str:
     return path
 
 
+def _requires_svg_parity(path: str) -> bool:
+    if path in _SVG_PARITY_EXACT_PATHS:
+        return True
+    if path.startswith("crates/") and "/benches/" in path:
+        return False
+    if path.startswith(_SVG_PARITY_CRATE_PREFIXES + _SVG_PARITY_PREFIXES):
+        return True
+    return path.startswith("fixtures/") and not path.startswith(
+        _SVG_PARITY_EXCLUDED_FIXTURE_PREFIXES
+    )
+
+
 def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
     workflow_paths = (
         ".github/workflows/",
@@ -296,7 +547,6 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path in {"Cargo.lock", "Cargo.toml", "rust-toolchain.toml", "dist-workspace.toml"}:
         return _ALL_OWNERS, f"shared Rust authority changed: {path}", True
-
     if path in {
         "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm",
         "distribution/tree-sitter-mermaid/queries/portable/highlights.scm",
@@ -321,10 +571,47 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             owners.add("security")
         return frozenset(owners), f"Tree-sitter Mermaid owner changed: {path}", False
 
-    if path.startswith(("capabilities/", "crates/", "fixtures/", "tools/upstreams/")):
-        return _ALL_OWNERS, f"shared runtime authority changed: {path}", True
+    if path.startswith("capabilities/"):
+        return _ALL_OWNERS, f"shared capability schema changed: {path}", True
+    if path == "crates/merman/Cargo.toml":
+        return (
+            frozenset({"core", "hygiene", "performance"}),
+            f"benchmark manifest changed: {path}",
+            False,
+        )
+    if path.startswith("crates/"):
+        for prefix, selected in _CRATE_OWNER_RULES:
+            if path.startswith(prefix):
+                owners = set(selected)
+                if "/benches/" in path:
+                    owners.add("performance")
+                return frozenset(owners), f"Rust crate owner changed: {path}", False
+        return _ALL_OWNERS, f"unclassified Rust crate changed: {path}", True
+    if path.startswith("fixtures/bindings/"):
+        return (
+            frozenset({"core", "hygiene", "node", "npm", "platform", "python", "web"}),
+            f"binding fixture owner changed: {path}",
+            False,
+        )
+    if path.startswith("fixtures/"):
+        return _CORE_OWNERS, f"renderer fixture owner changed: {path}", False
+    if path.startswith("tools/upstreams/"):
+        return (
+            _ALL_OWNERS,
+            f"upstream runtime authority changed: {path}",
+            False,
+        )
     if path.startswith("scripts/"):
-        return _ALL_OWNERS, f"shared repository owner changed: {path}", True
+        if path.endswith(_NONCANONICAL_SCRIPT_SUFFIXES):
+            return _ALL_OWNERS, f"noncanonical repository script changed: {path}", True
+        if selected := _SCRIPT_EXACT_OWNER_RULES.get(path):
+            return selected, f"owner script changed: {path}", False
+        for prefix, selected in _SCRIPT_PREFIX_OWNER_RULES:
+            if path.startswith(prefix):
+                return frozenset(selected), f"owner script changed: {path}", False
+        if path.startswith(_HYGIENE_SCRIPT_PREFIXES):
+            return frozenset({"hygiene"}), f"repository hygiene script changed: {path}", False
+        return _ALL_OWNERS, f"unclassified repository script changed: {path}", True
 
     if path == "docs/release/THIRD_PARTY_COMPONENTS.json":
         return (
@@ -360,12 +647,36 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             f"shared SVG safety policy changed: {path}",
             False,
         )
-    if path == "playground/examples/manifest.json":
+    if path == _PLAYGROUND_EXAMPLE_CATALOG_OUTPUT or path.startswith(
+        _PLAYGROUND_EXAMPLE_CATALOG_INPUT_PREFIX
+    ):
         return (
-            frozenset({"hygiene", "npm", "vscode", "web"}),
-            f"shared editor example manifest changed: {path}",
+            _PLAYGROUND_EXAMPLE_CATALOG_OWNERS,
+            f"Playground example catalog authority changed: {path}",
             False,
         )
+    if path in {
+        "playground/src/generated/ascii-capabilities.ts",
+        "playground/src/generated/mermaid-reference.ts",
+    }:
+        return (
+            frozenset({"core", "hygiene", "npm", "web"}),
+            f"generated Playground authority changed: {path}",
+            False,
+        )
+    if path in _GENERATED_CONTRACT_EXACT_RULES:
+        return (
+            frozenset(_GENERATED_CONTRACT_EXACT_RULES[path]),
+            f"generated binding contract changed: {path}",
+            False,
+        )
+    for prefix, configured_owners in _GENERATED_CONTRACT_PREFIX_RULES:
+        if path.startswith(prefix):
+            return (
+                frozenset(configured_owners),
+                f"generated binding contract changed: {path}",
+                False,
+            )
     if path.startswith(("platforms/web/", "playground/")):
         return frozenset({"hygiene", "npm", "web"}), f"web owner changed: {path}", False
     if path.startswith(("platforms/node/", "packages/node")):
@@ -437,6 +748,7 @@ def _fallback_plan(base: str, head: str, reason: str) -> dict[str, Any]:
         changes=[],
         owners={name: True for name in OWNER_NAMES},
         reasons={name: [reason] for name in OWNER_NAMES},
+        svg_parity=True,
         fallback=True,
         fallback_reason=reason,
         empty=False,
@@ -450,12 +762,13 @@ def _plan_document(
     changes: list[dict[str, Any]],
     owners: dict[str, bool],
     reasons: dict[str, list[str]],
+    svg_parity: bool,
     fallback: bool,
     fallback_reason: str | None,
     empty: bool,
 ) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "base": base,
         "head": head,
         "empty": empty,
@@ -464,6 +777,7 @@ def _plan_document(
         "changes": changes,
         "owners": owners,
         "reasons": {name: sorted(set(reasons[name])) for name in OWNER_NAMES},
+        "svg_parity": svg_parity,
     }
 
 
@@ -480,11 +794,12 @@ def _validate_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         "owners",
         "reasons",
         "schema_version",
+        "svg_parity",
     }
     if (
         set(plan) != required_keys
         or type(plan.get("schema_version")) is not int
-        or plan["schema_version"] != 1
+        or plan["schema_version"] != 2
     ):
         raise GateError("planner output has an invalid schema")
     for field in ("base", "head"):
@@ -542,6 +857,11 @@ def _validate_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
             raise GateError(f"planner owner {owner} has invalid reasons")
         if owners[owner] and not reasons[owner]:
             raise GateError(f"selected planner owner {owner} has no reason")
+    svg_parity = plan["svg_parity"]
+    if not isinstance(svg_parity, bool):
+        raise GateError("planner SVG parity selector must be boolean")
+    if svg_parity and not owners["core"]:
+        raise GateError("selected SVG parity requires the core owner")
     if not isinstance(plan["empty"], bool) or not isinstance(plan["fallback"], bool):
         raise GateError("planner flags must be boolean")
     fallback_reason = plan["fallback_reason"]
@@ -556,6 +876,8 @@ def _validate_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         raise GateError("non-fallback planner output cannot include a fallback reason")
     if plan["empty"] and any(owners.values()):
         raise GateError("an empty plan cannot select owner jobs")
+    if plan["empty"] and svg_parity:
+        raise GateError("an empty plan cannot select SVG parity")
     if plan["empty"] and changes:
         raise GateError("an empty plan cannot include changes")
     if plan["empty"] and plan["fallback"]:
@@ -578,6 +900,7 @@ def _validate_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
             "fallback_reason",
             "owners",
             "reasons",
+            "svg_parity",
         ):
             if plan[field] != expected[field]:
                 raise GateError(f"planner {field} does not match classified changes")
@@ -591,6 +914,7 @@ def _compact_json(document: Any) -> str:
 def _write_github_outputs(path: Path, plan: Mapping[str, Any]) -> None:
     lines = [f"plan={_compact_json(plan)}"]
     lines.extend(f"{owner}={str(plan['owners'][owner]).lower()}" for owner in OWNER_NAMES)
+    lines.append(f"svg_parity={str(plan['svg_parity']).lower()}")
     with path.open("a", encoding="utf-8", newline="\n") as output:
         output.write("\n".join(lines) + "\n")
 
@@ -612,6 +936,11 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--repository", type=Path, default=Path.cwd())
     plan_parser.add_argument("--select-all", action="store_true")
     plan_parser.add_argument(
+        "--select-svg-parity",
+        action="store_true",
+        help="select the full SVG DOM and browser parity lane for an explicit lifecycle",
+    )
+    plan_parser.add_argument(
         "--select-owner",
         action="append",
         choices=OWNER_NAMES,
@@ -632,6 +961,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     if args.command == "plan":
         if args.select_all and args.select_owner:
             raise SystemExit("--select-all and --select-owner are mutually exclusive")
+        if args.select_svg_parity and not (args.select_all or args.select_owner):
+            raise SystemExit("--select-svg-parity requires an explicit owner lifecycle")
         if args.select_all:
             plan = plan_all(base=args.base, head=args.head, reason=args.reason)
         elif args.select_owner:
@@ -640,6 +971,7 @@ def main(argv: Iterable[str] | None = None) -> int:
                 head=args.head,
                 selected=args.select_owner,
                 reason=args.reason,
+                svg_parity=args.select_svg_parity,
             )
         else:
             plan = plan_repository_diff(args.repository, args.base, args.head)

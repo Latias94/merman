@@ -4,15 +4,16 @@ use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
-fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
+fn radar_css<I>(diagram_id: I, theme: &RadarTheme) -> String
+where
+    I: Copy + std::fmt::Display,
+{
     // Keep `:root` last (matches upstream Mermaid radar SVG baselines).
-    let id = escape_xml(diagram_id);
-
     let mut out = String::new();
     let _ = write!(
         &mut out,
         r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
-        id, theme.font_family_css, theme.base_font_size_css, theme.text_color
+        diagram_id, theme.font_family_css, theme.base_font_size_css, theme.text_color
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -20,52 +21,56 @@ fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
     let _ = write!(
         &mut out,
         r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
+        diagram_id, diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        id, theme.error_bkg_color, id, theme.error_text_color, theme.error_text_color
+        diagram_id,
+        theme.error_bkg_color,
+        diagram_id,
+        theme.error_text_color,
+        theme.error_text_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
+        diagram_id, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        id, theme.line_color, theme.line_color, id, theme.line_color
+        diagram_id, theme.line_color, theme.line_color, diagram_id, theme.line_color
     );
     let _ = write!(
         &mut out,
         r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
-        id, theme.font_family_css, theme.base_font_size_css, id
+        diagram_id, theme.font_family_css, theme.base_font_size_css, diagram_id
     );
 
     let _ = write!(
         &mut out,
         r#"#{} .radarTitle{{font-size:{};color:{};dominant-baseline:hanging;text-anchor:middle;}}"#,
-        id, theme.title_font_size_css, theme.title_color
+        diagram_id, theme.title_font_size_css, theme.title_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .radarAxisLine{{stroke:{};stroke-width:{};}}"#,
-        id,
+        diagram_id,
         theme.axis_color,
         fmt(theme.axis_stroke_width)
     );
     let _ = write!(
         &mut out,
         r#"#{} .radarAxisLabel{{font-size:{}px;color:{};}}"#,
-        id,
+        diagram_id,
         fmt(theme.axis_label_font_size),
         theme.axis_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .radarGraticule{{fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}"#,
-        id,
+        diagram_id,
         theme.graticule_color,
         fmt(theme.graticule_opacity),
         theme.graticule_color,
@@ -74,7 +79,7 @@ fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
     let _ = write!(
         &mut out,
         r#"#{} .radarLegendText{{text-anchor:start;font-size:{}px;dominant-baseline:hanging;}}"#,
-        id,
+        diagram_id,
         fmt(theme.legend_font_size)
     );
 
@@ -82,14 +87,14 @@ fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
         let _ = write!(
             &mut out,
             r#"#{} .radarCurve-{}{{color:{};fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}#{} .radarLegendBox-{}{{fill:{};fill-opacity:{};stroke:{};}}"#,
-            id,
+            diagram_id,
             i,
             c,
             c,
             fmt(theme.curve_opacity),
             c,
             fmt(theme.curve_stroke_width),
-            id,
+            diagram_id,
             i,
             c,
             fmt(theme.curve_opacity),
@@ -100,7 +105,7 @@ fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
     let _ = write!(
         &mut out,
         r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, theme.font_family_css
+        diagram_id, theme.font_family_css
     );
 
     out
@@ -113,8 +118,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("radar");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("radar");
 
     let has_acc_title = model
         .acc_title
@@ -158,12 +162,13 @@ pub(crate) fn render_radar_diagram_svg_model(
                 .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.svg_width)),
                 root_chrome,
             )?;
+    options.checkpoint_emit()?;
 
     if has_acc_title {
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(model.acc_title.as_deref().unwrap_or_default())
         );
     }
@@ -171,7 +176,7 @@ pub(crate) fn render_radar_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(model.acc_descr.as_deref().unwrap_or_default())
         );
     }
@@ -180,6 +185,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     let css = radar_css(diagram_id, &theme);
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str("<g/>");
+    options.checkpoint_emit()?;
 
     let _ = write!(
         &mut out,
@@ -322,6 +328,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

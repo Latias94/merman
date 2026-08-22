@@ -2,6 +2,8 @@ use crate::cli::{ParseCliArgs, RuntimeCliArgs, RuntimePolicyKind};
 use crate::error::CliError;
 use crate::input::InputLimit;
 use crate::io::read_named_text_file;
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use crate::io::read_named_text_file_controlled;
 use crate::resources::ResolvedResourcePolicy;
 use merman::runtime::RuntimePolicy;
 use merman::{Engine, MermaidConfig, ParseOptions};
@@ -11,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 #[cfg(feature = "svg")]
-use crate::cli::{MathRendererKind, RenderCliArgs, TextMeasurerKind};
+use crate::cli::{MathRendererKind, TextMeasurerKind};
 #[cfg(feature = "svg")]
 use crate::invocation::ResolvedRenderOptions;
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -34,7 +36,7 @@ pub(crate) struct ConfiguredRenderer {
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 impl ConfiguredRenderer {
-    #[cfg(feature = "svg")]
+    #[cfg(all(feature = "svg", feature = "icons"))]
     pub(crate) fn with_svg_environment(mut self, environment: SvgEnvironment) -> Self {
         self.svg.environment = environment;
         self
@@ -147,6 +149,7 @@ pub(crate) fn site_config_for(
         parse.theme.as_deref(),
         parse.config_file.as_deref(),
         resources,
+        |path, limit| read_named_text_file(path, "configuration file", limit),
     )
 }
 
@@ -154,11 +157,13 @@ pub(crate) fn site_config_for(
 pub(crate) fn site_config_for_resolved(
     parse: &ResolvedParseOptions,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<MermaidConfig, CliError> {
     site_config_from_parts(
         parse.theme.as_deref(),
         parse.config_file.as_deref(),
         resources,
+        |path, limit| read_named_text_file_controlled(path, "configuration file", limit, control),
     )
 }
 
@@ -166,6 +171,7 @@ fn site_config_from_parts(
     theme: Option<&str>,
     config_file: Option<&Path>,
     resources: &ResolvedResourcePolicy,
+    mut read_config: impl FnMut(&Path, InputLimit) -> Result<String, CliError>,
 ) -> Result<MermaidConfig, CliError> {
     let mut cfg = MermaidConfig::empty_object();
 
@@ -174,14 +180,11 @@ fn site_config_from_parts(
     }
 
     if let Some(path) = config_file {
-        let text = read_named_text_file(
-            path,
-            "configuration file",
-            InputLimit::new(
-                crate::resources::CliResourceLimitId::MaxConfigBytes.as_str(),
-                resources.files().config_bytes,
-            ),
-        )?;
+        let limit = InputLimit::new(
+            crate::resources::CliResourceLimitId::MaxConfigBytes.as_str(),
+            resources.files().config_bytes,
+        );
+        let text = read_config(path, limit)?;
         let value: Value = serde_json::from_str(&text).map_err(|error| {
             CliError::InvalidInput(format!(
                 "JSON error while parsing configuration file {}: {error}",
@@ -213,33 +216,15 @@ fn parse_options_from_suppress_errors(suppress_errors: bool) -> ParseOptions {
 }
 
 #[cfg(feature = "svg")]
-pub(crate) fn renderer_for(
-    parse: &ParseCliArgs,
-    render: &RenderCliArgs,
-    icon_registry: Option<IconRegistry>,
-    resources: &ResolvedResourcePolicy,
-) -> Result<ConfiguredRenderer, CliError> {
-    let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?;
-    let site_config = site_config_for(parse, resources)?;
-    renderer_from_config(
-        runtime,
-        site_config,
-        parse_options(parse),
-        RendererInputs::from_cli(render),
-        icon_registry,
-        resources,
-    )
-}
-
-#[cfg(feature = "svg")]
 pub(crate) fn renderer_for_resolved(
     parse: &ResolvedParseOptions,
     render: &ResolvedRenderOptions,
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<ConfiguredRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
-    let site_config = site_config_for_resolved(parse, resources)?;
+    let site_config = site_config_for_resolved(parse, resources, control)?;
     renderer_from_config(
         runtime,
         site_config,
@@ -255,9 +240,10 @@ pub(crate) fn rustdoc_renderer_for_resolved(
     parse: &ResolvedParseOptions,
     render: &ResolvedRenderOptions,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<ConfiguredRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
-    let mut site_config = site_config_for_resolved(parse, resources)?;
+    let mut site_config = site_config_for_resolved(parse, resources, control)?;
     let mut secure = merman::generated::default_site_config()
         .as_value()
         .get("secure")
@@ -296,18 +282,6 @@ struct RendererInputs<'a> {
 
 #[cfg(feature = "svg")]
 impl<'a> RendererInputs<'a> {
-    fn from_cli(render: &'a RenderCliArgs) -> Self {
-        Self {
-            presentation_profile: render.presentation_profile,
-            text_measurer: render.text_measurer.unwrap_or(TextMeasurerKind::Vendored),
-            math_renderer: render.math_renderer,
-            container_width: render.container_width,
-            container_height: render.container_height,
-            svg_id: render.svg_id.as_deref(),
-            hand_drawn_seed: render.hand_drawn_seed,
-        }
-    }
-
     fn from_resolved(render: &'a ResolvedRenderOptions) -> Self {
         Self {
             presentation_profile: render.presentation_profile,
@@ -388,9 +362,10 @@ fn renderer_from_config(
 pub(crate) fn ascii_renderer_for_resolved(
     parse: &ResolvedParseOptions,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<ConfiguredRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
-    let site_config = site_config_for_resolved(parse, resources)?;
+    let site_config = site_config_for_resolved(parse, resources, control)?;
     let renderer = merman::Renderer::new()
         .with_engine(engine_from_config(runtime, site_config))
         .with_parse_options(parse_options_for_resolved(parse))
@@ -431,17 +406,40 @@ mod tests {
     }
 
     #[cfg(feature = "svg")]
+    fn default_resolved_parse() -> ResolvedParseOptions {
+        ResolvedParseOptions {
+            suppress_errors: false,
+            config_file: None,
+            theme: None,
+            runtime: ResolvedRuntimeOptions {
+                runtime_policy: RuntimePolicy::deterministic(),
+            },
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    fn resolved_render(math_renderer: Option<MathRendererKind>) -> ResolvedRenderOptions {
+        ResolvedRenderOptions {
+            presentation_profile: None,
+            text_measurer: TextMeasurerKind::Vendored,
+            math_renderer,
+            container_width: None,
+            container_height: None,
+            svg_id: None,
+            hand_drawn_seed: None,
+        }
+    }
+
+    #[cfg(feature = "svg")]
     #[test]
     fn none_math_renderer_disables_the_compiled_default() {
-        let render = RenderCliArgs {
-            math_renderer: Some(MathRendererKind::None),
-            ..RenderCliArgs::default()
-        };
-        let renderer = renderer_for(
-            &ParseCliArgs::default(),
-            &render,
+        let control = merman::OperationControl::new();
+        let renderer = renderer_for_resolved(
+            &default_resolved_parse(),
+            &resolved_render(Some(MathRendererKind::None)),
             None,
             &default_resources(),
+            &control,
         )
         .expect("CLI renderer");
         let error = renderer
@@ -465,11 +463,13 @@ mod tests {
     #[cfg(all(feature = "svg", feature = "math"))]
     #[test]
     fn unspecified_math_renderer_uses_the_compiled_default() {
-        let renderer = renderer_for(
-            &ParseCliArgs::default(),
-            &RenderCliArgs::default(),
+        let control = merman::OperationControl::new();
+        let renderer = renderer_for_resolved(
+            &default_resolved_parse(),
+            &resolved_render(None),
             None,
             &default_resources(),
+            &control,
         )
         .expect("CLI renderer");
         let output = renderer

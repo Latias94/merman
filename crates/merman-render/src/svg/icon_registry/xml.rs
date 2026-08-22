@@ -1,3 +1,4 @@
+use super::IconIdScope;
 use super::error::{IconRegistryBuildError, IconRegistryBuildErrorKind};
 use super::limits::{IconRegistryBuildLimits, IconRegistryResourceLimitId};
 use quick_xml::XmlVersion;
@@ -172,9 +173,9 @@ impl ValidatedIconBody {
         self.scoped_len
     }
 
-    pub(super) fn scope(&self, scope: &str) -> Result<String, IconRegistryBuildError> {
+    pub(super) fn scope(&self, scope: IconIdScope) -> Result<String, IconRegistryBuildError> {
         let mut output = String::with_capacity(self.scoped_len);
-        let scope_hash = stable_hash64(scope);
+        let scope_hash = scope.hash();
         let mut source_offset = 0usize;
 
         for edit in &self.edits {
@@ -221,12 +222,12 @@ impl ValidatedIconBody {
 
     pub(super) fn scope_transformed(
         &self,
-        scope: &str,
+        scope: IconIdScope,
         wrapper_start: &str,
         wrapper_end: &str,
     ) -> Result<String, IconRegistryBuildError> {
         let projected = self.transformed_scoped_len(wrapper_start.len(), wrapper_end.len())?;
-        let scope_hash = stable_hash64(scope);
+        let scope_hash = scope.hash();
         let mut output = String::with_capacity(projected);
 
         if self.defs_content_scoped_len > 0 {
@@ -1890,15 +1891,6 @@ fn decimal_digits(mut value: usize) -> usize {
     digits
 }
 
-fn stable_hash64(value: &str) -> u64 {
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in value.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
-}
-
 fn invalid_xml_error(pack_index: usize, message: &'static str) -> IconRegistryBuildError {
     IconRegistryBuildError::new(
         IconRegistryBuildErrorKind::InvalidXml,
@@ -1942,12 +1934,19 @@ fn limit_error(
 mod tests {
     use super::*;
 
+    fn scope(value: &str) -> IconIdScope {
+        super::super::icon_id_scope_for_test(value)
+    }
+
     fn parse(body: &str) -> Result<ValidatedIconBody, IconRegistryBuildError> {
         ValidatedIconBody::parse(body.to_owned(), 7, &IconRegistryBuildLimits::fixed())
     }
 
     fn scoped_id(scope: &str, index: usize) -> String {
-        format!("{SCOPED_ID_PREFIX}{:016x}{index}", stable_hash64(scope))
+        format!(
+            "{SCOPED_ID_PREFIX}{:016x}{index}",
+            self::scope(scope).hash()
+        )
     }
 
     #[test]
@@ -1957,9 +1956,9 @@ mod tests {
         )
         .expect("valid icon body");
 
-        let first = body.scope("diagram-a").expect("scope succeeds");
-        let repeated = body.scope("diagram-a").expect("scope succeeds");
-        let other = body.scope("diagram-b").expect("scope succeeds");
+        let first = body.scope(scope("diagram-a")).expect("scope succeeds");
+        let repeated = body.scope(scope("diagram-a")).expect("scope succeeds");
+        let other = body.scope(scope("diagram-b")).expect("scope succeeds");
 
         assert_eq!(first, repeated);
         assert_ne!(first, other);
@@ -1977,7 +1976,7 @@ mod tests {
         ))
         .expect("valid icon body");
         let transformed = body
-            .scope_transformed("diagram-a", "<g>", "</g>")
+            .scope_transformed(scope("diagram-a"), "<g>", "</g>")
             .expect("XML-planned transform assembly succeeds");
         let paint = scoped_id("diagram-a", 0);
 
@@ -1998,7 +1997,7 @@ mod tests {
         let body = parse("<defs><defs><path/></defs></defs><circle/>")
             .expect("nested SVG defs are valid XML");
         let transformed = body
-            .scope_transformed("diagram-a", "<g>", "</g>")
+            .scope_transformed(scope("diagram-a"), "<g>", "</g>")
             .expect("outermost defs are extracted once");
 
         assert_eq!(
@@ -2019,7 +2018,7 @@ mod tests {
         let body = ValidatedIconBody::parse(source, 7, &limits)
             .expect("the maximum element count remains transformable");
         let transformed = body
-            .scope_transformed("diagram-a", "<g>", "</g>")
+            .scope_transformed(scope("diagram-a"), "<g>", "</g>")
             .expect("many defs are assembled without repeated body copies");
         let expected = format!("<defs>{}</defs><g></g>", "<path/>".repeat(defs_count));
 
@@ -2081,12 +2080,12 @@ mod tests {
         .expect("valid icon body");
         assert!(body.uses_xlink());
 
-        let scope = "diagram-node";
-        let scoped = body.scope(scope).expect("scope succeeds");
-        let clip = scoped_id(scope, 0);
-        let paint = scoped_id(scope, 1);
-        let shape = scoped_id(scope, 2);
-        let label = scoped_id(scope, 3);
+        let scope_name = "diagram-node";
+        let scoped = body.scope(scope(scope_name)).expect("scope succeeds");
+        let clip = scoped_id(scope_name, 0);
+        let paint = scoped_id(scope_name, 1);
+        let shape = scoped_id(scope_name, 2);
+        let label = scoped_id(scope_name, 3);
 
         assert!(scoped.contains(&format!(r#"id="{clip}""#)), "{scoped}");
         assert!(scoped.contains(&format!(r#"id="{paint}""#)), "{scoped}");
@@ -2122,7 +2121,7 @@ mod tests {
     fn namespaced_attributes_are_preserved_verbatim() {
         let source = r##"<g xmlns:meta="urn:test" meta:id="shape" meta:href="#shape" meta:begin="shape.end" meta:aria-controls="shape" meta:fill="url(#shape)"><path id="shape"/><use href="#shape"/></g>"##;
         let body = parse(source).expect("declared metadata namespace is valid");
-        let scoped = body.scope("diagram-a").expect("scope succeeds");
+        let scoped = body.scope(scope("diagram-a")).expect("scope succeeds");
 
         assert!(scoped.contains(r#"meta:id="shape""#), "{scoped}");
         assert!(scoped.contains(r##"meta:href="#shape""##), "{scoped}");
@@ -2166,7 +2165,7 @@ mod tests {
         )
         .expect("standard XML references are accepted");
         let id = scoped_id("diagram-a", 0);
-        let scoped = body.scope("diagram-a").expect("scope succeeds");
+        let scoped = body.scope(scope("diagram-a")).expect("scope succeeds");
 
         assert!(scoped.contains(&format!(r#"id="{id}""#)), "{scoped}");
         assert!(

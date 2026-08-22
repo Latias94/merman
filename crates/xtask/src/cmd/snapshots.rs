@@ -423,6 +423,7 @@ enum GeneratedArtifactCheck {
     EditorLanguageContract,
     LalrpopParsers,
     NativeAbi,
+    PlaygroundAsciiCapabilities,
     PlaygroundExampleCatalog,
     ResourceContract,
     ThemeSnapshot,
@@ -451,7 +452,7 @@ fn verify_lalrpop_parsers_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::LalrpopParsers]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 13] {
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 14] {
     [
         GeneratedArtifactCheck::BindingContract,
         GeneratedArtifactCheck::CapabilitySurface,
@@ -460,6 +461,7 @@ fn verify_generated_checks() -> [GeneratedArtifactCheck; 13] {
         GeneratedArtifactCheck::EditorLanguageContract,
         GeneratedArtifactCheck::LalrpopParsers,
         GeneratedArtifactCheck::NativeAbi,
+        GeneratedArtifactCheck::PlaygroundAsciiCapabilities,
         GeneratedArtifactCheck::PlaygroundExampleCatalog,
         GeneratedArtifactCheck::ResourceContract,
         GeneratedArtifactCheck::ThemeSnapshot,
@@ -479,6 +481,7 @@ impl GeneratedArtifactCheck {
             GeneratedArtifactCheck::EditorLanguageContract => "editor language contract",
             GeneratedArtifactCheck::LalrpopParsers => "checked-in LALRPOP parsers",
             GeneratedArtifactCheck::NativeAbi => "native ABI",
+            GeneratedArtifactCheck::PlaygroundAsciiCapabilities => "Playground ASCII capabilities",
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
             GeneratedArtifactCheck::ResourceContract => "resource contract",
             GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme snapshot",
@@ -541,6 +544,9 @@ fn verify_generated_artifact_check(
         }
         GeneratedArtifactCheck::LalrpopParsers => super::verify_lalrpop_parsers_artifacts(),
         GeneratedArtifactCheck::NativeAbi => super::verify_native_abi_artifacts(),
+        GeneratedArtifactCheck::PlaygroundAsciiCapabilities => {
+            super::verify_playground_ascii_capabilities_artifact()
+        }
         GeneratedArtifactCheck::PlaygroundExampleCatalog => {
             super::verify_playground_example_catalog(Vec::new()).map(|()| None)
         }
@@ -657,6 +663,16 @@ pub(crate) fn verify_web_diagram_catalog(args: Vec<String>) -> Result<(), XtaskE
 pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
     let checks = verify_generated_checks();
     verify_generated_artifact_checks(args, &checks)
+}
+
+pub(crate) fn verify_playground_ascii_capabilities(args: Vec<String>) -> Result<(), XtaskError> {
+    if !args.is_empty() {
+        return Err(XtaskError::Usage);
+    }
+    match super::verify_playground_ascii_capabilities_artifact()? {
+        Some(message) => Err(XtaskError::VerifyFailed(message)),
+        None => Ok(()),
+    }
 }
 
 pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
@@ -893,6 +909,7 @@ mod tests {
                 GeneratedArtifactCheck::EditorLanguageContract,
                 GeneratedArtifactCheck::LalrpopParsers,
                 GeneratedArtifactCheck::NativeAbi,
+                GeneratedArtifactCheck::PlaygroundAsciiCapabilities,
                 GeneratedArtifactCheck::PlaygroundExampleCatalog,
                 GeneratedArtifactCheck::ResourceContract,
                 GeneratedArtifactCheck::ThemeSnapshot,
@@ -930,6 +947,10 @@ mod tests {
             "checked-in LALRPOP parsers"
         );
         assert_eq!(GeneratedArtifactCheck::NativeAbi.label(), "native ABI");
+        assert_eq!(
+            GeneratedArtifactCheck::PlaygroundAsciiCapabilities.label(),
+            "Playground ASCII capabilities"
+        );
         assert_eq!(
             GeneratedArtifactCheck::PlaygroundExampleCatalog.label(),
             "Playground example catalog"

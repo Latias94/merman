@@ -12,7 +12,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let mut timings = super::timing::RenderTimings::default();
     let total_timer = timing.start();
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
 
     let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
@@ -50,16 +50,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         state_render_settings.hand_drawn_seed,
         "render.state.roughjs",
     );
-    #[cfg(test)]
-    let rough_lifecycle_probe = StateRoughLifecycleOperationProbe::new(
-        state_render_settings.hand_drawn_seed,
-        hand_drawn_seed.seed().number(),
-        !hand_drawn_seed.seed().may_use_math_random(),
-    );
-    #[cfg(test)]
-    let rough_cache =
-        StateRoughCache::with_release_tracker(rough_lifecycle_probe.release_tracker());
-    #[cfg(not(test))]
     let rough_cache = StateRoughCache::default();
 
     let has_acc_title = model
@@ -111,7 +101,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
     let mut ctx = StateRenderCtx {
-        diagram_id: diagram_id.to_string(),
+        diagram_id,
         diagram_look: state_render_settings.diagram_look,
         hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
@@ -135,8 +125,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         text_style,
         theme_defaults: StateThemeDefaults::from_config(effective_config),
         rough_cache,
-        #[cfg(test)]
-        rough_lifecycle_probe,
     };
 
     fn compute_state_nested_roots(ctx: &StateRenderCtx<'_>) -> std::collections::BTreeSet<String> {
@@ -288,6 +276,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     let css = state_css(diagram_id, model, effective_config);
+    options.checkpoint_emit()?;
 
     let estimated_svg_bytes = 2048usize
         + css.len()
@@ -313,12 +302,13 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         root_svg::DeferredRootSpec::responsive(),
         root_chrome,
     )?;
+    options.checkpoint_emit()?;
 
     if has_acc_title {
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{}">{}"#,
-            escape_xml_display(diagram_id),
+            diagram_id,
             escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
@@ -327,7 +317,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml_display(diagram_id),
+            diagram_id,
             escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");
@@ -338,6 +328,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
     state_markers(&mut out, diagram_id, effective_config);
+    options.checkpoint_emit()?;
 
     // `svg.getBBox()` does not include `<style>` and typically excludes non-rendered `<defs>`
     // content from the rendered bbox. Scan only the rendered graph payload to reduce overhead
@@ -348,15 +339,16 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         &mut out,
         &ctx,
         None,
-        origin_x,
-        origin_y,
+        (origin_x, origin_y),
+        options,
         timing,
         &mut detail,
-    );
+    )?;
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
     state_root_defs(&mut out, diagram_id, effective_config);
+    options.checkpoint_emit()?;
     out.push_str(TITLE_PLACEHOLDER_COMMENT);
     out.push_str("</svg>\n");
 
@@ -453,14 +445,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             detail.self_loop_placeholders,
         );
     }
-    #[cfg(test)]
-    {
-        let completed = root_document.complete(out)?;
-        state_rough_lifecycle_after_root(&completed)?;
-        ctx.rough_lifecycle_probe.mark_success();
-        Ok(completed)
-    }
-    #[cfg(not(test))]
     root_document.complete(out)
 }
 
@@ -468,12 +452,14 @@ fn render_state_root(
     out: &mut String,
     ctx: &StateRenderCtx<'_>,
     root: Option<&str>,
-    parent_origin_x: f64,
-    parent_origin_y: f64,
+    parent_origin: (f64, f64),
+    options: &SvgExecution<'_>,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
-) {
+) -> Result<()> {
     details.root_calls += 1;
+    options.checkpoint_emit()?;
+    let (parent_origin_x, parent_origin_y) = parent_origin;
 
     // Mermaid's dagre-wrapper uses a fixed graph margin (`marginx/marginy=8`). For nested state
     // roots (extracted cluster graphs), Mermaid keeps the root cluster frame at x/y=8 in the
@@ -515,6 +501,7 @@ fn render_state_root(
     out.push_str(r#"<g class="clusters">"#);
     if let Some(root_id) = root {
         render_state_cluster(out, ctx, root_id, origin_x, origin_y);
+        options.checkpoint_emit()?;
     }
 
     for &cluster_id in &ctx.node_order {
@@ -540,6 +527,7 @@ fn render_state_root(
             continue;
         }
         render_state_cluster(out, ctx, cluster_id, origin_x, origin_y);
+        options.checkpoint_emit()?;
     }
 
     for &cluster_id in &ctx.node_order {
@@ -558,7 +546,7 @@ fn render_state_root(
         if node.shape != "noteGroup" {
             continue;
         }
-        let note_owner = cluster_id.strip_suffix("----parent").unwrap_or(cluster_id);
+        let note_owner = state_note_owner_id(cluster_id);
         if ctx.hidden_prefixes.iter().any(|p| p == note_owner) {
             continue;
         }
@@ -585,12 +573,13 @@ fn render_state_root(
         let _ = write!(
             out,
             r#"<g id="{}" class="note-cluster"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
-            escape_xml_display(&dom_id),
+            dom_id,
             fmt_display(x),
             fmt_display(y),
             fmt_display(cluster.width.max(1.0)),
             fmt_display(cluster.height.max(1.0))
         );
+        options.checkpoint_emit()?;
     }
     out.push_str("</g>");
     drop(_g_clusters);
@@ -613,6 +602,7 @@ fn render_state_root(
                 continue;
             }
             render_state_edge_path(out, ctx, edge, origin_x, origin_y);
+            options.checkpoint_emit()?;
         }
     }
     out.push_str("</g>");
@@ -636,6 +626,7 @@ fn render_state_root(
                 continue;
             }
             render_state_edge_label(out, ctx, edge, origin_x, origin_y);
+            options.checkpoint_emit()?;
         }
     }
     out.push_str("</g>");
@@ -676,6 +667,7 @@ fn render_state_root(
                 continue;
             }
             render_state_node_svg(out, ctx, id, origin_x, origin_y, timing, details);
+            options.checkpoint_emit()?;
         }
         if let Some(s) = leaf_start {
             details.leaf_nodes += s.elapsed();
@@ -688,11 +680,12 @@ fn render_state_root(
             out,
             ctx,
             Some(child_root),
-            origin_x,
-            origin_y,
+            (origin_x, origin_y),
+            options,
             timing,
             details,
-        );
+        )?;
+        options.checkpoint_emit()?;
         if let Some(s) = nested_start {
             details.nested_roots += s.elapsed();
         }
@@ -749,6 +742,7 @@ fn render_state_root(
                         fmt_display(cy),
                     );
                 }
+                options.checkpoint_emit()?;
             }
         }
         drop(_g_placeholders);
@@ -756,6 +750,7 @@ fn render_state_root(
 
     out.push_str("</g>");
     out.push_str("</g>");
+    Ok(())
 }
 
 fn render_state_cluster(
@@ -797,7 +792,7 @@ fn render_state_cluster(
             out,
             r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
             escape_attr(class),
-            escape_attr(&dom_id),
+            dom_id.attr(),
             escape_attr(data_look),
             fmt(x),
             fmt(y),
@@ -820,7 +815,7 @@ fn render_state_cluster(
             out,
             r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             escape_attr(class),
-            escape_attr(&dom_id),
+            dom_id.attr(),
             escape_attr(cluster_id),
             escape_attr(data_look),
             fmt(x),
@@ -843,7 +838,7 @@ fn render_state_cluster(
             out,
             r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             escape_attr(class),
-            escape_attr(&dom_id),
+            dom_id.attr(),
             escape_attr(cluster_id),
             escape_attr(data_look),
             fmt(x),

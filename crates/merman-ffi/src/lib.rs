@@ -8,10 +8,10 @@
 
 use merman::OperationControl;
 use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
-    BindingEngineServices, BindingError, BindingErrorKind, BindingIconRegistryErrorDetails,
-    BindingOperationRequest, BindingResourceErrorDetails, BindingStatus, OperationKey,
-    ValidatedArtifactContract,
+    BindingDiagnosticErrorDetails, BindingEngine, BindingEngineAdmission,
+    BindingEngineAdmissionError, BindingEngineAdmissionMode, BindingEngineServices, BindingError,
+    BindingErrorKind, BindingIconRegistryErrorDetails, BindingOperationRequest,
+    BindingResourceErrorDetails, BindingStatus, OperationKey, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
@@ -49,6 +49,7 @@ struct NativeFailure {
 #[derive(Debug, Default)]
 struct NativeFailureDetails {
     resource: Option<BindingResourceErrorDetails>,
+    diagnostic: Option<BindingDiagnosticErrorDetails>,
     icon_registry: Option<BindingIconRegistryErrorDetails>,
     cancellation: Option<NativeCancellationDetails>,
 }
@@ -366,7 +367,13 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
     if let Some(failure_details) = failure.details.as_deref() {
         let mut details = serde_json::Map::new();
         if let Some(resource) = failure_details.resource {
-            details.insert("resource".to_string(), serde_json::json!(resource));
+            details.insert(
+                "resource".to_string(),
+                serde_json::json!(resource.js_safe_json()),
+            );
+        }
+        if let Some(diagnostic) = failure_details.diagnostic.as_ref() {
+            details.insert("diagnostic".to_string(), serde_json::json!(diagnostic));
         }
         if let Some(icon_registry) = failure_details.icon_registry.as_ref() {
             details.insert(
@@ -421,6 +428,7 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         BindingStatus::Cancelled => MERMAN_NATIVE_STATUS_CANCELLED,
     };
     let resource = error.resource_details();
+    let diagnostic = error.diagnostic_details().cloned();
     let icon_registry = error.icon_registry_details().cloned();
     let cancellation = error
         .cancellation_details()
@@ -435,9 +443,14 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         None,
         error.message(),
     );
-    if resource.is_some() || icon_registry.is_some() || cancellation.is_some() {
+    if resource.is_some()
+        || diagnostic.is_some()
+        || icon_registry.is_some()
+        || cancellation.is_some()
+    {
         failure.details = Some(Box::new(NativeFailureDetails {
             resource,
+            diagnostic,
             icon_registry,
             cancellation,
         }));
@@ -2726,6 +2739,40 @@ mod tests {
         assert_eq!(
             payload["details"]["resource"]["cause"],
             "arithmetic_overflow"
+        );
+        assert_eq!(
+            payload["details"]["resource"]["actual"],
+            u64::MAX.to_string()
+        );
+        assert_eq!(payload["details"]["resource"]["max"], 800_000);
+    }
+
+    #[test]
+    fn native_error_json_preserves_structured_diagnostic_details() {
+        let error = BindingError::new(BindingStatus::ParseError, "invalid edge")
+            .with_diagnostic_details(
+                BindingDiagnosticErrorDetails::new("flowchart.edge.invalid")
+                    .with_span(merman_bindings_core::BindingDiagnosticSpan::new(
+                        3, 8, "exact",
+                    ))
+                    .with_field("edge")
+                    .with_diagram_type("flowchart"),
+            );
+        let failure = native_failure_from_binding(error);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&native_error_json(&failure)).expect("native error JSON");
+
+        assert_eq!(
+            payload["details"]["diagnostic"]["code"],
+            "flowchart.edge.invalid"
+        );
+        assert_eq!(payload["details"]["diagnostic"]["span"]["start"], 3);
+        assert_eq!(payload["details"]["diagnostic"]["span"]["end"], 8);
+        assert_eq!(payload["details"]["diagnostic"]["span"]["kind"], "exact");
+        assert_eq!(payload["details"]["diagnostic"]["field"], "edge");
+        assert_eq!(
+            payload["details"]["diagnostic"]["diagram_type"],
+            "flowchart"
         );
     }
 

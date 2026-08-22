@@ -19,12 +19,8 @@ fn fmt_allow_nan(v: f64) -> String {
     fmt_string(v)
 }
 
-fn gantt_dom_id(diagram_id: &str, raw_id: &str) -> String {
-    if diagram_id.is_empty() {
-        raw_id.to_string()
-    } else {
-        format!("{diagram_id}-{raw_id}")
-    }
+fn gantt_dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
+    format!("{diagram_id}-{raw_id}")
 }
 
 fn gantt_insert_before_width(base: &str, insert: &str) -> String {
@@ -119,8 +115,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("merman");
 
     let w = layout.width.max(1.0);
     let h = layout.height.max(1.0);
@@ -154,12 +149,13 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Gantt, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(title)
         );
     }
@@ -167,7 +163,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(descr)
         );
     }
@@ -175,6 +171,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let css = gantt_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
+    options.checkpoint_emit()?;
 
     let (min_ms, max_ms) = match (
         layout.tasks.iter().map(|t| t.start_ms).min(),
@@ -233,6 +230,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                     cx = fmt_allow_nan(cx),
                     cy = fmt_allow_nan(cy),
                 );
+                options.checkpoint_emit()?;
             }
             out.push_str("</g>");
         }
@@ -301,6 +299,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 r#" id="{}""#,
                 escape_attr(&gantt_dom_id(diagram_id, &t.bar.id))
             );
+            options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
                 r#" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}" transform-origin="{origin}" class="{cls}"/>"#,
@@ -374,6 +373,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 x = fmt(t.label.x),
                 y = fmt(t.label.y),
             );
+            options.checkpoint_emit()?;
             if preserve_task_text_height {
                 let _ = write!(&mut out, r#" text-height="{}""#, fmt(layout.bar_height));
             }
@@ -466,5 +466,6 @@ pub(crate) fn render_gantt_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }

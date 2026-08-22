@@ -323,9 +323,9 @@ impl KanbanDb {
                 is_group: true,
                 parent_id: None,
                 ticket: section.ticket.clone(),
-                priority: None,
-                assigned: None,
-                icon: None,
+                priority: section.priority.clone(),
+                assigned: section.assigned.clone(),
+                icon: section.icon.clone(),
                 compatibility: KanbanRenderNodeCompatibility {
                     level: section.level,
                     width: section.width,

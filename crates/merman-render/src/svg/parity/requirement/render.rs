@@ -31,13 +31,16 @@ fn requirement_color_indices(
     indices
 }
 
-fn requirement_color_css(
-    diagram_id: &str,
+fn requirement_color_css<I>(
+    diagram_id: I,
     data_look: &str,
     border_colors: &[String],
     background_colors: &[String],
     theme_color_limit: usize,
-) -> String {
+) -> String
+where
+    I: Copy + std::fmt::Display,
+{
     let mut out = String::new();
     for index in 0..theme_color_limit {
         let Some(border_color) = border_colors.get(index) else {
@@ -50,12 +53,12 @@ fn requirement_color_css(
         let _ = write!(
             &mut out,
             r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(data_look),
             index,
             border_color,
             fill,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(data_look),
             index,
             border_color,
@@ -65,12 +68,15 @@ fn requirement_color_css(
     out
 }
 
-fn insert_requirement_color_css(css: &mut String, diagram_id: &str, color_css: &str) {
+fn insert_requirement_color_css<I>(css: &mut String, diagram_id: I, color_css: &str)
+where
+    I: SvgDiagramIdValue,
+{
     if color_css.is_empty() {
         return;
     }
 
-    let escaped_id = escape_xml(diagram_id);
+    let escaped_id = diagram_id.semantic_value();
     let family_rule = format!("#{escaped_id} marker");
     let root_rule = format!("#{escaped_id} :root");
     let insertion_point = css
@@ -91,10 +97,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let (layout, prepared_nodes, prepared_edges) = prepared.render_parts();
     let effective_config = sanitize_config.as_value();
     let label_measurements = prepared.label_measurements_for_render(effective_config, measurer);
-
-    fn requirement_marker_id(diagram_id: &str, suffix: &str) -> String {
-        format!("{diagram_id}_requirement-{suffix}")
-    }
 
     fn mermaid_markdown_to_html(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
         let decoded = raw
@@ -311,7 +313,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         )
     }
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
+    let diagram_id = options.diagram_id_or("requirement");
     let render_settings =
         crate::requirement::RequirementConfigView::new(effective_config).render_settings();
     let look = render_settings.look;
@@ -322,11 +324,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let background_colors = theme.string_array("bkgColorArray");
     let theme_color_limit = requirement_theme_color_limit(effective_config);
     let color_indices = requirement_color_indices(model);
-    let node_id_prefix = if diagram_id.is_empty() {
-        String::new()
-    } else {
-        format!("{}-", diagram_id)
-    };
+    let has_diagram_id = !diagram_id.semantic_str().is_empty();
 
     let req_by_id: std::collections::HashMap<&str, _> = model
         .requirements
@@ -477,12 +475,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
         .map(str::trim)
         .filter(|t| !t.is_empty())
     {
-        let title_id = format!("chart-title-{diagram_id}");
-        aria_labelledby = Some(title_id.clone());
+        aria_labelledby = Some(format!("chart-title-{diagram_id}"));
         let _ = write!(
             &mut a11y_nodes,
-            r#"<title id="{}">{}</title>"#,
-            escape_xml(&title_id),
+            r#"<title id="chart-title-{}">{}</title>"#,
+            diagram_id,
             escape_xml(t)
         );
     }
@@ -492,12 +489,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
         .map(str::trim)
         .filter(|d| !d.is_empty())
     {
-        let desc_id = format!("chart-desc-{diagram_id}");
-        aria_describedby = Some(desc_id.clone());
+        aria_describedby = Some(format!("chart-desc-{diagram_id}"));
         let _ = write!(
             &mut a11y_nodes,
-            r#"<desc id="{}">{}</desc>"#,
-            escape_xml(&desc_id),
+            r#"<desc id="chart-desc-{}">{}</desc>"#,
+            diagram_id,
             escape_xml(d)
         );
     }
@@ -527,6 +523,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         }),
         root_chrome,
     )?;
+    options.checkpoint_emit()?;
 
     out.push_str(&a11y_nodes);
 
@@ -544,18 +541,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
     out.push_str("<g>");
 
     // Markers.
-    let contains_marker_id = requirement_marker_id(diagram_id, "requirement_containsStart");
-    let arrow_marker_id = requirement_marker_id(diagram_id, "requirement_arrowEnd");
     let _ = write!(
         &mut out,
-        r#"<defs><marker id="{id}" refX="0" refY="10" markerWidth="20" markerHeight="20" orient="auto"><g><circle cx="10" cy="10" r="9" fill="none"/><line x1="1" x2="19" y1="10" y2="10"/><line y1="1" y2="19" x1="10" x2="10"/></g></marker></defs>"#,
-        id = escape_xml(&contains_marker_id)
+        r#"<defs><marker id="{diagram_id}_requirement-requirement_containsStart" refX="0" refY="10" markerWidth="20" markerHeight="20" orient="auto"><g><circle cx="10" cy="10" r="9" fill="none"/><line x1="1" x2="19" y1="10" y2="10"/><line y1="1" y2="19" x1="10" x2="10"/></g></marker></defs>"#,
     );
     let _ = write!(
         &mut out,
-        r#"<defs><marker id="{id}" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"/></marker></defs>"#,
-        id = escape_xml(&arrow_marker_id)
+        r#"<defs><marker id="{diagram_id}_requirement-requirement_arrowEnd" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"/></marker></defs>"#,
     );
+    options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="root">"#);
     out.push_str(r#"<g class="clusters"/>"#);
@@ -591,23 +585,28 @@ pub(crate) fn render_requirement_diagram_svg_model(
         if prepared_label.marker_start {
             let _ = write!(
                 &mut marker_attr,
-                r#" marker-start="url(#{})""#,
-                escape_xml(&contains_marker_id)
+                r#" marker-start="url(#{diagram_id}_requirement-requirement_containsStart)""#,
             );
         }
         if prepared_label.marker_end {
             let _ = write!(
                 &mut marker_attr,
-                r#" marker-end="url(#{})""#,
-                escape_xml(&arrow_marker_id)
+                r#" marker-end="url(#{diagram_id}_requirement-requirement_arrowEnd)""#,
             );
         }
+
+        let dom_id = if has_diagram_id {
+            format!("{diagram_id}-{}", prepared_label.rendered_id)
+        } else {
+            prepared_label.rendered_id.clone()
+        };
+        options.checkpoint_emit()?;
 
         let _ = write!(
             &mut out,
             r#"<path d="{d}" id="{dom_id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{look_attr}{marker_attr}/>"#,
             d = escape_xml(d),
-            dom_id = escape_xml(&format!("{}{}", node_id_prefix, prepared_label.rendered_id)),
+            dom_id = escape_xml(&dom_id),
             id = escape_xml(&prepared_label.rendered_id),
             class = escape_xml(&class),
             style = escape_xml(style),
@@ -755,13 +754,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
         };
         let id_attr = if is_prototype_pollution_id(&n.id) {
             String::new()
+        } else if has_diagram_id {
+            format!(r#" id="{diagram_id}-{}""#, escape_xml(&n.id))
         } else {
-            format!(
-                r#" id="{}{}""#,
-                escape_xml(&node_id_prefix),
-                escape_xml(&n.id)
-            )
+            format!(r#" id="{}""#, escape_xml(&n.id))
         };
+        options.checkpoint_emit()?;
         let color_id_attr = color_indices
             .get(n.id.as_str())
             .and_then(|index| requirement_color_id(&border_colors, *index))
@@ -951,12 +949,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
     push_requirement_shadow_defs(&mut out, diagram_id, effective_config);
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 
 fn push_requirement_shadow_defs(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     effective_config: &serde_json::Value,
 ) {
     let flood_color = effective_config
@@ -965,14 +964,10 @@ fn push_requirement_shadow_defs(
         .filter(|theme| theme.contains("dark"))
         .map(|_| "#FFFFFF")
         .unwrap_or("#000000");
-    let diagram_id = escape_xml(diagram_id);
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id.as_str(),
-        flood_color,
-        diagram_id.as_str(),
-        flood_color
+        diagram_id, flood_color, diagram_id, flood_color
     );
 }
 

@@ -1,9 +1,9 @@
 // auto-generated: "lalrpop 0.23.1"
-// sha3: 4f3bb5d09b2771cb65955dab00bb9251825bd7cf51a8bf1e75e861b28a84bd25
+// sha3: 01f8268e19d176143086f7405bc41a7508455c809a27c88178f04d1275ed9d9b
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
-  LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
-  SubgraphHeader, TitleKind, Tok
+  FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
+  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
 };
 use crate::SourceSpan;
 #[allow(unused_extern_crates)]
@@ -19,8 +19,8 @@ mod __parse__FlowchartAst {
 
     use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
-  LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
-  SubgraphHeader, TitleKind, Tok
+  FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
+  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
 };
     use crate::SourceSpan;
     #[allow(unused_extern_crates)]
@@ -46,7 +46,7 @@ mod __parse__FlowchartAst {
         Variant10(ClickStmt),
         Variant11(LinkStyleStmt),
         Variant12(usize),
-        Variant13((Vec<Node>, Vec<Edge>)),
+        Variant13((Vec<Vec<Node>>, Vec<Vec<Edge>>)),
         Variant14(Vec<String>),
         Variant15(Option<String>),
         Variant16(Option<LabeledText>),
@@ -1417,7 +1417,7 @@ mod __parse__FlowchartAst {
     fn __pop_Variant13<
     >(
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
-    ) -> (usize, (Vec<Node>, Vec<Edge>), usize)
+    ) -> (usize, (Vec<Vec<Node>>, Vec<Vec<Edge>>), usize)
      {
         match __symbols.pop() {
             Some((__l, __Symbol::Variant13(__v), __r)) => (__l, __v, __r),
@@ -2862,10 +2862,10 @@ fn __action11<
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action12<
 >(
-    (_, c, _): (usize, (Vec<Node>, Vec<Edge>), usize),
+    (_, c, _): (usize, (Vec<Vec<Node>>, Vec<Vec<Edge>>), usize),
 ) -> Stmt
 {
-    Stmt::Chain { nodes: c.0, edges: c.1 }
+    Stmt::Chain { node_groups: c.0, edge_groups: c.1 }
 }
 
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -2890,7 +2890,7 @@ fn __action14<
     (_, g, _): (usize, Vec<Node>, usize),
 ) -> Stmt
 {
-    Stmt::Chain { nodes: g, edges: Vec::new() }
+    Stmt::Chain { node_groups: vec![g], edge_groups: Vec::new() }
 }
 
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -2970,14 +2970,15 @@ fn __action23<
 >(
     (_, start, _): (usize, Vec<Node>, usize),
     (_, segs, _): (usize, alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>, usize),
-) -> (Vec<Node>, Vec<Edge>)
+) -> (Vec<Vec<Node>>, Vec<Vec<Edge>>)
 {
     {
-    let mut nodes: Vec<Node> = start.clone();
-    let mut edges: Vec<Edge> = Vec::new();
+    let mut node_groups: Vec<Vec<Node>> = vec![start.clone()];
+    let mut edge_groups: Vec<Vec<Edge>> = Vec::new();
 
     let mut prev_group = start;
     for (eid, link, label, next_group) in segs {
+      let mut segment_edges: Vec<Edge> = Vec::new();
       for from in &prev_group {
         for to in &next_group {
           let is_last_start = from.id == prev_group[prev_group.len() - 1].id;
@@ -2991,7 +2992,7 @@ fn __action23<
           let label_type = label.as_ref().map(|l| l.kind.clone()).unwrap_or(TitleKind::Text);
           let label_span = label.as_ref().and_then(|l| l.span);
           let label_selection = label.as_ref().and_then(|l| l.selection);
-          edges.push(Edge {
+          segment_edges.push(Edge {
             from: from.id.clone(),
             to: to.id.clone(),
             id: edge_id,
@@ -3009,11 +3010,12 @@ fn __action23<
           });
         }
       }
-      nodes.extend(next_group.iter().cloned());
+      edge_groups.push(segment_edges);
+      node_groups.push(next_group.clone());
       prev_group = next_group;
     }
 
-    (nodes, edges)
+    (node_groups, edge_groups)
   }
 }
 
@@ -3107,6 +3109,8 @@ fn __action30<
     Node {
       id_span: Some(SourceSpan::new(l, r)),
       id,
+      provenance: FlowNodeProvenance::Authored,
+      syntax: FlowNodeSyntax::ExplicitDefinition,
       label: Some(text.text),
       label_type: text.kind,
       label_span,
@@ -3141,6 +3145,12 @@ fn __action31<
     Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: if cls.is_empty() {
+      FlowNodeSyntax::BareReference
+    } else {
+      FlowNodeSyntax::ExplicitDefinition
+    },
     label: None,
     label_type: TitleKind::Text,
     label_span: None,
@@ -3180,6 +3190,8 @@ fn __action32<
     Node {
       id_span: Some(SourceSpan::new(l, r)),
       id,
+      provenance: FlowNodeProvenance::Authored,
+      syntax: FlowNodeSyntax::ExplicitDefinition,
       label: Some(text.text),
       label_type: text.kind,
       label_span,
@@ -3215,6 +3227,8 @@ fn __action33<
     Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: FlowNodeSyntax::ExplicitDefinition,
     label: None,
     label_type: TitleKind::Text,
     label_span: None,
@@ -3248,6 +3262,12 @@ fn __action34<
     Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: if cls.is_empty() {
+      FlowNodeSyntax::BareReference
+    } else {
+      FlowNodeSyntax::ExplicitDefinition
+    },
     label: None,
     label_type: TitleKind::Text,
     label_span: None,

@@ -41,7 +41,31 @@ impl StateThemeDefaults {
     }
 }
 
-fn state_shadow_defs(out: &mut String, diagram_id: &str, effective_config: &serde_json::Value) {
+struct StateScopedDropShadow<'a, I> {
+    diagram_id: I,
+    source: &'a str,
+}
+
+impl<I> std::fmt::Display for StateScopedDropShadow<'_, I>
+where
+    I: Copy + std::fmt::Display,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts = self.source.split("url(#drop-shadow)");
+        formatter.write_str(parts.next().unwrap_or_default())?;
+        for suffix in parts {
+            write!(formatter, "url(#{}-drop-shadow)", self.diagram_id)?;
+            formatter.write_str(suffix)?;
+        }
+        Ok(())
+    }
+}
+
+fn state_shadow_defs(
+    out: &mut String,
+    diagram_id: SvgDiagramId<'_>,
+    effective_config: &serde_json::Value,
+) {
     let flood_color = if PresentationTheme::new(effective_config)
         .common()
         .is_dark_theme()
@@ -50,18 +74,18 @@ fn state_shadow_defs(out: &mut String, diagram_id: &str, effective_config: &serd
     } else {
         "#000000"
     };
-    let diagram_id = escape_xml(diagram_id);
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id.as_str(),
-        flood_color,
-        diagram_id.as_str(),
-        flood_color
+        diagram_id, flood_color, diagram_id, flood_color
     );
 }
 
-fn state_gradient_defs(out: &mut String, diagram_id: &str, effective_config: &serde_json::Value) {
+fn state_gradient_defs(
+    out: &mut String,
+    diagram_id: SvgDiagramId<'_>,
+    effective_config: &serde_json::Value,
+) {
     if !config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
         return;
     }
@@ -78,13 +102,12 @@ fn state_gradient_defs(out: &mut String, diagram_id: &str, effective_config: &se
         })
         .unwrap_or_else(|| gradient_start.clone());
 
-    let diagram_id = escape_xml(diagram_id);
     let gradient_start = escape_xml(&gradient_start);
     let gradient_stop = escape_xml(&gradient_stop);
     let _ = write!(
         out,
         r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
-        diagram_id.as_str(),
+        diagram_id,
         gradient_start.as_str(),
         gradient_stop.as_str()
     );
@@ -92,11 +115,10 @@ fn state_gradient_defs(out: &mut String, diagram_id: &str, effective_config: &se
 
 pub(super) fn state_markers(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     effective_config: &serde_json::Value,
 ) {
     let theme = PresentationTheme::new(effective_config).state_diagram();
-    let diagram_id = escape_xml(diagram_id);
     let transition_color = theme.transition_color.as_str();
 
     if theme.common.is_neo() {
@@ -115,18 +137,21 @@ pub(super) fn state_markers(
 
 pub(super) fn state_root_defs(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     effective_config: &serde_json::Value,
 ) {
     state_shadow_defs(out, diagram_id, effective_config);
     state_gradient_defs(out, diagram_id, effective_config);
 }
 
-pub(super) fn state_css(
-    diagram_id: &str,
+pub(super) fn state_css<I>(
+    diagram_id: I,
     model: &StateSvgModel,
     effective_config: &serde_json::Value,
-) -> String {
+) -> String
+where
+    I: Copy + std::fmt::Display,
+{
     fn normalize_decl(s: &str) -> Option<(String, String)> {
         let (k, v) = crate::mermaid_style::parse_safe_style_decl(s)?;
         let key = if k.starts_with("--") {
@@ -171,7 +196,7 @@ pub(super) fn state_css(
     let theme = PresentationTheme::new(effective_config).state_diagram();
     let ff = theme.common.font_family_css.as_str();
     let font_size = theme.common.font_size_px;
-    let id = escape_xml(diagram_id);
+    let id = diagram_id;
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();
@@ -208,10 +233,10 @@ pub(super) fn state_css(
         crate::config::config_f64_css_px(effective_config, &["themeVariables", "radius"])
             .unwrap_or(5.0)
             .max(0.0);
-    let neo_drop_shadow = theme.drop_shadow.replace(
-        "url(#drop-shadow)",
-        &format!("url(#{diagram_id}-drop-shadow)"),
-    );
+    let neo_drop_shadow = StateScopedDropShadow {
+        diagram_id,
+        source: &theme.drop_shadow,
+    };
 
     // Mirrors Mermaid 11.15 `diagrams/state/styles.js` + shared base stylesheet ordering.
     let mut css = String::new();

@@ -204,16 +204,7 @@ fn svg_xml_report_header(
     let _ = writeln!(&mut report, "# SVG Canonical XML Compare Report");
     let _ = writeln!(&mut report);
     observed_operations.write_report(&mut report);
-    let _ = writeln!(
-        &mut report,
-        "- Mode: `{}`",
-        match mode {
-            svgdom::DomMode::Strict => "strict",
-            svgdom::DomMode::Structure => "structure",
-            svgdom::DomMode::Parity => "parity",
-            svgdom::DomMode::ParityRoot => "parity-root",
-        }
-    );
+    let _ = writeln!(&mut report, "- Mode: `{}`", mode);
     let _ = writeln!(&mut report, "- Decimals: `{dom_decimals}`");
     let _ = writeln!(
         &mut report,
@@ -253,7 +244,12 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             "--check" | "--check-xml" => check = true,
             "--dom-mode" => {
                 i += 1;
-                dom_mode = args.get(i).map(|s| s.trim().to_string());
+                let mode = args
+                    .get(i)
+                    .ok_or(XtaskError::Usage)?
+                    .parse::<svgdom::DomMode>()
+                    .map_err(|_| XtaskError::Usage)?;
+                dom_mode = Some(mode.to_string());
             }
             "--dom-decimals" | "--xml-decimals" => {
                 i += 1;
@@ -299,7 +295,9 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
     let dom_mode = dom_mode.unwrap_or_else(|| "strict".to_string());
     let dom_decimals = dom_decimals.unwrap_or(3);
-    let mode = svgdom::DomMode::parse(&dom_mode);
+    let mode = dom_mode
+        .parse::<svgdom::DomMode>()
+        .map_err(|_| XtaskError::Usage)?;
 
     let text_measurement_policy = match text_measurer.as_deref().unwrap_or("vendored") {
         "deterministic" => merman::svg::TextMeasurementPolicy::deterministic(),

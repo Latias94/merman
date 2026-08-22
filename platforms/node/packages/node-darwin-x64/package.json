@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/node-darwin-x64",
-  "version": "0.8.0-alpha.5",
+  "version": "0.8.0-alpha.6",
   "description": "Native macOS x64 binary for @mermanjs/node.",
   "engines": {
     "node": ">=22.0.0"

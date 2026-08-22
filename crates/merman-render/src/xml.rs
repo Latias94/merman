@@ -29,11 +29,45 @@ pub(crate) fn strip_forbidden_xml_1_0_chars(value: &str) -> Cow<'_, str> {
 
 /// Enforces the XML 1.0 scalar-value contract while preserving an existing owned allocation when
 /// no normalization is required.
+#[cfg(test)]
 pub(crate) fn strip_forbidden_xml_1_0_chars_cow<'a>(value: Cow<'a, str>) -> Cow<'a, str> {
     match strip_forbidden_xml_1_0_chars(value.as_ref()) {
         Cow::Borrowed(_) => value,
         Cow::Owned(normalized) => Cow::Owned(normalized),
     }
+}
+
+/// Enforces the XML 1.0 scalar contract with bounded cooperative checkpoints.
+///
+/// Valid borrowed and owned inputs retain their original storage. Allocation begins only after
+/// the first forbidden scalar is observed.
+pub(crate) fn strip_forbidden_xml_1_0_chars_cow_with_checkpoints<'a, E>(
+    value: Cow<'a, str>,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
+) -> Result<Cow<'a, str>, E> {
+    const CHECKPOINT_SCALARS: usize = 64;
+
+    let mut normalized = None;
+    let mut retained_start = 0usize;
+    for (iteration, (index, ch)) in value.char_indices().enumerate() {
+        if iteration % CHECKPOINT_SCALARS == 0 {
+            checkpoint()?;
+        }
+        if is_xml_1_0_char(ch) {
+            continue;
+        }
+
+        let output = normalized.get_or_insert_with(|| String::with_capacity(value.len()));
+        output.push_str(&value[retained_start..index]);
+        retained_start = index + ch.len_utf8();
+    }
+    checkpoint()?;
+
+    let Some(mut normalized) = normalized else {
+        return Ok(value);
+    };
+    normalized.push_str(&value[retained_start..]);
+    Ok(Cow::Owned(normalized))
 }
 
 pub(crate) fn is_valid_xml_entity_reference(entity: &str) -> bool {
@@ -306,6 +340,24 @@ mod tests {
 
         assert!(matches!(normalized, Cow::Owned(_)));
         assert_eq!(normalized.as_ptr(), allocation);
+    }
+
+    #[test]
+    fn controlled_cow_normalization_stops_during_a_long_valid_span() {
+        let value = "valid".repeat(1_024);
+        let mut checkpoints = 0usize;
+
+        let result =
+            strip_forbidden_xml_1_0_chars_cow_with_checkpoints(Cow::Borrowed(&value), || {
+                checkpoints += 1;
+                if checkpoints == 2 {
+                    Err("cancelled")
+                } else {
+                    Ok(())
+                }
+            });
+
+        assert_eq!(result, Err("cancelled"));
     }
 
     #[test]

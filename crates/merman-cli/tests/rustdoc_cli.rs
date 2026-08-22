@@ -174,7 +174,12 @@ fn rustdoc_help_exposes_only_the_frozen_command_options() {
         let help = run(root.path(), &["rustdoc", command, "--help"]);
         assert!(help.status.success(), "stderr: {:?}", help.stderr);
         let help = String::from_utf8(help.stdout).expect("help should be UTF-8");
-        for expected in ["--config", "--quiet", "merman-rustdoc.toml"] {
+        for expected in [
+            "--config",
+            "--quiet",
+            "--operation-timeout-ms",
+            "merman-rustdoc.toml",
+        ] {
             assert!(
                 help.contains(expected),
                 "{command} help should contain {expected}:\n{help}"
@@ -193,6 +198,28 @@ fn rustdoc_help_exposes_only_the_frozen_command_options() {
             );
         }
     }
+}
+
+#[test]
+fn rustdoc_zero_timeout_cancels_before_config_acquisition() {
+    let root = tempfile::tempdir().expect("tempdir");
+
+    let output = run(
+        root.path(),
+        &["rustdoc", "check", "--quiet", "--operation-timeout-ms", "0"],
+    );
+
+    assert_eq!(exit_code(&output), 1, "stderr: {:?}", output.stderr);
+    assert!(output.stdout.is_empty(), "deadline must not write stdout");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    assert!(
+        stderr.contains("operation cancelled during admission: deadline_exceeded"),
+        "{stderr}"
+    );
+    assert!(
+        !root.path().join("docs/generated/merman-rustdoc").exists(),
+        "deadline must not create the managed output root"
+    );
 }
 
 #[test]

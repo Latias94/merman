@@ -1,101 +1,81 @@
 //! Operation-scoped state projected into the ASCII backend.
 //!
-//! The projection deliberately contains only the values the terminal backend needs.  Parsing,
-//! runtime policy, and cancellation ownership stay in `merman-core`; this crate owns only ASCII
-//! layout/output policy and its target-local grid budget.
+//! The projection deliberately contains only the values the terminal backend needs. Parsing,
+//! runtime policy, and cancellation ownership stay in `merman-core`; this crate owns the complete
+//! ASCII layout and output resource policy.
 
-use crate::error::{AsciiError, Result};
-use crate::options::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID;
-use merman_core::{OperationControl, OperationPhase, OperationResourceLimitExceeded};
+use crate::error::Result;
+use crate::resource::{AsciiResourcePolicy, ResourceContext, operation_terminal_error};
+use merman_core::{OperationControl, OperationPhase};
 
-/// ASCII-specific resource policy projected from the parent operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct AsciiResourcePolicy {
-    /// Maximum number of character cells a target-local canvas may allocate.
-    ///
-    /// `None` is reserved for trusted/unbounded operation profiles.  Presentation options such
-    /// as charset, color, and spacing intentionally do not live in this policy.
-    pub max_grid_cells: Option<usize>,
-}
-
-impl Default for AsciiResourcePolicy {
-    fn default() -> Self {
-        Self {
-            max_grid_cells: Some(250_000),
-        }
-    }
-}
-
-impl AsciiResourcePolicy {
-    pub const fn unbounded() -> Self {
-        Self {
-            max_grid_cells: None,
-        }
-    }
-
-    pub const fn with_max_grid_cells(max_grid_cells: usize) -> Self {
-        Self {
-            max_grid_cells: Some(max_grid_cells),
-        }
-    }
-
-    pub const fn max_grid_cells(self) -> Option<usize> {
-        self.max_grid_cells
-    }
-}
+const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
 
 /// Narrow operation projection consumed by the model-to-text backend.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AsciiExecution<'a> {
-    control: Option<&'a OperationControl>,
-    resources: AsciiResourcePolicy,
+    control: &'a OperationControl,
+    resources: &'a AsciiResourcePolicy,
 }
 
 impl<'a> AsciiExecution<'a> {
     /// Creates a projection from the caller-owned operation state.
-    pub const fn new(control: &'a OperationControl, resources: AsciiResourcePolicy) -> Self {
-        Self {
-            control: Some(control),
-            resources,
-        }
+    pub const fn new(control: &'a OperationControl, resources: &'a AsciiResourcePolicy) -> Self {
+        Self { control, resources }
     }
 
-    /// Creates the execution projection used by the direct typed-model convenience entrypoint.
-    pub const fn standalone(resources: AsciiResourcePolicy) -> Self {
-        Self {
-            control: None,
-            resources,
-        }
+    /// Creates a real, never-cancelled execution projection for crate-local unit tests.
+    #[cfg(test)]
+    pub fn for_test(resources: &'a AsciiResourcePolicy) -> Self {
+        // The leaked handle is bounded to the test process and keeps terminal state isolated
+        // between independently scheduled unit tests.
+        let control = Box::leak(Box::new(OperationControl::new()));
+        Self::new(control, resources)
     }
 
-    pub const fn resources(self) -> AsciiResourcePolicy {
+    pub const fn resources(self) -> &'a AsciiResourcePolicy {
         self.resources
     }
 
-    pub fn checkpoint(self, phase: OperationPhase) -> Result<()> {
-        match self.control {
-            Some(control) => control.checkpoint_at(phase).map_err(AsciiError::Cancelled),
-            None => Ok(()),
-        }
+    /// Creates a new render-wide resource ledger bound to one operation phase.
+    pub(crate) fn new_resource_context(self, phase: OperationPhase) -> ResourceContext {
+        let resources = ResourceContext::new(*self.resources);
+        self.resource_context(&resources, phase)
     }
 
-    /// Checks and admits a target-local canvas allocation before it is materialized.
-    pub fn admit_grid(self, actual: usize) -> Result<()> {
-        self.checkpoint(OperationPhase::Layout)?;
-        let Some(limit) = self.resources.max_grid_cells else {
-            return Ok(());
-        };
-        if actual > limit {
-            return Err(AsciiError::ResourceLimitExceeded(
-                OperationResourceLimitExceeded {
-                    id: MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
-                    phase: OperationPhase::Layout,
-                    limit: limit as u64,
-                    consumed: 0,
-                    requested: actual as u64,
-                },
-            ));
+    pub(crate) fn cloned_control(self) -> OperationControl {
+        self.control.clone()
+    }
+
+    /// Creates a ledger-sharing resource view for one operation phase.
+    pub(crate) fn resource_context(
+        self,
+        resources: &ResourceContext,
+        phase: OperationPhase,
+    ) -> ResourceContext {
+        debug_assert_eq!(resources.policy(), *self.resources);
+        resources.controlled(self.cloned_control(), phase)
+    }
+
+    /// Rebinds one shared resource ledger before entering a different operation phase.
+    pub(crate) fn rebind_resource_context(
+        self,
+        resources: &mut ResourceContext,
+        phase: OperationPhase,
+    ) {
+        let rebound = self.resource_context(resources, phase);
+        *resources = rebound;
+    }
+
+    pub fn checkpoint(self, phase: OperationPhase) -> Result<()> {
+        self.control
+            .terminal_checkpoint_at(phase)
+            .map_err(operation_terminal_error)
+    }
+
+    /// Checks caller-owned cancellation at a bounded cadence inside deterministic long loops.
+    pub fn checkpoint_loop(self, phase: OperationPhase, iteration: usize) -> Result<()> {
+        if iteration.is_multiple_of(COOPERATIVE_CHECKPOINT_INTERVAL) {
+            self.checkpoint(phase)?;
         }
         Ok(())
     }

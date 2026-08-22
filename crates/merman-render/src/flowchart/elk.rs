@@ -4,7 +4,7 @@ use crate::math::MathRenderer;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use merman_core::{MermaidConfig, ParsedDiagramRender, RenderSemanticModel};
@@ -13,8 +13,10 @@ use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::sync::Arc;
 
 use merman_core::diagrams::flowchart::{
-    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
+    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
@@ -61,7 +63,7 @@ pub(crate) fn layout_flowchart_elk_typed(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
-    let render_label_sources = FlowchartRenderLabelSources::default();
+    let render_label_sources = FlowchartRenderContext::default();
     let graph = build_flowchart_elk_graph_with_render_labels(
         model,
         &render_label_sources,
@@ -96,7 +98,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
 ) -> Result<FlowchartLayout> {
     layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         FlowchartElkLayoutExecution::new(measurer, math_renderer, operation_seed, None, work_meter),
     )
@@ -104,7 +106,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
 
 pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     execution: FlowchartElkLayoutExecution<'_>,
 ) -> Result<FlowchartLayout> {
@@ -145,7 +147,7 @@ fn flowchart_layout_from_elk(
 ) -> Result<FlowchartLayout> {
     flowchart_layout_from_elk_with_render_labels(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         graph,
         layout,
@@ -155,7 +157,7 @@ fn flowchart_layout_from_elk(
 #[cfg(test)]
 fn flowchart_layout_from_elk_with_render_labels(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
@@ -180,7 +182,7 @@ fn flowchart_layout_from_elk_with_work_control(
 ) -> Result<FlowchartLayout> {
     flowchart_layout_from_elk_with_render_labels_and_work_control(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         graph,
         layout,
@@ -190,7 +192,7 @@ fn flowchart_layout_from_elk_with_work_control(
 
 fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
@@ -497,10 +499,8 @@ pub fn build_flowchart_elk_graph(
             ),
         });
     };
-    let empty_sources = FlowchartRenderLabelSources::default();
-    let render_label_sources = parsed
-        .flowchart_render_label_sources()
-        .unwrap_or(&empty_sources);
+    let empty_sources = FlowchartRenderContext::default();
+    let render_label_sources = parsed.flowchart_render_context().unwrap_or(&empty_sources);
     build_flowchart_elk_graph_with_render_labels(
         model,
         render_label_sources,
@@ -519,7 +519,7 @@ fn build_flowchart_elk_graph_from_semantic(
 ) -> Result<elk::Graph> {
     build_flowchart_elk_graph_with_render_labels(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         measurer,
         math_renderer,
@@ -528,7 +528,7 @@ fn build_flowchart_elk_graph_from_semantic(
 
 fn build_flowchart_elk_graph_with_render_labels(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -554,7 +554,7 @@ fn build_flowchart_elk_graph_with_work_control(
 ) -> Result<elk::Graph> {
     build_flowchart_elk_graph_with_render_labels_and_work_control(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         measurer,
         math_renderer,
@@ -583,12 +583,10 @@ fn checked_adapter_add(
             .as_deref()
             .map(|work_control| work_control.arithmetic_overflow())
             .unwrap_or_else(|| {
-                OperationWorkError::ResourceLimitExceeded(
-                    OperationWorkMeter::new(
-                        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-                    )
-                    .arithmetic_overflow(),
+                OperationWorkMeter::new(
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
                 )
+                .arithmetic_overflow()
             })
             .into()
     })
@@ -604,12 +602,10 @@ fn checked_adapter_mul(
             .as_deref()
             .map(|work_control| work_control.arithmetic_overflow())
             .unwrap_or_else(|| {
-                OperationWorkError::ResourceLimitExceeded(
-                    OperationWorkMeter::new(
-                        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-                    )
-                    .arithmetic_overflow(),
+                OperationWorkMeter::new(
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
                 )
+                .arithmetic_overflow()
             })
             .into()
     })
@@ -628,7 +624,7 @@ fn comparison_sort_work_units(
 
 fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -727,12 +723,14 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     let mut inserted_ids: HashSet<&str> = HashSet::new();
     // FlowDB emits subgraphs in reverse storage order before leaf vertices, and Mermaid derives
     // sibling lists by filtering that canonical array without sorting. Preserve that order here.
-    for sg in model.subgraphs.iter().rev() {
+    for subgraph_index in (0..model.subgraphs.len()).rev() {
+        let sg = &model.subgraphs[subgraph_index];
         charge_adapter_work(&mut work_control, 1)?;
         if !inserted_ids.insert(sg.id.as_str()) {
             continue;
         }
         graph.nodes.push(subgraph_to_elk_node(
+            subgraph_index,
             sg,
             parent_by_id.get(&sg.id).cloned(),
             &include_children_groups,
@@ -1533,14 +1531,19 @@ fn mark_include_children_path<'a>(
     Ok(())
 }
 
-fn subgraph_label(sg: &FlowSubgraph, ctx: &ElkMeasureContext<'_>) -> Option<elk::Label> {
+fn subgraph_label(
+    declaration_ordinal: usize,
+    sg: &FlowSubgraph,
+    ctx: &ElkMeasureContext<'_>,
+) -> Option<elk::Label> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
-    let title = ctx.model.subgraph_title_for_render(sg);
+    let title = ctx.model.subgraph_title_for_render(declaration_ordinal, sg);
+    let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
     let text_style = flowchart_effective_text_style_for_classes(
         ctx.cluster_label_base_style,
         &ctx.model.class_defs,
-        &sg.classes,
-        &sg.styles,
+        classes,
+        styles,
     );
     // ELK's temporary subgraph node uses Flowchart wrappingWidth for layout, while Mermaid's final
     // cluster SVG calls createLabel with an unbounded width. The exact binding can never be reused,
@@ -1736,6 +1739,7 @@ fn flow_node_to_elk_node(
 }
 
 fn subgraph_to_elk_node(
+    declaration_ordinal: usize,
     sg: &FlowSubgraph,
     parent: Option<String>,
     include_children_groups: &HashSet<&str>,
@@ -1758,7 +1762,7 @@ fn subgraph_to_elk_node(
             None
         },
         layer_constraint: None,
-        label: subgraph_label(sg, ctx),
+        label: subgraph_label(declaration_ordinal, sg, ctx),
     }
 }
 
@@ -1845,7 +1849,7 @@ mod tests {
 
         let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
             &model,
-            &FlowchartRenderLabelSources::default(),
+            &FlowchartRenderContext::default(),
             &config,
             &measurer,
             None,
@@ -1922,6 +1926,7 @@ mod tests {
     fn node(id: &str, label: Option<&str>, label_type: Option<&str>) -> FlowNode {
         FlowNode {
             id: id.to_string(),
+            provenance: Default::default(),
             label: label.map(str::to_string),
             label_type: label_type.map(str::to_string),
             layout_shape: Some("squareRect".to_string()),
@@ -1950,8 +1955,12 @@ mod tests {
             label_type: Some("text".to_string()),
             edge_type: Some("arrow_point".to_string()),
             arrow: "-->".to_string(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::Point,
             is_user_defined_id: false,
             stroke: Some("normal".to_string()),
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
             interpolate: None,
             classes: Vec::new(),
             style: Vec::new(),

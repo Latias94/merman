@@ -21,9 +21,12 @@ fixed-capabilities = ["ascii"]
 default = []
 
 [dependencies]
+dugong.workspace = true
 merman-core.workspace = true
 thiserror.workspace = true
-unicode-width.workspace = true
+unicode-segmentation.workspace = true
+unicode-width = { workspace = true, features = ["cjk"] }
 
 [dev-dependencies]
 merman-core = { workspace = true, features = ["test-support"] }
+sha2.workspace = true

@@ -21,11 +21,19 @@ under a frozen recipe and fixed maximum budget.
 
 Performance automation is isolated in the `Performance` workflow:
 
-- `perf-contracts` checks Python syntax and benchmark-helper contracts.
+- `perf-contracts` checks Python syntax and benchmark-helper contracts on manual and scheduled
+  runs. Every path-matched pull request retains the compiled `ascii_pipeline` list contract, even
+  without a performance label; the broader compiled pipeline and native-memory smoke checks remain
+  gated by `perf`.
 - `perf-regression` runs schema-v2 `compare_self.py` evidence for PR or manual base/head checkouts.
   A PR with the `perf` label receives a short diagnostic AB/BA schedule. Timing movement is advisory,
   but any recipe, fixture, executable, runner, or report-contract failure still fails the lane.
   Artifacts and the sticky PR comment are written before the comparison exit code is enforced.
+- The manual `ascii` lane uses `ascii_pipeline`, `tools/bench/ascii_corpus.json`, the `ascii`
+  feature with default features disabled, and the `ascii_end_to_end` public-operation lane.
+  Dispatch it only with a benchmark-only base backport that carries the byte-identical harness;
+  ordinary PR labels do not run ASCII timing. The larger `large-closeout` suite remains an
+  explicit local closeout observation rather than an unattended CI timing lane.
 - A manual `perf-regression` dispatch defaults to confirmation mode and can set the corpus suite,
   both thresholds, and explicit revisions. Exit `1`, `2`, and `3` remain distinct in the job result
   and report.
@@ -47,6 +55,30 @@ gh workflow run performance.yml \
   -f relative_threshold_percent=10 \
   -f absolute_threshold_ns=50000
 ```
+
+Manual ASCII confirmation example:
+
+```bash
+gh workflow run performance.yml \
+  --ref main \
+  -f run=ascii \
+  -f base_ref=YOUR_BENCHMARK_BACKPORT_SHA \
+  -f head_ref=my-ascii-branch \
+  -f preset=long \
+  -f ascii_suite=comparable \
+  -f evidence_mode=confirmation \
+  -f relative_threshold_percent=10 \
+  -f absolute_threshold_ns=50000
+```
+
+Replace `YOUR_BENCHMARK_BACKPORT_SHA` with a revision that contains the byte-identical
+`ascii_pipeline` harness, corpus, fixtures,
+and preflight contract while retaining the selected base product implementation. Do not substitute
+plain `main` unless it already satisfies that identity contract.
+
+Use `-f ascii_suite=closeout` for the five-family medium closeout observation. `run=full` explicitly
+selects the ordinary regression, ASCII, frontmatter, and reference lanes; the weekly schedule does
+not add ASCII timing.
 
 ## 1. Freeze the question and revisions
 
@@ -116,7 +148,8 @@ than silently inheriting head settings on base.
 
 Before accepting a timing sample, verify that the report proves all of the following:
 
-1. Both Cargo builds were locked and completed before sampling.
+1. Both Cargo builds were locked, forced to `CARGO_BUILD_JOBS=1`, recorded that environment in each
+   runner receipt, and completed before sampling.
 2. Each Cargo JSON stream resolved exactly one requested Criterion executable.
 3. Executable digests remained unchanged through discovery and sampling.
 4. The exact benchmark exists on both sides.
@@ -128,11 +161,12 @@ The harness invokes the frozen executables directly for discovery and every time
 not run in the background while sampling. A missing or mismatched item above is exit `2`; do not
 interpret it as a performance outcome.
 
-If both recipes deliberately share one target directory, pass `--freeze-shared-target`. That mode
-serially runs `cargo clean --profile bench` before each side, rebuilds it, and freezes the resulting
-executable before the next reset. The profile reset is part of the provenance contract and prevents
-Cargo from reusing an executable built from the other path-workspace checkout. It does not clean
-the debug profile. Ensure no other Cargo process is using the shared target for the whole run.
+Distinct-target and shared-target prebuilds both force one Cargo build job. If both recipes
+deliberately share one target directory, pass `--freeze-shared-target`. That mode additionally runs
+`cargo clean --profile bench` before each side, rebuilds it, and freezes the resulting executable
+before the next reset. The profile reset is part of the provenance contract and prevents Cargo from
+reusing an executable built from the other path-workspace checkout. It does not clean the debug
+profile. Ensure no other Cargo process is using the shared target for the whole run.
 
 ## 4. Use diagnostic mode for triage
 

@@ -1,9 +1,9 @@
 #![cfg(feature = "ascii")]
 
 use merman::ascii::{
-    AsciiRenderOptions, AsciiResourcePolicy, render_model_with_local_time_zone,
-    render_model_with_operation,
+    AsciiError, AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitId, AsciiResourcePolicy,
 };
+use merman::resources::ResourceProfile;
 use merman::{
     AsciiRequest, OperationControl, RenderOutput, RenderRequest, RenderSemanticModel, Renderer,
 };
@@ -15,6 +15,17 @@ fn render_model_for(source: &str) -> RenderSemanticModel {
         .unwrap()
         .into_parts()
         .1
+}
+
+fn render_typed_model(
+    model: &RenderSemanticModel,
+    options: AsciiRenderOptions,
+    resources: AsciiResourcePolicy,
+) -> Result<String, AsciiError> {
+    let context = merman::runtime::RuntimePolicy::deterministic()
+        .begin_operation()
+        .expect("deterministic operation context");
+    AsciiRenderer::new(options)?.render_model(model, &OperationControl::new(), &context, resources)
 }
 
 fn deeply_nested_flowchart(depth: usize) -> String {
@@ -92,30 +103,34 @@ bar [2, 8]
 }
 
 #[test]
-fn direct_ascii_exports_render_shipped_typed_models() {
+fn model_backend_renders_shipped_typed_models_with_caller_operation_state() {
     let options = AsciiRenderOptions::ascii();
 
-    for (source, expected) in [
-        ("classDiagram\nclass Animal", "Animal"),
-        ("erDiagram\nCUSTOMER", "CUSTOMER"),
-        (
-            r#"xychart
+    let class_model = render_model_for("classDiagram\nclass Animal");
+    let rendered = render_typed_model(&class_model, options, AsciiResourcePolicy::default())
+        .expect("class model should render");
+    assert!(rendered.contains("Animal"));
+
+    let er_model = render_model_for("erDiagram\nCUSTOMER");
+    let rendered = render_typed_model(&er_model, options, AsciiResourcePolicy::default())
+        .expect("ER model should render");
+    assert!(rendered.contains("CUSTOMER"));
+
+    let state_model = render_model_for("stateDiagram-v2\n[*] --> Ready");
+    let rendered = render_typed_model(&state_model, options, AsciiResourcePolicy::default())
+        .expect("State model should render");
+    assert!(rendered.contains("Ready"));
+
+    let xychart_model = render_model_for(
+        r#"xychart
 x-axis [A, B]
 y-axis 0 --> 10
 bar [4, 8]
 "#,
-            "###",
-        ),
-    ] {
-        let model = render_model_for(source);
-        let rendered = render_model_with_local_time_zone(
-            &model,
-            &options,
-            &merman::time::LocalTimeZone::utc(),
-        )
-        .unwrap();
-        assert!(rendered.contains(expected));
-    }
+    );
+    let rendered = render_typed_model(&xychart_model, options, AsciiResourcePolicy::default())
+        .expect("XYChart model should render");
+    assert!(rendered.contains("###"));
 }
 
 #[test]
@@ -145,7 +160,35 @@ fn renderer_uses_ascii_options_for_padding() {
 }
 
 #[test]
-fn headless_ascii_renderer_renders_sequence_with_unicode_defaults() {
+fn canonical_ascii_renderer_applies_flowchart_node_label_wrapping() {
+    let source = "flowchart TD\nA[\"Alpha Beta Gamma Delta\"]";
+    let options = AsciiRenderOptions::ascii().with_flowchart_node_label_wrap_width(8);
+    let output = Renderer::new()
+        .with_parse_options(merman::ParseOptions::strict())
+        .render(RenderRequest::ascii(
+            source,
+            OperationControl::new(),
+            AsciiRequest {
+                options,
+                ..Default::default()
+            },
+        ))
+        .unwrap();
+    let RenderOutput::Ascii(Some(rendered)) = output else {
+        panic!("diagram not detected");
+    };
+
+    for expected in ["Alpha", "Beta", "Gamma", "Delta"] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+    assert!(!rendered.contains("Alpha Beta Gamma Delta"), "{rendered}");
+}
+
+#[test]
+fn renderer_renders_sequence_with_unicode_defaults() {
     let output = Renderer::new()
         .with_parse_options(merman::ParseOptions::strict())
         .render(RenderRequest::ascii(
@@ -182,22 +225,40 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
     const DEPTH: usize = 512;
     let source = deeply_nested_flowchart(DEPTH);
     let model = render_model_for(&source);
+    let error = render_typed_model(
+        &model,
+        AsciiRenderOptions::ascii(),
+        AsciiResourcePolicy::default(),
+    )
+    .expect_err("the Interactive profile should reject nesting beyond its public limit");
+    assert!(matches!(
+        error,
+        AsciiError::ResourceLimitExceeded(details)
+            if details.limit == AsciiResourceLimitId::MaxNestingDepth
+                && details.actual == 257
+                && details.max == 256
+    ));
+
     let handle = std::thread::Builder::new()
         .name("ascii-deep-flowchart-subgraph".to_string())
-        .stack_size(64 * 1024)
+        // The debug facade path keeps several fixed-size render frames alive at once. Keep the
+        // constrained-stack signal while leaving enough room for those frames across toolchains.
+        .stack_size(256 * 1024)
         .spawn(move || {
             let options = AsciiRenderOptions::ascii();
+            let control = merman::OperationControl::new();
+            let mut resources =
+                AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+            resources
+                .apply_limit(AsciiResourceLimitId::MaxGridCells, 10_000_000)
+                .expect("valid ASCII grid override");
             let context = merman::runtime::RuntimePolicy::deterministic()
                 .begin_operation()
                 .expect("deterministic operation context");
-            let rendered = render_model_with_operation(
-                &model,
-                &options,
-                &merman::OperationControl::new(),
-                &context,
-                AsciiResourcePolicy::with_max_grid_cells(10_000_000),
-            )
-            .expect("deep Flowchart ASCII render should not return an error");
+            let rendered = AsciiRenderer::new(options)
+                .expect("ASCII options should validate")
+                .render_model(&model, &control, &context, resources)
+                .expect("deep Flowchart ASCII render should not return an error");
             assert!(rendered.contains('A'));
         })
         .expect("spawn deep Flowchart ASCII render test");

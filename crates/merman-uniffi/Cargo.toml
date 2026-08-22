@@ -49,4 +49,5 @@ thiserror.workspace = true
 uniffi = { workspace = true, default-features = false }
 
 [dev-dependencies]
+merman-ascii-test-contracts = { path = "../merman-ascii-test-contracts" }
 tempfile = "3.27.0"

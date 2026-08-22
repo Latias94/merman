@@ -1,5 +1,5 @@
 use crate::error::{CliError, FileOperation, safe_path};
-use crate::input::{InputLimit, InputReadError, read_utf8};
+use crate::input::{InputLimit, InputReadError, read_utf8_controlled};
 use crate::resources::{ByteLedgerKind, CliResourceLimitId, ResolvedResourcePolicy};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -158,6 +158,7 @@ struct RawFragment {
 pub(crate) fn load(
     requested_path: &Path,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<Config, CliError> {
     let acquired = acquire_text(
         requested_path,
@@ -166,6 +167,7 @@ pub(crate) fn load(
             CliResourceLimitId::MaxConfigBytes.as_str(),
             resources.files().config_bytes,
         ),
+        control,
     )
     .map_err(|source| config_error(requested_path, "document", source))?;
     let raw = parse_config(requested_path, &acquired.text)?;
@@ -264,6 +266,7 @@ pub(crate) fn load(
                     "Rustdoc fragment source",
                     fragment_source_limit(&relative, resources),
                     &root,
+                    control,
                 )
                 .map_err(|source| config_error(requested_path, &location, source))?,
             );
@@ -544,8 +547,9 @@ pub(super) fn acquire_text(
     path: &Path,
     label: &str,
     limit: InputLimit,
+    control: &merman::OperationControl,
 ) -> Result<AcquiredText, CliError> {
-    acquire_text_with_scope(path, label, limit, None)
+    acquire_text_with_scope(path, label, limit, None, control)
 }
 
 pub(super) fn acquire_rooted_text(
@@ -553,8 +557,9 @@ pub(super) fn acquire_rooted_text(
     label: &str,
     limit: InputLimit,
     root: &Path,
+    control: &merman::OperationControl,
 ) -> Result<AcquiredText, CliError> {
-    acquire_text_with_scope(path, label, limit, Some(root))
+    acquire_text_with_scope(path, label, limit, Some(root), control)
 }
 
 fn acquire_text_with_scope(
@@ -562,7 +567,9 @@ fn acquire_text_with_scope(
     label: &str,
     limit: InputLimit,
     root: Option<&Path>,
+    control: &merman::OperationControl,
 ) -> Result<AcquiredText, CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
     let resource = format!("{label} {}", safe_path(path));
     let canonical = std::fs::canonicalize(path).map_err(|source| {
         if source.kind() == std::io::ErrorKind::NotFound {
@@ -640,8 +647,8 @@ fn acquire_text_with_scope(
         ));
     }
 
-    let text: Arc<str> = read_utf8(file, resource, limit, Some(metadata.len()))
-        .map_err(CliError::auxiliary_input)?
+    let text: Arc<str> = read_utf8_controlled(file, resource, limit, Some(metadata.len()), control)
+        .map_err(controlled_acquisition_error)?
         .into();
     let current_canonical = std::fs::canonicalize(path)
         .map_err(|source| CliError::file(FileOperation::Canonicalize, path, source))?;
@@ -654,6 +661,7 @@ fn acquire_text_with_scope(
             std::io::Error::other("file identity changed during Rustdoc acquisition"),
         ));
     }
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
     let sha256 = super::sha256_hex(text.as_bytes());
     Ok(AcquiredText {
         requested: path.to_path_buf(),
@@ -662,6 +670,15 @@ fn acquire_text_with_scope(
         text,
         sha256,
     })
+}
+
+fn controlled_acquisition_error(error: InputReadError) -> CliError {
+    match error {
+        InputReadError::Cancelled(cancelled) => {
+            CliError::Render(merman::RenderError::Cancelled(cancelled))
+        }
+        error => CliError::auxiliary_input(error),
+    }
 }
 
 pub(super) fn portable_path_alias(path: &str) -> String {
@@ -710,7 +727,12 @@ mod tests {
             .apply_override("max_rustdoc_input_bytes", 7)
             .unwrap();
 
-        let error = load(&root.path().join("merman-rustdoc.toml"), &resources).unwrap_err();
+        let error = load(
+            &root.path().join("merman-rustdoc.toml"),
+            &resources,
+            &merman::OperationControl::new(),
+        )
+        .unwrap_err();
 
         assert!(error.to_string().contains("max_rustdoc_input_bytes"));
     }
@@ -734,7 +756,12 @@ mod tests {
             .apply_override("max_rustdoc_input_bytes", 4)
             .unwrap();
 
-        let config = load(&root.path().join("merman-rustdoc.toml"), &resources).unwrap();
+        let config = load(
+            &root.path().join("merman-rustdoc.toml"),
+            &resources,
+            &merman::OperationControl::new(),
+        )
+        .unwrap();
 
         assert_eq!(config.acquired_input_bytes(), 4);
     }

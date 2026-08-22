@@ -97,6 +97,11 @@ than translated implicitly.
       "max_svg_bytes": 25165824,
       "max_document_diagrams": 256,
       "max_ascii_grid_cells": 250000,
+      "max_ascii_layout_work_units": 2000000,
+      "max_ascii_document_cells": 250000,
+      "max_ascii_output_bytes": 16777216,
+      "max_ascii_grapheme_bytes": 4096,
+      "max_ascii_nesting_depth": 256,
       "max_raster_width": 4096,
       "max_raster_height": 4096,
       "max_raster_pixels": 16777216,
@@ -359,12 +364,14 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `ascii.charset` | string | `unicode` | `unicode` or `ascii`. |
+| `ascii.width_profile` / `ascii.widthProfile` | string | `unicode` | `unicode` follows the pinned non-CJK width table; `cjk` treats East Asian ambiguous authored characters as wide and uses single-cell ASCII structural glyphs because Unicode box drawing is East Asian Ambiguous. Select the profile that matches the target terminal. |
 | `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
 | `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`, `truecolor`, or `html`. |
 | `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
 | `ascii.box_border_padding` / `ascii.boxBorderPadding` | non-negative integer | `1` | Horizontal padding inside terminal node boxes. |
 | `ascii.graph_padding_x` / `ascii.graphPaddingX` | non-negative integer | `5` | Horizontal padding around terminal graph layouts. |
 | `ascii.graph_padding_y` / `ascii.graphPaddingY` | non-negative integer | `5` | Vertical padding around terminal graph layouts. |
+| `ascii.flowchart_node_label_wrap_width` / `ascii.flowchartNodeLabelWrapWidth` | positive integer | `40` | Maximum display-cell width of an ordinary Flowchart node label before grapheme-safe wrapping and node sizing. This is a terminal-column policy, not Mermaid's SVG `wrappingWidth` in CSS pixels. |
 | `ascii.sequence_participant_spacing` / `ascii.sequenceParticipantSpacing` | non-negative integer | `5` | Minimum spacing between sequence participants. |
 | `ascii.sequence_message_spacing` / `ascii.sequenceMessageSpacing` | non-negative integer | `1` | Vertical spacing between sequence messages. |
 | `ascii.sequence_self_message_width` / `ascii.sequenceSelfMessageWidth` | integer at least `2` | `4` | Width reserved for sequence self-message loops. |
@@ -372,7 +379,7 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | `ascii.xychart_vertical_plot_height` / `ascii.xychartVerticalPlotHeight` | positive integer | `5` | Compact vertical XYChart plot height. |
 | `ascii.xychart_category_band_width` / `ascii.xychartCategoryBandWidth` | positive integer | `3` | Compact vertical XYChart category width. |
 | `ascii.xychart_horizontal_plot_width` / `ascii.xychartHorizontalPlotWidth` | positive integer | `10` | Compact horizontal XYChart value axis width. |
-| `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` fallback summaries include a `reason:` row such as `grid_budget actual=12 limit=1`, `crossing`, `route_collision`, or `overlay_collision`. |
+| `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` readability fallbacks include a `reason:` row such as `crossing`, `route_collision`, or `overlay_collision`. Resource limits return structured errors instead. |
 
 `relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests
@@ -436,7 +443,12 @@ per-request tightening use the same contract as semantic and SVG limits.
 | `resources.limits.max_layout_work_units` | positive integer | profile value | Deterministic family-accounted derived geometry and layout candidate work. |
 | `resources.limits.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
 | `resources.limits.max_svg_elements` | positive integer | profile value | SVG element cardinality checked before recursive postprocessing. |
-| `resources.limits.max_ascii_grid_cells` | positive integer | profile value | Terminal grid cells allocated by graph-like ASCII layout. |
+| `resources.limits.max_ascii_grid_cells` | positive integer | profile value | Checked logical extent for grid-backed terminal renderers. |
+| `resources.limits.max_ascii_layout_work_units` | positive integer | profile value | Deterministic ASCII planning, traversal, routing, and paint work. |
+| `resources.limits.max_ascii_document_cells` | positive integer | profile value | Aggregate display cells across logical terminal document rows. |
+| `resources.limits.max_ascii_output_bytes` | positive integer | profile value | Actual bytes emitted by the selected Plain, ANSI, TrueColor, or HTML encoder. |
+| `resources.limits.max_ascii_grapheme_bytes` | positive integer | profile value | UTF-8 bytes allowed in one terminal grapheme cluster. |
+| `resources.limits.max_ascii_nesting_depth` | positive integer | profile value | Semantic nesting depth traversed by terminal renderers. |
 | `resources.limits.max_raster_width` | positive integer | profile value | Maximum final PNG or JPEG width in pixels. |
 | `resources.limits.max_raster_height` | positive integer | profile value | Maximum final PNG or JPEG height in pixels. |
 | `resources.limits.max_raster_pixels` | positive integer | profile value | Maximum final PNG or JPEG pixel count. |
@@ -453,13 +465,13 @@ choose a workload profile instead of maintaining diagram-specific threshold tabl
 
 `max_document_diagrams` belongs to host-document analysis, not to a single Mermaid diagram or render policy. Document-analysis operations accept and preserve it, while standalone analysis, model, layout, ASCII, SVG, and export operations reject it as out of scope. Profiles define this dimension consistently with every other binding resource: `interactive` allows 256 diagrams, `constrained` 128, `trusted-native` 1,024, and `unbounded-for-trusted-input` leaves it unbounded.
 
-`max_ascii_grid_cells` belongs to ASCII layout. It replaces the removed `ascii.max_grid_cells` option so constructor ceilings, per-request tightening, runtime metadata, and every generated SDK builder use one policy path.
+The six `max_ascii_*` limits belong to ASCII rendering. `max_ascii_grid_cells` replaces the removed `ascii.max_grid_cells` option; the other limits independently bound work before layout amplification, logical document materialization, mode-specific encoded bytes, individual grapheme storage, and nested traversal. Resource excess always returns structured resource details and never silently changes a Diagrammatic projection into StructuredText.
 
 `max_pdf_filter_image_pixels` belongs only to PDF export. It bounds the retained raster area created when SVG filters require an intermediate image; a request may tighten the constructor ceiling, while the exporter deterministically downsamples within that ceiling or returns a structured resource error when no valid plan exists.
 
-The runtime catalog also reports six native-export hard caps: `max_svg_conversion_isolation_depth`, `max_svg_conversion_filter_primitives_per_filter`, `max_total_svg_conversion_filter_primitives`, `max_svg_conversion_subroots`, `max_nested_svg_images`, and `svg_backend_tree_nodes`. They describe fixed recursion and structure guards owned by the export backend. They remain finite under `unbounded-for-trusted-input` and cannot be supplied in `resources.limits`; generated builders reject attempts to override them.
+The runtime catalog also reports fixed backend hard caps. SVG rendering owns `svg_backend_tree_nodes` and `svg_backend_tree_depth` in the `svg_postprocess` phase, so they apply to SVG output and to every native export derived from that SVG. Native export additionally owns `max_svg_conversion_isolation_depth`, `max_svg_conversion_filter_primitives_per_filter`, `max_total_svg_conversion_filter_primitives`, `max_svg_conversion_subroots`, and `max_nested_svg_images` in the `svg_conversion` phase. All seven remain finite under `unbounded-for-trusted-input` and cannot be supplied in `resources.limits`; generated builders reject attempts to override them.
 
-A reusable engine constructor accepts the union of resource limits enforced by its compiled operations. Per-request overlays are operation-specific: standalone analysis accepts the source budget and host-document analysis additionally accepts the document fence budget; semantic JSON and SVG planning accept source/model budgets; ASCII additionally accepts its terminal-grid budget; layout JSON additionally accepts layout work; SVG accepts the render budget; PNG and JPEG additionally accept raster and embedded-image budgets; PDF accepts embedded-image and filter-image budgets. An overlay may
+A reusable engine constructor accepts the union of resource limits enforced by its compiled operations. Per-request overlays are operation-specific: standalone analysis accepts the source budget and host-document analysis additionally accepts the document fence budget; semantic JSON and SVG planning accept source/model budgets; ASCII additionally accepts all six terminal resource budgets; layout JSON additionally accepts layout work; SVG accepts the render budget; PNG and JPEG additionally accept raster and embedded-image budgets; PDF accepts embedded-image and filter-image budgets. An overlay may
 select a stricter effective profile or lower a limit, but it cannot raise a constructor limit,
 replace a finite ceiling with an unbounded value, clear `resources`, or set an unrelated limit.
 One-shot operations may choose any valid profile, but their explicit limits follow the same
@@ -573,7 +585,7 @@ environment contracts as `null`.
 | UniFFI/Python | `Merman.runtime_catalog_json()` / `merman.get_runtime_catalog(api)` |
 | Web/TypeScript | `runtimeCatalog()` |
 
-The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `4`, and payload
+The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `5`, and payload
 schema numbers. Reject a contract schema newer than the host understands before interpreting its
 nested fields. Detailed language catalogs are not embedded in this flat object: use the
 transport's named metadata API (`metadata_collect` for the C ABI) for
@@ -756,15 +768,15 @@ Invalid options produce binding errors:
 | Feature-gated operation disabled | `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` |
 | Resource budget exceeded | `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED` |
 
-Resource failures add an optional `details.resource` object to the existing error JSON. It contains `cause`, `limit_id`, `phase`, `actual`, `max`, and `profile`. The stable `cause` is `ceiling` when an effective maximum was exceeded and `arithmetic_overflow` when safe work accounting could not represent the required amount. Node and Web/WASM project `actual` and `max` into a lossless JavaScript representation: values through `9007199254740991` (`Number.MAX_SAFE_INTEGER`) are numbers, while larger `u64` values are canonical unsigned decimal strings without leading zeroes, up to `18446744073709551615`. JavaScript consumers must accept both forms and must not coerce the string form through a `number`. The shared non-JavaScript payload and native ABI error JSON retain their existing unsigned-integer representation. Consumers that understand payload schema `1` should tolerate this additive object; non-resource errors omit `details`, preserving the previous shape.
+Resource failures add an optional `details.resource` object to the existing error JSON. It contains `cause`, `limit_id`, `phase`, `actual`, `max`, and `profile`. The stable `cause` is `ceiling` when an effective maximum was exceeded and `arithmetic_overflow` when safe work accounting could not represent the required amount. Node, Web/WASM, Android JNI, and native ABI error JSON project `actual` and `max` into a lossless representation: values through `9007199254740991` (`Number.MAX_SAFE_INTEGER`) are numbers, while larger `u64` values are canonical unsigned decimal strings without leading zeroes, up to `18446744073709551615`. Consumers must accept both forms and must not coerce the string form through a floating-point number; typed non-JSON binding payloads retain their unsigned-integer fields. Parser and ASCII renderer failures may additionally expose a bounded `details.diagnostic` object with stable `code`, optional byte `span` (`start`, `end`, `kind`), and safe `field`/`diagram_type` context. These fields are machine-readable and must not be recovered by parsing the human-facing `message`; complete source text is never embedded by default. Consumers that understand payload schema `1` should tolerate these additive objects; errors without structured details omit `details`, preserving the previous shape.
 
 Platform wrappers surface those errors through their native exception type:
 
 - C ABI: non-zero `MermanNativeStatus`, mirrored in `MermanNativeResult.status`, with the structured
   JSON error payload in `MermanNativeResult.metadata_or_error_json`.
-- Android: `MermanException.resourceDetails`.
+- Android: `MermanException.exactResourceDetails`, plus `resourceDetails` when both counts fit `Long`.
 - Apple: the optional `resource` field on `MermanError.binding`.
-- Flutter/Dart: `MermanException.resourceDetails`.
+- Flutter/Dart: `MermanException.exactResourceDetails`, plus `resourceDetails` when both counts fit a signed 64-bit `int`.
 - Python UniFFI: the optional `resource` field on `MermanError.Binding`.
 
 ## Typed Wrapper Follow-On

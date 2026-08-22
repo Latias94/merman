@@ -200,6 +200,153 @@ fn gantt_typed_projection_matches_compatibility_semantics() {
 }
 
 #[test]
+fn gantt_typed_constraints_preserve_roles_dependencies_and_source_precision() {
+    let text = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD HH:mm\n",
+        "section Delivery\n",
+        "Base: base, 2026-01-01 08:30, 2h\n",
+        "Peer: peer, 2026-01-01 09:00, 1h\n",
+        "Ceiling: ceiling, 2026-01-02 12:45, 1h\n",
+        "Single: single, after base, 30m\n",
+        "Fan in: fan, after base peer, until ceiling fixed\n",
+        "Fixed: fixed, 2026-01-03 01:15, 2026-01-03 03:45\n",
+        "Implicit: 45m\n",
+    );
+    let model = parse_gantt_model_for_render(text, &meta()).unwrap();
+    let task = |id: &str| {
+        model
+            .tasks
+            .iter()
+            .find(|task| task.id == id)
+            .unwrap_or_else(|| panic!("missing Gantt task {id}"))
+    };
+
+    assert_eq!(
+        task("base").start_constraint,
+        GanttTaskStartConstraint::Fixed {
+            value: "2026-01-01 08:30".to_string(),
+        }
+    );
+    assert_eq!(
+        task("base").end_constraint,
+        GanttTaskEndConstraint::Duration {
+            value: "2h".to_string(),
+        }
+    );
+    assert_eq!(
+        task("single").start_constraint,
+        GanttTaskStartConstraint::After {
+            dependency_ids: vec!["base".to_string()],
+        }
+    );
+    assert_eq!(
+        task("fan").start_constraint,
+        GanttTaskStartConstraint::After {
+            dependency_ids: vec!["base".to_string(), "peer".to_string()],
+        }
+    );
+    assert_eq!(
+        task("fan").end_constraint,
+        GanttTaskEndConstraint::Until {
+            dependency_ids: vec!["ceiling".to_string(), "fixed".to_string()],
+        }
+    );
+    assert_eq!(
+        task("fixed").end_constraint,
+        GanttTaskEndConstraint::Fixed {
+            value: "2026-01-03 03:45".to_string(),
+        }
+    );
+    assert_eq!(
+        task("task1").start_constraint,
+        GanttTaskStartConstraint::PreviousTaskEnd {
+            dependency_id: Some("fixed".to_string()),
+        }
+    );
+    assert_eq!(
+        task("task1").end_constraint,
+        GanttTaskEndConstraint::Duration {
+            value: "45m".to_string(),
+        }
+    );
+}
+
+#[test]
+fn gantt_direct_task_constraints_have_explicit_json_and_reject_ambiguous_legacy_data() {
+    let task = GanttRenderTask {
+        start_constraint: GanttTaskStartConstraint::After {
+            dependency_ids: vec!["design".to_string(), "review".to_string()],
+        },
+        end_constraint: GanttTaskEndConstraint::Until {
+            dependency_ids: vec!["release".to_string()],
+        },
+        ..GanttRenderTask::default()
+    };
+    let mut value = serde_json::to_value(&task).unwrap();
+
+    assert_eq!(value["startConstraint"]["kind"], "after");
+    assert_eq!(
+        value["startConstraint"]["dependencyIds"],
+        json!(["design", "review"])
+    );
+    assert_eq!(value["endConstraint"]["kind"], "until");
+    assert_eq!(value["endConstraint"]["dependencyIds"], json!(["release"]));
+
+    let object = value.as_object_mut().unwrap();
+    object.remove("startConstraint");
+    object.remove("endConstraint");
+    assert!(
+        serde_json::from_value::<GanttRenderTask>(value).is_err(),
+        "legacy task JSON must not silently discard constraints stored only in raw fields"
+    );
+}
+
+#[test]
+fn gantt_typed_constraints_round_trip_without_changing_compatibility_json() {
+    let text = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Base: base, 2026-01-01, 1d\n",
+        "Ship: ship, after base, until base\n",
+    );
+    let model = parse_gantt_model_for_render(text, &meta()).unwrap();
+    let typed_json = serde_json::to_value(&model).unwrap();
+
+    assert_eq!(typed_json["tasks"][0]["sectionIndex"], 0);
+    assert_eq!(typed_json["tasks"][1]["sectionIndex"], 0);
+    assert_eq!(typed_json["tasks"][1]["startConstraint"]["kind"], "after");
+    assert_eq!(
+        typed_json["tasks"][1]["startConstraint"]["dependencyIds"],
+        json!(["base"])
+    );
+    assert_eq!(typed_json["tasks"][1]["endConstraint"]["kind"], "until");
+
+    let round_trip: GanttDiagramRenderModel = serde_json::from_value(typed_json).unwrap();
+    assert_eq!(
+        round_trip.tasks[1].start_constraint,
+        model.tasks[1].start_constraint
+    );
+    assert_eq!(
+        round_trip.tasks[1].end_constraint,
+        model.tasks[1].end_constraint
+    );
+
+    let compat = render_model_to_compat_json(&model, &meta()).unwrap();
+    for task in compat["tasks"].as_array().unwrap() {
+        assert!(task.get("sectionIndex").is_none());
+        assert!(task.get("startConstraint").is_none());
+        assert!(task.get("endConstraint").is_none());
+    }
+    assert_eq!(
+        compat["tasks"][1]["raw"]["startTime"]["startData"],
+        "after base"
+    );
+    assert_eq!(compat["tasks"][1]["raw"]["endTime"]["data"], "until base");
+}
+
+#[test]
 fn gantt_typed_projection_preserves_empty_and_header_only_output_states() {
     let meta = ParseMetadata {
         diagram_type: "gantt".to_string(),

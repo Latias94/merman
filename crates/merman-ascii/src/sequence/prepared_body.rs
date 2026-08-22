@@ -1,0 +1,1223 @@
+use super::chars::SequenceChars;
+use super::event_paint::{MessageActorState, render_message, render_self_message};
+use super::event_plan::{
+    PreparedMessageRows, PreparedSelfMessageRows, ensure_message_actors_visible,
+    prepare_message_rows, prepare_self_message_rows,
+};
+use super::layout::{SequenceLayout, participant_left};
+use super::lifeline::{build_lifeline_line, retained_lifeline_width};
+use super::model::{
+    AsciiSequenceDiagram, MaterializedSequenceParticipantLabel, PreparedSequenceParticipantLabel,
+    SequenceEvent,
+};
+use super::notes::{PreparedNoteRows, ensure_note_actors_known, prepare_note_rows, render_note};
+use super::text::{
+    SequenceBatchExtent, SequenceDocumentPlan, SequenceExtentLedger, SequenceFootprintRun,
+    SequenceLine, SequenceRetainedRows, SequenceRowFootprint, blank_line_with_checkpoints,
+    padded_line_with_checkpoints, trim_right, validate_batch_lines_with_checkpoints,
+};
+use super::{SequenceActorRenderState, SequenceCheckpointCursor};
+use crate::color::AsciiColorRole;
+use crate::error::{AsciiError, Result};
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use crate::text::display_width_with_profile;
+
+#[derive(Debug, Clone, Copy)]
+struct SequenceParticipantRenderModel<'a> {
+    diagram: &'a AsciiSequenceDiagram,
+    labels: &'a [MaterializedSequenceParticipantLabel],
+}
+
+impl<'a> SequenceParticipantRenderModel<'a> {
+    fn try_new(
+        diagram: &'a AsciiSequenceDiagram,
+        labels: &'a [MaterializedSequenceParticipantLabel],
+    ) -> Result<Self> {
+        if diagram.participants.len() != labels.len() {
+            return Err(unsupported("participant label materialization"));
+        }
+        Ok(Self { diagram, labels })
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct SequencePreparedBody<'diagram> {
+    participant_labels: Vec<PreparedSequenceParticipantLabel<'diagram>>,
+    participant_count: usize,
+    batches: Vec<SequencePreparedBatch<'diagram>>,
+    footprints: Vec<SequenceRowFootprint>,
+    extent: SequenceExtentLedger,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct SequenceRowStep<'event, 'state> {
+    pub(super) event: &'event SequenceEvent,
+    pub(super) active_counts: &'state [usize],
+    pub(super) visible_actors: &'state [bool],
+    pub(super) created_actors: &'state [usize],
+    pub(super) destroyed_actors: &'state [usize],
+}
+
+#[derive(Debug)]
+struct SequencePreparedBatch<'diagram> {
+    extent: SequenceBatchExtent,
+    kind: SequencePreparedBatchKind<'diagram>,
+}
+
+#[derive(Debug)]
+enum SequencePreparedBatchKind<'diagram> {
+    ParticipantBoxes {
+        visible_actors: Vec<bool>,
+        frame: ParticipantBoxFrame,
+    },
+    Lifeline {
+        active_counts: Vec<usize>,
+        visible_actors: Vec<bool>,
+    },
+    LifecycleParticipants {
+        active_counts: Vec<usize>,
+        visible_actors: Vec<bool>,
+        actor_indices: Vec<usize>,
+    },
+    Message {
+        message: &'diagram super::model::SequenceMessage,
+        active_counts: Vec<usize>,
+        visible_actors: Vec<bool>,
+        destroyed_actors: Vec<usize>,
+        prepared: PreparedMessageRows,
+    },
+    SelfMessage {
+        message: &'diagram super::model::SequenceMessage,
+        active_counts: Vec<usize>,
+        visible_actors: Vec<bool>,
+        destroyed_actors: Vec<usize>,
+        prepared: PreparedSelfMessageRows,
+    },
+    Note {
+        note: &'diagram super::model::SequenceNote,
+        active_counts: Vec<usize>,
+        visible_actors: Vec<bool>,
+        prepared: PreparedNoteRows,
+    },
+}
+
+#[derive(Debug)]
+enum SequencePendingBatchKind<'diagram, 'state> {
+    ParticipantBoxes {
+        visible_actors: &'state [bool],
+        frame: ParticipantBoxFrame,
+    },
+    Lifeline {
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
+    },
+    LifecycleParticipants {
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
+        actor_indices: &'state [usize],
+        footprint: SequenceRowFootprint,
+    },
+    Message {
+        message: &'diagram super::model::SequenceMessage,
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
+        destroyed_actors: &'state [usize],
+        prepared: PreparedMessageRows,
+    },
+    SelfMessage {
+        message: &'diagram super::model::SequenceMessage,
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
+        destroyed_actors: &'state [usize],
+        prepared: PreparedSelfMessageRows,
+    },
+    Note {
+        note: &'diagram super::model::SequenceNote,
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
+        prepared: PreparedNoteRows,
+    },
+}
+
+impl<'diagram> SequencePreparedBody<'diagram> {
+    pub(super) fn new(
+        diagram: &'diagram AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        visible_actors: &[bool],
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<Self> {
+        let transaction = resources.clone();
+        transaction.transaction(|_| {
+            Self::new_transactional(diagram, layout, visible_actors, resources, checkpoints)
+        })
+    }
+
+    fn new_transactional(
+        diagram: &'diagram AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        visible_actors: &[bool],
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<Self> {
+        let mut participant_labels = Vec::new();
+        participant_labels
+            .try_reserve_exact(diagram.participants.len())
+            .map_err(|_| allocation_failed())?;
+        for participant in &diagram.participants {
+            checkpoints.tick()?;
+            participant_labels.push(
+                participant
+                    .label
+                    .prepare_materialization(resources, checkpoints)?,
+            );
+        }
+
+        let mut prepared = Self {
+            participant_labels,
+            participant_count: layout.participant_centers.len(),
+            batches: Vec::new(),
+            footprints: Vec::new(),
+            extent: SequenceExtentLedger::default(),
+        };
+        let extent =
+            participant_box_batch_extent(diagram, layout, visible_actors, resources, checkpoints)?;
+        prepared.push_batch(
+            extent,
+            SequencePendingBatchKind::ParticipantBoxes {
+                visible_actors,
+                frame: ParticipantBoxFrame::Header,
+            },
+            resources,
+            checkpoints,
+        )?;
+        Ok(prepared)
+    }
+
+    pub(super) fn current_row(&self) -> usize {
+        self.footprints.len()
+    }
+
+    pub(super) fn footprints(&self) -> &[SequenceRowFootprint] {
+        &self.footprints
+    }
+
+    pub(super) fn output_plan(&self) -> SequenceDocumentPlan<'_> {
+        SequenceDocumentPlan::new(
+            self.extent.output_extent(),
+            SequenceRetainedRows::Footprints(&self.footprints),
+        )
+    }
+
+    pub(super) fn prepare_step(
+        &mut self,
+        diagram: &'diagram AsciiSequenceDiagram,
+        step: SequenceRowStep<'diagram, '_>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        let batch_count = self.batches.len();
+        let footprint_count = self.footprints.len();
+        let extent = self.extent;
+        let transaction = resources.clone();
+        let result = transaction.transaction(|_| {
+            self.prepare_step_transactional(diagram, step, layout, chars, resources, checkpoints)
+        });
+        if result.is_err() {
+            self.batches.truncate(batch_count);
+            self.footprints.truncate(footprint_count);
+            self.extent = extent;
+        }
+        result
+    }
+
+    fn prepare_step_transactional(
+        &mut self,
+        diagram: &'diagram AsciiSequenceDiagram,
+        step: SequenceRowStep<'diagram, '_>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        for _ in 0..layout.message_spacing {
+            checkpoints.tick()?;
+            self.push_lifeline(
+                step.active_counts,
+                step.visible_actors,
+                layout,
+                resources,
+                checkpoints,
+            )?;
+        }
+
+        if !step.created_actors.is_empty() {
+            let extent = lifecycle_participant_batch_extent(
+                diagram,
+                layout,
+                step.visible_actors,
+                step.created_actors,
+                resources,
+                checkpoints,
+            )?;
+            let footprint = lifecycle_participant_footprint(
+                extent,
+                layout,
+                step.created_actors,
+                resources,
+                checkpoints,
+            )?;
+            self.push_batch(
+                extent,
+                SequencePendingBatchKind::LifecycleParticipants {
+                    active_counts: step.active_counts,
+                    visible_actors: step.visible_actors,
+                    actor_indices: step.created_actors,
+                    footprint,
+                },
+                resources,
+                checkpoints,
+            )?;
+        }
+
+        match step.event {
+            SequenceEvent::Message(message) => {
+                ensure_message_actors_visible(message, step.visible_actors)?;
+                if message.from == message.to {
+                    let prepared = prepare_self_message_rows(
+                        message,
+                        layout,
+                        chars,
+                        step.visible_actors,
+                        resources,
+                        checkpoints,
+                    )?;
+                    let extent = prepared.extent();
+                    self.push_batch(
+                        extent,
+                        SequencePendingBatchKind::SelfMessage {
+                            message,
+                            active_counts: step.active_counts,
+                            visible_actors: step.visible_actors,
+                            destroyed_actors: step.destroyed_actors,
+                            prepared,
+                        },
+                        resources,
+                        checkpoints,
+                    )?;
+                } else {
+                    let prepared = prepare_message_rows(
+                        message,
+                        layout,
+                        step.visible_actors,
+                        resources,
+                        checkpoints,
+                    )?;
+                    let extent = prepared.extent();
+                    self.push_batch(
+                        extent,
+                        SequencePendingBatchKind::Message {
+                            message,
+                            active_counts: step.active_counts,
+                            visible_actors: step.visible_actors,
+                            destroyed_actors: step.destroyed_actors,
+                            prepared,
+                        },
+                        resources,
+                        checkpoints,
+                    )?;
+                }
+            }
+            SequenceEvent::Note(note) => {
+                ensure_note_actors_known(note, layout)?;
+                let prepared =
+                    prepare_note_rows(note, layout, step.visible_actors, resources, checkpoints)?;
+                let extent = prepared.extent();
+                self.push_batch(
+                    extent,
+                    SequencePendingBatchKind::Note {
+                        note,
+                        active_counts: step.active_counts,
+                        visible_actors: step.visible_actors,
+                        prepared,
+                    },
+                    resources,
+                    checkpoints,
+                )?;
+            }
+            SequenceEvent::ActivationStart { .. } | SequenceEvent::ActivationEnd { .. } => {}
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish(
+        &mut self,
+        actor_state: SequenceActorRenderState<'_>,
+        diagram: &'diagram AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        mirror_actors: bool,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        let batch_count = self.batches.len();
+        let footprint_count = self.footprints.len();
+        let extent = self.extent;
+        let transaction = resources.clone();
+        let result = transaction.transaction(|_| {
+            self.finish_transactional(
+                actor_state,
+                diagram,
+                layout,
+                mirror_actors,
+                resources,
+                checkpoints,
+            )
+        });
+        if result.is_err() {
+            self.batches.truncate(batch_count);
+            self.footprints.truncate(footprint_count);
+            self.extent = extent;
+        }
+        result
+    }
+
+    fn finish_transactional(
+        &mut self,
+        actor_state: SequenceActorRenderState<'_>,
+        diagram: &'diagram AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        mirror_actors: bool,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        self.push_lifeline(
+            actor_state.active_counts,
+            actor_state.visible_actors,
+            layout,
+            resources,
+            checkpoints,
+        )?;
+        if mirror_actors {
+            let extent = participant_box_batch_extent(
+                diagram,
+                layout,
+                actor_state.visible_actors,
+                resources,
+                checkpoints,
+            )?;
+            self.push_batch(
+                extent,
+                SequencePendingBatchKind::ParticipantBoxes {
+                    visible_actors: actor_state.visible_actors,
+                    frame: ParticipantBoxFrame::Mirror,
+                },
+                resources,
+                checkpoints,
+            )?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn push_lifeline(
+        &mut self,
+        active_counts: &[usize],
+        visible_actors: &[bool],
+        layout: &SequenceLayout,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        let extent = lifeline_batch_extent(layout, visible_actors, resources, checkpoints)?;
+        self.push_batch(
+            extent,
+            SequencePendingBatchKind::Lifeline {
+                active_counts,
+                visible_actors,
+            },
+            resources,
+            checkpoints,
+        )
+    }
+
+    fn push_batch<'state>(
+        &mut self,
+        extent: SequenceBatchExtent,
+        pending: SequencePendingBatchKind<'diagram, 'state>,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        let footprint_count = self.footprints.len();
+        let previous_extent = self.extent;
+        let transaction = resources.clone();
+        let result = transaction.transaction(|_| {
+            let extent =
+                pending.with_materialization_work(extent, self.participant_count, resources)?;
+            let reservation = self.extent.reserve(extent, resources, checkpoints)?;
+            self.batches
+                .try_reserve(1)
+                .map_err(|_| allocation_failed())?;
+            pending.append_footprints(extent, &mut self.footprints, resources, checkpoints)?;
+            reservation.commit_footprints_with_checkpoints(
+                &mut self.extent,
+                &self.footprints[footprint_count..],
+                resources,
+                checkpoints,
+            )?;
+            let kind = pending.materialize(resources, checkpoints)?;
+            self.batches.push(SequencePreparedBatch { extent, kind });
+            Ok(())
+        });
+        if result.is_err() {
+            self.footprints.truncate(footprint_count);
+            self.extent = previous_extent;
+        }
+        result
+    }
+
+    pub(super) fn materialization_work_units(
+        &self,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<usize> {
+        let mut total = 0usize;
+        for label in &self.participant_labels {
+            checkpoints.tick()?;
+            total = resources.checked_work_add(total, label.materialization_work_units())?;
+        }
+        for batch in &self.batches {
+            checkpoints.tick()?;
+            total = resources.checked_work_add(total, batch.materialization_work_units())?;
+        }
+        Ok(total)
+    }
+
+    pub(super) fn materialize(
+        self,
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<Vec<SequenceLine>> {
+        let mut participant_labels = Vec::new();
+        participant_labels
+            .try_reserve_exact(self.participant_labels.len())
+            .map_err(|_| allocation_failed())?;
+        for label in self.participant_labels {
+            checkpoints.tick()?;
+            participant_labels.push(label.materialize_after_admission(checkpoints)?);
+        }
+        let participants = SequenceParticipantRenderModel::try_new(diagram, &participant_labels)?;
+        let mut lines = Vec::new();
+        lines
+            .try_reserve_exact(self.footprints.len())
+            .map_err(|_| allocation_failed())?;
+        let mut expected_row: usize = 0;
+        for batch in self.batches {
+            checkpoints.tick()?;
+            let batch_height = batch.extent.height();
+            let expected_end = expected_row
+                .checked_add(batch_height)
+                .ok_or_else(|| unsupported("row extent planning"))?;
+            let rendered =
+                batch.materialize(participants, layout, chars, resources, checkpoints)?;
+            let expected = self
+                .footprints
+                .get(expected_row..expected_end)
+                .ok_or_else(|| unsupported("row extent planning"))?;
+            for (line, footprint) in rendered.iter().zip(expected) {
+                checkpoints.tick()?;
+                if line.len() != footprint.retained_width() {
+                    return Err(unsupported("row extent planning"));
+                }
+            }
+            expected_row = expected_end;
+            lines.extend(rendered);
+        }
+        if expected_row != self.footprints.len() || lines.len() != self.footprints.len() {
+            return Err(unsupported("row extent planning"));
+        }
+        Ok(lines)
+    }
+}
+
+impl<'diagram, 'state> SequencePendingBatchKind<'diagram, 'state> {
+    fn with_materialization_work(
+        &self,
+        extent: SequenceBatchExtent,
+        participant_count: usize,
+        resources: &ResourceContext,
+    ) -> Result<SequenceBatchExtent> {
+        match self {
+            Self::ParticipantBoxes { .. } => Ok(extent),
+            Self::Lifeline { .. }
+            | Self::LifecycleParticipants { .. }
+            | Self::Message { .. }
+            | Self::SelfMessage { .. }
+            | Self::Note { .. } => {
+                extent.with_lifeline_materialization_work(participant_count, resources)
+            }
+        }
+    }
+
+    fn append_footprints(
+        &self,
+        extent: SequenceBatchExtent,
+        footprints: &mut Vec<SequenceRowFootprint>,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        match self {
+            Self::ParticipantBoxes { .. } | Self::Lifeline { .. } => SequenceFootprintRun::new(
+                SequenceRowFootprint::lifeline(extent.retained_width()),
+                extent.height(),
+            )
+            .append_to(footprints, checkpoints),
+            Self::LifecycleParticipants { footprint, .. } => {
+                SequenceFootprintRun::new(*footprint, extent.height())
+                    .append_to(footprints, checkpoints)
+            }
+            Self::Message {
+                message, prepared, ..
+            } => prepared.append_footprints(&message.label, resources, checkpoints, footprints),
+            Self::SelfMessage {
+                message, prepared, ..
+            } => prepared.append_footprints(&message.label, resources, checkpoints, footprints),
+            Self::Note { prepared, .. } => prepared.append_footprints(footprints, checkpoints),
+        }
+    }
+
+    fn materialize(
+        self,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<SequencePreparedBatchKind<'diagram>> {
+        let clone_work = match &self {
+            Self::ParticipantBoxes { visible_actors, .. } => visible_actors.len(),
+            Self::Lifeline {
+                active_counts,
+                visible_actors,
+            }
+            | Self::Note {
+                active_counts,
+                visible_actors,
+                ..
+            } => resources.checked_work_add(active_counts.len(), visible_actors.len())?,
+            Self::LifecycleParticipants {
+                active_counts,
+                visible_actors,
+                actor_indices,
+                ..
+            } => resources.checked_work_add(
+                resources.checked_work_add(active_counts.len(), visible_actors.len())?,
+                actor_indices.len(),
+            )?,
+            Self::Message {
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                ..
+            }
+            | Self::SelfMessage {
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                ..
+            } => resources.checked_work_add(
+                resources.checked_work_add(active_counts.len(), visible_actors.len())?,
+                destroyed_actors.len(),
+            )?,
+        };
+        checkpoints.before_charge()?;
+        resources.charge_layout_work(clone_work)?;
+        Ok(match self {
+            Self::ParticipantBoxes {
+                visible_actors,
+                frame,
+            } => SequencePreparedBatchKind::ParticipantBoxes {
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                frame,
+            },
+            Self::Lifeline {
+                active_counts,
+                visible_actors,
+            } => SequencePreparedBatchKind::Lifeline {
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+            },
+            Self::LifecycleParticipants {
+                active_counts,
+                visible_actors,
+                actor_indices,
+                ..
+            } => SequencePreparedBatchKind::LifecycleParticipants {
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                actor_indices: try_clone_slice(actor_indices, checkpoints)?,
+            },
+            Self::Message {
+                message,
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                prepared,
+            } => SequencePreparedBatchKind::Message {
+                message,
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                destroyed_actors: try_clone_slice(destroyed_actors, checkpoints)?,
+                prepared,
+            },
+            Self::SelfMessage {
+                message,
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                prepared,
+            } => SequencePreparedBatchKind::SelfMessage {
+                message,
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                destroyed_actors: try_clone_slice(destroyed_actors, checkpoints)?,
+                prepared,
+            },
+            Self::Note {
+                note,
+                active_counts,
+                visible_actors,
+                prepared,
+            } => SequencePreparedBatchKind::Note {
+                note,
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                prepared,
+            },
+        })
+    }
+}
+
+impl SequencePreparedBatch<'_> {
+    fn materialization_work_units(&self) -> usize {
+        match &self.kind {
+            SequencePreparedBatchKind::Message { prepared, .. } => {
+                prepared.materialization_work_units()
+            }
+            SequencePreparedBatchKind::SelfMessage { prepared, .. } => {
+                prepared.materialization_work_units()
+            }
+            SequencePreparedBatchKind::Note { prepared, .. } => {
+                prepared.materialization_work_units()
+            }
+            SequencePreparedBatchKind::ParticipantBoxes { .. }
+            | SequencePreparedBatchKind::Lifeline { .. }
+            | SequencePreparedBatchKind::LifecycleParticipants { .. } => 0,
+        }
+    }
+
+    fn materialize(
+        self,
+        participants: SequenceParticipantRenderModel<'_>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<Vec<SequenceLine>> {
+        let lines = match self.kind {
+            SequencePreparedBatchKind::ParticipantBoxes {
+                visible_actors,
+                frame,
+            } => render_participant_box_rows(
+                participants,
+                layout,
+                chars,
+                &visible_actors,
+                frame,
+                resources,
+                checkpoints,
+            )?,
+            SequencePreparedBatchKind::Lifeline {
+                active_counts,
+                visible_actors,
+            } => vec![build_lifeline_line(
+                layout,
+                chars,
+                &active_counts,
+                &visible_actors,
+                resources,
+                checkpoints,
+            )?],
+            SequencePreparedBatchKind::LifecycleParticipants {
+                active_counts,
+                visible_actors,
+                actor_indices,
+            } => render_lifecycle_participants(
+                participants,
+                layout,
+                chars,
+                SequenceActorRenderState::new(&active_counts, &visible_actors),
+                &actor_indices,
+                resources,
+                checkpoints,
+            )?,
+            SequencePreparedBatchKind::Message {
+                message,
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                prepared,
+            } => render_message(
+                prepared,
+                message,
+                layout,
+                chars,
+                MessageActorState::new(&active_counts, &visible_actors, &destroyed_actors),
+                resources,
+                checkpoints,
+            )?,
+            SequencePreparedBatchKind::SelfMessage {
+                message,
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                prepared,
+            } => render_self_message(
+                prepared,
+                message,
+                layout,
+                chars,
+                MessageActorState::new(&active_counts, &visible_actors, &destroyed_actors),
+                resources,
+                checkpoints,
+            )?,
+            SequencePreparedBatchKind::Note {
+                note,
+                active_counts,
+                visible_actors,
+                prepared,
+            } => render_note(
+                prepared,
+                note,
+                layout,
+                chars,
+                SequenceActorRenderState::new(&active_counts, &visible_actors),
+                resources,
+                checkpoints,
+            )?,
+        };
+        validate_batch_lines_with_checkpoints(self.extent, &lines, resources, checkpoints)?;
+        Ok(lines)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParticipantBoxFrame {
+    Header,
+    Mirror,
+}
+
+pub(super) fn lifeline_batch_extent(
+    layout: &SequenceLayout,
+    visible_actors: &[bool],
+    resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<SequenceBatchExtent> {
+    let materialized_width = resources.checked_grid_add(layout.total_width, 1)?;
+    let retained_width = retained_lifeline_width(layout, visible_actors, resources, checkpoints)?;
+    SequenceBatchExtent::uniform(1, materialized_width, retained_width, resources)?
+        .with_lifeline_materialization_work(layout.participant_centers.len(), resources)
+}
+
+pub(super) fn participant_box_batch_extent(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    visible_actors: &[bool],
+    resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<SequenceBatchExtent> {
+    let height =
+        resources.checked_grid_add(participant_label_row_count(diagram, checkpoints)?, 2)?;
+    let mut retained_width = 0usize;
+    for index in 0..diagram.participants.len() {
+        checkpoints.tick()?;
+        if visible_actors.get(index).copied().unwrap_or(true) {
+            retained_width = retained_width.max(participant_box_right(layout, index, resources)?);
+        }
+    }
+    let materialized_width = resources
+        .checked_grid_add(layout.total_width, 1)?
+        .max(retained_width);
+    SequenceBatchExtent::uniform(height, materialized_width, retained_width, resources)
+}
+
+fn lifecycle_participant_batch_extent(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    visible_actors: &[bool],
+    actor_indices: &[usize],
+    resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<SequenceBatchExtent> {
+    let height =
+        resources.checked_grid_add(participant_label_row_count(diagram, checkpoints)?, 2)?;
+    let mut retained_width =
+        retained_lifeline_width(layout, visible_actors, resources, checkpoints)?;
+    for index in actor_indices {
+        checkpoints.tick()?;
+        retained_width = retained_width.max(participant_box_right(layout, *index, resources)?);
+    }
+    let materialized_width = resources
+        .checked_grid_add(layout.total_width, 1)?
+        .max(retained_width);
+    SequenceBatchExtent::uniform(height, materialized_width, retained_width, resources)
+}
+
+fn lifecycle_participant_footprint(
+    extent: SequenceBatchExtent,
+    layout: &SequenceLayout,
+    actor_indices: &[usize],
+    resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<SequenceRowFootprint> {
+    let mut left = None;
+    let mut right = 0usize;
+    for index in actor_indices {
+        checkpoints.tick()?;
+        let actor_left = participant_left(layout, *index, resources)?;
+        left = Some(left.map_or(actor_left, |current: usize| current.min(actor_left)));
+        right = right.max(
+            participant_box_right(layout, *index, resources)?
+                .checked_sub(1)
+                .ok_or_else(|| unsupported("actor lifecycle rows"))?,
+        );
+    }
+    let left = left.ok_or_else(|| unsupported("actor lifecycle rows"))?;
+    SequenceRowFootprint::with_content(extent.retained_width(), left, right)
+}
+
+fn participant_box_right(
+    layout: &SequenceLayout,
+    index: usize,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    let width = layout
+        .participant_widths
+        .get(index)
+        .copied()
+        .ok_or_else(|| unsupported("participant layout"))?;
+    let segment_width = resources.checked_grid_add(width, super::BOX_BORDER_WIDTH)?;
+    resources.checked_grid_add(participant_left(layout, index, resources)?, segment_width)
+}
+
+fn render_participant_box_rows(
+    participants: SequenceParticipantRenderModel<'_>,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    visible_actors: &[bool],
+    frame: ParticipantBoxFrame,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Vec<SequenceLine>> {
+    let label_rows = participant_label_row_count(participants.diagram, checkpoints)?;
+    let rows = participant_box_rows(label_rows, frame, resources, checkpoints)?;
+    let width = resources.checked_grid_add(layout.total_width, 1)?;
+    resources.grid_extent(width, rows.len())?;
+    checkpoints.before_charge()?;
+    charge_work_product(
+        resources,
+        participants.diagram.participants.len(),
+        rows.len(),
+    )?;
+    let mut rendered = Vec::new();
+    rendered
+        .try_reserve_exact(rows.len())
+        .map_err(|_| allocation_failed())?;
+    let resource_view: &ResourceContext = resources;
+    for row in rows {
+        checkpoints.tick()?;
+        let mut line =
+            blank_line_with_checkpoints(0, layout.width_profile, resource_view, checkpoints)?;
+        for index in 0..participants.diagram.participants.len() {
+            checkpoints.tick()?;
+            if !visible_actors.get(index).copied().unwrap_or(true) {
+                continue;
+            }
+            let left = participant_left(layout, index, resource_view)?;
+            let needed = left.saturating_sub(line.len());
+            line.try_push_spaces_with_checkpoint(needed, || checkpoints.checkpoint())?;
+            let segment = build_participant_box_row(
+                participants,
+                layout,
+                chars,
+                ParticipantBoxRowRequest {
+                    index,
+                    row,
+                    label_rows,
+                },
+                resource_view,
+                checkpoints,
+            )?;
+            line.try_push_line_with_checkpoint(&segment, resource_view, || {
+                checkpoints.checkpoint()
+            })?;
+        }
+        rendered.push(line);
+    }
+    Ok(rendered)
+}
+
+fn participant_box_rows(
+    label_rows: usize,
+    frame: ParticipantBoxFrame,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Vec<ParticipantBoxRow>> {
+    let capacity = resources.checked_grid_add(label_rows, 2)?;
+    checkpoints.before_charge()?;
+    resources.charge_layout_work(capacity)?;
+    resources.grid_extent(1, capacity)?;
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(capacity)
+        .map_err(|_| allocation_failed())?;
+    rows.push(match frame {
+        ParticipantBoxFrame::Header => ParticipantBoxRow::Top,
+        ParticipantBoxFrame::Mirror => ParticipantBoxRow::MirrorTop,
+    });
+    for row in 0..label_rows {
+        checkpoints.tick()?;
+        rows.push(ParticipantBoxRow::Label(row));
+    }
+    rows.push(match frame {
+        ParticipantBoxFrame::Header => ParticipantBoxRow::Bottom,
+        ParticipantBoxFrame::Mirror => ParticipantBoxRow::MirrorBottom,
+    });
+    Ok(rows)
+}
+
+fn participant_label_row_count(
+    diagram: &AsciiSequenceDiagram,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<usize> {
+    let mut label_rows = 1usize;
+    for participant in &diagram.participants {
+        checkpoints.tick()?;
+        label_rows = label_rows.max(participant.label.line_count());
+    }
+    Ok(label_rows)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParticipantBoxRow {
+    Top,
+    Label(usize),
+    Bottom,
+    MirrorTop,
+    MirrorBottom,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ParticipantBoxRowRequest {
+    index: usize,
+    row: ParticipantBoxRow,
+    label_rows: usize,
+}
+
+fn build_participant_box_row(
+    participants: SequenceParticipantRenderModel<'_>,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    request: ParticipantBoxRowRequest,
+    resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<SequenceLine> {
+    let ParticipantBoxRowRequest {
+        index,
+        row,
+        label_rows,
+    } = request;
+    let width = layout
+        .participant_widths
+        .get(index)
+        .copied()
+        .ok_or_else(|| unsupported("participant layout"))?;
+    let total_width = resources.checked_grid_add(width, super::BOX_BORDER_WIDTH)?;
+    let mut line =
+        blank_line_with_checkpoints(total_width, layout.width_profile, resources, checkpoints)?;
+    let center_offset = resources.checked_grid_add(width / 2, 1)?;
+    let right = resources.checked_grid_add(width, 1)?;
+    match row {
+        ParticipantBoxRow::Top | ParticipantBoxRow::MirrorTop => {
+            line.try_set_role(0, chars.top_left, AsciiColorRole::SequenceFrame)?;
+            for x in 1..=width {
+                checkpoints.tick()?;
+                let ch = if row == ParticipantBoxRow::MirrorTop && x == center_offset {
+                    chars.tee_up
+                } else {
+                    chars.horizontal
+                };
+                line.try_set_role(x, ch, AsciiColorRole::SequenceFrame)?;
+            }
+            line.try_set_role(right, chars.top_right, AsciiColorRole::SequenceFrame)?;
+        }
+        ParticipantBoxRow::Label(label_row) => {
+            let label = participants
+                .labels
+                .get(index)
+                .ok_or_else(|| unsupported("participant label materialization"))?;
+            let label_lines = label.lines();
+            let row_count = label_lines.len().max(1);
+            let top_padding = label_rows.saturating_sub(row_count) / 2;
+            let row_label = label_row
+                .checked_sub(top_padding)
+                .and_then(|index| label_lines.get(index));
+            let label_width = row_label
+                .map(|line| display_width_with_profile(line, layout.width_profile))
+                .unwrap_or(0);
+            let left_padding = width
+                .checked_sub(label_width)
+                .ok_or_else(|| unsupported("participant label width"))?
+                / 2;
+            line.try_set_role(0, chars.vertical, AsciiColorRole::SequenceFrame)?;
+            if let Some(label) = row_label {
+                let label_start = resources.checked_grid_add(1, left_padding)?;
+                line.try_write_text_role_with_checkpoint(
+                    label_start,
+                    label,
+                    AsciiColorRole::Text,
+                    resources,
+                    || checkpoints.tick(),
+                )?;
+            }
+            line.try_set_role(right, chars.vertical, AsciiColorRole::SequenceFrame)?;
+        }
+        ParticipantBoxRow::Bottom | ParticipantBoxRow::MirrorBottom => {
+            line.try_set_role(0, chars.bottom_left, AsciiColorRole::SequenceFrame)?;
+            for x in 1..=width {
+                checkpoints.tick()?;
+                let ch = if row == ParticipantBoxRow::Bottom && x == center_offset {
+                    chars.tee_down
+                } else {
+                    chars.horizontal
+                };
+                line.try_set_role(x, ch, AsciiColorRole::SequenceFrame)?;
+            }
+            line.try_set_role(right, chars.bottom_right, AsciiColorRole::SequenceFrame)?;
+        }
+    }
+    Ok(line)
+}
+
+fn render_lifecycle_participants(
+    participants: SequenceParticipantRenderModel<'_>,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    actor_state: SequenceActorRenderState<'_>,
+    actor_indices: &[usize],
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Vec<SequenceLine>> {
+    let label_rows = participant_label_row_count(participants.diagram, checkpoints)?;
+    let rows = participant_box_rows(
+        label_rows,
+        ParticipantBoxFrame::Header,
+        resources,
+        checkpoints,
+    )?;
+    checkpoints.before_charge()?;
+    charge_work_product(resources, actor_indices.len(), rows.len())?;
+    let base_width = resources.checked_grid_add(layout.total_width, 1)?;
+    resources.grid_extent(base_width, rows.len())?;
+
+    let mut rendered = Vec::new();
+    rendered
+        .try_reserve_exact(rows.len())
+        .map_err(|_| allocation_failed())?;
+    for row in rows {
+        checkpoints.tick()?;
+        let mut width = base_width;
+        for index in actor_indices {
+            checkpoints.tick()?;
+            let segment = build_participant_box_row(
+                participants,
+                layout,
+                chars,
+                ParticipantBoxRowRequest {
+                    index: *index,
+                    row,
+                    label_rows,
+                },
+                resources,
+                checkpoints,
+            )?;
+            let participant_left = participant_left(layout, *index, resources)?;
+            let segment_right = resources.checked_grid_add(participant_left, segment.len())?;
+            width = width.max(segment_right);
+        }
+        resources.grid_extent(width, 1)?;
+        let mut line = padded_line_with_checkpoints(
+            build_lifeline_line(
+                layout,
+                chars,
+                actor_state.active_counts,
+                actor_state.visible_actors,
+                resources,
+                checkpoints,
+            )?,
+            width,
+            checkpoints,
+        )?;
+        for index in actor_indices {
+            checkpoints.tick()?;
+            let segment = build_participant_box_row(
+                participants,
+                layout,
+                chars,
+                ParticipantBoxRowRequest {
+                    index: *index,
+                    row,
+                    label_rows,
+                },
+                resources,
+                checkpoints,
+            )?;
+            line.try_write_line_with_checkpoint(
+                participant_left(layout, *index, resources)?,
+                &segment,
+                resources,
+                || checkpoints.checkpoint(),
+            )?;
+        }
+        rendered.push(trim_right(line)?);
+    }
+    Ok(rendered)
+}
+
+fn unsupported(feature: &'static str) -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "sequence",
+        feature,
+    }
+}
+
+fn charge_work_product(resources: &mut ResourceContext, left: usize, right: usize) -> Result<()> {
+    resources.charge_layout_work_product(left, right)
+}
+
+fn try_clone_slice<T: Copy>(
+    source: &[T],
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Vec<T>> {
+    let mut cloned = Vec::new();
+    cloned
+        .try_reserve_exact(source.len())
+        .map_err(|_| allocation_failed())?;
+    for value in source {
+        checkpoints.tick()?;
+        cloned.push(*value);
+    }
+    Ok(cloned)
+}
+
+fn allocation_failed() -> AsciiError {
+    AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
+}

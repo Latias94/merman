@@ -947,9 +947,51 @@ pub struct RoutedTextMeasurer<'a> {
     default_phase: TextMeasurementPhase,
     policy: &'a TextMeasurementPolicy,
     recorder: &'a TextMeasurementRecorder,
+    work_meter: &'a OperationWorkMeter,
+    controlled_operation_phase: Option<OperationPhase>,
+}
+
+trait CancelledTextMeasurement: Sized {
+    fn cancelled() -> Self;
+}
+
+impl CancelledTextMeasurement for f64 {
+    fn cancelled() -> Self {
+        0.0
+    }
+}
+
+impl CancelledTextMeasurement for (f64, f64) {
+    fn cancelled() -> Self {
+        (0.0, 0.0)
+    }
+}
+
+impl CancelledTextMeasurement for TextMetrics {
+    fn cancelled() -> Self {
+        Self {
+            width: 0.0,
+            height: 0.0,
+            line_count: 1,
+        }
+    }
+}
+
+impl CancelledTextMeasurement for (TextMetrics, Option<f64>) {
+    fn cancelled() -> Self {
+        (TextMetrics::cancelled(), None)
+    }
 }
 
 impl RoutedTextMeasurer<'_> {
+    fn controlled_cancellation_value<T: CancelledTextMeasurement>(&self) -> Option<T> {
+        let phase = self.controlled_operation_phase?;
+        self.work_meter
+            .checkpoint(phase)
+            .is_err()
+            .then(T::cancelled)
+    }
+
     fn phase_for(&self, operation: TextMeasurementOperation) -> TextMeasurementPhase {
         match operation {
             TextMeasurementOperation::ComputedLength => TextMeasurementPhase::ComputedLength,
@@ -997,7 +1039,7 @@ impl RoutedTextMeasurer<'_> {
         }
     }
 
-    fn resolve<T>(
+    fn resolve<T: CancelledTextMeasurement>(
         &self,
         request: HostTextMeasurementRequest<'_>,
         decode_host: impl FnOnce(HostTextMeasurement) -> Option<T>,
@@ -1005,17 +1047,26 @@ impl RoutedTextMeasurer<'_> {
     ) -> T {
         let phase = request.phase;
         let operation = request.operation;
+        if let Some(cancelled) = self.controlled_cancellation_value() {
+            return cancelled;
+        }
         match &self.policy.routes[phase.index()] {
             TextMeasurementRouteConfig::Profile(profile) => {
                 let value = profile_call(profile.backend.as_ref());
                 self.recorder
                     .record(phase, operation, TextMeasurementRouteOutcome::Profile);
+                if let Some(cancelled) = self.controlled_cancellation_value() {
+                    return cancelled;
+                }
                 value
             }
             TextMeasurementRouteConfig::Host {
                 backend, fallback, ..
             } => {
                 let attempt = backend.measure(request);
+                if let Some(cancelled) = self.controlled_cancellation_value() {
+                    return cancelled;
+                }
                 let decoded = match &attempt {
                     Ok(Some(value)) if validate_host_text_measurement(&request, value).is_ok() => {
                         decode_host(*value)
@@ -1034,12 +1085,21 @@ impl RoutedTextMeasurer<'_> {
                     Ok(None) => HostFallbackReason::Missing,
                     Err(error) => error.fallback_reason(),
                 };
+                // `TextMeasurer` is intentionally infallible. A controlled route therefore
+                // observes the canonical operation before entering another opaque backend and
+                // returns a neutral value only to unwind toward the caller's fallible boundary.
+                if let Some(cancelled) = self.controlled_cancellation_value() {
+                    return cancelled;
+                }
                 let value = profile_call(fallback.backend.as_ref());
                 self.recorder.record(
                     phase,
                     operation,
                     TextMeasurementRouteOutcome::Fallback(reason),
                 );
+                if let Some(cancelled) = self.controlled_cancellation_value() {
+                    return cancelled;
+                }
                 value
             }
         }
@@ -1651,10 +1711,28 @@ pub struct RenderSession {
 
 impl RenderSession {
     pub fn text_measurer(&self, default_phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {
+        self.routed_text_measurer(default_phase, None)
+    }
+
+    pub(crate) fn controlled_text_measurer(
+        &self,
+        default_phase: TextMeasurementPhase,
+        operation_phase: OperationPhase,
+    ) -> RoutedTextMeasurer<'_> {
+        self.routed_text_measurer(default_phase, Some(operation_phase))
+    }
+
+    fn routed_text_measurer(
+        &self,
+        default_phase: TextMeasurementPhase,
+        controlled_operation_phase: Option<OperationPhase>,
+    ) -> RoutedTextMeasurer<'_> {
         RoutedTextMeasurer {
             default_phase,
             policy: &self.text_measurement,
             recorder: &self.measurement_recorder,
+            work_meter: self.work_meter.as_ref(),
+            controlled_operation_phase,
         }
     }
 
@@ -2764,6 +2842,61 @@ mod tests {
             ],
             fallback,
         )
+    }
+
+    struct CancellingMissingHost {
+        calls: Arc<AtomicUsize>,
+        control: OperationControl,
+    }
+
+    impl HostTextMeasurer for CancellingMissingHost {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            self.control.cancel();
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn host_cancellation_skips_fallback_and_future_primary_calls() {
+        let control = OperationControl::new();
+        let host_calls = Arc::new(AtomicUsize::new(0));
+        let fallback_calls = Arc::new(AtomicUsize::new(0));
+        let fallback = TextMeasurementProfile::new(
+            identity("test.cancelled-fallback", "v1", &[]),
+            Arc::new(CountingFallback(Arc::clone(&fallback_calls))),
+        );
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            identity("test.cancelling-host", "v1", &[]),
+            Arc::new(CancellingMissingHost {
+                calls: Arc::clone(&host_calls),
+                control: control.clone(),
+            }),
+            [TextMeasurementPhase::Layout],
+            fallback,
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(policy)
+            .begin_session_with_control(control)
+            .expect("begin controlled render session");
+
+        let measurer =
+            session.controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout);
+        let measured = measurer.measure("label", &TextStyle::default());
+        let measured_after_cancellation = measurer.measure("second label", &TextStyle::default());
+
+        assert_eq!(measured.width, 0.0);
+        assert_eq!(measured.height, 0.0);
+        assert_eq!(measured.line_count, 1);
+        assert_eq!(measured_after_cancellation.width, 0.0);
+        assert_eq!(measured_after_cancellation.height, 0.0);
+        assert_eq!(measured_after_cancellation.line_count, 1);
+        assert_eq!(host_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(fallback_calls.load(Ordering::Relaxed), 0);
+        assert!(matches!(
+            session.checkpoint(OperationPhase::Layout),
+            Err(crate::Error::Cancelled(_))
+        ));
     }
 
     #[test]

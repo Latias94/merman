@@ -11,6 +11,7 @@ import {
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
   type EditorDocumentSnapshot,
   type EditorWorkerRequest,
   type EditorWorkerResponse,
@@ -769,7 +770,7 @@ function ready(worker: PendingWorkerPort): void {
     requestId: initialize.requestId,
     type: "ready",
     completionTriggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
-    transportApiVersion: 5,
+    transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
     editorSchema: EDITOR_SCHEMA_VERSION,
   });
 }

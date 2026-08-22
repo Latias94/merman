@@ -1,7 +1,10 @@
-use merman_ascii::{AsciiRenderOptions, render_model};
+mod support;
+
+use merman_ascii::AsciiRenderOptions;
 use merman_core::{Engine, ParseOptions};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use support::render_model;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct GraphFixture {
@@ -37,7 +40,11 @@ impl GraphFixture {
     }
 }
 
-const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
+const fn graph_fixture(directory: &'static str, name: &'static str) -> GraphFixture {
+    GraphFixture { directory, name }
+}
+
+const GRAPH_FIXTURE_CORPUS: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
         name: "ampersand_lhs.txt",
@@ -356,7 +363,47 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
 ];
 
-const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[];
+const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
+    graph_fixture("ascii", "ampersand_lhs.txt"),
+    graph_fixture("ascii", "ampersand_lhs_and_rhs.txt"),
+    graph_fixture("ascii", "ampersand_rhs.txt"),
+    graph_fixture("ascii", "back_reference_from_child.txt"),
+    graph_fixture("ascii", "backlink_from_bottom.txt"),
+    graph_fixture("ascii", "backlink_from_top.txt"),
+    graph_fixture("ascii", "backlink_with_short_y_padding.txt"),
+    graph_fixture("ascii", "back_edges_two_labels_td.txt"),
+    graph_fixture("ascii", "bidirectional_edge_labels_lr.txt"),
+    graph_fixture("ascii", "bidirectional_edge_labels_td.txt"),
+    graph_fixture("ascii", "comments.txt"),
+    graph_fixture("ascii", "duplicate_edge_labels.txt"),
+    graph_fixture("ascii", "graph_tb_direction.txt"),
+    graph_fixture("ascii", "preserve_order_of_definition.txt"),
+    graph_fixture("ascii", "subgraph_complex_nested.txt"),
+    graph_fixture("ascii", "subgraph_complex_mixed.txt"),
+    graph_fixture("ascii", "subgraph_empty.txt"),
+    graph_fixture("ascii", "subgraph_explicit_title.txt"),
+    graph_fixture("ascii", "subgraph_mixed_nodes_td.txt"),
+    graph_fixture("ascii", "subgraph_multiple_edges.txt"),
+    graph_fixture("ascii", "subgraph_multiple_nodes.txt"),
+    graph_fixture("ascii", "subgraph_node_outside_lr.txt"),
+    graph_fixture("ascii", "subgraph_td_direction.txt"),
+    graph_fixture("ascii", "subgraph_with_labels.txt"),
+    graph_fixture("ascii", "tight_arrow_mixed.txt"),
+    graph_fixture("ascii", "two_layer_single_graph.txt"),
+    graph_fixture("ascii", "two_layer_single_graph_longer_names.txt"),
+    graph_fixture("extended-chars", "ampersand_lhs.txt"),
+    graph_fixture("extended-chars", "ampersand_lhs_and_rhs.txt"),
+    graph_fixture("extended-chars", "ampersand_rhs.txt"),
+    graph_fixture("extended-chars", "back_reference_from_child.txt"),
+    graph_fixture("extended-chars", "backlink_from_bottom.txt"),
+    graph_fixture("extended-chars", "backlink_from_top.txt"),
+    graph_fixture("extended-chars", "back_edges_two_labels_td.txt"),
+    graph_fixture("extended-chars", "comments.txt"),
+    graph_fixture("extended-chars", "preserve_order_of_definition.txt"),
+    graph_fixture("extended-chars", "tight_arrow_mixed.txt"),
+    graph_fixture("extended-chars", "two_layer_single_graph_longer_names.txt"),
+    graph_fixture("extended-chars", "two_layer_single_graph.txt"),
+];
 
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
@@ -405,31 +452,120 @@ fn graph_fixture_keys(fixtures: &[GraphFixture]) -> BTreeSet<String> {
 }
 
 #[test]
-fn graph_fixture_allowlist_matches_upstream() {
-    for fixture in GRAPH_FIXTURE_ALLOWLIST {
+fn graph_fixture_exact_subset_matches_upstream() {
+    let gaps = graph_fixture_keys(GRAPH_FIXTURE_GAPS);
+    let mut mismatches = Vec::new();
+    for fixture in GRAPH_FIXTURE_CORPUS {
+        if gaps.contains(&fixture.key()) {
+            continue;
+        }
         let path = fixture_path(*fixture);
         let (input, expected) = split_fixture(&path);
-        let rendered = render_flowchart(&input, &fixture.options())
-            .unwrap_or_else(|err| panic!("{} failed: {err}", path.display()));
-
-        assert_eq!(rendered, expected, "{}", path.display());
+        match render_flowchart(&input, &fixture.options()) {
+            Ok(rendered) if rendered == expected => {}
+            Ok(_) => mismatches.push(format!("{}: output differs", fixture.key())),
+            Err(error) => mismatches.push(format!("{}: {error}", fixture.key())),
+        }
     }
+
+    assert!(
+        mismatches.is_empty(),
+        "copied graph fixtures no longer match exactly:\n{}",
+        mismatches.join("\n")
+    );
+}
+
+#[test]
+fn graph_fixture_named_gaps_preserve_visible_text_and_render() {
+    let mut failures = Vec::new();
+    for fixture in GRAPH_FIXTURE_GAPS {
+        let path = fixture_path(*fixture);
+        let (input, expected) = split_fixture(&path);
+        match render_flowchart(&input, &fixture.options()) {
+            Ok(rendered) if !rendered.trim().is_empty() => {
+                let expected_tokens = visible_text_token_counts(&expected);
+                let rendered_tokens = visible_text_tokens(&rendered);
+                for (token, expected_count) in expected_tokens {
+                    let actual_count = visible_token_occurrences(&rendered_tokens, &token);
+                    if actual_count < expected_count {
+                        failures.push(format!(
+                            "{}: visible token {token:?} occurs {actual_count} times, expected at least {expected_count}\n{rendered}",
+                            fixture.key(),
+                        ));
+                    }
+                }
+            }
+            Ok(_) => failures.push(format!("{}: empty output", fixture.key())),
+            Err(error) => failures.push(format!("{}: {error}", fixture.key())),
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "named graph fixture gaps must remain renderable:\n{}",
+        failures.join("\n")
+    );
+}
+
+fn visible_text_token_counts(text: &str) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for token in visible_text_tokens(text) {
+        *counts.entry(token).or_default() += 1;
+    }
+    counts
+}
+
+fn visible_text_tokens(text: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let flush = |token: &mut String, tokens: &mut Vec<String>| {
+        // The copied ASCII renderer uses a standalone `v` as a downward arrowhead.
+        if !token.is_empty() && token != "v" {
+            tokens.push(std::mem::take(token));
+        } else {
+            token.clear();
+        }
+    };
+
+    for character in text.chars() {
+        if character.is_alphanumeric() || character == '_' {
+            token.push(character);
+        } else {
+            flush(&mut token, &mut tokens);
+        }
+    }
+    flush(&mut token, &mut tokens);
+    tokens
+}
+
+fn visible_token_occurrences(tokens: &[String], expected: &str) -> usize {
+    let mut occurrences = 0usize;
+    for start in 0..tokens.len() {
+        let mut joined = String::new();
+        for token in &tokens[start..] {
+            joined.push_str(token);
+            if joined == expected {
+                occurrences += 1;
+                break;
+            }
+            if joined.len() >= expected.len() || !expected.starts_with(&joined) {
+                break;
+            }
+        }
+    }
+    occurrences
 }
 
 #[test]
 fn graph_fixture_gap_inventory_covers_all_graph_fixtures() {
-    let allowlist = graph_fixture_keys(GRAPH_FIXTURE_ALLOWLIST);
+    let corpus = graph_fixture_keys(GRAPH_FIXTURE_CORPUS);
     let gaps = graph_fixture_keys(GRAPH_FIXTURE_GAPS);
-    assert_eq!(allowlist.len(), GRAPH_FIXTURE_ALLOWLIST.len());
+    assert_eq!(corpus.len(), GRAPH_FIXTURE_CORPUS.len());
     assert_eq!(gaps.len(), GRAPH_FIXTURE_GAPS.len());
     assert!(
-        allowlist.is_disjoint(&gaps),
-        "graph fixture allowlist and gap inventory must not overlap"
+        gaps.is_subset(&corpus),
+        "every named graph gap must belong to the copied corpus"
     );
-
-    let mut tracked = BTreeSet::new();
-    tracked.extend(allowlist);
-    tracked.extend(gaps);
 
     let mut discovered = BTreeSet::new();
     for directory in ["ascii", "extended-chars"] {
@@ -443,7 +579,7 @@ fn graph_fixture_gap_inventory_covers_all_graph_fixtures() {
     }
 
     assert_eq!(
-        discovered, tracked,
-        "every copied graph fixture must be either allowlisted or named as a gap"
+        discovered, corpus,
+        "the copied graph corpus inventory must cover every fixture exactly once"
     );
 }

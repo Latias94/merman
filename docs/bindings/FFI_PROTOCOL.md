@@ -378,8 +378,14 @@ nullable `capability_id`:
 Icon-registry construction failures add `details.icon_registry` with a stable `kind_id`, optional
 `pack_index`, and a bounded registration name when safe to report. Fixed constructor ceilings also
 add `details.resource` with the stable limit ID, phase, actual value, maximum, and
-`constructor-fixed` profile. Cancelled operations add `details.cancellation` with `reason` and
-`phase`. These are additive fields under the frozen five-kind error envelope.
+`constructor-fixed` profile. Resource `actual` and `max` values through `9007199254740991` are JSON
+numbers; wider unsigned 64-bit values are canonical decimal strings without leading zeroes. Native
+JSON consumers must accept both forms and must not coerce the string form through a floating-point
+number. Parser and ASCII renderer failures may add `details.diagnostic` with a
+stable code, an optional `{start,end,kind}` byte span, and bounded `field`/`diagram_type` strings.
+Cancelled operations add `details.cancellation` with `reason` and `phase`. These are additive fields
+under the frozen five-kind error envelope; consumers should use them instead of parsing `message`,
+and complete source text is not retained by default.
 
 The ABI 3 error-kind vocabulary is frozen and closed: `generic`, `unknown-operation`,
 `missing-capability`, `reentrant-call`, and `busy`. Consumers should still treat an unknown kind as

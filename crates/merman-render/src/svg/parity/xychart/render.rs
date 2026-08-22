@@ -181,8 +181,7 @@ pub(crate) fn render_xychart_diagram_svg(
             .unwrap_or_else(|| "black".to_string())
     }
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("xychart");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("xychart");
     let acc_title = model
         .acc_title
         .as_deref()
@@ -215,18 +214,19 @@ pub(crate) fn render_xychart_diagram_svg(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::XyChart, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml(title)
         );
     }
     if let Some(description) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml(description)
         );
     }
@@ -234,6 +234,7 @@ pub(crate) fn render_xychart_diagram_svg(
     out.push_str("<style>");
     push_xychart_css(&mut out, diagram_id);
     out.push_str("</style>");
+    options.checkpoint_emit()?;
 
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
     out.push_str(r#"<g/>"#);
@@ -437,6 +438,7 @@ pub(crate) fn render_xychart_diagram_svg(
     render_node(&mut out, &arena, 0);
     out.push_str(r#"<g class="mermaid-tmp-group"/>"#);
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

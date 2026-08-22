@@ -4,8 +4,12 @@
 //! deadline semantics. Their layout and output budgets remain adapter-owned.
 
 use std::fmt;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+#[cfg(any(test, feature = "test-support"))]
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
+
+use crate::resources::ResourceProfile;
 #[cfg(any(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     feature = "operation-deadlines",
@@ -26,10 +30,6 @@ use std::time::Instant;
     any(feature = "operation-deadlines", feature = "system-timing")
 ))]
 use web_time::Instant;
-
-const NO_TERMINATION: u8 = 0;
-const REQUESTED_TERMINATION: u8 = 1;
-const DEADLINE_TERMINATION: u8 = 2;
 
 /// The broad phase in which an operation observes a terminal condition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -104,8 +104,9 @@ pub type OperationControlResult<T> = std::result::Result<T, OperationCancelled>;
 type Clock = Arc<dyn Fn() -> Instant + Send + Sync + 'static>;
 
 struct OperationState {
+    attention_required: AtomicBool,
     cancelled: AtomicBool,
-    terminal_reason: AtomicU8,
+    terminal: OnceLock<OperationLedgerError>,
     parent: Option<Arc<OperationState>>,
     deadline: OnceLock<Instant>,
     clock: Clock,
@@ -117,10 +118,7 @@ impl fmt::Debug for OperationState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OperationState")
             .field("cancelled", &self.cancelled.load(Ordering::Acquire))
-            .field(
-                "terminal_reason",
-                &self.terminal_reason.load(Ordering::Acquire),
-            )
+            .field("terminal", &self.terminal.get())
             .field("deadline", &self.deadline.get())
             .finish_non_exhaustive()
     }
@@ -128,9 +126,11 @@ impl fmt::Debug for OperationState {
 
 impl OperationState {
     fn new(parent: Option<Arc<OperationState>>, clock: Clock) -> Self {
+        let attention_required = parent.is_some();
         Self {
+            attention_required: AtomicBool::new(attention_required),
             cancelled: AtomicBool::new(false),
-            terminal_reason: AtomicU8::new(NO_TERMINATION),
+            terminal: OnceLock::new(),
             parent,
             deadline: OnceLock::new(),
             clock,
@@ -139,24 +139,21 @@ impl OperationState {
         }
     }
 
-    fn latch_reason(&self, reason: CancelReason) -> CancelReason {
-        let encoded = encode_reason(reason);
-        match self.terminal_reason.compare_exchange(
-            NO_TERMINATION,
-            encoded,
-            Ordering::AcqRel,
-            Ordering::Acquire,
-        ) {
-            Ok(_) => reason,
-            Err(terminal) => decode_reason(terminal),
-        }
+    fn latch_terminal(&self, error: OperationLedgerError) -> OperationLedgerError {
+        self.attention_required.store(true, Ordering::Release);
+        self.terminal.get_or_init(|| error).clone()
+    }
+
+    fn attention_required(&self) -> bool {
+        self.attention_required.load(Ordering::Acquire)
     }
 }
 
 /// Cloneable operation-scoped cooperative cancellation and deadline control.
 ///
 /// A synchronous callback cannot be forcefully interrupted. It observes a request when it returns
-/// to a checkpoint. Once observed, the terminal reason is sticky.
+/// to a checkpoint. Cancellation, deadlines, resource ceilings, and resource arithmetic failures
+/// compete for one sticky terminal outcome per operation scope.
 #[derive(Clone, Debug)]
 pub struct OperationControl {
     state: Arc<OperationState>,
@@ -225,6 +222,7 @@ impl OperationControl {
     ))]
     pub fn set_deadline(&self, timeout: Duration) -> bool {
         let now = (self.state.clock)();
+        self.state.attention_required.store(true, Ordering::Release);
         self.state
             .deadline
             .set(deadline_after(now, timeout))
@@ -233,6 +231,7 @@ impl OperationControl {
 
     /// Requests cancellation for this control and its clones.
     pub fn cancel(&self) {
+        self.state.attention_required.store(true, Ordering::Release);
         self.state.cancelled.store(true, Ordering::Release);
     }
 
@@ -254,55 +253,185 @@ impl OperationControl {
     }
 
     /// Checks cancellation/deadline at a named phase.
+    ///
+    /// This cancellation-only projection is used by parsing and analysis code that cannot produce
+    /// resource terminals. If a target adapter has already recorded a non-cancellation terminal,
+    /// this method does not replace it with a later cancellation. Target adapters use
+    /// [`Self::terminal_checkpoint_at`] to replay the complete terminal value.
     pub fn checkpoint_at(&self, phase: OperationPhase) -> Result<(), OperationCancelled> {
+        if !self.state.attention_required() {
+            return Ok(());
+        }
+        self.observe_cancellation_at(phase).map_or(Ok(()), Err)
+    }
+
+    /// Checks cancellation, deadlines, and any previously observed operation terminal.
+    ///
+    /// Target adapters call this before formal charges and controlled work. Speculative estimates
+    /// that may be discarded may use [`Self::checkpoint_at`], but they must not record a resource
+    /// terminal.
+    pub fn terminal_checkpoint_at(
+        &self,
+        phase: OperationPhase,
+    ) -> Result<(), OperationLedgerError> {
+        if !self.state.attention_required() {
+            return Ok(());
+        }
+        if let Some(error) = self.state.terminal.get() {
+            return Err(error.clone());
+        }
+        let Some(cancellation) = self.observe_cancellation_at(phase) else {
+            return self.state.terminal.get().cloned().map_or(Ok(()), Err);
+        };
+        Err(self.latch_terminal_error(OperationLedgerError::Cancelled(cancellation)))
+    }
+
+    fn observe_cancellation_at(&self, phase: OperationPhase) -> Option<OperationCancelled> {
         #[cfg(any(test, feature = "test-support"))]
         if self.consume_scheduled_checkpoint() {
             self.cancel();
         }
 
-        if let Some(reason) = self.observe_terminal_reason() {
-            return Err(OperationCancelled { phase, reason });
-        }
-        Ok(())
+        self.resolve_cancellation_at(phase)
     }
 
-    fn observe_terminal_reason(&self) -> Option<CancelReason> {
-        let (reason, inherited) = self.resolve_terminal_reason()?;
-        Some(if inherited {
-            self.state.latch_reason(reason)
-        } else {
-            reason
-        })
-    }
-
-    fn resolve_terminal_reason(&self) -> Option<(CancelReason, bool)> {
+    fn resolve_cancellation_at(&self, phase: OperationPhase) -> Option<OperationCancelled> {
         let mut state = Some(self.state.as_ref());
         let mut inherited = false;
         while let Some(current) = state {
-            let terminal = current.terminal_reason.load(Ordering::Acquire);
-            if terminal != NO_TERMINATION {
-                return Some((decode_reason(terminal), inherited));
-            }
-
-            if current.cancelled.load(Ordering::Acquire) {
-                return Some((current.latch_reason(CancelReason::Requested), inherited));
-            }
-
-            if current
+            let terminal = if let Some(error) = current.terminal.get() {
+                match error {
+                    OperationLedgerError::Cancelled(error) if inherited => {
+                        Some(OperationCancelled {
+                            phase,
+                            reason: error.reason,
+                        })
+                    }
+                    OperationLedgerError::Cancelled(error) => Some(*error),
+                    OperationLedgerError::ResourceLimitExceeded(_)
+                    | OperationLedgerError::ArithmeticOverflow { .. }
+                        if !inherited =>
+                    {
+                        return None;
+                    }
+                    OperationLedgerError::ResourceLimitExceeded(_)
+                    | OperationLedgerError::ArithmeticOverflow { .. }
+                        if current.cancelled.load(Ordering::Acquire) =>
+                    {
+                        Some(OperationCancelled {
+                            phase,
+                            reason: CancelReason::Requested,
+                        })
+                    }
+                    OperationLedgerError::ResourceLimitExceeded(_)
+                    | OperationLedgerError::ArithmeticOverflow { .. }
+                        if current
+                            .deadline
+                            .get()
+                            .is_some_and(|deadline| (current.clock)() >= *deadline) =>
+                    {
+                        Some(OperationCancelled {
+                            phase,
+                            reason: CancelReason::DeadlineExceeded,
+                        })
+                    }
+                    OperationLedgerError::ResourceLimitExceeded(_)
+                    | OperationLedgerError::ArithmeticOverflow { .. } => None,
+                }
+            } else if current.cancelled.load(Ordering::Acquire) {
+                let cancellation = OperationCancelled {
+                    phase,
+                    reason: CancelReason::Requested,
+                };
+                match Self::resolve_latched_cancellation(current, inherited, cancellation) {
+                    Some(error) => Some(error),
+                    None => return None,
+                }
+            } else if current
                 .deadline
                 .get()
                 .is_some_and(|deadline| (current.clock)() >= *deadline)
             {
-                return Some((
-                    current.latch_reason(CancelReason::DeadlineExceeded),
-                    inherited,
-                ));
+                let cancellation = OperationCancelled {
+                    phase,
+                    reason: CancelReason::DeadlineExceeded,
+                };
+                match Self::resolve_latched_cancellation(current, inherited, cancellation) {
+                    Some(error) => Some(error),
+                    None => return None,
+                }
+            } else {
+                None
+            };
+
+            if let Some(error) = terminal {
+                if !inherited {
+                    return Some(error);
+                }
+                return match self
+                    .state
+                    .latch_terminal(OperationLedgerError::Cancelled(error))
+                {
+                    OperationLedgerError::Cancelled(error) => Some(error),
+                    OperationLedgerError::ResourceLimitExceeded(_)
+                    | OperationLedgerError::ArithmeticOverflow { .. } => None,
+                };
             }
 
             state = current.parent.as_deref();
             inherited = true;
         }
         None
+    }
+
+    fn resolve_latched_cancellation(
+        state: &OperationState,
+        inherited: bool,
+        cancellation: OperationCancelled,
+    ) -> Option<OperationCancelled> {
+        match state.latch_terminal(OperationLedgerError::Cancelled(cancellation)) {
+            OperationLedgerError::Cancelled(error) => Some(error),
+            OperationLedgerError::ResourceLimitExceeded(_)
+            | OperationLedgerError::ArithmeticOverflow { .. }
+                if inherited =>
+            {
+                Some(cancellation)
+            }
+            OperationLedgerError::ResourceLimitExceeded(_)
+            | OperationLedgerError::ArithmeticOverflow { .. } => None,
+        }
+    }
+
+    fn latch_terminal_error(&self, error: OperationLedgerError) -> OperationLedgerError {
+        self.state.latch_terminal(error)
+    }
+
+    /// Records a target-owned resource ceiling as this operation's first terminal outcome.
+    pub fn terminate_resource_limit(
+        &self,
+        error: OperationResourceLimitExceeded,
+    ) -> OperationLedgerError {
+        self.latch_terminal_error(OperationLedgerError::ResourceLimitExceeded(error))
+    }
+
+    /// Records target-owned resource accounting overflow as this operation's first terminal outcome.
+    pub fn terminate_resource_overflow(
+        &self,
+        id: &'static str,
+        phase: OperationPhase,
+        resource_phase: &'static str,
+        actual: u64,
+        maximum: u64,
+        provenance: OperationResourceProvenance,
+    ) -> OperationLedgerError {
+        self.latch_terminal_error(OperationLedgerError::ArithmeticOverflow {
+            id,
+            phase,
+            resource_phase,
+            actual,
+            maximum,
+            provenance,
+        })
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -318,23 +447,10 @@ impl OperationControl {
     /// Schedules deterministic cancellation for tests after the requested successful checkpoints.
     #[cfg(any(test, feature = "test-support"))]
     pub fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
+        self.state.attention_required.store(true, Ordering::Release);
         self.state
             .successful_checkpoints_before_cancellation
             .store(successful_checkpoints as u64, Ordering::Relaxed);
-    }
-}
-
-fn decode_reason(value: u8) -> CancelReason {
-    match value {
-        DEADLINE_TERMINATION => CancelReason::DeadlineExceeded,
-        _ => CancelReason::Requested,
-    }
-}
-
-const fn encode_reason(reason: CancelReason) -> u8 {
-    match reason {
-        CancelReason::Requested => REQUESTED_TERMINATION,
-        CancelReason::DeadlineExceeded => DEADLINE_TERMINATION,
     }
 }
 
@@ -372,98 +488,95 @@ fn default_clock() -> Clock {
     }
 }
 
-/// Target-neutral description of a checked operation ledger rejection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+/// Stable adapter domain that owns an operation resource terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum OperationResourceDomain {
+    Input,
+    Render,
+    Ascii,
+    Export,
+}
+
+impl OperationResourceDomain {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Input => "input",
+            Self::Render => "render",
+            Self::Ascii => "ascii",
+            Self::Export => "export",
+        }
+    }
+}
+
+impl fmt::Display for OperationResourceDomain {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// One explicit policy override captured when a resource terminal is first recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OperationResourceOverride {
+    pub id: &'static str,
+    pub value: u64,
+}
+
+/// Immutable policy provenance attached to the first operation resource terminal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperationResourceProvenance {
+    pub domain: OperationResourceDomain,
+    pub profile: Option<ResourceProfile>,
+    pub explicit_overrides: Arc<[OperationResourceOverride]>,
+}
+
+impl OperationResourceProvenance {
+    pub fn new(
+        domain: OperationResourceDomain,
+        profile: Option<ResourceProfile>,
+        explicit_overrides: impl IntoIterator<Item = OperationResourceOverride>,
+    ) -> Self {
+        Self {
+            domain,
+            profile,
+            explicit_overrides: explicit_overrides.into_iter().collect::<Vec<_>>().into(),
+        }
+    }
+}
+
+/// Target-neutral description of a checked operation resource rejection.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
     "operation resource limit `{id}` exceeded during {phase}: {consumed} + {requested} > {limit}"
 )]
 pub struct OperationResourceLimitExceeded {
     pub id: &'static str,
     pub phase: OperationPhase,
+    pub resource_phase: &'static str,
     pub limit: u64,
     pub consumed: u64,
     pub requested: u64,
+    pub provenance: OperationResourceProvenance,
 }
 
-/// Failure returned by [`OperationLedger::charge`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+/// Sticky terminal failure shared by operation controls and target-owned resource adapters.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum OperationLedgerError {
     #[error(transparent)]
     Cancelled(#[from] OperationCancelled),
     #[error(transparent)]
     ResourceLimitExceeded(#[from] OperationResourceLimitExceeded),
-    #[error("operation ledger arithmetic overflow during {phase}")]
-    ArithmeticOverflow { phase: OperationPhase },
-}
-
-/// A checked operation-owned work ledger. Target-specific quotas remain adapter-owned.
-#[derive(Debug)]
-pub struct OperationLedger {
-    id: &'static str,
-    limit: Option<u64>,
-    consumed: AtomicU64,
-    rejected: AtomicBool,
-}
-
-impl OperationLedger {
-    pub const fn new(id: &'static str, limit: Option<u64>) -> Self {
-        Self {
-            id,
-            limit,
-            consumed: AtomicU64::new(0),
-            rejected: AtomicBool::new(false),
-        }
-    }
-
-    pub fn consumed(&self) -> u64 {
-        self.consumed.load(Ordering::Acquire)
-    }
-
-    pub fn limit(&self) -> Option<u64> {
-        self.limit
-    }
-
-    pub fn charge(
-        &self,
-        control: &OperationControl,
+    #[error(
+        "operation resource `{id}` arithmetic overflow during {phase} ({resource_phase}; actual {actual}, maximum {maximum})"
+    )]
+    ArithmeticOverflow {
+        id: &'static str,
         phase: OperationPhase,
-        requested: u64,
-    ) -> Result<u64, OperationLedgerError> {
-        control.checkpoint_at(phase)?;
-        if self.rejected.load(Ordering::Acquire) {
-            return Err(self.limit_error(phase, requested));
-        }
-
-        let mut consumed = self.consumed.load(Ordering::Acquire);
-        loop {
-            let next = consumed
-                .checked_add(requested)
-                .ok_or(OperationLedgerError::ArithmeticOverflow { phase })?;
-            if self.limit.is_some_and(|limit| next > limit) {
-                self.rejected.store(true, Ordering::Release);
-                return Err(self.limit_error(phase, requested));
-            }
-            match self.consumed.compare_exchange_weak(
-                consumed,
-                next,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => return Ok(next),
-                Err(actual) => consumed = actual,
-            }
-        }
-    }
-
-    fn limit_error(&self, phase: OperationPhase, requested: u64) -> OperationLedgerError {
-        OperationLedgerError::ResourceLimitExceeded(OperationResourceLimitExceeded {
-            id: self.id,
-            phase,
-            limit: self.limit.unwrap_or(u64::MAX),
-            consumed: self.consumed(),
-            requested,
-        })
-    }
+        resource_phase: &'static str,
+        actual: u64,
+        maximum: u64,
+        provenance: OperationResourceProvenance,
+    },
 }
 
 #[cfg(test)]
@@ -472,6 +585,14 @@ mod tests {
     use std::sync::Barrier;
     use std::sync::atomic::AtomicU64;
     use std::thread;
+
+    fn test_resource_provenance() -> OperationResourceProvenance {
+        OperationResourceProvenance::new(
+            OperationResourceDomain::Render,
+            Some(ResourceProfile::Interactive),
+            [],
+        )
+    }
 
     #[test]
     fn clones_and_children_observe_shared_cancellation() {
@@ -507,9 +628,12 @@ mod tests {
         let control = OperationControl::with_clock(clock).with_deadline(Duration::from_millis(0));
         let error = control.checkpoint_at(OperationPhase::Layout).unwrap_err();
         assert_eq!(error.reason, CancelReason::DeadlineExceeded);
+        assert_eq!(control.checkpoint().unwrap_err(), error);
         assert_eq!(
-            control.checkpoint().unwrap_err().reason,
-            CancelReason::DeadlineExceeded
+            control
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .unwrap_err(),
+            OperationLedgerError::Cancelled(error)
         );
     }
 
@@ -537,6 +661,59 @@ mod tests {
                 .unwrap_err()
                 .reason,
             CancelReason::Requested
+        );
+    }
+
+    #[test]
+    fn child_rebinds_an_observed_parent_cancellation_to_its_checkpoint_phase() {
+        let parent = OperationControl::new();
+        parent.cancel();
+        let parent_error = parent
+            .checkpoint_at(OperationPhase::Parse)
+            .expect_err("the parent cancellation must be observed");
+        let child = parent.child();
+
+        let child_error = child
+            .checkpoint_at(OperationPhase::Layout)
+            .expect_err("the child must observe the parent cancellation");
+
+        assert_eq!(parent_error.reason, CancelReason::Requested);
+        assert_eq!(parent_error.phase, OperationPhase::Parse);
+        assert_eq!(child_error.reason, parent_error.reason);
+        assert_eq!(child_error.phase, OperationPhase::Layout);
+        assert_eq!(
+            parent.checkpoint_at(OperationPhase::Emit).unwrap_err(),
+            parent_error
+        );
+        assert_eq!(
+            child.checkpoint_at(OperationPhase::Emit).unwrap_err(),
+            child_error
+        );
+    }
+
+    #[test]
+    fn child_rebinds_an_observed_parent_deadline_to_its_checkpoint_phase() {
+        let parent = OperationControl::new().with_deadline(Duration::ZERO);
+        let parent_error = parent
+            .checkpoint_at(OperationPhase::Parse)
+            .expect_err("the parent deadline must be observed");
+        let child = parent.child();
+
+        let child_error = child
+            .checkpoint_at(OperationPhase::Layout)
+            .expect_err("the child must observe the parent deadline");
+
+        assert_eq!(parent_error.reason, CancelReason::DeadlineExceeded);
+        assert_eq!(parent_error.phase, OperationPhase::Parse);
+        assert_eq!(child_error.reason, parent_error.reason);
+        assert_eq!(child_error.phase, OperationPhase::Layout);
+        assert_eq!(
+            parent.checkpoint_at(OperationPhase::Emit).unwrap_err(),
+            parent_error
+        );
+        assert_eq!(
+            child.checkpoint_at(OperationPhase::Emit).unwrap_err(),
+            child_error
         );
     }
 
@@ -595,6 +772,104 @@ mod tests {
     }
 
     #[test]
+    fn child_keeps_an_observed_parent_cancellation_when_parent_resource_wins_the_latch() {
+        let parent = OperationControl::new();
+        let child = parent.child();
+        let cancellation = OperationCancelled {
+            phase: OperationPhase::Parse,
+            reason: CancelReason::Requested,
+        };
+        let parent_terminal = OperationLedgerError::ArithmeticOverflow {
+            id: "parent_work",
+            phase: OperationPhase::Layout,
+            resource_phase: "layout",
+            actual: u64::MAX,
+            maximum: u64::MAX,
+            provenance: test_resource_provenance(),
+        };
+
+        parent.cancel();
+        assert_eq!(
+            parent.latch_terminal_error(parent_terminal.clone()),
+            parent_terminal
+        );
+        let observed = OperationControl::resolve_latched_cancellation(
+            parent.state.as_ref(),
+            true,
+            cancellation,
+        )
+        .expect("an ancestor resource terminal must not hide an observed cancellation");
+        assert_eq!(observed, cancellation);
+        assert_eq!(
+            child.latch_terminal_error(OperationLedgerError::Cancelled(observed)),
+            OperationLedgerError::Cancelled(cancellation)
+        );
+        assert_eq!(
+            child
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the child must replay its cancellation"),
+            OperationLedgerError::Cancelled(cancellation)
+        );
+        assert_eq!(
+            parent
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the parent must retain its resource terminal"),
+            parent_terminal
+        );
+    }
+
+    #[test]
+    fn child_latches_parent_deadline_when_parent_resource_wins_during_clock_read() {
+        let now = Arc::new(AtomicU64::new(0));
+        let clock_now = Arc::clone(&now);
+        let parent_slot = Arc::new(OnceLock::<OperationControl>::new());
+        let clock_parent = Arc::clone(&parent_slot);
+        let base = Instant::now();
+        let parent_terminal = OperationLedgerError::ArithmeticOverflow {
+            id: "parent_work",
+            phase: OperationPhase::Layout,
+            resource_phase: "layout",
+            actual: u64::MAX,
+            maximum: u64::MAX,
+            provenance: test_resource_provenance(),
+        };
+        let clock_terminal = parent_terminal.clone();
+        let clock = Arc::new(move || {
+            if let Some(parent) = clock_parent.get() {
+                parent.latch_terminal_error(clock_terminal.clone());
+            }
+            base + Duration::from_millis(clock_now.load(Ordering::Relaxed))
+        });
+        let parent = OperationControl::with_clock(clock).with_deadline(Duration::from_millis(1));
+        assert!(parent_slot.set(parent.clone()).is_ok());
+        let child = parent.child();
+
+        now.store(2, Ordering::Relaxed);
+        let cancellation = child
+            .terminal_checkpoint_at(OperationPhase::Parse)
+            .expect_err("the child must observe the expired parent deadline");
+        assert_eq!(
+            cancellation,
+            OperationLedgerError::Cancelled(OperationCancelled {
+                phase: OperationPhase::Parse,
+                reason: CancelReason::DeadlineExceeded,
+            })
+        );
+        assert_eq!(
+            child
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the child must replay its cancellation"),
+            cancellation
+        );
+        assert_eq!(
+            parent
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the parent must retain its resource terminal"),
+            parent_terminal
+        );
+    }
+
+    #[test]
     fn oversized_deadline_clamps_without_panicking_or_expiring_immediately() {
         let control = OperationControl::new().with_deadline(Duration::MAX);
         assert!(control.state.deadline.get().is_some());
@@ -602,82 +877,263 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_checkpoints_never_lose_a_sticky_cancellation() {
+    fn concurrent_checkpoints_replay_one_complete_cancellation() {
         const THREADS: usize = 16;
         for _ in 0..32 {
             let control = OperationControl::new();
             control.cancel();
             let barrier = Arc::new(Barrier::new(THREADS));
             let handles = (0..THREADS)
-                .map(|_| {
+                .map(|index| {
                     let control = control.clone();
                     let barrier = Arc::clone(&barrier);
                     thread::spawn(move || {
                         barrier.wait();
-                        control.checkpoint_at(OperationPhase::Layout)
+                        let phase = if index % 2 == 0 {
+                            OperationPhase::Parse
+                        } else {
+                            OperationPhase::Layout
+                        };
+                        control.checkpoint_at(phase)
                     })
                 })
                 .collect::<Vec<_>>();
 
+            let mut first = None;
             for handle in handles {
                 let cancelled = handle
                     .join()
                     .expect("checkpoint thread should not panic")
                     .expect_err("every concurrent observer must see cancellation");
                 assert_eq!(cancelled.reason, CancelReason::Requested);
+                if let Some(first) = first {
+                    assert_eq!(cancelled, first);
+                } else {
+                    first = Some(cancelled);
+                }
             }
         }
     }
 
     #[test]
-    fn ledger_checks_control_before_charging_and_does_not_advance_on_rejection() {
+    fn operation_replays_the_first_resource_rejection_after_later_cancellation() {
         let control = OperationControl::new();
-        let ledger = OperationLedger::new("work", Some(2));
-        assert_eq!(ledger.charge(&control, OperationPhase::Layout, 2), Ok(2));
-        assert!(matches!(
-            ledger.charge(&control, OperationPhase::Layout, 1),
-            Err(OperationLedgerError::ResourceLimitExceeded(_))
-        ));
-        assert_eq!(ledger.consumed(), 2);
+        let first = control.terminate_resource_limit(OperationResourceLimitExceeded {
+            id: "work",
+            phase: OperationPhase::Layout,
+            resource_phase: "layout",
+            limit: 2,
+            consumed: 2,
+            requested: 1,
+            provenance: test_resource_provenance(),
+        });
+        assert_eq!(
+            first,
+            OperationLedgerError::ResourceLimitExceeded(OperationResourceLimitExceeded {
+                id: "work",
+                phase: OperationPhase::Layout,
+                resource_phase: "layout",
+                limit: 2,
+                consumed: 2,
+                requested: 1,
+                provenance: test_resource_provenance(),
+            })
+        );
+
+        let clone = control.clone();
+        let child = control.child();
         control.cancel();
-        assert!(matches!(
-            ledger.charge(&control, OperationPhase::Layout, 0),
-            Err(OperationLedgerError::Cancelled(_))
-        ));
+        assert_eq!(clone.checkpoint_at(OperationPhase::Emit), Ok(()));
+        assert_eq!(
+            clone
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the complete checkpoint must replay the resource terminal"),
+            first
+        );
+        let cancellation = child
+            .checkpoint_at(OperationPhase::Postprocess)
+            .expect_err("a child has a distinct terminal scope and observes parent cancellation");
+        assert_eq!(cancellation.reason, CancelReason::Requested);
+        assert_eq!(cancellation.phase, OperationPhase::Postprocess);
+        assert_eq!(
+            child
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the child's complete checkpoint replays its cancellation"),
+            OperationLedgerError::Cancelled(cancellation)
+        );
+        assert_eq!(
+            control.terminate_resource_overflow(
+                "later_work",
+                OperationPhase::Emit,
+                "emit",
+                u64::MAX,
+                u64::MAX,
+                test_resource_provenance(),
+            ),
+            first
+        );
     }
 
     #[test]
-    fn ledger_concurrent_charges_never_exceed_the_limit() {
-        const THREADS: usize = 32;
-        const LIMIT: u64 = 7;
+    fn child_control_starts_a_distinct_terminal_scope() {
+        let parent = OperationControl::new();
+        let parent_terminal = parent.terminate_resource_limit(OperationResourceLimitExceeded {
+            id: "parent_work",
+            phase: OperationPhase::Layout,
+            resource_phase: "layout",
+            limit: 0,
+            consumed: 0,
+            requested: 1,
+            provenance: test_resource_provenance(),
+        });
+
+        let child = parent.child();
+        assert_eq!(child.terminal_checkpoint_at(OperationPhase::Emit), Ok(()));
+        let child_terminal = child.terminate_resource_limit(OperationResourceLimitExceeded {
+            id: "child_work",
+            phase: OperationPhase::Emit,
+            resource_phase: "emit",
+            limit: 0,
+            consumed: 0,
+            requested: 1,
+            provenance: test_resource_provenance(),
+        });
+        assert_ne!(child_terminal, parent_terminal);
+        assert_eq!(
+            parent
+                .terminal_checkpoint_at(OperationPhase::Layout)
+                .unwrap_err(),
+            parent_terminal
+        );
+        assert_eq!(
+            child
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .unwrap_err(),
+            child_terminal
+        );
+    }
+
+    #[test]
+    fn operation_replays_cancellation_before_later_resource_failure() {
         let control = OperationControl::new();
-        let ledger = Arc::new(OperationLedger::new("concurrent_work", Some(LIMIT)));
-        let barrier = Arc::new(Barrier::new(THREADS));
-        let handles = (0..THREADS)
-            .map(|_| {
-                let ledger = Arc::clone(&ledger);
-                let barrier = Arc::clone(&barrier);
+        control.cancel();
+
+        let first = control
+            .terminal_checkpoint_at(OperationPhase::Parse)
+            .unwrap_err();
+        assert_eq!(
+            first,
+            OperationLedgerError::Cancelled(OperationCancelled {
+                phase: OperationPhase::Parse,
+                reason: CancelReason::Requested,
+            })
+        );
+        assert_eq!(
+            control.terminate_resource_limit(OperationResourceLimitExceeded {
+                id: "work",
+                phase: OperationPhase::Emit,
+                resource_phase: "emit",
+                limit: 0,
+                consumed: 0,
+                requested: 1,
+                provenance: test_resource_provenance(),
+            }),
+            first
+        );
+        assert_eq!(
+            control
+                .terminal_checkpoint_at(OperationPhase::Postprocess)
+                .unwrap_err(),
+            first
+        );
+    }
+
+    #[test]
+    fn operation_replays_the_first_arithmetic_overflow() {
+        let control = OperationControl::new();
+        let first = control.terminate_resource_overflow(
+            "layout_work",
+            OperationPhase::Layout,
+            "layout",
+            u64::MAX,
+            u64::MAX,
+            test_resource_provenance(),
+        );
+        assert_eq!(
+            first,
+            OperationLedgerError::ArithmeticOverflow {
+                id: "layout_work",
+                phase: OperationPhase::Layout,
+                resource_phase: "layout",
+                actual: u64::MAX,
+                maximum: u64::MAX,
+                provenance: test_resource_provenance(),
+            }
+        );
+        assert_eq!(
+            control.terminate_resource_limit(OperationResourceLimitExceeded {
+                id: "output_bytes",
+                phase: OperationPhase::Emit,
+                resource_phase: "emit",
+                limit: 0,
+                consumed: 0,
+                requested: 1,
+                provenance: test_resource_provenance(),
+            }),
+            first
+        );
+        assert_eq!(
+            control
+                .terminal_checkpoint_at(OperationPhase::Postprocess)
+                .unwrap_err(),
+            first
+        );
+    }
+
+    #[test]
+    fn concurrent_resource_and_cancellation_observers_replay_one_terminal_error() {
+        for _ in 0..32 {
+            let control = OperationControl::new();
+            let barrier = Arc::new(Barrier::new(2));
+
+            let resource = {
                 let control = control.clone();
+                let barrier = Arc::clone(&barrier);
                 thread::spawn(move || {
                     barrier.wait();
-                    ledger.charge(&control, OperationPhase::Layout, 1)
+                    control.terminate_resource_limit(OperationResourceLimitExceeded {
+                        id: "race_work",
+                        phase: OperationPhase::Layout,
+                        resource_phase: "layout",
+                        limit: 0,
+                        consumed: 0,
+                        requested: 1,
+                        provenance: test_resource_provenance(),
+                    })
                 })
-            })
-            .collect::<Vec<_>>();
+            };
+            let cancellation = {
+                let control = control.clone();
+                let barrier = Arc::clone(&barrier);
+                thread::spawn(move || {
+                    barrier.wait();
+                    control.cancel();
+                    control.terminal_checkpoint_at(OperationPhase::Emit)
+                })
+            };
 
-        let mut accepted = 0_u64;
-        for handle in handles {
-            match handle.join().expect("ledger thread should not panic") {
-                Ok(_) => accepted += 1,
-                Err(OperationLedgerError::ResourceLimitExceeded(error)) => {
-                    assert_eq!(error.consumed, LIMIT);
-                    assert_eq!(error.requested, 1);
-                }
-                Err(other) => panic!("unexpected ledger rejection: {other:?}"),
-            }
+            let resource = resource.join().expect("resource thread should not panic");
+            let cancellation = cancellation
+                .join()
+                .expect("cancellation thread should not panic")
+                .unwrap_err();
+            assert_eq!(resource, cancellation);
+            assert_eq!(
+                control
+                    .terminal_checkpoint_at(OperationPhase::Postprocess)
+                    .unwrap_err(),
+                resource
+            );
         }
-
-        assert_eq!(accepted, LIMIT);
-        assert_eq!(ledger.consumed(), LIMIT);
     }
 }

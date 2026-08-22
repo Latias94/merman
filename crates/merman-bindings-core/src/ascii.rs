@@ -1,6 +1,7 @@
 use crate::common::{
     BindingError, BindingResourceLimitCause, BindingStatus, binding_ascii_resource_policy,
-    binding_input_resource_policy, binding_site_config, no_diagram_error, source_text,
+    binding_diagnostic_details, binding_input_resource_policy, binding_site_config,
+    no_diagram_error, parse_error, runtime_policy_error, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -111,6 +112,9 @@ fn ascii_options_from_json(
     if let Some(charset) = ascii.charset.as_deref() {
         render_options.charset = ascii_charset(charset)?;
     }
+    if let Some(profile) = ascii.width_profile.as_deref() {
+        render_options.terminal_width_profile = ascii_width_profile(profile)?;
+    }
     if let Some(direction) = ascii.default_direction.as_deref() {
         render_options.default_direction = ascii_direction(direction)?;
     }
@@ -128,6 +132,9 @@ fn ascii_options_from_json(
     }
     if let Some(padding) = ascii.graph_padding_y {
         render_options.graph_padding_y = padding;
+    }
+    if let Some(width) = ascii.flowchart_node_label_wrap_width {
+        render_options.flowchart_node_label_wrap_width = width;
     }
     if let Some(spacing) = ascii.sequence_participant_spacing {
         render_options.sequence_participant_spacing = spacing;
@@ -240,6 +247,17 @@ fn ascii_charset(value: &str) -> Result<merman::ascii::AsciiCharset, BindingErro
     }
 }
 
+fn ascii_width_profile(value: &str) -> Result<merman::ascii::TerminalWidthProfile, BindingError> {
+    match option_key(value).as_str() {
+        "unicode" => Ok(merman::ascii::TerminalWidthProfile::Unicode),
+        "cjk" => Ok(merman::ascii::TerminalWidthProfile::Cjk),
+        _ => Err(invalid_ascii_option(
+            "ascii.width_profile",
+            "expected `unicode` or `cjk`",
+        )),
+    }
+}
+
 fn ascii_direction(value: &str) -> Result<merman::ascii::AsciiDirection, BindingError> {
     match option_key(value).as_str() {
         "lr" | "leftright" | "left-right" | "left_right" => {
@@ -283,10 +301,8 @@ fn classify_render_error(
 ) -> BindingError {
     match err {
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
-        merman::RenderError::RuntimePolicy(err) => crate::common::runtime_policy_error(err),
-        merman::RenderError::Parse(err) => {
-            BindingError::new(BindingStatus::ParseError, err.to_string())
-        }
+        merman::RenderError::RuntimePolicy(err) => runtime_policy_error(err),
+        merman::RenderError::Parse(err) => parse_error(err),
         merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
             match err.cause {
                 merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
@@ -299,18 +315,29 @@ fn classify_render_error(
             err.actual,
             err.maximum,
             resource_profile.id(),
-            err.to_string(),
+            merman::normalize_terminal_diagnostic(&err.to_string()),
         ),
-        merman::RenderError::Ascii(err) => match err {
-            merman::ascii::AsciiError::InvalidOption { .. } => {
-                BindingError::new(BindingStatus::InvalidArgument, err.to_string())
+        merman::RenderError::Ascii(err) => {
+            let status = match &err {
+                merman::ascii::AsciiError::InvalidOption { .. } => BindingStatus::InvalidArgument,
+                merman::ascii::AsciiError::UnsupportedDiagram { .. }
+                | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
+                    BindingStatus::UnsupportedOperation
+                }
+                _ => BindingStatus::RenderError,
+            };
+            let error = merman::ascii::AsciiDiagnostic::from(err);
+            let safe_message = error.terminal_safe_message();
+            let diagnostic = error
+                .terminal_diagnostic_details()
+                .map(binding_diagnostic_details);
+            match diagnostic {
+                Some(diagnostic) => {
+                    BindingError::new(status, safe_message).with_diagnostic_details(diagnostic)
+                }
+                None => BindingError::new(status, safe_message),
             }
-            merman::ascii::AsciiError::UnsupportedDiagram { .. }
-            | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
-                BindingError::new(BindingStatus::UnsupportedOperation, err.to_string())
-            }
-            _ => BindingError::new(BindingStatus::RenderError, err.to_string()),
-        },
+        }
         merman::RenderError::UnsupportedTarget(target) => BindingError::internal(format!(
             "renderer returned unsupported target `{target}` for an admitted ASCII operation"
         )),
@@ -321,6 +348,44 @@ fn classify_render_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_ascii_test_contracts::ascii_resource_boundary_contract;
+
+    fn render_ascii_with_limit(
+        limit_id: &str,
+        max: u64,
+        source: &str,
+    ) -> std::result::Result<Vec<u8>, BindingError> {
+        let options = format!(r#"{{ "resources": {{ "limits": {{ "{limit_id}": {max} }} }} }}"#);
+        render_ascii(source.as_bytes(), options.as_bytes())
+    }
+
+    fn assert_binding_ascii_exact_boundary(
+        limit_id: &str,
+        phase: &str,
+        expected: u64,
+        source: &str,
+    ) {
+        let output = render_ascii_with_limit(limit_id, expected, source)
+            .unwrap_or_else(|error| panic!("exact {limit_id} boundary failed: {error:?}"));
+        assert!(!output.is_empty(), "{limit_id} produced no output");
+        let error = match render_ascii_with_limit(limit_id, expected - 1, source) {
+            Err(error) => error,
+            Ok(output) => panic!(
+                "one-below {limit_id} boundary must fail, but rendered {} bytes",
+                output.len()
+            ),
+        };
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("ASCII resource errors expose structured details");
+        assert_eq!(details.limit_id, limit_id);
+        assert_eq!(details.phase, phase);
+        assert_eq!(details.actual, expected);
+        assert_eq!(details.max, expected - 1);
+        assert_eq!(details.profile, "interactive");
+        assert_eq!(details.cause, BindingResourceLimitCause::Ceiling);
+    }
 
     #[test]
     fn render_ascii_returns_unicode_text() {
@@ -330,6 +395,90 @@ mod tests {
 
         assert!(text.contains("Hello"));
         assert!(text.contains("World"));
+    }
+
+    #[test]
+    fn render_ascii_parse_error_omits_authored_source() {
+        let source = b"not-a-diagram\x1b]8;;https://example.invalid\x07link";
+
+        let error = render_ascii(source, b"").expect_err("source should not detect as Mermaid");
+
+        assert_eq!(error.status(), BindingStatus::ParseError);
+        assert_eq!(error.message(), "No Mermaid diagram type detected");
+        assert!(!error.message().contains("not-a-diagram"));
+        assert!(!error.message().as_bytes().contains(&0x1b));
+        assert!(!error.message().as_bytes().contains(&0x07));
+        let diagnostic = error
+            .diagnostic_details()
+            .expect("detect failure should preserve diagnostic details");
+        assert_eq!(diagnostic.code, "merman.parse.no_diagram_detected");
+        assert_eq!(diagnostic.span, None);
+    }
+
+    #[test]
+    fn ascii_parse_error_preserves_code_span_and_safe_context_in_binding_payload() {
+        let span = merman::SourceSpan::new(3, 8);
+        let diagnostic = merman::ParseDiagnostic::new("bad input")
+            .with_span(span, merman::ParseDiagnosticSpanKind::InsertionPoint)
+            .with_code("merman.test");
+        let error = classify_render_error(
+            merman::RenderError::from(merman::Error::diagram_parse_diagnostic(
+                "flow\u{1b}",
+                diagnostic,
+            )),
+            merman::resources::ResourceProfile::Interactive,
+        );
+
+        let details = error
+            .diagnostic_details()
+            .expect("parse failure should preserve diagnostic details");
+        assert_eq!(details.code, "merman.test");
+        assert_eq!(
+            details.span,
+            Some(crate::common::BindingDiagnosticSpan {
+                start: 3,
+                end: 8,
+                kind: "insertion-point",
+            })
+        );
+        assert_eq!(details.diagram_type.as_deref(), Some("flow\\u{1B}"));
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&crate::binding_error_payload_json_bytes(&error))
+                .expect("binding error payload should be JSON");
+        assert_eq!(payload["details"]["diagnostic"]["code"], "merman.test");
+        assert_eq!(payload["details"]["diagnostic"]["span"]["start"], 3);
+        assert_eq!(
+            payload["details"]["diagnostic"]["span"]["kind"],
+            "insertion-point"
+        );
+        assert_eq!(
+            payload["details"]["diagnostic"]["diagram_type"],
+            "flow\\u{1B}"
+        );
+    }
+
+    #[test]
+    fn nested_runtime_policy_errors_preserve_missing_capability_binding_classification() {
+        let error = classify_render_error(
+            merman::RenderError::from(merman::Error::RuntimePolicy(
+                merman::runtime::RuntimePolicyError::MissingCapability(
+                    merman::runtime::RuntimeCapability::SystemRandom,
+                ),
+            )),
+            merman::resources::ResourceProfile::Interactive,
+        );
+
+        assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+        assert_eq!(error.capability_id(), Some("system-random"));
+        assert_eq!(
+            error
+                .diagnostic_details()
+                .expect("runtime-policy errors expose diagnostic details")
+                .code,
+            "merman.runtime_policy"
+        );
     }
 
     #[test]
@@ -380,6 +529,55 @@ mod tests {
     }
 
     #[test]
+    fn render_ascii_applies_flowchart_node_label_wrap_width_from_json() {
+        for options_json in [
+            br#"{ "ascii": { "flowchart_node_label_wrap_width": 8 } }"#.as_slice(),
+            br#"{ "ascii": { "flowchartNodeLabelWrapWidth": 8 } }"#.as_slice(),
+        ] {
+            let text = String::from_utf8(
+                render_ascii(b"flowchart TD\nA[\"Alpha Beta Gamma Delta\"]", options_json).unwrap(),
+            )
+            .unwrap();
+
+            assert!(text.contains("Alpha"), "{text}");
+            assert!(text.contains("Gamma"), "{text}");
+            assert!(
+                !text.contains("Alpha Beta Gamma Delta"),
+                "flowchart node label should wrap before layout:\n{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn ascii_width_profile_compiles_from_snake_and_camel_case_json() {
+        for options_json in [
+            br#"{ "ascii": { "width_profile": "cjk" } }"#.as_slice(),
+            br#"{ "ascii": { "widthProfile": "cjk" } }"#.as_slice(),
+        ] {
+            let options = crate::common::parse_options(options_json).expect("valid ASCII options");
+            let compiled = ascii_options_from_json(&options).expect("ASCII options compile");
+
+            assert_eq!(
+                compiled.terminal_width_profile,
+                merman::ascii::TerminalWidthProfile::Cjk
+            );
+        }
+    }
+
+    #[test]
+    fn ascii_width_profile_rejects_unknown_values() {
+        let options = crate::common::parse_options(
+            br#"{ "ascii": { "width_profile": "terminal-default" } }"#,
+        )
+        .expect("JSON shape parses");
+
+        let error = ascii_options_from_json(&options).expect_err("unknown profile is rejected");
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("ascii.width_profile"), "{error:?}");
+    }
+
+    #[test]
     fn ascii_layout_options_compile_through_the_public_json_shape() {
         let options = crate::common::parse_options(
             br#"{
@@ -387,6 +585,7 @@ mod tests {
                     "boxBorderPadding": 2,
                     "graph_padding_x": 3,
                     "graphPaddingY": 4,
+                    "flowchartNodeLabelWrapWidth": 5,
                     "sequence_participant_spacing": 6,
                     "sequenceMessageSpacing": 7,
                     "sequence_self_message_width": 8
@@ -399,6 +598,7 @@ mod tests {
         assert_eq!(compiled.box_border_padding, 2);
         assert_eq!(compiled.graph_padding_x, 3);
         assert_eq!(compiled.graph_padding_y, 4);
+        assert_eq!(compiled.flowchart_node_label_wrap_width, 5);
         assert_eq!(compiled.sequence_participant_spacing, 6);
         assert_eq!(compiled.sequence_message_spacing, 7);
         assert_eq!(compiled.sequence_self_message_width, 8);
@@ -417,6 +617,24 @@ mod tests {
 
         assert!(text.contains("Hello"));
         assert!(text.contains("World"));
+    }
+
+    #[test]
+    fn render_ascii_relation_resource_limit_never_falls_back_to_summary() {
+        let error = render_ascii(
+            b"classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
+            br#"{ "resources": { "limits": { "max_ascii_grid_cells": 1 } }, "ascii": { "charset": "ascii", "relationSummaryDiagnostics": true } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("structured resource details");
+        assert_eq!(details.limit_id, "max_ascii_grid_cells");
+        assert_eq!(details.phase, "ascii_layout");
+        assert_eq!(details.max, 1);
+        assert_eq!(details.profile, "interactive");
     }
 
     #[test]
@@ -518,6 +736,21 @@ mod tests {
     }
 
     #[test]
+    fn render_ascii_rejects_zero_flowchart_node_label_wrap_width() {
+        let err = render_ascii(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "ascii": { "flowchartNodeLabelWrapWidth": 0 } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(
+            err.message().contains("flowchart_node_label_wrap_width"),
+            "{err:?}"
+        );
+    }
+
+    #[test]
     fn render_ascii_rejects_invalid_fixed_time_options() {
         let err = render_ascii(
             b"flowchart TD\nA[Hello]",
@@ -580,25 +813,32 @@ mod tests {
     }
 
     #[test]
-    fn render_ascii_grid_limit_uses_resource_limit_status() {
-        let error = render_ascii(
-            b"flowchart TD\nA[Hello] --> B[World]",
-            br#"{ "resources": { "limits": { "max_ascii_grid_cells": 1 } } }"#,
-        )
-        .unwrap_err();
-
-        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
-        assert!(
-            error.message().contains("max_ascii_grid_cells"),
-            "{error:?}"
+    fn ascii_arithmetic_overflow_preserves_the_public_resource_cause() {
+        let options = format!(
+            r#"{{"resources":{{"profile":"unbounded-for-trusted-input"}},"ascii":{{"boxBorderPadding":{}}}}}"#,
+            usize::MAX
         );
-        let details = error
+        let error = render_ascii(b"classDiagram\nclass A", options.as_bytes())
+            .expect_err("box padding arithmetic must overflow before allocation");
+        let resource = error
             .resource_details()
-            .expect("structured resource details");
-        assert_eq!(details.limit_id, "max_ascii_grid_cells");
-        assert_eq!(details.phase, "ascii_layout");
-        assert_eq!(details.max, 1);
-        assert_eq!(details.profile, "interactive");
+            .expect("ASCII overflow should expose structured details");
+        assert_eq!(
+            resource.cause,
+            BindingResourceLimitCause::ArithmeticOverflow
+        );
+        assert_eq!(resource.limit_id, "max_ascii_grid_cells");
+        assert_eq!(
+            resource.actual,
+            u64::try_from(usize::MAX).unwrap_or(u64::MAX)
+        );
+    }
+
+    #[test]
+    fn every_ascii_resource_limit_round_trips_exact_public_boundaries() {
+        for case in ascii_resource_boundary_contract().binding_core_interactive {
+            assert_binding_ascii_exact_boundary(&case.id, &case.phase, case.exact, &case.source);
+        }
     }
 
     #[test]

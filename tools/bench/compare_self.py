@@ -450,6 +450,9 @@ _POSTFLIGHT_PREFIX = "[bench][postflight]"
 _NATIVE_CRITERION_PREFLIGHT_CONTRACT = (
     "docs/performance/contracts/native-criterion-preflight-v1.json"
 )
+_NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT = (
+    "docs/performance/contracts/native-ascii-criterion-preflight-v1.json"
+)
 _PREFLIGHT_FIELD_ORDER = (
     "schema_version",
     "benchmark",
@@ -459,7 +462,7 @@ _PREFLIGHT_FIELD_ORDER = (
     "svg_elements",
 )
 _PREFLIGHT_FIELDS = frozenset(_PREFLIGHT_FIELD_ORDER)
-_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
+_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
     "parse": "typed_render_model",
     "compatibility_json_parse": "compatibility_json",
     "parse_cold_engine": "typed_render_model",
@@ -467,6 +470,20 @@ _PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
     "layout": "prepared_layout",
     "render": "svg",
     "end_to_end": "svg",
+}
+_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
+    **_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+    "ascii_end_to_end": "plain_ascii",
+}
+_PREFLIGHT_CONTRACT_BY_RECIPE = {
+    ("merman", "pipeline"): _NATIVE_CRITERION_PREFLIGHT_CONTRACT,
+    ("merman", "ascii_pipeline"): _NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT,
+}
+_PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT = {
+    _NATIVE_CRITERION_PREFLIGHT_CONTRACT: _PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+    _NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT: {
+        "ascii_end_to_end": "plain_ascii"
+    },
 }
 
 
@@ -572,31 +589,50 @@ def parse_postflight_receipts(text: str) -> set[str]:
     return receipts
 
 
-def _pipeline_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str | None:
-    if recipe.package != "merman" or recipe.bench != "pipeline":
+def _criterion_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str | None:
+    expected_contract = _PREFLIGHT_CONTRACT_BY_RECIPE.get(
+        (recipe.package, recipe.bench)
+    )
+    if expected_contract is None:
         return None
+    expected_groups = frozenset(
+        _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT[expected_contract]
+    )
     native_lanes = {
         lane_selector_group(lane.selector): lane
         for lane in corpus.lanes
         if lane.transport == "native-criterion"
     }
-    expected_groups = frozenset(_PREFLIGHT_OUTPUT_KIND_BY_GROUP)
     if not native_lanes:
         return None
     if frozenset(native_lanes) != expected_groups:
         raise ContractViolation(
-            "pipeline native Criterion lane groups differ from the preflight contract: "
+            f"{recipe.package}/{recipe.bench} native Criterion lane groups differ "
+            "from the preflight contract: "
             f"expected={sorted(expected_groups)}, actual={sorted(native_lanes)}"
         )
     declared = {lane.evidence_contract for lane in native_lanes.values()}
     if declared == {None}:
         return None
-    if declared != {_NATIVE_CRITERION_PREFLIGHT_CONTRACT}:
+    if declared != {expected_contract}:
         raise ContractViolation(
-            "pipeline native Criterion lanes must uniformly declare "
-            f"{_NATIVE_CRITERION_PREFLIGHT_CONTRACT!r}"
+            f"{recipe.package}/{recipe.bench} native Criterion lanes must uniformly declare "
+            f"{expected_contract!r}"
         )
-    return _NATIVE_CRITERION_PREFLIGHT_CONTRACT
+    return expected_contract
+
+
+def _registered_preflight_contract(path: Path) -> tuple[str, dict[str, str]]:
+    matches = [
+        (contract, output_kinds)
+        for contract, output_kinds in _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT.items()
+        if path.as_posix().endswith(contract)
+    ]
+    if len(matches) != 1:
+        raise ContractViolation(
+            f"native Criterion preflight contract path is not registered: {path}"
+        )
+    return matches[0]
 
 
 def _describe_preflight_contract(path: Path) -> dict[str, Any]:
@@ -609,13 +645,15 @@ def _describe_preflight_contract(path: Path) -> dict[str, Any]:
         )
     except (json.JSONDecodeError, ContractViolation) as error:
         raise ContractViolation(f"invalid native Criterion preflight contract: {error}") from error
+    contract, output_kinds = _registered_preflight_contract(path)
+    contract_id = Path(contract).stem
     expected = {
         "schema_version": 1,
-        "id": "native-criterion-preflight-v1",
+        "id": contract_id,
         "line_prefix": f"{_PREFLIGHT_PREFIX} ",
         "postflight_line_prefix": f"{_POSTFLIGHT_PREFIX} ",
         "required_fields": list(_PREFLIGHT_FIELD_ORDER),
-        "output_kinds": _PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+        "output_kinds": output_kinds,
         "comparison": {
             "ignore_fields": ["benchmark"],
             "required_equal_fields": [
@@ -638,7 +676,7 @@ def _describe_preflight_contract(path: Path) -> dict[str, Any]:
 
 def _describe_corpus(path: Path, *, recipe: RunnerRecipe) -> dict[str, Any]:
     corpus = load_corpus(path)
-    preflight_contract = _pipeline_preflight_contract(corpus, recipe=recipe)
+    preflight_contract = _criterion_preflight_contract(corpus, recipe=recipe)
     contract_description = None
     if preflight_contract is not None:
         contract_description = _describe_preflight_contract(
@@ -719,6 +757,35 @@ def _binary_independence_error(
             "the requested comparison has no independently built binary delta"
         )
     return None
+
+
+def _confirmation_harness_identity_errors(
+    base: PreparedRunner,
+    head: PreparedRunner,
+) -> list[str]:
+    fields = (
+        ("Cargo bench target metadata", "bench_target"),
+        ("benchmark source", "bench_source"),
+        ("corpus manifest", "corpus"),
+    )
+    errors: list[str] = []
+    for label, key in fields:
+        base_digest = base.provenance.get(key, {}).get("sha256")
+        head_digest = head.provenance.get(key, {}).get("sha256")
+        if not isinstance(base_digest, str) or not isinstance(head_digest, str):
+            errors.append(f"confirmation {label} identity is missing")
+        elif base_digest != head_digest:
+            errors.append(f"confirmation requires byte-identical {label}")
+
+    base_contract = base.provenance.get("corpus", {}).get("preflight_contract")
+    head_contract = head.provenance.get("corpus", {}).get("preflight_contract")
+    base_digest = base_contract.get("sha256") if isinstance(base_contract, dict) else None
+    head_digest = head_contract.get("sha256") if isinstance(head_contract, dict) else None
+    if not isinstance(base_digest, str) or not isinstance(head_digest, str):
+        errors.append("confirmation preflight contract identity is missing")
+    elif base_digest != head_digest:
+        errors.append("confirmation requires a byte-identical preflight contract")
+    return errors
 
 
 def criterion_list_command(
@@ -967,13 +1034,14 @@ def _freeze_bench_executable(
     return destination, freeze
 
 
-def _find_package_manifest(
+def _describe_cargo_bench_target(
     checkout: Path,
     package: str,
+    bench: str,
     *,
     toolchain: str | None,
     timeout_seconds: int,
-) -> Path:
+) -> tuple[Path, dict[str, Any], Path]:
     command = ["cargo"]
     if toolchain:
         command.append(f"+{toolchain}")
@@ -1000,12 +1068,73 @@ def _find_package_manifest(
         raise ContractViolation(
             f"expected one workspace package named {package!r}, found {len(matches)}"
         )
-    manifest = Path(matches[0]["manifest_path"])
+    package_metadata = matches[0]
+    manifest = Path(package_metadata["manifest_path"])
     if not manifest.is_file():
         raise ContractViolation(
             f"Cargo metadata returned a missing manifest for {package!r}: {manifest}"
         )
-    return manifest
+
+    target_description, source = _describe_metadata_bench_target(
+        package_metadata,
+        manifest=manifest,
+        bench=bench,
+        package=package,
+    )
+    return manifest, target_description, source
+
+
+def _describe_metadata_bench_target(
+    package_metadata: dict[str, Any],
+    *,
+    manifest: Path,
+    bench: str,
+    package: str,
+) -> tuple[dict[str, Any], Path]:
+    targets = package_metadata.get("targets", [])
+    target_matches = [
+        target
+        for target in targets
+        if isinstance(target, dict)
+        and target.get("name") == bench
+        and isinstance(target.get("kind"), list)
+        and "bench" in target["kind"]
+    ]
+    if len(target_matches) != 1:
+        raise ContractViolation(
+            f"expected one Cargo metadata bench target named {bench!r} "
+            f"in package {package!r}, found {len(target_matches)}"
+        )
+    target = target_matches[0]
+    source_value = target.get("src_path")
+    if not isinstance(source_value, str) or not source_value:
+        raise ContractViolation(
+            f"Cargo metadata bench target {bench!r} has an invalid src_path"
+        )
+    source = Path(source_value)
+    if not source.is_absolute():
+        raise ContractViolation(
+            f"Cargo metadata bench target {bench!r} returned a relative src_path: {source}"
+        )
+
+    normalized_target = dict(target)
+    normalized_target["src_path"] = Path(
+        os.path.relpath(source, start=manifest.parent)
+    ).as_posix()
+    encoded = json.dumps(
+        normalized_target,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    target_description = {
+        "name": bench,
+        "metadata": normalized_target,
+        "bytes": len(encoded),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+    return target_description, source
 
 
 def _git_provenance(
@@ -1103,9 +1232,10 @@ def _prepare_runner(
             timeout_seconds=timeout_seconds,
         )
         recipe.target_dir.mkdir(parents=True, exist_ok=True)
-        manifest = _find_package_manifest(
+        manifest, bench_target, bench_source = _describe_cargo_bench_target(
             recipe.checkout,
             recipe.package,
+            recipe.bench,
             toolchain=recipe.toolchain,
             timeout_seconds=timeout_seconds,
         )
@@ -1116,7 +1246,7 @@ def _prepare_runner(
         provenance["workspace_manifest"] = _describe_required_file(workspace_manifest)
         provenance["lockfile"] = _describe_required_file(lockfile)
         provenance["corpus"] = _describe_corpus(corpus_path, recipe=recipe)
-        bench_source = manifest.parent / "benches" / f"{recipe.bench}.rs"
+        provenance["bench_target"] = bench_target
         provenance["bench_source"] = _describe_required_file(bench_source)
         provenance["toolchain"] = {
             "requested": recipe.toolchain,
@@ -1130,9 +1260,8 @@ def _prepare_runner(
         env = {
             "CARGO_INCREMENTAL": "0",
             "CARGO_PROFILE_BENCH_DEBUG": "0",
+            "CARGO_BUILD_JOBS": "1",
         }
-        if freeze_plan is not None:
-            env["CARGO_BUILD_JOBS"] = "1"
         provenance["build_environment"] = {
             key: env.get(key, os.environ.get(key))
             for key in (
@@ -1464,6 +1593,7 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
             "workspace_manifest",
             "lockfile",
             "corpus",
+            "bench_target",
             "bench_source",
             "toolchain",
             "build_environment",
@@ -1613,9 +1743,10 @@ def _prepare_reused_runner(
         )
         provenance["git"] = current_git
 
-        manifest = _find_package_manifest(
+        manifest, bench_target, bench_source = _describe_cargo_bench_target(
             recipe.checkout,
             recipe.package,
+            recipe.bench,
             toolchain=recipe.toolchain,
             timeout_seconds=timeout_seconds,
         )
@@ -1626,12 +1757,12 @@ def _prepare_reused_runner(
             if recipe.corpus.is_absolute()
             else recipe.checkout / recipe.corpus
         )
-        bench_source = manifest.parent / "benches" / f"{recipe.bench}.rs"
         current_files = {
             "manifest": _describe_required_file(manifest),
             "workspace_manifest": _describe_required_file(workspace_manifest),
             "lockfile": _describe_required_file(lockfile),
             "corpus": _describe_corpus(corpus_path, recipe=recipe),
+            "bench_target": bench_target,
             "bench_source": _describe_required_file(bench_source),
         }
         for key, current in current_files.items():
@@ -2714,6 +2845,21 @@ def _verification_errors(
                 )
         except Exception as error:
             errors.append(str(error))
+    try:
+        _manifest, current_target, _source = _describe_cargo_bench_target(
+            runner.recipe.checkout,
+            runner.recipe.package,
+            runner.recipe.bench,
+            toolchain=runner.recipe.toolchain,
+            timeout_seconds=timeout_seconds,
+        )
+        verification["files"]["bench_target"] = current_target["sha256"]
+        if current_target["sha256"] != runner.provenance["bench_target"]["sha256"]:
+            errors.append(
+                f"{runner.recipe.label} Cargo bench target metadata changed during sampling"
+            )
+    except Exception as error:
+        errors.append(str(error))
     preflight_contract = runner.provenance.get("corpus", {}).get(
         "preflight_contract"
     )
@@ -3578,6 +3724,8 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         _append_contract_error(report, "recipe", identity_error)
         return
     if args.evidence_mode == "confirmation":
+        for error in _confirmation_harness_identity_errors(base, head):
+            _append_contract_error(report, "harness_identity", error)
         for side, runner in prepared.items():
             if runner.provenance["git"]["dirty"]:
                 _append_contract_error(

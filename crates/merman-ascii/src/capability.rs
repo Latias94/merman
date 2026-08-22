@@ -26,6 +26,40 @@ impl AsciiSupportLevel {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
+pub enum AsciiSemanticCoverage {
+    Full,
+    Partial,
+}
+
+impl AsciiSemanticCoverage {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Partial => "partial",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AsciiPrimaryProjection {
+    Diagrammatic,
+    StructuredText,
+    None,
+}
+
+impl AsciiPrimaryProjection {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Diagrammatic => "diagrammatic",
+            Self::StructuredText => "structured_text",
+            Self::None => "none",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AsciiEvidenceKind {
     MermaidAsciiOracle,
     BeautifulMermaidPriorArt,
@@ -56,53 +90,128 @@ pub struct AsciiCapabilityEvidence {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct AsciiCapability {
     pub diagram_type: &'static str,
     pub display_name: &'static str,
+    pub semantic_coverage: Option<AsciiSemanticCoverage>,
+    pub primary_projection: AsciiPrimaryProjection,
+    pub structured_text_fallback: bool,
+    /// Compatibility view derived from semantic coverage and the primary projection.
     pub support_level: AsciiSupportLevel,
-    pub summary_fallback: bool,
     pub supported_semantics: &'static [&'static str],
     pub limits: &'static [&'static str],
     pub evidence: &'static [AsciiCapabilityEvidence],
 }
 
 impl AsciiCapability {
+    const fn from_definition(definition: AsciiCapabilityDefinition) -> Self {
+        let support_level =
+            derive_support_level(definition.semantic_coverage, definition.primary_projection);
+        Self {
+            diagram_type: definition.diagram_type,
+            display_name: definition.display_name,
+            semantic_coverage: definition.semantic_coverage,
+            primary_projection: definition.primary_projection,
+            structured_text_fallback: definition.structured_text_fallback,
+            support_level,
+            supported_semantics: definition.supported_semantics,
+            limits: definition.limits,
+            evidence: definition.evidence,
+        }
+    }
+
+    const fn unsupported(diagram_type: &'static str) -> Self {
+        Self::from_definition(AsciiCapabilityDefinition {
+            diagram_type,
+            display_name: diagram_type,
+            semantic_coverage: None,
+            primary_projection: AsciiPrimaryProjection::None,
+            structured_text_fallback: false,
+            supported_semantics: &[],
+            limits: &["no terminal projection is available"],
+            evidence: &[AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
+                note: "the total capability matrix records this typed family as unsupported",
+            }],
+        })
+    }
+
+    pub const fn derived_support_level(self) -> AsciiSupportLevel {
+        derive_support_level(self.semantic_coverage, self.primary_projection)
+    }
+
     pub const fn is_supported(self) -> bool {
-        self.support_level.is_supported()
+        self.semantic_coverage.is_some()
     }
 }
 
-pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
-    AsciiCapability {
+const fn derive_support_level(
+    semantic_coverage: Option<AsciiSemanticCoverage>,
+    primary_projection: AsciiPrimaryProjection,
+) -> AsciiSupportLevel {
+    match (semantic_coverage, primary_projection) {
+        (Some(_), AsciiPrimaryProjection::StructuredText) => AsciiSupportLevel::Summary,
+        (Some(AsciiSemanticCoverage::Full), AsciiPrimaryProjection::Diagrammatic) => {
+            AsciiSupportLevel::Full
+        }
+        (Some(AsciiSemanticCoverage::Partial), AsciiPrimaryProjection::Diagrammatic) => {
+            AsciiSupportLevel::Partial
+        }
+        _ => AsciiSupportLevel::Unsupported,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AsciiCapabilityDefinition {
+    diagram_type: &'static str,
+    display_name: &'static str,
+    semantic_coverage: Option<AsciiSemanticCoverage>,
+    primary_projection: AsciiPrimaryProjection,
+    structured_text_fallback: bool,
+    supported_semantics: &'static [&'static str],
+    limits: &'static [&'static str],
+    evidence: &'static [AsciiCapabilityEvidence],
+}
+
+const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
+    AsciiCapabilityDefinition {
         diagram_type: "class",
         display_name: "Class",
-        support_level: AsciiSupportLevel::Partial,
-        summary_fallback: true,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
         supported_semantics: &[
             "class boxes",
             "members and methods",
             "annotations and notes",
             "common relationship markers",
+            "independent source and target relationship markers",
             "endpoint labels",
+            "top-down, bottom-up, left-right, and right-left directions",
             "namespace containers",
             "namespace-qualified endpoint aliases",
             "namespace-internal class and note relationship routing",
+            "readable sibling namespace, namespace-to-root, and nested namespace facade routing",
+            "length-framed namespace facade member identity",
             "self-relation loops",
             "bounded iterative relation-layer sweeps",
+            "strict planar K2×2 four-node, four-edge components with four disjoint routes",
             "routed relation lanes",
             "independent relation components",
-            "route and overlay collision summaries",
-            "dense relation summaries",
+            "lossless crossing, port-fit, route, and overlay collision summaries",
         ],
         limits: &[
-            "cross-namespace or cross-container relationships render as relation summaries",
-            "multiple relation markers on one relation are unsupported",
-            "dense or grid-budgeted relation scenes can summarize",
+            "dense or colliding cross-namespace relationships render as lossless relation summaries",
+            "parallel relationship lanes whose ports do not fit render as lossless relation summaries",
+            "dense or collision-prone relation scenes can summarize",
+            "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "repo-ref/beautiful-mermaid/src/__tests__/class-integration.test.ts",
+                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "class compartments, annotations, and relationship coverage are capability prior art",
             },
             AsciiCapabilityEvidence {
@@ -111,39 +220,55 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
                 note: "local fixtures assert typed class semantics instead of copied reference spacing",
             },
             AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/class_model.rs",
+                note: "class_parser_k2_2_relationships_use_a_bounded_planar_layout proves the strict planar K2×2 Class component remains diagrammatic",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/src/relation_graph/tests/",
+                note: "strict K2×2 relation_graph tests prove declaration-order stability, four disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
+            },
+            AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
-                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#A-CLASSER-010",
+                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
                 note: "shared relation_graph gap owner records routed and summary boundaries",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "er",
         display_name: "ER",
-        support_level: AsciiSupportLevel::Partial,
-        summary_fallback: true,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
         supported_semantics: &[
             "entity boxes",
-            "attributes and key tokens",
+            "attributes, key tokens, and attribute comments",
             "relationship labels",
             "cardinality markers",
+            "parent diamond cardinality markers",
             "identifying relationships",
+            "top-down, bottom-up, left-right, and right-left directions",
             "self-relationship loops",
             "bounded iterative relation-layer sweeps",
+            "strict planar K2×2 four-node, four-edge components with four disjoint routes",
             "routed relation lanes",
             "independent relation components",
-            "route and overlay collision summaries",
-            "dense relation summaries",
+            "lossless crossing, port-fit, route, and overlay collision summaries",
         ],
         limits: &[
+            "parallel relationship lanes whose ports do not fit render as lossless relation summaries",
             "complex cyclic or collision-prone topology can summarize",
+            "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
             "unknown cardinality markers are unsupported",
             "unknown relationship identity kinds are unsupported",
+            "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "repo-ref/beautiful-mermaid/src/__tests__/er-integration.test.ts",
+                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "ER attributes, relationships, and cardinalities are capability prior art",
             },
             AsciiCapabilityEvidence {
@@ -152,20 +277,32 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
                 note: "local fixtures assert entity, attribute, cardinality, and summary semantics",
             },
             AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/er_model.rs",
+                note: "er_parser_k2_2_relationships_use_a_bounded_planar_layout proves the strict planar K2×2 ER component remains diagrammatic",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/src/relation_graph/tests/",
+                note: "strict K2×2 relation_graph tests prove declaration-order stability, four disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
+            },
+            AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
-                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#A-CLASSER-010",
+                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
                 note: "shared relation_graph gap owner records routed and summary boundaries",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "flowchart",
         display_name: "Flowchart / graph",
-        support_level: AsciiSupportLevel::Full,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: false,
         supported_semantics: &[
             "root directions",
             "boxed nodes and common shapes",
+            "terminal-cell wrapped node labels",
             "edge labels",
             "open dotted and thick edges",
             "subgraphs and nested groups",
@@ -181,11 +318,11 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::MermaidAsciiOracle,
                 source: "crates/merman-ascii/tests/testdata/mermaid-ascii/",
-                note: "copied graph fixtures keep the admitted byte-level oracle stable",
+                note: "copied graph fixtures preserve an exact subset plus named renderable semantic differences",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "repo-ref/beautiful-mermaid/src/__tests__/ascii.test.ts",
+                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "graph ASCII shape and disconnected-layout tests are capability prior art",
             },
             AsciiCapabilityEvidence {
@@ -193,165 +330,227 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
                 source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
                 note: "true RL/BT handling is a local semantic target, not a beautiful-mermaid capability",
             },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/testdata/local-semantic/flowchart/issue_53_long_node_labels.mmd",
+                note: "Issue #53 verifies terminal-cell wrapping before node sizing while preserving labels and topology",
+            },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "gantt",
         display_name: "Gantt",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &[
             "titles",
             "sections",
             "tasks",
+            "stable task ids",
+            "typed start and end constraints with dependency ids",
+            "resolved and adjusted end times",
             "dates",
             "tags",
-            "dependencies",
+            "time-of-day precision",
             "deterministic date formatting",
+            "length-framed authored report fields",
         ],
         limits: &[
             "no terminal timeline geometry",
             "output is a readable task summary",
+            "links and click callbacks are metadata-only",
+            "duplicate or empty task ids are rejected",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "crates/merman-ascii/README.md#shipped-diagram-matrix",
-                note: "summary output preserves typed task data without pseudo-graph geometry",
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/new_family_models.rs",
+                note: "typed-model tests preserve task identity and typed scheduling constraints with injective authored-field framing without claiming pseudo-graph geometry",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies Gantt as summary output",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
+                note: "support matrix classifies Gantt as structured-text output",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "gitgraph",
         display_name: "GitGraph",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &[
             "commits",
             "branches",
             "merges",
             "tags",
             "cherry-picks",
+            "parent topology",
+            "explicit merge id and type overrides",
             "ordering",
         ],
-        limits: &["does not draw a full Git lane graph"],
+        limits: &[
+            "does not draw a full Git lane graph",
+            "terminal output normalizes implementation flags into semantic labels",
+            "unknown direct-model commit types are rejected",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "crates/merman-ascii/README.md#shipped-diagram-matrix",
-                note: "summary output preserves graph history facts in terminal text",
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/new_family_models.rs",
+                note: "typed-model tests preserve graph history facts in terminal text",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies GitGraph as summary output",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
+                note: "support matrix classifies GitGraph as structured-text output",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "journey",
         display_name: "Journey",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
-        supported_semantics: &["sections", "tasks", "actors", "scores"],
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
+        supported_semantics: &[
+            "sections",
+            "tasks",
+            "actors",
+            "scores",
+            "length-framed authored report fields",
+        ],
         limits: &["does not draw Mermaid journey chart geometry"],
         evidence: &[
             AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "crates/merman-ascii/README.md#shipped-diagram-matrix",
-                note: "summary output preserves actor and score data in stable rows",
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/new_family_models.rs",
+                note: "typed-model tests preserve actor and score data in stable, injectively framed rows",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies Journey as summary output",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
+                note: "support matrix classifies Journey as structured-text output",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "kanban",
         display_name: "Kanban",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
-        supported_semantics: &["columns", "cards", "assignments", "metadata"],
-        limits: &["drag and board presentation metadata are not terminal output"],
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
+        supported_semantics: &[
+            "columns",
+            "cards",
+            "stable card and group ids",
+            "assignments",
+            "metadata",
+            "deterministic Unassigned grouping",
+            "group parent ownership disclosure",
+            "length-framed authored report fields",
+        ],
+        limits: &[
+            "drag and board presentation metadata are not terminal output",
+            "group parent ownership is disclosed without nested board geometry",
+            "duplicate or empty ids are rejected",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "crates/merman-ascii/README.md#shipped-diagram-matrix",
-                note: "summary output preserves column-first card order and metadata",
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/new_family_models.rs",
+                note: "typed-model tests preserve column-first card order and metadata with injective authored-field framing",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies Kanban as summary output",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
+                note: "support matrix classifies Kanban as structured-text output",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "mindmap",
         display_name: "Mindmap",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
-        supported_semantics: &["hierarchical nodes", "labels", "nesting", "wrapped text"],
-        limits: &["icons images and rich browser node shapes are omitted or approximated"],
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
+        supported_semantics: &[
+            "hierarchical nodes",
+            "stable authored node ids",
+            "labels",
+            "nesting",
+            "wrapped text",
+            "shape, icon, and section disclosure",
+            "disconnected components and cycles",
+            "validated edge endpoints",
+            "ASCII and Unicode tree connectors",
+            "length-framed authored report fields",
+        ],
+        limits: &[
+            "icons and rich browser node shapes are disclosed as text rather than styled",
+            "duplicate internal or authored ids, missing authored ids, parallel edges, and missing endpoints are rejected",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "crates/merman-ascii/README.md#shipped-diagram-matrix",
-                note: "outline output preserves hierarchy instead of imitating browser geometry",
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/new_family_models.rs",
+                note: "typed-model tests preserve hierarchy with charset-aware connectors and injective authored-field framing",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies Mindmap as summary output",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
+                note: "support matrix classifies Mindmap as structured-text output",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "packet",
         display_name: "Packet",
-        support_level: AsciiSupportLevel::Full,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &["bit ranges", "labels", "row splitting", "multi-row packets"],
-        limits: &["visual styling beyond terminal borders is not represented"],
+        limits: &[
+            "output is an ordered row report rather than a spatial bit-width grid",
+            "visual styling beyond terminal borders is not represented",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "crates/merman-ascii/README.md#shipped-diagram-matrix",
-                note: "typed packet ranges render as terminal-native rows",
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/new_family_models.rs",
+                note: "typed-model tests render packet ranges as terminal-native rows",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies Packet as full output",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
+                note: "support matrix classifies Packet as partial structured text",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "sequence",
         display_name: "Sequence",
-        support_level: AsciiSupportLevel::Full,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: false,
         supported_semantics: &[
             "participants",
-            "messages",
+            "Mermaid-valid spaced and Unicode participant identifiers",
+            "headless, filled, cross, point, bidirectional, and half-arrow messages",
+            "central endpoint decorations",
             "notes",
             "lifecycles",
             "actor boxes",
-            "control blocks",
+            "participant-bounded nested control frames",
             "diagram-wide empty boxes",
             "sequence box inner padding",
             "all-participant boxes around dynamic lifecycle content",
             "optional mirrored actors",
             "terminal color roles",
         ],
-        limits: &["actor presentation metadata and links are omitted"],
+        limits: &["actor presentation metadata and links are accepted but intentionally omitted"],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::MermaidAsciiOracle,
@@ -360,7 +559,7 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "repo-ref/beautiful-mermaid/src/__tests__/sequence-integration.test.ts",
+                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "sequence parser and block-layout cases are capability prior art",
             },
             AsciiCapabilityEvidence {
@@ -370,11 +569,12 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "state",
         display_name: "State",
-        support_level: AsciiSupportLevel::Partial,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: false,
         supported_semantics: &[
             "states",
             "start and end nodes",
@@ -391,7 +591,7 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "repo-ref/beautiful-mermaid/src/ascii/shapes/state.ts",
+                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "state-oriented ASCII shape ideas are prior art, not a byte oracle",
             },
             AsciiCapabilityEvidence {
@@ -401,97 +601,136 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
-                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#A-STATE-010",
+                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-state-010",
                 note: "remaining state presentation metadata is explicitly tracked",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "timeline",
         display_name: "Timeline",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
-        supported_semantics: &["sections", "events", "ordered grouped text"],
-        limits: &["does not draw Mermaid timeline geometry"],
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
+        supported_semantics: &[
+            "sections",
+            "events",
+            "direction",
+            "ordered grouped text",
+            "length-framed authored report fields",
+        ],
+        limits: &[
+            "does not draw Mermaid timeline geometry",
+            "parser bookkeeping score is intentionally omitted",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "crates/merman-ascii/README.md#shipped-diagram-matrix",
-                note: "summary output keeps section and event order stable",
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/new_family_models.rs",
+                note: "typed-model tests keep section and event order stable with injective authored-field framing",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies Timeline as summary output",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
+                note: "support matrix classifies Timeline as structured-text output",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "treeView",
         display_name: "TreeView",
-        support_level: AsciiSupportLevel::Full,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &[
-            "tree nodes",
-            "folders and leaves",
-            "indentation",
-            "tree connectors",
+            "hierarchical outline order",
+            "root and node identities with authored levels",
+            "directory and file distinction",
+            "ASCII and Unicode tree connectors",
+            "icons classes and descriptions as text disclosure",
+            "length-framed authored report fields",
         ],
-        limits: &["browser tree styling is not represented"],
+        limits: &[
+            "outline output does not claim two-dimensional diagram geometry",
+            "browser icons and CSS classes are disclosed rather than styled",
+            "duplicate node ids are rejected",
+            "unknown node types are rejected",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "crates/merman-ascii/README.md#shipped-diagram-matrix",
-                note: "tree output is typed terminal structure and is not tied to metadata ids",
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/new_family_models.rs",
+                note: "typed-model tests preserve hierarchy and annotations with injective authored-field framing",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies TreeView as full output",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
+                note: "support matrix classifies TreeView as structured outline output",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "xychart",
         display_name: "XYChart",
-        support_level: AsciiSupportLevel::Partial,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
         supported_semantics: &[
-            "compact bar and line plots",
-            "mixed plots",
-            "horizontal mode",
+            "model-owned x/y sample coordinates and point labels",
+            "parser-produced x coordinates derived from typed axes, categories, and sample order",
+            "band and linear axes with compact scale-aware ticks",
+            "grouped bar, topology-resolved line, and mixed plots",
+            "horizontal and vertical orientation",
             "titles and axes",
             "legends",
-            "data labels",
+            "length-framed exact data labels and semantic disclosure",
+            "length-framed empty-chart metadata disclosure",
             "configurable plot dimensions",
         ],
         limits: &[
-            "tooltips are not represented",
-            "SVG coordinate precision is not represented",
-            "dense data uses terminal-compact layout",
+            "browser hover tooltips are replaced by deterministic terminal disclosure",
+            "typed chart coordinates are independently quantized by the terminal plan",
+            "cross-series same-cell collisions use deterministic paint order plus exact disclosure",
+            "unknown direct-model orientations and band y-axes are rejected",
+            "accessibility title and description metadata are intentionally omitted from terminal output",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "repo-ref/beautiful-mermaid/src/__tests__/xychart-ascii.test.ts",
+                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "XYChart ASCII and legend behavior are capability prior art",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
-                source: "crates/merman-ascii/tests/testdata/local-semantic/xychart/",
-                note: "local fixtures assert typed chart labels values and wide-cell behavior",
+                source: "crates/merman-ascii/tests/xychart_model.rs",
+                note: "semantic tests assert model-owned coordinates, parser-derived x positions, grouped lanes, missing-sample gaps, connected horizontal paths, precision, injective disclosure, empty-chart reports, clipping, collisions, direct-model validation, labels, and resource extents",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
-                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#A-XY-010",
-                note: "richer terminal chart disclosure remains an explicit gap",
+                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-xy-010",
+                note: "cross-series same-cell ownership remains an explicit compact-layout residual",
             },
         ],
     },
 ];
 
 pub fn ascii_capabilities() -> &'static [AsciiCapability] {
-    ASCII_CAPABILITIES
+    static CAPABILITIES: OnceLock<Vec<AsciiCapability>> = OnceLock::new();
+    CAPABILITIES
+        .get_or_init(|| {
+            merman_core::built_in_typed_render_families()
+                .iter()
+                .map(|family| {
+                    ASCII_CAPABILITY_DEFINITIONS
+                        .iter()
+                        .find(|definition| definition.diagram_type == family.diagram_type)
+                        .copied()
+                        .map(AsciiCapability::from_definition)
+                        .unwrap_or_else(|| AsciiCapability::unsupported(family.diagram_type))
+                })
+                .collect()
+        })
+        .as_slice()
 }
 
 pub fn ascii_supported_diagram_types() -> &'static [&'static str] {
@@ -507,19 +746,89 @@ pub fn ascii_supported_diagram_types() -> &'static [&'static str] {
         .as_slice()
 }
 
+pub fn ascii_diagrammatic_diagram_types() -> &'static [&'static str] {
+    static DIAGRAMMATIC: OnceLock<Vec<&'static str>> = OnceLock::new();
+    DIAGRAMMATIC
+        .get_or_init(|| {
+            ascii_capabilities()
+                .iter()
+                .filter(|capability| {
+                    matches!(
+                        capability.primary_projection,
+                        AsciiPrimaryProjection::Diagrammatic
+                    )
+                })
+                .map(|capability| capability.diagram_type)
+                .collect()
+        })
+        .as_slice()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{collections::BTreeSet, fs, path::Path};
+
+    const ALLOWED_EVIDENCE_ANCHORS: &[(&str, &str, &str)] = &[
+        (
+            "crates/merman-ascii/ASCII_GAP_REGISTRY.md",
+            "a-classer-010",
+            r#"id="a-classer-010""#,
+        ),
+        (
+            "crates/merman-ascii/ASCII_GAP_REGISTRY.md",
+            "a-state-010",
+            r#"id="a-state-010""#,
+        ),
+        (
+            "crates/merman-ascii/ASCII_GAP_REGISTRY.md",
+            "a-xy-010",
+            r#"id="a-xy-010""#,
+        ),
+        (
+            "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md",
+            "family-comparison",
+            "## Family Comparison",
+        ),
+        (
+            "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md",
+            "intentional-differences",
+            "## Intentional Differences",
+        ),
+        (
+            "docs/rendering/ASCII_SUPPORT_MATRIX.md",
+            "structured-text-outputs",
+            "## Structured-Text Outputs",
+        ),
+        (
+            "docs/rendering/ASCII_SUPPORT_MATRIX.md",
+            "unsupported-families",
+            "## Unsupported Families",
+        ),
+    ];
 
     #[test]
-    fn supported_diagram_types_are_derived_from_capabilities() {
-        let derived: Vec<_> = ascii_capabilities()
+    fn capabilities_cover_each_concrete_built_in_typed_family_once() {
+        let capabilities = ascii_capabilities();
+        let core_families = merman_core::built_in_typed_render_families();
+        let capability_types = capabilities
             .iter()
-            .filter(|capability| capability.is_supported())
             .map(|capability| capability.diagram_type)
-            .collect();
+            .collect::<BTreeSet<_>>();
+        let core_types = core_families
+            .iter()
+            .map(|family| family.diagram_type)
+            .collect::<BTreeSet<_>>();
 
-        assert_eq!(ascii_supported_diagram_types(), derived.as_slice());
+        assert_eq!(capabilities.len(), 31);
+        assert_eq!(capability_types.len(), capabilities.len());
+        assert_eq!(capability_types, core_types);
+        assert!(!capability_types.contains("error"));
+        assert!(!capability_types.contains("custom-json"));
+    }
+
+    #[test]
+    fn output_available_and_diagrammatic_lists_are_distinct_projections() {
         assert_eq!(
             ascii_supported_diagram_types(),
             &[
@@ -539,24 +848,121 @@ mod tests {
                 "xychart",
             ]
         );
+        assert_eq!(
+            ascii_diagrammatic_diagram_types(),
+            &["class", "er", "flowchart", "sequence", "state", "xychart",]
+        );
     }
 
     #[test]
-    fn support_levels_match_public_matrix_boundary() {
+    fn semantic_coverage_projection_and_fallback_are_independent() {
         let class = find("class");
+        assert_eq!(
+            class.semantic_coverage,
+            Some(AsciiSemanticCoverage::Partial)
+        );
+        assert_eq!(
+            class.primary_projection,
+            AsciiPrimaryProjection::Diagrammatic
+        );
         assert_eq!(class.support_level, AsciiSupportLevel::Partial);
-        assert!(class.summary_fallback);
+        assert!(class.structured_text_fallback);
 
         let er = find("er");
+        assert_eq!(er.semantic_coverage, Some(AsciiSemanticCoverage::Partial));
+        assert_eq!(er.primary_projection, AsciiPrimaryProjection::Diagrammatic);
         assert_eq!(er.support_level, AsciiSupportLevel::Partial);
-        assert!(er.summary_fallback);
+        assert!(er.structured_text_fallback);
 
-        assert_eq!(find("flowchart").support_level, AsciiSupportLevel::Full);
-        assert_eq!(find("sequence").support_level, AsciiSupportLevel::Full);
-        assert_eq!(find("packet").support_level, AsciiSupportLevel::Full);
-        assert_eq!(find("treeView").support_level, AsciiSupportLevel::Full);
+        assert_eq!(find("flowchart").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(find("sequence").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(find("packet").support_level, AsciiSupportLevel::Summary);
+        assert_eq!(find("treeView").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("gantt").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);
+
+        for diagram_type in [
+            "gantt", "gitgraph", "journey", "kanban", "mindmap", "packet", "timeline", "treeView",
+        ] {
+            let capability = find(diagram_type);
+            assert_eq!(
+                capability.primary_projection,
+                AsciiPrimaryProjection::StructuredText
+            );
+            assert_eq!(
+                capability.semantic_coverage,
+                Some(AsciiSemanticCoverage::Partial)
+            );
+        }
+
+        let zenuml = find("zenuml");
+        assert_eq!(zenuml.semantic_coverage, None);
+        assert_eq!(zenuml.primary_projection, AsciiPrimaryProjection::None);
+        assert_eq!(zenuml.support_level, AsciiSupportLevel::Unsupported);
+
+        for capability in ascii_capabilities() {
+            assert_eq!(capability.support_level, capability.derived_support_level());
+            assert_eq!(
+                capability.semantic_coverage.is_some(),
+                !matches!(capability.primary_projection, AsciiPrimaryProjection::None),
+                "{} has an invalid availability/coverage combination",
+                capability.diagram_type
+            );
+        }
+    }
+
+    #[test]
+    fn class_capability_discloses_scoped_namespace_facade_routing() {
+        let class = find("class");
+
+        assert!(class.supported_semantics.contains(
+            &"readable sibling namespace, namespace-to-root, and nested namespace facade routing"
+        ));
+        assert!(
+            class
+                .supported_semantics
+                .contains(&"length-framed namespace facade member identity")
+        );
+        assert!(
+            class
+                .limits
+                .contains(&"dense or colliding cross-namespace relationships render as lossless relation summaries")
+        );
+    }
+
+    #[test]
+    fn class_and_er_capabilities_disclose_the_strict_planar_k2_2_boundary() {
+        for (diagram_type, parser_test) in [
+            (
+                "class",
+                "class_parser_k2_2_relationships_use_a_bounded_planar_layout",
+            ),
+            (
+                "er",
+                "er_parser_k2_2_relationships_use_a_bounded_planar_layout",
+            ),
+        ] {
+            let capability = find(diagram_type);
+
+            assert!(capability.supported_semantics.contains(
+                &"strict planar K2×2 four-node, four-edge components with four disjoint routes"
+            ));
+            assert!(capability.limits.contains(
+                &"strict K2×2 routing does not imply support for arbitrary bounded or dense topologies"
+            ));
+            assert!(
+                capability
+                    .evidence
+                    .iter()
+                    .any(|evidence| evidence.note.contains(parser_test)),
+                "{diagram_type} should cite its parser-backed strict K2×2 test",
+            );
+            assert!(capability.evidence.iter().any(|evidence| {
+                evidence.source.ends_with("relation_graph/tests/")
+                    && evidence.note.contains("four disjoint routes")
+                    && evidence.note.contains("exact/N-1")
+            }));
+        }
     }
 
     #[test]
@@ -577,16 +983,27 @@ mod tests {
             matches!(evidence.kind, AsciiEvidenceKind::LocalAdvantage)
                 && evidence.note.contains("true RL/BT")
         }));
+        assert!(
+            flowchart
+                .supported_semantics
+                .contains(&"terminal-cell wrapped node labels")
+        );
+        assert!(flowchart.evidence.iter().any(|evidence| {
+            matches!(evidence.kind, AsciiEvidenceKind::LocalSemanticProbe)
+                && evidence.source.ends_with("issue_53_long_node_labels.mmd")
+        }));
     }
 
     #[test]
     fn every_capability_has_limits_and_evidence() {
         for capability in ascii_capabilities() {
-            assert!(
-                !capability.supported_semantics.is_empty(),
-                "{} should document supported semantics",
-                capability.diagram_type
-            );
+            if capability.is_supported() {
+                assert!(
+                    !capability.supported_semantics.is_empty(),
+                    "{} should document supported semantics",
+                    capability.diagram_type
+                );
+            }
             assert!(
                 !capability.limits.is_empty(),
                 "{} should document important limits",
@@ -598,6 +1015,182 @@ mod tests {
                 capability.diagram_type
             );
         }
+    }
+
+    #[test]
+    fn capability_evidence_uses_durable_repository_sources() {
+        let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+        for capability in ascii_capabilities() {
+            for evidence in capability.evidence {
+                assert!(
+                    !evidence.source.starts_with("repo-ref/"),
+                    "{} exposes ignored evidence source {}",
+                    capability.diagram_type,
+                    evidence.source
+                );
+
+                let (path, anchor) = evidence
+                    .source
+                    .split_once('#')
+                    .map_or((evidence.source, None), |(path, anchor)| {
+                        (path, Some(anchor))
+                    });
+                let target = workspace_root.join(path);
+                assert!(
+                    target.exists(),
+                    "{} evidence source does not exist: {}",
+                    capability.diagram_type,
+                    evidence.source
+                );
+
+                let Some(anchor) = anchor else {
+                    continue;
+                };
+                let marker = ALLOWED_EVIDENCE_ANCHORS
+                    .iter()
+                    .find_map(|(allowed_path, allowed_anchor, marker)| {
+                        (*allowed_path == path && *allowed_anchor == anchor).then_some(*marker)
+                    })
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{} uses an unreviewed evidence anchor: {}",
+                            capability.diagram_type, evidence.source
+                        )
+                    });
+                let document = fs::read_to_string(&target).unwrap_or_else(|error| {
+                    panic!(
+                        "failed to read evidence source {}: {error}",
+                        target.display()
+                    )
+                });
+                assert!(
+                    document.contains(marker),
+                    "{} evidence anchor is missing from {}",
+                    capability.diagram_type,
+                    evidence.source
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn gantt_capability_claims_only_disclosed_constraint_semantics() {
+        let gantt = find("gantt");
+
+        assert!(gantt.supported_semantics.iter().any(|semantic| {
+            semantic.contains("typed start and end constraints")
+                && semantic.contains("dependency ids")
+        }));
+        assert!(
+            !gantt
+                .limits
+                .iter()
+                .any(|limit| limit.contains("dependency source expressions"))
+        );
+    }
+
+    #[test]
+    fn sectioned_structured_text_capabilities_disclose_injective_field_framing() {
+        for diagram_type in ["gantt", "journey", "timeline"] {
+            assert!(
+                find(diagram_type)
+                    .supported_semantics
+                    .contains(&"length-framed authored report fields"),
+                "{diagram_type} should disclose its injective StructuredText field ownership",
+            );
+        }
+    }
+
+    #[test]
+    fn hierarchy_structured_text_capabilities_disclose_injective_field_framing() {
+        for diagram_type in ["kanban", "mindmap", "treeView"] {
+            assert!(
+                find(diagram_type)
+                    .supported_semantics
+                    .contains(&"length-framed authored report fields"),
+                "{diagram_type} should disclose its injective StructuredText field ownership",
+            );
+        }
+
+        assert!(
+            find("mindmap")
+                .supported_semantics
+                .contains(&"ASCII and Unicode tree connectors")
+        );
+        assert!(
+            find("kanban")
+                .supported_semantics
+                .contains(&"group parent ownership disclosure")
+        );
+    }
+
+    #[test]
+    fn gitgraph_capability_discloses_direct_model_commit_type_validation() {
+        assert!(
+            find("gitgraph")
+                .limits
+                .contains(&"unknown direct-model commit types are rejected")
+        );
+    }
+
+    #[test]
+    fn sequence_capability_claims_participant_bounded_control_frames() {
+        let sequence = find("sequence");
+
+        assert!(
+            sequence
+                .supported_semantics
+                .contains(&"participant-bounded nested control frames")
+        );
+    }
+
+    #[test]
+    fn er_capability_discloses_presentation_metadata_omission() {
+        let er = find("er");
+
+        assert!(er.limits.iter().any(|limit| {
+            limit.contains("accessibility")
+                && limit.contains("Mermaid diagram source comments")
+                && limit.contains("styling")
+                && limit.contains("intentionally omitted")
+        }));
+        assert!(
+            !er.limits
+                .iter()
+                .any(|limit| limit.contains("attribute comments"))
+        );
+        assert!(
+            er.supported_semantics
+                .iter()
+                .any(|semantic| semantic.contains("attribute comments"))
+        );
+    }
+
+    #[test]
+    fn xychart_capability_discloses_injective_fields_and_direct_model_boundaries() {
+        let xychart = find("xychart");
+
+        assert!(xychart.structured_text_fallback);
+        assert!(
+            xychart
+                .supported_semantics
+                .contains(&"length-framed exact data labels and semantic disclosure")
+        );
+        assert!(
+            xychart
+                .supported_semantics
+                .contains(&"length-framed empty-chart metadata disclosure")
+        );
+        assert!(
+            xychart
+                .limits
+                .contains(&"unknown direct-model orientations and band y-axes are rejected")
+        );
+        assert!(xychart.limits.iter().any(|limit| {
+            limit.contains("accessibility title and description metadata")
+                && limit.contains("intentionally omitted")
+        }));
     }
 
     fn find(diagram_type: &str) -> AsciiCapability {

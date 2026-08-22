@@ -1222,7 +1222,6 @@ function validateQueueLifecycle(value, label) {
     "saturation_passed",
     "dispose_passed",
     "queued_abort_passed",
-    "non_preemptive_abort_passed",
     "process_shutdown_passed",
   ]) {
     if (value[key] !== true) {

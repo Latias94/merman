@@ -1,5 +1,20 @@
 use super::super::*;
 
+#[derive(Clone)]
+struct SankeyNodeUid<'a> {
+    diagram_id: Option<SvgDiagramId<'a>>,
+    local_id: String,
+}
+
+impl std::fmt::Display for SankeyNodeUid<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.diagram_id {
+            Some(diagram_id) => write!(formatter, "{diagram_id}-{}", self.local_id),
+            None => formatter.write_str(&self.local_id),
+        }
+    }
+}
+
 pub(crate) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
     effective_config: &serde_json::Value,
@@ -16,8 +31,8 @@ pub(crate) fn render_sankey_diagram_svg(
 
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("sankey");
-    let scope_generated_ids = options.diagram_id.is_some();
+    let diagram_id = options.diagram_id_or("sankey");
+    let scope_generated_ids = options.has_explicit_diagram_id();
 
     const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
     const DEFAULT_DESCENT_EM: f64 = 0.262;
@@ -87,6 +102,7 @@ pub(crate) fn render_sankey_diagram_svg(
         "<style>{}</style>",
         sankey_css(diagram_id, effective_config)
     );
+    options.checkpoint_emit()?;
     out.push_str("<g/>");
 
     let scheme_tableau10: [&str; 10] = [
@@ -112,32 +128,33 @@ pub(crate) fn render_sankey_diagram_svg(
     };
 
     let mut uid_count: usize = 0;
-    let mut next_generated_id = |prefix: &str| -> String {
+    let mut next_generated_id = |prefix: &str| -> SankeyNodeUid<'_> {
         uid_count += 1;
         let local_id = format!("{prefix}{uid_count}");
-        if scope_generated_ids {
-            scoped_svg_id(diagram_id, &local_id)
-        } else {
-            local_id
+        SankeyNodeUid {
+            diagram_id: scope_generated_ids.then_some(diagram_id),
+            local_id,
         }
     };
 
-    let mut node_uid_by_id: std::collections::HashMap<String, String> =
+    let mut node_uid_by_id: std::collections::HashMap<String, SankeyNodeUid<'_>> =
         std::collections::HashMap::new();
     for n in &layout.nodes {
+        options.checkpoint_emit()?;
         node_uid_by_id.insert(n.id.clone(), next_generated_id("node-"));
         let _ = color_for(&n.id);
     }
 
     out.push_str(r#"<g class="nodes">"#);
     for n in &layout.nodes {
-        let node_uid = node_uid_by_id.get(&n.id).cloned().unwrap_or_else(|| {
-            if scope_generated_ids {
-                scoped_svg_id(diagram_id, "node-0")
-            } else {
-                "node-0".to_string()
-            }
-        });
+        options.checkpoint_emit()?;
+        let node_uid = node_uid_by_id
+            .get(&n.id)
+            .cloned()
+            .unwrap_or_else(|| SankeyNodeUid {
+                diagram_id: scope_generated_ids.then_some(diagram_id),
+                local_id: "node-0".to_string(),
+            });
         let x = n.x0;
         let y = n.y0;
         let w = n.x1 - n.x0;
@@ -146,7 +163,7 @@ pub(crate) fn render_sankey_diagram_svg(
         let _ = write!(
             &mut out,
             r#"<g class="node" id="{id}" transform="translate({x},{y})" x="{x}" y="{y}"><rect height="{h}" width="{w}" fill="{fill}"/></g>"#,
-            id = escape_xml(&node_uid),
+            id = node_uid,
             x = fmt(x),
             y = fmt(y),
             h = fmt(h),
@@ -164,14 +181,16 @@ pub(crate) fn render_sankey_diagram_svg(
     let mut max_value = 0.0;
     let mut central_node_layer = 0usize;
     for n in &layout.nodes {
+        options.checkpoint_emit()?;
         if n.value > max_value {
             max_value = n.value;
             central_node_layer = n.layer;
         }
     }
 
-    let append_labels = |out: &mut String, class_name: Option<&str>| {
+    let append_labels = |out: &mut String, class_name: Option<&str>| -> Result<()> {
         for n in &layout.nodes {
+            options.checkpoint_emit()?;
             let y = (n.y0 + n.y1) / 2.0;
             let (x, anchor) = if outlined_labels {
                 if n.layer < central_node_layer {
@@ -209,18 +228,20 @@ pub(crate) fn render_sankey_diagram_svg(
                 text = escape_xml(&text),
             );
         }
+        Ok(())
     };
     if outlined_labels {
-        append_labels(&mut out, Some("sankey-label-bg"));
-        append_labels(&mut out, Some("sankey-label-fg"));
+        append_labels(&mut out, Some("sankey-label-bg"))?;
+        append_labels(&mut out, Some("sankey-label-fg"))?;
     } else {
-        append_labels(&mut out, None);
+        append_labels(&mut out, None)?;
     }
     out.push_str("</g>");
 
     out.push_str(r#"<g class="links" fill="none" stroke-opacity="0.5">"#);
 
     for l in &layout.links {
+        options.checkpoint_emit()?;
         let source = layout
             .nodes
             .iter()
@@ -260,7 +281,7 @@ pub(crate) fn render_sankey_diagram_svg(
                 let _ = write!(
                     &mut out,
                     r#"<linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="{x1}" x2="{x2}"><stop offset="0%" stop-color="{c1}"/><stop offset="100%" stop-color="{c2}"/></linearGradient>"#,
-                    id = escape_attr(&gradient_id),
+                    id = &gradient_id,
                     x1 = fmt(sx),
                     x2 = fmt(tx),
                     c1 = escape_attr(&source_color),

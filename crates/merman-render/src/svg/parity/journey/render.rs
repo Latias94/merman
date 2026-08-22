@@ -12,11 +12,10 @@ fn fmt_task_face_y(v: Option<f64>) -> String {
 }
 
 fn journey_css(
-    diagram_id: &str,
+    diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
     theme: &JourneyTheme,
 ) -> String {
-    let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let font = theme.font_family_css.as_str();
@@ -28,81 +27,115 @@ fn journey_css(
     let _ = write!(
         &mut out,
         r#"#{} .label{{font-family:{};color:{};}}"#,
-        id, font, text_color
+        diagram_id, font, text_color
     );
-    let _ = write!(&mut out, r#"#{} .mouth{{stroke:#666;}}"#, id);
-    let _ = write!(&mut out, r#"#{} line{{stroke:{};}}"#, id, text_color);
+    let _ = write!(&mut out, r#"#{} .mouth{{stroke:#666;}}"#, diagram_id);
+    let _ = write!(
+        &mut out,
+        r#"#{} line{{stroke:{};}}"#,
+        diagram_id, text_color
+    );
     let _ = write!(
         &mut out,
         r#"#{} .legend{{fill:{};font-family:{};}}"#,
-        id, text_color, font
+        diagram_id, text_color, font
     );
-    let _ = write!(&mut out, r#"#{} .label text{{fill:{};}}"#, id, text_color);
-    let _ = write!(&mut out, r#"#{} .label{{color:{};}}"#, id, text_color);
+    let _ = write!(
+        &mut out,
+        r#"#{} .label text{{fill:{};}}"#,
+        diagram_id, text_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .label{{color:{};}}"#,
+        diagram_id, text_color
+    );
     let _ = write!(
         &mut out,
         r#"#{} .face{{fill:{};stroke:#999;}}"#,
-        id, theme.face_color
+        diagram_id, theme.face_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}"#,
-        id, id, id, id, id, theme.main_bkg, theme.node_border
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        theme.main_bkg,
+        theme.node_border
     );
-    let _ = write!(&mut out, r#"#{} .node .label{{text-align:center;}}"#, id);
-    let _ = write!(&mut out, r#"#{} .node.clickable{{cursor:pointer;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .node .label{{text-align:center;}}"#,
+        diagram_id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .node.clickable{{cursor:pointer;}}"#,
+        diagram_id
+    );
     let _ = write!(
         &mut out,
         r#"#{} .arrowheadPath{{fill:{};}}"#,
-        id, theme.arrowhead_color
+        diagram_id, theme.arrowhead_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .edgePath .path{{stroke:{};stroke-width:1.5px;}}"#,
-        id, line_color
+        diagram_id, line_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .flowchart-link{{stroke:{};fill:none;}}"#,
-        id, line_color
+        diagram_id, line_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .edgeLabel{{background-color:{};text-align:center;}}"#,
-        id, theme.edge_label_background
+        diagram_id, theme.edge_label_background
     );
-    let _ = write!(&mut out, r#"#{} .edgeLabel rect{{opacity:0.5;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .edgeLabel rect{{opacity:0.5;}}"#,
+        diagram_id
+    );
     let _ = write!(
         &mut out,
         r#"#{} .cluster text{{fill:{};}}"#,
-        id, theme.title_color
+        diagram_id, theme.title_color
     );
     let _ = write!(
         &mut out,
         r#"#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}"#,
-        id, font, theme.tertiary_color, theme.border2
+        diagram_id, font, theme.tertiary_color, theme.border2
     );
     for (i, fill) in theme.fill_types.iter().enumerate() {
         let _ = write!(
             &mut out,
             r#"#{} .task-type-{},#{} .section-type-{}{{fill:{};}}"#,
-            id, i, id, i, fill
+            diagram_id, i, diagram_id, i, fill
         );
     }
     for (i, fill) in theme.actor_colors.iter().enumerate() {
         if let Some(fill) = fill {
-            let _ = write!(&mut out, r#"#{} .actor-{}{{fill:{};}}"#, id, i, fill);
+            let _ = write!(
+                &mut out,
+                r#"#{} .actor-{}{{fill:{};}}"#,
+                diagram_id, i, fill
+            );
         }
     }
     let _ = write!(
         &mut out,
         r#"#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}"#,
-        id
+        diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
-        id
+        diagram_id
     );
 
     out.push_str(&parts.root_rule);
@@ -117,8 +150,7 @@ pub(crate) fn render_journey_diagram_svg_model(
     _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("merman");
 
     let diagram_title = layout
         .title
@@ -328,12 +360,13 @@ pub(crate) fn render_journey_diagram_svg_model(
                 .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
                 root_chrome,
             )?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(title)
         );
     }
@@ -341,7 +374,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(desc)
         );
     }
@@ -355,8 +388,9 @@ pub(crate) fn render_journey_diagram_svg_model(
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{}" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
-        escape_attr(&arrowhead_id)
+        escape_attr_display(arrowhead_id)
     );
+    options.checkpoint_emit()?;
 
     for item in &layout.actor_legend {
         let _ = write!(
@@ -422,12 +456,13 @@ pub(crate) fn render_journey_diagram_svg_model(
         let _ = write!(
             &mut out,
             r##"<g><line id="{id}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="task-line" stroke-width="1px" stroke-dasharray="4 2" stroke="#666"/>"##,
-            id = escape_attr(&scoped_svg_id(diagram_id, &task.line_id)),
+            id = escape_attr_display(scoped_svg_id(diagram_id, &task.line_id)),
             x1 = fmt(task.line_x1),
             y1 = fmt(task.line_y1),
             x2 = fmt(task.line_x2),
             y2 = fmt(task.line_y2),
         );
+        options.checkpoint_emit()?;
 
         let _ = write!(
             &mut out,
@@ -549,10 +584,11 @@ pub(crate) fn render_journey_diagram_svg_model(
         y1 = fmt(layout.activity_line.y1),
         x2 = fmt(layout.activity_line.x2),
         y2 = fmt(layout.activity_line.y2),
-        marker_end = escape_attr(&arrowhead_url),
+        marker_end = escape_attr_display(arrowhead_url),
     );
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

@@ -9,7 +9,7 @@ pub(super) struct ClassSvgDocument {
 pub(super) fn begin_class_svg_document(
     out: &mut String,
     model: &ClassSvgModel,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     aria_roledescription: &str,
     root_context: &root_svg::RootViewportContext<'_>,
 ) -> crate::Result<ClassSvgDocument> {
@@ -37,7 +37,7 @@ pub(super) fn begin_class_svg_document(
         let _ = write!(
             out,
             r#"<title id="chart-title-{}">{}"#,
-            escape_xml_display(diagram_id),
+            diagram_id,
             escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
@@ -46,7 +46,7 @@ pub(super) fn begin_class_svg_document(
         let _ = write!(
             out,
             r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml_display(diagram_id),
+            diagram_id,
             escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");

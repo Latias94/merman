@@ -5,6 +5,9 @@ use super::{
 #[cfg(any(feature = "rustdoc", test))]
 use super::{MarkdownInclude, MarkdownReplacement, MarkdownReplacementScanError};
 
+#[cfg(any(feature = "rustdoc", test))]
+const RUSTDOC_SCAN_CHECKPOINT_BYTES: usize = crate::input::IO_CHUNK_BYTES;
+
 #[derive(Debug, Clone, Copy)]
 struct FenceDelimiter {
     marker: u8,
@@ -85,20 +88,26 @@ pub(super) fn scan<'source>(
 }
 
 #[cfg(any(feature = "rustdoc", test))]
-pub(super) fn scan_rustdoc<'source>(
+pub(super) fn scan_rustdoc_controlled<'source>(
     source: &'source str,
     max_charts: Option<u64>,
+    control: &merman::OperationControl,
 ) -> Result<Vec<MarkdownReplacement<'source>>, MarkdownReplacementScanError> {
+    let mut checkpoints = RustdocScanCheckpoints::new(control);
+    checkpoints.checkpoint()?;
     let mut replacements = Vec::new();
     let mut cursor = 0;
     let mut line = 1;
 
     while cursor < source.len() {
-        let line_end = next_line_end(source, cursor);
+        let line_end = next_rustdoc_line_end(source, cursor, &mut checkpoints)?;
         let line_source = trim_line_ending(&source[cursor..line_end]);
 
-        let Some(opening) = fence_opening(line_source) else {
-            if let Some(include) = parse_include(source, cursor, line_source, line)? {
+        let Some(opening) = rustdoc_fence_opening(line_source, &mut checkpoints)? else {
+            if let Some(include) =
+                parse_include(source, cursor, line_source, line, &mut checkpoints)?
+            {
+                checkpoints.checkpoint()?;
                 admit_chart(replacements.len(), max_charts, include.location())?;
                 replacements.push(MarkdownReplacement::Include(include));
             }
@@ -108,7 +117,8 @@ pub(super) fn scan_rustdoc<'source>(
         };
 
         if !opening.is_mermaid {
-            let (next_cursor, lines_consumed) = skip_fence(source, line_end, opening.delimiter);
+            let (next_cursor, lines_consumed) =
+                skip_rustdoc_fence(source, line_end, opening.delimiter, &mut checkpoints)?;
             cursor = next_cursor;
             line += 1 + lines_consumed;
             continue;
@@ -122,9 +132,10 @@ pub(super) fn scan_rustdoc<'source>(
         let mut search_start = body_start;
         let mut body_lines = 0;
         while search_start < source.len() {
-            let closing_end = next_line_end(source, search_start);
+            let closing_end = next_rustdoc_line_end(source, search_start, &mut checkpoints)?;
             let closing_line = trim_line_ending(&source[search_start..closing_end]);
-            if matching_closing_fence(closing_line, opening.delimiter) {
+            if matching_rustdoc_closing_fence(closing_line, opening.delimiter, &mut checkpoints)? {
+                checkpoints.checkpoint()?;
                 admit_chart(replacements.len(), max_charts, location)?;
                 replacements.push(MarkdownReplacement::Chart(MarkdownChart::new(
                     source,
@@ -141,6 +152,7 @@ pub(super) fn scan_rustdoc<'source>(
         }
 
         if search_start == source.len() {
+            checkpoints.checkpoint()?;
             return Err(MarkdownReplacementScanError::UnclosedMermaidFence {
                 line: location.line,
                 column: location.column,
@@ -148,7 +160,188 @@ pub(super) fn scan_rustdoc<'source>(
         }
     }
 
+    checkpoints.checkpoint()?;
     Ok(replacements)
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+struct RustdocScanCheckpoints<'control> {
+    control: &'control merman::OperationControl,
+    bytes_until_checkpoint: usize,
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+impl<'control> RustdocScanCheckpoints<'control> {
+    fn new(control: &'control merman::OperationControl) -> Self {
+        Self {
+            control,
+            bytes_until_checkpoint: RUSTDOC_SCAN_CHECKPOINT_BYTES,
+        }
+    }
+
+    fn checkpoint(&self) -> Result<(), MarkdownReplacementScanError> {
+        self.control
+            .checkpoint_at(merman::OperationPhase::Admission)
+            .map_err(MarkdownReplacementScanError::from)
+    }
+
+    fn advance_byte(&mut self) -> Result<(), MarkdownReplacementScanError> {
+        self.advance_bytes(1)
+    }
+
+    fn advance_bytes(&mut self, mut bytes: usize) -> Result<(), MarkdownReplacementScanError> {
+        while bytes >= self.bytes_until_checkpoint {
+            bytes -= self.bytes_until_checkpoint;
+            self.checkpoint()?;
+            self.bytes_until_checkpoint = RUSTDOC_SCAN_CHECKPOINT_BYTES;
+        }
+        self.bytes_until_checkpoint -= bytes;
+        Ok(())
+    }
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+fn next_rustdoc_line_end(
+    source: &str,
+    start: usize,
+    checkpoints: &mut RustdocScanCheckpoints<'_>,
+) -> Result<usize, MarkdownReplacementScanError> {
+    let bytes = source.as_bytes();
+    let mut index = start;
+    while index < bytes.len() {
+        checkpoints.advance_byte()?;
+        match bytes[index] {
+            b'\n' => return Ok(index + 1),
+            b'\r' if bytes.get(index + 1) == Some(&b'\n') => {
+                checkpoints.advance_byte()?;
+                return Ok(index + 2);
+            }
+            b'\r' => return Ok(index + 1),
+            _ => index += 1,
+        }
+    }
+    Ok(source.len())
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+fn rustdoc_fence_opening(
+    line: &str,
+    checkpoints: &mut RustdocScanCheckpoints<'_>,
+) -> Result<Option<FenceOpening>, MarkdownReplacementScanError> {
+    let Some((trimmed, marker_offset)) = trim_fence_indent(line) else {
+        return Ok(None);
+    };
+    let Some(&marker) = trimmed.as_bytes().first() else {
+        return Ok(None);
+    };
+    if !matches!(marker, b'`' | b'~' | b':') {
+        return Ok(None);
+    }
+
+    let len = repeated_rustdoc_marker_len(trimmed.as_bytes(), marker, checkpoints)?;
+    if len < 3 {
+        return Ok(None);
+    }
+
+    let (rest, _) = trim_rustdoc_start(&trimmed[len..], checkpoints)?;
+    let is_mermaid = rest
+        .get(.."mermaid".len())
+        .is_some_and(|language| language.eq_ignore_ascii_case("mermaid"))
+        && (rest.len() == "mermaid".len()
+            || rest["mermaid".len()..].starts_with(char::is_whitespace));
+
+    Ok(Some(FenceOpening {
+        delimiter: FenceDelimiter { marker, len },
+        marker_offset,
+        is_mermaid,
+    }))
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+fn matching_rustdoc_closing_fence(
+    line: &str,
+    delimiter: FenceDelimiter,
+    checkpoints: &mut RustdocScanCheckpoints<'_>,
+) -> Result<bool, MarkdownReplacementScanError> {
+    let Some((trimmed, _)) = trim_fence_indent(line) else {
+        return Ok(false);
+    };
+    let len = repeated_rustdoc_marker_len(trimmed.as_bytes(), delimiter.marker, checkpoints)?;
+    if len < delimiter.len {
+        return Ok(false);
+    }
+    for character in trimmed[len..].chars() {
+        checkpoints.advance_bytes(character.len_utf8())?;
+        if !character.is_whitespace() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+fn repeated_rustdoc_marker_len(
+    bytes: &[u8],
+    marker: u8,
+    checkpoints: &mut RustdocScanCheckpoints<'_>,
+) -> Result<usize, MarkdownReplacementScanError> {
+    let mut len = 0;
+    for byte in bytes {
+        checkpoints.advance_byte()?;
+        if *byte != marker {
+            break;
+        }
+        len += 1;
+    }
+    Ok(len)
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+fn trim_rustdoc_start<'source>(
+    value: &'source str,
+    checkpoints: &mut RustdocScanCheckpoints<'_>,
+) -> Result<(&'source str, usize), MarkdownReplacementScanError> {
+    for (index, character) in value.char_indices() {
+        checkpoints.advance_bytes(character.len_utf8())?;
+        if !character.is_whitespace() {
+            return Ok((&value[index..], index));
+        }
+    }
+    Ok(("", value.len()))
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+fn trim_rustdoc_end<'source>(
+    value: &'source str,
+    checkpoints: &mut RustdocScanCheckpoints<'_>,
+) -> Result<&'source str, MarkdownReplacementScanError> {
+    for (index, character) in value.char_indices().rev() {
+        checkpoints.advance_bytes(character.len_utf8())?;
+        if !character.is_whitespace() {
+            return Ok(&value[..index + character.len_utf8()]);
+        }
+    }
+    Ok("")
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+fn skip_rustdoc_fence(
+    source: &str,
+    mut cursor: usize,
+    delimiter: FenceDelimiter,
+    checkpoints: &mut RustdocScanCheckpoints<'_>,
+) -> Result<(usize, usize), MarkdownReplacementScanError> {
+    let mut lines_consumed = 0;
+    while cursor < source.len() {
+        let line_end = next_rustdoc_line_end(source, cursor, checkpoints)?;
+        let line = trim_line_ending(&source[cursor..line_end]);
+        lines_consumed += 1;
+        if matching_rustdoc_closing_fence(line, delimiter, checkpoints)? {
+            return Ok((line_end, lines_consumed));
+        }
+        cursor = line_end;
+    }
+    Ok((source.len(), lines_consumed))
 }
 
 #[cfg(any(feature = "rustdoc", test))]
@@ -157,11 +350,12 @@ fn parse_include<'source>(
     line_start: usize,
     line_source: &'source str,
     line: usize,
+    checkpoints: &mut RustdocScanCheckpoints<'_>,
 ) -> Result<Option<MarkdownInclude<'source>>, MarkdownReplacementScanError> {
     let Some((trimmed, marker_offset)) = trim_fence_indent(line_source) else {
         return Ok(None);
     };
-    let trimmed = trimmed.trim_end();
+    let trimmed = trim_rustdoc_end(trimmed, checkpoints)?;
     let Some(rest) = trimmed.strip_prefix("include_mmd!") else {
         return Ok(None);
     };
@@ -169,23 +363,38 @@ fn parse_include<'source>(
         line,
         column: line_source[..marker_offset].chars().count() + 1,
     };
-    let rest = rest.trim();
+    let rest_offset = marker_offset + "include_mmd!".len();
+    let (rest, rest_leading) = trim_rustdoc_start(rest, checkpoints)?;
+    let rest = trim_rustdoc_end(rest, checkpoints)?;
     if !rest.starts_with('(') || !rest.ends_with(')') {
         return Ok(None);
     }
     let inner = &rest[1..rest.len() - 1];
-    let literal = inner.trim();
-    let path = parse_string_literal(literal).map_err(|message| {
-        MarkdownReplacementScanError::InvalidInclude {
+    let (literal, inner_leading) = trim_rustdoc_start(inner, checkpoints)?;
+    let literal = trim_rustdoc_end(literal, checkpoints)?;
+    let Some(path) = literal
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+    else {
+        checkpoints.checkpoint()?;
+        return Err(MarkdownReplacementScanError::InvalidInclude {
             line,
             column: location.column,
-            message,
+            message: "path must be a double-quoted string literal".to_string(),
+        });
+    };
+    for byte in path.bytes() {
+        checkpoints.advance_byte()?;
+        if matches!(byte, b'"' | b'\\') {
+            checkpoints.checkpoint()?;
+            return Err(MarkdownReplacementScanError::InvalidInclude {
+                line,
+                column: location.column,
+                message: "path literal must not contain escapes or embedded quotes".to_string(),
+            });
         }
-    })?;
-    let literal_start = line_start
-        + line_source
-            .find(literal)
-            .expect("the literal is a slice of the current line");
+    }
+    let literal_start = line_start + rest_offset + rest_leading + 1 + inner_leading;
     let content_start = literal_start + 1;
     let content_end = content_start + path.len();
     Ok(Some(MarkdownInclude::new(
@@ -193,20 +402,6 @@ fn parse_include<'source>(
         &source[content_start..content_end],
         location,
     )))
-}
-
-#[cfg(any(feature = "rustdoc", test))]
-fn parse_string_literal(literal: &str) -> Result<&str, String> {
-    let Some(value) = literal
-        .strip_prefix('"')
-        .and_then(|value| value.strip_suffix('"'))
-    else {
-        return Err("path must be a double-quoted string literal".to_string());
-    };
-    if value.contains(['"', '\\']) {
-        return Err("path literal must not contain escapes or embedded quotes".to_string());
-    }
-    Ok(value)
 }
 
 fn fence_opening(line: &str) -> Option<FenceOpening> {
@@ -332,7 +527,8 @@ mod tests {
             "   include_mmd!(\"live.mmd\")\n",
         );
 
-        let replacements = scan_rustdoc(source, None).expect("scan");
+        let replacements =
+            scan_rustdoc_controlled(source, None, &merman::OperationControl::new()).expect("scan");
 
         assert_eq!(replacements.len(), 1);
         let MarkdownReplacement::Include(include) = &replacements[0] else {

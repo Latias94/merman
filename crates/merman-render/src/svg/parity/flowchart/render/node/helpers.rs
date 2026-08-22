@@ -15,18 +15,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
     icon_name: &str,
     icon_size: f64,
 ) -> crate::Result<String> {
-    let id_scope = format!("{}-flowchart-icon-{node_id}", ctx.diagram_id);
     let icon = match ctx.icon_registry {
-        Some(registry) => registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
-            icon_name,
-            width_px: icon_size,
-            height_px: icon_size,
-            fallback_prefix: None,
-            extra_class: None,
-            id_scope: &id_scope,
-            effective_config: ctx.config,
-            work_meter: ctx.work_meter,
-        })?,
+        Some(registry) => {
+            let prefix = ctx.icon_scope_prefix.ok_or_else(|| {
+                crate::Error::icon_processing("flowchart icon scope prefix is unavailable")
+            })?;
+            let id_scope = prefix.scope_parts(&[node_id], ctx.work_meter)?;
+            registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
+                icon_name,
+                width_px: icon_size,
+                height_px: icon_size,
+                fallback_prefix: None,
+                extra_class: None,
+                id_scope,
+                effective_config: ctx.config,
+                work_meter: ctx.work_meter,
+            })?
+        }
         None => None,
     };
     Ok(icon.unwrap_or_else(|| {
@@ -92,7 +97,7 @@ fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
 }
 
 pub(super) struct NodeWrapperAttrs<'a> {
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_id: crate::svg::parity::SvgDiagramId<'a>,
     pub(super) node_id: &'a str,
     pub(super) dom_idx: Option<usize>,
     pub(super) class_attr_base: &'a str,
@@ -154,13 +159,13 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         write_class_attr(out, class_attr_base, node_classes);
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id=""#);
-            escape_xml_into(out, diagram_id);
+            let _ = write!(out, "{diagram_id}");
             out.push_str(r#"-flowchart-"#);
             escape_xml_into(out, node_id);
             let _ = write!(out, "-{dom_idx}\"");
         } else {
             out.push_str(r#"" id=""#);
-            escape_xml_into(out, diagram_id);
+            let _ = write!(out, "{diagram_id}");
             out.push('-');
             escape_xml_into(out, node_id);
             out.push('"');
@@ -170,7 +175,7 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         write_class_attr(out, class_attr_base, node_classes);
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id=""#);
-            escape_xml_into(out, diagram_id);
+            let _ = write!(out, "{diagram_id}");
             out.push_str(r#"-flowchart-"#);
             escape_xml_into(out, node_id);
             let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
@@ -182,7 +187,7 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
             out.push('"');
         } else {
             out.push_str(r#"" id=""#);
-            escape_xml_into(out, diagram_id);
+            let _ = write!(out, "{diagram_id}");
             out.push('-');
             escape_xml_into(out, node_id);
             out.push_str(r#"" transform="translate("#);
@@ -265,13 +270,15 @@ pub(super) fn resolve_node_render_info<'a>(
     if let Some(sg) = ctx.subgraphs_by_id.get(node_id)
         && !ctx.subgraph_has_children(node_id)
     {
+        let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied()?;
+        let (node_classes, node_styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
         return Some(ResolvedNodeRenderInfo {
             dom_idx: None,
             class_attr_base: "node",
             wrapped_in_a: false,
             href: None,
             target: None,
-            label_text: ctx.model.subgraph_title_for_render(sg),
+            label_text: ctx.model.subgraph_title_for_render(subgraph_index, sg),
             label_text_is_node_id: false,
             label_type: sg.label_type.as_deref().unwrap_or("text"),
             shape: "squareRect",
@@ -281,8 +288,8 @@ pub(super) fn resolve_node_render_info<'a>(
             node_constraint: None,
             node_asset_width: None,
             node_asset_height: None,
-            node_styles: &sg.styles,
-            node_classes: &sg.classes,
+            node_styles,
+            node_classes,
         });
     }
 

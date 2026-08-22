@@ -1,11 +1,12 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
-use super::actor_popup::render_sequence_actor_popup_menus;
+use super::actor_popup::{SequenceActorPopupOptions, render_sequence_actor_popup_menus};
 use super::actors::{
     SequenceActorRenderContext, render_sequence_bottom_actors,
     render_sequence_top_actors_and_lifelines,
 };
-use super::frames::render_sequence_box_frames_and_rect_blocks;
+use super::frames::{SequenceFrameRenderOptions, render_sequence_box_frames_and_rect_blocks};
 use super::interactions::{SequenceInteractionRenderContext, render_sequence_interaction_overlays};
 use super::messages::{SequenceMessageRenderContext, render_sequence_messages};
 use super::root::write_sequence_svg_root_open;
@@ -18,30 +19,57 @@ use super::model::*;
 const PINNED_MERMAID_SEQUENCE_BASE_DEFS: &str = include_str!("sequence_base_defs_11_16_0.svgfrag");
 const MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED: &str = r#"<defs><marker id="solidTopArrowHead" refX="7.9" refY="7.25" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 8 L 0 8 z"/></marker></defs><defs><marker id="solidBottomArrowHead" refX="7.9" refY="0.75" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 0 L 0 8 z"/></marker></defs><defs><marker id="stickTopArrowHead" refX="7.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 7 7" stroke="black" stroke-width="1.5" fill="none"/></marker></defs><defs><marker id="stickBottomArrowHead" refX="7.5" refY="0" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 7 L 7 0" stroke="black" stroke-width="1.5" fill="none"/></marker></defs>"#;
 
-fn scoped_sequence_base_defs(diagram_id: &str) -> String {
-    let mut defs = PINNED_MERMAID_SEQUENCE_BASE_DEFS.to_string();
-    defs.push_str(MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED);
-    for local_id in [
-        "computer",
-        "database",
-        "clock",
-        "arrowhead",
-        "crosshead",
-        "filled-head",
-        "sequencenumber",
-        "solidTopArrowHead",
-        "solidBottomArrowHead",
-        "stickTopArrowHead",
-        "stickBottomArrowHead",
-    ] {
-        let bare = format!(r#"id="{local_id}""#);
-        let scoped = format!(
-            r#"id="{}""#,
-            escape_attr(&scoped_svg_id(diagram_id, local_id))
-        );
-        defs = defs.replace(&bare, &scoped);
+const SEQUENCE_SCOPED_BASE_DEF_IDS: [&str; 11] = [
+    "computer",
+    "database",
+    "clock",
+    "arrowhead",
+    "crosshead",
+    "filled-head",
+    "sequencenumber",
+    "solidTopArrowHead",
+    "solidBottomArrowHead",
+    "stickTopArrowHead",
+    "stickBottomArrowHead",
+];
+
+fn write_scoped_sequence_base_defs_fragment(
+    out: &mut String,
+    fragment: &str,
+    diagram_id: impl Copy + std::fmt::Display,
+) {
+    const ID_ATTRIBUTE_START: &str = "id=\"";
+
+    let mut cursor = 0usize;
+    while let Some(relative_start) = fragment[cursor..].find(ID_ATTRIBUTE_START) {
+        let attribute_start = cursor + relative_start;
+        let value_start = attribute_start + ID_ATTRIBUTE_START.len();
+        let Some(relative_end) = fragment[value_start..].find('"') else {
+            break;
+        };
+        let value_end = value_start + relative_end;
+        let local_id = &fragment[value_start..value_end];
+
+        out.push_str(&fragment[cursor..value_start]);
+        if SEQUENCE_SCOPED_BASE_DEF_IDS.contains(&local_id) {
+            let _ = write!(out, "{diagram_id}");
+            out.push('-');
+            out.push_str(local_id);
+        } else {
+            out.push_str(local_id);
+        }
+        cursor = value_end;
     }
-    defs
+    out.push_str(&fragment[cursor..]);
+}
+
+fn write_scoped_sequence_base_defs(out: &mut String, diagram_id: impl Copy + std::fmt::Display) {
+    write_scoped_sequence_base_defs_fragment(out, PINNED_MERMAID_SEQUENCE_BASE_DEFS, diagram_id);
+    write_scoped_sequence_base_defs_fragment(
+        out,
+        MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED,
+        diagram_id,
+    );
 }
 
 pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
@@ -72,37 +100,47 @@ fn render_sequence_diagram_svg_inner(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let checkpoints = SequenceEmitCheckpoints::new(options.work_meter());
+    checkpoints.checkpoint()?;
     let layout = prepared.layout();
     let effective_title =
         crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
 
+    let diagram_id = options.diagram_id_or("merman");
     let settings = SequenceRenderSettings::from_effective_config(effective_config);
-
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let mut out = String::new();
-    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id)?;
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
-    for n in &layout.nodes {
-        nodes_by_id.insert(n.id.as_str(), n);
+    for (node_index, node) in layout.nodes.iter().enumerate() {
+        checkpoints.checkpoint_loop(node_index)?;
+        nodes_by_id.insert(node.id.as_str(), node);
     }
 
     let mut edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
         FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
-    for e in &layout.edges {
-        edges_by_id.insert(e.id.as_str(), e);
+    for (edge_index, edge) in layout.edges.iter().enumerate() {
+        checkpoints.checkpoint_loop(edge_index)?;
+        edges_by_id.insert(edge.id.as_str(), edge);
     }
+    checkpoints.checkpoint()?;
+
+    let mut out = String::new();
+    checkpoints.checkpoint()?;
+    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id)?;
+    checkpoints.checkpoint()?;
 
     render_sequence_box_frames_and_rect_blocks(
         &mut out,
         model,
         &nodes_by_id,
-        settings.actor_label_font_size,
-        settings.box_margin,
-        settings.box_text_margin,
-        &settings.rect_default_fill,
-    );
+        SequenceFrameRenderOptions {
+            actor_label_font_size: settings.actor_label_font_size,
+            box_margin: settings.box_margin,
+            box_text_margin: settings.box_text_margin,
+            rect_default_fill: &settings.rect_default_fill,
+        },
+        checkpoints,
+    )?;
 
     let actor_ctx = SequenceActorRenderContext {
         model,
@@ -115,15 +153,17 @@ fn render_sequence_diagram_svg_inner(
         label_box_height: settings.label_box_height,
         measurer,
         loop_text_style: &settings.loop_text_style,
+        checkpoints,
     };
 
     if settings.mirror_actors {
-        render_sequence_bottom_actors(&mut out, &actor_ctx);
+        render_sequence_bottom_actors(&mut out, &actor_ctx)?;
     }
 
     // Top actors + lifelines.
-    render_sequence_top_actors_and_lifelines(&mut out, &actor_ctx);
+    render_sequence_top_actors_and_lifelines(&mut out, &actor_ctx)?;
 
+    checkpoints.checkpoint()?;
     let _ = write!(
         &mut out,
         r#"<style>{}</style><g/>"#,
@@ -131,7 +171,9 @@ fn render_sequence_diagram_svg_inner(
     );
 
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
-    out.push_str(&scoped_sequence_base_defs(diagram_id));
+    checkpoints.checkpoint()?;
+    write_scoped_sequence_base_defs(&mut out, diagram_id);
+    checkpoints.checkpoint()?;
 
     render_sequence_actor_man_tops(
         &mut out,
@@ -139,15 +181,18 @@ fn render_sequence_diagram_svg_inner(
         &nodes_by_id,
         settings.actor_height,
         diagram_id,
-    );
+        checkpoints,
+    )?;
 
     let block_widths_by_id = crate::sequence::sequence_block_widths_for_render(
         model,
         prepared,
+        &nodes_by_id,
         sanitize_config,
         measurer,
         options.math_renderer(),
-    );
+        options.work_meter(),
+    )?;
 
     let interaction_ctx = SequenceInteractionRenderContext {
         model,
@@ -159,8 +204,9 @@ fn render_sequence_diagram_svg_inner(
         math_renderer: options.math_renderer(),
         settings: &settings,
         measurer,
+        checkpoints,
     };
-    render_sequence_interaction_overlays(&mut out, &interaction_ctx);
+    render_sequence_interaction_overlays(&mut out, &interaction_ctx)?;
 
     let message_ctx = SequenceMessageRenderContext {
         model,
@@ -178,18 +224,22 @@ fn render_sequence_diagram_svg_inner(
         wrap_padding: settings.wrap_padding,
         right_angles: settings.right_angles,
         loop_text_style: &settings.loop_text_style,
+        checkpoints,
     };
-    render_sequence_messages(&mut out, &message_ctx);
+    render_sequence_messages(&mut out, &message_ctx)?;
 
     render_sequence_actor_popup_menus(
         &mut out,
         model,
         &nodes_by_id,
         sanitize_config,
-        settings.force_menus,
-        settings.mirror_actors,
-        settings.actor_height,
-    );
+        SequenceActorPopupOptions {
+            force_menus: settings.force_menus,
+            mirror_actors: settings.mirror_actors,
+            actor_height: settings.actor_height,
+        },
+        checkpoints,
+    )?;
 
     if settings.mirror_actors {
         render_sequence_actor_man_bottoms(
@@ -199,7 +249,8 @@ fn render_sequence_diagram_svg_inner(
             settings.actor_height,
             settings.label_box_height,
             diagram_id,
-        );
+            checkpoints,
+        )?;
     }
 
     if let Some(title) = effective_title {
@@ -208,6 +259,7 @@ fn render_sequence_diagram_svg_inner(
         // `x = (box.stopx - box.startx) / 2 - 2 * diagramMarginX`.
         let title_x = ((root_metrics.viewbox_width - 2.0 * settings.diagram_margin_x) / 2.0)
             - 2.0 * settings.diagram_margin_x;
+        checkpoints.checkpoint()?;
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="-25">{text}</text>"#,
@@ -216,6 +268,32 @@ fn render_sequence_diagram_svg_inner(
         );
     }
 
+    checkpoints.checkpoint()?;
     out.push_str("</svg>\n");
-    root_metrics.document.complete(out)
+    checkpoints.checkpoint()?;
+    let rooted = root_metrics.document.complete(out)?;
+    checkpoints.checkpoint()?;
+    Ok(rooted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sequence_defs_are_scoped_in_one_output_pass() {
+        let mut defs = String::new();
+        write_scoped_sequence_base_defs(&mut defs, "sequence-root");
+
+        for local_id in SEQUENCE_SCOPED_BASE_DEF_IDS {
+            assert!(
+                defs.contains(&format!(r#"id="sequence-root-{local_id}""#)),
+                "missing scoped definition {local_id}"
+            );
+            assert!(
+                !defs.contains(&format!(r#"id="{local_id}""#)),
+                "bare definition {local_id} survived scoping"
+            );
+        }
+    }
 }

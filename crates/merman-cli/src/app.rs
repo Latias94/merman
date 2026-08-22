@@ -137,25 +137,74 @@ impl CliApp {
                 return report_error(error, &execution.stderr);
             }
         };
+        #[cfg(any(feature = "svg", feature = "ascii"))]
+        let host_operation = match crate::operation::HostOperation::begin_for(&invocation) {
+            Ok(operation) => operation,
+            Err(error) => return report_error(error, &execution.stderr),
+        };
         let Some(cwd) = facts.cwd.as_deref() else {
             return match crate::output::LocalPreflight::path_free(invocation) {
-                Ok(preflight) => run_preflight(preflight, execution),
+                Ok(preflight) => run_preflight(
+                    preflight,
+                    #[cfg(any(feature = "svg", feature = "ascii"))]
+                    host_operation,
+                    execution,
+                ),
                 Err(error) => report_error(error, &execution.stderr),
             };
         };
-        let preflight = match crate::output::preflight(invocation, cwd) {
+        #[cfg(any(feature = "svg", feature = "ascii"))]
+        let fallback_control = merman::OperationControl::new();
+        #[cfg(any(feature = "svg", feature = "ascii"))]
+        let operation_control = host_operation
+            .as_ref()
+            .map(crate::operation::HostOperation::control)
+            .unwrap_or(&fallback_control);
+        let preflight = match crate::output::preflight(
+            invocation,
+            cwd,
+            #[cfg(any(feature = "svg", feature = "ascii"))]
+            operation_control,
+        ) {
             Ok(preflight) => preflight,
-            Err(error) => return report_error(error, &execution.stderr),
+            Err(error) => {
+                #[cfg(any(feature = "svg", feature = "ascii"))]
+                drop(host_operation);
+                return report_error(error, &execution.stderr);
+            }
         };
-        run_preflight(preflight, execution)
+        run_preflight(
+            preflight,
+            #[cfg(any(feature = "svg", feature = "ascii"))]
+            host_operation,
+            execution,
+        )
     }
 }
 
 fn run_preflight(
     preflight: crate::output::LocalPreflight,
+    #[cfg(any(feature = "svg", feature = "ascii"))] host_operation: Option<
+        crate::operation::HostOperation,
+    >,
     execution: &mut ExecutionContext,
 ) -> ExitCode {
-    match crate::commands::run(preflight, execution) {
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    let fallback_control = merman::OperationControl::new();
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    let operation_control = host_operation
+        .as_ref()
+        .map(crate::operation::HostOperation::control)
+        .unwrap_or(&fallback_control);
+    let result = crate::commands::run(
+        preflight,
+        #[cfg(any(feature = "svg", feature = "ascii"))]
+        operation_control,
+        execution,
+    );
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    drop(host_operation);
+    match result {
         Ok(exit_code) => exit_code_from_i32(exit_code),
         Err(error) => report_error(error, &execution.stderr),
     }
@@ -217,7 +266,7 @@ pub(crate) fn cli_command() -> clap::Command {
     let command = command
         .mut_subcommand("layout", |subcommand| {
             subcommand.after_help(
-                "More options: `merman-cli layout --help` shows layout, configuration, runtime, and resource controls.",
+                "More options: `merman-cli layout --help` shows layout, configuration, runtime, operation, and resource controls.",
             )
         })
         .mut_subcommand("mmdc", |subcommand| {
@@ -453,6 +502,7 @@ fn removed_root_render_flag(kind: ErrorKind, args: &[OsString]) -> Option<&str> 
         "--suppress-errors",
         "--sequence-mirror-actors",
         "--ascii-charset",
+        "--ascii-width-profile",
         "--ascii-direction",
         "--ascii-color",
         "--xychart-vertical-plot-height",
@@ -708,19 +758,6 @@ mod tests {
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     impl crate::output::PublicationBackend for RejectingPublication {
         #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-        fn publish_file(
-            &mut self,
-            _path: &std::path::Path,
-            _bytes: &[u8],
-            _publications: &crate::output::PublicationGuards,
-        ) -> Result<(), CliError> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            Err(CliError::Io(io::Error::other(
-                "injected publication failure",
-            )))
-        }
-
-        #[cfg(feature = "analysis")]
         fn publish_file_verified(
             &mut self,
             _path: &std::path::Path,
@@ -754,16 +791,7 @@ mod tests {
 
     #[cfg(feature = "markdown")]
     impl crate::output::PublicationBackend for RejectingCommitPublication {
-        fn publish_file(
-            &mut self,
-            path: &std::path::Path,
-            bytes: &[u8],
-            publications: &crate::output::PublicationGuards,
-        ) -> Result<(), CliError> {
-            self.system.publish_file(path, bytes, publications)
-        }
-
-        #[cfg(feature = "analysis")]
+        #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
         fn publish_file_verified(
             &mut self,
             path: &std::path::Path,

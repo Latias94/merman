@@ -155,16 +155,26 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     lane: &SwimlaneLaneLayout,
     origin_x: f64,
     origin_y: f64,
-) {
+) -> crate::Result<()> {
+    ctx.checkpoint_emit()?;
     let subgraph = ctx.subgraphs_by_id.get(cluster.id.as_str()).copied();
-    let class_names = subgraph.map_or(&[][..], |subgraph| subgraph.classes.as_slice());
-    let styles = subgraph.map_or(&[][..], |subgraph| subgraph.styles.as_slice());
+    let subgraph_index = ctx.subgraph_indices_by_id.get(cluster.id.as_str()).copied();
+    let (class_names, styles) = subgraph
+        .zip(subgraph_index)
+        .map(|(subgraph, subgraph_index)| {
+            ctx.model.effective_subgraph_css(subgraph_index, subgraph)
+        })
+        .unwrap_or_default();
     let compiled = flowchart_compile_styles(ctx.class_defs, class_names, styles, &[]);
     let node_style = compiled.node_style.trim();
     let label_style = compiled.label_style.trim();
-    let render_title = subgraph.map_or(lane.title.as_str(), |subgraph| {
-        ctx.model.subgraph_title_for_render(subgraph)
-    });
+    let render_title =
+        subgraph
+            .zip(subgraph_index)
+            .map_or(lane.title.as_str(), |(subgraph, subgraph_index)| {
+                ctx.model
+                    .subgraph_title_for_render(subgraph_index, subgraph)
+            });
     let label_metrics = lane_label_metrics(ctx, lane, render_title);
     let label_width = label_metrics.width.max(0.0);
     let label_height = label_metrics.height.max(0.0);
@@ -334,4 +344,5 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         out.push_str("</g></g>");
     }
     out.push_str("</g>");
+    Ok(())
 }

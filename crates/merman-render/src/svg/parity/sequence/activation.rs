@@ -1,6 +1,8 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::model::SequenceSvgModel;
 use crate::sequence::sequence_activation_start_x;
+use merman_core::diagrams::sequence::SequenceMessageKind;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -32,7 +34,8 @@ pub(super) fn build_sequence_activation_plan<'a>(
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
     activation_width: f64,
-) -> SequenceActivationPlan<'a> {
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<SequenceActivationPlan<'a>> {
     // Mermaid 11.15 draws activation rectangles through `svgDraw.getNoteRect()`, whose SVG
     // attributes are hard-coded; theme `activationBkgColor` is emitted in CSS but does not change
     // the rect `fill` attribute in the baseline SVGs.
@@ -46,14 +49,14 @@ pub(super) fn build_sequence_activation_plan<'a>(
     let mut group_by_start_id: FxHashMap<&str, usize> =
         FxHashMap::with_capacity_and_hasher(model.messages.len(), Default::default());
 
-    for msg in &model.messages {
+    for (message_index, msg) in model.messages.iter().enumerate() {
+        checkpoints.checkpoint_loop(message_index)?;
         if let Some(y) = msg_line_y(edges_by_id, &msg.id) {
             last_line_y = Some(y);
         }
 
-        match msg.message_type {
-            // ACTIVE_START
-            17 => {
+        match msg.semantic_kind() {
+            SequenceMessageKind::ActivationStart => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     continue;
                 };
@@ -83,8 +86,7 @@ pub(super) fn build_sequence_activation_plan<'a>(
                     group_index,
                 });
             }
-            // ACTIVE_END
-            18 => {
+            SequenceMessageKind::ActivationEnd => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     continue;
                 };
@@ -120,12 +122,13 @@ pub(super) fn build_sequence_activation_plan<'a>(
         let _ = msg.activate;
     }
 
-    SequenceActivationPlan {
+    checkpoints.checkpoint()?;
+    Ok(SequenceActivationPlan {
         groups,
         group_by_start_id,
         fill,
         stroke,
-    }
+    })
 }
 
 pub(super) fn render_sequence_activation_group(

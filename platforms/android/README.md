@@ -62,7 +62,37 @@ check(result.mediaType == "text/plain; charset=utf-8")
 val text = result.data.toString(Charsets.UTF_8)
 ```
 
-`Merman` is the discovery and one-shot facade. Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, validation, and document analysis. The default AAR supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF helpers remain available for source-built artifacts that enable those capabilities; the default AAR reports `MISSING_CAPABILITY` with the exact capability ID. `metadataJson(id)` is the generic metadata path for every ID advertised by `runtimeCatalogJson()`. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID. Resource failures expose optional typed `resourceDetails` with the stable limit ID, phase, actual value, effective maximum, and selected profile.
+Use `MermanOperationControl` when a host must cancel stale work or apply a relative deadline:
+
+```kotlin
+MermanOperationControl(timeoutMs = 250).use { control ->
+    val result = Merman.execute(
+        operationId = "svg",
+        source = source,
+        control = control,
+    )
+}
+```
+
+The timeout installs a monotonic deadline relative to control construction. Retain the same
+control on another thread and call `cancel()` while `execute` is running; cancellation is
+cooperative, so an opaque callback may finish before the next native checkpoint. `isCancelled()`
+reports an explicit cancellation request, while deadline expiry is reported by execution.
+`close()` and `release()` are equivalent and idempotent. Releasing the Kotlin token does not stop
+an operation that already cloned the control, but using the released object for a new operation is
+a typed invalid-argument failure.
+
+`Merman` is the discovery and one-shot facade. Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, validation, and document analysis. The default AAR supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF helpers remain available for source-built artifacts that enable those capabilities; the default AAR reports `MISSING_CAPABILITY` with the exact capability ID. `metadataJson(id)` is the generic metadata path for every ID advertised by `runtimeCatalogJson()`. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID.
+
+Resource failures always expose lossless `exactResourceDetails`; its `actual` and `max` fields are
+canonical unsigned decimal strings covering the complete native `u64` range. The existing
+`resourceDetails` API remains a signed-`Long` compatibility projection and is `null` when either
+count exceeds `Long.MAX_VALUE`. Existing consumers can keep using `resourceDetails`; consumers that
+inspect arithmetic-overflow counts should migrate to `exactResourceDetails`.
+
+Cooperative cancellation and deadline failures expose `cancellationDetails` with the stable
+`reason` (`requested` or `deadline_exceeded`) and observed checkpoint `phase`. They publish no
+partial `MermanOperationResult` and remain separate from `resourceDetails`.
 
 Resource failures also expose the stable `cause` discriminator (`ceiling` or `arithmetic_overflow`).
 
@@ -106,6 +136,10 @@ MermanEngine(optionsJson = """{"svg":{"pipeline":"readable"}}""").use { engine -
     val svg = engine.renderSvg(source)
 }
 ```
+
+`MermanEngine.execute` accepts the same controlled overload as the one-shot facade. The native
+transport clones the control before engine admission and never holds the operation-control registry
+lock while parsing, analyzing, laying out, rendering, or invoking a host callback.
 
 Merman owns a deterministic vendored text measurer by default. Keep it for background jobs, tests, and content generation. Supply a `MermanEngineServices` value when Android layout must match the final `TextPaint`/`StaticLayout` font stack:
 

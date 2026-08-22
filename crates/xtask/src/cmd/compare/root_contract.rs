@@ -88,11 +88,12 @@ pub(crate) fn validate_root_viewport_contract(
     fixture: &str,
     input: &str,
     upstream_svg: &str,
-    local_svg: &str,
+    upstream_dom: &crate::svgdom::ParsedSvgDom<'_>,
+    local_dom: &crate::svgdom::ParsedSvgDom<'_>,
 ) -> Result<(), String> {
-    let upstream = parse_root_contract(upstream_svg)
+    let upstream = parse_root_contract_from_dom(upstream_dom)
         .map_err(|error| format!("upstream {diagram}/{fixture}: {error}"))?;
-    let local = parse_root_contract(local_svg)
+    let local = parse_root_contract_from_dom(local_dom)
         .map_err(|error| format!("local {diagram}/{fixture}: {error}"))?;
 
     if upstream.view_box.is_some() != local.view_box.is_some() {
@@ -275,7 +276,18 @@ fn validate_deterministic_root_catalog(catalog: &DeterministicRootCatalog) -> Re
 fn parse_root_contract(svg: &str) -> Result<ParsedRootContract, String> {
     let svg = crate::svgdom::normalize_xml_entities(svg);
     let document = roxmltree::Document::parse(svg.as_ref()).map_err(|error| error.to_string())?;
-    let root = document.root_element();
+    parse_root_contract_from_root(document.root_element())
+}
+
+fn parse_root_contract_from_dom(
+    document: &crate::svgdom::ParsedSvgDom<'_>,
+) -> Result<ParsedRootContract, String> {
+    parse_root_contract_from_root(document.root_element())
+}
+
+fn parse_root_contract_from_root(
+    root: roxmltree::Node<'_, '_>,
+) -> Result<ParsedRootContract, String> {
     if !root.has_tag_name(("http://www.w3.org/2000/svg", "svg")) && !root.has_tag_name("svg") {
         return Err("document root must be <svg>".to_string());
     }

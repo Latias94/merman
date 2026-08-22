@@ -395,17 +395,13 @@ fn execute_wasm_operation_with_services(
     services: merman_bindings_core::BindingEngineServices,
 ) -> Result<Vec<u8>, BindingError> {
     let (normalized_options, timeout) = wasm_options(options_json)?;
-    let control = wasm_operation_control(timeout);
-    control
-        .checkpoint_at(merman_bindings_core::OperationPhase::Admission)
-        .map_err(BindingError::cancelled)?;
-    let engine =
-        wasm_artifact_contract().create_engine_with_services(&normalized_options, services)?;
-    control
-        .checkpoint_at(merman_bindings_core::OperationPhase::Admission)
-        .map_err(BindingError::cancelled)?;
-    engine
-        .execute(BindingOperationRequest::new(operation_id, source).with_control(control))
+    wasm_artifact_contract()
+        .execute_once_with_services(
+            BindingOperationRequest::new(operation_id, source)
+                .with_options_json(&normalized_options)
+                .with_control(wasm_operation_control(timeout)),
+            services,
+        )
         .map(merman_bindings_core::BindingOperationResult::into_data)
 }
 
@@ -647,8 +643,50 @@ fn wasm_white_space(max_width: Option<f64>, wrap_mode: WrapMode) -> &'static str
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "analysis")]
+    #[cfg(feature = "ascii")]
+    use merman_ascii_test_contracts::ascii_resource_boundary_contract;
+    #[cfg(any(feature = "analysis", feature = "ascii"))]
     use serde_json::Value;
+
+    #[cfg(feature = "ascii")]
+    fn wasm_ascii_options(limit_id: &str, value: u64) -> String {
+        format!(r#"{{"resources":{{"limits":{{"{limit_id}":{value}}}}}}}"#)
+    }
+
+    #[cfg(feature = "ascii")]
+    fn assert_wasm_ascii_resource_error(
+        error: BindingError,
+        expected_limit_id: &str,
+        expected_phase: &str,
+        expected_max: u64,
+    ) -> u64 {
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::ResourceLimitExceeded
+        );
+        assert_eq!(error.capability_id(), None);
+        let details = error
+            .resource_details()
+            .expect("WASM ASCII resource errors must expose typed details");
+        assert_eq!(details.limit_id, expected_limit_id);
+        assert_eq!(details.phase, expected_phase);
+        assert_eq!(details.max, expected_max);
+        assert_eq!(details.profile, "interactive");
+        assert!(details.actual > details.max);
+
+        let payload = binding_error_payload_value(&error).expect("structured WASM error payload");
+        let resource = payload["details"]["resource"]
+            .as_object()
+            .expect("WASM resource details object");
+        assert_eq!(resource.len(), 6, "WASM resource error shape changed");
+        assert_eq!(resource["cause"], "ceiling");
+        assert_eq!(resource["limit_id"], expected_limit_id);
+        assert_eq!(resource["phase"], expected_phase);
+        assert_eq!(resource["actual"], details.actual);
+        assert_eq!(resource["max"], expected_max);
+        assert_eq!(resource["profile"], "interactive");
+        details.actual
+    }
 
     #[test]
     fn package_version_matches_crate_version() {
@@ -659,6 +697,34 @@ mod tests {
     fn transport_api_version_is_independent_from_host_measurement_protocol() {
         assert_eq!(transport_api_version(), WASM_TRANSPORT_API_VERSION);
         assert_eq!(WASM_TRANSPORT_API_VERSION, 5);
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn ascii_metadata_exposes_the_total_capability_contract() {
+        let bytes = wasm_artifact_contract()
+            .metadata_json("ascii-capabilities")
+            .unwrap();
+        let capabilities: Value = serde_json::from_slice(&bytes).unwrap();
+        let capabilities = capabilities.as_array().unwrap();
+
+        assert_eq!(capabilities.len(), 31);
+        let flowchart = capabilities
+            .iter()
+            .find(|capability| capability["diagram_type"] == "flowchart")
+            .unwrap();
+        assert_eq!(flowchart["semantic_coverage"], "partial");
+        assert_eq!(flowchart["primary_projection"], "diagrammatic");
+        assert_eq!(flowchart["support_level"], "partial");
+        assert!(flowchart.get("summary_fallback").is_none());
+
+        let zenuml = capabilities
+            .iter()
+            .find(|capability| capability["diagram_type"] == "zenuml")
+            .unwrap();
+        assert!(zenuml["semantic_coverage"].is_null());
+        assert_eq!(zenuml["primary_projection"], "none");
+        assert_eq!(zenuml["support_level"], "unsupported");
     }
 
     #[test]
@@ -1128,6 +1194,29 @@ mod tests {
         );
         assert_eq!(json["details"]["resource"]["max"], 800_000);
         assert_eq!(json["details"]["resource"]["profile"], "interactive");
+
+        let err = BindingError::new(
+            merman_bindings_core::BindingStatus::ParseError,
+            "invalid edge",
+        )
+        .with_diagnostic_details(
+            merman_bindings_core::BindingDiagnosticErrorDetails::new("flowchart.edge.invalid")
+                .with_span(merman_bindings_core::BindingDiagnosticSpan::new(
+                    3, 8, "exact",
+                ))
+                .with_field("edge")
+                .with_diagram_type("flowchart"),
+        );
+        let json = binding_error_payload_value(&err).unwrap();
+        assert_eq!(
+            json["details"]["diagnostic"]["code"],
+            "flowchart.edge.invalid"
+        );
+        assert_eq!(json["details"]["diagnostic"]["span"]["start"], 3);
+        assert_eq!(json["details"]["diagnostic"]["span"]["end"], 8);
+        assert_eq!(json["details"]["diagnostic"]["span"]["kind"], "exact");
+        assert_eq!(json["details"]["diagnostic"]["field"], "edge");
+        assert_eq!(json["details"]["diagnostic"]["diagram_type"], "flowchart");
     }
 
     #[test]
@@ -1246,6 +1335,19 @@ mod tests {
         let resources = catalog.resources;
         assert_eq!(resources.general_binding_default_profile, "interactive");
         assert_eq!(resources.profiles.len(), 4);
+        #[cfg(feature = "ascii")]
+        for case in ascii_resource_boundary_contract().binding_core_interactive {
+            let limit = resources
+                .limits
+                .iter()
+                .find(|limit| limit.id == case.id)
+                .unwrap_or_else(|| panic!("WASM resource catalog is missing {}", case.id));
+            assert!(
+                limit.operation_ids.contains(&"ascii"),
+                "WASM resource catalog does not route {} to ASCII",
+                case.id
+            );
+        }
         for limit in resources.limits {
             assert!(
                 limit
@@ -1292,5 +1394,50 @@ mod tests {
 
         assert!(text.contains("Hello"));
         assert!(text.contains("World"));
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn render_ascii_impl_applies_flowchart_node_label_wrap_width() {
+        let text = render_ascii(
+            "flowchart TD\nA[\"Alpha Beta Gamma Delta\"]",
+            Some(r#"{ "ascii": { "flowchartNodeLabelWrapWidth": 8 } }"#.to_string()),
+        )
+        .unwrap();
+
+        for expected in ["Alpha", "Beta", "Gamma", "Delta"] {
+            assert!(text.contains(expected), "missing {expected:?}:\n{text}");
+        }
+        assert!(!text.contains("Alpha Beta Gamma Delta"), "{text}");
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn wasm_ascii_operation_preserves_a_typed_exact_resource_boundary() {
+        let case = ascii_resource_boundary_contract()
+            .transport_representatives
+            .wasm_interactive;
+        let expected = case.exact;
+
+        let exact_options = wasm_ascii_options(&case.id, expected);
+        let output = execute_wasm_operation(
+            "ascii",
+            case.source.as_bytes(),
+            exact_options.as_bytes(),
+            None,
+        )
+        .unwrap_or_else(|error| panic!("exact {} boundary failed: {error:?}", case.id));
+        assert!(!output.is_empty());
+
+        let below_options = wasm_ascii_options(&case.id, expected - 1);
+        let error = execute_wasm_operation(
+            "ascii",
+            case.source.as_bytes(),
+            below_options.as_bytes(),
+            None,
+        )
+        .expect_err("one-below WASM ASCII boundary must fail");
+        let actual = assert_wasm_ascii_resource_error(error, &case.id, &case.phase, expected - 1);
+        assert_eq!(actual, expected);
     }
 }

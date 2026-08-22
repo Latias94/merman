@@ -124,8 +124,8 @@ pub(crate) struct SubgraphBlock {
 #[derive(Debug, Clone)]
 pub(crate) enum Stmt {
     Chain {
-        nodes: Vec<Node>,
-        edges: Vec<Edge>,
+        node_groups: Vec<Vec<Node>>,
+        edge_groups: Vec<Vec<Edge>>,
     },
     Node(Box<Node>),
     Subgraph(SubgraphBlock),

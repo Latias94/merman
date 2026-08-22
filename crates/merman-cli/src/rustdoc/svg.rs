@@ -1,55 +1,13 @@
-use crate::error::CliError;
-use crate::markdown::MarkdownFenceLocation;
-use crate::resources::ResolvedResourcePolicy;
-use std::path::Path;
-
-pub(super) fn prepare_static_svg(
-    svg: &str,
-    source_path: &Path,
-    location: MarkdownFenceLocation,
-    resources: &ResolvedResourcePolicy,
-) -> Result<String, CliError> {
-    let limits = resources.render_policy();
-    merman_render::svg::validate_static_inline_svg_admission(svg, limits)
-        .map_err(|error| content_error(source_path, location, error))?;
-    let session = merman_render::environment::RenderEnvironment::deterministic()
-        .with_resource_policy(limits)
-        .begin_session()
-        .map_err(|error| content_error(source_path, location, error))?;
-    merman_render::svg::SvgPipeline::parity()
-        .with_postprocessor(merman_render::svg::ForeignObjectFallbackPostprocessor)
-        .with_postprocessor(merman_render::svg::SanitizeCssPostprocessor)
-        .with_postprocessor(merman_render::svg::SanitizeSvgAttributesPostprocessor)
-        .process_to_string(svg, &session)
-        .map_err(|error| content_error(source_path, location, error))
-}
-
-pub(super) fn validate_static_svg(
-    svg: &str,
-    source_path: &Path,
-    location: MarkdownFenceLocation,
-    limits: merman_render::RenderResourcePolicy,
-) -> Result<(), CliError> {
-    merman_render::svg::validate_static_inline_svg(svg, limits)
-        .map_err(|error| content_error(source_path, location, error))
-}
-
-fn content_error(
-    source_path: &Path,
-    location: MarkdownFenceLocation,
-    error: impl std::fmt::Display,
-) -> CliError {
-    CliError::rustdoc_content(
-        source_path,
-        location.line,
-        location.column,
-        error.to_string(),
-    )
+pub(super) fn static_inline_pipeline(
+    id_prefix: impl Into<String>,
+) -> merman_render::svg::SvgPipeline {
+    merman_render::svg::SvgPipeline::parity().with_static_inline_contract(id_prefix)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::ResolvedResourcePolicy;
 
     fn resources() -> ResolvedResourcePolicy {
         ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE)
@@ -57,15 +15,20 @@ mod tests {
 
     #[test]
     fn rustdoc_pipeline_converts_safe_foreign_objects_before_strict_validation() {
-        let source = Path::new("docs.md");
-        let location = MarkdownFenceLocation { line: 4, column: 2 };
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml">Safe label</div></foreignObject></svg>"#;
 
-        let output = prepare_static_svg(svg, source, location, &resources()).unwrap();
+        let control = merman::OperationControl::new();
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(resources().render_policy())
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let output = static_inline_pipeline("rustdoc-test")
+            .process_to_string(svg, &session)
+            .unwrap();
 
         assert!(output.contains("Safe label"), "{output}");
         assert!(!output.contains("foreignObject"), "{output}");
-        validate_static_svg(&output, source, location, resources().render_policy()).unwrap();
+        merman_render::svg::validate_static_inline_svg(&output, &session).unwrap();
     }
 
     #[test]
@@ -98,16 +61,16 @@ mod tests {
         ];
 
         for (svg, expected) in cases {
-            let error = prepare_static_svg(
-                svg,
-                Path::new("docs.md"),
-                MarkdownFenceLocation { line: 7, column: 3 },
-                &resources(),
-            )
-            .unwrap_err();
+            let control = merman::OperationControl::new();
+            let session = merman_render::environment::RenderEnvironment::deterministic()
+                .with_resource_policy(resources().render_policy())
+                .begin_session_with_control(control.clone())
+                .unwrap();
+            let error = static_inline_pipeline("rustdoc-test")
+                .process_to_string(svg, &session)
+                .unwrap_err();
 
             assert!(error.to_string().contains(expected), "{error}");
-            assert!(error.to_string().contains("line 7, column 3"), "{error}");
         }
     }
 }

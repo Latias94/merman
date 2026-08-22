@@ -99,6 +99,9 @@ pub(crate) struct RustdocCommandArgs {
     /// Suppress non-error progress output.
     #[arg(long)]
     pub(crate) quiet: bool,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[derive(Debug, Clone, ClapArgs)]
@@ -135,6 +138,22 @@ impl Default for ResourceCliArgs {
             limits: Vec::new(),
         }
     }
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+#[derive(Debug, Clone, Copy, ClapArgs, Default)]
+pub(crate) struct OperationCliArgs {
+    /// Cancel the complete command operation after this many milliseconds.
+    ///
+    /// The deadline starts before input acquisition and covers generation, rendering, and
+    /// publication. Zero cancels at the first cooperative checkpoint.
+    #[arg(
+        long = "operation-timeout-ms",
+        value_name = "MILLISECONDS",
+        help_heading = "Operation control",
+        hide_short_help = true
+    )]
+    pub(crate) timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, ClapArgs)]
@@ -225,6 +244,9 @@ pub(crate) struct LayoutArgs {
 
     #[command(flatten)]
     pub(crate) resources: ResourceCliArgs,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[cfg(feature = "analysis")]
@@ -469,6 +491,9 @@ pub(crate) struct RenderArgs {
 
     #[command(flatten)]
     pub(crate) resources: ResourceCliArgs,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[cfg(feature = "markdown")]
@@ -510,6 +535,9 @@ pub(crate) struct BatchArgs {
 
     #[command(flatten)]
     pub(crate) resources: ResourceCliArgs,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[cfg(feature = "shell-completions")]
@@ -1024,6 +1052,9 @@ pub(crate) struct MmdcArgs {
 
     #[command(flatten)]
     pub(crate) resources: ResourceCliArgs,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -1384,6 +1415,15 @@ pub(crate) struct TextOutputCliArgs {
     )]
     pub(crate) ascii_charset: Option<TextCharset>,
 
+    /// Display-width convention used for terminal text measurement.
+    #[arg(
+        long = "ascii-width-profile",
+        value_enum,
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_width_profile: Option<TextWidthProfile>,
+
     /// Override the default graph direction when Mermaid input omits one.
     #[arg(
         long = "ascii-direction",
@@ -1444,6 +1484,13 @@ pub(crate) struct TextOutputCliArgs {
 pub(crate) enum TextCharset {
     Ascii,
     Unicode,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum TextWidthProfile {
+    Unicode,
+    Cjk,
 }
 
 #[cfg(feature = "ascii")]

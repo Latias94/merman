@@ -1,0 +1,1426 @@
+mod composed;
+mod deferred;
+mod document;
+mod encode;
+mod framing;
+mod label;
+mod layout;
+mod normalization;
+mod width;
+mod wrapped;
+
+pub(crate) use composed::ComposedTextPlan;
+pub(crate) use deferred::{
+    DeferredTextLine, DeferredTextLineMetrics, DeferredTextPart, DeferredTextRegistry,
+};
+#[cfg(test)]
+use document::encode_text_lines;
+pub(crate) use document::{
+    BudgetedTextDocument, BudgetedTextLine, charge_text_layout, visit_safe_line_graphemes,
+};
+pub(crate) use encode::visit_html_escaped_text;
+pub(crate) use framing::{
+    push_document_field, push_document_list, push_line_field, push_line_list,
+    push_optional_document_field, push_wrapped_field, push_wrapped_list,
+    visit_quoted_terminal_text,
+};
+#[cfg(test)]
+pub(crate) use label::try_build_normalized_label_lines;
+pub(crate) use label::{
+    LabelBreakPolicy, NormalizedLabelMetrics, NormalizedLabelPlan,
+    try_measure_normalized_label_lines, try_plan_normalized_label_lines,
+    try_plan_normalized_label_lines_with_policy,
+    try_plan_normalized_label_lines_with_policy_and_checkpoint,
+};
+pub(crate) use layout::{
+    NormalizedTextPlan, NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
+    try_plan_normalized_text, try_plan_normalized_trimmed_text, try_repeat_layout_char,
+};
+pub(crate) use normalization::{
+    grapheme_safe_trim, terminal_single_line_text_requires_normalization, terminal_text_is_blank,
+    terminal_text_requires_normalization,
+};
+pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
+#[cfg(test)]
+pub(crate) use width::SafeText;
+pub(crate) use width::{SafeLine, terminal_char_display_width, terminal_line_display_width};
+pub(crate) use wrapped::BudgetedWrappedText;
+
+#[cfg(test)]
+use crate::color::AsciiColorMode;
+#[cfg(test)]
+use crate::error::AsciiError;
+#[cfg(test)]
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+#[cfg(test)]
+use crate::resource::ResourceContext;
+#[cfg(test)]
+use unicode_segmentation::UnicodeSegmentation;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::resources::ResourceProfile;
+    use std::cell::Cell;
+
+    fn unbounded_policy() -> AsciiResourcePolicy {
+        AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+    }
+
+    fn policy_with_limit(id: AsciiResourceLimitId, limit: usize) -> AsciiResourcePolicy {
+        unbounded_policy()
+            .with_limit(id, limit)
+            .expect("positive resource limit")
+    }
+
+    fn ascii_document(resources: AsciiResourcePolicy) -> BudgetedTextDocument {
+        BudgetedTextDocument::new(&AsciiRenderOptions::ascii(), resources)
+    }
+
+    fn assert_limit_error(
+        error: AsciiError,
+        expected_id: AsciiResourceLimitId,
+        expected_actual: usize,
+        expected_max: usize,
+    ) {
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == expected_id
+                    && details.actual == expected_actual
+                    && details.max == expected_max
+        ));
+    }
+
+    #[test]
+    fn budgeted_document_normalization_matches_safe_text_boundary() {
+        let options = AsciiRenderOptions::ascii();
+        for input in [
+            "one\r\ntwo\tthree\rfour",
+            "a\u{1b}\u{202e}\u{301}\r\nb",
+            "👩‍💻 ✈️ a\u{200c}b 👍🏽",
+            "\u{301}\u{200d}\u{fe0f}",
+        ] {
+            let rendered = encode_text_lines(vec![input.to_string()], &options, unbounded_policy())
+                .expect("unbounded budgeted normalization should render");
+            let expected = normalize_terminal_text(input);
+
+            assert_eq!(rendered, expected.as_ref());
+        }
+    }
+
+    #[test]
+    fn html_output_budget_counts_actual_escaped_bytes_at_exact_boundary() {
+        let escaped = "&lt;&amp;";
+        let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Html);
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, escaped.len());
+        let rendered = encode_text_lines(vec!["<&".to_string()], &options, exact)
+            .expect("exact escaped byte budget should render");
+
+        assert_eq!(rendered, escaped);
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, escaped.len() - 1);
+        let error = encode_text_lines(vec!["<&".to_string()], &options, below)
+            .expect_err("one byte below escaped output should fail");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxOutputBytes,
+            escaped.len(),
+            escaped.len() - 1,
+        );
+    }
+
+    #[test]
+    fn plain_output_budget_counts_utf8_bytes_at_exact_boundary() {
+        let text = "中";
+        let options = AsciiRenderOptions::ascii();
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, text.len());
+        let rendered = encode_text_lines(vec![text.to_string()], &options, exact)
+            .expect("exact UTF-8 byte budget should render");
+
+        assert_eq!(rendered, text);
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, text.len() - 1);
+        let error = encode_text_lines(vec![text.to_string()], &options, below)
+            .expect_err("one byte below the UTF-8 output should fail");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxOutputBytes,
+            text.len(),
+            text.len() - 1,
+        );
+    }
+
+    #[test]
+    fn document_output_admission_reports_exact_boundaries_for_all_encodings() {
+        let cases = [
+            (AsciiColorMode::Plain, "<&>\"'中\ntail"),
+            (AsciiColorMode::Ansi16, "<&>\"'中\ntail"),
+            (AsciiColorMode::Ansi256, "<&>\"'中\ntail"),
+            (AsciiColorMode::TrueColor, "<&>\"'中\ntail"),
+            (AsciiColorMode::Html, "&lt;&amp;&gt;&quot;&#39;中\ntail"),
+        ];
+
+        for (color_mode, expected) in cases {
+            let options = AsciiRenderOptions::ascii().with_color_mode(color_mode);
+            let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len());
+            let mut document = BudgetedTextDocument::new(&options, exact);
+            document
+                .push_line("<&>\"'中")
+                .expect("the first row should enter the document");
+            document
+                .push_line("tail")
+                .expect("the second row should enter the document");
+            let rendered = document
+                .finish()
+                .expect("the exact encoded output should be admitted");
+
+            assert_eq!(rendered, expected, "mode={color_mode:?}");
+
+            let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1);
+            let mut document = BudgetedTextDocument::new(&options, below);
+            document
+                .push_line("<&>\"'中")
+                .expect("the first row still fits below the complete document boundary");
+            let cells_before_second_row = document.resources_mut().document_cells_used();
+            let error = document
+                .push_line("tail")
+                .expect_err("N-1 must reject the complete second row");
+
+            assert_eq!(
+                document.resources_mut().document_cells_used(),
+                cells_before_second_row,
+                "mode={color_mode:?}",
+            );
+            assert_limit_error(
+                error,
+                AsciiResourceLimitId::MaxOutputBytes,
+                expected.len(),
+                expected.len() - 1,
+            );
+        }
+    }
+
+    #[test]
+    fn line_fragment_output_admission_reports_exact_boundaries() {
+        let cases = [
+            (AsciiColorMode::Plain, "abc", 3),
+            (AsciiColorMode::Plain, "\u{1b}", "\\u{1B}".len()),
+            (AsciiColorMode::Html, "<", "&lt;".len()),
+        ];
+
+        for (color_mode, raw, encoded_len) in cases {
+            let options = AsciiRenderOptions::ascii().with_color_mode(color_mode);
+            let policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, encoded_len - 1);
+            let mut document = BudgetedTextDocument::new(&options, policy);
+
+            let error = document
+                .push_line(raw)
+                .expect_err("N-1 must reject the complete normalized fragment");
+
+            assert_eq!(
+                document.resources_mut().document_cells_used(),
+                0,
+                "mode={color_mode:?}, raw={raw:?}",
+            );
+            assert_limit_error(
+                error,
+                AsciiResourceLimitId::MaxOutputBytes,
+                encoded_len,
+                encoded_len - 1,
+            );
+        }
+    }
+
+    #[test]
+    fn wrapped_output_admission_covers_prefix_word_space_and_continuation_prefix() {
+        let prefix_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 1);
+        let prefix_producer_visited = Cell::new(false);
+        let mut document = ascii_document(prefix_policy);
+        let error = document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
+                prefix_producer_visited.set(true);
+                line.push_str("a")
+            })
+            .expect_err("N-1 prefix bytes must reject before starting the producer");
+        assert!(!prefix_producer_visited.get());
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 2, 1);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
+
+        let exact_word_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 5);
+        let mut document = ascii_document(exact_word_policy);
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_str("abc"))
+            .expect("the exact prefix and body output bytes should fit");
+        assert_eq!(
+            document.finish().expect("exact output should encode"),
+            "- abc"
+        );
+
+        let word_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 4);
+        let mut document = ascii_document(word_policy);
+        let error = document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_str("abc"))
+            .expect_err("N-1 word bytes must reject the wrapped body");
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 5, 4);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
+
+        let space_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 2);
+        let mut document = ascii_document(space_policy);
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a b"))
+            .expect_err("N-1 synthesized space must reject the row");
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 3, 2);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
+
+        let exact_continuation_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 5);
+        let mut document = ascii_document(exact_continuation_policy);
+        document
+            .push_wrapped_prefixed_line_with("", ">>", 1, |line| line.push_str("ab"))
+            .expect("the exact continuation prefix output bytes should fit");
+        assert_eq!(
+            document
+                .finish()
+                .expect("exact continuation output should encode"),
+            "a\n>>b"
+        );
+
+        let continuation_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 4);
+        let mut document = ascii_document(continuation_policy);
+        let error = document
+            .push_wrapped_prefixed_line_with("", ">>", 1, |line| line.push_str("ab"))
+            .expect_err("N-1 continuation prefix must reject the wrapped row");
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 5, 4);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
+    }
+
+    #[test]
+    fn wrapped_document_preserves_combining_marks_with_their_whitespace_base() {
+        let raw = " \u{301}word";
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str(raw))
+            .expect("the complete grapheme should pass wrapped admission");
+
+        assert_eq!(
+            document
+                .finish()
+                .expect("the wrapped document should encode"),
+            raw,
+        );
+    }
+
+    #[test]
+    fn wrapped_prefix_budgets_are_admitted_before_body_retention() {
+        let first_prefix_policy = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
+        let first_prefix_producer_visited = Cell::new(false);
+        let mut document = ascii_document(first_prefix_policy);
+        let error = document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
+                first_prefix_producer_visited.set(true);
+                line.push_str("a")
+            })
+            .expect_err("an oversized first prefix must reject before starting the producer");
+        assert!(!first_prefix_producer_visited.get());
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 2, 1);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
+
+        let continuation_policy = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 3);
+        let mut document = ascii_document(continuation_policy);
+        let error = document
+            .push_wrapped_prefixed_line_with("", ">>", 1, |line| line.push_str("ab"))
+            .expect_err("an oversized continuation prefix must reject the wrapped row");
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 4, 3);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
+
+        let grapheme = "\"\u{301}";
+        assert_eq!(grapheme.graphemes(true).count(), 1);
+        let exact_grapheme_policy =
+            policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len());
+        let mut document = ascii_document(exact_grapheme_policy);
+        document
+            .push_wrapped_prefixed_line_with(grapheme, "", 80, |line| line.push_str("a"))
+            .expect("the exact first-prefix grapheme budget should fit");
+        assert_eq!(
+            document.finish().expect("exact first prefix should encode"),
+            format!("{grapheme}a")
+        );
+
+        let grapheme_policy =
+            policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1);
+        let grapheme_producer_visited = Cell::new(false);
+        let mut document = ascii_document(grapheme_policy);
+        let error = document
+            .push_wrapped_prefixed_line_with(grapheme, "", 80, |line| {
+                grapheme_producer_visited.set(true);
+                line.push_str("a")
+            })
+            .expect_err("an oversized prefix grapheme must reject before starting the producer");
+        assert!(!grapheme_producer_visited.get());
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            grapheme.len(),
+            grapheme.len() - 1,
+        );
+        assert_eq!(document.finish().expect("no row should be committed"), "");
+
+        let continuation = "x\u{301}";
+        assert_eq!(continuation.graphemes(true).count(), 1);
+        let exact_continuation_policy =
+            policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, continuation.len());
+        let mut document = ascii_document(exact_continuation_policy);
+        document
+            .push_wrapped_prefixed_line_with("", continuation, 1, |line| line.push_str("ab"))
+            .expect("the exact continuation-prefix grapheme budget should fit");
+        assert_eq!(
+            document
+                .finish()
+                .expect("exact continuation prefix should encode"),
+            format!("a\n{continuation}b")
+        );
+
+        let continuation_policy = policy_with_limit(
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            continuation.len() - 1,
+        );
+        let mut document = ascii_document(continuation_policy);
+        let error = document
+            .push_wrapped_prefixed_line_with("", continuation, 1, |line| line.push_str("ab"))
+            .expect_err("an oversized used continuation grapheme must reject in planning");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            continuation.len(),
+            continuation.len() - 1,
+        );
+        assert_eq!(document.finish().expect("no row should be committed"), "");
+    }
+
+    #[test]
+    fn unused_continuation_prefix_does_not_enter_content_budgets() {
+        let oversized = "x\u{301}";
+        assert_eq!(oversized.graphemes(true).count(), 1);
+        let policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1)
+            .expect("positive grapheme limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 1)
+            .expect("positive document limit")
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 1)
+            .expect("positive output limit");
+        let mut document = ascii_document(policy);
+        document
+            .push_wrapped_prefixed_line_with("", oversized, 80, |line| line.push_str("a"))
+            .expect("an unused continuation prefix must not consume content limits");
+        assert_eq!(document.finish().expect("document should encode"), "a");
+    }
+
+    #[test]
+    fn wrapped_planning_failure_leaves_shared_ledgers_unchanged() {
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
+        let mut document = ascii_document(policy);
+        document.push_line("x").expect("prior row should fit");
+        let work_before = document.resources_mut().layout_work_used();
+        let cells_before = document.resources_mut().document_cells_used();
+
+        document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("y"))
+            .expect_err("the second cell must be rejected during planning");
+
+        assert_eq!(document.resources_mut().layout_work_used(), work_before);
+        assert_eq!(document.resources_mut().document_cells_used(), cells_before);
+        assert_eq!(document.finish().expect("prior row should remain"), "x");
+    }
+
+    #[test]
+    fn wrapped_success_replays_the_producer_after_admission() {
+        let visits = Cell::new(0usize);
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
+                visits.set(visits.get() + 1);
+                line.push_str("body")
+            })
+            .expect("an admitted producer should replay deterministically");
+        assert_eq!(visits.get(), 2);
+        assert_eq!(document.finish().expect("document should encode"), "- body");
+    }
+
+    #[test]
+    fn wrapped_replay_mismatch_discards_local_rows_and_shared_charges() {
+        let visits = Cell::new(0usize);
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_line("prior")
+            .expect("prior row should render");
+        let work_before = document.resources_mut().layout_work_used();
+        let cells_before = document.resources_mut().document_cells_used();
+
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| {
+                let visit = visits.get();
+                visits.set(visit + 1);
+                if visit == 0 {
+                    line.push_str("planned")
+                } else {
+                    line.push_str("changed")
+                }
+            })
+            .expect_err("same-sized but different replay text must be rejected");
+
+        assert_eq!(visits.get(), 2);
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "structured_text",
+                feature: "wrapped text replay",
+            }
+        ));
+        assert_eq!(document.resources_mut().layout_work_used(), work_before);
+        assert_eq!(document.resources_mut().document_cells_used(), cells_before);
+        assert_eq!(document.finish().expect("prior row should remain"), "prior");
+    }
+
+    #[test]
+    fn wrapped_replay_error_discards_local_rows_and_shared_charges() {
+        let visits = Cell::new(0usize);
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_line("prior")
+            .expect("prior row should render");
+        let work_before = document.resources_mut().layout_work_used();
+        let cells_before = document.resources_mut().document_cells_used();
+        let replay_error = AsciiError::UnsupportedFeature {
+            diagram_type: "test",
+            feature: "wrapped replay failure",
+        };
+
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| {
+                let visit = visits.get();
+                visits.set(visit + 1);
+                line.push_str("body")?;
+                if visit == 1 {
+                    return Err(replay_error.clone());
+                }
+                Ok(())
+            })
+            .expect_err("a second-pass producer error must abort the transaction");
+
+        assert_eq!(visits.get(), 2);
+        assert_eq!(error, replay_error);
+        assert_eq!(document.resources_mut().layout_work_used(), work_before);
+        assert_eq!(document.resources_mut().document_cells_used(), cells_before);
+        assert_eq!(document.finish().expect("prior row should remain"), "prior");
+    }
+
+    #[test]
+    fn wrapped_layout_work_is_admitted_at_exact_and_limit_minus_one() {
+        const PRIOR_WORK: usize = 2;
+        const WRAPPED_TWO_PASS_WORK: usize = 60;
+        const COMPLETE_WORK: usize = PRIOR_WORK + WRAPPED_TWO_PASS_WORK;
+
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, COMPLETE_WORK);
+        let mut document = ascii_document(exact);
+        document
+            .resources_mut()
+            .charge_layout_work(PRIOR_WORK)
+            .expect("prior structured-text work should fit");
+        document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a"))
+            .expect("the exact planning and replay work should fit");
+        assert_eq!(document.resources_mut().layout_work_used(), COMPLETE_WORK);
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, COMPLETE_WORK - 1);
+        let mut document = ascii_document(below);
+        document
+            .resources_mut()
+            .charge_layout_work(PRIOR_WORK)
+            .expect("prior structured-text work should fit below the complete boundary");
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a"))
+            .expect_err("one unit below the complete two-pass work must reject during planning");
+
+        assert_eq!(document.resources_mut().layout_work_used(), PRIOR_WORK);
+        assert_eq!(document.resources_mut().document_cells_used(), 0);
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            COMPLETE_WORK,
+            COMPLETE_WORK - 1,
+        );
+    }
+
+    #[test]
+    fn wrapped_prefix_width_scan_checks_layout_work_incrementally() {
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2);
+        let producer_visited = Cell::new(false);
+        let mut document = ascii_document(policy);
+
+        let error = document
+            .push_wrapped_prefixed_line_with("abc", "", 80, |line| {
+                producer_visited.set(true);
+                line.push_str("body")
+            })
+            .expect_err("the third prefix grapheme must exceed the scan budget immediately");
+
+        assert!(!producer_visited.get());
+        assert_eq!(document.resources_mut().layout_work_used(), 0);
+        assert_eq!(document.resources_mut().document_cells_used(), 0);
+        assert_limit_error(error, AsciiResourceLimitId::MaxLayoutWorkUnits, 3, 2);
+    }
+
+    #[test]
+    fn wrapped_empty_and_explicit_line_breaks_preserve_existing_rows() {
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_wrapped_prefixed_line_with("empty: ", "       ", 80, |_line| Ok(()))
+            .expect("an empty producer should emit its first prefix");
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_str("a\nb"))
+            .expect("an explicit line break should select the continuation prefix");
+
+        assert_eq!(
+            document.finish().expect("document should encode"),
+            "empty: \n- a\n  b"
+        );
+    }
+
+    #[test]
+    fn quoted_output_admission_reports_exact_boundaries() {
+        let line_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 2);
+        let mut document = ascii_document(line_policy);
+        let error = document
+            .push_line_with(|line| line.push_quoted_text("a"))
+            .expect_err("N-1 closing quote must be rejected");
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 3, 2);
+
+        let wrapped_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 3);
+        let mut document = ascii_document(wrapped_policy);
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_quoted_text("\""))
+            .expect_err("N-1 wrapped closing quote must be rejected");
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 4, 3);
+        assert_eq!(document.resources_mut().layout_work_used(), 0);
+        assert_eq!(document.resources_mut().document_cells_used(), 0);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
+    }
+
+    #[test]
+    fn structured_rows_debit_layout_work_at_exact_boundary() {
+        const EXPECTED_TOTAL_WORK: usize = 26;
+
+        let lines = vec!["one".to_string(), "two".to_string()];
+        let options = AsciiRenderOptions::ascii();
+        let exact = policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            EXPECTED_TOTAL_WORK,
+        );
+        let rendered = encode_text_lines(lines.clone(), &options, exact)
+            .expect("row planning plus both encoder passes should fit exactly");
+
+        assert_eq!(rendered, "one\ntwo");
+
+        let below = policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            EXPECTED_TOTAL_WORK - 1,
+        );
+        let error = encode_text_lines(lines, &options, below)
+            .expect_err("one work unit below the complete document should fail");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            EXPECTED_TOTAL_WORK,
+            EXPECTED_TOTAL_WORK - 1,
+        );
+    }
+
+    #[test]
+    fn control_escape_expansion_is_budgeted_before_document_append() {
+        let escaped = "\\u{1B}";
+        let options = AsciiRenderOptions::ascii();
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, escaped.len());
+        let rendered = encode_text_lines(vec!["\u{1b}".to_string()], &options, exact)
+            .expect("one visible escape should fit its exact document budget");
+
+        assert_eq!(rendered, escaped);
+
+        let mut document = ascii_document(exact);
+        let error = document
+            .push_line("\u{1b}x")
+            .expect_err("one extra visible cell should fail before it is appended");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxDocumentCells,
+            escaped.len() + 1,
+            escaped.len(),
+        );
+    }
+
+    #[test]
+    fn streaming_line_writer_stops_before_later_fragment_after_document_limit() {
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
+        let visited = Cell::new(0usize);
+        let mut document = ascii_document(policy);
+
+        let error = document
+            .push_line_with(|line| {
+                visited.set(visited.get() + 1);
+                line.push_str("ab")?;
+                visited.set(visited.get() + 1);
+                line.push_str("never reached")
+            })
+            .expect_err("the second fragment must be rejected before it is visited");
+
+        assert_eq!(visited.get(), 1);
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 2, 1);
+    }
+
+    #[test]
+    fn streaming_wrapped_writer_stops_before_later_fragment_after_document_limit() {
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
+        let visited = Cell::new(0usize);
+        let mut document = ascii_document(policy);
+
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| {
+                visited.set(visited.get() + 1);
+                line.push_str("ab")?;
+                visited.set(visited.get() + 1);
+                line.push_str("never reached")
+            })
+            .expect_err("the over-limit fragment must stop the producer immediately");
+
+        assert_eq!(visited.get(), 1);
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 2, 1);
+    }
+
+    #[test]
+    fn streaming_wrapped_writer_preserves_word_and_paragraph_layout() {
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 10, |line| {
+                line.push_str("  alpha   ")?;
+                line.push_str("beta\ngamma  ")
+            })
+            .expect("streamed fragments should preserve wrapping semantics");
+
+        assert_eq!(
+            document.finish().expect("document should encode"),
+            "- alpha\n  beta\n  gamma"
+        );
+    }
+
+    #[test]
+    fn quoted_structured_fields_preserve_whitespace_and_delimiter_ownership() {
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_line_with(|line| {
+                line.push_str("- ")?;
+                line.push_quoted_text(" leading \"value\" \\ ")
+            })
+            .expect("quoted fields should stream without materializing an escaped copy");
+        document
+            .push_line_with(|line| line.push_quoted_text("line\nbreak"))
+            .expect("quoted line fields should encode structural newlines visibly");
+
+        assert_eq!(
+            document.finish().expect("document should encode"),
+            concat!(r#"- " leading \"value\" \\ ""#, "\n", r#""line\nbreak""#,)
+        );
+    }
+
+    #[test]
+    fn wrapped_quoted_fields_preserve_whitespace_and_escape_structural_text() {
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
+                line.push_quoted_text(" leading \"value\" \\ \nnext")
+            })
+            .expect("wrapped quoted fields should retain authored separators safely");
+
+        assert_eq!(
+            document.finish().expect("document should encode"),
+            r#"- " leading \"value\" \\ \nnext""#,
+        );
+    }
+
+    #[test]
+    fn wrapped_quoted_fields_honor_exact_document_cell_limits() {
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 7);
+        let mut document = ascii_document(exact);
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_quoted_text("a b"))
+            .expect("two prefix cells plus five quoted-value cells should fit exactly");
+        assert_eq!(
+            document.finish().expect("document should encode"),
+            "- \"a b\""
+        );
+
+        let limited = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 6);
+        let mut document = ascii_document(limited);
+        let error = document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_quoted_text("a b"))
+            .expect_err("limit-minus-one must reject the quoted row");
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 7, 6);
+    }
+
+    #[test]
+    fn words_after_a_long_word_resume_normal_row_packing() {
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 5, |line| {
+                line.push_str("abcd ")?;
+                line.push_str("e f")
+            })
+            .expect("normal words after a split word should share the next row");
+
+        assert_eq!(
+            document.finish().expect("document should encode"),
+            "- abc\n  d\n  e f"
+        );
+    }
+
+    #[test]
+    fn cjk_document_budget_uses_profile_display_width_at_exact_boundary() {
+        let options =
+            AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Cjk);
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 2);
+        let rendered = encode_text_lines(vec!["·".to_string()], &options, exact)
+            .expect("ambiguous glyph should fit its exact CJK width");
+
+        assert_eq!(rendered, "·");
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
+        let error = encode_text_lines(vec!["·".to_string()], &options, below)
+            .expect_err("one cell below the CJK width should fail");
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 2, 1);
+    }
+
+    #[test]
+    fn wrapped_rows_enter_document_through_the_same_budgeted_boundary() {
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 8);
+        let mut document = ascii_document(exact);
+        document
+            .push_wrapped_prefixed_line("- ", "  ", "abcd", 4)
+            .expect("two four-cell rows should fit the exact document budget");
+        assert_eq!(
+            document.finish().expect("budgeted rows should encode"),
+            "- ab\n  cd"
+        );
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 7);
+        let mut document = ascii_document(below);
+        let error = document
+            .push_wrapped_prefixed_line("- ", "  ", "abcd", 4)
+            .expect_err("one cell below the wrapped document should fail before row insertion");
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 8, 7);
+    }
+
+    #[test]
+    fn wrapped_quoted_visible_escapes_remain_atomic_at_a_wrap_boundary() {
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_wrapped_prefixed_line_with("", "", 12, |line| {
+                push_wrapped_field(line, "", "value", "before\u{202e}after")
+            })
+            .expect("quoted visible escapes should remain terminal-safe when wrapped");
+
+        let rendered = document.finish().expect("wrapped field should encode");
+        assert!(rendered.contains(r"\u{202E}"), "{rendered:?}");
+        assert!(!rendered.contains("\\u{2\n02E}"), "{rendered:?}");
+    }
+
+    #[test]
+    fn quoted_framing_checks_raw_grapheme_before_scalar_escape() {
+        let grapheme = "\"\u{301}";
+        assert_eq!(grapheme.graphemes(true).count(), 1);
+
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len());
+        let mut document = ascii_document(exact);
+        document
+            .push_line_with(|line| line.push_quoted_text(grapheme))
+            .expect("quoted grapheme should fit its exact raw-byte budget");
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1);
+        let mut document = ascii_document(below);
+        let error = document
+            .push_line_with(|line| line.push_quoted_text(grapheme))
+            .expect_err("quoting must not split an oversized source grapheme");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            grapheme.len(),
+            grapheme.len() - 1,
+        );
+    }
+
+    #[test]
+    fn oversized_structural_prefix_does_not_force_vertical_label_text() {
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_wrapped_prefixed_line("          ", "          ", "Leaf", 8)
+            .expect("an oversized hierarchy prefix should leave a useful content width");
+
+        assert_eq!(
+            document.finish().expect("document should encode"),
+            "          Leaf"
+        );
+    }
+
+    #[test]
+    fn grapheme_budget_checks_whole_cluster_at_exact_boundary() {
+        let grapheme = "👩‍💻";
+        let options = AsciiRenderOptions::ascii();
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len());
+        let rendered = encode_text_lines(vec![grapheme.to_string()], &options, exact)
+            .expect("whole grapheme should fit its exact byte budget");
+
+        assert_eq!(rendered, grapheme);
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1);
+        let error = encode_text_lines(vec![grapheme.to_string()], &options, below)
+            .expect_err("one byte below the grapheme size should fail");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            grapheme.len(),
+            grapheme.len() - 1,
+        );
+    }
+
+    #[test]
+    fn raw_zero_width_cluster_is_checked_before_visible_escape_expansion() {
+        let grapheme = "\u{301}\u{301}";
+        assert_eq!(grapheme.graphemes(true).count(), 1);
+
+        let options = AsciiRenderOptions::ascii();
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len());
+        let rendered = encode_text_lines(vec![grapheme.to_string()], &options, exact)
+            .expect("raw cluster equal to the limit should normalize safely");
+        assert_eq!(rendered, "\\u{301}\\u{301}");
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1);
+        let error = encode_text_lines(vec![grapheme.to_string()], &options, below)
+            .expect_err("oversized raw cluster must fail before escape expansion is retained");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            grapheme.len(),
+            grapheme.len() - 1,
+        );
+    }
+
+    #[test]
+    fn label_builder_rejects_control_expansion_transactionally() {
+        let escaped = "\\u{1B}";
+        let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, escaped.len() - 1);
+        let resources = ResourceContext::new(below);
+
+        let error = try_build_normalized_label_lines(
+            "\u{1b}",
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect_err("control expansion must be rejected transactionally");
+
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxDocumentCells,
+            escaped.len(),
+            escaped.len() - 1,
+        );
+    }
+
+    #[test]
+    fn label_builder_checks_output_lower_bound_transactionally() {
+        let escaped = "\\u{1B}";
+        let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, escaped.len() - 1);
+        let resources = ResourceContext::new(below);
+
+        let error = try_build_normalized_label_lines(
+            "\u{1b}",
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect_err("normalized output bytes must be rejected transactionally");
+
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxOutputBytes,
+            escaped.len(),
+            escaped.len() - 1,
+        );
+    }
+
+    #[test]
+    fn label_builder_uses_exact_cjk_and_zwj_document_cells() {
+        let raw = "·<br>👩‍💻";
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 4);
+        let resources = ResourceContext::new(exact);
+        let label = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Cjk,
+            false,
+            None,
+            &resources,
+        )
+        .expect("exact CJK and ZWJ cells should be admitted")
+        .expect("non-trimmed label should be retained");
+        let (lines, width) = label.into_parts();
+
+        assert_eq!(lines, ["·", "👩‍💻"]);
+        assert_eq!(width, 2);
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 3);
+        let resources = ResourceContext::new(below);
+        let error = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Cjk,
+            false,
+            None,
+            &resources,
+        )
+        .expect_err("one cell below the exact CJK and ZWJ total should fail");
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 4, 3);
+    }
+
+    #[test]
+    fn authored_break_budget_counts_retained_rows_not_structural_separators() {
+        let raw = "First<br />Line";
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 9);
+        let resources = ResourceContext::new(exact);
+        let label = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect("the retained row bytes should fit exactly")
+        .expect("the label should remain visible");
+        assert_eq!(
+            label.into_parts(),
+            (vec!["First".to_string(), "Line".to_string()], 5)
+        );
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 8);
+        let resources = ResourceContext::new(below);
+        let error = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect_err("one byte below the retained rows must fail before materialization");
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 9, 8);
+    }
+
+    #[test]
+    fn escaped_mermaid_newline_keeps_the_literal_backslash_sequence() {
+        let resources = ResourceContext::new(unbounded_policy());
+        let label = try_build_normalized_label_lines(
+            r"literal\\nvalue\ntail",
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect("escaped and authored line breaks should normalize")
+        .expect("the label should remain visible");
+
+        assert_eq!(
+            label.into_parts(),
+            (vec![r"literal\\nvalue".to_string(), "tail".to_string()], 15)
+        );
+    }
+
+    #[test]
+    fn authored_empty_rows_are_grid_admitted_before_row_allocation() {
+        let raw = "<br><br><br>";
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxGridCells, 4);
+        let resources = ResourceContext::new(exact);
+        let label = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect("four empty rows should fit their minimum allocation extent")
+        .expect("authored breaks should retain the label");
+        assert_eq!(label.into_parts(), (vec![String::new(); 4], 0));
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxGridCells, 3);
+        let resources = ResourceContext::new(below);
+        let error = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect_err("one grid cell below the minimum row extent must fail transactionally");
+
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+        assert_limit_error(error, AsciiResourceLimitId::MaxGridCells, 4, 3);
+    }
+
+    #[test]
+    fn relation_label_trim_keeps_visible_controls_and_authored_breaks() {
+        let resources = ResourceContext::new(unbounded_policy());
+        let label = try_build_normalized_label_lines(
+            " \t\\nvalue\n ",
+            TerminalWidthProfile::Unicode,
+            true,
+            None,
+            &resources,
+        )
+        .expect("trimmed relation label should normalize")
+        .expect("visible controls and authored breaks keep the label non-empty");
+        let (lines, width) = label.into_parts();
+
+        assert_eq!(lines, ["\\u{9}", "value"]);
+        assert_eq!(width, 5);
+    }
+
+    #[test]
+    fn label_plan_widths_match_materialized_wrapped_rows() {
+        let cases = [
+            ("alpha beta gamma", false, 8, TerminalWidthProfile::Unicode),
+            ("alpha\n\nbeta", false, 8, TerminalWidthProfile::Unicode),
+            (
+                "alpha<br>beta\\ngamma",
+                false,
+                5,
+                TerminalWidthProfile::Unicode,
+            ),
+            (
+                "extraordinary word",
+                false,
+                4,
+                TerminalWidthProfile::Unicode,
+            ),
+            ("中 文 👩‍💻 ·", false, 4, TerminalWidthProfile::Cjk),
+            (" ́word", false, 6, TerminalWidthProfile::Unicode),
+            ("\u{1b} value ", true, 7, TerminalWidthProfile::Unicode),
+        ];
+
+        for (raw, trim, wrap_width, profile) in cases {
+            let resources = ResourceContext::new(unbounded_policy());
+            let plan =
+                try_plan_normalized_label_lines(raw, profile, trim, Some(wrap_width), &resources)
+                    .expect("label plan should be measurable")
+                    .expect("test labels should remain visible");
+            let mut planned_widths = Vec::new();
+            plan.try_visit_line_widths(raw, &resources, |width| {
+                planned_widths.push(width);
+                Ok(())
+            })
+            .expect("planned row widths should be visitable");
+
+            let materialized = plan.materialize(raw, &resources).unwrap_or_else(|error| {
+                let normalized = normalize_terminal_text(raw);
+                let direct = crate::text::wrap_display_lines_with_profile(
+                    normalized.as_ref(),
+                    wrap_width,
+                    profile,
+                );
+                panic!(
+                    "the admitted plan should materialize exactly for {raw:?}: {error}; planned={planned_widths:?}; direct={direct:?}"
+                )
+            });
+            let (lines, width) = materialized.into_parts();
+            let actual_widths = lines
+                .iter()
+                .map(|line| terminal_line_display_width(line, profile))
+                .collect::<Vec<_>>();
+
+            assert_eq!(planned_widths, actual_widths, "raw={raw:?}");
+            assert_eq!(plan.metrics().line_count, lines.len(), "raw={raw:?}");
+            assert_eq!(plan.metrics().max_width, width, "raw={raw:?}");
+        }
+    }
+
+    #[test]
+    fn wrapped_label_budget_uses_final_rows_after_whitespace_collapse() {
+        let raw = "alpha          beta";
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 10);
+        let resources = ResourceContext::new(exact);
+        let label = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(32),
+            &resources,
+        )
+        .expect("the final collapsed row should fit exactly")
+        .expect("the label should remain visible");
+        assert_eq!(label.into_parts(), (vec!["alpha beta".to_string()], 10));
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 9);
+        let resources = ResourceContext::new(below);
+        let error = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(32),
+            &resources,
+        )
+        .expect_err("one cell below the final row must fail before materialization");
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 10, 9);
+
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 10);
+        let resources = ResourceContext::new(exact);
+        try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(32),
+            &resources,
+        )
+        .expect("the final collapsed bytes should fit exactly")
+        .expect("the label should remain visible");
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 9);
+        let resources = ResourceContext::new(below);
+        let error = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(32),
+            &resources,
+        )
+        .expect_err("one byte below the final collapsed output must fail");
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 10, 9);
+    }
+
+    #[test]
+    fn wrapped_label_keeps_visible_escape_atoms_intact() {
+        let resources = ResourceContext::new(unbounded_policy());
+        let lines = try_plan_normalized_label_lines(
+            "\u{301}word",
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(6),
+            &resources,
+        )
+        .expect("the escaped label should be measurable")
+        .expect("the escaped label should remain visible")
+        .materialize("\u{301}word", &resources)
+        .expect("the escaped label should materialize atomically")
+        .into_parts()
+        .0;
+
+        assert_eq!(lines, ["\\u{301}", "word"]);
+    }
+
+    #[test]
+    fn wrapped_label_preserves_combining_marks_with_their_whitespace_base() {
+        let raw = " \u{301}word";
+        let resources = ResourceContext::new(unbounded_policy());
+        let lines = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(6),
+            &resources,
+        )
+        .expect("the complete grapheme should be measurable")
+        .expect("the complete grapheme should remain visible")
+        .materialize(raw, &resources)
+        .expect("wrapping must not detach the combining mark from its space base")
+        .into_parts()
+        .0;
+
+        assert_eq!(lines, [raw]);
+    }
+
+    #[test]
+    fn label_plan_accounts_each_scan_in_render_wide_work() {
+        let raw = "alpha          beta gamma";
+        let resources = ResourceContext::new(unbounded_policy());
+        let plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(10),
+            &resources,
+        )
+        .expect("the work probe should be measurable")
+        .expect("the work probe should remain visible");
+        plan.try_visit_line_widths(raw, &resources, |_width| Ok(()))
+            .expect("the retained-row scan should be charged");
+        let before_materialization = resources.layout_work_used();
+        plan.materialize(raw, &resources)
+            .expect("the materialization scan should be charged");
+        let total_work = resources.layout_work_used();
+        assert!(total_work > before_materialization);
+
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work);
+        let exact_resources = ResourceContext::new(exact);
+        let exact_plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(10),
+            &exact_resources,
+        )
+        .expect("the exact work plan should succeed")
+        .expect("the exact work label should remain visible");
+        exact_plan
+            .try_visit_line_widths(raw, &exact_resources, |_width| Ok(()))
+            .expect("the exact retained-row scan should succeed");
+        exact_plan
+            .materialize(raw, &exact_resources)
+            .expect("the exact materialization scan should succeed");
+        assert_eq!(exact_resources.layout_work_used(), total_work);
+
+        let below = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work - 1);
+        let below_resources = ResourceContext::new(below);
+        let below_plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(10),
+            &below_resources,
+        )
+        .expect("the below-limit plan should still fit before materialization")
+        .expect("the below-limit label should remain visible");
+        below_plan
+            .try_visit_line_widths(raw, &below_resources, |_width| Ok(()))
+            .expect("the below-limit retained-row scan should still fit");
+        let before_failed_materialization = below_resources.layout_work_used();
+        let error = below_plan
+            .materialize(raw, &below_resources)
+            .expect_err("one work unit below the full scan cost must fail transactionally");
+
+        assert_eq!(
+            below_resources.layout_work_used(),
+            before_failed_materialization
+        );
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            total_work,
+            total_work - 1,
+        );
+    }
+
+    #[test]
+    fn label_plan_grid_admission_precedes_materialization() {
+        let raw = "alpha beta";
+        let below = policy_with_limit(AsciiResourceLimitId::MaxGridCells, 9);
+        let below_resources = ResourceContext::new(below);
+        let plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(5),
+            &below_resources,
+        )
+        .expect("text planning should not consume a grid")
+        .expect("the label should be visible");
+        assert_eq!(plan.metrics().line_count, 2);
+        assert_eq!(plan.metrics().max_width, 5);
+
+        let error = below_resources
+            .grid_extent(plan.metrics().max_width, plan.metrics().line_count)
+            .expect_err("a 5x2 label grid must reject a nine-cell limit");
+
+        assert_limit_error(error, AsciiResourceLimitId::MaxGridCells, 10, 9);
+
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxGridCells, 10);
+        let exact_resources = ResourceContext::new(exact);
+        let exact_plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(5),
+            &exact_resources,
+        )
+        .expect("exact text planning should succeed")
+        .expect("the label should be visible");
+        exact_resources
+            .grid_extent(
+                exact_plan.metrics().max_width,
+                exact_plan.metrics().line_count,
+            )
+            .expect("the exact label grid should be admitted");
+        let exact_materialized = exact_plan
+            .materialize(raw, &exact_resources)
+            .expect("materialization should follow successful admission");
+        assert_eq!(
+            exact_materialized.into_parts(),
+            (vec!["alpha".to_string(), "beta".to_string()], 5)
+        );
+    }
+
+    #[test]
+    fn label_break_policies_preserve_sequence_message_semantics() {
+        let raw = "alpha\n\nbeta<br>gamma\\ndelta";
+
+        let resources = ResourceContext::new(unbounded_policy());
+        let wrapped = try_plan_normalized_label_lines_with_policy(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(80),
+            LabelBreakPolicy::StructuralParagraphs,
+            &resources,
+        )
+        .expect("structural message rows should be measurable")
+        .expect("non-empty message rows should be retained")
+        .materialize(raw, &resources)
+        .expect("structural message rows should materialize")
+        .into_parts()
+        .0;
+        assert_eq!(wrapped, ["alpha", "beta<br>gamma\\ndelta"]);
+
+        let resources = ResourceContext::new(unbounded_policy());
+        let visible = try_plan_normalized_label_lines_with_policy(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            LabelBreakPolicy::VisibleLine,
+            &resources,
+        )
+        .expect("unwrapped message text should be measurable")
+        .expect("non-empty message text should be retained")
+        .materialize(raw, &resources)
+        .expect("unwrapped message text should materialize")
+        .into_parts()
+        .0;
+        assert_eq!(visible, ["alpha\\u{A}\\u{A}beta<br>gamma\\ndelta"]);
+    }
+
+    #[test]
+    fn non_html_color_modes_keep_structured_text_plain() {
+        for color_mode in [
+            AsciiColorMode::Plain,
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+        ] {
+            let options = AsciiRenderOptions::ascii().with_color_mode(color_mode);
+
+            assert_eq!(
+                encode_text_lines(vec!["<safe>".to_string()], &options, unbounded_policy())
+                    .expect("unbounded structured text should render"),
+                "<safe>"
+            );
+        }
+    }
+}

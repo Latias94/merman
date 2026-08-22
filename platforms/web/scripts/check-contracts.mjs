@@ -171,7 +171,12 @@ const requiredTypeProperties = new Map([
   ],
   [
     "AsciiRenderOptions",
-    ["relation_summary_diagnostics", "relationSummaryDiagnostics"],
+    [
+      "flowchart_node_label_wrap_width",
+      "flowchartNodeLabelWrapWidth",
+      "relation_summary_diagnostics",
+      "relationSummaryDiagnostics",
+    ],
   ],
   ["CommonBindingOptions", ["analysis", "merman", "parse"]],
   ["AnalysisBindingOptions", ["resources"]],

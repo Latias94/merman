@@ -14,7 +14,7 @@ use crate::text::{TextMeasurer, WrapMode};
 use indexmap::IndexMap;
 use merman_core::MermaidConfig;
 use merman_core::diagrams::flowchart::{
-    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
+    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -34,7 +34,7 @@ fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {
 }
 
 struct MeasureContext<'a> {
-    model: &'a FlowchartModel,
+    model: &'a FlowchartRenderModelRef<'a>,
     config: &'a MermaidConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -214,6 +214,7 @@ fn working_edge(edge: &FlowEdge) -> WorkingEdge {
 }
 
 fn measure_group_title(
+    declaration_ordinal: usize,
     subgraph: &FlowSubgraph,
     render_title: &str,
     ctx: &MeasureContext<'_>,
@@ -231,11 +232,14 @@ fn measure_group_title(
     } else {
         &ctx.settings.text_style
     };
+    let (classes, styles) = ctx
+        .model
+        .effective_subgraph_css(declaration_ordinal, subgraph);
     let style = flowchart_effective_text_style_for_classes(
         base_style,
         &ctx.model.class_defs,
-        &subgraph.classes,
-        &subgraph.styles,
+        classes,
+        styles,
     );
     // Mermaid 11.16's dedicated Swimlane renderer omits createText's `markdown` option, so the
     // default `true` applies independently of FlowDB's public subgraph labelType.
@@ -255,7 +259,7 @@ fn measure_group_title(
 
 pub(super) fn prepare(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -287,9 +291,11 @@ pub(super) fn prepare(
     }
 
     let mut nodes = IndexMap::new();
-    for subgraph in model.subgraphs.iter().rev() {
-        let render_title = model.subgraph_title_for_render(subgraph);
-        let (label_width, label_height) = measure_group_title(subgraph, render_title, &measure_ctx);
+    for subgraph_index in (0..model.subgraphs.len()).rev() {
+        let subgraph = &model.subgraphs[subgraph_index];
+        let render_title = model.subgraph_title_for_render(subgraph_index, subgraph);
+        let (label_width, label_height) =
+            measure_group_title(subgraph_index, subgraph, render_title, &measure_ctx);
         nodes.insert(
             subgraph.id.clone(),
             WorkingNode {
@@ -350,6 +356,7 @@ pub(super) fn prepare(
         }
         let synthetic = FlowNode {
             id: id.clone(),
+            provenance: Default::default(),
             label: Some(id.clone()),
             label_type: Some("text".to_string()),
             layout_shape: Some("squareRect".to_string()),

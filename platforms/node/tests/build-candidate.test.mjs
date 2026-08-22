@@ -213,6 +213,7 @@ test("candidate source receipt covers generated package contracts", async () => 
 });
 
 test("candidate Cargo packages stay aligned with the private package surface version", () => {
+  const escapedPackageVersion = PACKAGE_VERSION.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const metadata = metadataWithPackages([
     ["root", "merman-node-candidate"],
     ["bindings", "merman-bindings-core"],
@@ -224,7 +225,7 @@ test("candidate Cargo packages stay aligned with the private package surface ver
     "0.8.0-alpha.3";
   assert.throws(
     () => validateCandidatePackageVersions(staleCandidate),
-    /merman-node-candidate.*0\.8\.0-alpha\.5/i,
+    new RegExp(`merman-node-candidate.*${escapedPackageVersion}`, "i"),
   );
 
   const staleBindings = structuredClone(metadata);
@@ -232,7 +233,7 @@ test("candidate Cargo packages stay aligned with the private package surface ver
     "0.8.0-alpha.3";
   assert.throws(
     () => validateCandidatePackageVersions(staleBindings),
-    /merman-bindings-core.*0\.8\.0-alpha\.5/i,
+    new RegExp(`merman-bindings-core.*${escapedPackageVersion}`, "i"),
   );
 });
 

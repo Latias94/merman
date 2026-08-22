@@ -1,10 +1,10 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH MERMAN-CLI-RUSTDOC-BUILD 1 2026-08-15 "Merman 0.8.0-alpha.5" "Merman CLI Manual"
+.TH MERMAN-CLI-RUSTDOC-BUILD 1 2026-08-15 "Merman 0.8.0-alpha.6" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-rustdoc\-build \- Build the complete managed Rustdoc fragment bundle
 .SH SYNOPSIS
-\fBmerman\-cli rustdoc build\fR [\fB\-\-config\fR] [\fB\-\-quiet\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
+\fBmerman\-cli rustdoc build\fR [\fB\-\-config\fR] [\fB\-\-quiet\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
 .SH DESCRIPTION
 Build the complete managed Rustdoc fragment bundle
 .SH OPTIONS
@@ -16,9 +16,15 @@ Rustdoc fragment configuration file
 Suppress non\-error progress output
 .TP
 \fB\-h\fR, \fB\-\-help\fR
-Print help
+Print help (see a summary with \*(Aq\-h\*(Aq)
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 Print version
+.SH "OPERATION CONTROL"
+.TP
+\fB\-\-operation\-timeout\-ms\fR \fI<MILLISECONDS>\fR
+Cancel the complete command operation after this many milliseconds.
+
+The deadline starts before input acquisition and covers generation, rendering, and publication. Zero cancels at the first cooperative checkpoint.
 .SH VERSION
-v0.8.0\-alpha.5
+v0.8.0\-alpha.6

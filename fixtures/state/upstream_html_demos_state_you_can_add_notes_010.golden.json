@@ -76,17 +76,17 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "Notes can be to the right of a state\\n(like this one).",
+        "label": "Notes can be to the left of a state\\n(like this one).",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
         "id": "State2----parent",
-        "domId": "state-State2----parent-3",
+        "domId": "state-State2----parent-2",
         "type": "group",
         "isGroup": true,
         "padding": 16,
         "look": "classic",
-        "position": "right of"
+        "position": "left of"
       },
       {
         "labelStyle": "",
@@ -106,6 +106,21 @@
       },
       {
         "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "Notes can be to the right of a state\\n(like this one).",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "State2----parent-3",
+        "domId": "state-State2----parent-3",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "right of"
+      },
+      {
+        "labelStyle": "",
         "shape": "note",
         "label": "Notes can be to the right of a state\\n(like this one).",
         "cssClasses": "statediagram-note",
@@ -118,7 +133,7 @@
         "padding": 15,
         "look": "classic",
         "position": "right of",
-        "parentId": "State2----parent"
+        "parentId": "State2----parent-3"
       }
     ],
     "edges": [
@@ -146,11 +161,11 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       },
       {
@@ -190,6 +205,20 @@
     "accTitle": null,
     "accDescr": null,
     "states": {
+      "State2": {
+        "id": "State2",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": {
+          "position": "right of",
+          "text": "Notes can be to the right of a state\\n(like this one)."
+        },
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
       "State1": {
         "id": "State1",
         "type": "default",
@@ -200,20 +229,6 @@
         "note": {
           "position": "right of",
           "text": "Important information!<br />You can write notes.<br />And\\nthey\\ncan\\nbe\\nmulti-\\nline."
-        },
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "State2": {
-        "id": "State2",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": {
-          "position": "right of",
-          "text": "Notes can be to the right of a state\\n(like this one)."
         },
         "classes": [],
         "styles": [],

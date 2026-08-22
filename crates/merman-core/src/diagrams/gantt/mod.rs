@@ -17,7 +17,7 @@ use model::*;
 
 pub use model::{
     GanttDiagramRenderModel, GanttRenderClickEvent, GanttRenderTask, GanttRenderTaskEnd,
-    GanttRenderTaskRaw, GanttRenderTaskStart,
+    GanttRenderTaskRaw, GanttRenderTaskStart, GanttTaskEndConstraint, GanttTaskStartConstraint,
 };
 #[cfg(test)]
 pub(crate) use parse::{gantt_syntax_construction_count, reset_gantt_syntax_construction_count};

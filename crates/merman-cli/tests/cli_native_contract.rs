@@ -113,6 +113,7 @@ fn batch_help_exposes_only_graphical_batch_options() {
     for absent in [
         "--sequence-mirror-actors",
         "--ascii-charset",
+        "--ascii-width-profile",
         "--ascii-direction",
         "--ascii-color",
         "--xychart-vertical-plot-height",

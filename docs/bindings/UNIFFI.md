@@ -5,8 +5,13 @@
 C ABI, and applications must not mix a generated UniFFI source projection with a different native
 library build.
 
-The current direct binding API is `4`. Its runtime contract is schema `1`; the C ABI and the
+The current direct binding API is `5`. Its runtime contract is schema `1`; the C ABI and the
 text-measurement protocol have separate version ownership.
+
+API 5 changes `MermanAsciiCapability`: replace `summary_fallback` with
+`structured_text_fallback`, consume nullable `semantic_coverage` and `primary_projection`, and
+treat `support_level` as a derived compatibility view. Regenerate Swift and Python projections
+with the matching native library.
 
 ## Public Model
 
@@ -20,9 +25,9 @@ The generated API exposes:
 - `MermanOperationControl` for caller-owned cancellation and optional monotonic deadlines;
 - `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
-- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, cancellation, message }` failures, where resource and cancellation evidence remain separate optional records.
+- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, message }` failures, where resource, diagnostic, icon-registry, and cancellation evidence remain separate optional records.
 
-`Merman::transport_api_version()` reports `4`. Use `runtime_catalog_json()` to inspect the
+`Merman::binding_api_version_v5()` reports `5`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
@@ -33,6 +38,11 @@ the API `3` method symbol, so an API `3` generated binding fails during symbol r
 initialization before it can decode the changed record layout. Regenerate the whole language
 projection and deploy it with the matching native library; changing only the library is not
 supported.
+
+API `5` replaces the API `4` `transport_api_version()` probe with
+`binding_api_version_v5()`. This symbol change is required because UniFFI method checksums do not
+include the fields of the changed `MermanAsciiCapability` and `MermanError::Binding` wire records.
+An API `4` generated binding therefore fails before it can decode an API `5` value.
 
 Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
 owns the generic operation's options. Named methods such as
@@ -172,9 +182,9 @@ contract.
   on `kind`, use the optional known payload, and preserve `raw_json` for future kinds.
 - Treat runtime operation, metadata, option-group, constructor-service, and resource-limit IDs as
   open discovery values. Closed request-input vocabularies remain generated enums/value sets.
-- Move generated API 3 wrappers and libraries together to API 4 before using operation controls or
-  structured cancellation details. Do not pair source generated for one API version with a library
-  whose runtime catalog reports another.
+- Move generated API 4 wrappers and libraries together to API 5 before consuming the revised ASCII
+  capability or structured-error records. Do not pair source generated for one API version with a
+  library whose runtime catalog reports another.
 
 ## Verification
 

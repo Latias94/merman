@@ -4,6 +4,7 @@ import {
   NODE_TRANSPORT_FIELD_LIMITS,
   NODE_TRANSPORT_LIMITS,
   NODE_WIRE_CONTRACT,
+  abortError,
   assertUtf8Field,
   decodeWireInvocationError,
   decodeWireResponse,
@@ -86,6 +87,7 @@ const COMPILED_PREREQUISITES_BY_OPERATION_ID = new Map(
 const KNOWN_OUTPUT_CONTRACT_BY_ID = new Map(
   NODE_WIRE_CONTRACT.artifact.output_contracts.map((contract) => [contract.id, contract]),
 );
+const MAX_OPERATION_TIMEOUT_MS = 0xffff_ffff;
 const MERMAN_ENGINE_CONSTRUCTION_TOKEN = Symbol("MermanEngine construction");
 
 export async function createNodeEngine(
@@ -181,31 +183,37 @@ export class MermanEngine {
   renderSvg(source, options = {}) {
     return this.executeOperation(
       { operationId: "svg", source, optionsJson: options.optionsJson },
-      { signal: options.signal },
+      { signal: options.signal, timeoutMs: options.timeoutMs },
     ).then((result) => result.data);
   }
 
   renderSvgSync(source, options = {}) {
-    return this.executeOperationSync({
-      operationId: "svg",
-      source,
-      optionsJson: options.optionsJson,
-    }).data;
+    return this.executeOperationSync(
+      {
+        operationId: "svg",
+        source,
+        optionsJson: options.optionsJson,
+      },
+      { timeoutMs: options.timeoutMs },
+    ).data;
   }
 
   svgPlanJson(source, options = {}) {
     return this.executeOperation(
       { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },
-      { signal: options.signal },
+      { signal: options.signal, timeoutMs: options.timeoutMs },
     ).then((result) => result.data);
   }
 
   svgPlanJsonSync(source, options = {}) {
-    return this.executeOperationSync({
-      operationId: "svg-plan-json",
-      source,
-      optionsJson: options.optionsJson,
-    }).data;
+    return this.executeOperationSync(
+      {
+        operationId: "svg-plan-json",
+        source,
+        optionsJson: options.optionsJson,
+      },
+      { timeoutMs: options.timeoutMs },
+    ).data;
   }
 
   metadataJson(id) {
@@ -232,17 +240,33 @@ export class MermanEngine {
     return value;
   }
 
-  executeOperation(request, { signal } = {}) {
-    const encoded = operationRequestJson(request);
+  executeOperation(request, { signal, timeoutMs } = {}) {
+    try {
+      this.#executor.assertOpen();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    const prepared = prepareOperationRequest(request, { timeoutMs });
+    if (signal?.aborted) return Promise.reject(abortError());
+    const encoded = operationRequestJson(prepared);
     return this.#executor.submit(
       async () => {
+        // A signal can flip after queue admission but before this start microtask runs. That work
+        // has not crossed the transport boundary, so preserve the established AbortError result.
+        if (signal?.aborted) throw abortError();
         let responseJson;
         try {
-          responseJson = await this.#transport.execute(encoded.json);
+          responseJson = await executeTransportOperation(
+            this.#transport,
+            encoded.json,
+            signal,
+            timeoutMs,
+          );
         } catch (cause) {
           throw decodeWireInvocationError(cause, "Merman operation");
         }
         return decodeWireResponse(responseJson, encoded.expectation, {
+          allowedCancellationReasons: invocationCancellationReasons(signal, timeoutMs),
           requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
         });
       },
@@ -250,16 +274,17 @@ export class MermanEngine {
     );
   }
 
-  executeOperationSync(request) {
+  executeOperationSync(request, { timeoutMs } = {}) {
     this.#executor.assertSyncAvailable();
-    const encoded = operationRequestJson(request);
+    const encoded = operationRequestJson(prepareOperationRequest(request, { timeoutMs }));
     let responseJson;
     try {
-      responseJson = this.#transport.executeSync(encoded.json);
+      responseJson = this.#transport.executeSync(encoded.json, timeoutMs);
     } catch (cause) {
       throw decodeWireInvocationError(cause, "Merman operation");
     }
     return decodeWireResponse(responseJson, encoded.expectation, {
+      allowedCancellationReasons: invocationCancellationReasons(undefined, timeoutMs),
       requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
     });
   }
@@ -273,7 +298,14 @@ export class MermanEngine {
   }
 }
 
-function operationRequestJson(value) {
+function invocationCancellationReasons(signal, timeoutMs) {
+  const reasons = [];
+  if (signal?.aborted) reasons.push("requested");
+  if (timeoutMs !== undefined) reasons.push("deadline_exceeded");
+  return reasons;
+}
+
+function prepareOperationRequest(value, { timeoutMs } = {}) {
   if (!isPlainObject(value)) throw new TypeError("operation request must be a plain object.");
   const knownFields = new Set(["operationId", "source", "uri", "optionsJson"]);
   for (const field of Object.keys(value)) {
@@ -281,12 +313,9 @@ function operationRequestJson(value) {
       throw new TypeError(`unknown operation request field \`${field}\`.`);
     }
   }
-  const {
-    operationId,
-    source,
-    uri = null,
-    optionsJson = undefined,
-  } = value;
+  const operationId = value.operationId;
+  const source = value.source;
+  const uri = value.uri === undefined ? null : value.uri;
   if (typeof operationId !== "string" || operationId.length === 0) {
     throw new TypeError("operationId must be a non-empty string.");
   }
@@ -327,6 +356,23 @@ function operationRequestJson(value) {
     source,
     uri: normalizedUri,
   };
+  if (timeoutMs !== undefined) {
+    if (
+      !Number.isSafeInteger(timeoutMs) ||
+      timeoutMs < 0 ||
+      timeoutMs > MAX_OPERATION_TIMEOUT_MS
+    ) {
+      throw new RangeError(
+        `operation timeoutMs must be an integer from 0 through ${MAX_OPERATION_TIMEOUT_MS}.`,
+      );
+    }
+    request.operation_control = { timeout_ms: timeoutMs };
+  }
+  return { expectation, request, value };
+}
+
+function operationRequestJson({ expectation, request, value }) {
+  const optionsJson = value.optionsJson;
   if (optionsJson !== undefined) {
     if (typeof optionsJson !== "string") {
       throw new TypeError("optionsJson must be a JSON string when provided.");
@@ -347,6 +393,32 @@ function operationRequestJson(value) {
     expectation,
     json: encodeTransportJson(request, "operation request", NODE_TRANSPORT_LIMITS.request),
   };
+}
+
+async function executeTransportOperation(transport, requestJson, signal, timeoutMs) {
+  if (!signal) return transport.execute(requestJson, undefined, timeoutMs);
+
+  // Forward into a private signal so the N-API bridge cannot replace a caller-owned `onabort`
+  // handler while it installs its cooperative cancellation callback.
+  const transportAbort = new AbortController();
+  let transportReady = false;
+  let pendingAbort = false;
+  const forwardAbort = () => {
+    if (transportReady) {
+      transportAbort.abort(signal.reason);
+    } else {
+      pendingAbort = true;
+    }
+  };
+  signal.addEventListener("abort", forwardAbort, { once: true });
+  try {
+    const operation = transport.execute(requestJson, transportAbort.signal, timeoutMs);
+    transportReady = true;
+    if (pendingAbort || signal.aborted) transportAbort.abort(signal.reason);
+    return await operation;
+  } finally {
+    signal.removeEventListener("abort", forwardAbort);
+  }
 }
 
 function assertTransport(transport) {

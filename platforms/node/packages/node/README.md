@@ -50,9 +50,11 @@ missing-capability error.
 
 ## Lifecycle and concurrency
 
-The Promise-based API uses a bounded queue. An `AbortSignal` can cancel queued work, but it does not
-preempt Rust work that has already started. `dispose()` waits for active work to settle and rejects
-new work once teardown begins.
+The Promise-based API uses a bounded queue. An `AbortSignal` cancels queued work immediately and
+requests cooperative cancellation after Rust work starts; started work stops at the next renderer
+or transport-admission checkpoint and reports Merman's typed cancellation details. Per-operation
+`timeoutMs` values use a monotonic Rust deadline and must be integers from 0 through 4,294,967,295.
+`dispose()` waits for active work to settle and rejects new work once teardown begins.
 
 Use `renderSvgSync()` only for an explicitly synchronous static-site build path. It refuses to run
 while asynchronous operations are active or queued.

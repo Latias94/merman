@@ -70,6 +70,8 @@ pub struct GanttRenderTask {
     pub id: String,
     pub task: String,
     pub section: String,
+    #[serde(default, rename = "sectionIndex")]
+    pub section_index: Option<usize>,
     #[serde(rename = "type")]
     pub task_type: String,
     #[serde(default)]
@@ -88,6 +90,10 @@ pub struct GanttRenderTask {
     pub order: i64,
     #[serde(default, rename = "prevTaskId")]
     pub prev_task_id: Option<String>,
+    #[serde(rename = "startConstraint")]
+    pub start_constraint: GanttTaskStartConstraint,
+    #[serde(rename = "endConstraint")]
+    pub end_constraint: GanttTaskEndConstraint,
     #[serde(default)]
     pub processed: bool,
     #[serde(default, rename = "manualEndTime")]
@@ -134,6 +140,56 @@ pub struct GanttRenderTaskEnd {
     pub data: String,
 }
 
+/// The authored rule that determines a task's start instant.
+///
+/// This is independent of `GanttRenderTask::prev_task_id`, which remains part of Mermaid's
+/// compatibility model but is not sufficient to represent explicit multi-task dependencies.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum GanttTaskStartConstraint {
+    PreviousTaskEnd {
+        #[serde(
+            default,
+            rename = "dependencyId",
+            skip_serializing_if = "Option::is_none"
+        )]
+        dependency_id: Option<String>,
+    },
+    Fixed {
+        value: String,
+    },
+    After {
+        #[serde(rename = "dependencyIds")]
+        dependency_ids: Vec<String>,
+    },
+}
+
+impl Default for GanttTaskStartConstraint {
+    fn default() -> Self {
+        Self::PreviousTaskEnd {
+            dependency_id: None,
+        }
+    }
+}
+
+/// The authored rule that determines a task's end instant.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum GanttTaskEndConstraint {
+    #[default]
+    Unspecified,
+    Fixed {
+        value: String,
+    },
+    Duration {
+        value: String,
+    },
+    Until {
+        #[serde(rename = "dependencyIds")]
+        dependency_ids: Vec<String>,
+    },
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GanttRenderClickEvent {
     pub function_name: String,
@@ -157,6 +213,7 @@ pub(super) struct RawTaskRaw {
 #[derive(Debug, Clone)]
 pub(super) struct RawTask {
     pub(super) section: String,
+    pub(super) section_index: Option<usize>,
     pub(super) type_: String,
     pub(super) processed: bool,
     pub(super) manual_end_time: bool,
@@ -193,6 +250,7 @@ pub(super) struct GanttDb {
 
     pub(super) sections: Vec<String>,
     pub(super) current_section: String,
+    pub(super) current_section_index: Option<usize>,
     pub(super) display_mode: String,
 
     pub(super) inclusive_end_dates: bool,
@@ -278,6 +336,7 @@ impl GanttDb {
 
     pub(super) fn add_section(&mut self, txt: &str) {
         self.current_section = txt.to_string();
+        self.current_section_index = Some(self.sections.len());
         self.sections.push(txt.to_string());
     }
 
@@ -370,6 +429,7 @@ impl GanttDb {
 
         let raw_task = RawTask {
             section: self.current_section.clone(),
+            section_index: self.current_section_index,
             type_: self.current_section.clone(),
             processed: false,
             manual_end_time: false,

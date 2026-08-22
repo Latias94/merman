@@ -67,12 +67,13 @@ fn railroad_svg_scopes_every_family_selector_to_the_root_id() {
 }
 
 #[test]
-fn railroad_svg_escapes_css_significant_characters_in_the_root_id_selector() {
+fn railroad_svg_normalizes_css_significant_characters_in_the_root_id_selector() {
     let (svg, _) = render_railroad_with_id(json!({}), "railroad.theme:one");
     let style = railroad_style(&svg);
 
-    assert!(style.contains(r#"#railroad\.theme\:one .railroad-diagram{"#));
-    assert!(style.contains(r#"#railroad\.theme\:one .railroad-terminal rect{"#));
+    assert!(svg.contains(r#"<svg id="railroad-theme-one""#));
+    assert!(style.contains(r#"#railroad-theme-one .railroad-diagram{"#));
+    assert!(style.contains(r#"#railroad-theme-one .railroad-terminal rect{"#));
 }
 
 fn theme_string<'a>(config: &'a Value, key: &str) -> &'a str {

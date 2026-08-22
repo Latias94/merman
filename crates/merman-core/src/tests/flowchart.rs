@@ -452,6 +452,369 @@ fn parse_diagram_flowchart_edges_spec_open_cross_circle() {
     assert_eq!(res.model["edges"][0]["length"], json!(1));
 }
 
+fn parse_typed_flowchart(text: &str) -> crate::diagrams::flowchart::FlowchartModel {
+    let parsed = block_on(Engine::new().parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    crate::diagrams::flowchart::parse_flowchart_model_for_render(text, &parsed.meta)
+        .expect("typed flowchart model")
+}
+
+#[test]
+fn parse_diagram_flowchart_preserves_typed_edge_marker_stroke_and_visibility_semantics() {
+    use crate::diagrams::flowchart::{
+        FlowEdgeMarker as Marker, FlowEdgeStroke as Stroke, FlowEdgeVisibility as Visibility,
+    };
+
+    let cases = [
+        (
+            "graph TD;A---B;",
+            Marker::None,
+            Marker::None,
+            Stroke::Normal,
+            Visibility::Visible,
+            "arrow_open",
+            "normal",
+            "---",
+        ),
+        (
+            "graph TD;A-->B;",
+            Marker::None,
+            Marker::Point,
+            Stroke::Normal,
+            Visibility::Visible,
+            "arrow_point",
+            "normal",
+            "-->",
+        ),
+        (
+            "graph TD;A<-->B;",
+            Marker::Point,
+            Marker::Point,
+            Stroke::Normal,
+            Visibility::Visible,
+            "double_arrow_point",
+            "normal",
+            "<-->",
+        ),
+        (
+            "graph TD;A--oB;",
+            Marker::None,
+            Marker::Circle,
+            Stroke::Normal,
+            Visibility::Visible,
+            "arrow_circle",
+            "normal",
+            "--o",
+        ),
+        (
+            "graph TD;A o--o B;",
+            Marker::Circle,
+            Marker::Circle,
+            Stroke::Normal,
+            Visibility::Visible,
+            "double_arrow_circle",
+            "normal",
+            "o--o",
+        ),
+        (
+            "graph TD;A--xB;",
+            Marker::None,
+            Marker::Cross,
+            Stroke::Normal,
+            Visibility::Visible,
+            "arrow_cross",
+            "normal",
+            "--x",
+        ),
+        (
+            "graph TD;A x--x B;",
+            Marker::Cross,
+            Marker::Cross,
+            Stroke::Normal,
+            Visibility::Visible,
+            "double_arrow_cross",
+            "normal",
+            "x--x",
+        ),
+        (
+            "graph TD;A o--x B;",
+            Marker::Circle,
+            Marker::Cross,
+            Stroke::Normal,
+            Visibility::Visible,
+            "arrow_cross",
+            "normal",
+            "o--x",
+        ),
+        (
+            "graph TD;A x--o B;",
+            Marker::Cross,
+            Marker::Circle,
+            Stroke::Normal,
+            Visibility::Visible,
+            "arrow_circle",
+            "normal",
+            "x--o",
+        ),
+        (
+            "graph TD;A==>B;",
+            Marker::None,
+            Marker::Point,
+            Stroke::Thick,
+            Visibility::Visible,
+            "arrow_point",
+            "thick",
+            "==>",
+        ),
+        (
+            "graph TD;A-.->B;",
+            Marker::None,
+            Marker::Point,
+            Stroke::Dotted,
+            Visibility::Visible,
+            "arrow_point",
+            "dotted",
+            "-.->",
+        ),
+        (
+            "graph TD;A~~~B;",
+            Marker::None,
+            Marker::None,
+            Stroke::Normal,
+            Visibility::Invisible,
+            "arrow_open",
+            "invisible",
+            "~~~",
+        ),
+    ];
+
+    for (diagram, start_marker, end_marker, stroke_kind, visibility, edge_type, stroke, arrow) in
+        cases
+    {
+        let model = parse_typed_flowchart(diagram);
+        let edge = &model.edges[0];
+        assert_eq!(edge.start_marker, start_marker, "diagram: {diagram}");
+        assert_eq!(edge.end_marker, end_marker, "diagram: {diagram}");
+        assert_eq!(edge.stroke_kind, stroke_kind, "diagram: {diagram}");
+        assert_eq!(edge.visibility, visibility, "diagram: {diagram}");
+        assert_eq!(
+            edge.edge_type.as_deref(),
+            Some(edge_type),
+            "diagram: {diagram}"
+        );
+        assert_eq!(edge.stroke.as_deref(), Some(stroke), "diagram: {diagram}");
+        assert_eq!(edge.arrow, arrow, "diagram: {diagram}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_preserves_typed_semantics_across_labeled_edge_forms() {
+    use crate::diagrams::flowchart::{
+        FlowEdgeMarker as Marker, FlowEdgeStroke as Stroke, FlowEdgeVisibility as Visibility,
+    };
+
+    let cases = [
+        (
+            "graph TD;A <-- point label --> B;",
+            "point label",
+            Marker::Point,
+            Marker::Point,
+            Stroke::Normal,
+            "-->",
+        ),
+        (
+            "graph TD;A o== circle label ==o B;",
+            "circle label",
+            Marker::Circle,
+            Marker::Circle,
+            Stroke::Thick,
+            "==o",
+        ),
+        (
+            "graph TD;A x-. cross label .-x B;",
+            "cross label",
+            Marker::Cross,
+            Marker::Cross,
+            Stroke::Dotted,
+            ".-x",
+        ),
+        (
+            "graph TD;A -- target circle --o B;",
+            "target circle",
+            Marker::None,
+            Marker::Circle,
+            Stroke::Normal,
+            "--o",
+        ),
+        (
+            "graph TD;A o-- mixed label --x B;",
+            "mixed label",
+            Marker::Circle,
+            Marker::Cross,
+            Stroke::Normal,
+            "--x",
+        ),
+    ];
+
+    for (diagram, label, start_marker, end_marker, stroke_kind, arrow) in cases {
+        let model = parse_typed_flowchart(diagram);
+        let edge = &model.edges[0];
+        assert_eq!(edge.label.as_deref(), Some(label), "diagram: {diagram}");
+        assert_eq!(edge.start_marker, start_marker, "diagram: {diagram}");
+        assert_eq!(edge.end_marker, end_marker, "diagram: {diagram}");
+        assert_eq!(edge.stroke_kind, stroke_kind, "diagram: {diagram}");
+        assert_eq!(edge.visibility, Visibility::Visible, "diagram: {diagram}");
+        assert_eq!(edge.arrow, arrow, "diagram: {diagram}");
+    }
+}
+
+#[test]
+fn flowchart_split_label_lexer_preserves_mermaid_compatibility_length_without_inventing_a_marker() {
+    use crate::diagrams::flowchart::FlowEdgeMarker as Marker;
+
+    let model = parse_typed_flowchart("graph TD;I --No--> K;");
+    let edge = &model.edges[0];
+
+    assert_eq!(edge.label.as_deref(), Some("N"));
+    assert_eq!(edge.arrow, "o-->");
+    assert_eq!(edge.start_marker, Marker::None);
+    assert_eq!(edge.end_marker, Marker::Point);
+    assert_eq!(edge.length, 2);
+}
+
+#[test]
+fn flowchart_typed_edge_fields_round_trip_while_legacy_json_keeps_aggregate_semantics() {
+    use crate::diagrams::flowchart::{
+        FlowEdge, FlowEdgeMarker as Marker, FlowEdgeStroke as Stroke,
+        FlowEdgeVisibility as Visibility,
+    };
+
+    let diagram = "graph LR;A o--x B;";
+    let model = parse_typed_flowchart(diagram);
+    let mut typed_json = serde_json::to_value(&model.edges[0]).expect("serialize typed edge");
+    assert_eq!(typed_json["startMarker"], json!("circle"));
+    assert_eq!(typed_json["endMarker"], json!("cross"));
+    assert_eq!(typed_json["strokeKind"], json!("normal"));
+    assert_eq!(typed_json["visibility"], json!("visible"));
+
+    let typed_edge: FlowEdge =
+        serde_json::from_value(typed_json.clone()).expect("deserialize typed edge JSON");
+    assert_eq!(typed_edge.start_marker, Marker::Circle);
+    assert_eq!(typed_edge.end_marker, Marker::Cross);
+
+    let wire = typed_json.as_object_mut().expect("edge object");
+    wire.remove("startMarker");
+    wire.remove("endMarker");
+    wire.remove("strokeKind");
+    wire.remove("visibility");
+    let legacy_edge: FlowEdge =
+        serde_json::from_value(typed_json).expect("deserialize legacy edge JSON");
+    assert_eq!(legacy_edge.start_marker, Marker::Circle);
+    assert_eq!(legacy_edge.end_marker, Marker::Cross);
+    assert_eq!(legacy_edge.stroke_kind, Stroke::Normal);
+    assert_eq!(legacy_edge.visibility, Visibility::Visible);
+
+    for (diagram, start_marker, end_marker, stroke_kind, visibility) in [
+        (
+            "graph LR;A <-- label --> B;",
+            Marker::Point,
+            Marker::Point,
+            Stroke::Normal,
+            Visibility::Visible,
+        ),
+        (
+            "graph LR;A~~~B;",
+            Marker::None,
+            Marker::None,
+            Stroke::Normal,
+            Visibility::Invisible,
+        ),
+    ] {
+        let model = parse_typed_flowchart(diagram);
+        let edge = &model.edges[0];
+        let mut legacy_json = serde_json::to_value(edge).expect("serialize typed edge");
+        let legacy_wire = legacy_json.as_object_mut().expect("edge object");
+        legacy_wire.remove("startMarker");
+        legacy_wire.remove("endMarker");
+        legacy_wire.remove("strokeKind");
+        legacy_wire.remove("visibility");
+        let legacy_edge: FlowEdge =
+            serde_json::from_value(legacy_json).expect("deserialize legacy edge JSON");
+        assert_eq!(legacy_edge.start_marker, start_marker, "diagram: {diagram}");
+        assert_eq!(legacy_edge.end_marker, end_marker, "diagram: {diagram}");
+        assert_eq!(legacy_edge.stroke_kind, stroke_kind, "diagram: {diagram}");
+        assert_eq!(legacy_edge.visibility, visibility, "diagram: {diagram}");
+    }
+
+    let parsed = block_on(Engine::new().parse_diagram(diagram, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let compatibility_edge = &parsed.model["edges"][0];
+    assert!(compatibility_edge.get("startMarker").is_none());
+    assert!(compatibility_edge.get("endMarker").is_none());
+    assert!(compatibility_edge.get("strokeKind").is_none());
+    assert!(compatibility_edge.get("visibility").is_none());
+    assert_eq!(compatibility_edge["arrow"], json!("o--x"));
+    assert_eq!(compatibility_edge["type"], json!("arrow_cross"));
+}
+
+#[test]
+fn flowchart_legacy_edge_json_does_not_invent_a_source_marker_from_split_label_lookahead() {
+    use crate::diagrams::flowchart::{FlowEdge, FlowEdgeMarker as Marker};
+
+    let model = parse_typed_flowchart("graph TD;I --No--> K;");
+    let mut legacy_json = serde_json::to_value(&model.edges[0]).expect("serialize typed edge");
+    let legacy_wire = legacy_json.as_object_mut().expect("edge object");
+    legacy_wire.remove("startMarker");
+    legacy_wire.remove("endMarker");
+    legacy_wire.remove("strokeKind");
+    legacy_wire.remove("visibility");
+
+    let legacy_edge: FlowEdge =
+        serde_json::from_value(legacy_json).expect("deserialize legacy edge JSON");
+    assert_eq!(legacy_edge.start_marker, Marker::None);
+    assert_eq!(legacy_edge.end_marker, Marker::Point);
+}
+
+#[test]
+fn flowchart_legacy_edge_json_recovers_unlabeled_mixed_source_markers() {
+    use crate::diagrams::flowchart::{FlowEdge, FlowEdgeMarker as Marker};
+
+    for (diagram, expected_start, expected_end) in [
+        ("graph LR;A o--x B;", Marker::Circle, Marker::Cross),
+        ("graph LR;A x--o B;", Marker::Cross, Marker::Circle),
+    ] {
+        let model = parse_typed_flowchart(diagram);
+        let mut legacy_json = serde_json::to_value(&model.edges[0]).expect("serialize typed edge");
+        let legacy_wire = legacy_json.as_object_mut().expect("edge object");
+        legacy_wire.remove("startMarker");
+        legacy_wire.remove("endMarker");
+        legacy_wire.remove("strokeKind");
+        legacy_wire.remove("visibility");
+
+        let legacy_edge: FlowEdge =
+            serde_json::from_value(legacy_json).expect("deserialize legacy edge JSON");
+        assert_eq!(
+            legacy_edge.start_marker, expected_start,
+            "diagram: {diagram}"
+        );
+        assert_eq!(legacy_edge.end_marker, expected_end, "diagram: {diagram}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_preserves_explicit_edge_id_provenance() {
+    let model = parse_typed_flowchart("flowchart LR\nA e1@--> B\nC --> D\nE e1@--> F\n");
+    assert_eq!(model.edges.len(), 3);
+    assert_eq!(model.edges[0].id, "e1");
+    assert!(model.edges[0].is_user_defined_id);
+    assert!(model.edges[1].id.starts_with("L_C_D_"));
+    assert!(!model.edges[1].is_user_defined_id);
+    assert!(model.edges[2].id.starts_with("L_E_F_"));
+    assert!(!model.edges[2].is_user_defined_id);
+}
+
 #[test]
 fn parse_diagram_flowchart_edges_spec_edge_ids_and_node_metadata_do_not_conflict() {
     let engine = Engine::new();

@@ -28,14 +28,14 @@ use std::time::Duration;
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 4;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 5;
 
-// UniFFI 0.32 method checksums include a record's type name but not its fields. API 3 therefore
-// did not reject a newer `MermanLintRuleCatalogEntry` after `tags` changed its wire layout. API 4
-// replaces the API 3 version-probe symbol so every API 3 generated binding fails to load or link
-// before it can decode any API 4 records.
+// UniFFI 0.32 method checksums include a record's type name but not its fields. API 4 therefore did
+// not reject changed `MermanAsciiCapability` and `MermanError` wire layouts. API 5 replaces the API
+// 4 version-probe symbol so every API 4 generated binding fails to load or link before decoding any
+// API 5 records.
 #[cfg(test)]
-const UNIFFI_BINDING_API_V3_VERSION_METHOD_CHECKSUM: u16 = 18_722;
+const UNIFFI_BINDING_API_V4_VERSION_METHOD_CHECKSUM: u16 = 40_640;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -82,6 +82,21 @@ pub struct MermanCancelledDetails {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanDiagnosticSpan {
+    pub start: u64,
+    pub end: u64,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanDiagnosticErrorDetails {
+    pub code: String,
+    pub span: Option<MermanDiagnosticSpan>,
+    pub field: Option<String>,
+    pub diagram_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MermanIconRegistryErrorDetails {
     pub kind_id: String,
     pub pack_index: Option<u64>,
@@ -97,6 +112,7 @@ pub enum MermanError {
         kind: MermanErrorKind,
         capability_id: Option<String>,
         resource: Option<MermanResourceErrorDetails>,
+        diagnostic: Option<MermanDiagnosticErrorDetails>,
         icon_registry: Option<MermanIconRegistryErrorDetails>,
         cancellation: Option<MermanCancelledDetails>,
         message: String,
@@ -115,6 +131,18 @@ impl MermanError {
                 actual: details.actual,
                 max: details.max,
                 profile: details.profile.to_string(),
+            });
+        let diagnostic = error
+            .diagnostic_details()
+            .map(|details| MermanDiagnosticErrorDetails {
+                code: details.code.clone(),
+                span: details.span.map(|span| MermanDiagnosticSpan {
+                    start: span.start,
+                    end: span.end,
+                    kind: span.kind.to_string(),
+                }),
+                field: details.field.clone(),
+                diagram_type: details.diagram_type.clone(),
             });
         let icon_registry =
             error
@@ -136,6 +164,7 @@ impl MermanError {
             kind: error.kind().into(),
             capability_id: error.capability_id().map(str::to_string),
             resource,
+            diagnostic,
             icon_registry,
             cancellation,
             message: error.message().to_string(),
@@ -150,6 +179,7 @@ impl MermanError {
             kind: MermanErrorKind::Generic,
             capability_id: None,
             resource: None,
+            diagnostic: None,
             icon_registry: None,
             cancellation: None,
             message: message.into(),
@@ -356,8 +386,11 @@ pub struct MermanAsciiCapabilityEvidence {
 pub struct MermanAsciiCapability {
     pub diagram_type: String,
     pub display_name: String,
+    pub semantic_coverage: Option<String>,
+    pub primary_projection: String,
+    pub structured_text_fallback: bool,
+    /// Compatibility view derived from semantic coverage and the primary projection.
     pub support_level: String,
-    pub summary_fallback: bool,
     pub supported_semantics: Vec<String>,
     pub limits: Vec<String>,
     pub evidence: Vec<MermanAsciiCapabilityEvidence>,
@@ -644,7 +677,7 @@ impl Merman {
         Arc::new(Self)
     }
 
-    pub fn transport_api_version(&self) -> u32 {
+    pub fn binding_api_version_v5(&self) -> u32 {
         UNIFFI_BINDING_API_VERSION
     }
 
@@ -884,8 +917,10 @@ impl Merman {
                     .map(|capability| MermanAsciiCapability {
                         diagram_type: capability.diagram_type.to_string(),
                         display_name: capability.display_name.to_string(),
+                        semantic_coverage: capability.semantic_coverage.map(str::to_string),
+                        primary_projection: capability.primary_projection.to_string(),
+                        structured_text_fallback: capability.structured_text_fallback,
                         support_level: capability.support_level.to_string(),
-                        summary_fallback: capability.summary_fallback,
                         supported_semantics: capability
                             .supported_semantics
                             .iter()
@@ -1510,6 +1545,8 @@ uniffi::setup_scaffolding!();
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "ascii")]
+    use merman_ascii_test_contracts::ascii_resource_boundary_contract;
     #[cfg(feature = "analysis")]
     use merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION;
     use serde_json::Value;
@@ -1636,6 +1673,41 @@ mod tests {
         );
         assert_eq!(*kind, MermanErrorKind::MissingCapability);
         assert_eq!(capability_id.as_deref(), Some(expected_capability_id));
+    }
+
+    #[cfg(feature = "ascii")]
+    fn assert_ascii_resource_error(
+        error: MermanError,
+        expected_limit_id: &str,
+        expected_phase: &str,
+        expected_max: u64,
+    ) -> MermanResourceErrorDetails {
+        let MermanError::Binding {
+            code,
+            code_name,
+            capability_id,
+            resource,
+            ..
+        } = error;
+        assert_eq!(code, BindingStatus::ResourceLimitExceeded.code());
+        assert_eq!(
+            code_name.as_str(),
+            BindingStatus::ResourceLimitExceeded.code_name()
+        );
+        assert_eq!(capability_id, None);
+        let details = resource.expect("ASCII resource errors must expose typed details");
+        assert_eq!(details.limit_id, expected_limit_id);
+        assert_eq!(details.phase, expected_phase);
+        assert_eq!(details.max, expected_max);
+        assert_eq!(details.profile, "interactive");
+        assert!(details.actual > details.max);
+        details
+    }
+
+    #[cfg(feature = "ascii")]
+    fn uniffi_ascii_options(id: MermanResourceOverrideId, value: u64) -> String {
+        resource_options_json(None, vec![MermanResourceLimitOverride { id, value }])
+            .expect("generated UniFFI ASCII override must produce valid options JSON")
     }
 
     #[cfg(feature = "svg")]
@@ -2442,16 +2514,16 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(UNIFFI_BINDING_API_VERSION, 4);
-        assert_eq!(engine.transport_api_version(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 5);
+        assert_eq!(engine.binding_api_version_v5(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
-    fn api_v3_generated_bindings_are_rejected_before_record_decoding() {
+    fn api_v4_generated_bindings_are_rejected_before_record_decoding() {
         assert_ne!(
-            uniffi_merman_uniffi_checksum_method_merman_transport_api_version(),
-            UNIFFI_BINDING_API_V3_VERSION_METHOD_CHECKSUM
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5(),
+            UNIFFI_BINDING_API_V4_VERSION_METHOD_CHECKSUM
         );
         let generated_header = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -2459,20 +2531,21 @@ mod tests {
         ));
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_transport_api_version")
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v5")
         );
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_transport_api_version")
-        );
-        assert!(
-            !generated_header.contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version"),
-            "API 3 probe symbol must stay absent so stale bindings fail before record decoding"
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5")
         );
         assert!(
             !generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version"),
-            "API 3 checksum symbol must stay absent from generated bindings"
+                .contains("uniffi_merman_uniffi_fn_method_merman_transport_api_version"),
+            "API 4 probe symbol must stay absent so stale bindings fail before record decoding"
+        );
+        assert!(
+            !generated_header
+                .contains("uniffi_merman_uniffi_checksum_method_merman_transport_api_version"),
+            "API 4 checksum symbol must stay absent from generated bindings"
         );
     }
 
@@ -2658,6 +2731,48 @@ mod tests {
 
         assert!(text.contains("Hello"));
         assert!(text.contains("World"));
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn engine_applies_flowchart_node_label_wrap_width() {
+        let text = engine()
+            .render_ascii(
+                "flowchart TD\nA[\"Alpha Beta Gamma Delta\"]".to_string(),
+                Some(r#"{ "ascii": { "flowchartNodeLabelWrapWidth": 8 } }"#.to_string()),
+            )
+            .unwrap();
+
+        for expected in ["Alpha", "Beta", "Gamma", "Delta"] {
+            assert!(text.contains(expected), "missing {expected:?}:\n{text}");
+        }
+        assert!(!text.contains("Alpha Beta Gamma Delta"), "{text}");
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn uniffi_ascii_operation_preserves_a_typed_exact_resource_boundary() {
+        let id = MermanResourceOverrideId::MaxAsciiOutputBytes;
+        let case = ascii_resource_boundary_contract()
+            .transport_representatives
+            .uniffi_interactive;
+        assert_eq!(case.id, id.id());
+        let expected = case.exact;
+        let engine = engine();
+
+        let output = engine
+            .render_ascii(
+                case.source.clone(),
+                Some(uniffi_ascii_options(id, expected)),
+            )
+            .unwrap_or_else(|error| panic!("exact {} boundary failed: {error:?}", case.id));
+        assert!(!output.is_empty(), "{} produced no output", case.id);
+
+        let error = engine
+            .render_ascii(case.source, Some(uniffi_ascii_options(id, expected - 1)))
+            .expect_err("one-below UniFFI ASCII boundary must fail");
+        let details = assert_ascii_resource_error(error, &case.id, &case.phase, expected - 1);
+        assert_eq!(details.actual, expected);
     }
 
     #[cfg(feature = "svg")]
@@ -2883,21 +2998,34 @@ mod tests {
                 .iter()
                 .find(|capability| capability.diagram_type == "sequence")
                 .expect("expected UniFFI ASCII capabilities to include sequence");
-            assert_eq!(sequence.support_level, "full");
+            assert_eq!(sequence.semantic_coverage.as_deref(), Some("partial"));
+            assert_eq!(sequence.primary_projection, "diagrammatic");
+            assert_eq!(sequence.support_level, "partial");
 
             let gantt = ascii_capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == "gantt")
                 .expect("expected UniFFI ASCII capabilities to include gantt");
             assert_eq!(gantt.support_level, "summary");
-            assert!(!gantt.summary_fallback);
+            assert_eq!(gantt.semantic_coverage.as_deref(), Some("partial"));
+            assert_eq!(gantt.primary_projection, "structured_text");
+            assert!(!gantt.structured_text_fallback);
 
             let class = ascii_capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == "class")
                 .expect("expected UniFFI ASCII capabilities to include class");
             assert_eq!(class.support_level, "partial");
-            assert!(class.summary_fallback);
+            assert!(class.structured_text_fallback);
+
+            assert_eq!(ascii_capabilities.len(), 31);
+            let zenuml = ascii_capabilities
+                .iter()
+                .find(|capability| capability.diagram_type == "zenuml")
+                .expect("expected UniFFI ASCII capabilities to include ZenUML");
+            assert_eq!(zenuml.semantic_coverage, None);
+            assert_eq!(zenuml.primary_projection, "none");
+            assert_eq!(zenuml.support_level, "unsupported");
         } else {
             assert!(ascii_capabilities.is_empty());
         }
@@ -3086,6 +3214,61 @@ mod tests {
 
         let inherited = resource_options_json(None, Vec::new()).unwrap();
         assert_eq!(inherited, r#"{"version":2}"#);
+    }
+
+    #[test]
+    fn resource_override_wire_ordinals_remain_append_only() {
+        let variants = [
+            MermanResourceOverrideId::MaxSourceBytes,
+            MermanResourceOverrideId::MaxModelItems,
+            MermanResourceOverrideId::MaxModelTextBytes,
+            MermanResourceOverrideId::MaxModelNestingDepth,
+            MermanResourceOverrideId::MaxLayoutWorkUnits,
+            MermanResourceOverrideId::MaxSvgBytes,
+            MermanResourceOverrideId::MaxSvgElements,
+            MermanResourceOverrideId::MaxDocumentDiagrams,
+            MermanResourceOverrideId::MaxAsciiGridCells,
+            MermanResourceOverrideId::MaxRasterWidth,
+            MermanResourceOverrideId::MaxRasterHeight,
+            MermanResourceOverrideId::MaxRasterPixels,
+            MermanResourceOverrideId::MaxEmbeddedImageBytes,
+            MermanResourceOverrideId::MaxTotalEmbeddedImageBytes,
+            MermanResourceOverrideId::MaxEmbeddedImagePixels,
+            MermanResourceOverrideId::MaxTotalEmbeddedImagePixels,
+            MermanResourceOverrideId::MaxPdfFilterImagePixels,
+            MermanResourceOverrideId::MaxAsciiLayoutWorkUnits,
+            MermanResourceOverrideId::MaxAsciiDocumentCells,
+            MermanResourceOverrideId::MaxAsciiOutputBytes,
+            MermanResourceOverrideId::MaxAsciiGraphemeBytes,
+            MermanResourceOverrideId::MaxAsciiNestingDepth,
+        ];
+
+        for (ordinal, variant) in variants.into_iter().enumerate() {
+            assert_eq!(variant as usize, ordinal);
+        }
+
+        #[cfg(feature = "ascii")]
+        {
+            let mut transport_ids = [
+                MermanResourceOverrideId::MaxAsciiGridCells,
+                MermanResourceOverrideId::MaxAsciiLayoutWorkUnits,
+                MermanResourceOverrideId::MaxAsciiDocumentCells,
+                MermanResourceOverrideId::MaxAsciiOutputBytes,
+                MermanResourceOverrideId::MaxAsciiGraphemeBytes,
+                MermanResourceOverrideId::MaxAsciiNestingDepth,
+            ]
+            .map(MermanResourceOverrideId::id);
+            transport_ids.sort_unstable();
+
+            let shared_cases = ascii_resource_boundary_contract().binding_core_interactive;
+            let mut shared_ids = shared_cases
+                .iter()
+                .map(|case| case.id.as_str())
+                .collect::<Vec<_>>();
+            shared_ids.sort_unstable();
+
+            assert_eq!(transport_ids.as_slice(), shared_ids.as_slice());
+        }
     }
 
     #[test]
@@ -3739,6 +3922,35 @@ A@{ icon: "test:rocket", label: "A" }"#
         assert_eq!(
             resource.expect("resource details").cause,
             "arithmetic_overflow"
+        );
+    }
+
+    #[test]
+    fn uniffi_error_preserves_structured_diagnostic_details() {
+        use merman_bindings_core::{BindingDiagnosticErrorDetails, BindingDiagnosticSpan};
+
+        let error = MermanError::from_binding(
+            BindingError::new(BindingStatus::ParseError, "invalid edge").with_diagnostic_details(
+                BindingDiagnosticErrorDetails::new("flowchart.edge.invalid")
+                    .with_span(BindingDiagnosticSpan::new(3, 8, "exact"))
+                    .with_field("edge")
+                    .with_diagram_type("flowchart"),
+            ),
+        );
+        let MermanError::Binding { diagnostic, .. } = error;
+
+        assert_eq!(
+            diagnostic,
+            Some(MermanDiagnosticErrorDetails {
+                code: "flowchart.edge.invalid".to_string(),
+                span: Some(MermanDiagnosticSpan {
+                    start: 3,
+                    end: 8,
+                    kind: "exact".to_string(),
+                }),
+                field: Some("edge".to_string()),
+                diagram_type: Some("flowchart".to_string()),
+            })
         );
     }
 

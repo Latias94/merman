@@ -1,14 +1,14 @@
 use thiserror::Error;
 
+use crate::resource::AsciiResourceLimitExceeded;
+
 pub type Result<T> = std::result::Result<T, AsciiError>;
 
 #[non_exhaustive]
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum AsciiError {
     #[error(transparent)]
     Cancelled(#[from] merman_core::OperationCancelled),
-    #[error(transparent)]
-    ResourceLimitExceeded(#[from] merman_core::OperationResourceLimitExceeded),
     #[error("invalid ASCII render option `{field}`: {message}")]
     InvalidOption {
         field: &'static str,
@@ -21,4 +21,16 @@ pub enum AsciiError {
         diagram_type: &'static str,
         feature: &'static str,
     },
+    #[error("ASCII rendering could not allocate bounded storage during `{phase}`")]
+    AllocationFailed { phase: &'static str },
+    #[error(transparent)]
+    ResourceLimitExceeded(#[from] AsciiResourceLimitExceeded),
+    #[error(transparent)]
+    OperationResourceTerminal(merman_core::OperationLedgerError),
+}
+
+impl AsciiError {
+    pub(crate) const fn allocation_failed(phase: &'static str) -> Self {
+        Self::AllocationFailed { phase }
+    }
 }

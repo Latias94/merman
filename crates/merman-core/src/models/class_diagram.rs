@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClassDiagram {
@@ -22,6 +23,13 @@ pub struct ClassDiagram {
     pub interfaces: Vec<ClassInterface>,
     #[serde(default)]
     pub namespaces: IndexMap<String, Namespace>,
+    /// Parser-owned provenance for qualified relation endpoints synthesized as facade classes.
+    ///
+    /// Typed serde preserves this provenance so a model can round-trip without changing relation
+    /// routing. The Mermaid-compatible JSON projection removes it explicitly because it is
+    /// renderer metadata rather than an authored Mermaid field.
+    #[serde(rename = "namespaceFacadeAliases", default)]
+    pub namespace_facade_aliases: BTreeMap<String, String>,
     #[serde(rename = "styleClasses")]
     #[serde(default)]
     pub style_classes: IndexMap<String, StyleClass>,
@@ -96,10 +104,15 @@ pub struct ClassRelation {
     pub id: String,
     pub id1: String,
     pub id2: String,
-    #[serde(rename = "relationTitle1")]
-    pub relation_title_1: String,
-    #[serde(rename = "relationTitle2")]
-    pub relation_title_2: String,
+    /// Authored label attached to the first endpoint, or `None` when no label was authored.
+    ///
+    /// Mermaid's compatibility JSON projects `None` as `"none"`; typed consumers must use this
+    /// optional field rather than interpreting that boundary representation.
+    #[serde(default, rename = "relationTitle1")]
+    pub relation_title_1: Option<String>,
+    /// Authored label attached to the second endpoint, or `None` when no label was authored.
+    #[serde(default, rename = "relationTitle2")]
+    pub relation_title_2: Option<String>,
     pub title: String,
     pub relation: RelationShape,
 }

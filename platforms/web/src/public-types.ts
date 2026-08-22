@@ -302,6 +302,7 @@ export type CommonBindingOptions = BindingVersionOptions &
   CommonBindingFields;
 
 export type AsciiCharsetOption = "ascii" | "unicode";
+export type AsciiWidthProfileOption = "unicode" | "cjk";
 export type AsciiDirectionOption =
   | "lr"
   | "leftRight"
@@ -340,6 +341,8 @@ export interface AsciiThemeOptions {
 
 export interface AsciiRenderOptions {
   charset?: AsciiCharsetOption;
+  width_profile?: AsciiWidthProfileOption;
+  widthProfile?: AsciiWidthProfileOption;
   default_direction?: AsciiDirectionOption;
   defaultDirection?: AsciiDirectionOption;
   color_mode?: AsciiColorModeOption;
@@ -353,6 +356,8 @@ export interface AsciiRenderOptions {
   graphPaddingX?: number;
   graph_padding_y?: number;
   graphPaddingY?: number;
+  flowchart_node_label_wrap_width?: number;
+  flowchartNodeLabelWrapWidth?: number;
   sequence_participant_spacing?: number;
   sequenceParticipantSpacing?: number;
   sequence_message_spacing?: number;

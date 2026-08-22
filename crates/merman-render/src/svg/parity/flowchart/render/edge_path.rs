@@ -2,6 +2,8 @@
 
 use super::super::defs::write_flowchart_marker_id_xml;
 use super::super::*;
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     out: &mut String,
@@ -11,7 +13,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     origin_y: f64,
     scratch: &mut FlowchartEdgeDataPointsScratch,
     edge_cache: &mut FxHashMap<&str, FlowchartEdgePathCacheEntry>,
-) {
+) -> crate::Result<()> {
     let trace_enabled = ctx.trace_edge_id.is_some_and(|id| id == edge.id.as_str());
 
     let cached_geom = edge_cache
@@ -39,7 +41,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         g
     } else {
         let Some(g) = owned_geom.as_ref() else {
-            return;
+            return Ok(());
         };
         g
     };
@@ -107,9 +109,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         out,
         r#"<path d="{}" id="{}-{}" class=""#,
         d,
-        escape_xml_display(ctx.diagram_id),
+        ctx.diagram_id,
         escape_xml_display(&edge.id),
     );
+    ctx.checkpoint_emit()?;
     css::write_flowchart_edge_class_attr(out, edge);
     if hand_drawn {
         out.push_str(" transition");
@@ -171,6 +174,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     {
         cache_entry.geom.emitted_d_for_label = Some(emitted_d_for_label);
     }
+    Ok(())
 }
 
 fn flowchart_edge_is_animated(
@@ -247,8 +251,24 @@ mod tests {
             label_type: None,
             edge_type: Some(edge_type.to_string()),
             arrow: String::new(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: if edge_type.starts_with("arrow_open") {
+                FlowEdgeMarker::None
+            } else {
+                FlowEdgeMarker::Point
+            },
             is_user_defined_id: false,
             stroke: Some(stroke.to_string()),
+            stroke_kind: match stroke {
+                "dotted" => FlowEdgeStroke::Dotted,
+                "thick" => FlowEdgeStroke::Thick,
+                _ => FlowEdgeStroke::Normal,
+            },
+            visibility: if stroke == "invisible" {
+                FlowEdgeVisibility::Invisible
+            } else {
+                FlowEdgeVisibility::Visible
+            },
             interpolate: None,
             classes: Vec::new(),
             style: Vec::new(),

@@ -8,6 +8,8 @@ use std::io::Write;
 use std::os::fd::FromRawFd;
 use std::process::{Command, Output, Stdio};
 
+use merman_ascii_test_contracts::ascii_resource_boundary_contract;
+
 fn run_with_stdin(args: &[&str], input: &str) -> Output {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let mut child = Command::new(exe)
@@ -26,6 +28,21 @@ fn run_with_stdin(args: &[&str], input: &str) -> Output {
         .expect("write stdin");
 
     child.wait_with_output().expect("wait cli")
+}
+
+fn run_ascii_with_resource_limit(limit_id: &str, max: u64, source: &str) -> Output {
+    let override_arg = format!("{limit_id}={max}");
+    run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--resource-limit",
+            &override_arg,
+            "-",
+        ],
+        source,
+    )
 }
 
 #[cfg(unix)]
@@ -80,6 +97,31 @@ fn cli_renders_unicode_ascii_output_to_stdout() {
     assert!(stdout.contains("┌"));
     assert!(stdout.contains("Hello"));
     assert!(stdout.contains("►"));
+}
+
+#[test]
+fn cli_ascii_diagnostic_does_not_echo_source_or_terminal_controls() {
+    let source = "not-a-diagram\u{1b}]8;;https://example.invalid\u{7}link\u{202e}";
+
+    let output = run_with_stdin(&["render", "--format", "ascii", "-"], source);
+
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty(), "failure must not write a payload");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("No Mermaid diagram type detected"),
+        "unexpected stderr:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains(source),
+        "source leaked into stderr: {stderr:?}"
+    );
+    for control in ['\u{1b}', '\u{7}', '\u{202e}'] {
+        assert!(
+            !stderr.contains(control),
+            "raw control {control:?} leaked into stderr: {stderr:?}"
+        );
+    }
 }
 
 #[test]
@@ -338,6 +380,65 @@ fn cli_applies_the_selected_resource_profile_to_text_output() {
         &input,
     );
     assert!(trusted.status.success(), "stderr: {:?}", trusted.stderr);
+}
+
+#[test]
+fn cli_reports_a_representative_ascii_resource_boundary_with_stable_typed_context() {
+    let case = ascii_resource_boundary_contract()
+        .transport_representatives
+        .cli_trusted_native;
+    let exact = case.exact;
+
+    let exact_output = run_ascii_with_resource_limit(&case.id, exact, &case.source);
+    assert!(
+        exact_output.status.success(),
+        "exact {} boundary failed: {}",
+        case.id,
+        String::from_utf8_lossy(&exact_output.stderr),
+    );
+    assert!(
+        !exact_output.stdout.is_empty(),
+        "{} produced no output",
+        case.id
+    );
+
+    let below_output = run_ascii_with_resource_limit(&case.id, exact - 1, &case.source);
+    assert!(
+        !below_output.status.success(),
+        "one-below {} boundary unexpectedly succeeded",
+        case.id
+    );
+    let stderr = String::from_utf8(below_output.stderr).expect("stderr should be utf8");
+    let expected_prefix = format!(
+        "ASCII resource limit `{}` exceeded during `{}`: actual {}",
+        case.id, case.phase, exact
+    );
+    assert!(stderr.contains(&expected_prefix), "{stderr}");
+    assert!(
+        stderr.contains(&format!("maximum {} (profile `trusted-native`)", exact - 1)),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn cli_rejects_duplicate_generic_and_legacy_ascii_grid_overrides() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--resource-limit",
+            "max_ascii_grid_cells=100",
+            "--ascii-max-grid-cells",
+            "100",
+            "-",
+        ],
+        "flowchart LR\nA --> B",
+    );
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("specified by both"), "{stderr}");
 }
 
 #[cfg(feature = "svg")]
