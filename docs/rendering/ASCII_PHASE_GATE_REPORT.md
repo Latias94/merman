@@ -1,5 +1,11 @@
 # ASCII Phase 0-3 Gate and New-Family Admission Report
 
+## Current U25 receipt
+
+The exact-current-HEAD closeout evidence is maintained in
+[ASCII_U25_CLOSEOUT_RECEIPT.md](ASCII_U25_CLOSEOUT_RECEIPT.md). This phase report remains the
+historical Phase 0-3 admission artifact; it is not a second performance scorecard.
+
 Status: Phase 0-3 evidence complete; Phase 4 candidates not admitted
 Baseline: pinned Mermaid `11.16.1`
 Last updated: 2026-08-15

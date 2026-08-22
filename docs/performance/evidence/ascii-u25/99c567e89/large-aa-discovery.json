@@ -1,0 +1,1642 @@
+{
+  "calibration": null,
+  "comparison": {
+    "base_label": "SOURCE-99c567e89-A",
+    "head_label": "SOURCE-99c567e89-B"
+  },
+  "contract_errors": [],
+  "environment": {
+    "cpu": "Apple M4",
+    "machine": "arm64",
+    "os": "macOS-26.6.1-arm64-arm-64bit-Mach-O",
+    "python": "3.14.6",
+    "rust": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "fixtures": [
+    {
+      "base_benchmark": "ascii_end_to_end/flowchart_large",
+      "bytes": {
+        "base": {
+          "bytes": 6419,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/benches/fixtures/flowchart_large.mmd",
+          "sha256": "edba73dc4c0a12417e052ec3c98ada82b5d773c4346b5c735df5dfa354f5b161"
+        },
+        "head": {
+          "bytes": 6419,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/benches/fixtures/flowchart_large.mmd",
+          "sha256": "edba73dc4c0a12417e052ec3c98ada82b5d773c4346b5c735df5dfa354f5b161"
+        },
+        "status": "identical"
+      },
+      "capability": {
+        "base": "available",
+        "head": "available"
+      },
+      "coverage_class": "common",
+      "coverage_reasons": [],
+      "coverage_status": "comparable",
+      "family": "flowchart",
+      "head_benchmark": "ascii_end_to_end/flowchart_large",
+      "metadata": {
+        "base": {
+          "category": "ascii-large-closeout",
+          "family": "flowchart",
+          "features": [
+            "ascii",
+            "subgraphs",
+            "large-graph"
+          ],
+          "name": "flowchart_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "stress"
+          ],
+          "size": "large",
+          "source": "crates/merman/benches/fixtures/flowchart_large.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        },
+        "head": {
+          "category": "ascii-large-closeout",
+          "family": "flowchart",
+          "features": [
+            "ascii",
+            "subgraphs",
+            "large-graph"
+          ],
+          "name": "flowchart_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "stress"
+          ],
+          "size": "large",
+          "source": "crates/merman/benches/fixtures/flowchart_large.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        }
+      },
+      "name": "flowchart_large",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/flowchart_large",
+          "output_bytes": 66719,
+          "output_kind": "plain_ascii",
+          "output_sha256": "2640bece3a7df41c48b52e189845261d3ea1230ab78a7fa0a29786d48359ddae",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/flowchart_large",
+          "output_bytes": 66719,
+          "output_kind": "plain_ascii",
+          "output_sha256": "2640bece3a7df41c48b52e189845261d3ea1230ab78a7fa0a29786d48359ddae",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "post_sampling_verification": {
+        "base": {
+          "bytes": 6419,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/benches/fixtures/flowchart_large.mmd",
+          "sha256": "edba73dc4c0a12417e052ec3c98ada82b5d773c4346b5c735df5dfa354f5b161"
+        },
+        "head": {
+          "bytes": 6419,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/benches/fixtures/flowchart_large.mmd",
+          "sha256": "edba73dc4c0a12417e052ec3c98ada82b5d773c4346b5c735df5dfa354f5b161"
+        },
+        "status": "verified"
+      },
+      "selected": {
+        "base": true,
+        "head": true
+      }
+    },
+    {
+      "base_benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+      "bytes": {
+        "base": {
+          "bytes": 9970,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd",
+          "sha256": "388aa7ef29e064094a8560c8afd1b3750e065e07a895ac1373a804922199556f"
+        },
+        "head": {
+          "bytes": 9970,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd",
+          "sha256": "388aa7ef29e064094a8560c8afd1b3750e065e07a895ac1373a804922199556f"
+        },
+        "status": "identical"
+      },
+      "capability": {
+        "base": "available",
+        "head": "available"
+      },
+      "coverage_class": "common",
+      "coverage_reasons": [],
+      "coverage_status": "comparable",
+      "family": "sequence",
+      "head_benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+      "metadata": {
+        "base": {
+          "category": "ascii-large-closeout",
+          "family": "sequence",
+          "features": [
+            "ascii",
+            "participants",
+            "messages",
+            "control-frames",
+            "lifecycle"
+          ],
+          "name": "sequence_mermaid_api_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "upstream-docs"
+          ],
+          "size": "large",
+          "source": "fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        },
+        "head": {
+          "category": "ascii-large-closeout",
+          "family": "sequence",
+          "features": [
+            "ascii",
+            "participants",
+            "messages",
+            "control-frames",
+            "lifecycle"
+          ],
+          "name": "sequence_mermaid_api_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "upstream-docs"
+          ],
+          "size": "large",
+          "source": "fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        }
+      },
+      "name": "sequence_mermaid_api_large",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+          "output_bytes": 147450,
+          "output_kind": "plain_ascii",
+          "output_sha256": "8aae5385d292539f2d3052ea2d32f9b0cc0aa8e6d5ecb8a13cbca54816f9ffeb",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+          "output_bytes": 147450,
+          "output_kind": "plain_ascii",
+          "output_sha256": "8aae5385d292539f2d3052ea2d32f9b0cc0aa8e6d5ecb8a13cbca54816f9ffeb",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "post_sampling_verification": {
+        "base": {
+          "bytes": 9970,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd",
+          "sha256": "388aa7ef29e064094a8560c8afd1b3750e065e07a895ac1373a804922199556f"
+        },
+        "head": {
+          "bytes": 9970,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd",
+          "sha256": "388aa7ef29e064094a8560c8afd1b3750e065e07a895ac1373a804922199556f"
+        },
+        "status": "verified"
+      },
+      "selected": {
+        "base": true,
+        "head": true
+      }
+    },
+    {
+      "base_benchmark": "ascii_end_to_end/class_large",
+      "bytes": {
+        "base": {
+          "bytes": 4397,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/benches/fixtures/class_large.mmd",
+          "sha256": "9ac44fd954f52fd60b42a69cdb2740c493765cbfef18f17a1f5e52d81ce52726"
+        },
+        "head": {
+          "bytes": 4397,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/benches/fixtures/class_large.mmd",
+          "sha256": "9ac44fd954f52fd60b42a69cdb2740c493765cbfef18f17a1f5e52d81ce52726"
+        },
+        "status": "identical"
+      },
+      "capability": {
+        "base": "available",
+        "head": "available"
+      },
+      "coverage_class": "common",
+      "coverage_reasons": [],
+      "coverage_status": "comparable",
+      "family": "class",
+      "head_benchmark": "ascii_end_to_end/class_large",
+      "metadata": {
+        "base": {
+          "category": "ascii-large-closeout",
+          "family": "class",
+          "features": [
+            "ascii",
+            "namespaces",
+            "members",
+            "cross-namespace",
+            "parallel",
+            "self-loop"
+          ],
+          "name": "class_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "large"
+          ],
+          "size": "large",
+          "source": "crates/merman/benches/fixtures/class_large.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        },
+        "head": {
+          "category": "ascii-large-closeout",
+          "family": "class",
+          "features": [
+            "ascii",
+            "namespaces",
+            "members",
+            "cross-namespace",
+            "parallel",
+            "self-loop"
+          ],
+          "name": "class_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "large"
+          ],
+          "size": "large",
+          "source": "crates/merman/benches/fixtures/class_large.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        }
+      },
+      "name": "class_large",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/class_large",
+          "output_bytes": 16597,
+          "output_kind": "plain_ascii",
+          "output_sha256": "3e87c09709ca99dd5efaaf33147e8a26ff85e916643b3cfd020ce3e7034672a1",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/class_large",
+          "output_bytes": 16597,
+          "output_kind": "plain_ascii",
+          "output_sha256": "3e87c09709ca99dd5efaaf33147e8a26ff85e916643b3cfd020ce3e7034672a1",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "post_sampling_verification": {
+        "base": {
+          "bytes": 4397,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/benches/fixtures/class_large.mmd",
+          "sha256": "9ac44fd954f52fd60b42a69cdb2740c493765cbfef18f17a1f5e52d81ce52726"
+        },
+        "head": {
+          "bytes": 4397,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/benches/fixtures/class_large.mmd",
+          "sha256": "9ac44fd954f52fd60b42a69cdb2740c493765cbfef18f17a1f5e52d81ce52726"
+        },
+        "status": "verified"
+      },
+      "selected": {
+        "base": true,
+        "head": true
+      }
+    },
+    {
+      "base_benchmark": "ascii_end_to_end/er_large",
+      "bytes": {
+        "base": {
+          "bytes": 3978,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/benches/fixtures/er_large.mmd",
+          "sha256": "97d2a6f7ef56e5ab05320968cf36e8b95f7d83d91056a6b1a391c1957c920663"
+        },
+        "head": {
+          "bytes": 3978,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/benches/fixtures/er_large.mmd",
+          "sha256": "97d2a6f7ef56e5ab05320968cf36e8b95f7d83d91056a6b1a391c1957c920663"
+        },
+        "status": "identical"
+      },
+      "capability": {
+        "base": "available",
+        "head": "available"
+      },
+      "coverage_class": "common",
+      "coverage_reasons": [],
+      "coverage_status": "comparable",
+      "family": "er",
+      "head_benchmark": "ascii_end_to_end/er_large",
+      "metadata": {
+        "base": {
+          "category": "ascii-large-closeout",
+          "family": "er",
+          "features": [
+            "ascii",
+            "entities-25",
+            "relationships-34",
+            "attributes-105",
+            "keys",
+            "self-loop"
+          ],
+          "name": "er_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "large"
+          ],
+          "size": "large",
+          "source": "crates/merman/benches/fixtures/er_large.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        },
+        "head": {
+          "category": "ascii-large-closeout",
+          "family": "er",
+          "features": [
+            "ascii",
+            "entities-25",
+            "relationships-34",
+            "attributes-105",
+            "keys",
+            "self-loop"
+          ],
+          "name": "er_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "large"
+          ],
+          "size": "large",
+          "source": "crates/merman/benches/fixtures/er_large.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        }
+      },
+      "name": "er_large",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/er_large",
+          "output_bytes": 21802,
+          "output_kind": "plain_ascii",
+          "output_sha256": "25ffc3983eae86ed61b966958208dde07cd646b78dd61272c557e3a7afc67b83",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/er_large",
+          "output_bytes": 21802,
+          "output_kind": "plain_ascii",
+          "output_sha256": "25ffc3983eae86ed61b966958208dde07cd646b78dd61272c557e3a7afc67b83",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "post_sampling_verification": {
+        "base": {
+          "bytes": 3978,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/benches/fixtures/er_large.mmd",
+          "sha256": "97d2a6f7ef56e5ab05320968cf36e8b95f7d83d91056a6b1a391c1957c920663"
+        },
+        "head": {
+          "bytes": 3978,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/benches/fixtures/er_large.mmd",
+          "sha256": "97d2a6f7ef56e5ab05320968cf36e8b95f7d83d91056a6b1a391c1957c920663"
+        },
+        "status": "verified"
+      },
+      "selected": {
+        "base": true,
+        "head": true
+      }
+    },
+    {
+      "base_benchmark": "ascii_end_to_end/xychart_large",
+      "bytes": {
+        "base": {
+          "bytes": 953,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/benches/fixtures/xychart_large.mmd",
+          "sha256": "8a80bc96f274836ad5ddd9d00422e0f7599dbf175cf7a7ca4142159a6d3e5fd7"
+        },
+        "head": {
+          "bytes": 953,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/benches/fixtures/xychart_large.mmd",
+          "sha256": "8a80bc96f274836ad5ddd9d00422e0f7599dbf175cf7a7ca4142159a6d3e5fd7"
+        },
+        "status": "identical"
+      },
+      "capability": {
+        "base": "available",
+        "head": "available"
+      },
+      "coverage_class": "common",
+      "coverage_reasons": [],
+      "coverage_status": "comparable",
+      "family": "xychart",
+      "head_benchmark": "ascii_end_to_end/xychart_large",
+      "metadata": {
+        "base": {
+          "category": "ascii-large-closeout",
+          "family": "xychart",
+          "features": [
+            "ascii",
+            "horizontal",
+            "categories-24",
+            "series-6",
+            "samples-144",
+            "grouped-bars",
+            "multiple-lines"
+          ],
+          "name": "xychart_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "large"
+          ],
+          "size": "large",
+          "source": "crates/merman/benches/fixtures/xychart_large.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        },
+        "head": {
+          "category": "ascii-large-closeout",
+          "family": "xychart",
+          "features": [
+            "ascii",
+            "horizontal",
+            "categories-24",
+            "series-6",
+            "samples-144",
+            "grouped-bars",
+            "multiple-lines"
+          ],
+          "name": "xychart_large",
+          "quality": [
+            "deterministic",
+            "common-family",
+            "large"
+          ],
+          "size": "large",
+          "source": "crates/merman/benches/fixtures/xychart_large.mmd",
+          "suites": [
+            "large-closeout"
+          ]
+        }
+      },
+      "name": "xychart_large",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/xychart_large",
+          "output_bytes": 11649,
+          "output_kind": "plain_ascii",
+          "output_sha256": "3637865ae01de610f5316650e7096762387dd21028406185d72af1426fed27ca",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/xychart_large",
+          "output_bytes": 11649,
+          "output_kind": "plain_ascii",
+          "output_sha256": "3637865ae01de610f5316650e7096762387dd21028406185d72af1426fed27ca",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "post_sampling_verification": {
+        "base": {
+          "bytes": 953,
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/benches/fixtures/xychart_large.mmd",
+          "sha256": "8a80bc96f274836ad5ddd9d00422e0f7599dbf175cf7a7ca4142159a6d3e5fd7"
+        },
+        "head": {
+          "bytes": 953,
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/benches/fixtures/xychart_large.mmd",
+          "sha256": "8a80bc96f274836ad5ddd9d00422e0f7599dbf175cf7a7ca4142159a6d3e5fd7"
+        },
+        "status": "verified"
+      },
+      "selected": {
+        "base": true,
+        "head": true
+      }
+    }
+  ],
+  "generated_at": "2026-08-22T11:02:31.747978+08:00",
+  "harness": {
+    "bytes": 166043,
+    "path": "/private/tmp/merman-u25-base.mAjV6u/head/tools/bench/compare_self.py",
+    "schema": "compare-self-v2",
+    "sha256": "fad3f112d08071a5490076730e6ebe1a6d510f7a5aa9e2ac54ab0200303245b1"
+  },
+  "method": {
+    "absolute_threshold_ns": 50000.0,
+    "absolute_threshold_us": 50.0,
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 0,
+    "calibration_pairs": 8,
+    "confidence_contract": {
+      "component_confidence_level": 0.995,
+      "components": "two metrics per comparable benchmark",
+      "family_size": 10,
+      "multiplicity_adjustment": "bonferroni",
+      "simultaneous_confidence_level": 0.95
+    },
+    "confidence_level": 0.95,
+    "diagnostic_pairs": 2,
+    "discovery_only": true,
+    "discovery_reuse": {
+      "enabled": false,
+      "source_generated_at": null,
+      "source_harness": null,
+      "source_report": null,
+      "status": "disabled"
+    },
+    "evidence_mode": "confirmation",
+    "evidence_quality": "discovery_only",
+    "interval_contract": {
+      "calibration": "deterministic paired bootstrap two-sided equivalence intervals",
+      "confirmation": "deterministic paired bootstrap Bonferroni simultaneous one-sided bounds"
+    },
+    "max_pairs": 64,
+    "measurement_seconds": 3,
+    "pair_count": 0,
+    "preset": "long",
+    "relative_threshold_log": 0.09531017980432487,
+    "relative_threshold_percent": 10.0,
+    "required_pairs": 8,
+    "sample_size": 30,
+    "scheduled_pairs": 0,
+    "shared_target_freeze": {
+      "build_order": [
+        "base",
+        "head"
+      ],
+      "cargo_build_jobs": "1",
+      "context": "20260822T030231Z-75390-80877728bb61",
+      "enabled": true,
+      "profile_reset": "cargo-clean-bench-profile-before-each-side",
+      "target_dir": "/Users/frankorz/codes/rust/merman/target"
+    },
+    "start_side": "base",
+    "warm_up_seconds": 2
+  },
+  "raw_rounds": [],
+  "recipes": {
+    "base": {
+      "bench": "ascii_pipeline",
+      "cargo_profile": "bench",
+      "checkout": "/private/tmp/merman-u25-base.mAjV6u/head",
+      "corpus": "tools/bench/ascii_corpus.json",
+      "default_features": false,
+      "features": [
+        "ascii"
+      ],
+      "label": "base",
+      "locked": true,
+      "logical_operations": 1,
+      "logical_operations_scope": "selected_group_uniform_override",
+      "package": "merman",
+      "target": null,
+      "target_dir": "/Users/frankorz/codes/rust/merman/target",
+      "toolchain": null
+    },
+    "head": {
+      "bench": "ascii_pipeline",
+      "cargo_profile": "bench",
+      "checkout": "/private/tmp/merman-u25-current-aa.Ka8jTq",
+      "corpus": "tools/bench/ascii_corpus.json",
+      "default_features": false,
+      "features": [
+        "ascii"
+      ],
+      "label": "head",
+      "locked": true,
+      "logical_operations": 1,
+      "logical_operations_scope": "selected_group_uniform_override",
+      "package": "merman",
+      "target": null,
+      "target_dir": "/Users/frankorz/codes/rust/merman/target",
+      "toolchain": null
+    }
+  },
+  "rows": [
+    {
+      "base_benchmark": "ascii_end_to_end/flowchart_large",
+      "base_ns": null,
+      "benchmark": "ascii_end_to_end/flowchart_large",
+      "bootstrap": {
+        "confidence_family_size": 10,
+        "confidence_level": 0.95,
+        "interval": "one_sided",
+        "multiplicity_adjustment": "bonferroni",
+        "resamples": 10000,
+        "seed": 17575846730597948327
+      },
+      "bounds": null,
+      "coverage_status": "comparable",
+      "evidence_mode": "diagnostic",
+      "family": "flowchart",
+      "fixture": "flowchart_large",
+      "head_benchmark": "ascii_end_to_end/flowchart_large",
+      "head_ns": null,
+      "improvement_outcome": null,
+      "outcome": "diagnostic_advisory",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/flowchart_large",
+          "output_bytes": 66719,
+          "output_kind": "plain_ascii",
+          "output_sha256": "2640bece3a7df41c48b52e189845261d3ea1230ab78a7fa0a29786d48359ddae",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/flowchart_large",
+          "output_bytes": 66719,
+          "output_kind": "plain_ascii",
+          "output_sha256": "2640bece3a7df41c48b52e189845261d3ea1230ab78a7fa0a29786d48359ddae",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "pair_count": 0,
+      "raw_pairs": [],
+      "reason": "discovery only",
+      "required_pairs": 8
+    },
+    {
+      "base_benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+      "base_ns": null,
+      "benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+      "bootstrap": {
+        "confidence_family_size": 10,
+        "confidence_level": 0.95,
+        "interval": "one_sided",
+        "multiplicity_adjustment": "bonferroni",
+        "resamples": 10000,
+        "seed": 7043522281590204970
+      },
+      "bounds": null,
+      "coverage_status": "comparable",
+      "evidence_mode": "diagnostic",
+      "family": "sequence",
+      "fixture": "sequence_mermaid_api_large",
+      "head_benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+      "head_ns": null,
+      "improvement_outcome": null,
+      "outcome": "diagnostic_advisory",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+          "output_bytes": 147450,
+          "output_kind": "plain_ascii",
+          "output_sha256": "8aae5385d292539f2d3052ea2d32f9b0cc0aa8e6d5ecb8a13cbca54816f9ffeb",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+          "output_bytes": 147450,
+          "output_kind": "plain_ascii",
+          "output_sha256": "8aae5385d292539f2d3052ea2d32f9b0cc0aa8e6d5ecb8a13cbca54816f9ffeb",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "pair_count": 0,
+      "raw_pairs": [],
+      "reason": "discovery only",
+      "required_pairs": 8
+    },
+    {
+      "base_benchmark": "ascii_end_to_end/class_large",
+      "base_ns": null,
+      "benchmark": "ascii_end_to_end/class_large",
+      "bootstrap": {
+        "confidence_family_size": 10,
+        "confidence_level": 0.95,
+        "interval": "one_sided",
+        "multiplicity_adjustment": "bonferroni",
+        "resamples": 10000,
+        "seed": 4873774297209323166
+      },
+      "bounds": null,
+      "coverage_status": "comparable",
+      "evidence_mode": "diagnostic",
+      "family": "class",
+      "fixture": "class_large",
+      "head_benchmark": "ascii_end_to_end/class_large",
+      "head_ns": null,
+      "improvement_outcome": null,
+      "outcome": "diagnostic_advisory",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/class_large",
+          "output_bytes": 16597,
+          "output_kind": "plain_ascii",
+          "output_sha256": "3e87c09709ca99dd5efaaf33147e8a26ff85e916643b3cfd020ce3e7034672a1",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/class_large",
+          "output_bytes": 16597,
+          "output_kind": "plain_ascii",
+          "output_sha256": "3e87c09709ca99dd5efaaf33147e8a26ff85e916643b3cfd020ce3e7034672a1",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "pair_count": 0,
+      "raw_pairs": [],
+      "reason": "discovery only",
+      "required_pairs": 8
+    },
+    {
+      "base_benchmark": "ascii_end_to_end/er_large",
+      "base_ns": null,
+      "benchmark": "ascii_end_to_end/er_large",
+      "bootstrap": {
+        "confidence_family_size": 10,
+        "confidence_level": 0.95,
+        "interval": "one_sided",
+        "multiplicity_adjustment": "bonferroni",
+        "resamples": 10000,
+        "seed": 7193619227567420622
+      },
+      "bounds": null,
+      "coverage_status": "comparable",
+      "evidence_mode": "diagnostic",
+      "family": "er",
+      "fixture": "er_large",
+      "head_benchmark": "ascii_end_to_end/er_large",
+      "head_ns": null,
+      "improvement_outcome": null,
+      "outcome": "diagnostic_advisory",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/er_large",
+          "output_bytes": 21802,
+          "output_kind": "plain_ascii",
+          "output_sha256": "25ffc3983eae86ed61b966958208dde07cd646b78dd61272c557e3a7afc67b83",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/er_large",
+          "output_bytes": 21802,
+          "output_kind": "plain_ascii",
+          "output_sha256": "25ffc3983eae86ed61b966958208dde07cd646b78dd61272c557e3a7afc67b83",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "pair_count": 0,
+      "raw_pairs": [],
+      "reason": "discovery only",
+      "required_pairs": 8
+    },
+    {
+      "base_benchmark": "ascii_end_to_end/xychart_large",
+      "base_ns": null,
+      "benchmark": "ascii_end_to_end/xychart_large",
+      "bootstrap": {
+        "confidence_family_size": 10,
+        "confidence_level": 0.95,
+        "interval": "one_sided",
+        "multiplicity_adjustment": "bonferroni",
+        "resamples": 10000,
+        "seed": 2781036971301185409
+      },
+      "bounds": null,
+      "coverage_status": "comparable",
+      "evidence_mode": "diagnostic",
+      "family": "xychart",
+      "fixture": "xychart_large",
+      "head_benchmark": "ascii_end_to_end/xychart_large",
+      "head_ns": null,
+      "improvement_outcome": null,
+      "outcome": "diagnostic_advisory",
+      "output_identity": {
+        "base": {
+          "benchmark": "ascii_end_to_end/xychart_large",
+          "output_bytes": 11649,
+          "output_kind": "plain_ascii",
+          "output_sha256": "3637865ae01de610f5316650e7096762387dd21028406185d72af1426fed27ca",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "head": {
+          "benchmark": "ascii_end_to_end/xychart_large",
+          "output_bytes": 11649,
+          "output_kind": "plain_ascii",
+          "output_sha256": "3637865ae01de610f5316650e7096762387dd21028406185d72af1426fed27ca",
+          "schema_version": 1,
+          "svg_elements": null
+        },
+        "status": "matched"
+      },
+      "pair_count": 0,
+      "raw_pairs": [],
+      "reason": "discovery only",
+      "required_pairs": 8
+    }
+  ],
+  "runners": {
+    "base": {
+      "bench_source": {
+        "bytes": 5302,
+        "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/benches/ascii_pipeline.rs",
+        "sha256": "2dc6c25333fbfa0e4b9e0a79b2c2cecce7ffdf499ef2b4720e5723c59f766306"
+      },
+      "bench_target": {
+        "bytes": 191,
+        "metadata": {
+          "crate_types": [
+            "bin"
+          ],
+          "doc": false,
+          "doctest": false,
+          "edition": "2024",
+          "kind": [
+            "bench"
+          ],
+          "name": "ascii_pipeline",
+          "required-features": [
+            "ascii"
+          ],
+          "src_path": "benches/ascii_pipeline.rs",
+          "test": false
+        },
+        "name": "ascii_pipeline",
+        "sha256": "fd5b39bd4f6a70a84dd33a61b83a3be12544e1ae259937c203ae28b4f7361743"
+      },
+      "build_environment": {
+        "CARGO_BUILD_JOBS": "1",
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_PROFILE_BENCH_CODEGEN_UNITS": null,
+        "CARGO_PROFILE_BENCH_LTO": null,
+        "CARGO_PROFILE_BENCH_OPT_LEVEL": null,
+        "RUSTFLAGS": null
+      },
+      "corpus": {
+        "bytes": 4788,
+        "path": "/private/tmp/merman-u25-base.mAjV6u/head/tools/bench/ascii_corpus.json",
+        "preflight_contract": {
+          "bytes": 581,
+          "id": "native-ascii-criterion-preflight-v1",
+          "path": "/private/tmp/merman-u25-base.mAjV6u/head/docs/performance/contracts/native-ascii-criterion-preflight-v1.json",
+          "schema_version": 1,
+          "sha256": "ff57904372523af15f318c3509dc537ffa42026f6e6d14a43b4b2d2513982916"
+        },
+        "preflight_receipts_required": true,
+        "schema_version": 2,
+        "sha256": "50fe9fd8744e98a1f9caadf71ee22fe4ba7857862cb9ff193515f69ab44218a3"
+      },
+      "discovery": {
+        "bench_count": 10,
+        "benches": [
+          "ascii_end_to_end/class_large",
+          "ascii_end_to_end/class_medium",
+          "ascii_end_to_end/er_large",
+          "ascii_end_to_end/er_medium",
+          "ascii_end_to_end/flowchart_large",
+          "ascii_end_to_end/flowchart_medium",
+          "ascii_end_to_end/sequence_medium",
+          "ascii_end_to_end/sequence_mermaid_api_large",
+          "ascii_end_to_end/xychart_large",
+          "ascii_end_to_end/xychart_medium"
+        ],
+        "output_sha256": "3099910a2f13401b8770788d63be7e22a89dd6fe063fb15589b67904f7145073",
+        "preflight_receipts": {
+          "ascii_end_to_end/class_large": {
+            "benchmark": "ascii_end_to_end/class_large",
+            "output_bytes": 16597,
+            "output_kind": "plain_ascii",
+            "output_sha256": "3e87c09709ca99dd5efaaf33147e8a26ff85e916643b3cfd020ce3e7034672a1",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/class_medium": {
+            "benchmark": "ascii_end_to_end/class_medium",
+            "output_bytes": 2695,
+            "output_kind": "plain_ascii",
+            "output_sha256": "4313de5080beb30197158cee630f0d5f3bcf94a9e5dd6ae5bded7781100f7fd7",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/er_large": {
+            "benchmark": "ascii_end_to_end/er_large",
+            "output_bytes": 21802,
+            "output_kind": "plain_ascii",
+            "output_sha256": "25ffc3983eae86ed61b966958208dde07cd646b78dd61272c557e3a7afc67b83",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/er_medium": {
+            "benchmark": "ascii_end_to_end/er_medium",
+            "output_bytes": 2755,
+            "output_kind": "plain_ascii",
+            "output_sha256": "54bf9acd58c1fecd8c9cc5d29e1145642f25c98095b2ef44e477dc02f6ddb6ee",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/flowchart_large": {
+            "benchmark": "ascii_end_to_end/flowchart_large",
+            "output_bytes": 66719,
+            "output_kind": "plain_ascii",
+            "output_sha256": "2640bece3a7df41c48b52e189845261d3ea1230ab78a7fa0a29786d48359ddae",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/flowchart_medium": {
+            "benchmark": "ascii_end_to_end/flowchart_medium",
+            "output_bytes": 12558,
+            "output_kind": "plain_ascii",
+            "output_sha256": "74e221ad525bdf28398dc086c8de6bba0b8f7fe94076cd70b411656751873a23",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/sequence_medium": {
+            "benchmark": "ascii_end_to_end/sequence_medium",
+            "output_bytes": 3721,
+            "output_kind": "plain_ascii",
+            "output_sha256": "4ac5a151d177b47e44b06b038d7496385dd066062b4e1032f54d8ce77ae488f0",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/sequence_mermaid_api_large": {
+            "benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+            "output_bytes": 147450,
+            "output_kind": "plain_ascii",
+            "output_sha256": "8aae5385d292539f2d3052ea2d32f9b0cc0aa8e6d5ecb8a13cbca54816f9ffeb",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/xychart_large": {
+            "benchmark": "ascii_end_to_end/xychart_large",
+            "output_bytes": 11649,
+            "output_kind": "plain_ascii",
+            "output_sha256": "3637865ae01de610f5316650e7096762387dd21028406185d72af1426fed27ca",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/xychart_medium": {
+            "benchmark": "ascii_end_to_end/xychart_medium",
+            "output_bytes": 2261,
+            "output_kind": "plain_ascii",
+            "output_sha256": "1e03a4781ca21afb83c95a492266a10bc9fa8d387cc5dbf5ea74dac1a5c49b3b",
+            "schema_version": 1,
+            "svg_elements": null
+          }
+        },
+        "skipped": {}
+      },
+      "discovery_command": [
+        "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/base-99c567e89b922401adaad7ad521783eead895834-609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92/ascii_pipeline-8eb91285c49eb6d2",
+        "--bench",
+        "--color",
+        "never",
+        "--list",
+        "--format",
+        "terse"
+      ],
+      "executable": {
+        "bytes": 13329968,
+        "executable": true,
+        "path": "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/base-99c567e89b922401adaad7ad521783eead895834-609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92/ascii_pipeline-8eb91285c49eb6d2",
+        "role": "frozen",
+        "sha256": "609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92"
+      },
+      "frozen_executable": {
+        "bytes": 13329968,
+        "executable": true,
+        "mode": "0555",
+        "path": "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/base-99c567e89b922401adaad7ad521783eead895834-609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92/ascii_pipeline-8eb91285c49eb6d2",
+        "sha256": "609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92"
+      },
+      "git": {
+        "dirty": false,
+        "dirty_disposition": "clean",
+        "dirty_entries": [],
+        "dirty_entries_truncated": false,
+        "revision": "99c567e89b922401adaad7ad521783eead895834",
+        "tree": "26ed5a1d956649d381ce3b34fa57d2566d96696c"
+      },
+      "lockfile": {
+        "bytes": 141110,
+        "path": "/private/tmp/merman-u25-base.mAjV6u/head/Cargo.lock",
+        "sha256": "b3e19ec38bcdd8852b7411c8add8d9e04ff8f0baaf21514971b7fb0293592695"
+      },
+      "manifest": {
+        "bytes": 5134,
+        "path": "/private/tmp/merman-u25-base.mAjV6u/head/crates/merman/Cargo.toml",
+        "sha256": "c3808aed4e5b1dc34b0dbafba090069089bebb66068984c9c7606b543a34ce0e"
+      },
+      "post_sampling_verification": {
+        "executable": {
+          "mode": "0555",
+          "path": "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/base-99c567e89b922401adaad7ad521783eead895834-609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92/ascii_pipeline-8eb91285c49eb6d2",
+          "sha256": "609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92",
+          "status": "verified"
+        },
+        "executable_sha256": "609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92",
+        "files": {
+          "bench_source": "2dc6c25333fbfa0e4b9e0a79b2c2cecce7ffdf499ef2b4720e5723c59f766306",
+          "bench_target": "fd5b39bd4f6a70a84dd33a61b83a3be12544e1ae259937c203ae28b4f7361743",
+          "corpus": "50fe9fd8744e98a1f9caadf71ee22fe4ba7857862cb9ff193515f69ab44218a3",
+          "lockfile": "b3e19ec38bcdd8852b7411c8add8d9e04ff8f0baaf21514971b7fb0293592695",
+          "manifest": "c3808aed4e5b1dc34b0dbafba090069089bebb66068984c9c7606b543a34ce0e",
+          "preflight_contract": "ff57904372523af15f318c3509dc537ffa42026f6e6d14a43b4b2d2513982916",
+          "workspace_manifest": "6685cbfa05d01aa09a9448c4fbd8dc8663ff518267452291ca10470b93843bb6"
+        },
+        "git": {
+          "dirty": false,
+          "dirty_disposition": "clean",
+          "dirty_entries": [],
+          "dirty_entries_truncated": false,
+          "revision": "99c567e89b922401adaad7ad521783eead895834",
+          "tree": "26ed5a1d956649d381ce3b34fa57d2566d96696c"
+        },
+        "status": "verified"
+      },
+      "prebuild_command": [
+        "cargo",
+        "bench",
+        "--locked",
+        "-p",
+        "merman",
+        "--no-default-features",
+        "--features",
+        "ascii",
+        "--bench",
+        "ascii_pipeline",
+        "--target-dir",
+        "/Users/frankorz/codes/rust/merman/target",
+        "--no-run",
+        "--message-format=json-render-diagnostics"
+      ],
+      "prebuild_stderr_tail": "Compiling proc-macro2 v1.0.107\n   Compiling quote v1.0.47\n   Compiling unicode-ident v1.0.24\n   Compiling syn v2.0.119\n   Compiling syn v3.0.3\n   Compiling synstructure v0.13.2\n   Compiling stable_deref_trait v1.2.1\n   Compiling zmij v1.0.23\n   Compiling zerofrom-derive v0.1.7\n   Compiling serde_core v1.0.229\n   Compiling siphasher v1.0.3\n   Compiling phf_shared v0.13.1\n   Compiling zerofrom v0.1.8\n   Compiling yoke-derive v0.8.2\n   Compiling cfg-if v1.0.4\n   Compiling yoke v0.8.3\n   Compiling fastrand v2.5.0\n   Compiling phf_generator v0.13.1\n   Compiling zerovec-derive v0.11.3\n   Compiling zerovec v0.11.6\n   Compiling displaydoc v0.2.7\n   Compiling allocator-api2 v0.2.21\n   Compiling foldhash v0.2.0\n   Compiling smallvec v1.15.2\n   Compiling memchr v2.8.3\n   Compiling serde v1.0.229\n   Compiling equivalent v1.0.2\n   Compiling itoa v1.0.18\n   Compiling hashbrown v0.17.1\n   Compiling serde_derive v1.0.229\n   Compiling serde_json v1.0.151\n   Compiling autocfg v1.5.1\n   Compiling num-traits v0.2.19\n   Compiling indexmap v2.14.0\n   Compiling tinystr v0.8.3\n   Compiling phf_codegen v0.13.1\n   Compiling litemap v0.8.2\n   Compiling writeable v0.6.3\n   Compiling icu_locale_core v2.2.0\n   Compiling zerotrie v0.2.4\n   Compiling potential_utf v0.1.5\n   Compiling icu_properties_data v2.2.0\n   Compiling utf8_iter v1.0.4\n   Compiling icu_normalizer_data v2.2.0\n   Compiling icu_collections v2.2.0\n   Compiling icu_provider v2.2.0\n   Compiling phf_macros v0.13.1\n   Compiling version_check v0.9.5\n   Compiling generic-array v0.14.7\n   Compiling phf v0.13.1\n   Compiling encoding_rs v0.8.35\n   Compiling libc v0.2.189\n   Compiling rustc-hash v2.1.3\n   Compiling dtoa v1.0.11\n   Compiling thiserror v2.0.19\n   Compiling crossbeam-utils v0.8.22\n   Compiling dtoa-short v0.3.5\n   Compiling icu_normalizer v2.2.0\n   Compiling icu_properties v2.2.0\n   Compiling selectors v0.37.0\n   Compiling thiserror-impl v2.0.19\n   Compiling derive_more-impl v2.1.1\n   Compiling cssparser-macros v0.6.1\n   Compiling unicode-width v0.2.2\n   Compiling typenum v1.20.1\n   Compiling zerocopy v0.8.55\n   Compiling crossbeam-epoch v0.9.20\n   Compiling anstyle v1.0.14\n   Compiling bitflags v2.13.1\n   Compiling arraydeque v0.5.1\n   Compiling granit-parser v1.0.0\n   Compiling cssparser v0.36.0\n   Compiling derive_more v2.1.1\n   Compiling htmlize v1.1.0\n   Compiling idna_adapter v1.2.2\n   Compiling servo_arc v0.4.3\n   Compiling zerocopy-derive v0.8.55\n   Compiling lalrpop-util v0.23.1\n   Compiling ucd-trie v0.1.7\n   Compiling log v0.4.33\n   Compiling unicode-general-category v1.1.0\n   Compiling find-msvc-tools v0.1.9\n   Compiling crossbeam-deque v0.8.7\n   Compiling shlex v2.0.1\n   Compiling percent-encoding v2.3.2\n   Compiling new_debug_unreachable v1.0.6\n   Compiling precomputed-hash v0.1.1\n   Compiling form_urlencoded v1.2.2\n   Compiling cc v1.4.0\n   Compiling json5 v1.3.1\n   Compiling idna v1.1.0\n   Compiling simd-adler32 v0.3.10\n   Compiling either v1.17.0\n   Compiling pastey v0.1.1\n   Compiling mime v0.3.17\n   Compiling rayon-core v1.13.0\n   Compiling crc32fast v1.5.0\n   Compiling lol_html v3.0.1\n   Compiling url v2.5.8\n   Compiling half v2.7.1\n   Compiling alloca v0.4.0\n   Compiling crypto-common v0.1.7\n   Compiling block-buffer v0.10.4\n   Compiling dugong-graphlib v0.8.0-alpha.6 (/private/tmp/merman-u25-base.mAjV6u/head/crates/dugong-graphlib)\n   Compiling euclid v0.22.14\n   Compiling plotters-backend v0.3.7\n   Compiling ciborium-io v0.2.2\n   Compiling adler2 v2.0.1\n   Compiling regex-syntax v0.8.11\n   Compiling ryu-js v1.0.3\n   Compiling clap_lex v1.1.0\n   Compiling unicode-segmentation v1.13.3\n   Compiling merman-core v0.8.0-alpha.6 (/private/tmp/merman-u25-base.mAjV6u/head/crates/merman-core)\n   Compiling clap_builder v4.6.5\n   Compiling regex-automata v0.4.16\n   Compiling miniz_oxide v0.8.9\n   Compiling ciborium-ll v0.2.2\n   Compiling plotters-svg v0.3.7\n   Compiling dugong v0.8.0-alpha.6 (/private/tmp/merman-u25-base.mAjV6u/head/crates/dugong)\n   Compiling digest v0.10.7\n   Compiling itertools v0.13.0\n   Compiling cpufeatures v0.2.17\n   Compiling annotate-snippets v0.12.16\n   Compiling encoding_rs_io v0.1.7\n   Compiling cast v0.3.0\n   Compiling same-file v1.0.6\n   Compiling walkdir v2.5.0\n   Compiling criterion-plot v0.8.2\n   Compiling serde-saphyr v1.0.0\n   Compiling sha2 v0.10.9\n   Compiling flate2 v1.1.9\n   Compiling rayon v1.12.0\n   Compiling merman-ascii v0.8.0-alpha.6 (/private/tmp/merman-u25-base.mAjV6u/head/crates/merman-ascii)\n   Compiling plotters v0.3.7\n   Compiling ciborium v0.2.2\n   Compiling regex v1.13.1\n   Compiling clap v4.6.5\n   Compiling fdeflate v0.3.7\n   Compiling page_size v0.6.0\n   Compiling tinytemplate v1.2.1\n   Compiling anes v0.1.6\n   Compiling oorandom v11.1.5\n   Compiling criterion v0.8.2\n   Compiling png v0.18.1\n   Compiling merman v0.8.0-alpha.6 (/private/tmp/merman-u25-base.mAjV6u/head/crates/merman)\n   Compiling merman-fixture-render-context v0.8.0-alpha.6 (/private/tmp/merman-u25-base.mAjV6u/head/crates/merman-fixture-render-context)\n   Compiling merman-ascii-test-contracts v0.8.0-alpha.6 (/private/tmp/merman-u25-base.mAjV6u/head/crates/merman-ascii-test-contracts)\n   Compiling roxmltree v0.21.1\n   Compiling base64 v0.22.1\n    Finished `bench` profile [optimized] target(s) in 2m 47s",
+      "recipe": {
+        "bench": "ascii_pipeline",
+        "cargo_profile": "bench",
+        "checkout": "/private/tmp/merman-u25-base.mAjV6u/head",
+        "corpus": "tools/bench/ascii_corpus.json",
+        "default_features": false,
+        "features": [
+          "ascii"
+        ],
+        "label": "base",
+        "locked": true,
+        "logical_operations": 1,
+        "logical_operations_scope": "selected_group_uniform_override",
+        "package": "merman",
+        "target": null,
+        "target_dir": "/Users/frankorz/codes/rust/merman/target",
+        "toolchain": null
+      },
+      "shared_target_freeze": {
+        "build_sequence": 1,
+        "commit": "99c567e89b922401adaad7ad521783eead895834",
+        "context": "20260822T030231Z-75390-80877728bb61",
+        "enabled": true,
+        "frozen_executable": {
+          "bytes": 13329968,
+          "executable": true,
+          "mode": "0555",
+          "path": "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/base-99c567e89b922401adaad7ad521783eead895834-609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92/ascii_pipeline-8eb91285c49eb6d2",
+          "sha256": "609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92"
+        },
+        "source_executable": {
+          "bytes": 13329968,
+          "executable": true,
+          "path": "/Users/frankorz/codes/rust/merman/target/release/deps/ascii_pipeline-8eb91285c49eb6d2",
+          "sha256": "609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92"
+        },
+        "target_dir": "/Users/frankorz/codes/rust/merman/target",
+        "tree": "26ed5a1d956649d381ce3b34fa57d2566d96696c"
+      },
+      "shared_target_profile_reset": {
+        "command": [
+          "cargo",
+          "clean",
+          "--locked",
+          "--profile",
+          "bench",
+          "--target-dir",
+          "/Users/frankorz/codes/rust/merman/target"
+        ],
+        "stderr_tail": "Removed 1435 files, 387.5MiB total",
+        "stdout_tail": "",
+        "strategy": "cargo-clean-bench-profile-before-each-side"
+      },
+      "source_executable": {
+        "bytes": 13329968,
+        "executable": true,
+        "path": "/Users/frankorz/codes/rust/merman/target/release/deps/ascii_pipeline-8eb91285c49eb6d2",
+        "sha256": "609cfe648ac906986b5e8e00993e80222819b6bfc7eb56666a76178af5edee92"
+      },
+      "toolchain": {
+        "cargo_verbose": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)\nrelease: 1.95.0\ncommit-hash: f2d3ce0bd7f24a49f8f72d9000448f8838c4e850\ncommit-date: 2026-03-21\nhost: aarch64-apple-darwin\nlibgit2: 1.9.2 (sys:0.20.4 vendored)\nlibcurl: 8.7.1 (sys:0.4.83+curl-8.15.0 system ssl:(SecureTransport) LibreSSL/3.3.6)\nssl: OpenSSL 3.5.4 30 Sep 2025\nos: Mac OS 26.6.1 [64-bit]",
+        "requested": null,
+        "rustc_verbose": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2"
+      },
+      "workspace_manifest": {
+        "bytes": 7500,
+        "path": "/private/tmp/merman-u25-base.mAjV6u/head/Cargo.toml",
+        "sha256": "6685cbfa05d01aa09a9448c4fbd8dc8663ff518267452291ca10470b93843bb6"
+      }
+    },
+    "head": {
+      "bench_source": {
+        "bytes": 5302,
+        "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/benches/ascii_pipeline.rs",
+        "sha256": "2dc6c25333fbfa0e4b9e0a79b2c2cecce7ffdf499ef2b4720e5723c59f766306"
+      },
+      "bench_target": {
+        "bytes": 191,
+        "metadata": {
+          "crate_types": [
+            "bin"
+          ],
+          "doc": false,
+          "doctest": false,
+          "edition": "2024",
+          "kind": [
+            "bench"
+          ],
+          "name": "ascii_pipeline",
+          "required-features": [
+            "ascii"
+          ],
+          "src_path": "benches/ascii_pipeline.rs",
+          "test": false
+        },
+        "name": "ascii_pipeline",
+        "sha256": "fd5b39bd4f6a70a84dd33a61b83a3be12544e1ae259937c203ae28b4f7361743"
+      },
+      "build_environment": {
+        "CARGO_BUILD_JOBS": "1",
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_PROFILE_BENCH_CODEGEN_UNITS": null,
+        "CARGO_PROFILE_BENCH_LTO": null,
+        "CARGO_PROFILE_BENCH_OPT_LEVEL": null,
+        "RUSTFLAGS": null
+      },
+      "corpus": {
+        "bytes": 4788,
+        "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/tools/bench/ascii_corpus.json",
+        "preflight_contract": {
+          "bytes": 581,
+          "id": "native-ascii-criterion-preflight-v1",
+          "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/docs/performance/contracts/native-ascii-criterion-preflight-v1.json",
+          "schema_version": 1,
+          "sha256": "ff57904372523af15f318c3509dc537ffa42026f6e6d14a43b4b2d2513982916"
+        },
+        "preflight_receipts_required": true,
+        "schema_version": 2,
+        "sha256": "50fe9fd8744e98a1f9caadf71ee22fe4ba7857862cb9ff193515f69ab44218a3"
+      },
+      "discovery": {
+        "bench_count": 10,
+        "benches": [
+          "ascii_end_to_end/class_large",
+          "ascii_end_to_end/class_medium",
+          "ascii_end_to_end/er_large",
+          "ascii_end_to_end/er_medium",
+          "ascii_end_to_end/flowchart_large",
+          "ascii_end_to_end/flowchart_medium",
+          "ascii_end_to_end/sequence_medium",
+          "ascii_end_to_end/sequence_mermaid_api_large",
+          "ascii_end_to_end/xychart_large",
+          "ascii_end_to_end/xychart_medium"
+        ],
+        "output_sha256": "3099910a2f13401b8770788d63be7e22a89dd6fe063fb15589b67904f7145073",
+        "preflight_receipts": {
+          "ascii_end_to_end/class_large": {
+            "benchmark": "ascii_end_to_end/class_large",
+            "output_bytes": 16597,
+            "output_kind": "plain_ascii",
+            "output_sha256": "3e87c09709ca99dd5efaaf33147e8a26ff85e916643b3cfd020ce3e7034672a1",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/class_medium": {
+            "benchmark": "ascii_end_to_end/class_medium",
+            "output_bytes": 2695,
+            "output_kind": "plain_ascii",
+            "output_sha256": "4313de5080beb30197158cee630f0d5f3bcf94a9e5dd6ae5bded7781100f7fd7",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/er_large": {
+            "benchmark": "ascii_end_to_end/er_large",
+            "output_bytes": 21802,
+            "output_kind": "plain_ascii",
+            "output_sha256": "25ffc3983eae86ed61b966958208dde07cd646b78dd61272c557e3a7afc67b83",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/er_medium": {
+            "benchmark": "ascii_end_to_end/er_medium",
+            "output_bytes": 2755,
+            "output_kind": "plain_ascii",
+            "output_sha256": "54bf9acd58c1fecd8c9cc5d29e1145642f25c98095b2ef44e477dc02f6ddb6ee",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/flowchart_large": {
+            "benchmark": "ascii_end_to_end/flowchart_large",
+            "output_bytes": 66719,
+            "output_kind": "plain_ascii",
+            "output_sha256": "2640bece3a7df41c48b52e189845261d3ea1230ab78a7fa0a29786d48359ddae",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/flowchart_medium": {
+            "benchmark": "ascii_end_to_end/flowchart_medium",
+            "output_bytes": 12558,
+            "output_kind": "plain_ascii",
+            "output_sha256": "74e221ad525bdf28398dc086c8de6bba0b8f7fe94076cd70b411656751873a23",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/sequence_medium": {
+            "benchmark": "ascii_end_to_end/sequence_medium",
+            "output_bytes": 3721,
+            "output_kind": "plain_ascii",
+            "output_sha256": "4ac5a151d177b47e44b06b038d7496385dd066062b4e1032f54d8ce77ae488f0",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/sequence_mermaid_api_large": {
+            "benchmark": "ascii_end_to_end/sequence_mermaid_api_large",
+            "output_bytes": 147450,
+            "output_kind": "plain_ascii",
+            "output_sha256": "8aae5385d292539f2d3052ea2d32f9b0cc0aa8e6d5ecb8a13cbca54816f9ffeb",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/xychart_large": {
+            "benchmark": "ascii_end_to_end/xychart_large",
+            "output_bytes": 11649,
+            "output_kind": "plain_ascii",
+            "output_sha256": "3637865ae01de610f5316650e7096762387dd21028406185d72af1426fed27ca",
+            "schema_version": 1,
+            "svg_elements": null
+          },
+          "ascii_end_to_end/xychart_medium": {
+            "benchmark": "ascii_end_to_end/xychart_medium",
+            "output_bytes": 2261,
+            "output_kind": "plain_ascii",
+            "output_sha256": "1e03a4781ca21afb83c95a492266a10bc9fa8d387cc5dbf5ea74dac1a5c49b3b",
+            "schema_version": 1,
+            "svg_elements": null
+          }
+        },
+        "skipped": {}
+      },
+      "discovery_command": [
+        "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/head-99c567e89b922401adaad7ad521783eead895834-23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6/ascii_pipeline-8eb91285c49eb6d2",
+        "--bench",
+        "--color",
+        "never",
+        "--list",
+        "--format",
+        "terse"
+      ],
+      "executable": {
+        "bytes": 13329968,
+        "executable": true,
+        "path": "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/head-99c567e89b922401adaad7ad521783eead895834-23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6/ascii_pipeline-8eb91285c49eb6d2",
+        "role": "frozen",
+        "sha256": "23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6"
+      },
+      "frozen_executable": {
+        "bytes": 13329968,
+        "executable": true,
+        "mode": "0555",
+        "path": "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/head-99c567e89b922401adaad7ad521783eead895834-23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6/ascii_pipeline-8eb91285c49eb6d2",
+        "sha256": "23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6"
+      },
+      "git": {
+        "dirty": false,
+        "dirty_disposition": "clean",
+        "dirty_entries": [],
+        "dirty_entries_truncated": false,
+        "revision": "99c567e89b922401adaad7ad521783eead895834",
+        "tree": "26ed5a1d956649d381ce3b34fa57d2566d96696c"
+      },
+      "lockfile": {
+        "bytes": 141110,
+        "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/Cargo.lock",
+        "sha256": "b3e19ec38bcdd8852b7411c8add8d9e04ff8f0baaf21514971b7fb0293592695"
+      },
+      "manifest": {
+        "bytes": 5134,
+        "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman/Cargo.toml",
+        "sha256": "c3808aed4e5b1dc34b0dbafba090069089bebb66068984c9c7606b543a34ce0e"
+      },
+      "post_sampling_verification": {
+        "executable": {
+          "mode": "0555",
+          "path": "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/head-99c567e89b922401adaad7ad521783eead895834-23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6/ascii_pipeline-8eb91285c49eb6d2",
+          "sha256": "23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6",
+          "status": "verified"
+        },
+        "executable_sha256": "23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6",
+        "files": {
+          "bench_source": "2dc6c25333fbfa0e4b9e0a79b2c2cecce7ffdf499ef2b4720e5723c59f766306",
+          "bench_target": "fd5b39bd4f6a70a84dd33a61b83a3be12544e1ae259937c203ae28b4f7361743",
+          "corpus": "50fe9fd8744e98a1f9caadf71ee22fe4ba7857862cb9ff193515f69ab44218a3",
+          "lockfile": "b3e19ec38bcdd8852b7411c8add8d9e04ff8f0baaf21514971b7fb0293592695",
+          "manifest": "c3808aed4e5b1dc34b0dbafba090069089bebb66068984c9c7606b543a34ce0e",
+          "preflight_contract": "ff57904372523af15f318c3509dc537ffa42026f6e6d14a43b4b2d2513982916",
+          "workspace_manifest": "6685cbfa05d01aa09a9448c4fbd8dc8663ff518267452291ca10470b93843bb6"
+        },
+        "git": {
+          "dirty": false,
+          "dirty_disposition": "clean",
+          "dirty_entries": [],
+          "dirty_entries_truncated": false,
+          "revision": "99c567e89b922401adaad7ad521783eead895834",
+          "tree": "26ed5a1d956649d381ce3b34fa57d2566d96696c"
+        },
+        "status": "verified"
+      },
+      "prebuild_command": [
+        "cargo",
+        "bench",
+        "--locked",
+        "-p",
+        "merman",
+        "--no-default-features",
+        "--features",
+        "ascii",
+        "--bench",
+        "ascii_pipeline",
+        "--target-dir",
+        "/Users/frankorz/codes/rust/merman/target",
+        "--no-run",
+        "--message-format=json-render-diagnostics"
+      ],
+      "prebuild_stderr_tail": "Compiling proc-macro2 v1.0.107\n   Compiling quote v1.0.47\n   Compiling unicode-ident v1.0.24\n   Compiling syn v2.0.119\n   Compiling syn v3.0.3\n   Compiling synstructure v0.13.2\n   Compiling stable_deref_trait v1.2.1\n   Compiling zmij v1.0.23\n   Compiling zerofrom-derive v0.1.7\n   Compiling serde_core v1.0.229\n   Compiling siphasher v1.0.3\n   Compiling phf_shared v0.13.1\n   Compiling zerofrom v0.1.8\n   Compiling yoke-derive v0.8.2\n   Compiling cfg-if v1.0.4\n   Compiling yoke v0.8.3\n   Compiling fastrand v2.5.0\n   Compiling phf_generator v0.13.1\n   Compiling zerovec-derive v0.11.3\n   Compiling zerovec v0.11.6\n   Compiling displaydoc v0.2.7\n   Compiling allocator-api2 v0.2.21\n   Compiling smallvec v1.15.2\n   Compiling equivalent v1.0.2\n   Compiling serde v1.0.229\n   Compiling memchr v2.8.3\n   Compiling itoa v1.0.18\n   Compiling foldhash v0.2.0\n   Compiling hashbrown v0.17.1\n   Compiling serde_derive v1.0.229\n   Compiling autocfg v1.5.1\n   Compiling serde_json v1.0.151\n   Compiling num-traits v0.2.19\n   Compiling indexmap v2.14.0\n   Compiling tinystr v0.8.3\n   Compiling phf_codegen v0.13.1\n   Compiling litemap v0.8.2\n   Compiling writeable v0.6.3\n   Compiling icu_locale_core v2.2.0\n   Compiling zerotrie v0.2.4\n   Compiling potential_utf v0.1.5\n   Compiling icu_properties_data v2.2.0\n   Compiling utf8_iter v1.0.4\n   Compiling icu_normalizer_data v2.2.0\n   Compiling icu_collections v2.2.0\n   Compiling icu_provider v2.2.0\n   Compiling phf_macros v0.13.1\n   Compiling version_check v0.9.5\n   Compiling generic-array v0.14.7\n   Compiling phf v0.13.1\n   Compiling encoding_rs v0.8.35\n   Compiling crossbeam-utils v0.8.22\n   Compiling libc v0.2.189\n   Compiling dtoa v1.0.11\n   Compiling thiserror v2.0.19\n   Compiling rustc-hash v2.1.3\n   Compiling dtoa-short v0.3.5\n   Compiling icu_normalizer v2.2.0\n   Compiling icu_properties v2.2.0\n   Compiling selectors v0.37.0\n   Compiling thiserror-impl v2.0.19\n   Compiling derive_more-impl v2.1.1\n   Compiling cssparser-macros v0.6.1\n   Compiling crossbeam-epoch v0.9.20\n   Compiling bitflags v2.13.1\n   Compiling typenum v1.20.1\n   Compiling anstyle v1.0.14\n   Compiling unicode-width v0.2.2\n   Compiling arraydeque v0.5.1\n   Compiling zerocopy v0.8.55\n   Compiling granit-parser v1.0.0\n   Compiling cssparser v0.36.0\n   Compiling derive_more v2.1.1\n   Compiling htmlize v1.1.0\n   Compiling idna_adapter v1.2.2\n   Compiling servo_arc v0.4.3\n   Compiling zerocopy-derive v0.8.55\n   Compiling unicode-general-category v1.1.0\n   Compiling ucd-trie v0.1.7\n   Compiling shlex v2.0.1\n   Compiling precomputed-hash v0.1.1\n   Compiling crossbeam-deque v0.8.7\n   Compiling lalrpop-util v0.23.1\n   Compiling log v0.4.33\n   Compiling percent-encoding v2.3.2\n   Compiling find-msvc-tools v0.1.9\n   Compiling new_debug_unreachable v1.0.6\n   Compiling cc v1.4.0\n   Compiling form_urlencoded v1.2.2\n   Compiling json5 v1.3.1\n   Compiling idna v1.1.0\n   Compiling pastey v0.1.1\n   Compiling rayon-core v1.13.0\n   Compiling either v1.17.0\n   Compiling crc32fast v1.5.0\n   Compiling simd-adler32 v0.3.10\n   Compiling mime v0.3.17\n   Compiling lol_html v3.0.1\n   Compiling url v2.5.8\n   Compiling half v2.7.1\n   Compiling alloca v0.4.0\n   Compiling crypto-common v0.1.7\n   Compiling block-buffer v0.10.4\n   Compiling dugong-graphlib v0.8.0-alpha.6 (/private/tmp/merman-u25-current-aa.Ka8jTq/crates/dugong-graphlib)\n   Compiling euclid v0.22.14\n   Compiling ciborium-io v0.2.2\n   Compiling plotters-backend v0.3.7\n   Compiling regex-syntax v0.8.11\n   Compiling unicode-segmentation v1.13.3\n   Compiling clap_lex v1.1.0\n   Compiling adler2 v2.0.1\n   Compiling ryu-js v1.0.3\n   Compiling merman-core v0.8.0-alpha.6 (/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman-core)\n   Compiling miniz_oxide v0.8.9\n   Compiling clap_builder v4.6.5\n   Compiling regex-automata v0.4.16\n   Compiling plotters-svg v0.3.7\n   Compiling ciborium-ll v0.2.2\n   Compiling dugong v0.8.0-alpha.6 (/private/tmp/merman-u25-current-aa.Ka8jTq/crates/dugong)\n   Compiling digest v0.10.7\n   Compiling itertools v0.13.0\n   Compiling cpufeatures v0.2.17\n   Compiling annotate-snippets v0.12.16\n   Compiling encoding_rs_io v0.1.7\n   Compiling same-file v1.0.6\n   Compiling cast v0.3.0\n   Compiling criterion-plot v0.8.2\n   Compiling walkdir v2.5.0\n   Compiling serde-saphyr v1.0.0\n   Compiling sha2 v0.10.9\n   Compiling flate2 v1.1.9\n   Compiling rayon v1.12.0\n   Compiling merman-ascii v0.8.0-alpha.6 (/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman-ascii)\n   Compiling ciborium v0.2.2\n   Compiling plotters v0.3.7\n   Compiling regex v1.13.1\n   Compiling clap v4.6.5\n   Compiling fdeflate v0.3.7\n   Compiling page_size v0.6.0\n   Compiling tinytemplate v1.2.1\n   Compiling anes v0.1.6\n   Compiling oorandom v11.1.5\n   Compiling criterion v0.8.2\n   Compiling png v0.18.1\n   Compiling merman v0.8.0-alpha.6 (/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman)\n   Compiling merman-fixture-render-context v0.8.0-alpha.6 (/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman-fixture-render-context)\n   Compiling merman-ascii-test-contracts v0.8.0-alpha.6 (/private/tmp/merman-u25-current-aa.Ka8jTq/crates/merman-ascii-test-contracts)\n   Compiling roxmltree v0.21.1\n   Compiling base64 v0.22.1\n    Finished `bench` profile [optimized] target(s) in 2m 51s",
+      "recipe": {
+        "bench": "ascii_pipeline",
+        "cargo_profile": "bench",
+        "checkout": "/private/tmp/merman-u25-current-aa.Ka8jTq",
+        "corpus": "tools/bench/ascii_corpus.json",
+        "default_features": false,
+        "features": [
+          "ascii"
+        ],
+        "label": "head",
+        "locked": true,
+        "logical_operations": 1,
+        "logical_operations_scope": "selected_group_uniform_override",
+        "package": "merman",
+        "target": null,
+        "target_dir": "/Users/frankorz/codes/rust/merman/target",
+        "toolchain": null
+      },
+      "shared_target_freeze": {
+        "build_sequence": 2,
+        "commit": "99c567e89b922401adaad7ad521783eead895834",
+        "context": "20260822T030231Z-75390-80877728bb61",
+        "enabled": true,
+        "frozen_executable": {
+          "bytes": 13329968,
+          "executable": true,
+          "mode": "0555",
+          "path": "/Users/frankorz/codes/rust/merman/target/perf-frozen/20260822T030231Z-75390-80877728bb61/head-99c567e89b922401adaad7ad521783eead895834-23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6/ascii_pipeline-8eb91285c49eb6d2",
+          "sha256": "23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6"
+        },
+        "source_executable": {
+          "bytes": 13329968,
+          "executable": true,
+          "path": "/Users/frankorz/codes/rust/merman/target/release/deps/ascii_pipeline-8eb91285c49eb6d2",
+          "sha256": "23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6"
+        },
+        "target_dir": "/Users/frankorz/codes/rust/merman/target",
+        "tree": "26ed5a1d956649d381ce3b34fa57d2566d96696c"
+      },
+      "shared_target_profile_reset": {
+        "command": [
+          "cargo",
+          "clean",
+          "--locked",
+          "--profile",
+          "bench",
+          "--target-dir",
+          "/Users/frankorz/codes/rust/merman/target"
+        ],
+        "stderr_tail": "Removed 1435 files, 387.5MiB total",
+        "stdout_tail": "",
+        "strategy": "cargo-clean-bench-profile-before-each-side"
+      },
+      "source_executable": {
+        "bytes": 13329968,
+        "executable": true,
+        "path": "/Users/frankorz/codes/rust/merman/target/release/deps/ascii_pipeline-8eb91285c49eb6d2",
+        "sha256": "23cbe5e722dfdf60104bcf5b7dd4dd58dd02df434d2b0ed0cab0afebc97fe8f6"
+      },
+      "toolchain": {
+        "cargo_verbose": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)\nrelease: 1.95.0\ncommit-hash: f2d3ce0bd7f24a49f8f72d9000448f8838c4e850\ncommit-date: 2026-03-21\nhost: aarch64-apple-darwin\nlibgit2: 1.9.2 (sys:0.20.4 vendored)\nlibcurl: 8.7.1 (sys:0.4.83+curl-8.15.0 system ssl:(SecureTransport) LibreSSL/3.3.6)\nssl: OpenSSL 3.5.4 30 Sep 2025\nos: Mac OS 26.6.1 [64-bit]",
+        "requested": null,
+        "rustc_verbose": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2"
+      },
+      "workspace_manifest": {
+        "bytes": 7500,
+        "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/Cargo.toml",
+        "sha256": "6685cbfa05d01aa09a9448c4fbd8dc8663ff518267452291ca10470b93843bb6"
+      }
+    }
+  },
+  "schema_version": 2,
+  "selection": {
+    "corpora": {
+      "base": {
+        "bytes": 4788,
+        "path": "/private/tmp/merman-u25-base.mAjV6u/head/tools/bench/ascii_corpus.json",
+        "sha256": "50fe9fd8744e98a1f9caadf71ee22fe4ba7857862cb9ff193515f69ab44218a3"
+      },
+      "head": {
+        "bytes": 4788,
+        "path": "/private/tmp/merman-u25-current-aa.Ka8jTq/tools/bench/ascii_corpus.json",
+        "sha256": "50fe9fd8744e98a1f9caadf71ee22fe4ba7857862cb9ff193515f69ab44218a3"
+      }
+    },
+    "filter": null,
+    "group": "ascii_end_to_end",
+    "groups": {
+      "base": "ascii_end_to_end",
+      "head": "ascii_end_to_end"
+    },
+    "kind": "suite",
+    "lane_contracts": {
+      "declared": {
+        "base": {
+          "diagnostic_stage": null,
+          "engine_lifecycle": "reused-engine",
+          "evidence_contract": "docs/performance/contracts/native-ascii-criterion-preflight-v1.json",
+          "history_aliases": [],
+          "id": "render-ascii",
+          "kind": "public",
+          "logical_operations_per_estimate": 1,
+          "measurement_metrics": [
+            "latency_ns"
+          ],
+          "owner": "merman",
+          "parent_public_lane": null,
+          "process_lifecycle": "reused-process",
+          "public_operation": "render-ascii",
+          "required_features": [
+            "ascii"
+          ],
+          "selector": "ascii_end_to_end/{fixture}",
+          "semantic_output_dimensions": [
+            "plain_ascii_sha256",
+            "plain_ascii_bytes"
+          ],
+          "size_vector": [],
+          "transport": "native-criterion",
+          "workload": "strict-plain-ascii-unbounded-trusted-input-profile"
+        },
+        "head": {
+          "diagnostic_stage": null,
+          "engine_lifecycle": "reused-engine",
+          "evidence_contract": "docs/performance/contracts/native-ascii-criterion-preflight-v1.json",
+          "history_aliases": [],
+          "id": "render-ascii",
+          "kind": "public",
+          "logical_operations_per_estimate": 1,
+          "measurement_metrics": [
+            "latency_ns"
+          ],
+          "owner": "merman",
+          "parent_public_lane": null,
+          "process_lifecycle": "reused-process",
+          "public_operation": "render-ascii",
+          "required_features": [
+            "ascii"
+          ],
+          "selector": "ascii_end_to_end/{fixture}",
+          "semantic_output_dimensions": [
+            "plain_ascii_sha256",
+            "plain_ascii_bytes"
+          ],
+          "size_vector": [],
+          "transport": "native-criterion",
+          "workload": "strict-plain-ascii-unbounded-trusted-input-profile"
+        }
+      },
+      "effective": {
+        "base": {
+          "diagnostic_stage": null,
+          "engine_lifecycle": "reused-engine",
+          "evidence_contract": "docs/performance/contracts/native-ascii-criterion-preflight-v1.json",
+          "history_aliases": [],
+          "id": "render-ascii",
+          "kind": "public",
+          "logical_operations_per_estimate": 1,
+          "measurement_metrics": [
+            "latency_ns"
+          ],
+          "owner": "merman",
+          "parent_public_lane": null,
+          "process_lifecycle": "reused-process",
+          "public_operation": "render-ascii",
+          "required_features": [
+            "ascii"
+          ],
+          "selector": "ascii_end_to_end/{fixture}",
+          "semantic_output_dimensions": [
+            "plain_ascii_sha256",
+            "plain_ascii_bytes"
+          ],
+          "size_vector": [],
+          "transport": "native-criterion",
+          "workload": "strict-plain-ascii-unbounded-trusted-input-profile"
+        },
+        "head": {
+          "diagnostic_stage": null,
+          "engine_lifecycle": "reused-engine",
+          "evidence_contract": "docs/performance/contracts/native-ascii-criterion-preflight-v1.json",
+          "history_aliases": [],
+          "id": "render-ascii",
+          "kind": "public",
+          "logical_operations_per_estimate": 1,
+          "measurement_metrics": [
+            "latency_ns"
+          ],
+          "owner": "merman",
+          "parent_public_lane": null,
+          "process_lifecycle": "reused-process",
+          "public_operation": "render-ascii",
+          "required_features": [
+            "ascii"
+          ],
+          "selector": "ascii_end_to_end/{fixture}",
+          "semantic_output_dimensions": [
+            "plain_ascii_sha256",
+            "plain_ascii_bytes"
+          ],
+          "size_vector": [],
+          "transport": "native-criterion",
+          "workload": "strict-plain-ascii-unbounded-trusted-input-profile"
+        }
+      }
+    },
+    "suite": "large-closeout"
+  },
+  "summary": {
+    "comparable": 5,
+    "confirmed_improvements": 0,
+    "confirmed_regressions": 0,
+    "contract_failures": 0,
+    "exit_code": 0,
+    "inconclusive": 0,
+    "outcome": "diagnostic_advisory"
+  }
+}
