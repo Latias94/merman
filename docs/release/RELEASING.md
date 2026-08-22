@@ -226,7 +226,9 @@ the next version. A channel-only npm release does not select the next workspace 
 The unpublished VS Code extension, the Typst package wrapper, and `roughr-merman` own independent
 version tracks. They are intentionally excluded from workspace projection. Record the workspace
 runtime bundled in VSIX and Typst artifacts through provenance instead of rewriting those package
-versions.
+versions. Before any later `roughr-merman 0.12.x` publication, run `cargo-semver-checks` against
+the latest published compatible baseline. Version `0.12.3` is the forward-looking compatibility
+floor; the historical `0.12.1` to `0.12.3` recovery is not re-litigated by future release gates.
 
 For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
 
@@ -240,10 +242,11 @@ SOURCE_SHA="$(git rev-parse HEAD)"
 gh workflow run release-preflight.yml -f version="$VERSION" -f source_ref="$SOURCE_SHA"
 ```
 
-The preflight workflow verifies release versions, package file lists, registry-independent Rust
-crate publish dry-runs, Python wheels, Android AAR builds, Apple XCFramework builds, the web npm
-package dry-run, Node native package-group build/install smokes, platform VSIX packaging, and Flutter
-`dart pub publish --dry-run`. It does not publish to any registry.
+The preflight workflow verifies release versions, independent-crate Rust API compatibility,
+package file lists, registry-independent Rust crate publish dry-runs, Python wheels, Android AAR
+builds, Apple XCFramework builds, the web npm package dry-run, Node native package-group
+build/install smokes, platform VSIX packaging, and Flutter `dart pub publish --dry-run`. It does
+not publish to any registry.
 
 Release-archive smoke tests should verify user-observable contracts rather than incidental representation choices. Accept legal binary token and whitespace forms, and allow valid asynchronous notification ordering while still requiring bounded output, the expected protocol responses, successful exit, and exact archive contents. Reproduce failures against the final archive before changing product code.
 

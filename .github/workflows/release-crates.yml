@@ -139,11 +139,19 @@ jobs:
         with:
           targets: aarch64-linux-android,wasm32-unknown-unknown
 
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@v2.86.1
+        with:
+          tool: cargo-semver-checks@0.50.0
+
       - name: Verify independent crate versions changed with their source
         run: |
           set -euo pipefail
           base_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^)"
           python3 scripts/verify-independent-crate-version-bumps.py --base-ref "$base_tag"
+
+      - name: Verify roughr-merman public Rust API compatibility
+        run: cargo semver-checks check-release -p roughr-merman --color always
 
       - name: Verify exhaustive Cargo feature and artifact recipes
         run: cargo run --locked -p xtask -- verify-feature-matrix --strict

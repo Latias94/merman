@@ -144,10 +144,13 @@ pub(super) fn render_simple_sequence_block(
     };
     ctx.checkpoints.checkpoint()?;
 
-    let (frame_x1, frame_x2, _min_left) = block
-        .geometry
-        .frame_x(ctx.actor_nodes_by_id)
-        .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    let (frame_x1, frame_x2) = layout.start_x.zip(layout.stop_x).unwrap_or_else(|| {
+        block
+            .geometry
+            .frame_x(ctx.actor_nodes_by_id)
+            .map(|(x1, x2, _)| (x1, x2))
+            .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2))
+    });
 
     let frame_y1 = layout.start_y;
     let frame_y2 = layout.stop_y;
@@ -237,11 +240,12 @@ pub(super) fn render_sectioned_sequence_block(
     };
     ctx.checkpoints.checkpoint()?;
 
-    let (frame_x1, frame_x2, _min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
-        ctx.default_frame_x1,
-        ctx.default_frame_x2,
-        f64::INFINITY,
-    ));
+    let (frame_x1, frame_x2) = layout.start_x.zip(layout.stop_x).unwrap_or_else(|| {
+        geometry
+            .frame_x(ctx.actor_nodes_by_id)
+            .map(|(x1, x2, _)| (x1, x2))
+            .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2))
+    });
 
     let frame_y1 = layout.start_y;
     let frame_y2 = layout.stop_y;
@@ -338,11 +342,13 @@ pub(super) fn render_critical_sequence_block(
     };
     ctx.checkpoints.checkpoint()?;
 
-    let (mut frame_x1, frame_x2, min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
-        ctx.default_frame_x1,
-        ctx.default_frame_x2,
-        f64::INFINITY,
-    ));
+    let (mut frame_x1, mut frame_x2, min_left) = geometry
+        .frame_x(ctx.actor_nodes_by_id)
+        .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    if let Some((layout_x1, layout_x2)) = layout.start_x.zip(layout.stop_x) {
+        frame_x1 = layout_x1;
+        frame_x2 = layout_x2;
+    }
     if sections.len() > 1 && min_left.is_finite() {
         // Mermaid's `critical` w/ `option` sections widens the frame to the left.
         frame_x1 = frame_x1.min(min_left - 9.0);
