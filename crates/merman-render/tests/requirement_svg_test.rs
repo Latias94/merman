@@ -180,6 +180,16 @@ fn terminal_stroke_geometry_for(document: &roxmltree::Document<'_>, node_id: &st
         .to_string()
 }
 
+fn requirement_stylesheet(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Requirement SVG");
+    document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .unwrap_or_else(|| panic!("missing Requirement stylesheet"))
+        .to_string()
+}
+
 fn requirement_source() -> &'static str {
     r#"requirementDiagram
   requirement req1 {
@@ -696,4 +706,90 @@ fn extended_dark_primary_color_derived_background_outranks_typed_fill() {
         assert_eq!(evidence.not_applicable_count(), 1, "{owner}");
         assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
     }
+}
+
+#[test]
+fn requirement_border_color_array_owns_stroke_without_hiding_typed_fill() {
+    let theme = requirement_fill_and_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid typed Requirement fill"),
+        CanvasPaint::solid("#654321").expect("valid typed Requirement stroke"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "borderColorArray": ["#fedcba"]
+        }
+    })));
+    let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid borderColorArray Requirement SVG");
+
+    // borderColorArray only owns the stroke surface; the sibling fill remains typed-owned.
+    assert_eq!(
+        terminal_fill_for(&document, "requirement-theme-req1"),
+        "#123456"
+    );
+    let css = requirement_stylesheet(rendered.svg());
+    assert!(
+        css.contains(
+            r#"#requirement-theme [data-look="classic"][data-color-id="color-0"].node path{stroke:#fedcba;"#
+        ),
+        "borderColorArray must own the terminal stroke selector"
+    );
+    assert!(
+        !css.contains(
+            r#"#requirement-theme [data-look="classic"][data-color-id="color-0"].node path{stroke:#654321;"#
+        ),
+        "typed stroke must not overwrite the borderColorArray owner"
+    );
+
+    drop(document);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn requirement_color_arrays_own_fill_and_stroke_without_false_applied_evidence() {
+    let theme = requirement_fill_and_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid typed Requirement fill"),
+        CanvasPaint::solid("#654321").expect("valid typed Requirement stroke"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "borderColorArray": ["#fedcba"],
+            "bkgColorArray": ["#abcdef"]
+        }
+    })));
+    let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid Requirement color-array SVG");
+
+    // The paired Mermaid arrays own both terminal paints. The typed values must not be emitted
+    // as inline winners, otherwise the CSS palette would be visually and evidentially bypassed.
+    assert_eq!(
+        terminal_fill_for(&document, "requirement-theme-req1"),
+        "#ECECFF"
+    );
+    let css = requirement_stylesheet(rendered.svg());
+    let selector =
+        r#"#requirement-theme [data-look="classic"][data-color-id="color-0"].node path{"#;
+    assert!(
+        css.contains(&format!("{selector}stroke:#fedcba;fill:#abcdef;")),
+        "paired arrays must own the Requirement stroke and fill selectors"
+    );
+    assert!(
+        !css.contains("#123456") && !css.contains("#654321"),
+        "typed paint must not be re-emitted as a competing stylesheet winner"
+    );
+
+    drop(document);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }

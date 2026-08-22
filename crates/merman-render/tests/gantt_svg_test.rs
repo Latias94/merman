@@ -756,6 +756,123 @@ fn gantt_task_fill_rejects_variant_ordinal_clear_gradient_and_pattern_routes() {
 }
 
 #[test]
+fn gantt_task_stroke_rejects_variant_ordinal_clear_gradient_and_pattern_routes() {
+    let gradient = LinearGradient::new(
+        90.0,
+        [
+            GradientStop::new(
+                0.0,
+                ThemeColorValue::parse("#123456").expect("valid Gantt gradient start"),
+            )
+            .expect("valid Gantt gradient stop"),
+            GradientStop::new(
+                1.0,
+                ThemeColorValue::parse("#abcdef").expect("valid Gantt gradient end"),
+            )
+            .expect("valid Gantt gradient stop"),
+        ],
+    )
+    .expect("valid Gantt gradient");
+    let pattern = PatternSpec::new(
+        PatternKind::Grid,
+        8.0,
+        8.0,
+        ThemeColorValue::parse("#123456").expect("valid Gantt pattern color"),
+    )
+    .expect("valid Gantt pattern");
+    let mut clear = ThemeStylePatch::default();
+    clear.stroke.paint = Specified::Clear;
+    let solid = || {
+        ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid("#654321").expect("valid Gantt solid stroke"))
+    };
+    let legacy_cases = [
+        ThemeVariant::Default,
+        ThemeVariant::Active,
+        ThemeVariant::Success,
+        ThemeVariant::Error,
+    ]
+    .map(|variant| ThemeRule::new(ThemeTarget::Task, solid()).with_variant(variant));
+    let unsupported_cases = [
+        ThemeRule::new(ThemeTarget::Task, solid())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid Gantt task ordinal")),
+        ThemeRule::new(ThemeTarget::Task, clear),
+        ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::LinearGradient(gradient)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::Pattern(pattern)),
+        ),
+    ];
+
+    for rule in legacy_cases {
+        let theme = gantt_task_rule_theme(rule);
+        let error = match try_prepare_gantt_family_with_theme_and_engine(
+            GANTT_TASK_FILL_SOURCE,
+            &theme,
+            Engine::new(),
+        ) {
+            Ok(_) => {
+                panic!("legacy Gantt task stroke variants must remain compatibility residuals")
+            }
+            Err(error) => error,
+        };
+        match error {
+            merman_render::Error::LegacyFamilyThemeCompatibility {
+                family_id,
+                residual_count,
+            } => {
+                assert_eq!(family_id, merman_render::DiagramFamilyId::GANTT);
+                assert_eq!(residual_count, 1);
+            }
+            other => panic!("expected Gantt legacy compatibility residual, got {other}"),
+        }
+    }
+
+    for rule in unsupported_cases {
+        let theme = gantt_task_rule_theme(rule);
+        let result = try_prepare_gantt_family_with_theme_and_engine(
+            GANTT_TASK_FILL_SOURCE,
+            &theme,
+            Engine::new(),
+        )
+        .and_then(|artifact| {
+            artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        });
+        let error = match result {
+            Ok(_) => panic!("unsupported Gantt task stroke routes must fail closed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::GANTT, 1))
+        );
+    }
+}
+
+#[test]
+fn gantt_task_stroke_is_not_applicable_without_task_rects() {
+    let theme = gantt_task_stroke_theme(
+        CanvasPaint::solid("#654321").expect("valid empty-domain Gantt task stroke"),
+    );
+    let artifact = prepare_gantt_family_with_theme("gantt\ndateFormat YYYY-MM-DD\n", &theme);
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render empty Gantt task domain");
+    assert!(gantt_task_terminal_strokes(rendered.svg()).is_empty());
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn gantt_task_radius_clear_restores_the_mermaid_baseline() {
     let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d";
     let svg =

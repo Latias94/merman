@@ -1137,12 +1137,12 @@ fn validate_projection_actions(
         "cutover authorization manifest contains duplicate projection actions"
     );
 
-    for projection in manifest
+    let active_projections = manifest
         .active
         .iter()
         .flat_map(|route| route.projections.iter().copied())
-        .collect::<BTreeSet<_>>()
-    {
+        .collect::<BTreeSet<_>>();
+    for projection in active_projections.iter().copied() {
         let action = expected.get(&projection).copied().ok_or_else(|| {
             C6ProofError::new(
                 "route-manifest",
@@ -1161,6 +1161,22 @@ fn validate_projection_actions(
             projection.action().id()
         );
     }
+
+    let unreferenced_actions = expected
+        .keys()
+        .copied()
+        .filter(|projection| !active_projections.contains(projection))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-manifest",
+        unreferenced_actions.is_empty(),
+        "projection actions are not referenced by the active cutover inventory: {}",
+        unreferenced_actions
+            .iter()
+            .map(|projection| projection.contribution_id())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     Ok(())
 }
 
@@ -1294,6 +1310,31 @@ mod tests {
         marker.1 = ThemeRouteCutoverProjectionAction::Replace;
 
         assert!(validate_projection_actions(&MANIFEST, &drifted).is_err());
+    }
+
+    #[test]
+    fn manifest_rejects_unreferenced_projection_action() {
+        let empty_projections: &[ThemeRouteCutoverProjection] = &[];
+        let active: [RouteAuthorization; ACTIVE_ROUTES.len()] = std::array::from_fn(|index| {
+            if ACTIVE_ROUTES[index]
+                .projections
+                .contains(&ThemeRouteCutoverProjection::NodeFill)
+            {
+                RouteAuthorization {
+                    id: ACTIVE_ROUTES[index].id,
+                    projections: empty_projections,
+                }
+            } else {
+                ACTIVE_ROUTES[index]
+            }
+        });
+        let manifest = CutoverAuthorizationManifest {
+            version: CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
+            active: &active,
+            tombstones: &[],
+        };
+
+        assert!(validate_projection_actions(&manifest, &PROJECTION_ACTIONS).is_err());
     }
 
     #[test]
