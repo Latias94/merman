@@ -11,6 +11,7 @@ use crate::text::display_width_with_profile;
 use merman_core::diagrams::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
@@ -240,9 +241,11 @@ fn build_children_map<'a>(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<HashMap<&'a str, Vec<&'a str>>> {
-    resources.charge_layout_work(edges.len())?;
+    resources.charge_layout_work_product(edges.len(), 2)?;
     let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
     try_reserve_hash_map(&mut children, edges.len())?;
+    let mut parent_by_child: HashMap<&str, &str> = HashMap::new();
+    try_reserve_hash_map(&mut parent_by_child, edges.len())?;
     let mut edge_ids = HashSet::new();
     let mut endpoint_pairs = HashSet::new();
     edge_ids
@@ -278,6 +281,18 @@ fn build_children_map<'a>(
                 diagram_type: "mindmap",
                 feature: "parallel edges",
             });
+        }
+        match parent_by_child.entry(edge.end.as_str()) {
+            Entry::Vacant(entry) => {
+                entry.insert(edge.start.as_str());
+            }
+            Entry::Occupied(entry) if *entry.get() != edge.start.as_str() => {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "mindmap",
+                    feature: "nodes with multiple parents",
+                });
+            }
+            Entry::Occupied(_) => {}
         }
         let siblings = children.entry(edge.start.as_str()).or_default();
         siblings
