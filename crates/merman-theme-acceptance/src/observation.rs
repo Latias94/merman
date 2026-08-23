@@ -279,10 +279,19 @@ impl<'a> C6TargetArtifact<'a> {
         self.view.receipt()
     }
 
-    pub(crate) const fn flowchart_c6_svg_receipt(
+    pub(crate) const fn flowchart_svg_artifact_receipt(
         &self,
-    ) -> Option<&merman_render::__private::FlowchartC6SvgReceipt> {
-        self.view.flowchart_c6_svg_receipt()
+    ) -> Option<&merman_render::__private::FlowchartSvgArtifactReceipt> {
+        self.view.flowchart_svg_artifact_receipt()
+    }
+
+    /// Returns the renderer-owned receipt digest bound to this exact target.
+    ///
+    /// A family-specific artifact observation takes precedence when the renderer sealed one;
+    /// otherwise the target admission receipt is the production-owned terminal seal. There is no
+    /// valid C6 proof state without one of these renderer-issued digests.
+    pub(crate) const fn renderer_receipt_digest(&self) -> [u8; 32] {
+        self.view.renderer_receipt_digest()
     }
 
     /// Runs a semantic checker against the bound bytes and seals only after that checker succeeds.
@@ -299,7 +308,7 @@ impl<'a> C6TargetArtifact<'a> {
                 target_receipt: self.view.receipt().clone(),
                 semantic_assertion_id,
                 mechanism_dispositions,
-                renderer_receipt_digest: None,
+                renderer_receipt_digest: self.renderer_receipt_digest(),
             },
         ))
     }
@@ -312,18 +321,12 @@ pub(crate) struct C6BoundTargetProof {
     target_receipt: TargetAdmissionReceipt,
     semantic_assertion_id: &'static str,
     mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    renderer_receipt_digest: Option<[u8; 32]>,
+    renderer_receipt_digest: [u8; 32],
 }
 
 impl C6BoundTargetProof {
     pub(crate) const fn target_receipt(&self) -> &TargetAdmissionReceipt {
         &self.target_receipt
-    }
-
-    pub(crate) fn attach_renderer_receipt(&mut self, digest: [u8; 32]) {
-        if digest != [0; 32] {
-            self.renderer_receipt_digest = Some(digest);
-        }
     }
 }
 
@@ -336,7 +339,7 @@ pub(crate) struct C6CellReceipt {
     target_receipt: TargetAdmissionReceipt,
     semantic_assertion_id: String,
     mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    renderer_receipt_digest: Option<[u8; 32]>,
+    renderer_receipt_digest: [u8; 32],
     residual_ids: BTreeSet<String>,
     digest: [u8; 32],
 }
@@ -356,6 +359,7 @@ pub(crate) fn seal_cell_from_evidence(
         mechanism_dispositions,
         renderer_receipt_digest,
     } = proof;
+    require_evidence(key, "renderer-receipt", renderer_receipt_digest != [0; 32])?;
     require_evidence(
         key,
         "render-group-key",
@@ -450,13 +454,7 @@ impl C6CellReceipt {
         encode_render_group_key(&mut value, &self.render_group_key);
         value.extend_from_slice(&self.render_group_digest);
         value.extend_from_slice(&self.target_receipt.receipt_digest());
-        match self.renderer_receipt_digest {
-            Some(digest) => {
-                value.push(1);
-                value.extend_from_slice(&digest);
-            }
-            None => value.push(0),
-        }
+        value.extend_from_slice(&self.renderer_receipt_digest);
         append_len_prefixed(&mut value, self.semantic_assertion_id.as_bytes());
         append_len_prefixed(&mut value, b"mechanism-dispositions");
         value.extend_from_slice(&mechanism_digest(&self.mechanism_dispositions));
@@ -548,6 +546,11 @@ impl C6ReceiptBook {
 
         let mut referenced_groups = BTreeSet::new();
         for cell in indexed_cells.values() {
+            require_evidence(
+                cell.key,
+                "renderer-receipt",
+                cell.renderer_receipt_digest != [0; 32],
+            )?;
             let group = indexed_groups
                 .get(&cell.render_group_key)
                 .ok_or_else(|| evidence_mismatch(cell.key, "render-group-reference"))?;
@@ -1124,7 +1127,7 @@ mod tests {
             target_receipt: target_receipt.clone(),
             semantic_assertion_id: expectation.semantic_assertion_id().to_owned(),
             mechanism_dispositions,
-            renderer_receipt_digest: None,
+            renderer_receipt_digest: target_receipt.receipt_digest(),
             residual_ids: expectation.expected_residual_ids().clone(),
             digest: [0; 32],
         };
@@ -1211,6 +1214,54 @@ mod tests {
     }
 
     #[test]
+    fn cell_sealing_rejects_missing_renderer_receipt() {
+        let (themes, acceptance) = load_catalogs();
+        let enforced = acceptance
+            .enforced_tranche()
+            .cells()
+            .find(|cell| {
+                cell.key().theme() == C6ProofTheme::Brutalist
+                    && cell.key().family() == C6ProofFamily::State
+                    && cell.key().target() == ExpectedOutputTarget::StandaloneSvg
+            })
+            .expect("enforced Brutalist State SVG cell");
+        let document = themed_state_document_with_ceiling(ThemeResourcePolicy::interactive());
+        let identity = C6RenderIdentity::from_evidence(document.evidence());
+        let group = C6RenderGroupReceipt::seal(
+            C6RenderGroupKey::for_cell(enforced),
+            "brutalist-state-v1",
+            &themes,
+            &identity,
+            document.standalone_svg_admission(),
+        )
+        .expect("seal render group");
+        let (_, mut proof) =
+            C6TargetArtifact::new(TargetArtifactView::from_rendered_document(&document))
+                .check_with("brutalist-state-standalone-svg-v1", BTreeMap::new(), |_| {
+                    Ok::<(), std::convert::Infallible>(())
+                })
+                .expect("check artifact through its production-owned byte view");
+        proof.renderer_receipt_digest = [0; 32];
+        let expectation = acceptance
+            .cell(enforced.key())
+            .expect("Brutalist State SVG expectation")
+            .expectation();
+
+        assert_evidence_field(
+            seal_cell_from_evidence(
+                expectation,
+                enforced,
+                &group,
+                identity,
+                BTreeSet::new(),
+                proof,
+            )
+            .expect_err("a C6 proof without a renderer receipt must fail closed"),
+            "renderer-receipt",
+        );
+    }
+
+    #[test]
     fn cell_sealing_rejects_proof_bound_to_another_render_group() {
         let (themes, acceptance) = load_catalogs();
         let enforced = acceptance
@@ -1276,6 +1327,28 @@ mod tests {
         assert_eq!(report.render_group_count(), 9);
         assert_eq!(report.manifest_digest(), acceptance.manifest_digest());
         assert_ne!(report.execution_digest(), &[0; 32]);
+    }
+
+    #[test]
+    fn receipt_book_rejects_cells_without_renderer_receipts() {
+        let (themes, acceptance) = load_catalogs();
+        let mut book = synthetic_valid_book(&themes, &acceptance);
+        let cell = book.cells.values_mut().next().expect("cell receipt");
+        cell.renderer_receipt_digest = [0; 32];
+        cell.digest = cell.canonical_digest();
+
+        assert_evidence_field(
+            C6ReceiptBook::from_receipts(
+                acceptance
+                    .enforced_tranche()
+                    .cells()
+                    .map(C6EnforcedCell::key),
+                book.groups.values().cloned(),
+                book.cells.values().cloned(),
+            )
+            .expect_err("a receipt book must reject a zero renderer digest"),
+            "renderer-receipt",
+        );
     }
 
     #[test]

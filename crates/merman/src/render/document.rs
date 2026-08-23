@@ -42,7 +42,7 @@ pub struct RenderedDocument {
     #[cfg(feature = "internal-theme-acceptance")]
     theme_route_cutover_receipts: Box<[merman_render::__private::ThemeRouteCutoverReceipt]>,
     #[cfg(feature = "internal-theme-acceptance")]
-    flowchart_c6_svg_receipt: Option<merman_render::__private::FlowchartC6SvgReceipt>,
+    flowchart_svg_artifact_receipt: Option<merman_render::__private::FlowchartSvgArtifactReceipt>,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -150,10 +150,11 @@ impl RenderedDocument {
             merman_render::__private::seal_theme_route_cutover_receipts(&family, public_svg_digest)
                 .into_boxed_slice();
         #[cfg(feature = "internal-theme-acceptance")]
-        let flowchart_c6_svg_receipt = merman_render::__private::FlowchartC6SvgReceipt::observe_svg(
-            svg.as_str(),
-            public_svg_digest,
-        );
+        let flowchart_svg_artifact_receipt =
+            merman_render::__private::FlowchartSvgArtifactReceipt::observe_svg(
+                svg.as_str(),
+                public_svg_digest,
+            );
         let evidence = Arc::new(RenderEvidence::from_family(family));
         let portability = document_portability_report(&svg, &evidence);
         let native_svg = svg.native_export_svg();
@@ -184,7 +185,7 @@ impl RenderedDocument {
             #[cfg(feature = "internal-theme-acceptance")]
             theme_route_cutover_receipts,
             #[cfg(feature = "internal-theme-acceptance")]
-            flowchart_c6_svg_receipt,
+            flowchart_svg_artifact_receipt,
         }
     }
 
@@ -237,10 +238,10 @@ impl RenderedDocument {
     }
 
     #[cfg(feature = "internal-theme-acceptance")]
-    pub(crate) fn flowchart_c6_svg_receipt(
+    pub(crate) fn flowchart_svg_artifact_receipt(
         &self,
-    ) -> Option<&merman_render::__private::FlowchartC6SvgReceipt> {
-        self.flowchart_c6_svg_receipt.as_ref()
+    ) -> Option<&merman_render::__private::FlowchartSvgArtifactReceipt> {
+        self.flowchart_svg_artifact_receipt.as_ref()
     }
 
     #[cfg(feature = "png")]

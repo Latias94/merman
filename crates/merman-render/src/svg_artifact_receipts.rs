@@ -1,26 +1,26 @@
-//! Workspace-only receipts for native C6a target observations.
+//! Workspace-only renderer-owned observations for finalized SVG artifacts.
 //!
-//! These receipts are deliberately feature-gated.  The acceptance crate receives only the
-//! semantic predicates and region observations needed by its raster checks; it does not own an
-//! SVG/XML/CSS interpreter for the production artifact.
+//! These observations are deliberately feature-gated. The non-published acceptance harness may
+//! evaluate its own fixture contract against these immutable facts, but it does not parse the
+//! production SVG or reimplement the renderer's DOM/CSS interpretation.
 
 use roxmltree::{Document, Node};
 use sha2::{Digest as _, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlowchartC6SvgReceipt {
+pub struct FlowchartSvgArtifactReceipt {
     artifact_digest: [u8; 32],
     view_box_bits: [u64; 4],
     native_text: bool,
     has_foreign_object: bool,
     has_prepared_tokens: bool,
-    canvas: Option<FlowchartC6CanvasReceipt>,
-    nodes: Box<[FlowchartC6NodeReceipt]>,
+    canvas: Option<FlowchartSvgCanvasObservation>,
+    nodes: Box<[FlowchartSvgNodeObservation]>,
     digest: [u8; 32],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlowchartC6NodeReceipt {
+pub struct FlowchartSvgNodeObservation {
     id: Box<str>,
     fill: Option<Box<str>>,
     stroke: Box<str>,
@@ -33,23 +33,23 @@ pub struct FlowchartC6NodeReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlowchartC6CanvasReceipt {
+pub struct FlowchartSvgCanvasObservation {
     gradient_units: Box<str>,
     spread_method: Box<str>,
     x1_bits: u64,
     y1_bits: u64,
     x2_bits: u64,
     y2_bits: u64,
-    stops: Box<[FlowchartC6GradientStopReceipt]>,
+    stops: Box<[FlowchartSvgGradientStopObservation]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlowchartC6GradientStopReceipt {
+pub struct FlowchartSvgGradientStopObservation {
     offset_bits: u64,
     color: Box<str>,
 }
 
-impl FlowchartC6SvgReceipt {
+impl FlowchartSvgArtifactReceipt {
     /// Observes the finalized public SVG and binds the observation to its exact artifact digest.
     pub fn observe_svg(svg: &str, artifact_digest: [u8; 32]) -> Option<Self> {
         if artifact_digest == [0; 32]
@@ -115,7 +115,7 @@ impl FlowchartC6SvgReceipt {
                 .unwrap_or_default()
                 .to_owned()
                 .into_boxed_str();
-            nodes.push(FlowchartC6NodeReceipt {
+            nodes.push(FlowchartSvgNodeObservation {
                 id: id.to_owned().into_boxed_str(),
                 fill,
                 stroke,
@@ -161,71 +161,29 @@ impl FlowchartC6SvgReceipt {
         self.view_box_bits.map(f64::from_bits)
     }
 
-    pub fn node_regions(&self) -> &[FlowchartC6NodeReceipt] {
+    pub fn node_observations(&self) -> &[FlowchartSvgNodeObservation] {
         &self.nodes
     }
 
-    /// Proves the bounded Brutalist Flowchart SVG contract without exposing the parsed DOM.
-    pub fn proves_flowchart_node_contract(
-        &self,
-        node_ids: &[&str],
-        palette: &[&str],
-        border: &str,
-        stroke_width: f64,
-        radius: f64,
-    ) -> bool {
-        node_ids.len() == 6
-            && palette.len() == 3
-            && self.native_text
-            && !self.has_foreign_object
-            && !self.has_prepared_tokens
-            && self.nodes.len() == 6
-            && self.nodes.iter().enumerate().all(|(ordinal, node)| {
-                node.id.as_ref() == node_ids[ordinal]
-                    && node.fill.as_deref() == Some(palette[ordinal % palette.len()])
-                    && node.stroke.as_ref() == border
-                    && approx_eq(node.stroke_width(), stroke_width)
-                    && approx_eq(node.radius_x(), radius)
-                    && approx_eq(node.radius_y(), radius)
-            })
+    pub const fn has_native_text(&self) -> bool {
+        self.native_text
     }
 
-    pub fn proves_spotless_flowchart_contract(
-        &self,
-        node_ids: &[&str],
-        stripe_colors: &[&str],
-        stop_offsets: &[f64],
-        period_px: f64,
-        stroke: &str,
-        stroke_width: f64,
-        dasharray: &str,
-        radius: f64,
-        font_family: &str,
-    ) -> bool {
-        node_ids.len() == 4
-            && stripe_colors.len() == 2
-            && stop_offsets.len() == 4
-            && self.native_text
-            && !self.has_foreign_object
-            && !self.has_prepared_tokens
-            && self.nodes.len() == 4
-            && self.canvas.as_ref().is_some_and(|canvas| {
-                canvas.matches_repeating_gradient(stripe_colors, stop_offsets, period_px)
-            })
-            && self.nodes.iter().enumerate().all(|(ordinal, node)| {
-                node.id.as_ref() == node_ids[ordinal]
-                    && node.stroke.as_ref() == stroke
-                    && approx_eq(node.stroke_width(), stroke_width)
-                    && node.dasharray.as_ref() == dasharray
-                    && approx_eq(node.radius_x(), radius)
-                    && approx_eq(node.radius_y(), radius)
-                    && node.font_family.contains(font_family)
-            })
+    pub const fn has_foreign_object(&self) -> bool {
+        self.has_foreign_object
+    }
+
+    pub const fn has_prepared_tokens(&self) -> bool {
+        self.has_prepared_tokens
+    }
+
+    pub fn canvas_observation(&self) -> Option<&FlowchartSvgCanvasObservation> {
+        self.canvas.as_ref()
     }
 
     fn canonical_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        hasher.update(b"merman.flowchart-c6-svg-receipt.v2\0");
+        hasher.update(b"merman.flowchart-svg-artifact-receipt.v1\0");
         hasher.update(self.artifact_digest);
         for value in self.view_box_bits {
             hasher.update(value.to_be_bytes());
@@ -266,7 +224,7 @@ impl FlowchartC6SvgReceipt {
     }
 }
 
-impl FlowchartC6NodeReceipt {
+impl FlowchartSvgNodeObservation {
     pub fn id(&self) -> &str {
         &self.id
     }
@@ -275,59 +233,55 @@ impl FlowchartC6NodeReceipt {
         self.region_bits.map(f64::from_bits)
     }
 
-    fn stroke_width(&self) -> f64 {
+    pub fn fill(&self) -> Option<&str> {
+        self.fill.as_deref()
+    }
+
+    pub const fn stroke(&self) -> &str {
+        &self.stroke
+    }
+
+    pub const fn stroke_width(&self) -> f64 {
         f64::from_bits(self.stroke_width_bits)
     }
 
-    fn radius_x(&self) -> f64 {
+    pub const fn radius_x(&self) -> f64 {
         f64::from_bits(self.radius_x_bits)
     }
 
-    fn radius_y(&self) -> f64 {
+    pub const fn radius_y(&self) -> f64 {
         f64::from_bits(self.radius_y_bits)
+    }
+
+    pub const fn dasharray(&self) -> &str {
+        &self.dasharray
+    }
+
+    pub const fn font_family(&self) -> &str {
+        &self.font_family
     }
 }
 
-impl FlowchartC6CanvasReceipt {
-    fn matches_repeating_gradient(
-        &self,
-        stripe_colors: &[&str],
-        stop_offsets: &[f64],
-        period_px: f64,
-    ) -> bool {
-        if stripe_colors.len() != 2 || stop_offsets.len() != 4 {
-            return false;
-        }
-        let x1 = f64::from_bits(self.x1_bits);
-        let y1 = f64::from_bits(self.y1_bits);
-        let x2 = f64::from_bits(self.x2_bits);
-        let y2 = f64::from_bits(self.y2_bits);
-        let expected_colors = [
-            stripe_colors[0],
-            stripe_colors[0],
-            stripe_colors[1],
-            stripe_colors[1],
-        ];
-        let vector_x = x2 - x1;
-        let vector_y = y2 - y1;
-        self.gradient_units.as_ref() == "userSpaceOnUse"
-            && self.spread_method.as_ref() == "repeat"
-            && approx_eq(x1, 0.0)
-            && approx_eq(y1, 0.0)
-            && vector_x > 0.0
-            && vector_y < 0.0
-            && approx_eq(vector_x, -vector_y)
-            && period_px.is_finite()
-            && period_px > 0.0
-            && approx_eq(vector_x.hypot(vector_y), period_px)
-            && self.stops.len() == stop_offsets.len()
-            && self
-                .stops
-                .iter()
-                .zip(stop_offsets.iter().zip(expected_colors))
-                .all(|(stop, (offset, color))| {
-                    approx_eq(stop.offset(), *offset) && stop.color.as_ref() == color
-                })
+impl FlowchartSvgCanvasObservation {
+    pub const fn gradient_units(&self) -> &str {
+        &self.gradient_units
+    }
+
+    pub const fn spread_method(&self) -> &str {
+        &self.spread_method
+    }
+
+    pub const fn coordinates(&self) -> [f64; 4] {
+        [
+            f64::from_bits(self.x1_bits),
+            f64::from_bits(self.y1_bits),
+            f64::from_bits(self.x2_bits),
+            f64::from_bits(self.y2_bits),
+        ]
+    }
+
+    pub const fn stops(&self) -> &[FlowchartSvgGradientStopObservation] {
+        &self.stops
     }
 
     fn update_digest(&self, hasher: &mut Sha256) {
@@ -344,9 +298,13 @@ impl FlowchartC6CanvasReceipt {
     }
 }
 
-impl FlowchartC6GradientStopReceipt {
-    fn offset(&self) -> f64 {
+impl FlowchartSvgGradientStopObservation {
+    pub const fn offset(&self) -> f64 {
         f64::from_bits(self.offset_bits)
+    }
+
+    pub const fn color(&self) -> &str {
+        &self.color
     }
 }
 
@@ -370,7 +328,7 @@ fn parse_view_box(raw: &str) -> Option<[f64; 4]> {
     Some([*left, *top, *width, *height])
 }
 
-fn observe_canvas(document: &Document<'_>) -> Option<FlowchartC6CanvasReceipt> {
+fn observe_canvas(document: &Document<'_>) -> Option<FlowchartSvgCanvasObservation> {
     let bases = document
         .descendants()
         .filter(|node| {
@@ -408,13 +366,13 @@ fn observe_canvas(document: &Document<'_>) -> Option<FlowchartC6CanvasReceipt> {
     let stops = elements
         .into_iter()
         .map(|stop| {
-            Some(FlowchartC6GradientStopReceipt {
+            Some(FlowchartSvgGradientStopObservation {
                 offset_bits: percent_value(stop.attribute("offset")?)?.to_bits(),
                 color: stop.attribute("stop-color")?.to_owned().into_boxed_str(),
             })
         })
         .collect::<Option<Vec<_>>>()?;
-    Some(FlowchartC6CanvasReceipt {
+    Some(FlowchartSvgCanvasObservation {
         gradient_units: gradient
             .attribute("gradientUnits")
             .unwrap_or_default()
@@ -559,10 +517,6 @@ impl AffineTransform {
     }
 }
 
-fn approx_eq(left: f64, right: f64) -> bool {
-    (left - right).abs() <= 1e-6
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -586,51 +540,65 @@ mod tests {
     }
 
     #[test]
-    fn receipt_binds_exact_svg_and_flowchart_contract() {
+    fn receipt_binds_exact_svg_and_exposes_node_observations() {
         let svg = sample_svg(["#a", "#b", "#c"]);
         let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
-        let receipt = FlowchartC6SvgReceipt::observe_svg(&svg, digest).expect("seal receipt");
+        let receipt = FlowchartSvgArtifactReceipt::observe_svg(&svg, digest).expect("seal receipt");
 
         assert!(receipt.proves_artifact(digest));
-        assert!(receipt.proves_flowchart_node_contract(
-            &["A", "B", "C", "D", "E", "F"],
-            &["#a", "#b", "#c"],
-            "#111",
-            3.0,
-            5.0,
-        ));
-        assert_eq!(receipt.node_regions().len(), 6);
+        assert!(receipt.has_native_text());
+        assert!(!receipt.has_foreign_object());
+        assert!(!receipt.has_prepared_tokens());
+        let nodes = receipt.node_observations();
+        assert_eq!(nodes.len(), 6);
+        assert_eq!(nodes[0].id(), "A");
+        assert_eq!(nodes[0].fill(), Some("#a"));
+        assert_eq!(nodes[0].stroke(), "#111");
+        assert_eq!(nodes[0].stroke_width(), 3.0);
+        assert_eq!(nodes[0].radius_x(), 5.0);
+        assert_eq!(nodes[0].radius_y(), 5.0);
     }
 
     #[test]
     fn receipt_rejects_forged_digest_or_changed_style() {
         let svg = sample_svg(["#a", "#b", "#c"]);
         let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
-        assert!(FlowchartC6SvgReceipt::observe_svg(&svg, [1; 32]).is_none());
+        assert!(FlowchartSvgArtifactReceipt::observe_svg(&svg, [1; 32]).is_none());
 
         let changed = sample_svg(["#a", "#b", "#d"]);
         let changed_digest: [u8; 32] = Sha256::digest(changed.as_bytes()).into();
-        let receipt =
-            FlowchartC6SvgReceipt::observe_svg(&changed, changed_digest).expect("seal changed");
-        assert!(!receipt.proves_flowchart_node_contract(
-            &["A", "B", "C", "D", "E", "F"],
-            &["#a", "#b", "#c"],
-            "#111",
-            3.0,
-            5.0,
-        ));
+        let receipt = FlowchartSvgArtifactReceipt::observe_svg(&changed, changed_digest)
+            .expect("seal changed");
+        assert_eq!(receipt.node_observations()[2].fill(), Some("#d"));
         assert_ne!(receipt.digest(), digest);
     }
 
     #[test]
-    fn receipt_proves_spotless_flowchart_gradient_and_terminal_nodes() {
+    fn receipt_observes_spotless_gradient_and_terminal_nodes() {
         let svg = sample_spotless_svg();
-        assert_spotless_contract(&spotless_receipt(&svg));
+        let receipt = spotless_receipt(&svg);
+        assert!(receipt.has_native_text());
+        assert!(!receipt.has_foreign_object());
+        assert!(!receipt.has_prepared_tokens());
+        assert_eq!(receipt.node_observations().len(), 4);
+        let canvas = receipt.canvas_observation().expect("canvas observation");
+        assert_eq!(canvas.gradient_units(), "userSpaceOnUse");
+        assert_eq!(canvas.spread_method(), "repeat");
+        assert_eq!(
+            canvas.coordinates(),
+            [0.0, 0.0, 14.1421356237, -14.1421356237]
+        );
+        assert_eq!(canvas.stops().len(), 4);
+        assert_eq!(canvas.stops()[2].offset(), 51.0);
+        assert_eq!(canvas.stops()[2].color(), "#d2ccc0");
+        assert_eq!(receipt.node_observations()[0].dasharray(), "6 4");
+        assert_eq!(receipt.node_observations()[0].font_family(), "Excalifont");
     }
 
     #[test]
     fn receipt_rejects_mutated_spotless_gradient_or_terminal_style() {
         let valid = sample_spotless_svg();
+        let valid_digest = spotless_receipt(&valid).digest();
         let mutations = [
             valid.replace("offset=\"50%\"", "offset=\"0%\""),
             valid.replace("url(#stripe)", "url(#missing-gradient)"),
@@ -640,19 +608,11 @@ mod tests {
         ];
 
         for mutated in mutations {
-            assert!(
-                !spotless_receipt(&mutated).proves_spotless_flowchart_contract(
-                    &["A", "B", "C", "D"],
-                    &["#e7e2d6", "#d2ccc0"],
-                    &[0.0, 50.0, 51.0, 100.0],
-                    20.0,
-                    "#2c2416",
-                    2.0,
-                    "6 4",
-                    4.0,
-                    "Excalifont",
-                ),
-                "mutation unexpectedly retained the Spotless contract: {mutated}"
+            let receipt = spotless_receipt(&mutated);
+            assert_ne!(
+                receipt.digest(),
+                valid_digest,
+                "mutation was not rebound: {mutated}"
             );
         }
     }
@@ -671,40 +631,13 @@ mod tests {
 
         for mutated in mutations {
             let receipt = spotless_receipt(&mutated);
-            assert!(
-                !receipt.proves_spotless_flowchart_contract(
-                    &["A", "B", "C", "D"],
-                    &["#e7e2d6", "#d2ccc0"],
-                    &[0.0, 50.0, 51.0, 100.0],
-                    20.0,
-                    "#2c2416",
-                    2.0,
-                    "6 4",
-                    4.0,
-                    "Excalifont",
-                ),
-                "ambiguous canvas unexpectedly retained the Spotless contract: {mutated}"
-            );
+            assert!(receipt.canvas_observation().is_none());
         }
     }
 
-    fn spotless_receipt(svg: &str) -> FlowchartC6SvgReceipt {
+    fn spotless_receipt(svg: &str) -> FlowchartSvgArtifactReceipt {
         let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
-        FlowchartC6SvgReceipt::observe_svg(svg, digest).expect("seal receipt")
-    }
-
-    fn assert_spotless_contract(receipt: &FlowchartC6SvgReceipt) {
-        assert!(receipt.proves_spotless_flowchart_contract(
-            &["A", "B", "C", "D"],
-            &["#e7e2d6", "#d2ccc0"],
-            &[0.0, 50.0, 51.0, 100.0],
-            20.0,
-            "#2c2416",
-            2.0,
-            "6 4",
-            4.0,
-            "Excalifont",
-        ));
+        FlowchartSvgArtifactReceipt::observe_svg(svg, digest).expect("seal receipt")
     }
 
     fn sample_spotless_svg() -> String {

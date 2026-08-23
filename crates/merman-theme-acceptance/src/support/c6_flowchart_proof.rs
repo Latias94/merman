@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use merman_export::RasterPlan;
+use merman_render::__private::FlowchartSvgArtifactReceipt;
 use merman_theme_fixtures::ReferenceThemeMechanism;
 
 use crate::observation::C6ObservedMechanismDisposition;
@@ -52,7 +53,7 @@ pub(crate) fn prove_brutalist_flowchart_svg(
     artifact: C6TargetArtifact<'_>,
 ) -> C6ProofResult<BrutalistFlowchartSvgProof> {
     let mechanisms = applied_cell_mechanisms();
-    let renderer_receipt = artifact.flowchart_c6_svg_receipt().ok_or_else(|| {
+    let renderer_receipt = artifact.flowchart_svg_artifact_receipt().ok_or_else(|| {
         C6ProofError::new(
             "flowchart-svg-observation",
             "renderer did not seal a Flowchart SVG receipt",
@@ -71,8 +72,8 @@ pub(crate) fn prove_brutalist_flowchart_svg(
         .collect::<Vec<_>>();
     c6_ensure!(
         "flowchart-svg-contract",
-        renderer_receipt.proves_flowchart_node_contract(
-            &NODE_IDS,
+        proves_brutalist_flowchart_contract(
+            renderer_receipt,
             &palette,
             contract.border.color(),
             f64::from(contract.border.width_px()),
@@ -82,25 +83,53 @@ pub(crate) fn prove_brutalist_flowchart_svg(
     );
     let view_box = renderer_receipt.view_box();
     let nodes = renderer_receipt
-        .node_regions()
+        .node_observations()
         .iter()
         .map(|node| NodeGeometry {
             rect: node.region(),
         })
         .collect::<Vec<_>>();
-    let renderer_receipt_digest = renderer_receipt.digest();
-    let ((view_box, nodes), mut target_proof) = artifact.check_with(
+    let ((view_box, nodes), target_proof) = artifact.check_with(
         "brutalist-flowchart-standalone-svg-v1",
         mechanisms.clone(),
         |_| Ok((view_box, nodes)),
     )?;
-    target_proof.attach_renderer_receipt(renderer_receipt_digest);
     Ok(BrutalistFlowchartSvgProof {
         mechanisms,
         target_proof,
         view_box,
         nodes,
     })
+}
+
+fn proves_brutalist_flowchart_contract(
+    receipt: &FlowchartSvgArtifactReceipt,
+    palette: &[&str],
+    border: &str,
+    stroke_width: f64,
+    radius: f64,
+) -> bool {
+    receipt.has_native_text()
+        && !receipt.has_foreign_object()
+        && !receipt.has_prepared_tokens()
+        && receipt.node_observations().len() == NODE_IDS.len()
+        && palette.len() == 3
+        && receipt
+            .node_observations()
+            .iter()
+            .enumerate()
+            .all(|(ordinal, node)| {
+                node.id() == NODE_IDS[ordinal]
+                    && node.fill() == Some(palette[ordinal % palette.len()])
+                    && node.stroke() == border
+                    && approx_eq(node.stroke_width(), stroke_width)
+                    && approx_eq(node.radius_x(), radius)
+                    && approx_eq(node.radius_y(), radius)
+            })
+}
+
+fn approx_eq(left: f64, right: f64) -> bool {
+    (left - right).abs() <= 1e-6
 }
 
 pub(crate) fn prove_brutalist_flowchart_png(

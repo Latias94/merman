@@ -12,8 +12,6 @@ pub mod architecture;
 pub(crate) mod architecture_metrics;
 pub mod block;
 pub mod c4;
-#[cfg(feature = "internal-theme-acceptance")]
-mod c6_receipts;
 mod chart_palette;
 pub mod class;
 mod config;
@@ -51,6 +49,8 @@ pub mod sankey;
 pub mod sequence;
 pub mod state;
 pub mod svg;
+#[cfg(feature = "internal-theme-acceptance")]
+mod svg_artifact_receipts;
 pub mod swimlane;
 pub mod text;
 mod theme;
@@ -78,7 +78,10 @@ pub mod __private {
     pub use crate::native_filter_receipt::{NativeSvgFilterReceipt, NativeSvgHardShadow};
 
     #[cfg(feature = "internal-theme-acceptance")]
-    pub use crate::c6_receipts::{FlowchartC6NodeReceipt, FlowchartC6SvgReceipt};
+    pub use crate::svg_artifact_receipts::{
+        FlowchartSvgArtifactReceipt, FlowchartSvgCanvasObservation,
+        FlowchartSvgGradientStopObservation, FlowchartSvgNodeObservation,
+    };
 
     pub use crate::text::__private::{
         PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
