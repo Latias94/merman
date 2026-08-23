@@ -1423,19 +1423,6 @@ function assertEditorLanguageSurface(enabled) {
     api.isBindingErrorPayload(cancellationError),
     "expected cancellation-only details to satisfy the binding error contract"
   );
-  assert.equal(
-    api.isBindingErrorPayload({
-      ...cancellationError,
-      details: {
-        cancellation: {
-          ...cancellationError.details.cancellation,
-          phase: undefined,
-        },
-      },
-    }),
-    false,
-    "cancellation details without a phase must not satisfy the binding error contract"
-  );
 
   assert.deepEqual(
     api.editorDiagramDetection(

@@ -119,4 +119,22 @@ test("binding error contract accepts operation statuses and cancellation-only de
     }),
     false,
   );
+
+  assert.equal(
+    isBindingErrorPayload({
+      version: 1,
+      ok: false,
+      code: 5,
+      code_name: "MERMAN_PARSE_ERROR",
+      kind: "generic",
+      capability_id: null,
+      details: {
+        future_context: {
+          source: "future-schema",
+        },
+      },
+      message: "future additive details remain forward compatible",
+    }),
+    true,
+  );
 });

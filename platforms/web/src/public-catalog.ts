@@ -426,11 +426,7 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
   const hasValidDetails =
     payload.details === undefined ||
     (!!details &&
-      (resource !== undefined ||
-        diagnostic !== undefined ||
-        iconRegistry !== undefined ||
-        cancellation !== undefined) &&
-    validResource &&
+      validResource &&
       validDiagnostic &&
       validCancellation &&
       (iconRegistry === undefined ||
