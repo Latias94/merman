@@ -17,6 +17,7 @@ on:
       - "tools/bench/**"
       - "tools/mermaid-cli/**"
       - "crates/merman/**"
+      - "crates/merman-ascii/**"
       - "crates/merman-bindings-core/**"
       - "crates/merman-core/**"
       - "crates/merman-render/**"
@@ -34,6 +35,7 @@ on:
         default: regression
         options:
           - contracts
+          - ascii
           - frontmatter
           - regression
           - reference
@@ -54,6 +56,13 @@ on:
           - standard
           - cross_family
           - full
+      ascii_suite:
+        description: "ASCII corpus suite"
+        type: choice
+        default: comparable
+        options:
+          - comparable
+          - closeout
       base_ref:
         description: "Base ref for regression comparisons"
         required: false
@@ -106,9 +115,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  eligibility:
+    name: perf-eligibility
+    runs-on: ubuntu-24.04
+    outputs:
+      contracts: ${{ steps.select.outputs.performance }}
+    steps:
+      - name: Checkout classifier input
+        if: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'perf') && !contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select standalone performance contracts
+        id: select
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HAS_REGRESSION_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf') }}
+          HAS_FRONTMATTER_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != "pull_request" ||
+                "$HAS_REGRESSION_LABEL" == "true" ||
+                "$HAS_FRONTMATTER_LABEL" == "true" ]]; then
+            echo "performance=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python3 scripts/ci_plan.py plan \
+            --base "$PR_BASE_SHA" \
+            --head "$PR_HEAD_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+
   contracts:
     name: perf-contracts
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
+    needs: eligibility
+    if: ${{ needs.eligibility.outputs.contracts == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CARGO_BUILD_JOBS: "1"
@@ -137,6 +183,7 @@ jobs:
             tools/bench/freeze_perf_baseline.py \
             tools/bench/native_memory.py \
             tools/bench/perf_runner.py \
+            tools/bench/performance_workflow.py \
             tools/bench/render_perf_comment.py \
             tools/bench/run_layout_work_calibration.py \
             tools/bench/run_native_memory.py \
@@ -163,6 +210,14 @@ jobs:
         working-directory: head
         run: python3 tools/bench/verify_pipeline_bench_list.py --features svg,layout-cytoscape,layout-elk,math
 
+      - name: Verify compiled ASCII benchmark list
+        working-directory: head
+        run: |
+          python3 tools/bench/verify_pipeline_bench_list.py \
+            --bench ascii_pipeline \
+            --corpus tools/bench/ascii_corpus.json \
+            --features ascii
+
       - name: Build native memory probe contract
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
         working-directory: head
@@ -182,68 +237,26 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       selected: ${{ steps.plan.outputs.selected }}
     steps:
+      - name: Checkout performance descriptors
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
+
       - name: Select performance descriptors
         id: plan
-        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_RUN: ${{ inputs.run }}
-          HAS_REGRESSION_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf') }}
-          HAS_FRONTMATTER_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
-          set -euo pipefail
-          lanes=()
-          case "$EVENT_NAME" in
-            pull_request)
-              [[ "$HAS_REGRESSION_LABEL" == "true" ]] && lanes+=(regression)
-              [[ "$HAS_FRONTMATTER_LABEL" == "true" ]] && lanes+=(frontmatter)
-              ;;
-            schedule)
-              lanes=(regression frontmatter)
-              ;;
-            workflow_dispatch)
-              case "$DISPATCH_RUN" in
-                regression) lanes=(regression) ;;
-                frontmatter) lanes=(frontmatter) ;;
-                full) lanes=(regression frontmatter) ;;
-                contracts|reference) lanes=() ;;
-                *)
-                  echo "unsupported performance lane: $DISPATCH_RUN" >&2
-                  exit 1
-                  ;;
-              esac
-              ;;
-            *)
-              echo "unsupported performance event: $EVENT_NAME" >&2
-              exit 1
-              ;;
-          esac
-
-          matrix='{"include":['
-          separator=''
-          for lane in "${lanes[@]}"; do
-            case "$lane" in
-              regression)
-                descriptor='{"id":"regression","suite":"canary","group":"","artifact":"perf-regression","title":"Merman Performance Regression","marker":"<!-- merman-perf -->"}'
-                ;;
-              frontmatter)
-                descriptor='{"id":"frontmatter","suite":"frontmatter","group":"frontmatter_preprocess","artifact":"perf-frontmatter","title":"Merman Frontmatter Performance Regression","marker":"<!-- merman-perf-frontmatter -->"}'
-                ;;
-              *)
-                echo "unsupported selected performance lane: $lane" >&2
-                exit 1
-                ;;
-            esac
-            matrix+="$separator$descriptor"
-            separator=','
-          done
-          matrix+=']}'
-          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
-          if [[ ${#lanes[@]} -gt 0 ]]; then
-            echo 'selected=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'selected=false' >> "$GITHUB_OUTPUT"
-          fi
+          python3 tools/bench/performance_workflow.py select \
+            --event "$EVENT_NAME" \
+            --dispatch-run "$DISPATCH_RUN" \
+            --labels-json "$PR_LABELS" \
+            --github-output "$GITHUB_OUTPUT"
 
   measurement:
     name: perf-${{ matrix.id }}
@@ -291,8 +304,13 @@ jobs:
         working-directory: head
         env:
           PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset || 'long' }}
-          SUITE: ${{ github.event_name == 'workflow_dispatch' && matrix.id == 'regression' && inputs.suite || matrix.suite }}
+          SUITE: ${{ github.event_name == 'workflow_dispatch' && matrix.id == 'regression' && inputs.suite || github.event_name == 'workflow_dispatch' && matrix.id == 'ascii' && inputs.ascii_suite || matrix.suite }}
           GROUP: ${{ matrix.group }}
+          PACKAGE: ${{ matrix.package }}
+          BENCH: ${{ matrix.bench }}
+          CORPUS: ${{ matrix.corpus }}
+          FEATURES: ${{ matrix.features }}
+          DEFAULT_FEATURES: ${{ matrix.default_features }}
           EVIDENCE_MODE: ${{ github.event_name == 'pull_request' && 'diagnostic' || inputs.evidence_mode || 'confirmation' }}
           RELATIVE_THRESHOLD_PERCENT: ${{ inputs.relative_threshold_percent || '10' }}
           ABSOLUTE_THRESHOLD_NS: ${{ inputs.absolute_threshold_ns || '50000' }}
@@ -305,8 +323,14 @@ jobs:
             --head-dir .
             --base-target-dir target/performance/base
             --head-target-dir target/performance/head
-            --base-features svg
-            --head-features svg
+            --base-package "$PACKAGE"
+            --head-package "$PACKAGE"
+            --base-bench "$BENCH"
+            --head-bench "$BENCH"
+            --base-corpus "$CORPUS"
+            --head-corpus "$CORPUS"
+            --base-features "$FEATURES"
+            --head-features "$FEATURES"
             --base-label "$BASE_LABEL"
             --head-label "$HEAD_LABEL"
             --preset "$PRESET"
@@ -317,6 +341,14 @@ jobs:
             --out target/performance/comparison.md
             --json-out target/performance/comparison.json
           )
+          case "$DEFAULT_FEATURES" in
+            true) ;;
+            false) args+=(--no-base-default-features --no-head-default-features) ;;
+            *)
+              echo "unsupported default-feature policy: $DEFAULT_FEATURES" >&2
+              exit 1
+              ;;
+          esac
           if [[ -n "$GROUP" ]]; then
             args+=(--group "$GROUP")
           fi
@@ -371,34 +403,14 @@ jobs:
 
       - name: Enforce measurement result
         if: ${{ always() }}
+        working-directory: head
         env:
           COMPARISON_EXIT: ${{ steps.comparison.outputs.comparison_exit || '2' }}
           RENDER_EXIT: ${{ steps.render.outputs.render_exit || '2' }}
         run: |
-          set -euo pipefail
-          if [[ "$RENDER_EXIT" -ne 0 ]]; then
-            echo "::error::The performance report consumer rejected the evidence contract."
-            exit 2
-          fi
-          case "$COMPARISON_EXIT" in
-            0) exit 0 ;;
-            1)
-              echo "::error::Decision-grade evidence confirmed a performance regression."
-              exit 1
-              ;;
-            2)
-              echo "::error::The performance comparison evidence contract failed."
-              exit 2
-              ;;
-            3)
-              echo "::error::The performance comparison was statistically inconclusive."
-              exit 3
-              ;;
-            *)
-              echo "::error::Unexpected performance comparison exit code: $COMPARISON_EXIT"
-              exit 2
-              ;;
-          esac
+          python3 tools/bench/performance_workflow.py enforce \
+            --comparison-exit "$COMPARISON_EXIT" \
+            --render-exit "$RENDER_EXIT"
 
   reference:
     name: perf-reference

@@ -114,7 +114,7 @@ fn binding_resource_limit_descriptors() -> Vec<BindingResourceLimitDescriptor> {
             .iter()
             .map(|descriptor| BindingResourceLimitDescriptor {
                 stable_id: descriptor.stable_id,
-                phase: descriptor.phase,
+                phase: descriptor.phase.as_str(),
                 description: descriptor.description,
                 overridable: descriptor.overridable,
                 hard_cap: false,
@@ -168,7 +168,7 @@ pub(crate) fn resource_profile_value(
     }
 
     #[cfg(feature = "ascii")]
-    if stable_id == merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID {
+    if merman::ascii::AsciiResourceLimitId::from_stable_id(stable_id).is_some() {
         return Some(merman::ascii::ascii_resource_profile_value(
             profile, stable_id,
         ));
@@ -180,6 +180,26 @@ pub(crate) fn resource_profile_value(
     }
 
     None
+}
+
+pub(crate) fn resource_profile_value_for_target(
+    profile: merman::resources::ResourceProfile,
+    stable_id: &str,
+    target: crate::TargetKey,
+) -> Option<Option<usize>> {
+    let value = resource_profile_value(profile, stable_id)?;
+
+    #[cfg(feature = "svg")]
+    if matches!(target, crate::TargetKey::Web)
+        && stable_id == merman::svg::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID
+    {
+        return Some(Some(merman::svg::WASM_RESVG_TREE_DEPTH_HARD_CAP));
+    }
+
+    #[cfg(not(feature = "svg"))]
+    let _ = target;
+
+    Some(value)
 }
 
 #[allow(dead_code)]
@@ -200,7 +220,7 @@ pub(crate) fn resource_limit_owner(stable_id: &str) -> BindingResourceOwner {
     }
 
     #[cfg(feature = "ascii")]
-    if stable_id == merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID {
+    if merman::ascii::AsciiResourceLimitId::from_stable_id(stable_id).is_some() {
         return BindingResourceOwner::Capability("ascii");
     }
 
@@ -301,7 +321,7 @@ fn is_analysis_document_limit(stable_id: &str) -> bool {
 fn is_ascii_limit(stable_id: &str) -> bool {
     #[cfg(feature = "ascii")]
     {
-        stable_id == merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID
+        merman::ascii::AsciiResourceLimitId::from_stable_id(stable_id).is_some()
     }
     #[cfg(not(feature = "ascii"))]
     {
@@ -337,9 +357,71 @@ fn export_limit_output_ids(stable_id: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+#[cfg(all(test, feature = "ascii"))]
+mod ascii_tests {
+    use super::*;
+
+    #[test]
+    fn ascii_resource_descriptors_have_profile_values_owner_and_scope() {
+        let contract = binding_resource_contract();
+        let ascii_limits = contract
+            .limits
+            .iter()
+            .filter(|limit| {
+                merman::ascii::AsciiResourceLimitId::from_stable_id(limit.stable_id).is_some()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ascii_limits.len(),
+            merman::ascii::ASCII_RESOURCE_LIMIT_COUNT
+        );
+        for descriptor in ascii_limits {
+            let id = merman::ascii::AsciiResourceLimitId::from_stable_id(descriptor.stable_id)
+                .expect("ASCII descriptor must resolve by stable id");
+            assert_eq!(descriptor.phase, id.descriptor().phase.as_str());
+            assert!(matches!(
+                resource_limit_owner(descriptor.stable_id),
+                BindingResourceOwner::Capability("ascii")
+            ));
+            assert!(BindingResourceScope::Ascii.accepts(descriptor.stable_id));
+            for profile in &contract.profiles {
+                assert!(profile.limits.contains_key(descriptor.stable_id));
+            }
+        }
+    }
+}
+
 #[cfg(all(test, feature = "png", feature = "jpeg", feature = "pdf"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn svg_backend_tree_caps_are_render_owned_and_apply_to_svg_and_exports() {
+        let contract = binding_resource_contract();
+        for stable_id in ["svg_backend_tree_nodes", "svg_backend_tree_depth"] {
+            let descriptor = contract
+                .limits
+                .iter()
+                .find(|descriptor| descriptor.stable_id == stable_id)
+                .expect("SVG backend hard cap descriptor");
+            assert_eq!(descriptor.phase, "svg_postprocess");
+            assert!(!descriptor.overridable);
+            assert!(descriptor.hard_cap);
+            assert!(matches!(
+                resource_limit_owner(stable_id),
+                BindingResourceOwner::Capability("svg")
+            ));
+            for scope in [
+                BindingResourceScope::Svg,
+                BindingResourceScope::Png,
+                BindingResourceScope::Jpeg,
+                BindingResourceScope::Pdf,
+            ] {
+                assert!(scope.accepts(stable_id));
+            }
+        }
+    }
 
     #[test]
     fn export_contract_separates_policy_limits_from_backend_hard_caps() {
@@ -363,7 +445,7 @@ mod tests {
         );
         assert_eq!(
             export_limits.iter().filter(|limit| limit.hard_cap).count(),
-            6
+            5
         );
         assert!(
             export_limits

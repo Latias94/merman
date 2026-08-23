@@ -9,13 +9,16 @@ use super::metrics::{
 };
 use super::notes::{SequenceNoteHorizontalContext, sequence_note_horizontal_model};
 use super::{
-    bracketize_sequence_block_label, sequence_block_label_wrap_width,
+    SequenceLayoutCheckpoints, bracketize_sequence_block_label, sequence_block_label_wrap_width,
     wrap_sequence_label_like_mermaid_lines,
 };
+use crate::Result;
 use crate::math::MathRenderer;
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
+use merman_core::diagrams::sequence::{
+    SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
+};
 use std::collections::HashMap;
 
 #[derive(Clone, Copy)]
@@ -40,61 +43,75 @@ pub(super) struct BlockStepPlanContext<'a> {
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 pub(super) struct SequenceBlockPlan {
     pub(super) directive_steps: HashMap<String, f64>,
 }
 
-pub(super) fn plan_sequence_blocks(ctx: BlockStepPlanContext<'_>) -> SequenceBlockPlan {
+pub(super) fn plan_sequence_blocks(ctx: BlockStepPlanContext<'_>) -> Result<SequenceBlockPlan> {
     let frame_ctx = ctx.frame_width_context();
-    let widths_by_id = calculate_sequence_block_widths(ctx);
+    let widths_by_id = calculate_sequence_block_widths(ctx)?;
     let step_ctx = BlockStepContext {
         block_base_step_empty: (2.0 * ctx.box_margin + ctx.box_text_margin).max(0.0),
         label_box_height: ctx.label_box_height,
         wrap_padding: ctx.wrap_padding,
     };
 
-    let directive_steps = ctx
-        .model
-        .messages
-        .iter()
-        .filter(|msg| is_block_label_directive(msg.message_type))
-        .map(|msg| {
-            let frame_width = widths_by_id.get(&msg.id).copied();
-            (
-                msg.id.clone(),
-                block_label_step(msg.message_text(), frame_width, frame_ctx, step_ctx),
-            )
-        })
-        .collect();
+    let mut directive_steps = HashMap::new();
+    for (message_index, msg) in ctx.model.messages.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(message_index)?;
+        if !is_block_label_directive(msg) {
+            continue;
+        }
+        let frame_width = widths_by_id.get(&msg.id).copied();
+        directive_steps.insert(
+            msg.id.clone(),
+            block_label_step(msg.message_text(), frame_width, frame_ctx, step_ctx)?,
+        );
+    }
+    ctx.checkpoints.checkpoint()?;
 
-    SequenceBlockPlan { directive_steps }
+    Ok(SequenceBlockPlan { directive_steps })
 }
 
 pub(super) fn calculate_sequence_block_widths(
     ctx: BlockStepPlanContext<'_>,
-) -> HashMap<String, f64> {
-    calculate_sequence_block_bounds(&ctx.model.messages, ctx.frame_width_context())
-        .into_iter()
-        .map(|(id, bounds)| (id, bounds.width))
-        .collect()
+) -> Result<HashMap<String, f64>> {
+    let bounds_by_id = calculate_sequence_block_bounds(
+        &ctx.model.messages,
+        ctx.frame_width_context(),
+        ctx.checkpoints,
+    )?;
+    let mut widths_by_id = HashMap::with_capacity(bounds_by_id.len());
+    for (index, (id, bounds)) in bounds_by_id.into_iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(index)?;
+        widths_by_id.insert(id, bounds.width);
+    }
+    Ok(widths_by_id)
 }
 
-pub(super) fn is_block_start(message_type: i32) -> bool {
-    matches!(message_type, 10 | 12 | 15 | 19 | 27 | 30 | 32)
+pub(super) fn is_block_start(message: &SequenceMessage) -> bool {
+    is_block_role(message, SequenceControlRole::Start)
 }
 
-pub(super) fn is_block_section(message_type: i32) -> bool {
-    matches!(message_type, 13 | 20 | 28)
+pub(super) fn is_block_section(message: &SequenceMessage) -> bool {
+    is_block_role(message, SequenceControlRole::Separator)
 }
 
-pub(super) fn is_block_end(message_type: i32) -> bool {
-    matches!(message_type, 11 | 14 | 16 | 21 | 29 | 31)
+pub(super) fn is_block_end(message: &SequenceMessage) -> bool {
+    is_block_role(message, SequenceControlRole::End)
 }
 
-fn is_block_label_directive(message_type: i32) -> bool {
-    is_block_start(message_type) || is_block_section(message_type)
+fn is_block_label_directive(message: &SequenceMessage) -> bool {
+    is_block_start(message) || is_block_section(message)
+}
+
+fn is_block_role(message: &SequenceMessage, role: SequenceControlRole) -> bool {
+    message.control_semantics().is_some_and(|semantics| {
+        semantics.kind != SequenceControlKind::Rect && semantics.role == role
+    })
 }
 
 fn block_label_step(
@@ -102,9 +119,9 @@ fn block_label_step(
     frame_width: Option<f64>,
     frame_ctx: BlockFrameWidthContext<'_>,
     step_ctx: BlockStepContext,
-) -> f64 {
+) -> Result<f64> {
     if raw_label.trim().is_empty() {
-        return step_ctx.block_base_step_empty;
+        return Ok(step_ctx.block_base_step_empty);
     }
 
     let label = bracketize_sequence_block_label(raw_label);
@@ -115,8 +132,9 @@ fn block_label_step(
         frame_ctx.math_config,
         frame_ctx.math_renderer,
         SequenceMathHeightMode::Bound,
-    ) {
-        return step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height);
+        frame_ctx.checkpoints.text(),
+    )? {
+        return Ok(step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height));
     }
 
     let measured_label = match frame_width {
@@ -125,7 +143,8 @@ fn block_label_step(
             frame_ctx.measurer,
             frame_ctx.msg_text_style,
             sequence_block_label_wrap_width(width, step_ctx.wrap_padding),
-        )
+            frame_ctx.checkpoints.text(),
+        )?
         .join("<br/>"),
         None => label,
     };
@@ -133,8 +152,9 @@ fn block_label_step(
         frame_ctx.measurer,
         &measured_label,
         frame_ctx.msg_text_style,
-    );
-    step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height)
+        frame_ctx.checkpoints.text(),
+    )?;
+    Ok(step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height))
 }
 
 #[derive(Clone, Copy)]
@@ -155,6 +175,7 @@ struct BlockFrameWidthContext<'a> {
     math_config: &'a MermaidConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     message_metrics: SequenceMessageMetricView<'a>,
+    checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 #[derive(Clone, Copy)]
@@ -183,6 +204,7 @@ impl<'a> BlockStepPlanContext<'a> {
             math_config: self.math_config,
             math_renderer: self.math_renderer,
             message_metrics: self.message_metrics,
+            checkpoints: self.checkpoints,
         }
     }
 }
@@ -340,17 +362,19 @@ impl OpenBlock {
 fn calculate_sequence_block_bounds(
     messages: &[SequenceMessage],
     ctx: BlockFrameWidthContext<'_>,
-) -> HashMap<String, BlockHorizontalBounds> {
+    checkpoints: SequenceLayoutCheckpoints<'_>,
+) -> Result<HashMap<String, BlockHorizontalBounds>> {
     let mut completed = HashMap::new();
     let mut stack: Vec<OpenBlock> = Vec::new();
     let mut activation_state = SequenceActivationState::new(ctx.activation_width);
 
     for (message_index, msg) in messages.iter().enumerate() {
-        if is_block_start(msg.message_type) {
+        checkpoints.checkpoint_loop(message_index)?;
+        if is_block_start(msg) {
             stack.push(OpenBlock::new(msg.id.clone()));
             continue;
         }
-        if is_block_section(msg.message_type) {
+        if is_block_section(msg) {
             if !msg.message_text().is_empty()
                 && let Some(current) = stack.last_mut()
             {
@@ -358,13 +382,14 @@ fn calculate_sequence_block_bounds(
             }
             continue;
         }
-        if is_block_end(msg.message_type) {
+        if is_block_end(msg) {
             if let Some(current) = stack.pop() {
                 if let Some(parent) = stack.last_mut() {
                     parent.include(current.summary);
                 }
                 let bounds = current.summary.resolve();
-                for alias in current.aliases {
+                for (alias_index, alias) in current.aliases.into_iter().enumerate() {
+                    checkpoints.checkpoint_loop(alias_index)?;
                     completed.insert(alias, bounds);
                 }
             }
@@ -392,8 +417,10 @@ fn calculate_sequence_block_bounds(
                     note_text_style: ctx.note_text_style,
                     math_config: ctx.math_config,
                     math_renderer: ctx.math_renderer,
+                    checkpoints,
                 },
-            ) else {
+            )?
+            else {
                 continue;
             };
             current.include(BlockBoundsSummary::envelope_width(
@@ -418,8 +445,10 @@ fn calculate_sequence_block_bounds(
                 premeasured_bound: ctx
                     .message_metrics
                     .get(SequenceMessageOwner::from_model_index(message_index), msg),
+                checkpoints,
             },
-        ) else {
+        )?
+        else {
             continue;
         };
         if let Some(summary) = message_bounds_summary(msg, message, ctx) {
@@ -427,7 +456,8 @@ fn calculate_sequence_block_bounds(
         }
     }
 
-    completed
+    checkpoints.checkpoint()?;
+    Ok(completed)
 }
 
 #[cfg(test)]
@@ -436,6 +466,7 @@ mod tests {
         BlockBoundsSummary, BlockFrameWidthContext, BlockHorizontalBounds, BlockStepContext,
         SequenceMessageMetricView, block_label_step, calculate_sequence_block_bounds,
     };
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use merman_core::MermaidConfig;
     use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessagePayload};
@@ -482,6 +513,9 @@ mod tests {
         let msg_style = TextStyle::default();
         let note_style = TextStyle::default();
         let math_config = MermaidConfig::default();
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let checkpoints = crate::sequence::SequenceLayoutCheckpoints::new(&work_meter);
 
         calculate_sequence_block_bounds(
             messages,
@@ -502,8 +536,11 @@ mod tests {
                 math_config: &math_config,
                 math_renderer: None,
                 message_metrics: SequenceMessageMetricView::empty(),
+                checkpoints,
             },
+            checkpoints,
         )
+        .unwrap()
     }
 
     #[test]
@@ -644,6 +681,9 @@ mod tests {
         let measurer = ExpectedBlockLabelMeasurer;
         let text_style = TextStyle::default();
         let math_config = MermaidConfig::default();
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let checkpoints = crate::sequence::SequenceLayoutCheckpoints::new(&work_meter);
 
         let step = block_label_step(
             "[Action 1]",
@@ -665,13 +705,15 @@ mod tests {
                 math_config: &math_config,
                 math_renderer: None,
                 message_metrics: SequenceMessageMetricView::empty(),
+                checkpoints,
             },
             BlockStepContext {
                 block_base_step_empty: 0.0,
                 label_box_height: 0.0,
                 wrap_padding: 0.0,
             },
-        );
+        )
+        .unwrap();
 
         assert_eq!(step, 16.0);
     }

@@ -3,20 +3,23 @@ use crate::model::{Bounds, LayoutNode};
 use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 use std::fmt::Write as _;
 
+use super::super::SvgDiagramId;
 use super::super::{escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgInterface;
 use super::bounds::include_xywh;
+use super::context::ClassEmitCheckpoint;
 use super::label::class_math_html_label;
 use super::node::ClassNodeRenderPosition;
 
 pub(super) struct ClassInterfaceRenderContext<'a> {
-    pub diagram_id: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub line_height: f64,
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub emit: ClassEmitCheckpoint<'a>,
 }
 
 pub(super) struct ClassInterfaceRenderState<'a> {
@@ -30,7 +33,7 @@ pub(super) fn render_class_interface_node(
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassInterfaceRenderContext<'_>,
-) {
+) -> crate::Result<()> {
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
 
@@ -67,10 +70,12 @@ pub(super) fn render_class_interface_node(
         fo_h,
     );
 
+    out.push_str(r#"<g class="node undefined" id=""#);
+    let _ = write!(out, "{}", ctx.diagram_id);
+    ctx.emit.checkpoint()?;
     let _ = write!(
         out,
-        r#"<g class="node undefined" id="{}-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">"#,
-        escape_attr_display(ctx.diagram_id),
+        r#"-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">"#,
         escape_attr_display(&iface.id),
         escape_attr_display(ctx.look),
         fmt(position.node_tx),
@@ -100,4 +105,5 @@ pub(super) fn render_class_interface_node(
         out.push_str("</p>");
     }
     out.push_str("</span></div></foreignObject></g></g>");
+    Ok(())
 }

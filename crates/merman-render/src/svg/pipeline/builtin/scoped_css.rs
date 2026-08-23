@@ -1,10 +1,17 @@
-use crate::Result;
-use cssparser::{Delimiter, Parser, ParserInput};
+use crate::{Error, Result};
 use std::borrow::Cow;
 
 use super::css_override::{CssOverridePolicy, strip_css_important};
-use super::util::{escape_xml_attr, find_matching_brace, find_tag_end};
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+use super::util::{
+    checkpoint_loop, find_tag_end_with_checkpoints, find_with_checkpoints, rfind_with_checkpoints,
+    trim_with_checkpoints,
+};
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessExecution, SvgPostprocessor};
+
+mod rewrite;
+
+const STYLE_OPEN: &str = r#"<style data-merman-postprocess="scoped-css">"#;
+const STYLE_CLOSE: &str = "</style>";
 
 #[derive(Debug, Clone)]
 pub struct ScopedCssPostprocessor {
@@ -51,251 +58,227 @@ impl SvgPostprocessor for ScopedCssPostprocessor {
         svg: Cow<'a, str>,
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        if self.css.trim().is_empty() {
+        let execution = ctx.execution();
+        execution.checkpoint()?;
+        let mut checkpoint = || execution.checkpoint();
+        if trim_with_checkpoints(&self.css, &mut checkpoint)?.is_empty() {
             return Ok(svg);
         }
 
-        let mut base = match self.override_policy {
-            CssOverridePolicy::Preserve => svg.into_owned(),
-            CssOverridePolicy::StripExistingImportant => strip_css_important(svg.as_ref()),
-        };
-        let css = decode_mermaid_css_hash_placeholders(&self.css);
-        let scoped_css = scope_css(css.as_ref(), ctx.svg_id());
-        inject_style(&mut base, &scoped_css, self.merge_into_existing_style);
-        Ok(Cow::Owned(base))
-    }
-}
-
-fn inject_style(svg: &mut String, css: &str, merge_into_existing_style: bool) {
-    let css = css.replace("</style", "<\\/style");
-    if merge_into_existing_style && let Some(style_close_start) = svg.find("</style") {
-        svg.insert_str(style_close_start, &css);
-        return;
-    }
-    let style = format!(
-        r#"<style data-merman-postprocess="scoped-css">{}</style>"#,
-        css
-    );
-
-    if let Some(start) = svg.find("<svg")
-        && let Some(end) = find_tag_end(svg, start)
-    {
-        if let Some(style_close_start) = svg.rfind("</style")
-            && let Some(style_close_end) = find_tag_end(svg, style_close_start)
-        {
-            svg.insert_str(style_close_end + 1, &style);
-            return;
-        }
-        svg.insert_str(end + 1, &style);
-        return;
-    }
-
-    svg.push_str(&style);
-}
-
-fn scope_css(css: &str, svg_id: Option<&str>) -> String {
-    let Some(svg_id) = svg_id.filter(|id| !id.trim().is_empty()) else {
-        return css.to_string();
-    };
-    let scope = format!("#{}", css_escape_id(svg_id));
-    scope_css_block(css, &scope)
-}
-
-fn decode_mermaid_css_hash_placeholders(css: &str) -> Cow<'_, str> {
-    if !css.contains('ﬂ') && !css.contains('¶') {
-        return Cow::Borrowed(css);
-    }
-
-    Cow::Owned(
-        css.replace("ﬂ°°", "#")
-            .replace("ﬂ°", "#")
-            .replace("¶ß", ";"),
-    )
-}
-
-fn scope_css_block(css: &str, scope: &str) -> String {
-    let mut out = String::with_capacity(css.len() + scope.len() * 4);
-    let mut cursor = 0;
-
-    while let Some(rel_open) = css[cursor..].find('{') {
-        let open = cursor + rel_open;
-        let selector_start = css[cursor..open]
-            .rfind(';')
-            .map(|rel| cursor + rel + 1)
-            .unwrap_or(cursor);
-        out.push_str(&scope_css_statement_prefix(&css[cursor..selector_start]));
-        let selector = &css[selector_start..open];
-        let Some(close) = find_matching_brace(css, open) else {
-            out.push_str(&css[cursor..]);
-            return out;
-        };
-
-        let body = &css[open + 1..close];
-        if selector.trim_start().starts_with('@') {
-            push_scoped_at_rule(&mut out, selector, body, scope);
-        } else {
-            out.push_str(&scope_selector(selector, body, scope));
-            out.push(' ');
-            out.push_str(&css[open..=close]);
-        }
-        cursor = close + 1;
-    }
-
-    out.push_str(&css[cursor..]);
-    out
-}
-
-fn scope_css_statement_prefix(prefix: &str) -> String {
-    let trimmed = prefix.trim_start();
-    if trimmed.starts_with("@import")
-        || trimmed.starts_with("@namespace")
-        || trimmed.starts_with("@charset")
-    {
-        String::new()
-    } else {
-        prefix.to_string()
-    }
-}
-
-fn push_scoped_at_rule(out: &mut String, selector: &str, body: &str, scope: &str) {
-    let name = selector
-        .trim_start()
-        .split(|ch: char| ch.is_whitespace() || ch == '{')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-
-    if is_css_keyframes_rule(&name) {
-        out.push_str(selector);
-        out.push('{');
-        out.push_str(body);
-        out.push('}');
-    } else if is_css_grouping_rule(&name) {
-        out.push_str(selector);
-        out.push('{');
-        out.push_str(&scope_css_block(body, scope));
-        out.push('}');
-    }
-}
-
-fn is_css_keyframes_rule(name: &str) -> bool {
-    name == "@keyframes" || name == "@-webkit-keyframes"
-}
-
-fn is_css_grouping_rule(name: &str) -> bool {
-    matches!(
-        name,
-        "@media" | "@supports" | "@layer" | "@scope" | "@container" | "@starting-style"
-    )
-}
-
-fn scope_selector(selector: &str, body: &str, scope: &str) -> String {
-    let safe_root_declarations = selector
-        .split(',')
-        .any(|part| matches!(part.trim(), "&") || part.trim() == scope)
-        && has_only_safe_root_declarations(body);
-    selector
-        .split(',')
-        .map(|part| {
-            let trimmed = part.trim();
-            if trimmed.is_empty() {
-                String::new()
-            } else if trimmed == ":root" || trimmed == "svg" {
-                scope.to_string()
-            } else {
-                let expanded = trimmed.replace('&', scope);
-                if (expanded == scope && safe_root_declarations)
-                    || is_already_namespaced(&expanded, scope)
-                {
-                    expanded
-                } else {
-                    format!("{scope} {expanded}")
-                }
+        let base = match self.override_policy {
+            CssOverridePolicy::Preserve => svg,
+            CssOverridePolicy::StripExistingImportant => {
+                let stripped = strip_css_important(svg.as_ref());
+                execution.checkpoint()?;
+                Cow::Owned(stripped)
             }
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
+        };
+        let css = decode_mermaid_css_hash_placeholders(&self.css, execution)?;
+        let scope = css_scope(ctx.svg_id(), execution)?;
+        let plan = InjectionPlan::locate(base.as_ref(), self.merge_into_existing_style, execution)?;
 
-fn has_only_safe_root_declarations(body: &str) -> bool {
-    let mut input = ParserInput::new(body);
-    let mut parser = Parser::new(&mut input);
+        let projected_css_bytes =
+            rewrite::projected_css_bytes(css.as_ref(), scope.as_deref(), execution)?;
+        let projected_svg_bytes = plan
+            .projected_svg_bytes(base.len(), projected_css_bytes)
+            .ok_or_else(|| execution.svg_byte_count_overflow())?;
+        execution.preflight_svg_byte_count(projected_svg_bytes)?;
+        execution.checkpoint()?;
 
-    while !parser.is_exhausted() {
-        if parser
-            .try_parse(|declaration| declaration.expect_semicolon())
-            .is_ok()
-        {
-            continue;
+        let mut output = String::new();
+        output
+            .try_reserve_exact(projected_svg_bytes)
+            .map_err(|error| {
+                Error::svg_postprocess(
+                    "scoped-css",
+                    format!("failed to allocate scoped SVG: {error}"),
+                )
+            })?;
+        output.push_str(&base[..plan.insertion]);
+        if plan.wrapped {
+            output.push_str(STYLE_OPEN);
         }
+        rewrite::materialize_css(css.as_ref(), scope.as_deref(), &mut output, execution)?;
+        if plan.wrapped {
+            output.push_str(STYLE_CLOSE);
+        }
+        output.push_str(&base[plan.insertion..]);
+        execution.checkpoint()?;
+        if output.len() != projected_svg_bytes {
+            return Err(Error::svg_postprocess(
+                "scoped-css",
+                "scoped SVG byte projection changed during materialization",
+            ));
+        }
+        Ok(Cow::Owned(output))
+    }
+}
 
-        let allowed = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
-            let property = declaration.expect_ident_cloned()?;
-            declaration.expect_colon()?;
-            while declaration.next_including_whitespace().is_ok() {}
-
-            Ok::<_, cssparser::ParseError<'_, ()>>(matches!(
-                property.as_ref(),
-                "font-family" | "font-size" | "fill"
-            ))
-        });
-        if !matches!(allowed, Ok(true)) {
-            return false;
+fn decode_mermaid_css_hash_placeholders<'a>(
+    css: &'a str,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Cow<'a, str>> {
+    let mut checkpoint = || execution.checkpoint();
+    let mut has_placeholder = false;
+    for (iteration, character) in css.chars().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        if matches!(character, 'ﬂ' | '¶') {
+            has_placeholder = true;
+            break;
         }
     }
-
-    true
-}
-
-fn is_already_namespaced(selector: &str, scope: &str) -> bool {
-    let Some(suffix) = selector.strip_prefix(scope) else {
-        return false;
-    };
-    if suffix.starts_with('>') {
-        return true;
+    checkpoint()?;
+    if !has_placeholder {
+        return Ok(Cow::Borrowed(css));
     }
 
-    let Some(first) = suffix.chars().next() else {
-        return false;
-    };
-    if !is_css_whitespace(first) {
-        return false;
-    }
-
-    let descendant = suffix.trim_start_matches(is_css_whitespace);
-    !descendant.is_empty()
-        && !descendant.starts_with('+')
-        && !descendant.starts_with('~')
-        && !descendant.starts_with("||")
-}
-
-fn is_css_whitespace(ch: char) -> bool {
-    matches!(ch, ' ' | '\n' | '\r' | '\t' | '\u{000C}')
-}
-
-fn css_escape_id(id: &str) -> String {
-    let mut out = String::with_capacity(id.len());
-    for ch in id.chars() {
-        let ok = ch.is_ascii_alphanumeric() || ch == '-' || ch == '_';
-        if ok {
-            out.push(ch);
+    let mut decoded = String::new();
+    decoded.try_reserve_exact(css.len()).map_err(|error| {
+        Error::svg_postprocess(
+            "scoped-css",
+            format!("failed to allocate decoded scoped CSS: {error}"),
+        )
+    })?;
+    let mut cursor = 0usize;
+    let mut iteration = 0usize;
+    while cursor < css.len() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        iteration = iteration.wrapping_add(1);
+        let tail = &css[cursor..];
+        if tail.starts_with("ﬂ°°") {
+            decoded.push('#');
+            cursor += "ﬂ°°".len();
+        } else if tail.starts_with("ﬂ°") {
+            decoded.push('#');
+            cursor += "ﬂ°".len();
+        } else if tail.starts_with("¶ß") {
+            decoded.push(';');
+            cursor += "¶ß".len();
         } else {
-            out.push('\\');
-            out.push(ch);
+            let character = tail
+                .chars()
+                .next()
+                .expect("cursor remains on a UTF-8 character boundary");
+            decoded.push(character);
+            cursor += character.len_utf8();
         }
     }
-    out
+    checkpoint()?;
+    Ok(Cow::Owned(decoded))
 }
 
-#[allow(dead_code)]
-fn scoped_attr_selector(id: &str) -> String {
-    format!(r#"svg[id="{}"]"#, escape_xml_attr(id))
+fn css_scope(
+    svg_id: Option<&str>,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Option<String>> {
+    let Some(svg_id) = svg_id else {
+        return Ok(None);
+    };
+    let mut checkpoint = || execution.checkpoint();
+    let svg_id = trim_with_checkpoints(svg_id, &mut checkpoint)?;
+    if svg_id.is_empty() {
+        return Ok(None);
+    }
+
+    let mut checkpoint = || execution.checkpoint();
+    let mut escaped_bytes = 1usize;
+    for (iteration, character) in svg_id.chars().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        escaped_bytes = escaped_bytes
+            .checked_add(if is_css_identifier_character(character) {
+                character.len_utf8()
+            } else {
+                1 + character.len_utf8()
+            })
+            .ok_or_else(|| execution.svg_byte_count_overflow())?;
+    }
+    checkpoint()?;
+    let mut scope = String::new();
+    scope.try_reserve_exact(escaped_bytes).map_err(|error| {
+        Error::svg_postprocess(
+            "scoped-css",
+            format!("failed to allocate scoped CSS root selector: {error}"),
+        )
+    })?;
+    scope.push('#');
+    for (iteration, character) in svg_id.chars().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        if !is_css_identifier_character(character) {
+            scope.push('\\');
+        }
+        scope.push(character);
+    }
+    checkpoint()?;
+    Ok(Some(scope))
+}
+
+fn is_css_identifier_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '-' || character == '_'
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InjectionPlan {
+    insertion: usize,
+    wrapped: bool,
+}
+
+impl InjectionPlan {
+    fn locate(
+        svg: &str,
+        merge_into_existing_style: bool,
+        execution: SvgPostprocessExecution<'_>,
+    ) -> Result<Self> {
+        let mut checkpoint = || execution.checkpoint();
+        if merge_into_existing_style
+            && let Some(insertion) = find_with_checkpoints(svg, "</style", &mut checkpoint)?
+        {
+            return Ok(Self {
+                insertion,
+                wrapped: false,
+            });
+        }
+
+        if let Some(root_start) = find_with_checkpoints(svg, "<svg", &mut checkpoint)?
+            && let Some(root_end) = find_tag_end_with_checkpoints(svg, root_start, &mut checkpoint)?
+        {
+            if let Some(style_start) = rfind_with_checkpoints(svg, "</style", &mut checkpoint)?
+                && let Some(style_end) =
+                    find_tag_end_with_checkpoints(svg, style_start, &mut checkpoint)?
+            {
+                return Ok(Self {
+                    insertion: style_end + 1,
+                    wrapped: true,
+                });
+            }
+            return Ok(Self {
+                insertion: root_end + 1,
+                wrapped: true,
+            });
+        }
+
+        Ok(Self {
+            insertion: svg.len(),
+            wrapped: true,
+        })
+    }
+
+    fn projected_svg_bytes(self, svg_bytes: usize, css_bytes: usize) -> Option<usize> {
+        let wrapper_bytes = if self.wrapped {
+            STYLE_OPEN.len() + STYLE_CLOSE.len()
+        } else {
+            0
+        };
+        svg_bytes.checked_add(css_bytes)?.checked_add(wrapper_bytes)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::svg::pipeline::SvgPipeline;
+    use crate::environment::RenderEnvironment;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase};
+    use crate::svg::pipeline::{SvgPipeline, SvgPipelinePreset, SvgPostprocessMetadata};
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     fn render_session() -> crate::environment::RenderSession {
         crate::environment::RenderEnvironment::deterministic()
@@ -399,6 +382,23 @@ mod tests {
 
     #[test]
     fn scoped_css_matches_mermaid_namespace_boundary_rules() {
+        fn normalize_css_whitespace(value: &str) -> String {
+            let mut normalized = String::with_capacity(value.len());
+            let mut pending_space = false;
+            for character in value.chars() {
+                if matches!(character, ' ' | '\n' | '\r' | '\t' | '\u{000C}') {
+                    pending_space = true;
+                    continue;
+                }
+                if pending_space && !normalized.is_empty() {
+                    normalized.push(' ');
+                }
+                pending_space = false;
+                normalized.push(character);
+            }
+            normalized
+        }
+
         let cases = [
             ("& ~ *", "color: red;", "#diagram #diagram ~ *"),
             (
@@ -413,15 +413,29 @@ mod tests {
                 "font-family: serif; font-size: 12px; fill: red;",
                 "#diagram",
             ),
+            ("#diagram", "color: red;", "#diagram #diagram"),
+            (
+                "#diagram",
+                "font-family: serif; font-size: 12px; fill: red;",
+                "#diagram",
+            ),
             ("& > *", "color: red;", "#diagram > *"),
             ("& *", "color: red;", "#diagram *"),
         ];
 
         for (selector, body, expected) in cases {
-            assert_eq!(
-                scope_selector(selector, body, "#diagram"),
-                expected,
-                "selector: {selector:?}"
+            let css = format!("{selector}{{{body}}}");
+            let svg = r#"<svg id="diagram"><g/></svg>"#;
+            let session = render_session();
+            let out = SvgPipeline::parity()
+                .with_postprocessor(ScopedCssPostprocessor::new(css))
+                .process_to_string(svg, &session)
+                .unwrap();
+            let normalized_output = normalize_css_whitespace(&out);
+            let normalized_expected = normalize_css_whitespace(&format!("{expected} {{{body}}}"));
+            assert!(
+                normalized_output.contains(&normalized_expected),
+                "selector: {selector:?}; output: {out}"
             );
         }
     }
@@ -432,11 +446,12 @@ mod tests {
         let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(
-                "@import url('https://example.test/styles.css'); @media (max-width: 600px) { * { fill: red; } } @supports selector(h2 > p) { h2 > p { color: red; } }",
+                "@layer theme; @import url('https://example.test/styles.css'); @media (max-width: 600px) { * { fill: red; } } @supports selector(h2 > p) { h2 > p { color: red; } }",
             ))
             .process_to_string(svg, &session)
             .unwrap();
 
+        assert!(out.contains("@layer theme;"));
         assert!(!out.contains("@import"));
         assert!(out.contains("@media (max-width: 600px) {"));
         assert!(out.contains("#diagram * { fill: red; }"));
@@ -469,5 +484,165 @@ mod tests {
             .unwrap();
 
         assert!(out.contains("#diagram .node { fill: #123456; }"));
+    }
+
+    #[test]
+    fn scoped_css_uses_css_tokens_for_braces_and_selector_commas() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                r#"/* { } */ svg:not([data-x="{"]) { content: "}"; opacity: 0 } .node:is(.a, .b) { fill: red }"#,
+            ))
+            .process_to_string(svg, &session)
+            .unwrap();
+
+        assert!(
+            out.contains(r#"#diagram svg:not([data-x="{"]) { content: "}"; opacity: 0 }"#),
+            "{out}"
+        );
+        assert!(
+            out.contains("#diagram .node:is(.a, .b) { fill: red }"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn scoped_css_escapes_style_terminators_after_tokenized_rewrite() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                r#".node { content: "</style"; }"#,
+            ))
+            .process_to_string(svg, &session)
+            .unwrap();
+
+        assert!(out.contains(r#"content: "\3c /style";"#), "{out}");
+        assert_eq!(out.matches("</style>").count(), 1, "{out}");
+    }
+
+    #[test]
+    fn scoped_css_rejects_unclosed_rule_before_injection() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let error = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                r#".node { content: "{"; fill: red;"#,
+            ))
+            .process_to_string(svg, &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("unclosed"), "{error}");
+    }
+
+    #[test]
+    fn scoped_css_rejects_excessive_rule_nesting() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let css = format!(
+            "{} .node {{ fill: red; }} {}",
+            "@media all {".repeat(64),
+            "}".repeat(64)
+        );
+        let error = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(css))
+            .process_to_string(svg, &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("nesting"), "{error}");
+    }
+
+    #[test]
+    fn scoped_css_preflights_exact_projected_bytes_before_materialization() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let processor =
+            ScopedCssPostprocessor::new(".node, .edge, .label { fill: red; stroke: blue; }");
+        let metadata = SvgPostprocessMetadata::from_svg(svg);
+        let unbounded_session = RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session()
+            .unwrap();
+        let unbounded_context = SvgPostprocessContext::new(
+            SvgPipelinePreset::Parity,
+            0,
+            "scoped-css",
+            &metadata,
+            &unbounded_session,
+        );
+        let projected_bytes = processor
+            .process(Cow::Borrowed(svg), &unbounded_context)
+            .expect("unbounded scoped CSS should materialize")
+            .len();
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, projected_bytes)
+            .unwrap();
+        let exact_session = RenderEnvironment::deterministic()
+            .with_resource_policy(exact_policy)
+            .begin_session()
+            .unwrap();
+        let exact_context = SvgPostprocessContext::new(
+            SvgPipelinePreset::Parity,
+            0,
+            "scoped-css",
+            &metadata,
+            &exact_session,
+        );
+        assert_eq!(
+            processor
+                .process(Cow::Borrowed(svg), &exact_context)
+                .expect("the exact SVG byte limit should admit scoped CSS")
+                .len(),
+            projected_bytes
+        );
+
+        let limited_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, projected_bytes - 1)
+            .unwrap();
+        let limited_session = RenderEnvironment::deterministic()
+            .with_resource_policy(limited_policy)
+            .begin_session()
+            .unwrap();
+        let limited_context = SvgPostprocessContext::new(
+            SvgPipelinePreset::Parity,
+            0,
+            "scoped-css",
+            &metadata,
+            &limited_session,
+        );
+        let error = processor
+            .process(Cow::Borrowed(svg), &limited_context)
+            .unwrap_err();
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte resource rejection, got {error}");
+        };
+        assert_eq!(details.phase, ResourceLimitPhase::SvgPostprocess);
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.actual, projected_bytes);
+        assert_eq!(details.max, projected_bytes - 1);
+    }
+
+    #[test]
+    fn scoped_css_token_walk_observes_mid_stream_cancellation() {
+        let control = OperationControl::new();
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let css = ".node { fill: red; }".repeat(512);
+        control.cancel_after_checkpoints(2);
+
+        let error = rewrite::projected_css_bytes(
+            &css,
+            Some("#diagram"),
+            SvgPostprocessExecution::new(&session),
+        )
+        .expect_err("the CSS token walk must observe cancellation before completion");
+        let Error::Cancelled(cancelled) = error else {
+            panic!("expected structured cancellation, got {error}");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
+        assert_eq!(cancelled.reason, CancelReason::Requested);
     }
 }

@@ -1,3 +1,5 @@
+#[cfg(feature = "ascii")]
+use merman::ascii::{AsciiResourceLimitId, AsciiResourcePolicy};
 #[cfg(not(feature = "svg"))]
 use merman::resources::{InputResourceLimitId, InputResourceLimitOverrideError};
 use merman::resources::{InputResourcePolicy, ResourceProfile};
@@ -423,6 +425,8 @@ pub(crate) struct ResolvedResourcePolicy {
     input: InputResourcePolicy,
     #[cfg(feature = "svg")]
     render: RenderResourcePolicy,
+    #[cfg(feature = "ascii")]
+    ascii: AsciiResourcePolicy,
     adjunct: CliAdjunctResourcePolicy,
     #[cfg(any(test, feature = "parallel-markdown"))]
     available_parallelism: NonZeroUsize,
@@ -445,6 +449,8 @@ impl ResolvedResourcePolicy {
             input: InputResourcePolicy::for_profile(profile),
             #[cfg(feature = "svg")]
             render: RenderResourcePolicy::for_profile(profile),
+            #[cfg(feature = "ascii")]
+            ascii: AsciiResourcePolicy::for_profile(profile),
             adjunct: CliAdjunctResourcePolicy::for_profile(profile),
             #[cfg(any(test, feature = "parallel-markdown"))]
             available_parallelism,
@@ -470,6 +476,11 @@ impl ResolvedResourcePolicy {
     #[cfg(feature = "svg")]
     pub(crate) const fn render_policy(&self) -> RenderResourcePolicy {
         self.render
+    }
+
+    #[cfg(feature = "ascii")]
+    pub(crate) const fn ascii_policy(&self) -> AsciiResourcePolicy {
+        self.ascii
     }
 
     pub(crate) fn files(&self) -> AuxiliaryFileLimits {
@@ -559,6 +570,21 @@ impl ResolvedResourcePolicy {
         stable_id: &str,
         value: u64,
     ) -> Result<(), ResourcePolicyOverrideError> {
+        #[cfg(feature = "ascii")]
+        if let Some(id) = AsciiResourceLimitId::from_stable_id(stable_id) {
+            let requested = value;
+            let value = usize::try_from(requested).map_err(|_| {
+                ResourcePolicyOverrideError::ValueOutOfRange {
+                    limit: id.as_str(),
+                    requested,
+                }
+            })?;
+            return self
+                .ascii
+                .apply_limit(id, value)
+                .map_err(|_| ResourcePolicyOverrideError::NonPositive(id.as_str()));
+        }
+
         #[cfg(feature = "svg")]
         if let Some(id) = RenderResourceLimitId::from_stable_id(stable_id) {
             let requested = value;
@@ -690,7 +716,7 @@ pub(crate) enum ByteLedgerKind {
     AggregateIcons,
     #[cfg(any(test, feature = "markdown"))]
     StagedOutput,
-    #[cfg(any(test, feature = "rustdoc"))]
+    #[cfg(feature = "rustdoc")]
     RustdocInput,
 }
 
@@ -702,7 +728,7 @@ impl ByteLedgerKind {
             Self::AggregateIcons => CliResourceLimitId::MaxAggregateIconBytes,
             #[cfg(any(test, feature = "markdown"))]
             Self::StagedOutput => CliResourceLimitId::MaxStagedBytes,
-            #[cfg(any(test, feature = "rustdoc"))]
+            #[cfg(feature = "rustdoc")]
             Self::RustdocInput => CliResourceLimitId::MaxRustdocInputBytes,
         }
     }
@@ -999,6 +1025,10 @@ mod tests {
 
         policy.apply_override("max_source_bytes", 17).unwrap();
         policy.apply_override("max_css_bytes", 23).unwrap();
+        #[cfg(feature = "ascii")]
+        for id in AsciiResourceLimitId::ALL {
+            policy.apply_override(id.as_str(), 29).unwrap();
+        }
 
         assert_eq!(
             policy
@@ -1012,6 +1042,10 @@ mod tests {
             Some(23)
         );
         assert_eq!(policy.base_value(CliResourceLimitId::MaxCssBytes), None);
+        #[cfg(feature = "ascii")]
+        for id in AsciiResourceLimitId::ALL {
+            assert_eq!(policy.ascii_policy().value(id), Some(29));
+        }
     }
 
     #[test]
@@ -1028,6 +1062,13 @@ mod tests {
         assert_eq!(
             policy.apply_override("max_css_bytes", 0),
             Err(ResourcePolicyOverrideError::NonPositive("max_css_bytes"))
+        );
+        #[cfg(feature = "ascii")]
+        assert_eq!(
+            policy.apply_override("max_ascii_document_cells", 0),
+            Err(ResourcePolicyOverrideError::NonPositive(
+                "max_ascii_document_cells"
+            ))
         );
         assert_eq!(
             policy.apply_override("max_jobs", HARD_MAX_JOBS + 1),

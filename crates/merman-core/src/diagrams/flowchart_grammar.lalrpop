@@ -4,8 +4,8 @@ grammar;
 
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
-  LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
-  SubgraphHeader, TitleKind, Tok
+  FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
+  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
 };
 use crate::SourceSpan;
 
@@ -82,13 +82,13 @@ Seps: () = {
 };
 
 Statement: Stmt = {
-  <c:Chain> => Stmt::Chain { nodes: c.0, edges: c.1 },
+  <c:Chain> => Stmt::Chain { node_groups: c.0, edge_groups: c.1 },
   <l:@L> <id:Id> <r:@R> <sd:ShapeData> => Stmt::ShapeData {
     target: id,
     target_span: Some(SourceSpan::new(l, r)),
     yaml: sd,
   },
-  <g:NodeGroupOnly> => Stmt::Chain { nodes: g, edges: Vec::new() },
+  <g:NodeGroupOnly> => Stmt::Chain { node_groups: vec![g], edge_groups: Vec::new() },
   <n:NodeRef> => Stmt::Node(Box::new(n)),
   <sg:SubgraphBlock> => Stmt::Subgraph(sg),
   <d:DirectionStmt> => Stmt::Direction(d.direction),
@@ -99,13 +99,14 @@ Statement: Stmt = {
   <ls:LinkStyleStmt> => Stmt::LinkStyle(ls),
 };
 
-Chain: (Vec<Node>, Vec<Edge>) = {
+Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
   <start:NodeGroup> <segs:EdgeSeg+> => {
-    let mut nodes: Vec<Node> = start.clone();
-    let mut edges: Vec<Edge> = Vec::new();
+    let mut node_groups: Vec<Vec<Node>> = vec![start.clone()];
+    let mut edge_groups: Vec<Vec<Edge>> = Vec::new();
 
     let mut prev_group = start;
     for (eid, link, label, next_group) in segs {
+      let mut segment_edges: Vec<Edge> = Vec::new();
       for from in &prev_group {
         for to in &next_group {
           let is_last_start = from.id == prev_group[prev_group.len() - 1].id;
@@ -119,7 +120,7 @@ Chain: (Vec<Node>, Vec<Edge>) = {
           let label_type = label.as_ref().map(|l| l.kind.clone()).unwrap_or(TitleKind::Text);
           let label_span = label.as_ref().and_then(|l| l.span);
           let label_selection = label.as_ref().and_then(|l| l.selection);
-          edges.push(Edge {
+          segment_edges.push(Edge {
             from: from.id.clone(),
             to: to.id.clone(),
             id: edge_id,
@@ -137,11 +138,12 @@ Chain: (Vec<Node>, Vec<Edge>) = {
           });
         }
       }
-      nodes.extend(next_group.iter().cloned());
+      edge_groups.push(segment_edges);
+      node_groups.push(next_group.clone());
       prev_group = next_group;
     }
 
-    (nodes, edges)
+    (node_groups, edge_groups)
   }
 };
 
@@ -185,6 +187,8 @@ NodeRef: Node = {
     Node {
       id_span: Some(SourceSpan::new(l, r)),
       id,
+      provenance: FlowNodeProvenance::Authored,
+      syntax: FlowNodeSyntax::ExplicitDefinition,
       label: Some(text.text),
       label_type: text.kind,
       label_span,
@@ -208,6 +212,12 @@ NodeRef: Node = {
   <l:@L> <id:Id> <r:@R> <cls:ClassOpt> => Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: if cls.is_empty() {
+      FlowNodeSyntax::BareReference
+    } else {
+      FlowNodeSyntax::ExplicitDefinition
+    },
     label: None,
     label_type: TitleKind::Text,
     label_span: None,
@@ -237,6 +247,8 @@ NodeRefChain: Node = {
     Node {
       id_span: Some(SourceSpan::new(l, r)),
       id,
+      provenance: FlowNodeProvenance::Authored,
+      syntax: FlowNodeSyntax::ExplicitDefinition,
       label: Some(text.text),
       label_type: text.kind,
       label_span,
@@ -260,6 +272,8 @@ NodeRefChain: Node = {
   <l:@L> <id:Id> <r:@R> <sd:ShapeData> <cls:ClassOpt> => Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: FlowNodeSyntax::ExplicitDefinition,
     label: None,
     label_type: TitleKind::Text,
     label_span: None,
@@ -282,6 +296,12 @@ NodeRefChain: Node = {
   <l:@L> <id:Id> <r:@R> <cls:ClassOpt> => Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: if cls.is_empty() {
+      FlowNodeSyntax::BareReference
+    } else {
+      FlowNodeSyntax::ExplicitDefinition
+    },
     label: None,
     label_type: TitleKind::Text,
     label_span: None,

@@ -17,6 +17,7 @@ pub(crate) mod scanner;
 pub(crate) use parity::render_architecture_family_artifact;
 pub(crate) use parity::render_builtin_family_artifact;
 pub(crate) use parity::theme as render_theme;
+pub(crate) use pipeline::SvgPostprocessExecution;
 
 pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{

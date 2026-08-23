@@ -40,7 +40,7 @@ pub(in crate::svg::parity::flowchart) fn record_flowchart_edge_trace(
     } = input;
 
     let trace = FlowchartEdgeTrace {
-        fixture_diagram_id: ctx.diagram_id.to_string(),
+        fixture_diagram_id: ctx.diagram_id.semantic_str().to_string(),
         edge_id: edge.id.clone(),
         from: edge.from.clone(),
         to: edge.to.clone(),

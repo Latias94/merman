@@ -29,7 +29,10 @@ const BINDING_STATUS_NAME_BY_CODE = new Map([
   [9, "MERMAN_INTERNAL_ERROR"],
   [10, "MERMAN_RESOURCE_LIMIT_EXCEEDED"],
   [11, "MERMAN_BUSY"],
+  [12, "MERMAN_CANCELLED"],
 ]);
+const CANCELLATION_REASONS = new Set(["requested", "deadline_exceeded"]);
+const OPERATION_PHASE_IDENTIFIER = /^[a-z][a-z0-9_-]{0,63}$/;
 const JSON_NUMBER_TOKEN = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 const JSON_NUMBER_PARTS = /^-?(0|[1-9]\d*)(?:\.(\d+))?(?:[eE]([+-]?)(\d+))?$/;
 const MAX_SAFE_INTEGER_DECIMAL = String(RUNTIME_CATALOG_MAX_SAFE_INTEGER);
@@ -67,6 +70,8 @@ const RESPONSE_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
   ["error", "code"],
   ["error", "details", "resource", "actual"],
   ["error", "details", "resource", "max"],
+  ["error", "details", "diagnostic", "span", "start"],
+  ["error", "details", "diagnostic", "span", "end"],
   ["error", "details", "icon_registry", "pack_index"],
 ]);
 const OPERATION_METADATA_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
@@ -96,6 +101,8 @@ export class MermanOperationError extends MermanError {
     this.kind = payload.kind ?? "generic";
     this.capabilityId = payload.capability_id ?? null;
     this.resourceDetails = payload.details?.resource ?? null;
+    this.diagnosticDetails = payload.details?.diagnostic ?? null;
+    this.cancellationDetails = payload.details?.cancellation ?? null;
   }
 }
 
@@ -843,8 +850,9 @@ export function abortError() {
 export function decodeWireResponse(
   value,
   expectation,
-  { requireUnavailable = false } = {},
+  { allowedCancellationReasons = [], requireUnavailable = false } = {},
 ) {
+  const cancellationReasons = validateAllowedCancellationReasons(allowedCancellationReasons);
   const envelope = parseTransportJsonText(
     value,
     "response",
@@ -863,7 +871,12 @@ export function decodeWireResponse(
         "Merman transport error envelopes must contain error only.",
       );
     }
-    const error = validateErrorPayload(envelope.error, expectation, requireUnavailable);
+    const error = validateErrorPayload(
+      envelope.error,
+      expectation,
+      requireUnavailable,
+      cancellationReasons,
+    );
     throw new MermanOperationError(error);
   }
   if (envelope.ok !== true || Object.hasOwn(envelope, "error")) {
@@ -877,6 +890,16 @@ export function decodeWireResponse(
     );
   }
   return validateSuccessResult(envelope.result, expectation);
+}
+
+function validateAllowedCancellationReasons(reasons) {
+  if (
+    !Array.isArray(reasons) ||
+    reasons.some((reason) => !CANCELLATION_REASONS.has(reason))
+  ) {
+    throw new TypeError("allowedCancellationReasons must contain known cancellation reasons.");
+  }
+  return new Set(reasons);
 }
 
 export function decodeWireCreationError(cause, label) {
@@ -990,7 +1013,12 @@ function validateSuccessResult(result, expectation) {
   return result;
 }
 
-function validateErrorPayload(error, expectation = null, requireUnavailable = false) {
+function validateErrorPayload(
+  error,
+  expectation = null,
+  requireUnavailable = false,
+  allowedCancellationReasons = new Set(),
+) {
   if (
     !isPlainJsonObject(error) ||
     !Number.isSafeInteger(error.code) ||
@@ -1029,9 +1057,18 @@ function validateErrorPayload(error, expectation = null, requireUnavailable = fa
     );
   }
   validateKnownErrorRelations(error);
-  validateResourceDetails(error.details);
+  validateErrorDetails(error.details);
 
-  if (requireUnavailable && expectation?.unavailable) {
+  if (
+    error.code === 12 &&
+    !allowedCancellationReasons.has(error.details.cancellation.reason)
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman transport returned cancellation without a matching invocation control.",
+    );
+  }
+
+  if (requireUnavailable && expectation?.unavailable && error.code !== 12) {
     const unavailable = expectation.unavailable;
     if (
       error.code !== unavailable.status_code ||
@@ -1105,9 +1142,29 @@ function validateKnownErrorRelations(error) {
   } else {
     throw new MermanInvalidTransportError("Merman transport returned an unknown error kind.");
   }
+  const cancellation = error.details?.cancellation;
+  if (error.code === 12) {
+    if (
+      error.kind !== "generic" ||
+      error.capability_id !== null ||
+      !isPlainJsonObject(error.details) ||
+      cancellation === undefined ||
+      error.details.resource !== undefined ||
+      error.details.diagnostic !== undefined ||
+      error.details.icon_registry !== undefined
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned an inconsistent cancellation error.",
+      );
+    }
+  } else if (cancellation !== undefined) {
+    throw new MermanInvalidTransportError(
+      "Merman transport attached cancellation details to a non-cancellation error.",
+    );
+  }
 }
 
-function validateResourceDetails(details) {
+function validateErrorDetails(details) {
   if (details === undefined) return;
   if (!isPlainJsonObject(details)) {
     throw new MermanInvalidTransportError("Merman transport error details must be an object.");
@@ -1129,6 +1186,41 @@ function validateResourceDetails(details) {
     ) {
       throw new MermanInvalidTransportError(
         "Merman transport returned invalid resource error details.",
+      );
+    }
+  }
+  if (details.diagnostic !== undefined) {
+    const diagnostic = details.diagnostic;
+    const span = diagnostic?.span;
+    if (
+      !isPlainJsonObject(diagnostic) ||
+      typeof diagnostic.code !== "string" ||
+      diagnostic.code.length === 0 ||
+      (diagnostic.field !== null && typeof diagnostic.field !== "string") ||
+      (diagnostic.diagram_type !== null && typeof diagnostic.diagram_type !== "string") ||
+      (span !== null &&
+        (!isPlainJsonObject(span) ||
+          !Number.isSafeInteger(span.start) ||
+          span.start < 0 ||
+          !Number.isSafeInteger(span.end) ||
+          span.end < span.start ||
+          !["exact", "insertion-point", "fallback"].includes(span.kind)))
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned invalid diagnostic error details.",
+      );
+    }
+  }
+  if (details.cancellation !== undefined) {
+    const cancellation = details.cancellation;
+    if (
+      !isPlainJsonObject(cancellation) ||
+      !CANCELLATION_REASONS.has(cancellation.reason) ||
+      typeof cancellation.phase !== "string" ||
+      !OPERATION_PHASE_IDENTIFIER.test(cancellation.phase)
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned invalid cancellation error details.",
       );
     }
   }

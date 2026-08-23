@@ -49,12 +49,14 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and not _
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and not __fish_seen_subcommand_from build check" -f -a "build" -d 'Build the complete managed Rustdoc fragment bundle'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and not __fish_seen_subcommand_from build check" -f -a "check" -d 'Check the managed Rustdoc fragment bundle without writing'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from build" -l config -d 'Rustdoc fragment configuration file' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from build" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from build" -l quiet -d 'Suppress non-error progress output'
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from build" -s h -l help -d 'Print help'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from build" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from build" -s V -l version -d 'Print version'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from check" -l config -d 'Rustdoc fragment configuration file' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from check" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from check" -l quiet -d 'Suppress non-error progress output'
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from check" -s h -l help -d 'Print help'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from check" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from check" -s V -l version -d 'Print version'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand capabilities" -l json -d 'Emit the machine-readable capability document'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand capabilities" -s h -l help -d 'Print help'
@@ -151,6 +153,8 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s I -l sv
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l hand-drawn-seed -d 'Stabilize rough/hand-drawn rendering where supported' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-charset -d 'Override the text renderer character set' -r -f -a "ascii\t''
 unicode\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-width-profile -d 'Display-width convention used for terminal text measurement' -r -f -a "unicode\t''
+cjk\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-direction -d 'Override the default graph direction when Mermaid input omits one' -r -f -a "left-right\t''
 top-down\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-color -d 'Color mode for terminal text output' -r -f -a "plain\t''
@@ -168,6 +172,7 @@ constrained\t'Constrained rendering for untrusted or publicly submitted document
 trusted-native\t'Local CLI and controlled native batch rendering'
 unbounded-for-trusted-input\t'Explicitly disable policy budgets while retaining hard backend capabilities'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l resource-limit -d 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s q -l quiet -d 'Suppress non-error log output'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l raster-unbounded -d 'Disable raster size limits. Use only for trusted oversized exports'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l pdf-filter-images-unbounded -l pdf-filter-unbounded -d 'Disable the retained PDF filter-image pixel budget for trusted inputs'
@@ -238,6 +243,7 @@ constrained\t'Constrained rendering for untrusted or publicly submitted document
 trusted-native\t'Local CLI and controlled native batch rendering'
 unbounded-for-trusted-input\t'Explicitly disable policy budgets while retaining hard backend capabilities'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l resource-limit -d 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s q -l quiet -d 'Suppress non-error log output'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l raster-unbounded -d 'Disable raster size limits. Use only for trusted oversized exports'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l pdf-filter-images-unbounded -l pdf-filter-unbounded -d 'Disable the retained PDF filter-image pixel budget for trusted inputs'
@@ -334,6 +340,7 @@ constrained\t'Constrained rendering for untrusted or publicly submitted document
 trusted-native\t'Local CLI and controlled native batch rendering'
 unbounded-for-trusted-input\t'Explicitly disable policy budgets while retaining hard backend capabilities'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l resource-limit -d 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l pretty -d 'Pretty-print JSON output'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l suppress-errors -d 'Emit an error diagram instead of failing on parse errors'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l system-clock -d 'Use the system clock while keeping other runtime sources deterministic'
@@ -392,6 +399,7 @@ constrained\t'Constrained rendering for untrusted or publicly submitted document
 trusted-native\t'Local CLI and controlled native batch rendering'
 unbounded-for-trusted-input\t'Explicitly disable policy budgets while retaining hard backend capabilities'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l resource-limit -d 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s f -l pdfFit -d 'Scale PDF to fit chart. Accepted for mmdc compatibility'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s q -l quiet -d 'Suppress non-error log output'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l raster-unbounded -d 'Disable raster size limits. Use only for trusted oversized exports'

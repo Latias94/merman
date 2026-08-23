@@ -1,9 +1,11 @@
+use super::SequenceLayoutCheckpoints;
 use super::constants::SEQUENCE_FRAME_GEOM_PAD_PX;
 use super::metrics::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_drawn_svg_like_with_html_br,
     measure_sequence_label_for_layout, measure_svg_like_with_html_br,
     wrap_sequence_label_like_mermaid_lines,
 };
+use crate::Result;
 use crate::math::MathRenderer;
 use crate::model::LayoutNode;
 use crate::text::{TextMeasurer, TextStyle};
@@ -31,6 +33,7 @@ pub(super) struct SequenceNoteHorizontalContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -57,16 +60,28 @@ struct NoteHorizontalGeometry {
 pub(super) fn sequence_note_horizontal_model(
     msg: &SequenceMessage,
     ctx: SequenceNoteHorizontalContext<'_>,
-) -> Option<SequenceNoteHorizontalModel> {
-    let (from, to) = (msg.from.as_deref()?, msg.to.as_deref()?);
-    let (from_index, to_index) = (
-        ctx.actor_index.get(from).copied()?,
-        ctx.actor_index.get(to).copied()?,
-    );
-    let from_center_x = *ctx.actor_centers_x.get(from_index)?;
-    let to_center_x = *ctx.actor_centers_x.get(to_index)?;
-    let from_width = *ctx.actor_widths.get(from_index)?;
-    let to_width = *ctx.actor_widths.get(to_index)?;
+) -> Result<Option<SequenceNoteHorizontalModel>> {
+    let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+        return Ok(None);
+    };
+    let (Some(from_index), Some(to_index)) = (
+        ctx.actor_index.get(from).copied(),
+        ctx.actor_index.get(to).copied(),
+    ) else {
+        return Ok(None);
+    };
+    let (Some(from_center_x), Some(to_center_x)) = (
+        ctx.actor_centers_x.get(from_index).copied(),
+        ctx.actor_centers_x.get(to_index).copied(),
+    ) else {
+        return Ok(None);
+    };
+    let (Some(from_width), Some(to_width)) = (
+        ctx.actor_widths.get(from_index).copied(),
+        ctx.actor_widths.get(to_index).copied(),
+    ) else {
+        return Ok(None);
+    };
     let text = msg.message_text();
     let should_wrap = msg.wrap && !text.is_empty();
     let is_math_note = text.contains("$$");
@@ -79,7 +94,8 @@ pub(super) fn sequence_note_horizontal_model(
             ctx.math_config,
             ctx.math_renderer,
             SequenceMathHeightMode::Bound,
-        )
+            ctx.checkpoints.text(),
+        )?
         .0
     } else if should_wrap {
         let wrapped = wrap_sequence_label_like_mermaid_lines(
@@ -87,11 +103,24 @@ pub(super) fn sequence_note_horizontal_model(
             ctx.measurer,
             ctx.note_text_style,
             ctx.note_default_width.max(1.0),
-        )
+            ctx.checkpoints.text(),
+        )?
         .join("<br/>");
-        measure_svg_like_with_html_br(ctx.measurer, &wrapped, ctx.note_text_style).0
+        measure_svg_like_with_html_br(
+            ctx.measurer,
+            &wrapped,
+            ctx.note_text_style,
+            ctx.checkpoints.text(),
+        )?
+        .0
     } else {
-        measure_svg_like_with_html_br(ctx.measurer, text, ctx.note_text_style).0
+        measure_svg_like_with_html_br(
+            ctx.measurer,
+            text,
+            ctx.note_text_style,
+            ctx.checkpoints.text(),
+        )?
+        .0
     }
     .max(0.0);
     if !matches!(placement, 0 | 1) && from == to {
@@ -101,13 +130,19 @@ pub(super) fn sequence_note_horizontal_model(
                 ctx.measurer,
                 ctx.note_text_style,
                 ctx.note_default_width.max(from_width).max(1.0),
-            )
+                ctx.checkpoints.text(),
+            )?
             .join("<br/>")
         } else {
             text.to_string()
         };
-        text_width =
-            measure_svg_like_with_html_br(ctx.measurer, &measured_text, ctx.note_text_style).0;
+        text_width = measure_svg_like_with_html_br(
+            ctx.measurer,
+            &measured_text,
+            ctx.note_text_style,
+            ctx.checkpoints.text(),
+        )?
+        .0;
     }
     let geometry = note_horizontal_model_from_request(NoteHorizontalRequest {
         placement,
@@ -129,17 +164,18 @@ pub(super) fn sequence_note_horizontal_model(
             2.0 * ctx.wrap_padding,
             ctx.measurer,
             ctx.note_text_style,
-        )
+            ctx.checkpoints.text(),
+        )?
         .join("<br/>")
     } else {
         text.to_string()
     };
 
-    Some(SequenceNoteHorizontalModel {
+    Ok(Some(SequenceNoteHorizontalModel {
         start_x: geometry.start_x,
         width: geometry.width,
         effective_text,
-    })
+    }))
 }
 
 fn note_horizontal_model_from_request(req: NoteHorizontalRequest) -> NoteHorizontalGeometry {
@@ -200,6 +236,7 @@ pub(super) struct SequenceNoteLayoutContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 pub(super) struct SequenceNoteLayout {
@@ -213,8 +250,8 @@ pub(super) struct SequenceNoteLayout {
 pub(super) fn layout_sequence_note(
     msg: &SequenceMessage,
     ctx: SequenceNoteLayoutContext<'_>,
-) -> Option<SequenceNoteLayout> {
-    let horizontal = sequence_note_horizontal_model(
+) -> Result<Option<SequenceNoteLayout>> {
+    let Some(horizontal) = sequence_note_horizontal_model(
         msg,
         SequenceNoteHorizontalContext {
             actor_index: ctx.actor_index,
@@ -228,8 +265,12 @@ pub(super) fn layout_sequence_note(
             note_text_style: ctx.note_text_style,
             math_config: ctx.math_config,
             math_renderer: ctx.math_renderer,
+            checkpoints: ctx.checkpoints,
         },
-    )?;
+    )?
+    else {
+        return Ok(None);
+    };
     let is_math_note = horizontal.effective_text.contains("$$");
     let (_, height) = if is_math_note {
         measure_sequence_label_for_layout(
@@ -239,21 +280,23 @@ pub(super) fn layout_sequence_note(
             ctx.math_config,
             ctx.math_renderer,
             SequenceMathHeightMode::Draw,
-        )
+            ctx.checkpoints.text(),
+        )?
     } else {
         measure_drawn_svg_like_with_html_br(
             ctx.measurer,
             &horizontal.effective_text,
             ctx.note_text_style,
             SequenceDrawnTextNode::Tspan,
-        )
+            ctx.checkpoints.text(),
+        )?
     };
     let note_x = horizontal.start_x;
     let note_w = horizontal.width;
     let note_h = (height + 2.0 * ctx.note_margin).round().max(1.0);
     let note_y = (ctx.cursor_y + ctx.box_margin).round();
 
-    Some(SequenceNoteLayout {
+    Ok(Some(SequenceNoteLayout {
         node: LayoutNode {
             id: format!("note-{}", msg.id),
             x: note_x + note_w / 2.0,
@@ -268,7 +311,7 @@ pub(super) fn layout_sequence_note(
         rect_max_x: note_x + note_w + SEQUENCE_FRAME_GEOM_PAD_PX,
         rect_max_y: note_y + note_h,
         cursor_step: ctx.box_margin + note_h,
-    })
+    }))
 }
 
 pub(crate) fn sequence_note_final_wrapped_lines(
@@ -277,9 +320,10 @@ pub(crate) fn sequence_note_final_wrapped_lines(
     note_text_pad_total: f64,
     measurer: &dyn TextMeasurer,
     note_text_style: &TextStyle,
-) -> Vec<String> {
+    checkpoints: super::SequenceTextCheckpoints<'_>,
+) -> Result<Vec<String>> {
     let wrap_w = (note_width - note_text_pad_total).max(1.0);
-    wrap_sequence_label_like_mermaid_lines(text, measurer, note_text_style, wrap_w)
+    wrap_sequence_label_like_mermaid_lines(text, measurer, note_text_style, wrap_w, checkpoints)
 }
 
 #[cfg(test)]
@@ -288,6 +332,7 @@ mod tests {
         NoteHorizontalRequest, SequenceNoteHorizontalContext, note_horizontal_model_from_request,
         sequence_note_horizontal_model,
     };
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::text::{TextMeasurer, TextMetrics, TextStyle};
     use merman_core::MermaidConfig;
     use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessagePayload};
@@ -364,6 +409,7 @@ mod tests {
             font_size: 90.0,
             ..TextStyle::default()
         };
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
         let model = sequence_note_horizontal_model(
             &message,
@@ -379,8 +425,10 @@ mod tests {
                 note_text_style: &note_style,
                 math_config: &MermaidConfig::default(),
                 math_renderer: None,
+                checkpoints: crate::sequence::SequenceLayoutCheckpoints::new(&meter),
             },
         )
+        .unwrap()
         .unwrap();
 
         assert_eq!(model.width, 110.0);

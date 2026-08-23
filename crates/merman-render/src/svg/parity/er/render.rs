@@ -39,13 +39,16 @@ fn er_theme_color_limit(effective_config: &serde_json::Value) -> usize {
         .unwrap_or(12)
 }
 
-fn er_redux_color_css(
-    diagram_id: &str,
+fn er_redux_color_css<I>(
+    diagram_id: I,
     data_look: &str,
     border_colors: &[String],
     background_colors: &[String],
     theme_color_limit: usize,
-) -> String {
+) -> String
+where
+    I: Copy + std::fmt::Display,
+{
     let mut out = String::new();
     for index in 0..theme_color_limit {
         let Some(border_color) = border_colors.get(index) else {
@@ -58,12 +61,12 @@ fn er_redux_color_css(
         let _ = write!(
             &mut out,
             r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(data_look),
             index,
             border_color,
             fill,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(data_look),
             index,
             border_color,
@@ -73,12 +76,15 @@ fn er_redux_color_css(
     out
 }
 
-fn insert_er_redux_color_css(css: &mut String, diagram_id: &str, color_css: &str) {
+fn insert_er_redux_color_css<I>(css: &mut String, diagram_id: I, color_css: &str)
+where
+    I: SvgDiagramIdValue,
+{
     if color_css.is_empty() {
         return;
     }
 
-    let escaped_id = escape_xml(diagram_id);
+    let escaped_id = diagram_id.semantic_value();
     let family_rule = format!("#{escaped_id} .entityBox");
     let root_rule = format!("#{escaped_id} :root");
     let insertion_point = css
@@ -90,7 +96,7 @@ fn insert_er_redux_color_css(css: &mut String, diagram_id: &str, color_css: &str
 
 fn compile_er_entity_styles(
     entity: &crate::er::ErEntity,
-    classes: &std::collections::BTreeMap<String, crate::er::ErClassDef>,
+    classes: &indexmap::IndexMap<String, crate::er::ErClassDef>,
 ) -> (Vec<String>, Vec<String>) {
     let mut compiled_box: Vec<String> = Vec::new();
     let mut compiled_text: Vec<String> = Vec::new();
@@ -239,7 +245,7 @@ pub(crate) fn render_er_diagram_svg_model(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
@@ -427,12 +433,13 @@ pub(crate) fn render_er_diagram_svg_model(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     let root_document = root_viewport.write_plan(&mut out, &root_plan, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if has_acc_title {
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{}">{}"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(model.acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
@@ -441,7 +448,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");
@@ -464,29 +471,29 @@ pub(crate) fn render_er_diagram_svg_model(
     // Markers ported from Mermaid `@11.12.2` `erMarkers.js`.
     // Note: ids follow Mermaid marker rules: `${diagramId}_${diagramType}-${markerType}{Start|End}`.
     // Mermaid's ER unified renderer enables four marker types by default; include MD_PARENT only if used.
-    let diagram_id_esc = escape_xml(diagram_id);
     let diagram_type_esc = escape_xml(diagram_type);
 
     // Mermaid emits one `<defs>` wrapper per marker.
     if include_md_parent {
         let _ = writeln!(
             &mut out,
-            r#"<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentStart" class="marker mdParent er" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentEnd" class="marker mdParent er" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>"#
+            r#"<defs><marker id="{diagram_id}_{diagram_type_esc}-mdParentStart" class="marker mdParent er" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-mdParentEnd" class="marker mdParent er" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>"#
         );
     }
 
     let _ = writeln!(
         &mut out,
-        r#"<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneStart" class="marker onlyOne er" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M9,0 L9,18 M15,0 L15,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneEnd" class="marker onlyOne er" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M3,0 L3,18 M9,0 L9,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneStart" class="marker zeroOrOne er" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="21" cy="9" r="6"/><path d="M9,0 L9,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneEnd" class="marker zeroOrOne er" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="9" cy="9" r="6"/><path d="M21,0 L21,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreStart" class="marker oneOrMore er" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreStart" class="marker zeroOrMore er" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="48" cy="18" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/></marker></defs>"#
+        r#"<defs><marker id="{diagram_id}_{diagram_type_esc}-onlyOneStart" class="marker onlyOne er" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M9,0 L9,18 M15,0 L15,18"/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-onlyOneEnd" class="marker onlyOne er" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M3,0 L3,18 M9,0 L9,18"/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrOneStart" class="marker zeroOrOne er" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="21" cy="9" r="6"/><path d="M9,0 L9,18"/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrOneEnd" class="marker zeroOrOne er" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="9" cy="9" r="6"/><path d="M21,0 L21,18"/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-oneOrMoreStart" class="marker oneOrMore er" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27"/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18"/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrMoreStart" class="marker zeroOrMore er" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="48" cy="18" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/></marker></defs>"#
     );
+    options.checkpoint_emit()?;
 
     let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
         std::collections::HashMap::new();
@@ -555,6 +562,7 @@ pub(crate) fn render_er_diagram_svg_model(
             }
             let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
             let edge_svg_id = format!("{diagram_id}-{edge_dom_id}");
+            options.checkpoint_emit()?;
             let is_dashed = e.stroke_dasharray.as_deref() == Some("8,8");
             let pattern_class = if is_dashed {
                 "edge-pattern-dashed"
@@ -604,6 +612,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 let marker = er_unified_marker_id(diagram_id, diagram_type, m);
                 let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(&marker));
             }
+            options.checkpoint_emit()?;
             out.push_str(" />");
         }
     }
@@ -834,7 +843,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<g id="{}-{}" class="{}" data-look="{}"{} transform="translate({}, {})">"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(&entity.id),
             escape_xml(&group_class),
             escape_xml(data_look),
@@ -842,6 +851,7 @@ pub(crate) fn render_er_diagram_svg_model(
             fmt(cx),
             fmt(cy)
         );
+        options.checkpoint_emit()?;
 
         if entity.attributes.is_empty() {
             let _ = write!(
@@ -1411,12 +1421,13 @@ pub(crate) fn render_er_diagram_svg_model(
     push_er_shadow_defs(&mut out, diagram_id, effective_config);
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 
 fn push_er_shadow_defs(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     effective_config_value: &serde_json::Value,
 ) {
     let flood_color = effective_config_value
@@ -1425,20 +1436,16 @@ fn push_er_shadow_defs(
         .filter(|theme| theme.contains("dark"))
         .map(|_| "#FFFFFF")
         .unwrap_or("#000000");
-    let diagram_id = escape_xml(diagram_id);
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id.as_str(),
-        flood_color,
-        diagram_id.as_str(),
-        flood_color
+        diagram_id, flood_color, diagram_id, flood_color
     );
 }
 
 fn push_er_gradient(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     effective_config_value: &serde_json::Value,
 ) {
     if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
@@ -1463,19 +1470,22 @@ fn push_er_gradient(
         })
         .unwrap_or_else(|| gradient_start.clone());
 
-    let diagram_id = escape_xml(diagram_id);
     let gradient_start = escape_xml(&gradient_start);
     let gradient_stop = escape_xml(&gradient_stop);
     let _ = write!(
         out,
         r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-        diagram_id.as_str(),
+        diagram_id,
         gradient_start.as_str(),
         gradient_stop.as_str()
     );
 }
 
-fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &str) -> String {
+fn er_unified_marker_id(
+    diagram_id: SvgDiagramId<'_>,
+    diagram_type: &str,
+    upstream_marker: &str,
+) -> String {
     let upstream_marker = upstream_marker.trim();
     let (base, suffix) = if let Some(v) = upstream_marker.strip_suffix("_START") {
         (v, "Start")
@@ -1501,9 +1511,9 @@ fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &
 mod tests {
     use crate::model::{Bounds, ErDiagramLayout, LayoutNode};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    use indexmap::IndexMap;
     use merman_core::diagrams::er::{ErDiagramRenderModel, ErEntityRenderModel};
     use serde_json::json;
-    use std::collections::BTreeMap;
 
     #[test]
     fn er_redux_color_theme_emits_per_entity_color_rules() {
@@ -1583,7 +1593,7 @@ mod tests {
         };
         let model = ErDiagramRenderModel {
             direction: "TB".to_string(),
-            entities: BTreeMap::from([
+            entities: IndexMap::from([
                 ("ALPHA".to_string(), alpha.clone()),
                 ("ZETA".to_string(), zeta.clone()),
             ]),

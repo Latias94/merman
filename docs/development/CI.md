@@ -9,7 +9,7 @@ unless that job produces an independently releasable artifact.
 Pull requests answer whether a change is safe to review and merge:
 
 - formatting, repository hygiene, and generated-source freshness;
-- full workspace tests and blocking parity on Linux;
+- full workspace tests on Linux, plus blocking SVG parity when its explicit inputs change;
 - workspace compilation plus an explicit host-sensitive macOS/Windows inventory, including the
   Windows ELK small-stack regression;
 - representative Cargo feature leaves, default surfaces, owner APIs, and feature-unification
@@ -46,13 +46,30 @@ ELK stack-safety contracts. Only pull-request and merge-queue runs emit the requ
 status name; push, schedule, and manual lifecycles use event-specific gate names so their results
 cannot satisfy the pull-request check by identity collision.
 
-The Linux parity lane also mounts the real `target/compare/<diagram>/*.svg` files emitted by the
-blocking `parity-root` comparison in Chromium and checks that painted content stays inside each root
-viewport. It reuses that job's Node environment and generated SVGs, installs only the locked
+The planner records SVG parity as a selector inside the same owner plan rather than as a second
+owner. Pull requests select it for the SVG renderer and its shared parser/layout crates, the SVG
+comparator and root-viewport oracle, active renderer fixtures, and pinned upstream authorities.
+ASCII-only implementation changes still run the `core` workspace gate but do not run the full SVG
+corpus or install Chromium. Main pushes, scheduled runs, manual runs, and fail-broad planner results
+always select SVG parity as a safety net.
+
+When selected, the Linux parity lane performs one Mermaid source parse and one local SVG render per
+fixture. Within
+the multi-policy DOM comparator, each upstream/local SVG is normalized and XML-parsed once,
+descendant signatures are cached by the normalization profile that actually affects them, and the
+blocking `structure`, `parity`, and `parity-root` policies are evaluated. `parity` and `parity-root`
+share the same descendant signature; the root contract is evaluated separately from the same parsed
+document. Specialist diagnostics may independently inspect XML, but they do not repeat the Mermaid
+parse or local SVG render. Failures retain their mode attribution, and the `parity-root` evaluation
+still emits the root-delta report at the existing
+`target/compare/<diagram>_report_parity_root.md` path. The lane
+then mounts the real `target/compare/<diagram>/*.svg` files from that comparison in Chromium and
+checks that painted content stays inside each root viewport. It reuses that job's Node environment
+and generated SVGs, installs only the locked
 `playground/tests` dependencies and Chromium, and preserves the outer SVG's own width, height, and
 max-width while mounting it in a fixed-width host. A local paint failure triggers the same paint
 audit for its upstream SVG. This browser gate runs only after the same job's blocking DOM parity
-comparison. It compares root-relative structural overflow pixels and accepts inherited evidence
+suite. It compares root-relative structural overflow pixels and accepts inherited evidence
 only when the local footprint is no larger and every local pixel is present in the upstream
 footprint or its immediate raster neighbor. That one-physical-pixel neighborhood handles binary
 alpha coverage moving between adjacent pixels during anti-aliasing; it is not a CSS-space or
@@ -76,6 +93,13 @@ proven, is indeterminate and fails closed instead of being treated as contained.
 Editor-language descriptors are shared inputs to the browser editor and VS Code extension. Changes
 under `contracts/editor-language/` therefore select both owners. Other shared authorities and
 unknown paths fail broad instead of guessing a narrow consumer set.
+
+Rust crates, fixtures, and repository scripts use an explicit path-prefix owner table. Ordinary
+renderer and fixture changes select the Linux workspace owner plus hygiene; binding, package, and
+platform crates add only their owning smoke workflows. Top-level Cargo authorities, capability and
+ABI schemas, workflow/classifier code, legal policy, unclassified crates, and unknown paths still
+select every owner. The table is intentionally static and reviewable rather than a partial Cargo or
+Rust dependency analyzer.
 
 The independently versioned Tree-sitter language distribution has its own `grammar` owner. Changes
 under `distribution/tree-sitter-mermaid/` select that owner and `hygiene`; npm manifests and
@@ -119,8 +143,17 @@ regression without mutation. Only scheduled and manually dispatched fuzz runs pe
 discovery.
 
 The performance workflow selects regression and frontmatter descriptors into one measurement
-matrix. Each descriptor uses the same base/head runner, receipt, artifact, summary, and outcome
-consumer. Pull requests remain read-only and write only to the job summary; schedules run both
+matrix. `tools/bench/performance_lanes.json` owns the lane recipes, labels, scheduled set, and manual
+selection groups; `tools/bench/performance_workflow.py` validates that registry and writes the
+matrix consumed by GitHub Actions. Contract tests exercise the same structured interface instead
+of parsing workflow YAML or shell text. Corpus, runner/recipe, statistics, report-consumer, and
+workflow contracts live in focused test modules behind the legacy aggregate command. Workflow
+syntax and expression checks remain owned by actionlint; security checks remain owned by zizmor.
+Each descriptor uses the same base/head runner, receipt, artifact, summary, and outcome consumer.
+Its standalone contracts run for pull requests only when the shared CI classifier selects the
+performance owner or an explicit `perf` or `perf-frontmatter` label requests a measurement. ASCII
+timing requires a manual dispatch with a compatible benchmark-only base backport. Pull requests
+remain read-only and write only to the job summary; schedules run both
 self-comparison descriptors plus the independent external-renderer reference lane.
 
 ## Release Preflight

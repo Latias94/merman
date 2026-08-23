@@ -22,10 +22,17 @@ export interface CreateNodeEngineOptions {
 
 export interface RenderSvgOptions {
   /**
-   * Cancels only while the request is waiting in the JS queue. Work that has started is not
-   * preempted and its Promise settles with the actual operation result.
+   * Cancels queued work immediately and requests cooperative cancellation after Rust work starts.
+   * A queued request rejects with AbortError; a started request rejects with MermanOperationError
+   * carrying canonical cancellation details once transport admission or a renderer checkpoint
+   * observes the request.
    */
   signal?: AbortSignal;
+  /**
+   * Relative monotonic deadline in milliseconds, starting when the Rust transport admits the
+   * operation. Values must be integers from 0 through 4,294,967,295.
+   */
+  timeoutMs?: number;
   /** Raw per-request options JSON merged by the shared binding contract. */
   optionsJson?: string;
 }
@@ -184,9 +191,12 @@ export declare class MermanEngine {
   metadataJson(id: string): string;
   executeOperation(
     request: MermanOperationRequest,
-    options?: Pick<RenderSvgOptions, "signal">,
+    options?: Pick<RenderSvgOptions, "signal" | "timeoutMs">,
   ): Promise<MermanOperationResult>;
-  executeOperationSync(request: MermanOperationRequest): MermanOperationResult;
+  executeOperationSync(
+    request: MermanOperationRequest,
+    options?: Pick<RenderSvgOptions, "timeoutMs">,
+  ): MermanOperationResult;
   dispose(): Promise<void>;
 }
 
@@ -213,12 +223,34 @@ export interface MermanResourceErrorDetails {
   readonly profile: string;
 }
 
+export interface MermanDiagnosticSpan {
+  readonly start: number;
+  readonly end: number;
+  readonly kind: "exact" | "insertion-point" | "fallback" | string;
+}
+
+export interface MermanDiagnosticErrorDetails {
+  readonly code: string;
+  readonly span: MermanDiagnosticSpan | null;
+  readonly field: string | null;
+  readonly diagram_type: string | null;
+}
+
+export interface MermanCancellationErrorDetails {
+  readonly reason: "requested" | "deadline_exceeded";
+  /** Renderer phase identifier; new Merman versions may add phases. */
+  readonly phase: string;
+  readonly [key: string]: unknown;
+}
+
 export declare class MermanOperationError extends MermanError {
   readonly status: number | null;
   readonly codeName: string | null;
   readonly kind: "generic" | "unknown-operation" | "missing-capability" | string;
   readonly capabilityId: string | null;
   readonly resourceDetails: MermanResourceErrorDetails | null;
+  readonly diagnosticDetails: MermanDiagnosticErrorDetails | null;
+  readonly cancellationDetails: MermanCancellationErrorDetails | null;
 }
 
 export declare class MermanQueueSaturatedError extends MermanError {

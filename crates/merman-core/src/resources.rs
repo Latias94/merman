@@ -1324,8 +1324,8 @@ impl ClassComplexity {
                     .saturating_add(rel.id1.len())
                     .saturating_add(rel.id2.len())
                     .saturating_add(rel.title.len())
-                    .saturating_add(rel.relation_title_1.len())
-                    .saturating_add(rel.relation_title_2.len())
+                    .saturating_add(rel.relation_title_1.as_deref().map_or(0, str::len))
+                    .saturating_add(rel.relation_title_2.as_deref().map_or(0, str::len))
             })
             .sum::<usize>();
         let note_label_bytes = model

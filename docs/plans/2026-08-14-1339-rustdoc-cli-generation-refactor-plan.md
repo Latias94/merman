@@ -91,7 +91,7 @@ The CLI already owns Merman's full native renderer, Markdown scanners, resource 
 - SC2. Repeated `rustdoc build` runs are byte-identical and the second run leaves output modification times unchanged.
 - SC3. Every stale, missing, extra-managed, and tampered fixture makes `rustdoc check` exit 1 without filesystem mutation.
 - SC4. A packaged fixture documents successfully from unpacked, read-only source with Cargo offline, no CLI on `PATH`, and no network.
-- SC5. The exact CLI distribution recipe passes 1, 10, and 100 diagram Rustdoc workloads without unbounded memory growth and within existing resource-policy limits.
+- SC5. The exact CLI distribution recipe passes 1, 10, and 100 diagram Rustdoc workloads for both unique sources and repeated identical sources without unbounded memory growth and within existing resource-policy limits.
 - SC6. The CLI consumer path changes the attributable Rustdoc closure from the measured native macro baseline of 214 normal packages and 222 normal-plus-build packages to zero; the retained macro closure remains separately measured and is not represented as fixed by this plan.
 - SC7. The WASM evidence records a reproducible verdict against pre-registered gates of host closure at or below 30 packages, final `.crate` projection below 8 MiB, full layout/math/theme parity, warm render no slower than 2x the native oracle, and bounded failure behavior; passing the gates is not required for this refactor, and any missed gate is recorded without retaining backend code.
 
@@ -150,7 +150,7 @@ Out of scope:
 - KTD3. Use `merman-rustdoc.toml` schema 1 with `[[fragments]] id`, `source`, and optional `source_display = "hide" | "details"`. Output paths are fixed at `docs/generated/merman-rustdoc/<id>.md`; configuration cannot redirect writes outside the managed root. Governs R3, R9, R13.
 - KTD4. Keep CLI rendering policy tool-owned: deterministic environment, `readable` semantics, Rustdoc light/dark theme pair, complete layout/math capability, strict validation, and failure-as-error. Source-level Mermaid configuration remains available, but the macro policy matrix does not move into TOML. Governs R4-R6, R10, R15.
 - KTD5. Extend the Markdown scanner with a replacement-neutral span API and recognize `include_mmd!` only as a complete directive line outside code fences. Keep batch image rewriting and Rustdoc inline rewriting as separate adapters over those spans. Governs R6, R9.
-- KTD6. Add an internal in-memory SVG result path to the existing prepared graphical renderer. Do not add a renderer trait while only the Merman adapter exists. Invocation-local deduplication keys on source plus effective render profile. Governs R5, R7, R8, R10.
+- KTD6. Add an internal in-memory SVG result path to the existing prepared graphical renderer. Do not add a renderer trait while only the Merman adapter exists. Treat every rendered occurrence as one canonical Renderer operation, including occurrence-specific ID rebasing and final static-inline validation. Do not cache rendered SVG bytes across occurrences: sharing a pre-rebase artifact would require a second operation owner or a resumable public render-session API, while sharing a finalized artifact would violate occurrence-specific ID ownership. Invocation-local acquisition may still deduplicate immutable source bytes. Governs R5, R7, R8, R10.
 - KTD7. Rebase every SVG DOM ID and local reference with a prefix derived from fragment logical path, source digest, and same-source occurrence. Validate the rebased XML again before embedding. Governs R7-R9.
 - KTD8. Define a portable canonical JSON receipt distinct from the batch `GenerationManifest`. It records schema, generator/Merman/Mermaid versions, capability digest, normalized logical paths, source/include hashes, output hashes, and the exact managed file set using slash-separated UTF-8 relative paths. Governs R8, R11-R13.
 - KTD9. Deepen the existing transaction module only at publication primitives shared by batch and Rustdoc. Rustdoc owns receipt semantics and managed-set reconciliation; the transaction module owns locks, generation checks, staging, journal recovery, atomic replacement, and deterministic commit order. Governs R11-R13.
@@ -161,7 +161,7 @@ Out of scope:
 - KTD14. Add a focused ADR that supersedes ADR-0076 lines that couple Rustdoc to `complete-svg`; do not rewrite the historical ADR or weaken artifact-profile rules for other packages. Governs R16, R17.
 - KTD15. Treat rendered SVG as untrusted active content. Reject document types, `script`, `iframe`, `object`, `embed`, event attributes, external resource-bearing references, CSS imports, and non-local CSS URLs; sanitize safe HTML-label subtrees and validate the complete XML again after ID rebasing. Governs R4, R9.
 - KTD16. Resolve the config root canonically, approve every read and publication target through existing path and generation guards, and use same-file checks for aliases. `check` must return an operational error when an unfinished transaction journal exists instead of recovering or mutating it. Governs R9, R11-R13.
-- KTD17. Render CLI Rustdoc diagrams sequentially in logical source order for the first release, even when `parallel-markdown` is compiled. Invocation-local deduplication may reuse completed bytes, but concurrency requires separate measured admission because each diagram produces two inline SVG variants. Governs R8, R10.
+- KTD17. Render CLI Rustdoc diagrams sequentially in logical source order for the first release, even when `parallel-markdown` is compiled. Each occurrence produces two independently measured inline SVG operations; neither completed render bytes nor renderer sessions are reused across occurrences. Any later concurrency or renderer-owned template cache requires separate measured admission and a new owning decision. Governs R8, R10.
 - KTD18. Treat declared inputs as immutable source-of-truth files. The pure bundle builder reads them, check compares without mutation, and build publishes only below the fixed managed root. A successful prior generated state is recovered through Git, while the crash journal restores only interrupted transactions. Governs R11-R13, R20.
 
 ### High-Level Technical Design
@@ -226,7 +226,7 @@ The pure bundle builder owns all fallible acquisition and rendering before publi
 - **CSS and HTML-label injection:** KTD15 covers style element text, namespaced attributes, and safe `foreignObject` descendants rather than validating attributes alone.
 - **Source races during publication:** KTD9 reuses generation evidence and revalidates acquired inputs after locking.
 - **Transaction over-generalization:** U4 may extract only primitives needed by two production callers; Rustdoc receipt semantics remain outside `transaction/format.rs`.
-- **Large generated diffs:** KTD6 performs invocation-local deduplication, KTD7 limits ID churn, and KTD11 skips unchanged writes. Persistent caching remains out of scope.
+- **Large generated diffs and repeated-source work:** KTD7 limits ID churn and KTD11 skips unchanged writes. KTD6 deliberately favors one canonical operation owner over rendered-byte reuse, so SC5 measures both unique-source and repeated-source 1/10/100 workloads and requires an explicit maintainer disposition. Persistent caching remains out of scope.
 - **Dual-path drift:** U6 cross-links both packages and keeps shared behavioral fixtures explicit without creating a Cargo dependency between the integrations.
 - **WASM experiment scope expansion:** KTD13 makes cleanup part of completion and forbids backend admission in this plan.
 
@@ -418,7 +418,7 @@ The tree output must satisfy R1. The unpacked fixture must be read-only, have no
 
 - Run `rustdoc build` twice and compare every byte plus second-run mtimes.
 - Run `rustdoc check` against stale, tampered, missing, extra-managed, and unsafe fixtures; snapshot the tree before and after each check.
-- Measure 1, 10, and 100 diagrams with the same machine, revision, Cargo cache state, command, resource profile, and concurrency. Record wall time and peak RSS.
+- Measure 1, 10, and 100 diagrams for both unique-source and repeated-identical-source workloads with the same machine, revision, Cargo cache state, command, resource profile, and concurrency. Record wall time, peak RSS, output bytes, and the maintainer acceptance decision.
 - Run the U7 WASM matrix before deleting its harness. Preserve only the report and textual measurements.
 
 ### Review tail

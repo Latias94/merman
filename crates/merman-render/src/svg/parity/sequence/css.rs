@@ -1,13 +1,13 @@
 use super::super::*;
 
 pub(super) fn sequence_css(
-    diagram_id: &str,
+    diagram_id: impl Copy + std::fmt::Display,
     font_size_px: f64,
     effective_config: &serde_json::Value,
 ) -> String {
     // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
-    let id = escape_xml(diagram_id);
+    let id = diagram_id;
     let theme = PresentationTheme::new(effective_config).sequence_diagram();
     let font = theme.common.font_family_css.as_str();
     let text_color = theme.common.text_color.as_str();
@@ -210,6 +210,19 @@ pub(super) fn sequence_css(
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::cell::Cell;
+
+    #[derive(Clone, Copy)]
+    struct TrackedDiagramId<'a> {
+        writes: &'a Cell<usize>,
+    }
+
+    impl std::fmt::Display for TrackedDiagramId<'_> {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            self.writes.set(self.writes.get() + 1);
+            formatter.write_str("seq")
+        }
+    }
 
     #[test]
     fn sequence_css_uses_configured_font_size() {
@@ -219,6 +232,14 @@ mod tests {
             r#"#seq{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;fill:#333;}"#
         ));
         assert!(css.contains(r#"#seq svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;}#seq p{margin:0;}"#));
+    }
+
+    #[test]
+    fn sequence_css_formats_the_diagram_id_for_each_emitted_selector() {
+        let writes = Cell::new(0);
+        let css = sequence_css(TrackedDiagramId { writes: &writes }, 16.0, &json!({}));
+
+        assert_eq!(writes.get(), css.matches("#seq").count());
     }
 
     #[test]

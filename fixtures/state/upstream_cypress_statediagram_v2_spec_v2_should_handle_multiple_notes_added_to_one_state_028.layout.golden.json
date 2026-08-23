@@ -28,7 +28,7 @@
           "is_cluster": false
         },
         {
-          "id": "MyState----parent",
+          "id": "MyState----parent-1",
           "x": 208.36,
           "y": 157.0,
           "width": 187.68,
@@ -98,7 +98,7 @@
       ],
       "clusters": [
         {
-          "id": "MyState----parent",
+          "id": "MyState----parent-1",
           "x": 208.36,
           "y": 157.0,
           "width": 187.68,

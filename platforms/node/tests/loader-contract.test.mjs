@@ -440,11 +440,17 @@ test("the explicit Node WASM artifact keeps its CommonJS boundary inside the ESM
 test("candidate wrappers dispose owned engines once and fail closed afterward", async () => {
   for (const transportKind of ["napi", "wasm"]) {
     let disposeCalls = 0;
+    let executeArgs = null;
+    let executeSyncArgs = null;
     class CandidateEngine {
-      execute(value) {
+      execute(...args) {
+        executeArgs = args;
+        const [value] = args;
         return value;
       }
-      executeSync(value) {
+      executeSync(...args) {
+        executeSyncArgs = args;
+        const [value] = args;
         return value;
       }
       metadataJson(id) {
@@ -472,7 +478,14 @@ test("candidate wrappers dispose owned engines once and fail closed afterward", 
         }),
       });
 
-    assert.equal(await transport.execute("request"), "request");
+    const signal = new AbortController().signal;
+    assert.equal(await transport.execute("request", signal, 25), "request");
+    assert.deepEqual(
+      executeArgs,
+      transportKind === "napi" ? ["request", signal, 25] : ["request", 25],
+    );
+    assert.equal(transport.executeSync("sync-request", 12), "sync-request");
+    assert.deepEqual(executeSyncArgs, ["sync-request", 12]);
     await transport.dispose();
     await transport.dispose();
     assert.equal(disposeCalls, 1);

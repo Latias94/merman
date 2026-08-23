@@ -36,8 +36,15 @@ public class MermanResourceLimitId private constructor(
         public val MAX_LAYOUT_WORK_UNITS: MermanResourceLimitId = MermanResourceLimitId("max_layout_work_units", "layout_model", true, 1)
         public val MAX_SVG_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_svg_bytes", "svg_output", true, 1)
         public val MAX_SVG_ELEMENTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_elements", "svg_postprocess", true, 1)
+        public val SVG_BACKEND_TREE_NODES: MermanResourceLimitId = MermanResourceLimitId("svg_backend_tree_nodes", "svg_postprocess", false, 1)
+        public val SVG_BACKEND_TREE_DEPTH: MermanResourceLimitId = MermanResourceLimitId("svg_backend_tree_depth", "svg_postprocess", false, 1)
         public val MAX_DOCUMENT_DIAGRAMS: MermanResourceLimitId = MermanResourceLimitId("max_document_diagrams", "document_scan", true, 0)
         public val MAX_ASCII_GRID_CELLS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_grid_cells", "ascii_layout", true, 1)
+        public val MAX_ASCII_LAYOUT_WORK_UNITS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_layout_work_units", "ascii_layout_work", true, 1)
+        public val MAX_ASCII_DOCUMENT_CELLS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_document_cells", "ascii_document", true, 1)
+        public val MAX_ASCII_OUTPUT_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_ascii_output_bytes", "ascii_output", true, 1)
+        public val MAX_ASCII_GRAPHEME_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_ascii_grapheme_bytes", "ascii_grapheme", true, 1)
+        public val MAX_ASCII_NESTING_DEPTH: MermanResourceLimitId = MermanResourceLimitId("max_ascii_nesting_depth", "ascii_nesting", true, 1)
         public val MAX_RASTER_WIDTH: MermanResourceLimitId = MermanResourceLimitId("max_raster_width", "raster_allocation", true, 1)
         public val MAX_RASTER_HEIGHT: MermanResourceLimitId = MermanResourceLimitId("max_raster_height", "raster_allocation", true, 1)
         public val MAX_RASTER_PIXELS: MermanResourceLimitId = MermanResourceLimitId("max_raster_pixels", "raster_allocation", true, 1)
@@ -51,7 +58,6 @@ public class MermanResourceLimitId private constructor(
         public val MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES: MermanResourceLimitId = MermanResourceLimitId("max_total_svg_conversion_filter_primitives", "svg_conversion", false, 1)
         public val MAX_SVG_CONVERSION_SUBROOTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_conversion_subroots", "svg_conversion", false, 1)
         public val MAX_NESTED_SVG_IMAGES: MermanResourceLimitId = MermanResourceLimitId("max_nested_svg_images", "svg_conversion", false, 1)
-        public val SVG_BACKEND_TREE_NODES: MermanResourceLimitId = MermanResourceLimitId("svg_backend_tree_nodes", "svg_conversion", false, 1)
 
         public val knownValues: List<MermanResourceLimitId> =
             java.util.Collections.unmodifiableList(listOf(
@@ -62,8 +68,15 @@ public class MermanResourceLimitId private constructor(
             MAX_LAYOUT_WORK_UNITS,
             MAX_SVG_BYTES,
             MAX_SVG_ELEMENTS,
+            SVG_BACKEND_TREE_NODES,
+            SVG_BACKEND_TREE_DEPTH,
             MAX_DOCUMENT_DIAGRAMS,
             MAX_ASCII_GRID_CELLS,
+            MAX_ASCII_LAYOUT_WORK_UNITS,
+            MAX_ASCII_DOCUMENT_CELLS,
+            MAX_ASCII_OUTPUT_BYTES,
+            MAX_ASCII_GRAPHEME_BYTES,
+            MAX_ASCII_NESTING_DEPTH,
             MAX_RASTER_WIDTH,
             MAX_RASTER_HEIGHT,
             MAX_RASTER_PIXELS,
@@ -77,7 +90,6 @@ public class MermanResourceLimitId private constructor(
             MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES,
             MAX_SVG_CONVERSION_SUBROOTS,
             MAX_NESTED_SVG_IMAGES,
-            SVG_BACKEND_TREE_NODES,
             ))
 
         private val knownById: Map<String, MermanResourceLimitId> =
@@ -101,6 +113,11 @@ public enum class MermanResourceOverrideId(public val id: String, public val min
     MAX_SVG_ELEMENTS("max_svg_elements", 1),
     MAX_DOCUMENT_DIAGRAMS("max_document_diagrams", 0),
     MAX_ASCII_GRID_CELLS("max_ascii_grid_cells", 1),
+    MAX_ASCII_LAYOUT_WORK_UNITS("max_ascii_layout_work_units", 1),
+    MAX_ASCII_DOCUMENT_CELLS("max_ascii_document_cells", 1),
+    MAX_ASCII_OUTPUT_BYTES("max_ascii_output_bytes", 1),
+    MAX_ASCII_GRAPHEME_BYTES("max_ascii_grapheme_bytes", 1),
+    MAX_ASCII_NESTING_DEPTH("max_ascii_nesting_depth", 1),
     MAX_RASTER_WIDTH("max_raster_width", 1),
     MAX_RASTER_HEIGHT("max_raster_height", 1),
     MAX_RASTER_PIXELS("max_raster_pixels", 1),

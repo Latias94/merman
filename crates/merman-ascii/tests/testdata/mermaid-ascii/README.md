@@ -10,6 +10,13 @@ These fixtures are copied from the MIT-licensed
 - License: MIT
 - Local license copy: `crates/merman-ascii/LICENSES/mermaid-ascii-MIT.txt`
 
+`SOURCE_PROVENANCE.tsv` pins the upstream `cmd/testdata` tree OID, the four supplemental source
+blobs, and a SHA-256 aggregate over every tracked path and byte. Eight historical local mutations
+predate the immutable-oracle policy: five expected-output refreshes and three reference-only
+padding preambles moved into test metadata. They are named individually with source and tracked
+digests instead of being misrepresented as byte-identical copies. The current 96 tracked files are
+frozen; future renderer differences belong in the gap inventory plus independent semantic probes.
+
 The files keep the upstream `input---expected-output` split format. They are tracked here because
 `repo-ref/` is gitignored and must not be required by CI, crates.io packages, or downstream users.
 Graph fixture parity is tracked by `tests/graph_fixture.rs`; known non-matching graph fixtures are
@@ -22,8 +29,8 @@ or too semantically different for the upstream output to be a meaningful baselin
 use a local semantic fixture near the test file instead of stretching this inventory into a second
 standard.
 
-Three copied graph cases keep their rendered spacing via explicit test metadata in
-`tests/graph_fixture.rs`; their Mermaid input stays directive-free.
+Three graph cases keep their reference padding through explicit test metadata in
+`tests/graph_fixture.rs`; the historical preamble removal is recorded in `SOURCE_PROVENANCE.tsv`.
 
 Expected inventory:
 

@@ -192,12 +192,75 @@ pub(in crate::svg::parity) fn cssom_color_value(value: &str) -> String {
     }
 }
 
-pub(super) fn scoped_svg_id(diagram_id: &str, local_id: &str) -> String {
-    format!("{diagram_id}-{local_id}")
+#[derive(Clone, Copy)]
+pub(super) struct ScopedSvgId<'a, I> {
+    diagram_id: I,
+    local_id: &'a str,
 }
 
-pub(super) fn scoped_svg_url(diagram_id: &str, local_id: &str) -> String {
-    format!("url(#{})", scoped_svg_id(diagram_id, local_id))
+impl<I: std::fmt::Display> std::fmt::Display for ScopedSvgId<'_, I> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}-{}", self.diagram_id, self.local_id)
+    }
+}
+
+pub(super) fn scoped_svg_id<I>(diagram_id: I, local_id: &str) -> ScopedSvgId<'_, I> {
+    ScopedSvgId {
+        diagram_id,
+        local_id,
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ScopedSvgUrl<'a, I> {
+    diagram_id: I,
+    local_id: &'a str,
+}
+
+impl<I: std::fmt::Display> std::fmt::Display for ScopedSvgUrl<'_, I> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "url(#{})",
+            scoped_svg_id(&self.diagram_id, self.local_id)
+        )
+    }
+}
+
+pub(super) fn scoped_svg_url<I>(diagram_id: I, local_id: &str) -> ScopedSvgUrl<'_, I> {
+    ScopedSvgUrl {
+        diagram_id,
+        local_id,
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ScopedDropShadow<'a, I> {
+    diagram_id: I,
+    source: &'a str,
+}
+
+impl<I> std::fmt::Display for ScopedDropShadow<'_, I>
+where
+    I: Copy + std::fmt::Display,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts = self.source.split("url(#drop-shadow)");
+        formatter.write_str(parts.next().unwrap_or_default())?;
+        for suffix in parts {
+            write!(
+                formatter,
+                "{}",
+                scoped_svg_url(self.diagram_id, "drop-shadow")
+            )?;
+            formatter.write_str(suffix)?;
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn scoped_drop_shadow<I>(diagram_id: I, source: &str) -> ScopedDropShadow<'_, I> {
+    ScopedDropShadow { diagram_id, source }
 }
 
 use std::fmt::Write as _;
@@ -561,30 +624,39 @@ pub(super) fn escape_attr_into(out: &mut String, text: &str) {
     }
 }
 
-pub(super) fn escape_attr_display(text: &str) -> EscapeAttrDisplay<'_> {
-    EscapeAttrDisplay(text)
+pub(super) fn escape_attr_display<T: std::fmt::Display>(value: T) -> EscapeAttrDisplay<T> {
+    EscapeAttrDisplay(value)
 }
 
-pub(super) struct EscapeAttrDisplay<'a>(&'a str);
+pub(super) struct EscapeAttrDisplay<T>(T);
 
-impl std::fmt::Display for EscapeAttrDisplay<'_> {
+impl<T: std::fmt::Display> std::fmt::Display for EscapeAttrDisplay<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let text = self.0;
-        let mut start = 0usize;
-        for (i, ch) in text.char_indices() {
-            let Some(replacement) = xml_attr_replacement(ch) else {
-                continue;
-            };
-            if start < i {
-                f.write_str(&text[start..i])?;
+        struct EscapedAttrWriter<'formatter, 'output> {
+            formatter: &'formatter mut std::fmt::Formatter<'output>,
+        }
+
+        impl std::fmt::Write for EscapedAttrWriter<'_, '_> {
+            fn write_str(&mut self, text: &str) -> std::fmt::Result {
+                let mut start = 0usize;
+                for (i, ch) in text.char_indices() {
+                    let Some(replacement) = xml_attr_replacement(ch) else {
+                        continue;
+                    };
+                    if start < i {
+                        self.formatter.write_str(&text[start..i])?;
+                    }
+                    self.formatter.write_str(replacement)?;
+                    start = i + ch.len_utf8();
+                }
+                if start < text.len() {
+                    self.formatter.write_str(&text[start..])?;
+                }
+                Ok(())
             }
-            f.write_str(replacement)?;
-            start = i + ch.len_utf8();
         }
-        if start < text.len() {
-            f.write_str(&text[start..])?;
-        }
-        Ok(())
+
+        write!(EscapedAttrWriter { formatter: f }, "{}", self.0)
     }
 }
 

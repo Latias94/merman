@@ -54,15 +54,31 @@ impl BackendAdmission {
         let Some(_) = resources.batch().scheduling_weight_bytes else {
             return Self::unbounded(resources);
         };
-        let Some(max_grid_cells) = ascii_resources.max_grid_cells() else {
+        let Some(grid_cells) =
+            ascii_resources.value(merman::ascii::AsciiResourceLimitId::MaxGridCells)
+        else {
             return Self::exclusive_unmeasured(resources);
         };
-        let grid_cells = u64::try_from(max_grid_cells).map_err(|_| {
-            CliError::InvalidInput("ASCII grid admission weight does not fit u64".to_string())
+        let Some(document_cells) =
+            ascii_resources.value(merman::ascii::AsciiResourceLimitId::MaxDocumentCells)
+        else {
+            return Self::exclusive_unmeasured(resources);
+        };
+        let Some(output_bytes) =
+            ascii_resources.value(merman::ascii::AsciiResourceLimitId::MaxOutputBytes)
+        else {
+            return Self::exclusive_unmeasured(resources);
+        };
+        let surface_cells = u64::try_from(grid_cells.max(document_cells)).map_err(|_| {
+            CliError::InvalidInput("ASCII surface admission weight does not fit u64".to_string())
+        })?;
+        let output_bytes = u64::try_from(output_bytes).map_err(|_| {
+            CliError::InvalidInput("ASCII output admission weight does not fit u64".to_string())
         })?;
         let weight = checked_sum(&[
             semantic_phase_weight(resources)?,
-            checked_mul(grid_cells, ASCII_GRID_CELL_WEIGHT_BYTES)?,
+            checked_mul(surface_cells, ASCII_GRID_CELL_WEIGHT_BYTES)?,
+            output_bytes,
             BASIC_BACKEND_OVERHEAD_BYTES,
         ])?;
         Self::bounded(resources, weight)

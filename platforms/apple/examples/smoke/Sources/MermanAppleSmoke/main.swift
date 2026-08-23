@@ -5,7 +5,7 @@ import Merman
 struct MermanAppleSmoke {
     static func main() throws {
         let client = Merman()
-        guard client.transportApiVersion() == 4 else {
+        guard client.bindingApiVersionV5() == 5 else {
             throw SmokeError.failed("unexpected UniFFI binding API version")
         }
         let iconPack = MermanIconPack(
@@ -58,7 +58,7 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("resource failure did not return a binding error")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, codeName, _, _, resource, _, _, _):
+            case let .Binding(_, codeName, _, _, resource, _, _, _, _):
                 guard codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED",
                       resource?.cause == "ceiling",
                       resource?.limitId == "max_source_bytes",
@@ -83,7 +83,7 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("expired operation deadline did not cancel the request")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, codeName, _, _, _, _, cancellation, _):
+            case let .Binding(_, codeName, _, _, _, _, _, cancellation, _):
                 guard codeName == "MERMAN_CANCELLED",
                       cancellation?.reason == "deadline_exceeded",
                       cancellation?.phase == "admission" else {
@@ -107,7 +107,7 @@ private func requireMissingCapability(
         try operation()
     } catch let error as MermanError {
         switch error {
-        case let .Binding(_, _, kind, actualCapabilityId, _, _, _, _):
+        case let .Binding(_, _, kind, actualCapabilityId, _, _, _, _, _):
             guard kind == .missingCapability, actualCapabilityId == capabilityId else {
                 throw SmokeError.failed(
                     "\(capabilityId) failure lost its missing-capability contract"

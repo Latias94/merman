@@ -1,5 +1,5 @@
 use crate::error::CliError;
-use crate::input::{InputLimit, InputReadError, read_utf8};
+use crate::input::{InputLimit, InputReadError, read_utf8, read_utf8_controlled};
 use crate::runtime::SharedWriter;
 use std::fs::File;
 use std::io::Read;
@@ -154,6 +154,20 @@ pub(crate) fn read_input(
     read_primary_input(path, quiet, limit, stdin, stderr).map_err(CliError::primary_input)
 }
 
+#[cfg(any(feature = "svg", feature = "ascii"))]
+pub(crate) fn read_input_controlled(
+    path: Option<&Path>,
+    quiet: bool,
+    limit: InputLimit,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
+    control: &merman::OperationControl,
+) -> Result<String, CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+    read_primary_input_impl(path, quiet, limit, stdin, stderr, Some(control))
+        .map_err(controlled_primary_input_error)
+}
+
 pub(crate) fn read_primary_input(
     path: Option<&Path>,
     quiet: bool,
@@ -161,14 +175,27 @@ pub(crate) fn read_primary_input(
     stdin: &mut dyn Read,
     stderr: &SharedWriter,
 ) -> Result<String, InputReadError> {
+    read_primary_input_impl(path, quiet, limit, stdin, stderr, None)
+}
+
+fn read_primary_input_impl(
+    path: Option<&Path>,
+    quiet: bool,
+    limit: InputLimit,
+    stdin: &mut dyn Read,
+    stderr: &SharedWriter,
+    control: Option<&merman::OperationControl>,
+) -> Result<String, InputReadError> {
     match path {
         None => {
             crate::diagnostics::DiagnosticSink::new(quiet, stderr).info(
                 "No input file specified, reading from stdin. Use -i <input> to suppress this warning.",
             );
-            read_utf8(stdin, "stdin", limit, None)
+            read_utf8_with_control(stdin, "stdin", limit, None, control)
         }
-        Some(path) if path == Path::new("-") => read_utf8(stdin, "stdin", limit, None),
+        Some(path) if path == Path::new("-") => {
+            read_utf8_with_control(stdin, "stdin", limit, None, control)
+        }
         Some(path) => {
             let resource = format!("Input file {}", crate::error::safe_path(path));
             let file = File::open(path).map_err(|source| {
@@ -190,7 +217,7 @@ pub(crate) fn read_primary_input(
             if !metadata.file_type().is_file() {
                 return Err(InputReadError::NotRegularFile { resource });
             }
-            read_utf8(file, resource, limit, Some(metadata.len()))
+            read_utf8_with_control(file, resource, limit, Some(metadata.len()), control)
         }
     }
 }
@@ -245,12 +272,13 @@ pub(crate) fn read_fix_source(
 }
 
 #[cfg(feature = "svg")]
-pub(crate) fn read_optional_text_file(
+pub(crate) fn read_optional_text_file_controlled(
     path: Option<&Path>,
     label: &str,
     limit: InputLimit,
+    control: &merman::OperationControl,
 ) -> Result<Option<String>, CliError> {
-    path.map(|p| read_named_text_file(p, label, limit))
+    path.map(|path| read_named_text_file_controlled(path, label, limit, control))
         .transpose()
 }
 
@@ -263,14 +291,36 @@ pub(crate) fn read_named_text_file(
     read_utf8(file, resource, limit, Some(length_hint)).map_err(CliError::auxiliary_input)
 }
 
-pub(crate) fn read_named_bytes_file(
+#[cfg(any(feature = "svg", feature = "ascii"))]
+pub(crate) fn read_named_text_file_controlled(
     path: impl AsRef<Path>,
     label: &str,
     limit: InputLimit,
-) -> Result<Vec<u8>, CliError> {
+    control: &merman::OperationControl,
+) -> Result<String, CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
     let (file, resource, length_hint) = open_named_regular_file(path.as_ref(), label)?;
-    crate::input::read_bytes_with_limit(file, resource, limit, Some(length_hint))
-        .map_err(CliError::auxiliary_input)
+    read_utf8_controlled(file, resource, limit, Some(length_hint), control)
+        .map_err(controlled_auxiliary_input_error)
+}
+
+#[cfg(feature = "icons")]
+pub(crate) fn read_named_bytes_file_controlled(
+    path: impl AsRef<Path>,
+    label: &str,
+    limit: InputLimit,
+    control: &merman::OperationControl,
+) -> Result<Vec<u8>, CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+    let (file, resource, length_hint) = open_named_regular_file(path.as_ref(), label)?;
+    crate::input::read_bytes_with_limit_controlled(
+        file,
+        resource,
+        limit,
+        Some(length_hint),
+        control,
+    )
+    .map_err(controlled_auxiliary_input_error)
 }
 
 fn open_named_regular_file(path: &Path, label: &str) -> Result<(File, String, u64), CliError> {
@@ -301,23 +351,73 @@ fn open_named_regular_file(path: &Path, label: &str) -> Result<(File, String, u6
     Ok((file, resource, metadata.len()))
 }
 
+fn read_utf8_with_control(
+    reader: impl Read,
+    resource: impl Into<String>,
+    limit: InputLimit,
+    length_hint: Option<u64>,
+    control: Option<&merman::OperationControl>,
+) -> Result<String, InputReadError> {
+    match control {
+        Some(control) => read_utf8_controlled(reader, resource, limit, length_hint, control),
+        None => read_utf8(reader, resource, limit, length_hint),
+    }
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn controlled_primary_input_error(error: InputReadError) -> CliError {
+    match error {
+        InputReadError::Cancelled(cancelled) => {
+            CliError::Render(merman::RenderError::Cancelled(cancelled))
+        }
+        error => CliError::primary_input(error),
+    }
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn controlled_auxiliary_input_error(error: InputReadError) -> CliError {
+    match error {
+        InputReadError::Cancelled(cancelled) => {
+            CliError::Render(merman::RenderError::Cancelled(cancelled))
+        }
+        error => CliError::auxiliary_input(error),
+    }
+}
+
 #[cfg(any(feature = "svg", feature = "ascii"))]
 pub(crate) fn write_output(
     target: &crate::invocation::ResolvedDestination,
     bytes: &[u8],
+    control: &merman::OperationControl,
     publications: &crate::output::PublicationGuards,
     stdout: &SharedWriter,
     publication: &mut dyn crate::output::PublicationBackend,
 ) -> Result<(), CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
     match target {
         crate::invocation::ResolvedDestination::Stdout => {
-            write_stdout(bytes, stdout)?;
+            write_stdout_controlled(bytes, stdout, control)?;
         }
         crate::invocation::ResolvedDestination::File(path) => {
-            write_file(path, bytes, publications, publication)?;
+            publication.publish_file_controlled(path, bytes, publications, control)?;
         }
     }
     Ok(())
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn write_stdout_controlled(
+    bytes: &[u8],
+    stdout: &SharedWriter,
+    control: &merman::OperationControl,
+) -> Result<(), CliError> {
+    stdout.with_writer(|writer| {
+        // Stdout cannot be rolled back. This checkpoint is the publication commit point;
+        // cancellation requested after it must not turn a complete or partial write into
+        // a cancellation failure.
+        crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
+        writer.write_all(bytes).map_err(stdout_error)
+    })
 }
 
 pub(crate) fn write_stdout(bytes: &[u8], stdout: &SharedWriter) -> Result<(), CliError> {
@@ -331,23 +431,25 @@ pub(crate) fn write_stdout_line(line: &str, stdout: &SharedWriter) -> Result<(),
 }
 
 fn write_stdout_bytes(stdout: &SharedWriter, bytes: &[u8]) -> Result<(), CliError> {
-    stdout.write_all(bytes).map_err(|err| {
-        if err.kind() == std::io::ErrorKind::BrokenPipe {
-            CliError::BrokenStdoutPipe
-        } else {
-            CliError::stream("stdout", err)
-        }
-    })
+    stdout.write_all(bytes).map_err(stdout_error)
 }
 
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+fn stdout_error(error: std::io::Error) -> CliError {
+    if error.kind() == std::io::ErrorKind::BrokenPipe {
+        CliError::BrokenStdoutPipe
+    } else {
+        CliError::stream("stdout", error)
+    }
+}
+
+#[cfg(feature = "analysis")]
 pub(crate) fn write_file(
     path: &Path,
     bytes: &[u8],
     publications: &crate::output::PublicationGuards,
     publication: &mut dyn crate::output::PublicationBackend,
 ) -> Result<(), CliError> {
-    publication.publish_file(path, bytes, publications)
+    publication.publish_file_verified(path, bytes, publications, &mut |_| Ok(()))
 }
 
 #[cfg(feature = "analysis")]
@@ -426,5 +528,81 @@ mod tests {
             Err(CliError::ConcurrentModification { .. })
         ));
         assert_eq!(std::fs::read(&path).unwrap(), b"linked replacement");
+    }
+}
+
+#[cfg(all(test, any(feature = "svg", feature = "ascii")))]
+mod controlled_stdout_tests {
+    use super::*;
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    struct CancelAfterWrite {
+        bytes: Arc<Mutex<Vec<u8>>>,
+        control: merman::OperationControl,
+    }
+
+    impl io::Write for CancelAfterWrite {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.bytes
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .extend_from_slice(bytes);
+            self.control.cancel();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn stdout_cancellation_before_publication_writes_nothing() {
+        let control = merman::OperationControl::new();
+        control.cancel();
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let stdout = SharedWriter::new(CancelAfterWrite {
+            bytes: Arc::clone(&bytes),
+            control: control.clone(),
+        });
+
+        assert!(matches!(
+            write_stdout_controlled(b"complete artifact", &stdout, &control),
+            Err(CliError::Render(merman::RenderError::Cancelled(
+                merman::OperationCancelled {
+                    phase: merman::OperationPhase::Emit,
+                    reason: merman::CancelReason::Requested,
+                }
+            )))
+        ));
+        assert!(
+            bytes
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn stdout_cancellation_after_publication_commit_returns_complete_artifact() {
+        let control = merman::OperationControl::new();
+        let written = Arc::new(Mutex::new(Vec::new()));
+        let stdout = SharedWriter::new(CancelAfterWrite {
+            bytes: Arc::clone(&written),
+            control: control.clone(),
+        });
+        let artifact = vec![b'x'; crate::input::IO_CHUNK_BYTES + 1];
+
+        write_stdout_controlled(&artifact, &stdout, &control)
+            .expect("publication remains successful after its commit point");
+
+        assert!(control.is_cancelled());
+        assert_eq!(
+            *written
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            artifact
+        );
     }
 }

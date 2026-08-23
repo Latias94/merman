@@ -7,13 +7,17 @@ mod model;
 mod routing;
 mod shape;
 pub(crate) mod style;
+mod surface;
 mod topology;
 
-pub(crate) use adapter::from_flowchart_model;
+pub(crate) use adapter::from_flowchart_model_with_execution;
+#[cfg(test)]
 pub(crate) use draw::render_graph_with_execution;
+pub(crate) use draw::render_graph_with_resources_and_execution;
+pub(crate) use label::{DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan};
 pub(crate) use model::{
-    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupKind, GraphGroupStyle,
-    GraphNodeShape, GraphNodeStyle,
+    AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle,
+    GraphNodeSemantics, GraphNodeShape, GraphNodeSide, GraphNodeSideConstraint, GraphNodeStyle,
 };
 
 #[cfg(test)]
@@ -47,7 +51,7 @@ mod graph_golden {
         let actual = render_graph_with_execution(
             &graph,
             &AsciiRenderOptions::ascii(),
-            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+            AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
 
@@ -62,7 +66,7 @@ mod graph_golden {
         let actual = render_graph_with_execution(
             &graph,
             &AsciiRenderOptions::unicode(),
-            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+            AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
 
@@ -82,7 +86,7 @@ mod graph_golden {
         let actual = render_graph_with_execution(
             &graph,
             &AsciiRenderOptions::ascii(),
-            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+            AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
 
@@ -99,7 +103,7 @@ mod graph_golden {
         let actual = render_graph_with_execution(
             &graph,
             &AsciiRenderOptions::unicode(),
-            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+            AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
 
@@ -119,7 +123,7 @@ mod graph_golden {
         let actual = render_graph_with_execution(
             &graph,
             &AsciiRenderOptions::ascii(),
-            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+            AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
 
@@ -141,7 +145,7 @@ mod graph_golden {
         let actual = render_graph_with_execution(
             &graph,
             &AsciiRenderOptions::ascii(),
-            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+            AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
 

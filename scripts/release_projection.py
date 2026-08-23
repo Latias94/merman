@@ -951,6 +951,14 @@ def _collect_platform_versions(
         r"^package-lock\.json SHA-256: ([0-9a-f]{64})$",
         lock_digest,
     )
+    _observe_text_match(
+        observations,
+        "Playground license local Web package",
+        PLAYGROUND_LICENSE_REPORT,
+        license_report,
+        r"^ - @mermanjs/web@([^\s]+)$",
+        canonical,
+    )
     observe(
         "Python package",
         PYTHON_MANIFEST,
@@ -1463,11 +1471,18 @@ def _prepare_npm_versions(root: Path, release: ReleaseVersion) -> None:
             local_package_keys=local_keys,
         )
 
+    playground_license_report = _replace_one(
+        (root / PLAYGROUND_LICENSE_REPORT).read_text(encoding="utf-8"),
+        r"^( - @mermanjs/web@)[^\s]+$",
+        rf"\g<1>{release.canonical}",
+        PLAYGROUND_LICENSE_REPORT,
+        "local Web package version",
+    )
     _write_relative(
         root,
         PLAYGROUND_LICENSE_REPORT,
         _replace_one(
-            (root / PLAYGROUND_LICENSE_REPORT).read_text(encoding="utf-8"),
+            playground_license_report,
             r"^(package-lock\.json SHA-256: )[0-9a-f]{64}$",
             rf"\g<1>{hashlib.sha256(playground_lock_text.encode('utf-8')).hexdigest()}",
             PLAYGROUND_LICENSE_REPORT,

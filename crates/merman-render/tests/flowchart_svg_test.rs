@@ -11,7 +11,7 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::model::FlowchartLayout;
-use merman_render::resources::RenderResourcePolicy;
+use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
 use merman_render::svg::{FlowchartEdgeTraceCollector, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
     TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
@@ -127,6 +127,108 @@ fn flowchart_edge_trace_stays_in_explicit_caller_owned_memory() {
     assert_eq!(traces[0].edge_id, edge_id);
     assert!(!traces[0].base_points.is_empty());
     assert!(collector.snapshot().is_empty());
+}
+
+#[test]
+fn failed_flowchart_render_does_not_publish_staged_edge_trace() {
+    let source = "flowchart TD\nA --> B\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
+        .expect("parse succeeds")
+        .expect("detects flowchart");
+    let edge_id = flowchart_model(&parsed)
+        .edges
+        .first()
+        .expect("fixture has an edge")
+        .id
+        .clone();
+    let collector = FlowchartEdgeTraceCollector::default();
+    let debug =
+        SvgDebugOptions::default().with_flowchart_edge_trace(edge_id.clone(), collector.clone());
+
+    let successful_session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .begin_session()
+        .expect("create successful session");
+    let successful_artifact =
+        family::prepare(parsed, &LayoutOptions::default(), successful_session)
+            .expect("prepare successful artifact");
+    let successful_svg = successful_artifact
+        .render_svg(&SvgRenderOptions::default(), &debug)
+        .expect("render succeeds");
+    let retained_trace = collector.snapshot();
+    assert_eq!(retained_trace.len(), 1);
+
+    let failing_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(
+            ResourceLimitId::MaxSvgBytes,
+            successful_svg.svg().len().saturating_sub(1),
+        )
+        .expect("configure the N-1 SVG ceiling");
+    let failing_session = RenderEnvironment::deterministic()
+        .with_resource_policy(failing_policy)
+        .begin_session()
+        .expect("create failing session");
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse succeeds")
+            .expect("detects flowchart");
+    let failing_artifact = family::prepare(parsed, &LayoutOptions::default(), failing_session)
+        .expect("prepare failing artifact");
+    assert!(
+        failing_artifact
+            .render_svg(&SvgRenderOptions::default(), &debug)
+            .is_err(),
+        "the N-1 SVG ceiling must reject the second render"
+    );
+
+    assert_eq!(
+        collector.snapshot(),
+        retained_trace,
+        "a failed render must not publish staged trace records or erase prior successes"
+    );
+}
+
+#[test]
+fn public_flowchart_artifact_replays_diagram_id_terminal_during_emit() {
+    let mut source = String::from(
+        "flowchart TD\nclassDef hot fill:#123456,stroke:#654321,color:#fff\nN0:::hot --> N1\n",
+    );
+    for index in 0..256 {
+        if index == 0 {
+            continue;
+        }
+        source.push_str(&format!("N{index} --> N{}\n", index + 1));
+    }
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()))
+            .expect("parse succeeds")
+            .expect("detects Flowchart");
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+        .expect("valid SVG byte limit");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session()
+        .expect("begin render session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare public Flowchart artifact");
+
+    let error = match artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("terminal".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    ) {
+        Ok(_) => panic!("diagram-ID projection must reject the public render path"),
+        Err(error) => error,
+    };
+
+    let merman_render::Error::ResourceLimitExceeded(details) = error else {
+        panic!("expected SVG byte rejection, got {error}");
+    };
+    assert_eq!(details.limit, ResourceLimitId::MaxSvgBytes.as_str());
 }
 
 #[test]
@@ -1732,6 +1834,11 @@ fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
         "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
         "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
         "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+        concat!(
+            "flowchart TD\n",
+            "  subgraph X[First title]\n    A\n  end\n",
+            "  subgraph X[\"&nbsp;Second title&nbsp;\"]\n    B\n  end\n",
+        ),
     ] {
         let svg = render_flowchart_svg_from_text(source);
         let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
@@ -1752,6 +1859,102 @@ fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
             .collect::<String>();
         assert!(visible_text.contains("First title"), "{svg}");
         assert!(!visible_text.contains("Second title"), "{svg}");
+    }
+}
+
+#[test]
+fn duplicate_subgraph_vertex_css_does_not_leak_into_the_canonical_first_cluster() {
+    let svg = render_flowchart_svg_from_text(concat!(
+        "flowchart TD\n",
+        "classDef hot stroke:#123456\n",
+        "subgraph X[First title]\n  A\nend\n",
+        "subgraph X[Second title]\n  B\nend\n",
+        "style X fill:#010203\n",
+        "class X hot\n",
+    ));
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let cluster = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("id").is_some_and(|id| id.ends_with("-X"))
+                && node.attribute("class").is_some_and(|class| {
+                    class.split_ascii_whitespace().any(|part| part == "cluster")
+                })
+        })
+        .expect("canonical X cluster");
+    let classes = cluster
+        .attribute("class")
+        .expect("cluster class attribute")
+        .split_ascii_whitespace()
+        .collect::<Vec<_>>();
+    let shape_style = cluster
+        .children()
+        .find(|node| node.has_tag_name("rect") || node.has_tag_name("path"))
+        .and_then(|node| node.attribute("style"))
+        .unwrap_or_default();
+
+    assert!(!classes.contains(&"hot"), "{svg}");
+    assert!(!shape_style.contains("#010203"), "{svg}");
+    assert!(!shape_style.contains("#123456"), "{svg}");
+}
+
+#[test]
+fn flowchart_svg_uses_parser_owned_same_id_group_css_in_statement_order() {
+    let cases = [
+        (
+            concat!(
+                "flowchart TD\n",
+                "classDef base stroke:#00f\n",
+                "subgraph G\n  A\nend\n",
+                "class G base\n",
+                "style G fill:#f00\n",
+            ),
+            false,
+        ),
+        (
+            concat!(
+                "flowchart TD\n",
+                "classDef base stroke:#00f\n",
+                "subgraph G\n  A\nend\n",
+                "style G fill:#f00\n",
+                "class G base\n",
+            ),
+            true,
+        ),
+    ];
+
+    for (source, expects_base_class) in cases {
+        let svg = render_flowchart_svg_from_text(source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+        let cluster = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("id").is_some_and(|id| id.ends_with("-G"))
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "cluster")
+                    })
+            })
+            .expect("subgraph G cluster");
+        let classes = cluster
+            .attribute("class")
+            .expect("cluster class attribute")
+            .split_ascii_whitespace()
+            .collect::<Vec<_>>();
+        let shape_style = cluster
+            .children()
+            .find(|node| node.has_tag_name("rect") || node.has_tag_name("path"))
+            .and_then(|node| node.attribute("style"))
+            .expect("cluster shape style");
+
+        assert_eq!(classes.contains(&"base"), expects_base_class, "{svg}");
+        assert!(shape_style.contains("fill:#f00 !important"), "{svg}");
+        assert_eq!(
+            shape_style.contains("stroke:#00f !important"),
+            expects_base_class,
+            "{svg}",
+        );
     }
 }
 
@@ -2377,7 +2580,7 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    let text = "flowchart TD\nsubgraph Empty\nend\nclassDef hot fill:#0f0,color:#111\nclass Empty hot\nstyle Empty fill:#f00,stroke:#00f,color:#fff\n";
+    let text = "flowchart TD\nsubgraph Empty\nend\nstyle Empty fill:#f00,stroke:#00f,color:#fff\n";
     let engine = Engine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
@@ -2393,8 +2596,8 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
     .expect("render svg");
 
     assert!(
-        svg.contains(r#"<g class="node hot" id="merman-Empty""#),
-        "expected empty subgraph to render as a scoped node with its assigned class: {svg}"
+        svg.contains(r#"<g class="node" id="merman-Empty""#),
+        "expected empty subgraph to render as a scoped node: {svg}"
     );
     assert!(
         svg.contains(r#"style="fill:#f00 !important;stroke:#00f !important""#),

@@ -344,7 +344,7 @@ The default feature set is the complete local product. Cargo features are additi
 Install a lint-only binary:
 
 ```sh
-cargo install merman-cli --version 0.8.0-alpha.5 --locked \
+cargo install merman-cli --version 0.8.0-alpha.6 --locked \
   --no-default-features --features analysis
 ```
 
@@ -373,6 +373,30 @@ merman-cli mmdc -i diagram.mmd -o diagram.svg --runtime native
 ```
 
 Each adapter is also independently selectable with `--system-clock`, `--system-timezone`, `--system-random`, or `--system-timing` when its feature is compiled. `--runtime native` is shown only when the clock, time-zone, and random adapters are all available. Timing remains separately opt-in.
+
+## Operation Control
+
+`render`, `batch`, `mmdc`, and `rustdoc build` / `rustdoc check` own one cooperative operation
+control from input acquisition through the final publication boundary. Pressing Ctrl-C requests
+cancellation through that control instead of relying only on abrupt process termination; pressing
+Ctrl-C again before cooperative shutdown restores an immediate exit. Use
+`--operation-timeout-ms MILLISECONDS` to add a relative monotonic deadline:
+
+```sh
+merman-cli render diagram.mmd --operation-timeout-ms 5000
+merman-cli batch README.md --operation-timeout-ms 30000
+merman-cli mmdc -i diagram.mmd -o diagram.svg --operation-timeout-ms 5000
+merman-cli layout diagram.mmd --operation-timeout-ms 5000
+merman-cli rustdoc check --operation-timeout-ms 30000
+```
+
+The deadline is operation-wide, including stdin and bounded file acquisition. It can expire while a
+stdin producer keeps its pipe open without sending data. A Markdown batch does not reset it for
+each chart, and parallel chart workers observe the same cancellation state. Cancellation is
+cooperative: a blocking host or backend call returns to a checkpoint before the request is
+observed. Once observed, cancellation emits no partial rendered document; file and Markdown
+generation paths check the control while staging output and preserve their existing atomic or
+recoverable transaction guarantees.
 
 ## Resource And Network Policy
 
@@ -426,7 +450,7 @@ For SVG read from stdin, add `--input-kind svg`; named `.svg` files are inferred
 | Exit | Meaning |
 | ---: | --- |
 | `0` | Success, including a closed downstream stdout pipe |
-| `1` | Invalid Mermaid/content/render result, a source-required layout or math capability is unavailable, or `fix --check/--diff` would change source |
+| `1` | Invalid Mermaid/content/render result, cooperative cancellation or deadline expiry, a source-required layout or math capability is unavailable, or `fix --check/--diff` would change source |
 | `2` | Invalid invocation, conflicting options, unavailable statically requested option/output capability, or configuration |
 | `3` | Local/remote operational failure, lock contention, incomplete recovery, or publication failure |
 

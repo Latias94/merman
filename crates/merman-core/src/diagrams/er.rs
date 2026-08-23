@@ -9,10 +9,11 @@ use crate::{
         trailing_ascii_whitespace_slot,
     },
 };
+use indexmap::IndexMap;
 use serde_json::{Value, json};
 #[cfg(test)]
 use std::cell::Cell;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 #[cfg(test)]
 thread_local! {
@@ -43,9 +44,9 @@ pub struct ErDiagramRenderModel {
     pub acc_descr: Option<String>,
     pub direction: String,
     #[serde(default)]
-    pub classes: BTreeMap<String, ErClassDefRenderModel>,
+    pub classes: IndexMap<String, ErClassDefRenderModel>,
     #[serde(default)]
-    pub entities: BTreeMap<String, ErEntityRenderModel>,
+    pub entities: IndexMap<String, ErEntityRenderModel>,
     #[serde(default)]
     pub relationships: Vec<ErRelationshipRenderModel>,
 }
@@ -179,9 +180,9 @@ impl SpannedIdList {
 
 #[derive(Debug, Default)]
 struct ErDb {
-    entities: HashMap<String, EntityNode>,
+    entities: IndexMap<String, EntityNode>,
     relationships: Vec<Relationship>,
-    classes: HashMap<String, EntityClass>,
+    classes: IndexMap<String, EntityClass>,
     direction: String,
     entity_counter: usize,
     acc_title: Option<String>,
@@ -332,8 +333,8 @@ impl ErDb {
             acc_title: self.acc_title,
             acc_descr: self.acc_descr,
             direction: self.direction,
-            classes: self.classes.into_iter().collect(),
-            entities: self.entities.into_iter().collect(),
+            classes: self.classes,
+            entities: self.entities,
             relationships: self.relationships,
         }
     }
@@ -1994,6 +1995,73 @@ mod tests {
         assert!(model["entities"].get("1.5").is_some());
         assert!(model["entities"].get("Sales.Order").is_some());
         assert_eq!(model["relationships"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn er_typed_model_and_compat_json_preserve_declaration_order() {
+        let text = concat!(
+            "erDiagram\n",
+            "ZETA\n",
+            "ALPHA\n",
+            "MIDDLE\n",
+            "classDef zeta fill:#fff\n",
+            "classDef alpha fill:#000\n",
+            "classDef middle fill:#ccc\n",
+        );
+        let meta = meta();
+        let typed = parse_er_model_for_render(text, &meta).expect("ER model should parse");
+        assert!(
+            typed
+                .entities
+                .values()
+                .map(|entity| entity.label.as_str())
+                .eq(["ZETA", "ALPHA", "MIDDLE"])
+        );
+        assert!(
+            typed
+                .classes
+                .keys()
+                .map(String::as_str)
+                .eq(["zeta", "alpha", "middle"])
+        );
+
+        let compat = render_model_to_compat_json(&typed, &meta)
+            .expect("ER compatibility projection should serialize");
+        assert!(
+            compat["entities"]
+                .as_object()
+                .expect("ER entities should be an object")
+                .keys()
+                .map(String::as_str)
+                .eq(["ZETA", "ALPHA", "MIDDLE"])
+        );
+        assert!(
+            compat["classes"]
+                .as_object()
+                .expect("ER classes should be an object")
+                .keys()
+                .map(String::as_str)
+                .eq(["zeta", "alpha", "middle"])
+        );
+
+        let round_trip: ErDiagramRenderModel = serde_json::from_value(
+            serde_json::to_value(&typed).expect("ER typed model should serialize"),
+        )
+        .expect("ER typed model should deserialize");
+        assert!(
+            round_trip
+                .entities
+                .values()
+                .map(|entity| entity.label.as_str())
+                .eq(["ZETA", "ALPHA", "MIDDLE"])
+        );
+        assert!(
+            round_trip
+                .classes
+                .keys()
+                .map(String::as_str)
+                .eq(["zeta", "alpha", "middle"])
+        );
     }
 
     #[test]

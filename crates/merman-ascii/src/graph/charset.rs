@@ -1,14 +1,17 @@
-use crate::options::{AsciiCharset, AsciiRenderOptions};
+use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GraphCharset {
     pub(super) unicode: bool,
+    pub(super) width_profile: TerminalWidthProfile,
     pub(super) top_left: char,
     pub(super) top_right: char,
     pub(super) bottom_left: char,
     pub(super) bottom_right: char,
     pub(super) horizontal: char,
     pub(super) vertical: char,
+    pub(super) compartment_left: char,
+    pub(super) compartment_right: char,
     pub(super) left_connector: char,
     pub(super) right_connector: char,
     pub(super) up_connector: char,
@@ -18,6 +21,8 @@ pub(super) struct GraphCharset {
     pub(super) arrow_left: char,
     pub(super) arrow_up: char,
     pub(super) arrow_down: char,
+    pub(super) circle_marker: char,
+    pub(super) cross_marker: char,
     pub(super) dotted_horizontal: char,
     pub(super) dotted_vertical: char,
     pub(super) thick_horizontal: char,
@@ -32,15 +37,18 @@ pub(super) struct GraphCharset {
 
 impl GraphCharset {
     pub(super) fn for_options(options: &AsciiRenderOptions) -> Self {
-        match options.charset {
+        match options.structural_charset() {
             AsciiCharset::Ascii => Self {
                 unicode: false,
+                width_profile: options.terminal_width_profile,
                 top_left: '+',
                 top_right: '+',
                 bottom_left: '+',
                 bottom_right: '+',
                 horizontal: '-',
                 vertical: '|',
+                compartment_left: '+',
+                compartment_right: '+',
                 left_connector: '|',
                 right_connector: '|',
                 up_connector: '-',
@@ -50,6 +58,8 @@ impl GraphCharset {
                 arrow_left: '<',
                 arrow_up: '^',
                 arrow_down: 'v',
+                circle_marker: 'o',
+                cross_marker: 'x',
                 dotted_horizontal: '.',
                 dotted_vertical: ':',
                 thick_horizontal: '=',
@@ -63,12 +73,15 @@ impl GraphCharset {
             },
             AsciiCharset::Unicode => Self {
                 unicode: true,
+                width_profile: options.terminal_width_profile,
                 top_left: '┌',
                 top_right: '┐',
                 bottom_left: '└',
                 bottom_right: '┘',
                 horizontal: '─',
                 vertical: '│',
+                compartment_left: '├',
+                compartment_right: '┤',
                 left_connector: '┤',
                 right_connector: '├',
                 up_connector: '┴',
@@ -78,6 +91,8 @@ impl GraphCharset {
                 arrow_left: '◄',
                 arrow_up: '▲',
                 arrow_down: '▼',
+                circle_marker: '○',
+                cross_marker: '×',
                 dotted_horizontal: '┄',
                 dotted_vertical: '┆',
                 thick_horizontal: '━',

@@ -18,13 +18,21 @@ The generated transport exposes generic operation dispatch plus stable convenien
 
 The browser transport currently reports:
 
-- transport API version `4`;
+- transport API version `5`;
 - runtime catalog schema `1`;
 - text-measurement protocol version `1`;
 - diagnostics payload schema `1`;
 - analysis-facts payload schema `2` (generic semantic facts; Flowchart-only rich graph facts were removed).
 
 These contracts are independently versioned. Native ABI numbers, Typst plugin ABI numbers, Mermaid diagram IDs, and JSON payload versions are not interchangeable.
+
+Transport API `5` removes the parser-owned semantic-token exports. Browser syntax highlighting now
+uses the canonical Tree-sitter Mermaid grammar; Merman continues to provide diagnostics,
+navigation, completion, rename, analysis, and rendering operations.
+
+Transport API `4` changed the `ascii-capabilities` metadata payload: it replaced
+`summary_fallback` with `structured_text_fallback`, added `semantic_coverage` and
+`primary_projection`, and retained `support_level` only as a derived compatibility label.
 
 Call `runtimeCatalog()` after initialization to discover the loaded artifact's exact capability, operation, output, system-adapter, resource, and text-measurement IDs. Do not infer availability from exported function names, package names, or Cargo feature names. A stable function whose backend is absent returns a typed `missing-capability` error.
 

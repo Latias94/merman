@@ -59,6 +59,18 @@ final class MermanResourceLimitId {
     true,
     1,
   );
+  static const svgBackendTreeNodes = MermanResourceLimitId._known(
+    'svg_backend_tree_nodes',
+    'svg_postprocess',
+    false,
+    1,
+  );
+  static const svgBackendTreeDepth = MermanResourceLimitId._known(
+    'svg_backend_tree_depth',
+    'svg_postprocess',
+    false,
+    1,
+  );
   static const maxDocumentDiagrams = MermanResourceLimitId._known(
     'max_document_diagrams',
     'document_scan',
@@ -68,6 +80,36 @@ final class MermanResourceLimitId {
   static const maxAsciiGridCells = MermanResourceLimitId._known(
     'max_ascii_grid_cells',
     'ascii_layout',
+    true,
+    1,
+  );
+  static const maxAsciiLayoutWorkUnits = MermanResourceLimitId._known(
+    'max_ascii_layout_work_units',
+    'ascii_layout_work',
+    true,
+    1,
+  );
+  static const maxAsciiDocumentCells = MermanResourceLimitId._known(
+    'max_ascii_document_cells',
+    'ascii_document',
+    true,
+    1,
+  );
+  static const maxAsciiOutputBytes = MermanResourceLimitId._known(
+    'max_ascii_output_bytes',
+    'ascii_output',
+    true,
+    1,
+  );
+  static const maxAsciiGraphemeBytes = MermanResourceLimitId._known(
+    'max_ascii_grapheme_bytes',
+    'ascii_grapheme',
+    true,
+    1,
+  );
+  static const maxAsciiNestingDepth = MermanResourceLimitId._known(
+    'max_ascii_nesting_depth',
+    'ascii_nesting',
     true,
     1,
   );
@@ -151,12 +193,6 @@ final class MermanResourceLimitId {
     false,
     1,
   );
-  static const svgBackendTreeNodes = MermanResourceLimitId._known(
-    'svg_backend_tree_nodes',
-    'svg_conversion',
-    false,
-    1,
-  );
 
   static const List<MermanResourceLimitId> knownValues =
       <MermanResourceLimitId>[
@@ -167,8 +203,15 @@ final class MermanResourceLimitId {
     maxLayoutWorkUnits,
     maxSvgBytes,
     maxSvgElements,
+    svgBackendTreeNodes,
+    svgBackendTreeDepth,
     maxDocumentDiagrams,
     maxAsciiGridCells,
+    maxAsciiLayoutWorkUnits,
+    maxAsciiDocumentCells,
+    maxAsciiOutputBytes,
+    maxAsciiGraphemeBytes,
+    maxAsciiNestingDepth,
     maxRasterWidth,
     maxRasterHeight,
     maxRasterPixels,
@@ -182,7 +225,6 @@ final class MermanResourceLimitId {
     maxTotalSvgConversionFilterPrimitives,
     maxSvgConversionSubroots,
     maxNestedSvgImages,
-    svgBackendTreeNodes,
   ];
 
   const MermanResourceLimitId._known(
@@ -241,6 +283,11 @@ enum MermanResourceOverrideId {
   maxSvgElements('max_svg_elements', 1),
   maxDocumentDiagrams('max_document_diagrams', 0),
   maxAsciiGridCells('max_ascii_grid_cells', 1),
+  maxAsciiLayoutWorkUnits('max_ascii_layout_work_units', 1),
+  maxAsciiDocumentCells('max_ascii_document_cells', 1),
+  maxAsciiOutputBytes('max_ascii_output_bytes', 1),
+  maxAsciiGraphemeBytes('max_ascii_grapheme_bytes', 1),
+  maxAsciiNestingDepth('max_ascii_nesting_depth', 1),
   maxRasterWidth('max_raster_width', 1),
   maxRasterHeight('max_raster_height', 1),
   maxRasterPixels('max_raster_pixels', 1),

@@ -211,8 +211,11 @@ pub use merman::DiagramFamilyCapability as BindingDiagramFamilyCapability;
 pub struct BindingAsciiCapability {
     pub diagram_type: &'static str,
     pub display_name: &'static str,
+    pub semantic_coverage: Option<&'static str>,
+    pub primary_projection: &'static str,
+    pub structured_text_fallback: bool,
+    /// Compatibility view derived from semantic coverage and the primary projection.
     pub support_level: &'static str,
-    pub summary_fallback: bool,
     pub supported_semantics: &'static [&'static str],
     pub limits: &'static [&'static str],
     pub evidence: Vec<BindingAsciiCapabilityEvidence>,
@@ -598,15 +601,30 @@ fn runtime_resource_contract_for(
         profiles: contract
             .profiles
             .into_iter()
-            .map(|profile| RuntimeResourceProfile {
-                id: profile.id,
-                purpose: profile.purpose,
-                trust_assumption: profile.trust_assumption,
-                recommended_binding_default: profile.recommended_binding_default,
-                limits: limits
-                    .iter()
-                    .map(|limit| (limit.stable_id, profile.limits[limit.stable_id]))
-                    .collect(),
+            .map(|profile| {
+                let profile_id = merman::resources::ResourceProfile::from_id(profile.id)
+                    .expect("compiled resource profile id");
+                RuntimeResourceProfile {
+                    id: profile.id,
+                    purpose: profile.purpose,
+                    trust_assumption: profile.trust_assumption,
+                    recommended_binding_default: profile.recommended_binding_default,
+                    limits: limits
+                        .iter()
+                        .map(|limit| {
+                            let value =
+                                crate::resource_contract::resource_profile_value_for_target(
+                                    profile_id,
+                                    limit.stable_id,
+                                    artifact_contract.target(),
+                                )
+                                .expect(
+                                    "compiled resource descriptor must have a target profile value",
+                                );
+                            (limit.stable_id, value)
+                        })
+                        .collect(),
+                }
             })
             .collect(),
     }
@@ -717,6 +735,17 @@ pub fn ascii_supported_diagrams() -> &'static [&'static str] {
     }
 }
 
+pub fn ascii_diagrammatic_diagrams() -> &'static [&'static str] {
+    #[cfg(feature = "ascii")]
+    {
+        merman::ascii::ascii_diagrammatic_diagram_types()
+    }
+    #[cfg(not(feature = "ascii"))]
+    {
+        &[]
+    }
+}
+
 pub fn ascii_capabilities() -> Vec<BindingAsciiCapability> {
     #[cfg(feature = "ascii")]
     {
@@ -725,8 +754,12 @@ pub fn ascii_capabilities() -> Vec<BindingAsciiCapability> {
             .map(|capability| BindingAsciiCapability {
                 diagram_type: capability.diagram_type,
                 display_name: capability.display_name,
+                semantic_coverage: capability
+                    .semantic_coverage
+                    .map(|coverage| coverage.as_str()),
+                primary_projection: capability.primary_projection.as_str(),
+                structured_text_fallback: capability.structured_text_fallback,
                 support_level: capability.support_level.as_str(),
-                summary_fallback: capability.summary_fallback,
                 supported_semantics: capability.supported_semantics,
                 limits: capability.limits,
                 evidence: capability
@@ -1178,7 +1211,12 @@ mod tests {
         assert_eq!(catalog.metadata_ids, expected_metadata_ids);
         assert_eq!(
             resources.limits.iter().any(|limit| limit.hard_cap),
-            cfg!(any(feature = "png", feature = "jpeg", feature = "pdf"))
+            cfg!(any(
+                feature = "svg",
+                feature = "png",
+                feature = "jpeg",
+                feature = "pdf"
+            ))
         );
         assert!(
             resources
@@ -1692,8 +1730,10 @@ mod tests {
         }
 
         let flowchart = ascii_capability(&capabilities, "flowchart");
-        assert_eq!(flowchart.support_level, "full");
-        assert!(!flowchart.summary_fallback);
+        assert_eq!(flowchart.semantic_coverage, Some("partial"));
+        assert_eq!(flowchart.primary_projection, "diagrammatic");
+        assert_eq!(flowchart.support_level, "partial");
+        assert!(!flowchart.structured_text_fallback);
         assert!(flowchart.supported_semantics.contains(&"root directions"));
         assert!(flowchart.evidence.iter().any(|evidence| {
             evidence.kind == "local_advantage" && evidence.note.contains("true RL/BT")
@@ -1701,33 +1741,45 @@ mod tests {
 
         let class = ascii_capability(&capabilities, "class");
         assert_eq!(class.support_level, "partial");
-        assert!(class.summary_fallback);
+        assert_eq!(class.primary_projection, "diagrammatic");
+        assert!(class.structured_text_fallback);
         assert!(class.limits.iter().any(|limit| limit.contains("namespace")));
         assert!(class.evidence.iter().any(|evidence| {
             evidence.kind == "beautiful_mermaid_prior_art"
-                && evidence.source.contains("repo-ref/beautiful-mermaid")
+                && evidence.source
+                    == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
         let er = ascii_capability(&capabilities, "er");
         assert_eq!(er.support_level, "partial");
-        assert!(er.summary_fallback);
+        assert!(er.structured_text_fallback);
 
         let gantt = ascii_capability(&capabilities, "gantt");
         assert_eq!(gantt.support_level, "summary");
+        assert_eq!(gantt.semantic_coverage, Some("partial"));
+        assert_eq!(gantt.primary_projection, "structured_text");
+        assert!(!gantt.supported_semantics.contains(&"dependencies"));
 
         let xychart = ascii_capability(&capabilities, "xychart");
         assert_eq!(xychart.support_level, "partial");
         assert!(xychart.evidence.iter().any(|evidence| {
             evidence.kind == "beautiful_mermaid_prior_art"
-                && evidence.source.contains("xychart-ascii.test.ts")
+                && evidence.source
+                    == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
-        assert!(
-            capabilities
-                .iter()
-                .all(|capability| capability.diagram_type != "zenuml"),
-            "ZenUML has no family-owned terminal projection"
-        );
+        assert_eq!(capabilities.len(), 31);
+        let zenuml = ascii_capability(&capabilities, "zenuml");
+        assert_eq!(zenuml.semantic_coverage, None);
+        assert_eq!(zenuml.primary_projection, "none");
+        assert_eq!(zenuml.support_level, "unsupported");
+
+        let json: Value = serde_json::from_slice(&ascii_capabilities_json().unwrap()).unwrap();
+        let first = &json.as_array().unwrap()[0];
+        assert!(first.get("semantic_coverage").is_some());
+        assert!(first.get("primary_projection").is_some());
+        assert!(first.get("structured_text_fallback").is_some());
+        assert!(first.get("summary_fallback").is_none());
     }
 
     #[test]
@@ -1759,7 +1811,9 @@ mod tests {
                 .iter()
                 .find(|capability| capability["diagram_type"] == "flowchart")
                 .expect("flowchart ASCII capability should be present");
-            assert_eq!(flowchart["support_level"], "full");
+            assert_eq!(flowchart["semantic_coverage"], "partial");
+            assert_eq!(flowchart["primary_projection"], "diagrammatic");
+            assert_eq!(flowchart["support_level"], "partial");
             assert!(
                 flowchart["evidence"]
                     .as_array()

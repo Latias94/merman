@@ -178,6 +178,7 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn("Playground local Web workspace lock", labels)
         self.assertIn("Playground local Web lock @mermanjs/web", labels)
         self.assertIn("Playground license lock digest", labels)
+        self.assertIn("Playground license local Web package", labels)
         self.assertIn("Node candidate Cargo package", labels)
         self.assertIn("Node candidate Cargo.lock package merman-bindings-core", labels)
         self.assertIn(
@@ -421,6 +422,14 @@ class ReleaseProjectionTests(unittest.TestCase):
                     text,
                     f"package-lock.json SHA-256: {playground_lock_digest}",
                     "package-lock.json SHA-256: " + "0" * 64,
+                ),
+            ),
+            (
+                release_projection.PLAYGROUND_LICENSE_REPORT,
+                lambda text: replace_once(
+                    text,
+                    f" - @mermanjs/web@{canonical}",
+                    " - @mermanjs/web@9.9.9",
                 ),
             ),
             (

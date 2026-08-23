@@ -52,13 +52,15 @@ pub(crate) fn class_node_requires_math(node: &ClassNode) -> bool {
 pub(crate) fn class_requires_math(model: &ClassDiagramModel) -> bool {
     model.classes.values().any(class_node_requires_math)
         || model.relations.iter().any(|relation| {
-            [
-                relation.title.as_str(),
-                relation.relation_title_1.as_str(),
-                relation.relation_title_2.as_str(),
-            ]
-            .into_iter()
-            .any(crate::math::contains_delimited_math)
+            crate::math::contains_delimited_math(&relation.title)
+                || relation
+                    .relation_title_1
+                    .as_deref()
+                    .is_some_and(crate::math::contains_delimited_math)
+                || relation
+                    .relation_title_2
+                    .as_deref()
+                    .is_some_and(crate::math::contains_delimited_math)
         })
         || model
             .notes
@@ -2225,16 +2227,8 @@ fn layout_class_diagram_typed_inner(
             mermaid_config,
             math_renderer,
         );
-        let start_text = if rel.relation_title_1 == "none" {
-            String::new()
-        } else {
-            rel.relation_title_1.clone()
-        };
-        let end_text = if rel.relation_title_2 == "none" {
-            String::new()
-        } else {
-            rel.relation_title_2.clone()
-        };
+        let start_text = rel.relation_title_1.clone().unwrap_or_default();
+        let end_text = rel.relation_title_2.clone().unwrap_or_default();
 
         let (srw, srh) = label_metrics(
             &start_text,

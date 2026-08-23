@@ -849,7 +849,7 @@ function AsciiSupportBanner({
       <span className="rounded bg-background px-2 py-0.5 text-foreground">
         {label}
       </span>
-      {capability.summary_fallback && (
+      {capability.structured_text_fallback && (
         <span>{t("asciiSupport.summaryFallback")}</span>
       )}
       {limit && <span className="truncate">{limit}</span>}

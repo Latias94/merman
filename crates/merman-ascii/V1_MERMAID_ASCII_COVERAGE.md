@@ -1,7 +1,7 @@
 # V1 Mermaid-Ascii Coverage Contract
 
 Status: active v1 release gate
-Last updated: 2026-06-28
+Last updated: 2026-08-10
 
 This document defines the first `merman-ascii` release boundary for compatibility with the
 MIT-licensed `AlexanderGrooff/mermaid-ascii` reference implementation.
@@ -19,6 +19,11 @@ The tracked graph copy also includes the later upstream no-whitespace edge fixtu
 `tight_arrow.txt` and `tight_arrow_mixed.txt`, copied from local `repo-ref/mermaid-ascii` commit
 `876b5b4` after upstream renamed those cases.
 
+`tests/testdata/mermaid-ascii/SOURCE_PROVENANCE.tsv` binds the baseline tree, supplemental blobs,
+and all tracked bytes. Of the 96 tracked files, 88 remain byte-identical to their recorded source;
+eight historical transformations are enumerated with both source and tracked SHA-256 digests. This
+is a provenance disclosure, not permission to refresh the snapshot again.
+
 `repo-ref/` is a research checkout and is not required by CI or downstream users. The tracked copy
 is the executable source of truth for the v1 coverage contract.
 
@@ -26,16 +31,21 @@ is the executable source of truth for the v1 coverage contract.
 
 | Reference fixture group | Diagram scope | Current v1 status | Gate |
 | --- | --- | --- | --- |
-| `ascii` | `graph` / `flowchart` LR, TD, TB fixtures with ASCII characters | 54 / 54 exact output matches | `cargo nextest run -p merman-ascii graph_fixture` |
-| `extended-chars` | `graph` / `flowchart` LR, TD, TB fixtures with Unicode box drawing characters | 25 / 25 exact output matches | `cargo nextest run -p merman-ascii graph_fixture` |
+| `ascii` | `graph` / `flowchart` LR, TD, TB fixtures with ASCII characters | 27 / 54 exact output matches; 27 named deterministic differences | `cargo nextest run -p merman-ascii graph_fixture` |
+| `extended-chars` | `graph` / `flowchart` LR, TD, TB fixtures with Unicode box drawing characters | 13 / 25 exact output matches; 12 named deterministic differences | `cargo nextest run -p merman-ascii graph_fixture` |
 | `sequence` | `sequenceDiagram` fixtures with Unicode box drawing characters | 12 / 12 normalized exact output matches | `cargo nextest run -p merman-ascii sequence_golden` |
 | `sequence-ascii` | `sequenceDiagram` fixtures with ASCII characters | 5 / 5 normalized exact output matches | `cargo nextest run -p merman-ascii sequence_golden` |
 
 Summary:
 
-- Graph/flowchart copied fixture parity: 79 / 79.
+- Graph/flowchart copied fixture exact subset: 40 / 79.
+- Graph/flowchart named deterministic differences: 39 / 79.
 - Sequence copied fixture parity: 17 / 17.
-- Named copied fixture gaps: none.
+
+The graph differences are enumerated in
+`tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md`. Every named case must still render, and
+parser-backed semantic tests separately protect nodes, edges, labels, directions, and compound
+ownership. A named difference is not permission to lose Mermaid facts or return a resource error.
 
 The upstream `cmd/testdata/multibyte` group is intentionally outside the byte-level v1 oracle.
 Those examples use accented Latin, Greek, and Cyrillic labels. `merman-ascii` renders them readably,
@@ -56,8 +66,10 @@ Before release, also run the package gate:
 cargo nextest run -p merman-ascii
 ```
 
-`fixture_inventory` pins the copied fixture counts and source provenance. `graph_fixture` and
-`sequence_golden` prove exact copied-fixture compatibility for the supported reference scope.
+`fixture_inventory` pins the copied fixture counts, source provenance, and truthful exact/gap
+disposition. `graph_fixture` proves byte parity for the 40-case exact subset and successful semantic
+admission for all 39 named differences. `sequence_golden` proves normalized byte parity for the
+supported Sequence reference scope.
 
 ## Non-Goals For V1
 
@@ -84,9 +96,11 @@ These families should keep their own parser-backed tests and support matrices, b
 required to block the first `mermaid-ascii`-coverage release unless explicitly promoted into the
 release gate.
 
-The copied upstream corpus remains the exact v1 oracle. Self-authored semantic fixtures may exist
-for complex class, ER, state, or xychart cases, but they are not part of the copied release gate
-and do not change the v1 inventory contract.
+The copied upstream bytes remain immutable. The explicit exact subset is the byte oracle; named
+deterministic differences retain the same copied inputs and expected bytes as provenance while
+local semantic probes own their Mermaid meaning. Self-authored semantic fixtures may exist for
+complex class, ER, state, or xychart cases, but they are not part of the copied release gate and do
+not change the v1 inventory contract.
 
 `repo-ref/beautiful-mermaid` is useful as a design reference for richer terminal output and broader
 diagram families. It is not a byte-for-byte output oracle for this v1 gate.

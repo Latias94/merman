@@ -34,8 +34,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         )
     }
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("quadrantchart");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("quadrantchart");
     let acc_title = model
         .acc_title
         .as_deref()
@@ -77,18 +76,19 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         ),
         root_chrome,
     )?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml(title)
         );
     }
     if let Some(description) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml(description)
         );
     }
@@ -98,6 +98,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         r#"<style>{}</style>"#,
         info_css_with_config(diagram_id, effective_config)
     );
+    options.checkpoint_emit()?;
 
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
     out.push_str(r#"<g/>"#);
@@ -210,5 +211,6 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     out.push_str("</g>");
 
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }

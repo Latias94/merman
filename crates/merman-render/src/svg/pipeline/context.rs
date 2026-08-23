@@ -1,7 +1,11 @@
-use super::builtin::util::{extract_quoted_attr, root_svg_tag};
+use super::builtin::util::{
+    SvgTagScanner, checkpoint_loop, next_svg_quoted_attr_with_checkpoints, start_tag_name,
+};
 use super::preset::SvgPipelinePreset;
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::RenderFamilyKind;
+use crate::resources::{RenderResourcePolicy, ResourceLimitExceeded, ResourceLimitPhase};
+use merman_core::OperationPhase;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SvgPostprocessMetadata {
@@ -21,17 +25,74 @@ impl SvgPostprocessMetadata {
     /// Family-specific passes consume an explicitly supplied [`RenderFamilyKind`], never metadata
     /// inferred from SVG text.
     pub fn from_svg(svg: &str) -> Self {
-        let root_tag = root_svg_tag(svg);
-        let diagram_type = root_tag
-            .and_then(|tag| extract_quoted_attr(tag, "aria-roledescription"))
-            .map(ToOwned::to_owned);
-        Self {
-            diagram_type,
-            svg_id: root_tag
-                .and_then(|tag| extract_quoted_attr(tag, "id"))
-                .map(ToOwned::to_owned),
-            ..Self::default()
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        match Self::from_svg_with_checkpoints(svg, &mut checkpoint) {
+            Ok(metadata) => metadata,
+            Err(error) => match error {},
         }
+    }
+
+    pub(crate) fn from_svg_with_execution(
+        svg: &str,
+        execution: SvgPostprocessExecution<'_>,
+    ) -> crate::Result<Self> {
+        execution.checkpoint()?;
+        execution.preflight_svg_byte_count(svg.len())?;
+        Self::from_svg_with_checkpoints(svg, &mut || execution.checkpoint())
+    }
+
+    fn from_svg_with_checkpoints<E>(
+        svg: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, E> {
+        checkpoint()?;
+        let mut scanner = SvgTagScanner::new(svg);
+        let mut tag_iteration = 0usize;
+        let root_tag = loop {
+            let Some(tag) = scanner.next_with_checkpoints(checkpoint)? else {
+                return Ok(Self::default());
+            };
+            checkpoint_loop(tag_iteration, checkpoint)?;
+            tag_iteration = tag_iteration.saturating_add(1);
+            let Some(root_name) = start_tag_name(tag.raw()) else {
+                continue;
+            };
+            if root_name != "svg" {
+                return Ok(Self::default());
+            }
+            break tag.raw();
+        };
+
+        let mut diagram_type = None;
+        let mut svg_id = None;
+        let mut cursor = 0usize;
+        let mut attribute_iteration = 0usize;
+        while let Some(attribute) =
+            next_svg_quoted_attr_with_checkpoints(root_tag, cursor, checkpoint)?
+        {
+            checkpoint_loop(attribute_iteration, checkpoint)?;
+            attribute_iteration = attribute_iteration.saturating_add(1);
+            let name = &root_tag[attribute.name_start..attribute.name_end];
+            if name.eq_ignore_ascii_case("aria-roledescription") && diagram_type.is_none() {
+                diagram_type = Some(copy_trimmed_with_checkpoints(
+                    &root_tag[attribute.value_start..attribute.value_end],
+                    checkpoint,
+                )?);
+            } else if name.eq_ignore_ascii_case("id") && svg_id.is_none() {
+                svg_id = Some(copy_trimmed_with_checkpoints(
+                    &root_tag[attribute.value_start..attribute.value_end],
+                    checkpoint,
+                )?);
+            }
+            cursor = attribute.full_end;
+        }
+        checkpoint()?;
+
+        Ok(Self {
+            diagram_type,
+            svg_id,
+            ..Self::default()
+        })
     }
 
     /// Supplies the renderer-owned family identity required by family-specific built-in passes.
@@ -87,6 +148,92 @@ impl SvgPostprocessMetadata {
 
     pub fn svg_id(&self) -> Option<&str> {
         self.svg_id.as_deref()
+    }
+}
+
+fn copy_trimmed_with_checkpoints<E>(
+    value: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<String, E> {
+    let value = value.trim();
+    checkpoint()?;
+    let mut copied = String::with_capacity(value.len());
+    for (index, character) in value.chars().enumerate() {
+        checkpoint_loop(index, checkpoint)?;
+        copied.push(character);
+    }
+    checkpoint()?;
+    Ok(copied)
+}
+
+/// Operation-owned capabilities available to built-in SVG postprocessing stages.
+///
+/// Custom [`super::SvgPostprocessor`] implementations retain the documented opaque-callback
+/// boundary. This projection is intentionally crate-private so built-ins can cooperate without
+/// exposing the render session or its resource ledger through the public extension API.
+#[derive(Clone, Copy)]
+pub(crate) struct SvgPostprocessExecution<'a> {
+    session: &'a RenderSession,
+}
+
+impl<'a> SvgPostprocessExecution<'a> {
+    pub(crate) const fn new(session: &'a RenderSession) -> Self {
+        Self { session }
+    }
+
+    pub(crate) fn checkpoint(self) -> crate::Result<()> {
+        self.session.checkpoint(OperationPhase::Postprocess)
+    }
+
+    pub(crate) const fn resource_policy(self) -> RenderResourcePolicy {
+        self.session.resource_policy()
+    }
+
+    pub(crate) fn preflight_svg_byte_count(self, actual: usize) -> crate::Result<()> {
+        self.session
+            .work_meter()
+            .preflight_svg_byte_count(
+                actual,
+                ResourceLimitPhase::SvgPostprocess,
+                OperationPhase::Postprocess,
+            )
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn preflight_svg_structure(
+        self,
+        elements: usize,
+        tree_depth: usize,
+    ) -> crate::Result<()> {
+        self.session
+            .work_meter()
+            .preflight_svg_structure(elements, tree_depth, OperationPhase::Postprocess)
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn svg_byte_count_overflow(self) -> crate::Error {
+        self.session
+            .work_meter()
+            .terminate_svg_byte_count_overflow(
+                ResourceLimitPhase::SvgPostprocess,
+                OperationPhase::Postprocess,
+            )
+            .into()
+    }
+
+    pub(crate) fn terminate_resource_error(self, error: ResourceLimitExceeded) -> crate::Error {
+        self.session
+            .work_meter()
+            .terminate_absolute_resource_error(error, OperationPhase::Postprocess)
+            .into()
+    }
+
+    pub(crate) fn controlled_text_measurer(
+        self,
+        phase: TextMeasurementPhase,
+    ) -> RoutedTextMeasurer<'a> {
+        self.session
+            .controlled_text_measurer(phase, OperationPhase::Postprocess)
     }
 }
 
@@ -157,6 +304,23 @@ impl<'a> SvgPostprocessContext<'a> {
 
     pub fn text_measurer(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'a> {
         self.session.text_measurer(phase)
+    }
+
+    pub(crate) fn controlled_text_measurer(
+        &self,
+        phase: TextMeasurementPhase,
+    ) -> RoutedTextMeasurer<'a> {
+        self.session
+            .controlled_text_measurer(phase, OperationPhase::Postprocess)
+    }
+
+    /// Checks the operation-owned postprocess control for work performed by a built-in pass.
+    pub(crate) fn checkpoint(&self) -> crate::Result<()> {
+        self.execution().checkpoint()
+    }
+
+    pub(crate) const fn execution(&self) -> SvgPostprocessExecution<'a> {
+        SvgPostprocessExecution::new(self.session)
     }
 }
 

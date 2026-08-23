@@ -4,14 +4,17 @@
 //! executed synchronously through the same internal operation runner. Target-specific layout and
 //! emission remain private to their adapters.
 
+#[cfg(feature = "ascii")]
+use merman_core::OperationPhase;
 use merman_core::{
-    Engine, OperationCancelled, OperationControl, ParseOptions, resources::InputResourcePolicy,
-    runtime::RuntimePolicyError,
+    Engine, OperationCancelled, OperationControl, OperationResourceDomain,
+    OperationResourceOverride, OperationResourceProvenance, ParseOptions,
+    resources::InputResourcePolicy,
 };
 
-use crate::operation_runner::Operation;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::operation_runner::OperationExecution;
+use crate::{TerminalDiagnostic, TerminalRuntimePolicyError, operation_runner::Operation};
 
 #[cfg(feature = "ascii")]
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
@@ -19,7 +22,8 @@ use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
 use merman_export::ExportError;
 #[cfg(feature = "svg")]
 use merman_render::{
-    LayoutOptions, RenderCapabilityPolicy, ResourceLimitExceeded as SvgResourceLimitExceeded,
+    LayoutOptions, RenderCapability, RenderCapabilityPolicy,
+    ResourceLimitExceeded as SvgResourceLimitExceeded,
     environment::{RenderEnvironment as BackendRenderEnvironment, TextMeasurementPolicy},
     math::MathRenderer,
     presentation::PresentationRenderPolicy,
@@ -136,26 +140,37 @@ impl OperationExecutionPath {
 /// Immutable evidence captured by a completed SVG operation.
 ///
 /// The evidence is created only by the renderer after SVG emission/postprocessing succeeds. It
-/// is intentionally a narrow projection: callers can inspect measurement provenance and runtime
-/// identity without gaining access to SVG session services or family layout internals.
+/// is intentionally a narrow projection: callers can inspect preparation-owned capability
+/// requirements, measurement provenance, and runtime identity without gaining access to SVG
+/// session services or family layout internals.
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderEvidence {
     execution_path: OperationExecutionPath,
+    required_capabilities: Vec<RenderCapability>,
     session: Box<merman_render::environment::RenderSessionReport>,
 }
 
 #[cfg(feature = "svg")]
 impl RenderEvidence {
-    fn from_session(session: merman_render::environment::RenderSession) -> Self {
+    fn from_session(
+        session: merman_render::environment::RenderSession,
+        required_capabilities: Vec<RenderCapability>,
+    ) -> Self {
         Self {
             execution_path: OperationExecutionPath::Renderer,
+            required_capabilities,
             session: Box::new(session.report()),
         }
     }
 
     pub const fn execution_path(&self) -> OperationExecutionPath {
         self.execution_path
+    }
+
+    /// Returns the optional renderer capabilities selected by this operation's actual preparation.
+    pub fn required_capabilities(&self) -> &[RenderCapability] {
+        &self.required_capabilities
     }
 
     pub fn measurement_routes(&self) -> &[merman_render::environment::TextMeasurementRoute; 4] {
@@ -201,10 +216,14 @@ pub struct SvgOutput {
 
 #[cfg(feature = "svg")]
 impl SvgOutput {
-    fn new(svg: String, session: merman_render::environment::RenderSession) -> Self {
+    fn new(
+        svg: String,
+        session: merman_render::environment::RenderSession,
+        required_capabilities: Vec<RenderCapability>,
+    ) -> Self {
         Self {
             svg,
-            evidence: RenderEvidence::from_session(session),
+            evidence: RenderEvidence::from_session(session, required_capabilities),
         }
     }
 
@@ -268,22 +287,56 @@ pub enum RenderError {
     #[error(transparent)]
     Cancelled(#[from] OperationCancelled),
     #[error(transparent)]
-    Parse(#[from] merman_core::Error),
+    Parse(#[from] TerminalDiagnostic),
     #[error(transparent)]
-    RuntimePolicy(#[from] RuntimePolicyError),
+    RuntimePolicy(#[from] TerminalRuntimePolicyError),
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[cfg(feature = "svg")]
     #[error(transparent)]
-    Svg(#[from] merman_render::Error),
+    Svg(merman_render::Error),
     #[cfg(feature = "ascii")]
     #[error(transparent)]
-    Ascii(#[from] AsciiError),
+    Ascii(AsciiError),
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[error(transparent)]
-    Export(#[from] ExportError),
+    Export(ExportError),
     #[error("render target is not available in this feature configuration: {0}")]
     UnsupportedTarget(&'static str),
+}
+
+impl From<merman_core::Error> for RenderError {
+    fn from(error: merman_core::Error) -> Self {
+        match error {
+            merman_core::Error::OperationCancelled(error) => Self::Cancelled(error),
+            merman_core::Error::RuntimePolicy(error) => {
+                Self::RuntimePolicy(TerminalRuntimePolicyError::from(error))
+            }
+            error => Self::Parse(TerminalDiagnostic::from(error)),
+        }
+    }
+}
+
+impl From<merman_core::runtime::RuntimePolicyError> for RenderError {
+    fn from(error: merman_core::runtime::RuntimePolicyError) -> Self {
+        Self::RuntimePolicy(TerminalRuntimePolicyError::from(error))
+    }
+}
+
+#[cfg(feature = "svg")]
+impl From<merman_render::Error> for RenderError {
+    fn from(error: merman_render::Error) -> Self {
+        match error {
+            merman_render::Error::Cancelled(cancelled) => Self::Cancelled(cancelled),
+            merman_render::Error::ResourceLimitExceeded(resource) => {
+                Self::from(ResourceLimitExceeded::from(resource))
+            }
+            merman_render::Error::OperationResourceTerminal(error) => {
+                crate::operation_runner::operation_terminal_error(error)
+            }
+            other => Self::Svg(other),
+        }
+    }
 }
 
 /// Transport-neutral resource rejection projected by the common facade.
@@ -291,7 +344,7 @@ pub enum RenderError {
 /// Target adapters retain their richer policy types internally. Hosts can classify every
 /// source, layout, output, ASCII-grid, and export quota through this stable descriptor without
 /// matching backend-specific errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
     "resource limit `{id}` exceeded during {phase}: actual={actual} maximum={maximum} cause={cause}"
 )]
@@ -302,6 +355,7 @@ pub struct ResourceLimitExceeded {
     pub actual: u64,
     pub maximum: u64,
     pub cause: ResourceLimitCause,
+    pub provenance: Option<OperationResourceProvenance>,
 }
 
 /// Stable facade-level reason for a resource rejection.
@@ -334,22 +388,35 @@ impl ResourceLimitExceeded {
             actual: error.actual as u64,
             maximum: error.max as u64,
             cause: ResourceLimitCause::Ceiling,
+            provenance: Some(OperationResourceProvenance::new(
+                OperationResourceDomain::Input,
+                Some(error.profile),
+                error
+                    .explicit_overrides
+                    .into_iter()
+                    .map(|override_| OperationResourceOverride {
+                        id: override_.id.as_str(),
+                        value: override_.value as u64,
+                    }),
+            )),
         }
     }
 
     #[cfg(feature = "ascii")]
-    fn from_operation(error: merman_core::OperationResourceLimitExceeded) -> Self {
-        let phase = if error.id == merman_ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID {
-            merman_ascii::ASCII_RESOURCE_LIMIT_DESCRIPTORS[0].phase
-        } else {
-            error.phase.as_str()
-        };
+    fn from_ascii(error: merman_ascii::AsciiResourceLimitExceeded) -> Self {
         Self {
-            id: error.id,
-            phase,
-            actual: error.consumed.saturating_add(error.requested),
-            maximum: error.limit,
-            cause: ResourceLimitCause::Ceiling,
+            id: error.limit.as_str(),
+            phase: error.phase().as_str(),
+            actual: error.actual as u64,
+            maximum: error.max as u64,
+            cause: match error.cause {
+                merman_ascii::AsciiResourceLimitCause::Ceiling => ResourceLimitCause::Ceiling,
+                merman_ascii::AsciiResourceLimitCause::ArithmeticOverflow => {
+                    ResourceLimitCause::ArithmeticOverflow
+                }
+                _ => ResourceLimitCause::Ceiling,
+            },
+            provenance: None,
         }
     }
 
@@ -367,51 +434,88 @@ impl ResourceLimitExceeded {
                 }
                 _ => ResourceLimitCause::Ceiling,
             },
+            provenance: Some(OperationResourceProvenance::new(
+                OperationResourceDomain::Render,
+                Some(error.profile),
+                error
+                    .explicit_overrides
+                    .into_iter()
+                    .map(|override_| OperationResourceOverride {
+                        id: override_.id.as_str(),
+                        value: override_.value as u64,
+                    }),
+            )),
         }
     }
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    fn from_export(details: merman_export::ExportResourceLimitDetails) -> Self {
+    fn from_export(
+        details: merman_export::ExportResourceLimitDetails,
+        provenance: OperationResourceProvenance,
+    ) -> Self {
         Self {
             id: details.limit_id,
             phase: details.phase,
             actual: details.actual,
             maximum: details.max,
-            cause: ResourceLimitCause::Ceiling,
+            cause: match details.cause {
+                merman_export::ExportResourceLimitCause::Ceiling => ResourceLimitCause::Ceiling,
+                merman_export::ExportResourceLimitCause::ArithmeticOverflow => {
+                    ResourceLimitCause::ArithmeticOverflow
+                }
+                _ => ResourceLimitCause::Ceiling,
+            },
+            provenance: Some(provenance),
         }
     }
 }
 
 #[cfg(feature = "svg")]
-fn map_svg_error(error: merman_render::Error) -> RenderError {
-    match error {
-        merman_render::Error::Cancelled(cancelled) => RenderError::Cancelled(cancelled),
-        merman_render::Error::ResourceLimitExceeded(resource) => {
-            RenderError::from(ResourceLimitExceeded::from_svg(resource))
+impl From<SvgResourceLimitExceeded> for ResourceLimitExceeded {
+    fn from(error: SvgResourceLimitExceeded) -> Self {
+        Self::from_svg(error)
+    }
+}
+
+#[cfg(feature = "ascii")]
+impl From<AsciiError> for RenderError {
+    fn from(error: AsciiError) -> Self {
+        match error {
+            AsciiError::Cancelled(cancelled) => Self::Cancelled(cancelled),
+            AsciiError::ResourceLimitExceeded(resource) => {
+                Self::from(ResourceLimitExceeded::from_ascii(resource))
+            }
+            AsciiError::OperationResourceTerminal(error) => {
+                crate::operation_runner::operation_terminal_error(error)
+            }
+            other => Self::Ascii(other),
         }
-        other => RenderError::Svg(other),
     }
 }
 
 #[cfg(feature = "ascii")]
 fn map_ascii_error(error: AsciiError) -> RenderError {
-    match error {
-        AsciiError::Cancelled(cancelled) => RenderError::Cancelled(cancelled),
-        AsciiError::ResourceLimitExceeded(resource) => {
-            RenderError::from(ResourceLimitExceeded::from_operation(resource))
-        }
-        other => RenderError::Ascii(other),
-    }
+    RenderError::from(error)
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn map_export_error(error: ExportError) -> RenderError {
-    if let Some(details) = error.resource_limit_details() {
-        return RenderError::from(ResourceLimitExceeded::from_export(details));
-    }
-    match error {
-        ExportError::Cancelled(cancelled) => RenderError::Cancelled(cancelled),
-        other => RenderError::Export(other),
+impl From<ExportError> for RenderError {
+    fn from(error: ExportError) -> Self {
+        match error {
+            ExportError::OperationResourceTerminal(error) => {
+                crate::operation_runner::operation_terminal_error(error)
+            }
+            ExportError::Cancelled(cancelled) => Self::Cancelled(cancelled),
+            other => match other.resource_limit_details() {
+                Some(details) => match other.resource_limit_provenance() {
+                    Some(provenance) => {
+                        Self::from(ResourceLimitExceeded::from_export(details, provenance))
+                    }
+                    None => Self::Export(other),
+                },
+                None => Self::Export(other),
+            },
+        }
     }
 }
 
@@ -464,6 +568,10 @@ impl Default for SvgRequest {
 }
 
 #[cfg(feature = "ascii")]
+/// Target-local configuration for one ASCII render operation.
+///
+/// Presentation and family layout settings remain reusable in `options`; resource budgets belong
+/// to this request and are passed unchanged to the model backend.
 #[derive(Debug, Clone, Default)]
 pub struct AsciiRequest {
     pub options: AsciiRenderOptions,
@@ -705,7 +813,7 @@ impl SemanticArtifact {
             .model()
             .compatibility_json_controlled(self.parsed().metadata(), self.control())
             .map_err(RenderError::Cancelled)?
-            .map_err(RenderError::Parse)
+            .map_err(RenderError::from)
     }
 
     /// Consumes this operation-owned semantic artifact into one typed output target.
@@ -775,16 +883,19 @@ fn render_svg_target(
         session,
         request.presentation,
     )
-    .map_err(map_svg_error)?;
+    .map_err(RenderError::from)?;
     let rendered = artifact
         .render_svg(&request.options, &request.debug)
-        .map_err(map_svg_error)?;
+        .map_err(RenderError::from)?;
     let rendered = match request.pipeline.as_ref() {
-        Some(pipeline) => rendered.apply_pipeline(pipeline).map_err(map_svg_error)?,
+        Some(pipeline) => rendered
+            .apply_pipeline(pipeline)
+            .map_err(RenderError::from)?,
         None => rendered,
     };
+    let required_capabilities = rendered.required_capabilities().to_vec();
     let (svg, _, _, session) = rendered.into_parts();
-    Ok(Some(SvgOutput::new(svg, session)))
+    Ok(Some(SvgOutput::new(svg, session, required_capabilities)))
 }
 
 #[cfg(feature = "svg")]
@@ -802,9 +913,9 @@ fn render_layout_json_target(
         session,
         request.presentation,
     )
-    .map_err(map_svg_error)?;
+    .map_err(RenderError::from)?;
     let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
-    let layout = artifact.layout_json().map_err(map_svg_error)?;
+    let layout = artifact.layout_json().map_err(RenderError::from)?;
     Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
 }
 
@@ -819,7 +930,7 @@ fn render_svg_plan_target(
         .begin_session_in_context(operation.context, operation.control);
     merman_render::family::plan_render_with_policy(&parsed, &session, request.presentation)
         .map(Some)
-        .map_err(map_svg_error)
+        .map_err(RenderError::from)
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -837,7 +948,7 @@ fn prepare_resvg_target(
         session,
         request.presentation,
     )
-    .map_err(map_svg_error)?;
+    .map_err(RenderError::from)?;
     let pipeline = request
         .pipeline
         .clone()
@@ -845,11 +956,11 @@ fn prepare_resvg_target(
         .into_resvg_safe();
     artifact
         .render_svg(&request.options, &request.debug)
-        .map_err(map_svg_error)?
+        .map_err(RenderError::from)?
         .finalize_resvg(&pipeline)
         .map(|sealed| (sealed.into_parts().0, operation))
         .map(Some)
-        .map_err(map_svg_error)
+        .map_err(RenderError::from)
 }
 
 #[cfg(feature = "ascii")]
@@ -858,15 +969,29 @@ fn render_ascii_target(
     request: AsciiRequest,
 ) -> Result<Option<String>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
-    merman_ascii::render_model_with_operation(
-        parsed.model(),
-        &request.options,
+    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
+    let renderer = merman_ascii::AsciiRenderer::new(request.options);
+    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
+    let renderer = renderer.map_err(map_ascii_error)?;
+    let result = renderer.render_parsed(
+        &parsed,
         &operation.control,
         &operation.context,
         request.resources,
-    )
-    .map(Some)
-    .map_err(map_ascii_error)
+    );
+    match result {
+        Ok(output) => Ok(Some(output)),
+        Err(error @ AsciiError::ResourceLimitExceeded(_)) => {
+            match operation
+                .control
+                .terminal_checkpoint_at(OperationPhase::Emit)
+            {
+                Err(terminal) => Err(crate::operation_runner::operation_terminal_error(terminal)),
+                Ok(()) => Err(map_ascii_error(error)),
+            }
+        }
+        Err(error) => Err(map_ascii_error(error)),
+    }
 }
 
 #[cfg(feature = "png")]
@@ -879,7 +1004,7 @@ fn render_png_target(
     };
     merman_export::svg_to_png_with_plan_controlled(&svg, &request.options, operation.control)
         .map(|(bytes, plan)| Some(RasterOutput { bytes, plan }))
-        .map_err(map_export_error)
+        .map_err(RenderError::from)
 }
 
 #[cfg(feature = "jpeg")]
@@ -892,7 +1017,7 @@ fn render_jpeg_target(
     };
     merman_export::svg_to_jpeg_with_plan_controlled(&svg, &request.options, operation.control)
         .map(|(bytes, plan)| Some(RasterOutput { bytes, plan }))
-        .map_err(map_export_error)
+        .map_err(RenderError::from)
 }
 
 #[cfg(feature = "pdf")]
@@ -905,5 +1030,5 @@ fn render_pdf_target(
     };
     merman_export::svg_to_pdf_with_plan_controlled(&svg, &request.options, operation.control)
         .map(|(bytes, plan)| Some(PdfOutput { bytes, plan }))
-        .map_err(map_export_error)
+        .map_err(RenderError::from)
 }

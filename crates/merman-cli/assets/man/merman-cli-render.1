@@ -1,10 +1,10 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH MERMAN-CLI-RENDER 1 2026-08-15 "Merman 0.8.0-alpha.5" "Merman CLI Manual"
+.TH MERMAN-CLI-RENDER 1 2026-08-15 "Merman 0.8.0-alpha.6" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-render \- Render one Mermaid diagram with Merman\*(Aqs native interface
 .SH SYNOPSIS
-\fBmerman\-cli render\fR [\fB\-o\fR|\fB\-\-output\fR] [\fB\-\-input\-kind\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-background\fR] [\fB\-C\fR|\fB\-\-css\-file\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-icon\-pack\fR] [\fB\-\-icon\-pack\-source\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-presentation\-profile\fR] [\fB\-\-text\-measurer\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svg\-id\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-sequence\-mirror\-actors\fR] [\fB\-\-ascii\-charset\fR] [\fB\-\-ascii\-direction\fR] [\fB\-\-ascii\-color\fR] [\fB\-\-xychart\-vertical\-plot\-height\fR] [\fB\-\-xychart\-category\-band\-width\fR] [\fB\-\-xychart\-horizontal\-plot\-width\fR] [\fB\-\-ascii\-max\-grid\-cells\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+\fBmerman\-cli render\fR [\fB\-o\fR|\fB\-\-output\fR] [\fB\-\-input\-kind\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-background\fR] [\fB\-C\fR|\fB\-\-css\-file\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-icon\-pack\fR] [\fB\-\-icon\-pack\-source\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-presentation\-profile\fR] [\fB\-\-text\-measurer\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svg\-id\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-sequence\-mirror\-actors\fR] [\fB\-\-ascii\-charset\fR] [\fB\-\-ascii\-width\-profile\fR] [\fB\-\-ascii\-direction\fR] [\fB\-\-ascii\-color\fR] [\fB\-\-xychart\-vertical\-plot\-height\fR] [\fB\-\-xychart\-category\-band\-width\fR] [\fB\-\-xychart\-horizontal\-plot\-width\fR] [\fB\-\-ascii\-max\-grid\-cells\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
 .SH DESCRIPTION
 Render one Mermaid diagram with Merman\*(Aqs native interface
 .SH OPTIONS
@@ -265,6 +265,17 @@ ascii
 unicode
 .RE
 .TP
+\fB\-\-ascii\-width\-profile\fR \fI<ASCII_WIDTH_PROFILE>\fR
+Display\-width convention used for terminal text measurement
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+unicode
+.IP \(bu 2
+cjk
+.RE
+.TP
 \fB\-\-ascii\-direction\fR \fI<ASCII_DIRECTION>\fR
 Override the default graph direction when Mermaid input omits one
 .sp
@@ -327,10 +338,16 @@ unbounded\-for\-trusted\-input: Explicitly disable policy budgets while retainin
 .TP
 \fB\-\-resource\-limit\fR \fI<STABLE_ID=POSITIVE_U64>\fR
 Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
+.SH "OPERATION CONTROL"
+.TP
+\fB\-\-operation\-timeout\-ms\fR \fI<MILLISECONDS>\fR
+Cancel the complete command operation after this many milliseconds.
+
+The deadline starts before input acquisition and covers generation, rendering, and publication. Zero cancels at the first cooperative checkpoint.
 .SH EXTRA
 Examples:
   merman\-cli render diagram.mmd
 
 More options: `merman\-cli render \-\-help` shows advanced renderer, resource, and security controls.
 .SH VERSION
-v0.8.0\-alpha.5
+v0.8.0\-alpha.6

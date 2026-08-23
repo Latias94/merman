@@ -60,8 +60,14 @@ pub(crate) fn render_pie_diagram_svg_model(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("merman");
+    let css_plan = PieCss::new(effective_config);
+    let css = options.materialize_counted_svg_component(
+        "Pie stylesheet",
+        |out| css_plan.write_for_normalized_id(out, diagram_id.semantic_str()),
+        |out| css_plan.write_for_normalized_id(out, diagram_id),
+    )?;
+    options.checkpoint_emit()?;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -114,12 +120,13 @@ pub(crate) fn render_pie_diagram_svg_model(
                     ..root_svg::RootChrome::new(diagram_id, "pie")
                 },
             )?;
+    options.checkpoint_emit()?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(t)
         );
     }
@@ -127,12 +134,12 @@ pub(crate) fn render_pie_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(d)
         );
     }
+    options.checkpoint_emit()?;
 
-    let css = pie_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
 
@@ -171,9 +178,11 @@ pub(crate) fn render_pie_diagram_svg_model(
         r#"<circle cx="0" cy="0" r="{r}" class="pieOuterCircle"/>"#,
         r = fmt(layout.outer_radius)
     );
+    options.checkpoint_emit()?;
 
     let inner_radius = render_settings.donut_hole * layout.radius;
     for slice in &layout.slices {
+        options.checkpoint_emit()?;
         let r = layout.radius;
         let slice_class = pie_slice_class(effective_config, &slice.label);
         if slice.is_full_circle {
@@ -243,6 +252,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     }
 
     for slice in &layout.slices {
+        options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
             r#"<text transform="translate({x},{y})" class="slice" style="text-anchor: middle;">{text}</text>"#,
@@ -256,6 +266,7 @@ pub(crate) fn render_pie_diagram_svg_model(
 
     match layout.title.as_deref() {
         Some(t) => {
+            options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
                 r#"<text x="0" y="{y}" class="pieTitleText">{text}</text>"#,
@@ -264,6 +275,7 @@ pub(crate) fn render_pie_diagram_svg_model(
             );
         }
         None => {
+            options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
                 r#"<text x="0" y="{y}" class="pieTitleText"/>"#,
@@ -276,6 +288,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     let legend_text_x = legend_rect_size + PIE_LEGEND_SPACING_PX;
 
     for item in &layout.legend_items {
+        options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
             r#"<g class="legend" transform="translate({x},{y})">"#,

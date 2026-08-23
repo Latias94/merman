@@ -7,7 +7,8 @@ Last updated: 2026-08-18
 
 Published workspace prerelease baseline: `0.8.0-alpha.5`.
 
-The next workspace release remains in development and has no selected version yet. The browser and
+The prepared workspace candidate is `0.8.0-alpha.6`. This local source state does not authorize a
+tag, workflow dispatch, registry publication, or GitHub Release mutation. The browser and
 Node package groups were published as an authorized alpha-channel test at `0.8.0-alpha.5` from
 reviewed commit `d4365ca4860b6b4d51c421e775daab92a815c667`, newer than the workspace
 `v0.8.0-alpha.5` tag. Their verified package-group manifests and workflow artifacts identify that
@@ -24,8 +25,8 @@ Rationale:
   integrations test one coherent version graph. The unpublished VS Code extension follows its own
   `0.1.x` version track and records the bundled workspace runtime separately.
 
-Workspace-coupled manifests remain aligned to `0.8.0-alpha.5`. Python package metadata uses the
-PEP 440 spelling `0.8.0a5`, but manifest alignment does not prove that a surface reached its
+Workspace-coupled manifests are aligned to the prepared `0.8.0-alpha.6` candidate. Python package
+metadata uses the PEP 440 spelling `0.8.0a6`, but manifest alignment does not prove that a surface reached its
 registry or that separately published alpha.5 channels share one source snapshot. The
 independently versioned VS Code extension, Typst wrapper, and `roughr-merman` remain on their own
 release axes. The `tree-sitter-mermaid` language distribution also has an independent version axis.

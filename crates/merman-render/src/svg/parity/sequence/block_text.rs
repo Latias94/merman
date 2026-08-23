@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use crate::sequence::{
     SequenceMathHeightMode, bracketize_sequence_block_label, sequence_text_line_step_px,
@@ -9,6 +10,7 @@ pub(super) struct LoopTextRenderContext<'a> {
     pub(super) style: &'a TextStyle,
     config: &'a merman_core::MermaidConfig,
     math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 pub(super) struct LoopTextPlacement {
@@ -25,16 +27,18 @@ impl<'a> LoopTextRenderContext<'a> {
         style: &'a TextStyle,
         config: &'a merman_core::MermaidConfig,
         math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+        checkpoints: SequenceEmitCheckpoints<'a>,
     ) -> Self {
         Self {
             measurer,
             style,
             config,
             math_renderer,
+            checkpoints,
         }
     }
 
-    fn katex_label(&self, text: &str) -> Option<super::math_label::SequenceKatexLabel> {
+    fn katex_label(&self, text: &str) -> Result<Option<super::math_label::SequenceKatexLabel>> {
         sequence_katex_label(
             text,
             self.measurer,
@@ -42,6 +46,7 @@ impl<'a> LoopTextRenderContext<'a> {
             self.config,
             self.math_renderer,
             SequenceMathHeightMode::Draw,
+            self.checkpoints,
         )
     }
 }
@@ -66,22 +71,29 @@ pub(super) fn wrap_svg_text_lines(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_width: Option<f64>,
-) -> Vec<String> {
-    let lines = max_width.map_or_else(
-        || {
-            crate::text::split_html_br_lines(text)
-                .into_iter()
-                .map(str::to_string)
-                .collect()
-        },
-        |width| {
-            crate::sequence::wrap_sequence_label_like_mermaid_lines(text, measurer, style, width)
-        },
-    );
-    if lines.is_empty() {
-        vec!["".to_string()]
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<Vec<String>> {
+    let lines = if let Some(width) = max_width {
+        crate::sequence::wrap_sequence_label_like_mermaid_lines(
+            text,
+            measurer,
+            style,
+            width,
+            checkpoints.text(),
+        )?
     } else {
+        let split_lines = crate::text::split_html_br_lines(text);
+        let mut lines = Vec::with_capacity(split_lines.len());
+        for line in split_lines {
+            checkpoints.checkpoint()?;
+            lines.push(line.to_string());
+        }
         lines
+    };
+    if lines.is_empty() {
+        Ok(vec!["".to_string()])
+    } else {
+        Ok(lines)
     }
 }
 
@@ -90,16 +102,24 @@ pub(super) fn write_loop_text_lines(
     ctx: &LoopTextRenderContext<'_>,
     placement: LoopTextPlacement,
     text: &str,
-) {
-    if let Some(katex) = ctx.katex_label(text) {
+) -> Result<()> {
+    ctx.checkpoints.checkpoint()?;
+    if let Some(katex) = ctx.katex_label(text)? {
         let x = (placement.x - katex.width / 2.0).round();
         write_sequence_katex_foreign_object(out, &katex, x, placement.block_start_y.round());
-        return;
+        return ctx.checkpoints.checkpoint();
     }
 
     let line_step = sequence_text_line_step_px(ctx.style.font_size);
-    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, placement.max_width);
+    let lines = wrap_svg_text_lines(
+        text,
+        ctx.measurer,
+        ctx.style,
+        placement.max_width,
+        ctx.checkpoints,
+    )?;
     for (i, line) in lines.into_iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         let y = placement.y0 + (i as f64) * line_step;
         if placement.use_tspan {
             let _ = write!(
@@ -121,6 +141,7 @@ pub(super) fn write_loop_text_lines(
             );
         }
     }
+    ctx.checkpoints.checkpoint()
 }
 
 pub(super) fn write_section_title_lines(
@@ -131,17 +152,19 @@ pub(super) fn write_section_title_lines(
     section_start_y: f64,
     max_width: Option<f64>,
     text: &str,
-) {
-    if let Some(katex) = ctx.katex_label(text) {
+) -> Result<()> {
+    ctx.checkpoints.checkpoint()?;
+    if let Some(katex) = ctx.katex_label(text)? {
         let x = (x - katex.width / 2.0).round();
         let y = (section_start_y - katex.height).round();
         write_sequence_katex_foreign_object(out, &katex, x, y);
-        return;
+        return ctx.checkpoints.checkpoint();
     }
 
     let line_step = sequence_text_line_step_px(ctx.style.font_size);
-    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width);
+    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width, ctx.checkpoints)?;
     for (i, line) in lines.into_iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         let y = y0 + (i as f64) * line_step;
         let _ = write!(
             out,
@@ -152,4 +175,5 @@ pub(super) fn write_section_title_lines(
             text = escape_xml(&line)
         );
     }
+    ctx.checkpoints.checkpoint()
 }

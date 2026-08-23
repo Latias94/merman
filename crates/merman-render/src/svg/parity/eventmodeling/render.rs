@@ -10,8 +10,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("eventmodeling");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("eventmodeling");
     let acc_title = model
         .acc_title
         .as_deref()
@@ -43,26 +42,27 @@ pub(crate) fn render_eventmodeling_diagram_svg(
         diagram_id,
     )
     .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml(title)
         );
     }
     if let Some(description) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml(description)
         );
     }
 
     let css = eventmodeling_css(&theme);
-    let marker_id = format!("em-arrowhead-{diagram_id}");
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str("<g/>");
+    options.checkpoint_emit()?;
 
     for swimlane in &layout.swimlanes {
         let _ = write!(
@@ -103,25 +103,25 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     for relation in &layout.relations {
         let _ = write!(
             &mut out,
-            r#"<path class="em-relation" fill="none" stroke="{}" stroke-width="1" marker-end="url(#{})" d="M{} {} L{} {}"></path>"#,
+            r#"<path class="em-relation" fill="none" stroke="{}" stroke-width="1" marker-end="url(#em-arrowhead-{diagram_id})" d="M{} {} L{} {}"></path>"#,
             escape_attr_display(&relation.stroke),
-            escape_attr_display(&marker_id),
             fmt(relation.x1),
             fmt(relation.y1),
             fmt(relation.x2),
             fmt(relation.y2)
         );
+        options.checkpoint_emit()?;
     }
 
     let marker_fill = &theme.arrowhead_fill;
-    let _ = write!(&mut out, r#"<defs><marker id=""#);
-    escape_xml_into(&mut out, &marker_id);
-    out.push_str(
-        r#"" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill=""#,
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="em-arrowhead-{diagram_id}" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill=""#,
     );
     escape_xml_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

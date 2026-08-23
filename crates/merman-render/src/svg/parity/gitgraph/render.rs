@@ -8,6 +8,26 @@ struct GitGraphCss {
     tag_label_font_size_px: f64,
 }
 
+enum GitGraphBranchLabelStyle<'a> {
+    ScopedDropShadow(SvgDiagramId<'a>),
+    Configured(String),
+    None,
+}
+
+impl std::fmt::Display for GitGraphBranchLabelStyle<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ScopedDropShadow(diagram_id) => {
+                write!(formatter, "filter:url(#{diagram_id}-drop-shadow)")
+            }
+            Self::Configured(filter) => {
+                write!(formatter, "filter:{}", escape_attr_display(filter))
+            }
+            Self::None => Ok(()),
+        }
+    }
+}
+
 const GITGRAPH_NAMED_COLOR_COUNT: usize = 8;
 
 fn gitgraph_theme_name(effective_config: &serde_json::Value) -> String {
@@ -50,7 +70,10 @@ fn gitgraph_theme_array(effective_config: &serde_json::Value, key: &str) -> Vec<
         .unwrap_or_default()
 }
 
-fn gitgraph_defs(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+fn gitgraph_defs<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+where
+    I: Copy + std::fmt::Display,
+{
     let mut out = String::new();
 
     if config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
@@ -69,7 +92,7 @@ fn gitgraph_defs(diagram_id: &str, effective_config: &serde_json::Value) -> Stri
         let _ = write!(
             &mut out,
             r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(&gradient_start),
             escape_xml(&gradient_stop)
         );
@@ -83,7 +106,7 @@ fn gitgraph_defs(diagram_id: &str, effective_config: &serde_json::Value) -> Stri
         let _ = write!(
             &mut out,
             r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(&filter_color)
         );
     }
@@ -91,8 +114,11 @@ fn gitgraph_defs(diagram_id: &str, effective_config: &serde_json::Value) -> Stri
     out
 }
 
-fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGraphCss {
-    let id = escape_xml(diagram_id);
+fn gitgraph_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> GitGraphCss
+where
+    I: Copy + std::fmt::Display,
+{
+    let id = diagram_id;
     let parts = info_css_parts_with_theme_font_size_only(diagram_id, effective_config);
     let font_family = parts.font_family.clone();
     let theme_name = gitgraph_theme_name(effective_config);
@@ -605,7 +631,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         }
     }
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -618,12 +644,12 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
-    let aria_title_id = format!("chart-title-{diagram_id}");
-    let aria_desc_id = format!("chart-desc-{diagram_id}");
+    let aria_title_id = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_desc_id = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
 
     let mut out = String::new();
-    let aria_describedby = acc_descr.is_some().then_some(aria_desc_id.as_str());
-    let aria_labelledby = acc_title.is_some().then_some(aria_title_id.as_str());
+    let aria_describedby = aria_desc_id.as_deref();
+    let aria_labelledby = aria_title_id.as_deref();
     let root_context =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::GitGraph, diagram_id);
     let root_document = root_context.begin_document(
@@ -639,20 +665,19 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             ..root_svg::RootChrome::new(diagram_id, "gitGraph")
         },
     )?;
+    options.checkpoint_emit()?;
 
     if let Some(t) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="{}">{}</title>"#,
-            escape_attr(&aria_title_id),
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml(t)
         );
     }
     if let Some(d) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="{}">{}</desc>"#,
-            escape_attr(&aria_desc_id),
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml(d)
         );
     }
@@ -669,6 +694,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         font_style: None,
     };
     let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
+    options.checkpoint_emit()?;
 
     out.push_str(r#"<g/>"#);
     out.push_str(&css.defs);
@@ -688,19 +714,20 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     } else {
         0.0
     };
-    let branch_label_filter = if look.is_neo() {
-        let filter = if use_redux_geometry {
-            format!("url(#{diagram_id}-drop-shadow)")
+    let branch_label_style = if look.is_neo() {
+        if use_redux_geometry {
+            GitGraphBranchLabelStyle::ScopedDropShadow(diagram_id)
         } else {
-            crate::config::config_css_number_or_string(
-                effective_config,
-                &["themeVariables", "dropShadow"],
+            GitGraphBranchLabelStyle::Configured(
+                crate::config::config_css_number_or_string(
+                    effective_config,
+                    &["themeVariables", "dropShadow"],
+                )
+                .unwrap_or_else(|| "none".to_string()),
             )
-            .unwrap_or_else(|| "none".to_string())
-        };
-        format!("filter:{filter}")
+        }
     } else {
-        String::new()
+        GitGraphBranchLabelStyle::None
     };
     let branch_data_look = if look.is_neo() {
         r#" data-look="neo""#
@@ -711,6 +738,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     if layout.show_branches {
         out.push_str("<g>");
         for b in &layout.branches {
+            options.checkpoint_emit()?;
             let idx = b.index % THEME_COLOR_LIMIT;
             let pos = b.pos;
 
@@ -767,7 +795,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     r#"<rect{data_look} class="{cls}" style="{style}" rx="{radius}" ry="{radius}" x="{x}" y="0" width="{w}" height="{h}"{transform}/>"#,
                     data_look = branch_data_look,
                     cls = bkg_class,
-                    style = escape_attr(&branch_label_filter),
+                    style = &branch_label_style,
                     radius = fmt(branch_border_radius),
                     x = fmt(x),
                     w = fmt(bbox_w + 18.0 + branch_label_padding_x),
@@ -804,7 +832,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     r#"<rect{data_look} class="{cls}" style="{style}" rx="{radius}" ry="{radius}" x="{x}" y="{y}" width="{w}" height="{h}"{transform}/>"#,
                     data_look = branch_data_look,
                     cls = bkg_class,
-                    style = escape_attr(&branch_label_filter),
+                    style = &branch_label_style,
                     radius = fmt(branch_border_radius),
                     x = fmt(x),
                     y = fmt(layout.max_pos),
@@ -840,7 +868,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     r#"<rect{data_look} class="{cls}" style="{style}" rx="{radius}" ry="{radius}" x="{x}" y="{y}" width="{w}" height="{h}" transform="translate(-19, {ty})"/>"#,
                     data_look = branch_data_look,
                     cls = bkg_class,
-                    style = escape_attr(&branch_label_filter),
+                    style = &branch_label_style,
                     radius = fmt(branch_border_radius),
                     x = fmt(x),
                     y = fmt(y),
@@ -858,6 +886,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     name = name
                 );
             }
+            options.checkpoint_emit()?;
         }
         out.push_str("</g>");
     }
@@ -1250,6 +1279,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
 
     // GitGraph renders rotated commit labels (e.g. `rotate(-45, ...)`) that are not represented
     // in the precomputed layout bounds. Mirror Mermaid's `setupGraphViewbox(svg.getBBox() + pad)`

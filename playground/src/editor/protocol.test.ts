@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
   EditorWorkerProtocolProjectionError,
   projectEditorDocumentIdentity,
   requestIdFromEditorWorkerMessage,
@@ -399,7 +400,7 @@ test("response projection binds positive request IDs and null synchronization ac
     requestId: 1,
     type: "ready",
     completionTriggerCharacters,
-    transportApiVersion: 5,
+    transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
     editorSchema: EDITOR_SCHEMA_VERSION,
   });
   assert.equal(ready.type, "ready");
@@ -411,7 +412,7 @@ test("response projection binds positive request IDs and null synchronization ac
         requestId: 1,
         type: "ready",
         completionTriggerCharacters,
-        transportApiVersion: 4,
+        transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION + 1,
         editorSchema: EDITOR_SCHEMA_VERSION,
       }),
     /transport API version is incompatible/u,
@@ -423,7 +424,7 @@ test("response projection binds positive request IDs and null synchronization ac
         requestId: 1,
         type: "ready",
         completionTriggerCharacters: ["too long"],
-        transportApiVersion: 5,
+        transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
         editorSchema: EDITOR_SCHEMA_VERSION,
       }),
     /must contain one character each/u,

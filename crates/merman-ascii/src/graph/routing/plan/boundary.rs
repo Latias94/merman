@@ -1,5 +1,7 @@
 use super::super::super::model::{AsciiGraph, AsciiGraphEdge, GraphDirection};
 use super::super::super::topology::GraphGroupTopology;
+use crate::error::Result;
+use crate::resource::ResourceContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum EdgeBoundaryContext<'a> {
@@ -22,29 +24,36 @@ pub(super) enum EdgeBoundaryContext<'a> {
     },
 }
 
-pub(super) fn edge_boundary_context<'a>(
+pub(super) fn edge_boundary_context_with_resources<'a>(
     graph: &'a AsciiGraph,
     edge: &AsciiGraphEdge,
-) -> EdgeBoundaryContext<'a> {
-    let topology = GraphGroupTopology::new(graph);
-    let Some((group_index, relation)) = deepest_directional_boundary_group(graph, edge, &topology)
-    else {
-        return EdgeBoundaryContext::External {
+    topology: Option<&GraphGroupTopology<'a>>,
+    resources: &mut ResourceContext,
+) -> Result<EdgeBoundaryContext<'a>> {
+    let Some(topology) = topology else {
+        return Ok(EdgeBoundaryContext::External {
             direction: graph.direction,
-        };
+        });
+    };
+    let Some((group_index, relation)) =
+        deepest_directional_boundary_group(graph, edge, topology, resources)?
+    else {
+        return Ok(EdgeBoundaryContext::External {
+            direction: graph.direction,
+        });
     };
     let Some(group) = graph.groups.get(group_index) else {
-        return EdgeBoundaryContext::External {
+        return Ok(EdgeBoundaryContext::External {
             direction: graph.direction,
-        };
+        });
     };
     let Some(local_direction) = group.direction else {
-        return EdgeBoundaryContext::External {
+        return Ok(EdgeBoundaryContext::External {
             direction: graph.direction,
-        };
+        });
     };
 
-    match relation {
+    Ok(match relation {
         BoundaryRelation::Internal => EdgeBoundaryContext::Internal {
             group_id: group.id.as_str(),
             direction: local_direction,
@@ -59,7 +68,27 @@ pub(super) fn edge_boundary_context<'a>(
             root_direction: graph.direction,
             local_direction,
         },
-    }
+    })
+}
+
+#[cfg(test)]
+pub(super) fn edge_boundary_context<'a>(
+    graph: &'a AsciiGraph,
+    edge: &AsciiGraphEdge,
+) -> EdgeBoundaryContext<'a> {
+    let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
+        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+    ));
+    let topology = if graph.groups.is_empty() {
+        None
+    } else {
+        Some(
+            GraphGroupTopology::try_new(graph, &mut resources)
+                .expect("test topology construction must remain representable"),
+        )
+    };
+    edge_boundary_context_with_resources(graph, edge, topology.as_ref(), &mut resources)
+        .expect("test boundary traversal must remain representable")
 }
 
 impl EdgeBoundaryContext<'_> {
@@ -98,23 +127,27 @@ fn deepest_directional_boundary_group(
     graph: &AsciiGraph,
     edge: &AsciiGraphEdge,
     topology: &GraphGroupTopology<'_>,
-) -> Option<(usize, BoundaryRelation)> {
+    resources: &mut ResourceContext,
+) -> Result<Option<(usize, BoundaryRelation)>> {
     let mut best = None::<BoundaryCandidate>;
+    let from_groups = topology.groups_containing_endpoint(edge.from.as_str(), resources)?;
+    let to_groups = topology.groups_containing_endpoint(edge.to.as_str(), resources)?;
 
     for (group_index, group) in graph.groups.iter().enumerate() {
+        resources.charge_layout_work(1)?;
         let Some(_) = group.direction else {
             continue;
         };
 
-        let from_inside = topology.group_contains_endpoint(group_index, edge.from.as_str());
-        let to_inside = topology.group_contains_endpoint(group_index, edge.to.as_str());
+        let from_inside = from_groups.contains(&group_index);
+        let to_inside = to_groups.contains(&group_index);
         let relation = match (from_inside, to_inside) {
             (true, true) => BoundaryRelation::Internal,
             (false, true) => BoundaryRelation::Entering,
             (true, false) => BoundaryRelation::Leaving,
             (false, false) => continue,
         };
-        let depth = topology.group_depth(group_index);
+        let depth = topology.group_depth(group_index, resources)?;
         let candidate = BoundaryCandidate {
             group_index,
             depth,
@@ -125,5 +158,5 @@ fn deepest_directional_boundary_group(
         }
     }
 
-    best.map(|candidate| (candidate.group_index, candidate.relation))
+    Ok(best.map(|candidate| (candidate.group_index, candidate.relation)))
 }

@@ -16,7 +16,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("zenuml");
+    let diagram_id = options.diagram_id_or("zenuml");
     let content_left = 1.0 + CONTENT_PADDING + layout.frame_border_left;
     let view_width =
         layout.width + content_left + CONTENT_PADDING + layout.frame_border_right + 1.0;
@@ -34,10 +34,12 @@ pub(super) fn render_zenuml_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Zenuml, diagram_id)
             .write_open(&mut out, root_spec, chrome)?;
+    options.checkpoint_emit()?;
 
     out.push_str("<defs><style>");
     out.push_str(zenuml_css());
     out.push_str("</style></defs>");
+    options.checkpoint_emit()?;
     let _ = write!(
         &mut out,
         r#"<rect class="frame-border-outer" x="0" y="0" width="{}" height="{}" rx="4"/><rect class="frame-border-inner" x="1" y="1" width="{}" height="{}" rx="3"/>"#,
@@ -192,6 +194,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
         render_comment(&mut out, comment);
     }
     out.push_str("</g></svg>");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

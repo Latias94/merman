@@ -11,7 +11,7 @@ Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Da
 Install the current prerelease from pub.dev:
 
 ```sh
-flutter pub add 'merman:^0.8.0-alpha.5'
+flutter pub add 'merman:^0.8.0-alpha.6'
 ```
 
 For local source development, depend on a matching checkout instead:
@@ -60,6 +60,51 @@ Convenience methods are projections over `execute` and cover all 13 generated AB
 The libraries bundled on pub.dev provide SVG, semantic and layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They intentionally omit math, PNG, JPEG, PDF, and native runtime adapters to keep the five-platform package small. The corresponding Dart methods remain part of the generated ABI facade for a current-contract custom library loaded with `Merman.openPath(...)` or `Merman.fromDynamicLibrary(...)`; against the bundled library, unavailable outputs raise `MermanMissingCapabilityException` with capability `math`, `png`, `jpeg`, or `pdf` as appropriate.
 
 A native artifact can intentionally omit some outputs. Inspect `merman.runtimeCatalog` before enabling optional UI or export paths; an unavailable operation raises `MermanUnsupportedOperationException` rather than silently falling back. `MermanUnknownOperationException` identifies an ID outside the generated ABI vocabulary; `MermanMissingCapabilityException.capabilityId` identifies the backend absent from a valid native request.
+
+## Deadlines And Cancellation
+
+Create a reusable `MermanOperationControl` from the same `Merman` or `MermanEngine` instance and
+attach it to `execute`. Resource and cancellation failures remain structured errors and never
+return a partial document.
+
+```dart
+final engine = MermanEngine();
+final control = engine.createOperationControl(
+  timeout: const Duration(milliseconds: 250),
+);
+try {
+  final result = engine.execute(
+    MermanOperation.svg,
+    source,
+    control: control,
+  );
+  print(result.utf8Text);
+} on MermanCancelledException catch (error) {
+  print(error.cancellationDetails?.reason);
+} finally {
+  control.release();
+  engine.close();
+}
+```
+
+Execution is synchronous and the control is isolate-local. A `Timer` or message scheduled on the
+same isolate cannot call `cancel()` while `execute` is blocking that isolate. The Dart facade
+directly supports relative deadlines, cancellation before execution, and cancellation requested
+from a synchronous host callback. Message-driven mid-render cancellation needs a host-owned native
+or worker bridge that can call the native control concurrently; use a process boundary when
+forceful termination is also required.
+
+Parser and ASCII renderer failures may also expose `MermanException.diagnosticDetails`. Prefer its
+stable code, optional byte span, field, and diagram type over parsing the human-facing message:
+
+```dart
+try {
+  merman.renderAscii(source);
+} on MermanException catch (error) {
+  print(error.diagnosticDetails?.code);
+  print(error.diagnosticDetails?.span?.start);
+}
+```
 
 ## Inspect Native Metadata
 
@@ -177,6 +222,8 @@ Set the usual reusable pipeline in `MermanEngine(optionsJson: ...)`. Override it
 - Delete `MermanReusableEngine`, `Merman.reusableEngine(...)`, `dispose()`, and constructor-level `textMeasurer:` arguments. Use `MermanEngineServices` and `close()`.
 - Replace map access such as `result.metadata['runtime_policy']` with typed fields such as `result.metadata.runtimePolicy`; use `rawJson` for additive fields.
 - Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning matters; byte-returning methods remain available.
+- Use `createOperationControl(timeout: ...)` and pass the control to `execute` for cooperative
+  deadlines. Do not rely on a same-isolate `Timer` to interrupt a synchronous call.
 - Treat runtime operation, resource-limit, option-group, and service IDs as discovered open vocabularies. Unknown runtime operations remain discoverable but require an updated generated SDK before numeric invocation.
 
 ## Supported Platforms

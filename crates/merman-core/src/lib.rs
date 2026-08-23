@@ -29,6 +29,8 @@ pub mod resources;
 pub mod runtime;
 pub mod sanitize;
 pub mod svg_security;
+#[doc(hidden)]
+pub mod terminal_text;
 mod theme;
 pub mod theme_color;
 pub mod time;
@@ -52,12 +54,14 @@ pub use editor::{
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
-    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_id,
-    diagram_type_family_kind, diagram_type_metadata_id, diagram_type_render_model_kind,
+    BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact,
+    diagram_type_family_id, diagram_type_family_kind, diagram_type_metadata_id,
+    diagram_type_render_model_kind,
 };
 pub use operation::{
-    CancelReason, OperationCancelled, OperationControl, OperationControlResult, OperationLedger,
-    OperationLedgerError, OperationPhase, OperationResourceLimitExceeded,
+    CancelReason, OperationCancelled, OperationControl, OperationControlResult,
+    OperationLedgerError, OperationPhase, OperationResourceDomain, OperationResourceLimitExceeded,
+    OperationResourceOverride, OperationResourceProvenance,
 };
 pub use preprocess::{
     PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
@@ -79,6 +83,11 @@ pub fn supported_diagrams() -> &'static [&'static str] {
 /// Returns the complete family capability facts for Mermaid diagram ids in the pinned baseline.
 pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
     family::diagram_family_capabilities()
+}
+
+/// Returns each concrete built-in typed render family exactly once.
+pub fn built_in_typed_render_families() -> &'static [BuiltInTypedRenderFamily] {
+    family::built_in_typed_render_families()
 }
 
 /// Returns header completion facts for Mermaid diagram starters in the pinned baseline.

@@ -11,11 +11,64 @@ pub(super) fn state_data_look<'a>(ctx: &'a StateRenderCtx<'_>) -> &'a str {
     if look.is_empty() { "classic" } else { look }
 }
 
-pub(super) fn state_scoped_dom_id(ctx: &StateRenderCtx<'_>, id: &str) -> String {
-    format!("{}-{id}", ctx.diagram_id)
+pub(super) fn state_note_owner_id(id: &str) -> &str {
+    id.rsplit_once("----parent")
+        .map(|(owner, _)| owner)
+        .filter(|owner| !owner.is_empty())
+        .unwrap_or(id)
 }
 
-pub(super) fn state_node_scoped_dom_id(ctx: &StateRenderCtx<'_>, node_id: &str) -> String {
+#[derive(Debug, Clone, Copy)]
+pub(super) struct StateScopedDomId<'a, 'b> {
+    diagram_id: SvgDiagramId<'a>,
+    id: &'b str,
+}
+
+impl std::fmt::Display for StateScopedDomId<'_, '_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}-{}",
+            self.diagram_id,
+            escape_xml_display(self.id)
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct StateScopedDomIdAttr<'a, 'b>(StateScopedDomId<'a, 'b>);
+
+impl std::fmt::Display for StateScopedDomIdAttr<'_, '_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}-{}",
+            self.0.diagram_id,
+            escape_attr_display(self.0.id)
+        )
+    }
+}
+
+impl<'a, 'b> StateScopedDomId<'a, 'b> {
+    pub(super) fn attr(self) -> StateScopedDomIdAttr<'a, 'b> {
+        StateScopedDomIdAttr(self)
+    }
+}
+
+pub(super) fn state_scoped_dom_id<'a, 'b>(
+    ctx: &StateRenderCtx<'a>,
+    id: &'b str,
+) -> StateScopedDomId<'a, 'b> {
+    StateScopedDomId {
+        diagram_id: ctx.diagram_id,
+        id,
+    }
+}
+
+pub(super) fn state_node_scoped_dom_id<'a, 'b>(
+    ctx: &'b StateRenderCtx<'a>,
+    node_id: &'b str,
+) -> StateScopedDomId<'a, 'b> {
     ctx.nodes_by_id
         .get(node_id)
         .map(|node| node.dom_id.trim())

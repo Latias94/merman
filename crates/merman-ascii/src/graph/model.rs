@@ -1,4 +1,8 @@
+use super::label::{GraphNodeLabelPlan, PreparedGraphNodeText};
 use crate::color::AsciiRgb;
+use crate::error::{AsciiError, Result};
+use crate::resource::AsciiResourceLimitPhase;
+use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphDirection {
@@ -16,6 +20,24 @@ impl GraphDirection {
             direction => direction,
         }
     }
+
+    /// Converts an authored local direction into the coordinate space before the root output
+    /// mirror is applied.
+    pub(crate) const fn before_root_output_transform(self, root: Self) -> Self {
+        match root {
+            Self::RightLeft => match self {
+                Self::LeftRight => Self::RightLeft,
+                Self::RightLeft => Self::LeftRight,
+                direction => direction,
+            },
+            Self::BottomTop => match self {
+                Self::TopDown => Self::BottomTop,
+                Self::BottomTop => Self::TopDown,
+                direction => direction,
+            },
+            Self::LeftRight | Self::TopDown => self,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +51,7 @@ pub(crate) struct AsciiGraph {
     pub(super) diagram_type: &'static str,
     pub(super) direction: GraphDirection,
     pub(super) root_policy: GraphRootPolicy,
+    node_label_policy: GraphNodeLabelPolicy,
     pub(super) nodes: Vec<AsciiGraphNode>,
     pub(super) edges: Vec<AsciiGraphEdge>,
     pub(super) groups: Vec<AsciiGraphGroup>,
@@ -37,9 +60,184 @@ pub(crate) struct AsciiGraph {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AsciiGraphNode {
     pub(super) id: String,
-    pub(super) label: String,
+    text: GraphNodeText,
     pub(super) shape: GraphNodeShape,
     pub(super) style: GraphNodeStyle,
+    pub(super) semantics: GraphNodeSemantics,
+}
+
+#[derive(Debug, Clone)]
+enum GraphNodeText {
+    Unprepared {
+        label: String,
+        compartments: Option<GraphNodeCompartments>,
+    },
+    Prepared(PreparedGraphNodeText),
+}
+
+impl PartialEq for GraphNodeText {
+    fn eq(&self, other: &Self) -> bool {
+        self.label() == other.label() && self.compartments() == other.compartments()
+    }
+}
+
+impl Eq for GraphNodeText {}
+
+impl GraphNodeText {
+    fn label(&self) -> &str {
+        match self {
+            Self::Unprepared { label, .. } => label,
+            Self::Prepared(text) => text.label(),
+        }
+    }
+
+    fn compartments(&self) -> Option<&GraphNodeCompartments> {
+        match self {
+            Self::Unprepared { compartments, .. } => compartments.as_ref(),
+            Self::Prepared(text) => text.compartments(),
+        }
+    }
+
+    fn prepared_label_plan(&self) -> Option<&GraphNodeLabelPlan> {
+        match self {
+            Self::Unprepared { .. } => None,
+            Self::Prepared(text) => Some(text.plan()),
+        }
+    }
+}
+
+impl AsciiGraphNode {
+    pub(super) fn new(
+        id: String,
+        label: String,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) -> Self {
+        Self::new_with_compartments(id, label, None, shape, style, semantics)
+    }
+
+    pub(super) fn new_with_compartments(
+        id: String,
+        label: String,
+        compartments: Option<GraphNodeCompartments>,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) -> Self {
+        Self {
+            id,
+            text: GraphNodeText::Unprepared {
+                label,
+                compartments,
+            },
+            shape,
+            style,
+            semantics,
+        }
+    }
+
+    pub(super) fn new_with_prepared_text(
+        id: String,
+        text: PreparedGraphNodeText,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) -> Self {
+        Self {
+            id,
+            text: GraphNodeText::Prepared(text),
+            shape,
+            style,
+            semantics,
+        }
+    }
+
+    pub(super) fn label(&self) -> &str {
+        self.text.label()
+    }
+
+    pub(super) fn compartments(&self) -> Option<&GraphNodeCompartments> {
+        self.text.compartments()
+    }
+
+    pub(super) fn prepared_label_plan(&self) -> Option<&GraphNodeLabelPlan> {
+        self.text.prepared_label_plan()
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct GraphNodeSemantics {
+    pub(crate) side_constraint: Option<GraphNodeSideConstraint>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum GraphNodeLabelPolicy {
+    #[default]
+    Preserve,
+    WrapAt(NonZeroUsize),
+}
+
+impl GraphNodeLabelPolicy {
+    const fn wrap_width(self) -> Option<usize> {
+        match self {
+            Self::Preserve => None,
+            Self::WrapAt(width) => Some(width.get()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GraphNodeCompartments {
+    pub(super) title: String,
+    pub(super) body: String,
+}
+
+impl GraphNodeCompartments {
+    pub(crate) fn new(title: impl Into<String>, body: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            body: body.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GraphNodeSideConstraint {
+    pub(super) anchor_id: String,
+    pub(super) side: GraphNodeSide,
+}
+
+impl GraphNodeSideConstraint {
+    pub(crate) fn new(anchor_id: impl Into<String>, side: GraphNodeSide) -> Self {
+        Self {
+            anchor_id: anchor_id.into(),
+            side,
+        }
+    }
+
+    pub(crate) fn anchor_id(&self) -> &str {
+        &self.anchor_id
+    }
+
+    pub(crate) const fn side(&self) -> GraphNodeSide {
+        self.side
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GraphNodeSide {
+    Left,
+    Right,
+}
+
+impl GraphNodeSide {
+    pub(crate) const fn reversed(self) -> Self {
+        match self {
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +250,7 @@ pub(crate) struct GraphNodeStyle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphNodeShape {
     Rect,
+    StateWithTitle,
     Rounded,
     Circle,
     Stadium,
@@ -61,8 +260,18 @@ pub(crate) enum GraphNodeShape {
     Cylinder,
     LeanRight,
     LeanLeft,
+    ManualInput,
     Datastore,
+    BowTie,
     Document,
+    StackedDocument,
+    LinedDocument,
+    TaggedDocument,
+    StackedRect,
+    LinedRect,
+    TaggedRect,
+    PaperTape,
+    Text,
     Hexagon,
     Asymmetric,
     Trapezoid,
@@ -76,20 +285,26 @@ pub(crate) enum GraphNodeShape {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AsciiGraphEdge {
+    pub(super) id: Option<String>,
+    pub(super) is_user_defined_id: bool,
     pub(super) from: String,
     pub(super) to: String,
     pub(super) label: Option<String>,
     pub(super) stroke: GraphEdgeStroke,
-    pub(super) arrow: GraphEdgeArrow,
+    pub(super) start_marker: GraphEdgeMarker,
+    pub(super) end_marker: GraphEdgeMarker,
     pub(super) length: usize,
     pub(super) style: GraphEdgeStyle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GraphEdgeAttrs {
+    pub(crate) id: Option<String>,
+    pub(crate) is_user_defined_id: bool,
     pub(crate) label: Option<String>,
     pub(crate) stroke: GraphEdgeStroke,
-    pub(crate) arrow: GraphEdgeArrow,
+    pub(crate) start_marker: GraphEdgeMarker,
+    pub(crate) end_marker: GraphEdgeMarker,
     pub(crate) length: usize,
     pub(crate) style: GraphEdgeStyle,
 }
@@ -97,9 +312,12 @@ pub(crate) struct GraphEdgeAttrs {
 impl Default for GraphEdgeAttrs {
     fn default() -> Self {
         Self {
+            id: None,
+            is_user_defined_id: false,
             label: None,
             stroke: GraphEdgeStroke::Normal,
-            arrow: GraphEdgeArrow::Point,
+            start_marker: GraphEdgeMarker::Open,
+            end_marker: GraphEdgeMarker::Point,
             length: 1,
             style: GraphEdgeStyle::default(),
         }
@@ -141,13 +359,25 @@ pub(crate) enum GraphEdgeStroke {
     Normal,
     Dotted,
     Thick,
+    Invisible,
+}
+
+impl GraphEdgeStroke {
+    pub(crate) const fn is_visible(self) -> bool {
+        !matches!(self, Self::Invisible)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GraphEdgeArrow {
+pub(crate) enum GraphEdgeMarker {
     Open,
     Point,
+    Circle,
+    Cross,
 }
+
+#[cfg(test)]
+pub(crate) type GraphEdgeArrow = GraphEdgeMarker;
 
 impl AsciiGraph {
     pub(crate) fn new(direction: GraphDirection) -> Self {
@@ -159,14 +389,47 @@ impl AsciiGraph {
             diagram_type,
             direction,
             root_policy: GraphRootPolicy::DeclaredFirst,
+            node_label_policy: GraphNodeLabelPolicy::Preserve,
             nodes: Vec::new(),
             edges: Vec::new(),
             groups: Vec::new(),
         }
     }
 
+    pub(crate) fn try_reserve_projection(
+        &mut self,
+        nodes: usize,
+        edges: usize,
+        groups: usize,
+    ) -> Result<()> {
+        self.nodes
+            .try_reserve(nodes)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        self.edges
+            .try_reserve(edges)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        self.groups
+            .try_reserve(groups)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        Ok(())
+    }
+
     pub(crate) fn diagram_type(&self) -> &'static str {
         self.diagram_type
+    }
+
+    pub(crate) fn wrap_node_labels_at(&mut self, width: NonZeroUsize) {
+        self.node_label_policy = GraphNodeLabelPolicy::WrapAt(width);
+    }
+
+    pub(super) const fn node_label_wrap_width(&self) -> Option<usize> {
+        self.node_label_policy.wrap_width()
     }
 
     pub(crate) fn use_incoming_edge_roots(&mut self) {
@@ -183,6 +446,7 @@ impl AsciiGraph {
         );
     }
 
+    #[cfg(test)]
     pub(crate) fn add_node_with_shape_and_style(
         &mut self,
         id: impl Into<String>,
@@ -190,12 +454,42 @@ impl AsciiGraph {
         shape: GraphNodeShape,
         style: GraphNodeStyle,
     ) {
-        self.nodes.push(AsciiGraphNode {
-            id: id.into(),
-            label: label.into(),
+        self.add_node_with_semantics(id, label, shape, style, GraphNodeSemantics::default());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn add_node_with_semantics(
+        &mut self,
+        id: impl Into<String>,
+        label: impl Into<String>,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) {
+        self.nodes.push(AsciiGraphNode::new(
+            id.into(),
+            label.into(),
             shape,
             style,
-        });
+            semantics,
+        ));
+    }
+
+    pub(crate) fn add_node_with_prepared_text(
+        &mut self,
+        id: impl Into<String>,
+        text: PreparedGraphNodeText,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) {
+        self.nodes.push(AsciiGraphNode::new_with_prepared_text(
+            id.into(),
+            text,
+            shape,
+            style,
+            semantics,
+        ));
     }
 
     #[cfg(test)]
@@ -210,11 +504,14 @@ impl AsciiGraph {
         attrs: GraphEdgeAttrs,
     ) {
         self.edges.push(AsciiGraphEdge {
+            id: attrs.id,
+            is_user_defined_id: attrs.is_user_defined_id,
             from: from.into(),
             to: to.into(),
             label: attrs.label,
             stroke: attrs.stroke,
-            arrow: attrs.arrow,
+            start_marker: attrs.start_marker,
+            end_marker: attrs.end_marker,
             length: attrs.length.max(1),
             style: attrs.style,
         });

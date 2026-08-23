@@ -482,6 +482,7 @@ function probeCandidateAsyncLifecycle(artifact, recipe, requestJson) {
       cwd: nodeRoot,
       encoding: "utf8",
       maxBuffer: 16 * 1024 * 1024,
+      timeout: 30_000,
     },
   );
   if (result.error) throw result.error;

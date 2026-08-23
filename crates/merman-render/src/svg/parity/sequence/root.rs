@@ -10,10 +10,8 @@ pub(super) fn write_sequence_svg_root_open(
     out: &mut String,
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
 ) -> Result<SequenceRootMetrics> {
-    let diagram_id_esc = escape_xml(diagram_id);
-
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
         min_y: 0.0,
@@ -49,7 +47,7 @@ pub(super) fn write_sequence_svg_root_open(
         let _ = write!(
             out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml_display(title)
         );
     }
@@ -57,7 +55,7 @@ pub(super) fn write_sequence_svg_root_open(
         let _ = write!(
             out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml_display(desc)
         );
     }

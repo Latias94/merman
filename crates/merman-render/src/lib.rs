@@ -157,6 +157,7 @@ impl std::fmt::Display for RenderCapability {
 }
 
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
+use merman_core::OperationPhase;
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
@@ -200,6 +201,8 @@ pub enum Error {
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[error(transparent)]
+    OperationResourceTerminal(merman_core::OperationLedgerError),
+    #[error(transparent)]
     Color(#[from] merman_core::theme_color::ColorError),
     #[error("semantic model JSON error: {0}")]
     Json(#[from] serde_json::Error),
@@ -223,6 +226,9 @@ impl From<crate::resources::OperationWorkError> for Error {
             crate::resources::OperationWorkError::Cancelled(error) => Self::Cancelled(error),
             crate::resources::OperationWorkError::ResourceLimitExceeded(error) => {
                 Self::ResourceLimitExceeded(error)
+            }
+            crate::resources::OperationWorkError::ForeignResourceTerminal(error) => {
+                Self::OperationResourceTerminal(error)
             }
         }
     }
@@ -317,7 +323,8 @@ impl<'a> LayoutExecution<'a> {
         Self {
             request,
             session,
-            text_measurer: session.text_measurer(TextMeasurementPhase::Layout),
+            text_measurer: session
+                .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout),
         }
     }
 
@@ -327,10 +334,6 @@ impl<'a> LayoutExecution<'a> {
 
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
         self.session.math_renderer()
-    }
-
-    pub(crate) const fn resource_policy(&self) -> RenderResourcePolicy {
-        self.session.resource_policy()
     }
 
     pub(crate) fn work_meter(&self) -> std::sync::Arc<crate::resources::OperationWorkMeter> {
@@ -381,7 +384,9 @@ pub(crate) fn layout_class_typed_by_engine(
         return layout_class_elk_typed_by_feature(diagram_type, model, effective_config, options);
     }
 
-    options.resource_policy().check_class_complexity(model)?;
+    options
+        .work_meter_ref()
+        .preflight_class_complexity(model, OperationPhase::Layout)?;
     let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
     let preparation_work = class::class_layout_work_units(model, &work_control)?;
     work_control.charge_adapter(preparation_work)?;
@@ -401,7 +406,9 @@ fn layout_class_elk_typed_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
-    options.resource_policy().check_class_complexity(model)?;
+    options
+        .work_meter_ref()
+        .preflight_class_complexity(model, OperationPhase::Layout)?;
     let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
     let preparation_work = class::class_layout_work_units(model, &work_control)?;
     work_control.charge_adapter(preparation_work)?;
@@ -438,7 +445,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     layout_flowchart_typed_with_render_labels_by_engine(
         diagram_type,
         model,
-        &merman_core::diagrams::flowchart::FlowchartRenderLabelSources::default(),
+        &merman_core::diagrams::flowchart::FlowchartRenderContext::default(),
         effective_config,
         options,
         None,
@@ -448,7 +455,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     diagram_type: &str,
     model: &FlowchartModel,
-    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
+    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
@@ -479,7 +486,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
 fn layout_flowchart_elk_typed_by_feature(
     _diagram_type: &str,
     model: &FlowchartModel,
-    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
+    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
@@ -502,7 +509,7 @@ fn layout_flowchart_elk_typed_by_feature(
 fn layout_flowchart_elk_typed_by_feature(
     diagram_type: &str,
     _model: &FlowchartModel,
-    _render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
+    _render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
     _svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,

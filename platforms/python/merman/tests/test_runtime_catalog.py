@@ -13,7 +13,7 @@ CONSTRUCTOR_SERVICE_SPEC_BY_ID = {
 def valid_catalog():
     return {
         "schema_version": 1,
-        "transport_api_version": 4,
+        "transport_api_version": 5,
         "package_version": "test",
         "options_schema_versions": [2],
         "payload_schemas": [
@@ -139,8 +139,8 @@ class FakeEngine:
         self.catalog_calls += 1
         return json.dumps(self.catalog)
 
-    def transport_api_version(self):
-        return 4
+    def binding_api_version_v5(self):
+        return 5
 
     def package_version(self):
         return "test"
@@ -634,6 +634,18 @@ class RuntimeCatalogTest(unittest.TestCase):
         self.assertIn("get_runtime_catalog", exported)
         self.assertNotIn("get_runtime_contract", exported)
         self.assertNotIn("get_runtime_capability_vocabulary", exported)
+
+    def test_public_diagnostic_dtos_are_generated_top_level_exports(self):
+        from merman import MermanDiagnosticErrorDetails, MermanDiagnosticSpan
+        from merman.merman_uniffi import (
+            MermanDiagnosticErrorDetails as GeneratedDiagnosticErrorDetails,
+            MermanDiagnosticSpan as GeneratedDiagnosticSpan,
+        )
+
+        self.assertIs(MermanDiagnosticErrorDetails, GeneratedDiagnosticErrorDetails)
+        self.assertIs(MermanDiagnosticSpan, GeneratedDiagnosticSpan)
+        self.assertIn("MermanDiagnosticErrorDetails", merman.__all__)
+        self.assertIn("MermanDiagnosticSpan", merman.__all__)
 
     def test_public_star_export_includes_resource_options_api(self):
         exported = {}

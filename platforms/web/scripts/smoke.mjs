@@ -393,15 +393,32 @@ if (hasCapability("svg")) {
 const resourceLimitIds = runtimeCatalog.resources.limits
   .map((limit) => limit.id)
   .sort();
+const generatedAsciiResourceLimitIds = api.RESOURCE_LIMIT_IDS
+  .filter((id) => id.startsWith("max_ascii_"));
+assert.deepEqual(generatedAsciiResourceLimitIds, [
+  "max_ascii_grid_cells",
+  "max_ascii_layout_work_units",
+  "max_ascii_document_cells",
+  "max_ascii_output_bytes",
+  "max_ascii_grapheme_bytes",
+  "max_ascii_nesting_depth",
+]);
 const expectedResourceLimitIds = [
-  ...(hasCapability("ascii") ? ["max_ascii_grid_cells"] : []),
+  ...(hasCapability("ascii") ? generatedAsciiResourceLimitIds : []),
   ...(hasCapability("analysis") ? ["max_document_diagrams"] : []),
   ...(hasCapability("svg") ? ["max_layout_work_units"] : []),
   "max_model_items",
   "max_model_nesting_depth",
   "max_model_text_bytes",
   "max_source_bytes",
-  ...(hasCapability("svg") ? ["max_svg_bytes", "max_svg_elements"] : []),
+  ...(hasCapability("svg")
+    ? [
+        "max_svg_bytes",
+        "max_svg_elements",
+        "svg_backend_tree_depth",
+        "svg_backend_tree_nodes",
+      ]
+    : []),
 ].sort();
 assert.deepEqual(resourceLimitIds, expectedResourceLimitIds);
 assert.equal(Object.isFrozen(api.RESOURCE_PROFILES), true);
@@ -929,6 +946,16 @@ if (hasCapability("ascii")) {
   const ascii = api.renderAscii(source, deterministicTime);
   assert.match(ascii, /Hello/);
   assert.match(ascii, /World/);
+  const wrappedAscii = api.renderAscii(
+    'flowchart TD\nA["Alpha Beta Gamma Delta"]',
+    {
+      ...deterministicTime,
+      ascii: { flowchartNodeLabelWrapWidth: 8 },
+    },
+  );
+  assert.match(wrappedAscii, /Alpha/);
+  assert.match(wrappedAscii, /Gamma/);
+  assert.equal(wrappedAscii.includes("Alpha Beta Gamma Delta"), false);
 } else {
   assert.equal(typeof api.renderAscii, "undefined");
   assert.equal(typeof api.asciiSupportedDiagrams, "undefined");
@@ -953,6 +980,10 @@ for (const diagram of api.supportedDiagrams()) {
 
 if (hasCapability("ascii")) {
   const asciiDiagrams = api.asciiSupportedDiagrams();
+  assert.deepEqual(asciiDiagrams, [...api.SUPPORTED_ASCII_DIAGRAMS]);
+  assert.deepEqual(api.asciiDiagrammaticDiagrams(), [
+    ...api.DIAGRAMMATIC_ASCII_DIAGRAMS,
+  ]);
   for (const diagram of asciiDiagrams) {
     assert.equal(api.isAsciiDiagramType(diagram), true);
   }
@@ -1367,6 +1398,31 @@ function assertEditorLanguageSurface(enabled) {
       `invalid resource count ${actual} must not satisfy the binding error contract`
     );
   }
+
+  const cancellationError = {
+    version: 1,
+    ok: false,
+    code: 12,
+    code_name: "MERMAN_CANCELLED",
+    kind: "generic",
+    capability_id: null,
+    details: {
+      cancellation: {
+        reason: "deadline_exceeded",
+        phase: "admission",
+      },
+    },
+    message: "operation cancelled during admission: deadline exceeded",
+  };
+  assert.ok(
+    api.isBindingStatusCodeName("MERMAN_BUSY") &&
+      api.isBindingStatusCodeName("MERMAN_CANCELLED"),
+    "expected operation status names to satisfy the public binding contract"
+  );
+  assert.ok(
+    api.isBindingErrorPayload(cancellationError),
+    "expected cancellation-only details to satisfy the binding error contract"
+  );
 
   assert.deepEqual(
     api.editorDiagramDetection(

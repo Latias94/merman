@@ -203,8 +203,7 @@ pub(crate) fn render_treemap_diagram_svg(
         }
     }
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("treemap");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("treemap");
 
     let theme = PresentationTheme::new(effective_config).treemap()?;
 
@@ -388,24 +387,26 @@ pub(crate) fn render_treemap_diagram_svg(
                 )),
                 root_chrome,
             )?;
+    options.checkpoint_emit()?;
 
     if let (Some(title), true) = (layout.acc_title.as_deref(), has_acc_title) {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml(title)
         );
     }
     if let (Some(descr), true) = (layout.acc_descr.as_deref(), has_acc_descr) {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml(descr.trim_end_matches('\n'))
         );
     }
 
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str("<g/>");
+    options.checkpoint_emit()?;
 
     if let Some(title) = layout.title.as_deref().filter(|t| !t.trim().is_empty()) {
         let _ = write!(
@@ -435,6 +436,8 @@ pub(crate) fn render_treemap_diagram_svg(
     let section_label_min_visible_width: f64 = 15.0;
 
     for (i, section) in layout.sections.iter().enumerate() {
+        let section_clip_id = format!("clip-section-{diagram_id}-{i}");
+        options.checkpoint_emit()?;
         let w = section.x1 - section.x0;
         let h = section.y1 - section.y0;
         let _ = write!(
@@ -459,9 +462,8 @@ pub(crate) fn render_treemap_diagram_svg(
 
         let _ = write!(
             &mut out,
-            r#"<clipPath id="clip-section-{id}-{i}"><rect width="{w}" height="{h}"/></clipPath>"#,
-            id = escape_attr(diagram_id),
-            i = i,
+            r#"<clipPath id="{id}"><rect width="{w}" height="{h}"/></clipPath>"#,
+            id = section_clip_id.as_str(),
             w = fmt((w - 2.0 * section_label_inset_x).max(0.0)),
             h = fmt(section_header_height)
         );
@@ -506,11 +508,10 @@ pub(crate) fn render_treemap_diagram_svg(
         if label_text.is_empty() {
             let _ = write!(
                 &mut out,
-                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" clip-path="url(#clip-section-{id}-{i})" style="display: none;"/>"#,
+                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" clip-path="url(#{id})" style="display: none;"/>"#,
                 x = fmt(section_label_inset_x),
                 y = fmt(section_header_center_y),
-                id = escape_attr(diagram_id),
-                i = i
+                id = section_clip_id.as_str(),
             );
         } else {
             // Mirror Mermaid's truncation loop in `renderer.ts` (uses `getComputedTextLength()`).
@@ -575,11 +576,10 @@ pub(crate) fn render_treemap_diagram_svg(
             );
             let _ = write!(
                 &mut out,
-                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" clip-path="url(#clip-section-{id}-{i})" style="{style}">{text}</text>"#,
+                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" clip-path="url(#{id})" style="{style}">{text}</text>"#,
                 x = fmt(section_label_inset_x),
                 y = fmt(section_header_center_y),
-                id = escape_attr(diagram_id),
-                i = i,
+                id = section_clip_id.as_str(),
                 style = escape_attr(&section_label_style),
                 text = escape_xml(&label_text)
             );
@@ -634,6 +634,8 @@ pub(crate) fn render_treemap_diagram_svg(
     let spacing_between_label_and_value = if is_complex_treemap { 1.0 } else { 2.0 };
 
     for (i, leaf) in layout.leaves.iter().enumerate() {
+        let leaf_clip_id = format!("clip-{diagram_id}-{i}");
+        options.checkpoint_emit()?;
         let w = leaf.x1 - leaf.x0;
         let h = leaf.y1 - leaf.y0;
 
@@ -679,9 +681,8 @@ pub(crate) fn render_treemap_diagram_svg(
 
         let _ = write!(
             &mut out,
-            r#"<clipPath id="clip-{id}-{i}"><rect width="{w}" height="{h}"/></clipPath>"#,
-            id = escape_attr(diagram_id),
-            i = i,
+            r#"<clipPath id="{id}"><rect width="{w}" height="{h}"/></clipPath>"#,
+            id = leaf_clip_id.as_str(),
             w = fmt((w - 4.0).max(0.0)),
             h = fmt((h - 4.0).max(0.0))
         );
@@ -776,12 +777,11 @@ pub(crate) fn render_treemap_diagram_svg(
 
         let _ = write!(
             &mut out,
-            r#"<text class="treemapLabel" x="{x}" y="{y}" style="{style}" clip-path="url(#clip-{id}-{i})">{text}</text>"#,
+            r#"<text class="treemapLabel" x="{x}" y="{y}" style="{style}" clip-path="url(#{id})">{text}</text>"#,
             x = fmt(w / 2.0),
             y = fmt(h / 2.0),
             style = escape_attr(&label_style),
-            id = escape_attr(diagram_id),
-            i = i,
+            id = leaf_clip_id.as_str(),
             text = escape_xml(&leaf.name)
         );
 
@@ -842,22 +842,20 @@ pub(crate) fn render_treemap_diagram_svg(
             if value_text.is_empty() {
                 let _ = write!(
                     &mut out,
-                    r#"<text class="treemapValue" x="{x}" y="{y}" style="{style}" clip-path="url(#clip-{id}-{i})"/>"#,
+                    r#"<text class="treemapValue" x="{x}" y="{y}" style="{style}" clip-path="url(#{id})"/>"#,
                     x = fmt(w / 2.0),
                     y = fmt(value_y),
                     style = escape_attr(&value_style),
-                    id = escape_attr(diagram_id),
-                    i = i,
+                    id = leaf_clip_id.as_str(),
                 );
             } else {
                 let _ = write!(
                     &mut out,
-                    r#"<text class="treemapValue" x="{x}" y="{y}" style="{style}" clip-path="url(#clip-{id}-{i})">{text}</text>"#,
+                    r#"<text class="treemapValue" x="{x}" y="{y}" style="{style}" clip-path="url(#{id})">{text}</text>"#,
                     x = fmt(w / 2.0),
                     y = fmt(value_y),
                     style = escape_attr(&value_style),
-                    id = escape_attr(diagram_id),
-                    i = i,
+                    id = leaf_clip_id.as_str(),
                     text = escape_xml(&value_text)
                 );
             }
@@ -867,6 +865,7 @@ pub(crate) fn render_treemap_diagram_svg(
     }
 
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

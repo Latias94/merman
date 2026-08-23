@@ -1,11 +1,11 @@
 use super::config::{self, Config, Fragment, SourceDisplay};
 use super::html::{diagram_html_len, write_diagram_html};
-use super::svg::{prepare_static_svg, validate_static_svg};
+use super::svg::static_inline_pipeline;
 use crate::error::{CliError, FileOperation, safe_path};
 use crate::input::InputLimit;
 use crate::input::InputReadError;
 use crate::markdown::{
-    MarkdownFenceLocation, MarkdownReplacement, scan_rustdoc_replacements_limited,
+    MarkdownFenceLocation, MarkdownReplacement, scan_rustdoc_replacements_limited_controlled,
 };
 use crate::resources::{
     ByteLedgerKind, CheckedBytes, CliResourceLimitId, CountLedgerKind, ResolvedResourcePolicy,
@@ -97,10 +97,9 @@ impl GeneratedInput {
 struct GenerationState<'a> {
     config: &'a Config,
     resources: &'a ResolvedResourcePolicy,
+    control: &'a OperationControl,
     stderr: &'a SharedWriter,
     renderers: crate::render::PreparedRustdocRenderers,
-    light_cache: HashMap<String, Arc<str>>,
-    dark_cache: HashMap<String, Arc<str>>,
     same_source_occurrences: HashMap<(String, String), u64>,
     staged_bytes: CheckedBytes,
     input_bytes: CheckedBytes,
@@ -110,12 +109,19 @@ struct GenerationState<'a> {
     input_identities: HashMap<Arc<same_file::Handle>, String>,
 }
 
+#[derive(Clone, Copy)]
+enum RustdocTheme {
+    Light,
+    Dark,
+}
+
 pub(crate) fn generate(
     config: &Config,
     resources: &ResolvedResourcePolicy,
+    control: &OperationControl,
     stderr: &SharedWriter,
 ) -> Result<GeneratedRustdocBundle, CliError> {
-    let renderers = crate::render::prepare_rustdoc_renderers(resources)?;
+    let renderers = crate::render::prepare_rustdoc_renderers(resources, control)?;
     let mut input_bytes = resources.checked_bytes(ByteLedgerKind::RustdocInput);
     input_bytes
         .try_add(config.acquired_input_bytes())
@@ -123,10 +129,9 @@ pub(crate) fn generate(
     let mut state = GenerationState {
         config,
         resources,
+        control,
         stderr,
         renderers,
-        light_cache: HashMap::new(),
-        dark_cache: HashMap::new(),
         same_source_occurrences: HashMap::new(),
         staged_bytes: resources.checked_bytes(ByteLedgerKind::StagedOutput),
         input_bytes,
@@ -158,6 +163,7 @@ pub(super) fn verify_input_snapshots(
     config: &Config,
     generated: &GeneratedRustdocBundle,
     resources: &ResolvedResourcePolicy,
+    control: &OperationControl,
 ) -> Result<(), CliError> {
     let config_snapshot = config::acquire_text(
         config.requested_path(),
@@ -166,6 +172,7 @@ pub(super) fn verify_input_snapshots(
             CliResourceLimitId::MaxConfigBytes.as_str(),
             resources.files().config_bytes,
         ),
+        control,
     )
     .map_err(|error| snapshot_error(config.requested_path(), error))?;
     if config_snapshot.canonical != config.path()
@@ -184,6 +191,7 @@ pub(super) fn verify_input_snapshots(
             "Rustdoc input",
             config::fragment_source_limit(input.requested_path(), resources),
             config.root(),
+            control,
         )
         .map_err(|error| snapshot_error(input.requested_path(), error))?;
         if snapshot.canonical != input.path()
@@ -269,35 +277,41 @@ impl GenerationState<'_> {
         let mut chart_count = self
             .resources
             .checked_count(CountLedgerKind::MarkdownCharts);
-        let replacements =
-            match scan_rustdoc_replacements_limited(fragment.text(), chart_count.max()) {
-                Ok(replacements) => replacements,
-                Err(crate::markdown::MarkdownReplacementScanError::ChartLimit {
-                    observed,
+        let replacements = match scan_rustdoc_replacements_limited_controlled(
+            fragment.text(),
+            chart_count.max(),
+            self.control,
+        ) {
+            Ok(replacements) => replacements,
+            Err(crate::markdown::MarkdownReplacementScanError::Cancelled(cancelled)) => {
+                return Err(CliError::Render(merman::RenderError::Cancelled(cancelled)));
+            }
+            Err(crate::markdown::MarkdownReplacementScanError::ChartLimit {
+                observed,
+                line,
+                column,
+                ..
+            }) => {
+                let limit_error = chart_count
+                    .try_add(observed)
+                    .expect_err("scanner reported a count above the same policy limit");
+                return Err(CliError::rustdoc_content(
+                    fragment.source(),
                     line,
                     column,
-                    ..
-                }) => {
-                    let limit_error = chart_count
-                        .try_add(observed)
-                        .expect_err("scanner reported a count above the same policy limit");
-                    return Err(CliError::rustdoc_content(
-                        fragment.source(),
-                        line,
-                        column,
-                        limit_error.to_string(),
-                    ));
-                }
-                Err(error) => {
-                    let location = replacement_error_location(&error);
-                    return Err(CliError::rustdoc_content(
-                        fragment.source(),
-                        location.line,
-                        location.column,
-                        error.to_string(),
-                    ));
-                }
-            };
+                    limit_error.to_string(),
+                ));
+            }
+            Err(error) => {
+                let location = replacement_error_location(&error);
+                return Err(CliError::rustdoc_content(
+                    fragment.source(),
+                    location.line,
+                    location.column,
+                    error.to_string(),
+                ));
+            }
+        };
         let replacement_count = u64::try_from(replacements.len()).map_err(|_| {
             CliError::rustdoc_content(
                 fragment.source(),
@@ -394,6 +408,7 @@ impl GenerationState<'_> {
                 "Rustdoc Mermaid include",
                 config::fragment_source_limit(&relative, self.resources),
                 self.config.root(),
+                self.control,
             )
             .map_err(|error| include_acquisition_error(fragment, &relative, location, error))?,
         );
@@ -526,65 +541,19 @@ impl GenerationState<'_> {
         *occurrence = occurrence.saturating_add(1);
         let base_id = stable_base_id(logical_path, &source_hash, current_occurrence);
 
-        let light = render_cached(
-            &mut self.light_cache,
-            &self.renderers.light,
+        let light = self.render_svg(
+            RustdocTheme::Light,
             source,
-            self.stderr,
+            format!("{base_id}-light"),
             diagnostic_path,
             location,
-            self.resources,
         )?;
-        let dark = render_cached(
-            &mut self.dark_cache,
-            &self.renderers.dark,
+        let dark = self.render_svg(
+            RustdocTheme::Dark,
             source,
-            self.stderr,
+            format!("{base_id}-dark"),
             diagnostic_path,
             location,
-            self.resources,
-        )?;
-        let session = merman_render::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(self.resources.render_policy())
-            .begin_session()
-            .map_err(|error| {
-                CliError::rustdoc_content(
-                    diagnostic_path,
-                    location.line,
-                    location.column,
-                    format!("failed to start SVG validation session: {error}"),
-                )
-            })?;
-        let light =
-            merman_render::svg::rebase_svg_ids(&light, format!("{base_id}-light"), &session)
-                .map_err(|error| {
-                    CliError::rustdoc_content(
-                        diagnostic_path,
-                        location.line,
-                        location.column,
-                        error.to_string(),
-                    )
-                })?;
-        let dark = merman_render::svg::rebase_svg_ids(&dark, format!("{base_id}-dark"), &session)
-            .map_err(|error| {
-            CliError::rustdoc_content(
-                diagnostic_path,
-                location.line,
-                location.column,
-                error.to_string(),
-            )
-        })?;
-        validate_static_svg(
-            &light,
-            diagnostic_path,
-            location,
-            self.resources.render_policy(),
-        )?;
-        validate_static_svg(
-            &dark,
-            diagnostic_path,
-            location,
-            self.resources.render_policy(),
         )?;
         let wrapper_id = format!("{base_id}-wrapper");
         let output_bytes = diagram_html_len(&wrapper_id, source, &light, &dark, source_display)
@@ -607,6 +576,47 @@ impl GenerationState<'_> {
                 )
             },
         )
+    }
+
+    fn render_svg(
+        &self,
+        theme: RustdocTheme,
+        source: &str,
+        id_prefix: String,
+        diagnostic_path: &Path,
+        location: MarkdownFenceLocation,
+    ) -> Result<String, CliError> {
+        let renderer = match theme {
+            RustdocTheme::Light => &self.renderers.light,
+            RustdocTheme::Dark => &self.renderers.dark,
+        };
+        let pipeline = static_inline_pipeline(id_prefix);
+        let bytes = crate::render::execute_rustdoc_svg_raw(
+            renderer,
+            &pipeline,
+            source,
+            self.control,
+            self.stderr,
+        )
+        .map_err(|error| {
+            rustdoc_render_error(
+                error,
+                diagnostic_path,
+                location,
+                format!(
+                    "failed to render Mermaid source near {:?}",
+                    source_preview(source)
+                ),
+            )
+        })?;
+        String::from_utf8(bytes).map_err(|error| {
+            CliError::rustdoc_content(
+                diagnostic_path,
+                location.line,
+                location.column,
+                format!("renderer returned non-UTF-8 SVG: {error}"),
+            )
+        })
     }
 
     fn charge_staged_output(
@@ -660,42 +670,25 @@ fn include_acquisition_error(
     }
 }
 
-fn render_cached(
-    cache: &mut HashMap<String, Arc<str>>,
-    renderer: &crate::render::PreparedGraphicalRender,
-    source: &str,
-    stderr: &SharedWriter,
+fn rustdoc_render_error(
+    error: CliError,
     diagnostic_path: &Path,
     location: MarkdownFenceLocation,
-    resources: &ResolvedResourcePolicy,
-) -> Result<Arc<str>, CliError> {
-    if let Some(svg) = cache.get(source) {
-        return Ok(Arc::clone(svg));
-    }
-    let bytes =
-        crate::render::execute_rustdoc_svg_raw(renderer, source, &OperationControl::new(), stderr)
-            .map_err(|error| {
-                CliError::rustdoc_content(
-                    diagnostic_path,
-                    location.line,
-                    location.column,
-                    format!(
-                        "failed to render Mermaid source near {:?}: {error}",
-                        source_preview(source)
-                    ),
-                )
-            })?;
-    let svg = String::from_utf8(bytes).map_err(|error| {
-        CliError::rustdoc_content(
+    context: String,
+) -> CliError {
+    match error {
+        error @ CliError::Render(
+            merman::RenderError::Cancelled(_)
+            | merman::RenderError::RuntimePolicy(_)
+            | merman::RenderError::ResourceLimitExceeded(_),
+        ) => error,
+        error => CliError::rustdoc_content(
             diagnostic_path,
             location.line,
             location.column,
-            format!("renderer returned non-UTF-8 SVG: {error}"),
-        )
-    })?;
-    let svg: Arc<str> = prepare_static_svg(&svg, diagnostic_path, location, resources)?.into();
-    cache.insert(source.to_string(), Arc::clone(&svg));
-    Ok(svg)
+            format!("{context}: {error}"),
+        ),
+    }
 }
 
 struct LoadedInclude {
@@ -770,6 +763,9 @@ fn replacement_error_location(
                 column: *column,
             }
         }
+        crate::markdown::MarkdownReplacementScanError::Cancelled(_) => {
+            unreachable!("controlled scanner cancellations are handled before location mapping")
+        }
     }
 }
 
@@ -787,6 +783,26 @@ mod tests {
         SharedWriter::new(Vec::<u8>::new())
     }
 
+    fn load_config(path: &Path, resources: &ResolvedResourcePolicy) -> Result<Config, CliError> {
+        config::load(path, resources, &OperationControl::new())
+    }
+
+    fn generate_test(
+        config: &Config,
+        resources: &ResolvedResourcePolicy,
+        stderr: &SharedWriter,
+    ) -> Result<GeneratedRustdocBundle, CliError> {
+        generate(config, resources, &OperationControl::new(), stderr)
+    }
+
+    fn verify_input_snapshots_test(
+        config: &Config,
+        bundle: &GeneratedRustdocBundle,
+        resources: &ResolvedResourcePolicy,
+    ) -> Result<(), CliError> {
+        verify_input_snapshots(config, bundle, resources, &OperationControl::new())
+    }
+
     fn write_config(root: &Path, source: &str, display: &str) -> Config {
         fs::write(root.join("source.md"), source).unwrap();
         fs::write(
@@ -796,7 +812,7 @@ mod tests {
             ),
         )
         .unwrap();
-        config::load(&root.join("merman-rustdoc.toml"), &resources()).unwrap()
+        load_config(&root.join("merman-rustdoc.toml"), &resources()).unwrap()
     }
 
     #[test]
@@ -815,8 +831,8 @@ mod tests {
         );
         let config = write_config(root.path(), source, "details");
 
-        let first = generate(&config, &resources(), &stderr()).unwrap();
-        let second = generate(&config, &resources(), &stderr()).unwrap();
+        let first = generate_test(&config, &resources(), &stderr()).unwrap();
+        let second = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(first.fragments()[0].bytes()).unwrap();
 
         assert_eq!(first.fragments()[0].bytes(), second.fragments()[0].bytes());
@@ -844,7 +860,7 @@ mod tests {
         )
         .unwrap();
 
-        let config = config::load(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
+        let config = load_config(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
 
         assert!(Arc::ptr_eq(
             config.fragments()[0].acquired(),
@@ -874,10 +890,10 @@ mod tests {
             ),
         )
         .unwrap();
-        let config = config::load(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
+        let config = load_config(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
         fs::write(root.path().join("shared.mmd"), "not-a-diagram\n").unwrap();
 
-        let bundle = generate(&config, &resources(), &stderr()).unwrap();
+        let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
 
         assert_eq!(bundle.diagrams(), 2);
         assert_eq!(bundle.inputs().len(), 2);
@@ -886,7 +902,7 @@ mod tests {
             assert!(output.contains("Old"), "{output}");
             assert!(!output.contains("not-a-diagram"), "{output}");
         }
-        let error = verify_input_snapshots(&config, &bundle, &resources()).unwrap_err();
+        let error = verify_input_snapshots_test(&config, &bundle, &resources()).unwrap_err();
         assert_eq!(error.exit_code(), std::process::ExitCode::from(3));
         assert!(error.to_string().contains("changed after generation"));
     }
@@ -914,9 +930,9 @@ mod tests {
             ),
         )
         .unwrap();
-        let config = config::load(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
+        let config = load_config(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
 
-        let error = generate(&config, &resources(), &stderr()).unwrap_err();
+        let error = generate_test(&config, &resources(), &stderr()).unwrap_err();
 
         assert!(
             error.to_string().contains("aliases already acquired"),
@@ -929,7 +945,7 @@ mod tests {
     fn include_content_and_operational_failures_keep_distinct_exit_codes() {
         let missing = tempfile::tempdir().unwrap();
         let config = write_config(missing.path(), "include_mmd!(\"missing.mmd\")\n", "hide");
-        let error = generate(&config, &resources(), &stderr()).unwrap_err();
+        let error = generate_test(&config, &resources(), &stderr()).unwrap_err();
         assert_eq!(error.exit_code(), std::process::ExitCode::from(1));
 
         let non_regular = tempfile::tempdir().unwrap();
@@ -939,7 +955,7 @@ mod tests {
             "include_mmd!(\"directory.mmd\")\n",
             "hide",
         );
-        let error = generate(&config, &resources(), &stderr()).unwrap_err();
+        let error = generate_test(&config, &resources(), &stderr()).unwrap_err();
         assert_eq!(error.exit_code(), std::process::ExitCode::from(3));
         assert!(error.to_string().contains("not a regular file"), "{error}");
     }
@@ -963,9 +979,9 @@ mod tests {
         limited
             .apply_override("max_rustdoc_input_bytes", source_bytes)
             .unwrap();
-        let config = config::load(&root.path().join("merman-rustdoc.toml"), &limited).unwrap();
+        let config = load_config(&root.path().join("merman-rustdoc.toml"), &limited).unwrap();
 
-        let error = generate(&config, &limited, &stderr()).unwrap_err();
+        let error = generate_test(&config, &limited, &stderr()).unwrap_err();
 
         assert!(error.to_string().contains("max_rustdoc_input_bytes"));
         assert_eq!(error.exit_code(), std::process::ExitCode::from(1));
@@ -987,9 +1003,9 @@ mod tests {
             )
             .unwrap();
             let config =
-                config::load(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
-            let bundle = generate(&config, &resources(), &stderr()).unwrap();
-            verify_input_snapshots(&config, &bundle, &resources()).unwrap();
+                load_config(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
+            let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
+            verify_input_snapshots_test(&config, &bundle, &resources()).unwrap();
 
             let path = match changed {
                 "config" => root.path().join("merman-rustdoc.toml"),
@@ -999,7 +1015,7 @@ mod tests {
             };
             fs::write(path, format!("changed-{changed}\n")).unwrap();
 
-            let error = verify_input_snapshots(&config, &bundle, &resources()).unwrap_err();
+            let error = verify_input_snapshots_test(&config, &bundle, &resources()).unwrap_err();
             assert_eq!(
                 error.exit_code(),
                 std::process::ExitCode::from(3),
@@ -1038,8 +1054,8 @@ mod tests {
             symlink("include-a.mmd", root.path().join("included.mmd")).unwrap();
 
             let config =
-                config::load(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
-            let bundle = generate(&config, &resources(), &stderr()).unwrap();
+                load_config(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
+            let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
 
             let (link, replacement) = match changed {
                 "config" => ("merman-rustdoc.toml", "config-b.toml"),
@@ -1050,7 +1066,7 @@ mod tests {
             fs::remove_file(root.path().join(link)).unwrap();
             symlink(replacement, root.path().join(link)).unwrap();
 
-            let error = verify_input_snapshots(&config, &bundle, &resources()).unwrap_err();
+            let error = verify_input_snapshots_test(&config, &bundle, &resources()).unwrap_err();
             assert_eq!(
                 error.exit_code(),
                 std::process::ExitCode::from(3),
@@ -1068,7 +1084,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let repeated = "```mermaid\nflowchart LR\nA-->B\n```\n";
         let config = write_config(root.path(), &format!("{repeated}{repeated}"), "hide");
-        let bundle = generate(&config, &resources(), &stderr()).unwrap();
+        let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
 
         assert!(output.contains("-0-wrapper"));
@@ -1076,11 +1092,11 @@ mod tests {
     }
 
     #[test]
-    fn staged_output_budget_counts_each_reused_diagram_before_append() {
+    fn staged_output_budget_counts_each_repeated_diagram_before_append() {
         let diagram = "```mermaid\nflowchart LR\nA-->B\n```\n";
         let single_root = tempfile::tempdir().unwrap();
         let single_config = write_config(single_root.path(), diagram, "hide");
-        let single = generate(&single_config, &resources(), &stderr()).unwrap();
+        let single = generate_test(&single_config, &resources(), &stderr()).unwrap();
         let single_bytes = u64::try_from(single.fragments()[0].bytes().len()).unwrap();
 
         let repeated_root = tempfile::tempdir().unwrap();
@@ -1091,7 +1107,7 @@ mod tests {
             .apply_override("max_staged_bytes", single_bytes)
             .unwrap();
 
-        let error = generate(&repeated_config, &limited, &stderr()).unwrap_err();
+        let error = generate_test(&repeated_config, &limited, &stderr()).unwrap_err();
 
         assert!(error.to_string().contains("max_staged_bytes"), "{error}");
     }
@@ -1105,9 +1121,9 @@ mod tests {
             "schema = 1\n[[fragments]]\nid = \"diagram\"\nsource = \"diagram.mmd\"\n",
         )
         .unwrap();
-        let config = config::load(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
+        let config = load_config(&root.path().join("merman-rustdoc.toml"), &resources()).unwrap();
 
-        let bundle = generate(&config, &resources(), &stderr()).unwrap();
+        let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
 
         assert_eq!(bundle.diagrams(), 1);
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
@@ -1121,7 +1137,7 @@ mod tests {
         let source = "# API\r\n\r\nPlain `include_mmd!(\"ignored.mmd\")` prose.\r\n";
         let config = write_config(root.path(), source, "hide");
 
-        let bundle = generate(&config, &resources(), &stderr()).unwrap();
+        let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
 
         assert_eq!(bundle.diagrams(), 0);
         assert_eq!(bundle.fragments()[0].bytes(), source.as_bytes());
@@ -1133,7 +1149,7 @@ mod tests {
         let target = "flowchart LR\nTarget-->Stable\n";
         let original = format!("```mermaid\n{target}```\n");
         let config = write_config(root.path(), &original, "hide");
-        let first = generate(&config, &resources(), &stderr()).unwrap();
+        let first = generate_test(&config, &resources(), &stderr()).unwrap();
         let expected = stable_base_id("source.md", &super::super::sha256_hex(target.as_bytes()), 0);
         assert!(
             std::str::from_utf8(first.fragments()[0].bytes())
@@ -1145,7 +1161,7 @@ mod tests {
             "```mermaid\nsequenceDiagram\nA->>B: Unrelated\n```\n\n```mermaid\n{target}```\n"
         );
         let config = write_config(root.path(), &changed, "hide");
-        let second = generate(&config, &resources(), &stderr()).unwrap();
+        let second = generate_test(&config, &resources(), &stderr()).unwrap();
 
         assert!(
             std::str::from_utf8(second.fragments()[0].bytes())
@@ -1166,7 +1182,7 @@ mod tests {
         );
         let config = write_config(root.path(), source, "hide");
 
-        let bundle = generate(&config, &resources(), &stderr()).unwrap();
+        let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
 
         assert_eq!(bundle.diagrams(), 3);
@@ -1183,7 +1199,7 @@ mod tests {
             "hide",
         );
 
-        let bundle = generate(&config, &resources(), &stderr()).unwrap();
+        let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
 
         assert!(output.contains("HTML label words"));
@@ -1199,7 +1215,7 @@ mod tests {
             "hide",
         );
 
-        let bundle = generate(&config, &resources(), &stderr()).unwrap();
+        let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
 
         assert!(output.contains("data:image/png;base64,"), "{output}");
@@ -1215,7 +1231,7 @@ mod tests {
             "hide",
         );
 
-        let bundle = generate(&config, &resources(), &stderr()).unwrap();
+        let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
 
         assert!(output.contains("[id$=&quot;-arrowhead&quot;]"), "{output}");
@@ -1234,7 +1250,7 @@ mod tests {
         let mut limited = resources();
         limited.apply_override("max_markdown_charts", 1).unwrap();
 
-        let error = generate(&config, &limited, &stderr()).unwrap_err();
+        let error = generate_test(&config, &limited, &stderr()).unwrap_err();
         let error = error.to_string();
         assert!(error.contains("line 7, column 3"), "{error}");
         assert!(error.contains("max_markdown_charts"), "{error}");
@@ -1244,7 +1260,7 @@ mod tests {
             "before\n\n ```mermaid\nnot-a-diagram\n ```\n",
             "hide",
         );
-        let error = generate(&invalid, &resources(), &stderr()).unwrap_err();
+        let error = generate_test(&invalid, &resources(), &stderr()).unwrap_err();
         let error = error.to_string();
         assert!(error.contains("line 3, column 2"), "{error}");
         assert!(error.contains("not-a-diagram"), "{error}");
@@ -1271,9 +1287,9 @@ mod tests {
         .unwrap();
         let mut limited = resources();
         limited.apply_override("max_markdown_charts", 1).unwrap();
-        let config = config::load(&root.path().join("merman-rustdoc.toml"), &limited).unwrap();
+        let config = load_config(&root.path().join("merman-rustdoc.toml"), &limited).unwrap();
 
-        let bundle = generate(&config, &limited, &stderr()).unwrap();
+        let bundle = generate_test(&config, &limited, &stderr()).unwrap();
 
         assert_eq!(bundle.diagrams(), 2);
         assert_eq!(bundle.fragments().len(), 2);

@@ -63,6 +63,7 @@ export async function loadNodeWasmTransport(
     transport = wrapCandidateEngine(
       new WasmEngine(optionsJson),
       "The Node-targeted WASM candidate",
+      { forwardsAbortSignal: false },
     );
   } catch (cause) {
     throw decodeWireCreationError(cause, "The Node-targeted WASM candidate");

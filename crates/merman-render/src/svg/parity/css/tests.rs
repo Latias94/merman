@@ -255,7 +255,9 @@ fn pie_css_honors_mermaid_11_16_theme_options() {
         }
     });
 
-    let css = pie_css("pie", &cfg);
+    let plan = PieCss::new(&cfg);
+    let mut css = String::new();
+    plan.write_for_normalized_id(&mut css, "pie").unwrap();
 
     assert!(css.contains(r#"#pie .pieCircle{stroke:#333333;stroke-width:4px;opacity:0.9;}"#));
     assert!(css.contains(r#"#pie .pieCircle.highlighted{scale:1.05;opacity:1;}"#));

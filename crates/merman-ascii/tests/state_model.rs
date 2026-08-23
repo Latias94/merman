@@ -1,6 +1,13 @@
-use merman_ascii::{AsciiColorMode, AsciiRenderOptions, render_model};
+mod support;
+
+use merman_ascii::{AsciiColorMode, AsciiError, AsciiRenderOptions};
+use merman_core::diagram::RenderSemanticModel;
+use merman_core::diagrams::state::{
+    StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
+};
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
+use support::render_model;
 
 fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
@@ -25,6 +32,42 @@ fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
         .lines()
         .position(|line| line.contains(needle))
         .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
+fn text_position(rendered: &str, needle: &str) -> (usize, usize) {
+    rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(needle).map(|x| (x, y)))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
+fn direct_state_node(
+    id: &str,
+    shape: &str,
+    parent_id: Option<&str>,
+    position: Option<&str>,
+) -> StateDiagramRenderNode {
+    StateDiagramRenderNode {
+        id: id.to_string(),
+        label_style: String::new(),
+        label: None,
+        description: None,
+        dom_id: String::new(),
+        is_group: shape == "noteGroup",
+        node_type: (shape == "noteGroup").then(|| "group".to_string()),
+        parent_id: parent_id.map(str::to_string),
+        css_classes: String::new(),
+        css_compiled_styles: Vec::new(),
+        css_styles: Vec::new(),
+        dir: None,
+        explicit_dir: None,
+        padding: None,
+        rx: None,
+        ry: None,
+        shape: shape.to_string(),
+        position: position.map(str::to_string),
+    }
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -65,6 +108,21 @@ fn state_simple_transition_renders_through_render_model() {
 }
 
 #[test]
+fn state_labels_do_not_use_flowchart_node_label_wrap_width() {
+    let input = "stateDiagram-v2\nstate \"Alpha Beta Gamma Delta\" as A";
+    let rendered = render_state(
+        input,
+        &AsciiRenderOptions::ascii().with_flowchart_node_label_wrap_width(8),
+    )
+    .expect("state label should render");
+
+    assert!(
+        rendered.contains("Alpha Beta Gamma Delta"),
+        "flowchart label wrapping must not affect state nodes:\n{rendered}"
+    );
+}
+
+#[test]
 fn state_lr_direction_renders_states_on_one_row() {
     let rendered = render_state(
         "stateDiagram-v2\ndirection LR\nA --> B: go",
@@ -77,6 +135,144 @@ fn state_lr_direction_renders_states_on_one_row() {
             .lines()
             .any(|line| line.contains("| A |") && line.contains("| B |")),
         "LR state output should place source and target on the same row:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_composite_without_explicit_direction_inherits_nearest_explicit_ancestor() {
+    let rendered = render_state(
+        concat!(
+            "stateDiagram-v2\n",
+            "direction LR\n",
+            "state Outer {\n",
+            "  state Inner {\n",
+            "    A --> B\n",
+            "  }\n",
+            "}\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("nested state composites should inherit the root direction");
+
+    let a = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" A ").map(|x| (x, y)))
+        .expect("missing state A");
+    let b = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" B ").map(|x| (x, y)))
+        .expect("missing state B");
+    assert_eq!(
+        a.1, b.1,
+        "nearest explicit LR direction should apply to the nested composite:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_nested_composite_inherits_nearest_non_root_explicit_direction() {
+    let rendered = render_state(
+        concat!(
+            "stateDiagram-v2\n",
+            "direction TB\n",
+            "state Outer {\n",
+            "  direction LR\n",
+            "  state Inner {\n",
+            "    A --> B\n",
+            "  }\n",
+            "}\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("implicit nested composite should inherit the nearest explicit ancestor direction");
+
+    let a = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" A ").map(|x| (x, y)))
+        .expect("missing state A");
+    let b = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" B ").map(|x| (x, y)))
+        .expect("missing state B");
+    assert_eq!(
+        a.1, b.1,
+        "Inner must inherit Outer LR instead of falling back to root TB:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_nested_explicit_direction_overrides_its_explicit_ancestor() {
+    let rendered = render_state(
+        concat!(
+            "stateDiagram-v2\n",
+            "direction TB\n",
+            "state Outer {\n",
+            "  direction LR\n",
+            "  state Inner {\n",
+            "    direction TB\n",
+            "    A --> B\n",
+            "  }\n",
+            "}\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("explicit nested composite direction should override its ancestor");
+
+    let a = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" A ").map(|x| (x, y)))
+        .expect("missing state A");
+    let b = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" B ").map(|x| (x, y)))
+        .expect("missing state B");
+    assert_eq!(
+        a.0, b.0,
+        "Inner TB must override Outer LR instead of being flattened by it:\n{rendered}"
+    );
+    assert!(
+        a.1 < b.1,
+        "Inner TB must keep authored source-before-target order:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_composite_explicit_reverse_direction_mirrors_child_layout() {
+    let rendered = render_state(
+        concat!(
+            "stateDiagram-v2\n",
+            "direction TB\n",
+            "state Outer {\n",
+            "  direction RL\n",
+            "  A --> B\n",
+            "}\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("explicit reverse state direction should render");
+
+    let a = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" A ").map(|x| (x, y)))
+        .expect("missing state A");
+    let b = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" B ").map(|x| (x, y)))
+        .expect("missing state B");
+    assert_eq!(
+        a.1, b.1,
+        "explicit RL direction should keep child states on one row:\n{rendered}"
+    );
+    assert!(
+        b.0 < a.0,
+        "explicit RL direction should place B before A:\n{rendered}"
     );
 }
 
@@ -121,6 +317,61 @@ fn state_alias_description_renders_human_label() {
 }
 
 #[test]
+fn state_title_and_body_render_as_distinct_compartments() {
+    for (options, divider) in [
+        (AsciiRenderOptions::ascii(), '-'),
+        (AsciiRenderOptions::unicode(), '─'),
+    ] {
+        let rendered = render_state(
+            "stateDiagram-v2\nstate \"Power mode\" as Power: Running",
+            &options,
+        )
+        .expect("state title and body should render");
+
+        let title = text_position(&rendered, "Power mode");
+        let body = text_position(&rendered, "Running");
+        assert!(title.1 < body.1, "title must precede body:\n{rendered}");
+        assert!(
+            rendered
+                .lines()
+                .skip(title.1 + 1)
+                .take(body.1.saturating_sub(title.1 + 1))
+                .any(|line| line.contains(divider)),
+            "a structural divider must preserve title/body roles:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn direct_state_model_keeps_multiline_compartment_boundary_after_bt_mirroring() {
+    let mut titled = direct_state_node("Titled", "rectWithTitle", None, None);
+    titled.label = Some("Title one<br>Title two".into());
+    titled.description = Some(vec!["Body one<br>Body two".to_string()]);
+    let model = StateDiagramRenderModel {
+        direction: "BT".to_string(),
+        nodes: vec![titled],
+        ..StateDiagramRenderModel::default()
+    };
+
+    let rendered = render_model(
+        &RenderSemanticModel::State(model),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("BT state compartments should render");
+
+    let title = text_position(&rendered, "Title two");
+    let body = text_position(&rendered, "Body one");
+    assert!(
+        rendered
+            .lines()
+            .skip(title.1 + 1)
+            .take(body.1.saturating_sub(title.1 + 1))
+            .any(|line| line.contains('─')),
+        "the mirrored divider must remain between multiline title and body roles:\n{rendered}"
+    );
+}
+
+#[test]
 fn state_composite_without_group_transition_renders_group_box() {
     let rendered = render_state(
         "stateDiagram-v2\nstate Parent {\n  Child\n}",
@@ -153,6 +404,344 @@ fn state_notes_render_as_note_nodes() {
     assert!(
         !rendered.contains("----note") && !rendered.contains("----parent"),
         "state note implementation ids should not leak into ASCII output:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_multiple_notes_preserve_text_and_side_ownership() {
+    let rendered = render_state(
+        concat!(
+            "stateDiagram-v2\n",
+            "A\n",
+            "note left of A : left text\n",
+            "note right of A : right text\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("multiple notes on one state should render");
+
+    assert!(
+        rendered.contains("left text") && rendered.contains("right text"),
+        "both note payloads must survive typed projection:\n{rendered}"
+    );
+    let left = text_position(&rendered, "left text");
+    let state = text_position(&rendered, " A ");
+    let right = text_position(&rendered, "right text");
+    assert_eq!(
+        left.1, state.1,
+        "left note and state should share a horizontal lane:\n{rendered}"
+    );
+    assert_eq!(
+        state.1, right.1,
+        "state and right note should share a horizontal lane:\n{rendered}"
+    );
+    assert!(
+        left.0 < state.0 && state.0 < right.0,
+        "note side constraints must determine physical placement:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_note_sides_remain_physical_across_root_directions() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let rendered = render_state(
+            &format!(
+                concat!(
+                    "stateDiagram-v2\n",
+                    "direction {direction}\n",
+                    "A\n",
+                    "note left of A : left side\n",
+                    "note right of A : right side\n",
+                ),
+                direction = direction,
+            ),
+            &AsciiRenderOptions::unicode(),
+        )
+        .unwrap_or_else(|error| panic!("{direction} state notes should render: {error}"));
+
+        let left = text_position(&rendered, "left side");
+        let state = text_position(&rendered, " A ");
+        let right = text_position(&rendered, "right side");
+        assert!(
+            left.0 < state.0 && state.0 < right.0,
+            "{direction} must preserve physical note sides after transforms:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn state_local_reverse_direction_preserves_physical_note_sides() {
+    let rendered = render_state(
+        concat!(
+            "stateDiagram-v2\n",
+            "direction TB\n",
+            "state \"Outer\" as Outer {\n",
+            "  direction RL\n",
+            "  A\n",
+            "  B\n",
+            "  A --> B\n",
+            "  note left of A : left local\n",
+            "  note right of A : right local\n",
+            "}\n",
+        ),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("local reverse direction should preserve note ownership");
+
+    let left = text_position(&rendered, "left local");
+    let state = text_position(&rendered, " A ");
+    let right = text_position(&rendered, "right local");
+    assert!(
+        left.0 < state.0 && state.0 < right.0,
+        "local RL placement must not reverse physical note sides:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_composite_notes_anchor_outside_the_group_boundary() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let rendered = render_state(
+            &format!(
+                concat!(
+                    "stateDiagram-v2\n",
+                    "direction {direction}\n",
+                    "state \"Composite\" as Parent {{\n",
+                    "  Child\n",
+                    "}}\n",
+                    "note left of Parent : left composite\n",
+                    "note right of Parent : right composite\n",
+                ),
+                direction = direction,
+            ),
+            &AsciiRenderOptions::unicode(),
+        )
+        .unwrap_or_else(|error| panic!("{direction} composite notes should render: {error}"));
+
+        let left = text_position(&rendered, "left composite");
+        let group = text_position(&rendered, "Composite");
+        let right = text_position(&rendered, "right composite");
+        assert!(
+            left.0 < group.0 && group.0 < right.0,
+            "{direction} composite note constraints should preserve both physical sides:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn direct_state_model_preserves_compartments_and_note_side_constraints() {
+    let mut titled = direct_state_node("Primary", "rectWithTitle", None, None);
+    titled.description = Some(vec!["Details".to_string()]);
+    let model = StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![
+            titled,
+            direct_state_node("right direct", "noteGroup", None, Some("right of")),
+            direct_state_node("right-note", "note", Some("right direct"), Some("right of")),
+            direct_state_node("left direct", "noteGroup", None, Some("left of")),
+            direct_state_node("left-note", "note", Some("left direct"), Some("left of")),
+        ],
+        edges: vec![
+            StateDiagramRenderEdge {
+                id: "right-edge".to_string(),
+                start: "Primary".to_string(),
+                end: "right-note".to_string(),
+                classes: "transition note-edge".to_string(),
+                arrow_type_end: String::new(),
+                label: String::new(),
+            },
+            StateDiagramRenderEdge {
+                id: "left-edge".to_string(),
+                start: "left-note".to_string(),
+                end: "Primary".to_string(),
+                classes: "transition note-edge".to_string(),
+                arrow_type_end: String::new(),
+                label: String::new(),
+            },
+        ],
+        ..StateDiagramRenderModel::default()
+    };
+
+    let rendered = render_model(
+        &RenderSemanticModel::State(model),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("valid direct state model should render");
+
+    let title = text_position(&rendered, "Primary");
+    let body = text_position(&rendered, "Details");
+    assert!(
+        rendered
+            .lines()
+            .skip(title.1 + 1)
+            .take(body.1.saturating_sub(title.1 + 1))
+            .any(|line| line.contains('─')),
+        "direct-model title/body roles need a structural divider:\n{rendered}"
+    );
+
+    let left = text_position(&rendered, "left direct");
+    let state = text_position(&rendered, "Primary");
+    let right = text_position(&rendered, "right direct");
+    assert!(
+        left.0 < state.0 && state.0 < right.0,
+        "direct-model note side constraints must survive node reordering:\n{rendered}"
+    );
+}
+
+#[test]
+fn direct_state_model_rejects_duplicate_node_ids_before_graph_projection() {
+    let mut first = direct_state_node("A", "rect", None, None);
+    first.label = Some("First A".into());
+    let mut second = direct_state_node("A", "rect", None, None);
+    second.label = Some("Second A".into());
+    let model = StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![first, second],
+        edges: vec![StateDiagramRenderEdge {
+            id: "self".to_string(),
+            start: "A".to_string(),
+            end: "A".to_string(),
+            classes: "transition".to_string(),
+            arrow_type_end: "arrow_barb".to_string(),
+            label: "ambiguous".to_string(),
+        }],
+        ..StateDiagramRenderModel::default()
+    };
+
+    let error = render_model(
+        &RenderSemanticModel::State(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("duplicate node ids must not select different rank and route instances");
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "state",
+            feature: "duplicate node ids",
+        }
+    );
+}
+
+#[test]
+fn direct_state_model_rejects_edges_with_missing_endpoint_nodes() {
+    let model = StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![direct_state_node("A", "rect", None, None)],
+        edges: vec![StateDiagramRenderEdge {
+            id: "missing-target".to_string(),
+            start: "A".to_string(),
+            end: "Missing".to_string(),
+            classes: "transition".to_string(),
+            arrow_type_end: "arrow_barb".to_string(),
+            label: String::new(),
+        }],
+        ..StateDiagramRenderModel::default()
+    };
+
+    let error = render_model(
+        &RenderSemanticModel::State(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("state edges must reference declared nodes before routing");
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "state",
+            feature: "edges with missing endpoint nodes",
+        }
+    );
+}
+
+#[test]
+fn direct_state_model_rejects_non_string_label_values() {
+    let mut node = direct_state_node("A", "rect", None, None);
+    node.label = Some(false.into());
+    let model = StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![node],
+        ..StateDiagramRenderModel::default()
+    };
+
+    let error = render_model(
+        &RenderSemanticModel::State(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("non-string labels must not be silently omitted");
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "state",
+            feature: "state labels with unsupported values",
+        }
+    );
+}
+
+#[test]
+fn direct_state_model_rejects_unknown_parent_ids() {
+    let model = StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![direct_state_node("Child", "rect", Some("Missing"), None)],
+        ..StateDiagramRenderModel::default()
+    };
+
+    let error = render_model(
+        &RenderSemanticModel::State(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("unknown parent ids must not flatten state ownership");
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "state",
+            feature: "unknown state parent ids",
+        }
+    );
+}
+
+#[test]
+fn direct_state_model_rejects_non_group_and_cyclic_parents() {
+    let non_group_model = StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![
+            direct_state_node("Leaf", "rect", None, None),
+            direct_state_node("Child", "rect", Some("Leaf"), None),
+        ],
+        ..StateDiagramRenderModel::default()
+    };
+    let error = render_model(
+        &RenderSemanticModel::State(non_group_model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("leaf states must not own child states");
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "state",
+            feature: "state parents that are not groups",
+        }
+    );
+
+    let mut outer = direct_state_node("Outer", "roundedWithTitle", Some("Inner"), None);
+    outer.is_group = true;
+    outer.node_type = Some("group".to_string());
+    let mut inner = direct_state_node("Inner", "roundedWithTitle", Some("Outer"), None);
+    inner.is_group = true;
+    inner.node_type = Some("group".to_string());
+    let cyclic_model = StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![outer, inner],
+        ..StateDiagramRenderModel::default()
+    };
+    let error = render_model(
+        &RenderSemanticModel::State(cyclic_model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("cyclic state ownership must not be projected");
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "state",
+            feature: "cyclic state parent ids",
+        }
     );
 }
 

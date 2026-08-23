@@ -11,9 +11,15 @@ generated bindings together.
 | Alpha.5 or development-snapshot API | Unreleased replacement |
 | --- | --- |
 | `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` functions, or CPU-bound render `async fn` wrappers | `Renderer` with one typed `RenderRequest` / `RenderTarget`; retain an `OperationControl` clone when the host must cancel stale synchronous work |
+| `HeadlessAsciiError` | Match the canonical `RenderError`; use target-neutral `TerminalDiagnostic` for parser display, `TerminalRuntimePolicyError` for runtime-policy display, and `ascii::AsciiDiagnostic` only for ASCII target-local failures |
+| `RenderError::Parse(merman::Error)` or raw `merman::Error` display in a terminal host | `RenderError::Parse(TerminalDiagnostic)`; direct parser hosts should wrap an error with `TerminalDiagnostic::from(error)` and read `terminal_diagnostic_details()` for bounded code/span/field/diagram-type context |
+| `RenderError::RuntimePolicy(RuntimePolicyError)` | `RenderError::RuntimePolicy(TerminalRuntimePolicyError)`; capability classification remains available through `missing_capability()`, while display/debug output is bounded and terminal-safe |
+| `ascii::AsciiDiagnosticDetails` or parse codes under `merman.ascii.*` | `TerminalDiagnosticDetails`; parser diagnostics now use the target-neutral `merman.parse.*` namespace, while ASCII target-local codes remain under `merman.ascii.*` |
+| `AsciiRenderOptions::resources`, `with_resource_policy(...)`, `with_resource_profile(...)`, or `with_resource_limit(...)` | Keep presentation settings in `AsciiRenderOptions`; set `AsciiRequest::resources` for facade rendering, or pass an explicit `AsciiResourcePolicy` as the fourth argument to `AsciiRenderer::render_model` |
+| `ClassRelation::relation_title_1` / `relation_title_2` as `String`, with `"none"` meaning no endpoint label | `Option<String>`; use `None` for an absent label and `Some("none".into())` for authored text. Mermaid compatibility JSON still projects absence as `"none"`, so use the typed model rather than compatibility JSON for lossless round trips |
 | `PreparedSemantic`, public SVG `PreparedRender`, or SVG-owned `HeadlessOperation` | Format-neutral `SemanticArtifact`, consumed once by a typed SVG, ASCII, layout, or export target |
 | `ParseControl`, `ParseCancelled`, or `ParseControlResult` | `OperationControl`, `OperationCancelled`, and `OperationControlResult`; analysis may keep its domain token but it shares the same operation state |
-| Direct UniFFI binding API `3` generated Swift/Python plus the matching native library | Regenerate against UniFFI binding API `4`, replace `binding_api_version` / `bindingApiVersion` with `transport_api_version` / `transportApiVersion`, rename generic requests to `MermanOperationRequestV4`, and deploy the generated projection and native library together; API 4 lint rule records require `tags` and generic requests may carry `MermanOperationControl` |
+| Direct UniFFI binding API `3` or `4` generated Swift/Python plus the matching native library | Regenerate against UniFFI binding API `5`, replace the old version probe with `binding_api_version_v5` / `bindingApiVersionV5`, rename generic requests to `MermanOperationRequestV4`, and deploy the generated projection and native library together; API 5 records include lint tags, revised ASCII capability fields, structured diagnostics, and optional operation controls |
 | Web transport API `3` one-shot options | Web transport API `4`; use top-level `timeout_ms` for a cooperative monotonic deadline, ignore stale results after return, and use a Worker or process boundary when hard termination is required |
 | Analysis facts schema `1` with Flowchart-only graph facts and the former semantic-role set | Analysis facts schema `2` with generic parser/editor facts and the explicit `entity`, `class_definition`, `reference`, `outline`, and `payload` roles; update exhaustive role handling, while diagnostics remain schema `1` |
 | `FenceCursorCompletionKind`, `FenceCursorContext`, or `CompletionContext` | `completion_for_snapshot` over parser-backed typed facts |
@@ -26,6 +32,10 @@ generated bindings together.
 | `DocumentWorkspace::upsert(...)` | `analyze_document_snapshot_with_shared_text(...)` and caller-owned document storage |
 | `DocumentWorkspace::build_analysis_context_with_shared_text(...)` | `analyze_document_context_with_shared_text(...)` |
 | `DocumentAnalysisOutcome` | `Result<DocumentAnalysisContext, AnalysisRejection>` |
+
+The binding-result envelope remains version `1` because its JSON shape is unchanged. Consumers
+that match `details.diagnostic.code` must update parser-code expectations from `merman.ascii.*` to
+`merman.parse.*`; this development-snapshot namespace migration is not a payload-schema change.
 
 The one-shot editor functions accept caller-owned `Arc<str>` source text. Standalone Mermaid,
 Markdown, and MDX inputs still use their corresponding analysis pipelines, but editor-core no
@@ -70,26 +80,49 @@ monotonic deadline belong to the renderer/request operation. Resource exhaustion
 remain distinct errors and neither returns partial output.
 
 ```rust
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 let control = OperationControl::new();
 let host_control = control.clone();
-let output = Renderer::new().render(RenderRequest::svg(
-    "flowchart TD\nA --> B",
-    control,
-    SvgRequest::default(),
-))?;
+let render_thread = std::thread::spawn(move || {
+    Renderer::new().render(RenderRequest::svg(
+        "flowchart TD\nA --> B",
+        control,
+        SvgRequest::default(),
+    ))
+});
 
-let RenderOutput::Svg(Some(svg)) = output else {
-    return Err("no Mermaid diagram found".into());
-};
-println!("{}", svg.svg());
-
-// Another thread or task may call this while the synchronous render is running.
+// A host event, stale-revision check, or another thread may cancel the in-flight render.
 host_control.cancel();
+
+match render_thread.join().expect("render thread panicked") {
+    Err(RenderError::Cancelled(_)) => {}
+    Ok(RenderOutput::Svg(Some(svg))) => println!("{}", svg.svg()),
+    Ok(_) => return Err("no Mermaid diagram found".into()),
+    Err(error) => return Err(error.into()),
+}
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 Cancellation is cooperative. Merman checks the same control through parse, semantic projection,
 layout adapters, ASCII/SVG emission, postprocessing, and export boundaries. An opaque host callback
 or third-party encoder may finish its current call before the next checkpoint.
+
+ASCII resource limits belong to the request or caller-owned typed-model operation, not to reusable
+render options:
+
+```rust
+use merman::ascii::{AsciiRenderOptions, AsciiResourcePolicy};
+use merman::{AsciiRequest, OperationControl, RenderRequest, Renderer};
+
+let request = AsciiRequest {
+    options: AsciiRenderOptions::ascii(),
+    resources: AsciiResourcePolicy::default(),
+};
+let output = Renderer::new().render(RenderRequest::ascii(
+    "flowchart TD\nA --> B",
+    OperationControl::new(),
+    request,
+))?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```

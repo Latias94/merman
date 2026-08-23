@@ -7,6 +7,7 @@ members = [
     "crates/merman-fixture-render-context",
     "crates/merman-core",
     "crates/merman-ascii",
+    "crates/merman-ascii-test-contracts",
     "crates/merman-bindings-core",
     "crates/merman-android-jni",
     "crates/merman-cli",
@@ -33,7 +34,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 edition = "2024"
 authors = ["Mingzhen Zhuang <superfrankie621@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -50,6 +51,7 @@ base64 = "0.22.1"
 data-url = "0.3.2"
 brotli = "8.0.3"
 clap_mangen = "0.3.0"
+ctrlc = "=3.5.0"
 euclid = "0.22.14"
 flate2 = "1.1.9"
 fs2 = "0.4.3"
@@ -131,25 +133,25 @@ tower-lsp-server = { version = "0.23.0", default-features = false, features = ["
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.
-merman = { path = "crates/merman", version = "0.8.0-alpha.5", default-features = false }
-merman-analysis = { path = "crates/merman-analysis", version = "0.8.0-alpha.5", default-features = false }
-merman-ascii = { path = "crates/merman-ascii", version = "0.8.0-alpha.5", default-features = false }
-merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.8.0-alpha.5", default-features = false }
-merman-core = { path = "crates/merman-core", version = "0.8.0-alpha.5", default-features = false }
-merman-editor-core = { path = "crates/merman-editor-core", version = "0.8.0-alpha.5", default-features = false }
-merman-elk-layered = { path = "crates/merman-elk-layered", version = "0.8.0-alpha.5", default-features = false }
-merman-layout-elk = { path = "crates/merman-layout-elk", version = "0.8.0-alpha.5" }
-merman-ffi = { path = "crates/merman-ffi", version = "0.8.0-alpha.5" }
-merman-rustdoc = { path = "crates/merman-rustdoc", version = "0.8.0-alpha.5" }
-merman-render = { path = "crates/merman-render", version = "0.8.0-alpha.5", default-features = false }
-merman-export = { path = "crates/merman-export", version = "0.8.0-alpha.5", default-features = false }
-merman-typst-plugin = { path = "crates/merman-typst-plugin", version = "0.8.0-alpha.5" }
-merman-uniffi = { path = "crates/merman-uniffi", version = "0.8.0-alpha.5" }
-merman-wasm = { path = "crates/merman-wasm", version = "0.8.0-alpha.5" }
-merman-cli = { path = "crates/merman-cli", version = "0.8.0-alpha.5" }
-dugong = { path = "crates/dugong", version = "0.8.0-alpha.5" }
-dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.8.0-alpha.5" }
-manatee = { path = "crates/manatee", version = "0.8.0-alpha.5" }
+merman = { path = "crates/merman", version = "0.8.0-alpha.6", default-features = false }
+merman-analysis = { path = "crates/merman-analysis", version = "0.8.0-alpha.6", default-features = false }
+merman-ascii = { path = "crates/merman-ascii", version = "0.8.0-alpha.6", default-features = false }
+merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.8.0-alpha.6", default-features = false }
+merman-core = { path = "crates/merman-core", version = "0.8.0-alpha.6", default-features = false }
+merman-editor-core = { path = "crates/merman-editor-core", version = "0.8.0-alpha.6", default-features = false }
+merman-elk-layered = { path = "crates/merman-elk-layered", version = "0.8.0-alpha.6", default-features = false }
+merman-layout-elk = { path = "crates/merman-layout-elk", version = "0.8.0-alpha.6" }
+merman-ffi = { path = "crates/merman-ffi", version = "0.8.0-alpha.6" }
+merman-rustdoc = { path = "crates/merman-rustdoc", version = "0.8.0-alpha.6" }
+merman-render = { path = "crates/merman-render", version = "0.8.0-alpha.6", default-features = false }
+merman-export = { path = "crates/merman-export", version = "0.8.0-alpha.6", default-features = false }
+merman-typst-plugin = { path = "crates/merman-typst-plugin", version = "0.8.0-alpha.6" }
+merman-uniffi = { path = "crates/merman-uniffi", version = "0.8.0-alpha.6" }
+merman-wasm = { path = "crates/merman-wasm", version = "0.8.0-alpha.6" }
+merman-cli = { path = "crates/merman-cli", version = "0.8.0-alpha.6" }
+dugong = { path = "crates/dugong", version = "0.8.0-alpha.6" }
+dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.8.0-alpha.6" }
+manatee = { path = "crates/manatee", version = "0.8.0-alpha.6" }
 
 # The profile that 'dist' will build with
 [profile.dist]

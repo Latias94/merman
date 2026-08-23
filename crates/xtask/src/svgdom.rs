@@ -3,6 +3,9 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
+#[cfg(test)]
+use std::cell::Cell;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SvgDomNode {
     pub(crate) name: String,
@@ -11,7 +14,7 @@ pub(crate) struct SvgDomNode {
     pub(crate) children: Vec<SvgDomNode>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum DomMode {
     Strict,
     Structure,
@@ -25,6 +28,36 @@ pub(crate) struct DomComparisonProfile {
     root_contract: bool,
     normalize_browser_text_wrapping: bool,
     normalize_browser_text_length: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct DomSignatureKey {
+    descendants: DomMode,
+    decimals: u32,
+    normalize_browser_text_wrapping: bool,
+    normalize_browser_text_length: bool,
+}
+
+pub(crate) struct ParsedSvgDom<'input> {
+    document: roxmltree::Document<'input>,
+    signatures: BTreeMap<DomSignatureKey, SvgDomNode>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct DomComparatorWorkCounts {
+    pub(crate) parses: usize,
+    pub(crate) signature_builds: usize,
+}
+
+#[cfg(test)]
+std::thread_local! {
+    static DOM_COMPARATOR_WORK_COUNTS: Cell<DomComparatorWorkCounts> = const {
+        Cell::new(DomComparatorWorkCounts {
+            parses: 0,
+            signature_builds: 0,
+        })
+    };
 }
 
 impl DomComparisonProfile {
@@ -84,16 +117,142 @@ impl DomComparisonProfile {
     pub(crate) const fn normalizes_browser_text_length(self) -> bool {
         self.normalize_browser_text_length
     }
+
+    const fn signature_key(self, decimals: u32) -> DomSignatureKey {
+        DomSignatureKey {
+            descendants: self.descendants,
+            decimals,
+            normalize_browser_text_wrapping: self.normalize_browser_text_wrapping,
+            normalize_browser_text_length: self.normalize_browser_text_length,
+        }
+    }
+}
+
+impl<'input> ParsedSvgDom<'input> {
+    /// Parse an SVG that has already passed through [`normalize_xml_entities`].
+    ///
+    /// Keeping normalization ownership at the call site lets this document borrow either the
+    /// original SVG or the normalized allocation without a self-referential container.
+    pub(crate) fn parse_normalized(svg: &'input str) -> Result<Self, String> {
+        #[cfg(test)]
+        DOM_COMPARATOR_WORK_COUNTS.with(|counts| {
+            let mut next = counts.get();
+            next.parses += 1;
+            counts.set(next);
+        });
+
+        let document = roxmltree::Document::parse(svg).map_err(|error| error.to_string())?;
+        if !document.descendants().any(|node| node.has_tag_name("svg")) {
+            return Err("missing <svg> root".to_string());
+        }
+        Ok(Self {
+            document,
+            signatures: BTreeMap::new(),
+        })
+    }
+
+    pub(crate) fn root_element(&self) -> roxmltree::Node<'_, '_> {
+        self.document.root_element()
+    }
+
+    pub(crate) fn svg_root(&self) -> roxmltree::Node<'_, '_> {
+        self.document
+            .descendants()
+            .find(|node| node.has_tag_name("svg"))
+            .expect("parsed SVG document invariant")
+    }
+
+    pub(crate) fn signature_for_comparison(
+        &mut self,
+        profile: DomComparisonProfile,
+        decimals: u32,
+    ) -> &SvgDomNode {
+        self.signature(profile.signature_key(decimals))
+    }
+
+    fn signature_for_mode(&mut self, mode: DomMode, decimals: u32) -> &SvgDomNode {
+        self.signature(DomSignatureKey {
+            descendants: mode,
+            decimals,
+            normalize_browser_text_wrapping: false,
+            normalize_browser_text_length: false,
+        })
+    }
+
+    fn signature(&mut self, key: DomSignatureKey) -> &SvgDomNode {
+        let document = &self.document;
+        match self.signatures.entry(key) {
+            std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                #[cfg(test)]
+                DOM_COMPARATOR_WORK_COUNTS.with(|counts| {
+                    let mut next = counts.get();
+                    next.signature_builds += 1;
+                    counts.set(next);
+                });
+
+                let root = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("svg"))
+                    .expect("parsed SVG document invariant");
+                let mut signature = build_node(
+                    root,
+                    key.descendants,
+                    key.decimals,
+                    key.normalize_browser_text_wrapping,
+                );
+                if key.normalize_browser_text_wrapping {
+                    normalize_browser_text_wrapping(&mut signature);
+                }
+                if key.normalize_browser_text_length {
+                    normalize_browser_text_length(&mut signature);
+                }
+                entry.insert(signature)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn reset_dom_comparator_work_counts() {
+    DOM_COMPARATOR_WORK_COUNTS.with(|counts| counts.set(DomComparatorWorkCounts::default()));
+}
+
+#[cfg(test)]
+pub(crate) fn dom_comparator_work_counts() -> DomComparatorWorkCounts {
+    DOM_COMPARATOR_WORK_COUNTS.with(Cell::get)
 }
 
 impl DomMode {
-    pub(crate) fn parse(s: &str) -> Self {
-        match s {
-            "strict" => Self::Strict,
-            "parity" => Self::Parity,
-            "parity-root" | "parity_root" => Self::ParityRoot,
-            _ => Self::Structure,
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Strict => "strict",
+            Self::Structure => "structure",
+            Self::Parity => "parity",
+            Self::ParityRoot => "parity-root",
         }
+    }
+}
+
+impl std::str::FromStr for DomMode {
+    type Err = String;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        match raw.trim() {
+            "strict" => Ok(Self::Strict),
+            "structure" => Ok(Self::Structure),
+            "parity" => Ok(Self::Parity),
+            "parity-root" | "parity_root" => Ok(Self::ParityRoot),
+            other => Err(format!(
+                "unknown DOM mode {other:?}; expected strict, structure, parity, or parity-root"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for DomMode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
     }
 }
 
@@ -1337,23 +1496,10 @@ pub(crate) fn normalize_xml_entities(svg: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-fn dom_signature_with_browser_text_rows(
-    svg: &str,
-    mode: DomMode,
-    decimals: u32,
-    preserve_browser_text_rows: bool,
-) -> Result<SvgDomNode, String> {
-    let svg = normalize_xml_entities(svg);
-    let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|e| e.to_string())?;
-    let root = doc
-        .descendants()
-        .find(|n| n.has_tag_name("svg"))
-        .ok_or_else(|| "missing <svg> root".to_string())?;
-    Ok(build_node(root, mode, decimals, preserve_browser_text_rows))
-}
-
 pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
-    dom_signature_with_browser_text_rows(svg, mode, decimals, false)
+    let svg = normalize_xml_entities(svg);
+    let mut document = ParsedSvgDom::parse_normalized(svg.as_ref())?;
+    Ok(document.signature_for_mode(mode, decimals).clone())
 }
 
 fn normalize_browser_text_wrapping(node: &mut SvgDomNode) {
@@ -1405,24 +1551,15 @@ fn normalize_browser_text_length(node: &mut SvgDomNode) {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn dom_signature_for_comparison(
     svg: &str,
     profile: DomComparisonProfile,
     decimals: u32,
 ) -> Result<SvgDomNode, String> {
-    let mut signature = dom_signature_with_browser_text_rows(
-        svg,
-        profile.descendants(),
-        decimals,
-        profile.normalizes_browser_text_wrapping(),
-    )?;
-    if profile.normalizes_browser_text_wrapping() {
-        normalize_browser_text_wrapping(&mut signature);
-    }
-    if profile.normalizes_browser_text_length() {
-        normalize_browser_text_length(&mut signature);
-    }
-    Ok(signature)
+    let svg = normalize_xml_entities(svg);
+    let mut document = ParsedSvgDom::parse_normalized(svg.as_ref())?;
+    Ok(document.signature_for_comparison(profile, decimals).clone())
 }
 
 fn escape_xml_text(s: &str) -> String {
@@ -1626,6 +1763,23 @@ pub(crate) fn format_dom_diffs(differences: &[String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dom_mode_parser_is_strict_and_display_is_canonical() {
+        for (raw, expected, displayed) in [
+            ("strict", DomMode::Strict, "strict"),
+            ("structure", DomMode::Structure, "structure"),
+            ("parity", DomMode::Parity, "parity"),
+            ("parity_root", DomMode::ParityRoot, "parity-root"),
+        ] {
+            let parsed = raw.parse::<DomMode>().expect("known DOM mode");
+            assert_eq!(parsed, expected);
+            assert_eq!(parsed.to_string(), displayed);
+        }
+        for unknown in ["", "unknown", "structural", "PARITY"] {
+            assert!(unknown.parse::<DomMode>().is_err(), "mode={unknown:?}");
+        }
+    }
 
     #[test]
     fn strict_does_not_normalize_numbers_inside_identifier_like_attrs() {

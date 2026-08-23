@@ -1,6 +1,7 @@
 export {
   BINDING_STATUS_CODE_NAMES,
   BUNDLED_THEME_PRESETS,
+  DIAGRAMMATIC_ASCII_DIAGRAMS,
   SYSTEM_ADAPTER_IDS,
   TEXT_MEASUREMENT_PROVIDER_IDS,
   WEB_CAPABILITIES,
@@ -84,6 +85,7 @@ export {
 } from "./runtime-analysis.js";
 export {
   asciiCapabilities,
+  asciiDiagrammaticDiagrams,
   asciiSupportedDiagrams,
   renderAscii,
 } from "./runtime-ascii.js";

@@ -6,9 +6,11 @@ use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navig
 use std::fmt::Write as _;
 use std::time::Duration;
 
+use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::bounds::{include_path_d, include_xywh};
+use super::context::ClassEmitCheckpoint;
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics, class_html_title_metrics,
     class_svg_label_rect, render_class_html_label, wrap_class_svg_text_like_mermaid,
@@ -43,7 +45,7 @@ pub(super) struct ClassNodeRenderState<'a> {
 }
 
 pub(super) struct ClassNodeBasicContainerContext<'a> {
-    pub diagram_id: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub node_style_attr: &'a str,
     pub node_fill: &'a str,
     pub node_stroke: &'a str,
@@ -152,10 +154,11 @@ pub(super) fn render_class_node_shell_open(
     out: &mut String,
     node: &ClassSvgNode,
     position: ClassNodeRenderPosition,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
+    emit: ClassEmitCheckpoint<'_>,
     look: &str,
     security_level_loose: bool,
-) -> bool {
+) -> crate::Result<bool> {
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
 
@@ -206,7 +209,8 @@ pub(super) fn render_class_node_shell_open(
     }
     super::super::util::escape_attr_into(out, node.css_classes.trim());
     out.push_str(r#"" id=""#);
-    super::super::util::escape_attr_into(out, diagram_id);
+    let _ = write!(out, "{diagram_id}");
+    emit.checkpoint()?;
     out.push('-');
     super::super::util::escape_attr_into(out, &node.dom_id);
     out.push('"');
@@ -229,7 +233,7 @@ pub(super) fn render_class_node_shell_open(
     }
     out.push('>');
 
-    link.is_some()
+    Ok(link.is_some())
 }
 
 pub(super) fn render_class_node_basic_container(
@@ -247,7 +251,11 @@ pub(super) fn render_class_node_basic_container(
     let h = layout_node.height.max(1.0);
     let left = -w / 2.0;
     let top = -h / 2.0;
-    let rough_seed = class_rough_seed(&ctx.hand_drawn_seed, ctx.diagram_id, &node.dom_id);
+    let rough_seed = class_rough_seed(
+        &ctx.hand_drawn_seed,
+        ctx.diagram_id.semantic_str(),
+        &node.dom_id,
+    );
     let hand_drawn = ctx.look == "handDrawn";
     out.push_str(r#"<g class="basic label-container outer-path">"#);
     if !hand_drawn {

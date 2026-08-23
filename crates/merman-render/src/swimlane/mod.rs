@@ -19,7 +19,7 @@ use crate::text::TextMeasurer;
 use icu_collator::{Collator, options::CollatorOptions};
 use icu_locale_core::Locale;
 use merman_core::MermaidConfig;
-use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderLabelSources};
+use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
 use std::cmp::Ordering;
 use std::sync::{Arc, OnceLock};
 
@@ -73,7 +73,7 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
 
 pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,

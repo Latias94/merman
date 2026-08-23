@@ -27,6 +27,16 @@ fn timeline_syntax_construction_count() -> usize {
 pub struct TimelineRenderTask {
     pub id: i64,
     pub section: String,
+    /// Index of the authored section occurrence in `TimelineDiagramRenderModel::sections`.
+    ///
+    /// `None` represents a task without parser-backed occurrence ownership, including tasks
+    /// authored before any section and legacy direct models.
+    #[serde(
+        default,
+        rename = "sectionIndex",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub section_index: Option<usize>,
     #[serde(rename = "type")]
     pub task_type: String,
     pub task: String,
@@ -91,6 +101,7 @@ struct TimelineDb {
     acc_descr: String,
 
     current_section: String,
+    current_section_index: Option<usize>,
     sections: Vec<String>,
     tasks: Vec<TimelineRenderTask>,
     next_id: i64,
@@ -99,6 +110,7 @@ struct TimelineDb {
 impl TimelineDb {
     fn add_section(&mut self, txt: &str) {
         self.current_section = txt.to_string();
+        self.current_section_index = Some(self.sections.len());
         self.sections.push(txt.to_string());
     }
 
@@ -108,6 +120,7 @@ impl TimelineDb {
         self.tasks.push(TimelineRenderTask {
             id,
             section: self.current_section.clone(),
+            section_index: self.current_section_index,
             task_type: self.current_section.clone(),
             task: period.to_string(),
             score: 0,
@@ -618,6 +631,16 @@ pub(crate) fn render_model_to_compat_json(
     if model.compatibility_output == CompatibilityOutputState::Empty {
         return Ok(json!({}));
     }
+    let mut tasks =
+        serde_json::to_value(&model.tasks).expect("Timeline tasks must remain JSON-serializable");
+    for task in tasks
+        .as_array_mut()
+        .expect("Timeline tasks must serialize to an array")
+    {
+        if let Some(task) = task.as_object_mut() {
+            task.remove("sectionIndex");
+        }
+    }
     Ok(json!({
         "type": meta.diagram_type,
         "direction": model.direction,
@@ -625,7 +648,7 @@ pub(crate) fn render_model_to_compat_json(
         "accTitle": &model.acc_title,
         "accDescr": &model.acc_descr,
         "sections": &model.sections,
-        "tasks": &model.tasks,
+        "tasks": tasks,
     }))
 }
 
@@ -996,6 +1019,46 @@ task4
                 assert!(matches!(task, "task3" | "task4"));
             }
         }
+    }
+
+    #[test]
+    fn timeline_typed_tasks_retain_duplicate_section_occurrences() {
+        let source = concat!(
+            "timeline\n",
+            "section Repeated\n",
+            "2000: First\n",
+            "section Repeated\n",
+            "2001: Second\n",
+            "2002: Third\n",
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("duplicate Timeline sections should parse")
+            .expect("Timeline source should be detected");
+        let crate::diagram::RenderSemanticModel::Timeline(model) = parsed.model() else {
+            panic!("expected a Timeline render model");
+        };
+
+        assert_eq!(
+            model.sections,
+            vec!["Repeated".to_string(), "Repeated".to_string()]
+        );
+        assert_eq!(
+            model
+                .tasks
+                .iter()
+                .map(|task| task.section_index)
+                .collect::<Vec<_>>(),
+            [Some(0), Some(1), Some(1)]
+        );
+        assert_eq!(
+            serde_json::to_value(&model.tasks[0]).expect("typed task should serialize")["sectionIndex"],
+            json!(0)
+        );
+
+        let compat = render_model_to_compat_json(model, parsed.metadata())
+            .expect("Timeline compatibility projection should serialize");
+        assert!(compat["tasks"][0].get("sectionIndex").is_none());
     }
 
     #[test]

@@ -25,17 +25,17 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "I am a righty",
+        "label": "I am a lefty",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
         "id": "MyState----parent",
-        "domId": "state-MyState----parent-1",
+        "domId": "state-MyState----parent-0",
         "type": "group",
         "isGroup": true,
         "padding": 16,
         "look": "classic",
-        "position": "right of"
+        "position": "left of"
       },
       {
         "labelStyle": "",
@@ -55,6 +55,21 @@
       },
       {
         "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "I am a righty",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "MyState----parent-1",
+        "domId": "state-MyState----parent-1",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "right of"
+      },
+      {
+        "labelStyle": "",
         "shape": "note",
         "label": "I am a righty",
         "cssClasses": "statediagram-note",
@@ -67,7 +82,7 @@
         "padding": 15,
         "look": "classic",
         "position": "right of",
-        "parentId": "MyState----parent"
+        "parentId": "MyState----parent-1"
       }
     ],
     "edges": [

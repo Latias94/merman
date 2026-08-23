@@ -2,10 +2,14 @@ use crate::Result;
 use cssparser::{Delimiter, Parser, ParserInput};
 use merman_core::svg_security::{MermaidSvgUriRepresentation, admit_mermaid_svg_uri_attribute};
 use std::borrow::Cow;
+use std::convert::Infallible;
 
-use super::css_sanitize::sanitize_css_value;
+use super::css_sanitize::sanitize_css_value_with_checkpoints;
 use super::presentation_fallback::is_mermaid_missing_amount_hsl;
-use super::util::{SvgTagScanner, escape_xml_attr, next_svg_quoted_attr, start_tag_name};
+use super::util::{
+    SvgTagScanner, checkpoint_loop, escape_xml_attr, find_with_checkpoints, next_svg_quoted_attr,
+    next_svg_quoted_attr_with_checkpoints, start_tag_name,
+};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -19,24 +23,41 @@ impl SvgPostprocessor for SanitizeSvgAttributesPostprocessor {
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,
-        _ctx: &SvgPostprocessContext<'_>,
+        ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        Ok(sanitize_element_attributes_cow(svg))
+        sanitize_element_attributes_cow_with_checkpoints(svg, &mut || ctx.checkpoint())
     }
 }
 
 #[cfg(test)]
 fn sanitize_element_attributes(svg: &str) -> String {
-    sanitize_element_attributes_cow(Cow::Borrowed(svg)).into_owned()
+    infallible(sanitize_element_attributes_cow_with_checkpoints(
+        Cow::Borrowed(svg),
+        &mut || Ok::<(), Infallible>(()),
+    ))
+    .into_owned()
 }
 
-pub(crate) fn sanitize_element_attributes_cow<'a>(svg: Cow<'a, str>) -> Cow<'a, str> {
+fn infallible<T>(result: std::result::Result<T, Infallible>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(error) => match error {},
+    }
+}
+
+pub(crate) fn sanitize_element_attributes_cow_with_checkpoints<'a, E>(
+    svg: Cow<'a, str>,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Cow<'a, str>, E> {
     let source = svg.as_ref();
     let mut out = None::<String>;
     let mut scanner = SvgTagScanner::new(source);
     let mut copied_until = 0;
+    let mut tag_index = 0usize;
 
-    while let Some(tag) = scanner.next() {
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+        checkpoint_loop(tag_index, checkpoint)?;
+        tag_index = tag_index.saturating_add(1);
         let raw_tag = tag.raw();
         if let Some(active_name) = active_svg_element_name(raw_tag) {
             let output = out.get_or_insert_with(|| String::with_capacity(source.len()));
@@ -44,7 +65,7 @@ pub(crate) fn sanitize_element_attributes_cow<'a>(svg: Cow<'a, str>) -> Cow<'a, 
             copied_until = if tag.is_self_closing() {
                 scanner.cursor()
             } else {
-                find_close_tag_end(source, scanner.cursor(), active_name)
+                find_close_tag_end(source, scanner.cursor(), active_name, checkpoint)?
                     .unwrap_or(scanner.cursor())
             };
             scanner.skip_to(copied_until);
@@ -57,8 +78,7 @@ pub(crate) fn sanitize_element_attributes_cow<'a>(svg: Cow<'a, str>) -> Cow<'a, 
             copied_until = if tag.is_self_closing() {
                 scanner.cursor()
             } else {
-                source[scanner.cursor()..]
-                    .find("</rect>")
+                find_with_checkpoints(&source[scanner.cursor()..], "</rect>", checkpoint)?
                     .map(|rel_close| scanner.cursor() + rel_close + "</rect>".len())
                     .unwrap_or(scanner.cursor())
             };
@@ -66,7 +86,7 @@ pub(crate) fn sanitize_element_attributes_cow<'a>(svg: Cow<'a, str>) -> Cow<'a, 
             continue;
         }
 
-        match sanitize_tag_attributes(raw_tag) {
+        match sanitize_tag_attributes(raw_tag, checkpoint)? {
             Cow::Borrowed(_) => {
                 if let Some(output) = out.as_mut() {
                     output.push_str(&source[copied_until..scanner.cursor()]);
@@ -83,19 +103,24 @@ pub(crate) fn sanitize_element_attributes_cow<'a>(svg: Cow<'a, str>) -> Cow<'a, 
     }
 
     let Some(mut out) = out else {
-        return svg;
+        checkpoint()?;
+        return Ok(svg);
     };
     out.push_str(&source[copied_until..]);
-    Cow::Owned(out)
+    checkpoint()?;
+    Ok(Cow::Owned(out))
 }
 
-fn sanitize_tag_attributes(tag: &str) -> Cow<'_, str> {
+fn sanitize_tag_attributes<'a, E>(
+    tag: &'a str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Cow<'a, str>, E> {
     if tag.starts_with("</")
         || tag.starts_with("<!--")
         || tag.starts_with("<!")
         || tag.starts_with("<?")
     {
-        return Cow::Borrowed(tag);
+        return Ok(Cow::Borrowed(tag));
     }
 
     let element_name = start_tag_name(tag).map(local_name).unwrap_or_default();
@@ -103,12 +128,15 @@ fn sanitize_tag_attributes(tag: &str) -> Cow<'_, str> {
     let mut out = String::new();
     let mut copied_until = 0usize;
     let mut cursor = 0usize;
+    let mut attr_index = 0usize;
 
-    while let Some(attr) = next_svg_quoted_attr(tag, cursor) {
+    while let Some(attr) = next_svg_quoted_attr_with_checkpoints(tag, cursor, checkpoint)? {
+        checkpoint_loop(attr_index, checkpoint)?;
+        attr_index = attr_index.saturating_add(1);
         let name = &tag[attr.name_start..attr.name_end];
         let value = &tag[attr.value_start..attr.value_end];
 
-        let replacement = sanitized_attr_replacement(element_name, name, value);
+        let replacement = sanitized_attr_replacement(element_name, name, value, checkpoint)?;
         if let AttrReplacement::Unchanged = replacement {
             cursor = attr.full_end;
             continue;
@@ -130,9 +158,9 @@ fn sanitize_tag_attributes(tag: &str) -> Cow<'_, str> {
 
     if changed {
         out.push_str(&tag[copied_until..]);
-        Cow::Owned(out)
+        Ok(Cow::Owned(out))
     } else {
-        Cow::Borrowed(tag)
+        Ok(Cow::Borrowed(tag))
     }
 }
 
@@ -142,69 +170,94 @@ enum AttrReplacement {
     Replace(String),
 }
 
-fn sanitized_attr_replacement(element_name: &str, name: &str, value: &str) -> AttrReplacement {
+fn sanitized_attr_replacement<E>(
+    element_name: &str,
+    name: &str,
+    value: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<AttrReplacement, E> {
+    checkpoint()?;
     if is_namespace_declaration(name) {
-        return AttrReplacement::Unchanged;
+        return Ok(AttrReplacement::Unchanged);
     }
 
     if is_anchor_navigation_attribute(element_name, name) {
         let Some(normalized_value) =
             admit_mermaid_svg_uri_attribute(value, MermaidSvgUriRepresentation::SerializedSvg)
         else {
-            return AttrReplacement::Drop;
+            return Ok(AttrReplacement::Drop);
         };
         let normalized_value = escape_xml_attr(&normalized_value);
         if normalized_value != value {
-            return AttrReplacement::Replace(format!(r#" {name}="{normalized_value}""#));
+            return Ok(AttrReplacement::Replace(format!(
+                r#" {name}="{normalized_value}""#
+            )));
         }
-        return AttrReplacement::Unchanged;
+        return Ok(AttrReplacement::Unchanged);
     }
 
-    if should_drop_attribute(element_name, name, value) {
-        return AttrReplacement::Drop;
+    if should_drop_attribute_with_checkpoints(element_name, name, value, checkpoint)? {
+        return Ok(AttrReplacement::Drop);
     }
 
     if let Some(value) = normalize_px_attribute(name, value) {
-        return AttrReplacement::Replace(format!(r#" {name}="{value}""#));
+        return Ok(AttrReplacement::Replace(format!(r#" {name}="{value}""#)));
     }
 
     if local_name(name).eq_ignore_ascii_case("style") {
-        let sanitized = sanitize_style_attribute(value);
+        let sanitized = sanitize_style_attribute(value, checkpoint)?;
         if sanitized.trim().is_empty() {
-            return AttrReplacement::Drop;
+            return Ok(AttrReplacement::Drop);
         }
         if sanitized != value {
-            return AttrReplacement::Replace(format!(r#" {name}="{sanitized}""#));
+            return Ok(AttrReplacement::Replace(format!(
+                r#" {name}="{sanitized}""#
+            )));
         }
     }
 
-    AttrReplacement::Unchanged
+    checkpoint()?;
+    Ok(AttrReplacement::Unchanged)
 }
 
 fn should_drop_attribute(element_name: &str, name: &str, value: &str) -> bool {
+    infallible(should_drop_attribute_with_checkpoints(
+        element_name,
+        name,
+        value,
+        &mut || Ok::<(), Infallible>(()),
+    ))
+}
+
+fn should_drop_attribute_with_checkpoints<E>(
+    element_name: &str,
+    name: &str,
+    value: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<bool, E> {
     if is_namespace_declaration(name) {
-        return false;
+        return Ok(false);
     }
 
     let semantic_name = local_name(name.trim());
     if semantic_name.eq_ignore_ascii_case("style") {
-        return false;
+        return Ok(false);
     }
 
     if is_event_handler_attribute(name)
         || is_unsafe_url_attribute(element_name, name, value)
         || is_base_url_attribute(name)
     {
-        return true;
+        return Ok(true);
     }
 
     let normalized = semantic_name.to_ascii_lowercase();
-    if is_url_function_attribute(&normalized) && css_value_violates_url_safety(value) {
-        return true;
+    if is_url_function_attribute(&normalized) && css_value_violates_url_safety(value, checkpoint)? {
+        return Ok(true);
     }
 
     if value.trim().is_empty() {
-        return matches!(
+        return Ok(matches!(
             normalized.as_str(),
             "fill"
                 | "stroke"
@@ -225,17 +278,19 @@ fn should_drop_attribute(element_name: &str, name: &str, value: &str) -> bool {
                 | "transform"
                 | "d"
                 | "points"
-        );
+        ));
     }
 
-    match normalized.as_str() {
+    let drop = match normalized.as_str() {
         "fill" | "stroke" => is_mermaid_missing_amount_hsl(value),
         "width" | "height" | "x" | "y" | "x1" | "x2" | "y1" | "y2" | "r" | "cx" | "cy" | "rx"
         | "ry" | "stroke-width" => is_provably_invalid_scalar(value),
         "transform" => is_invalid_svg_transform(value),
         "d" | "points" => contains_non_finite_numeric_token(value),
         _ => false,
-    }
+    };
+    checkpoint()?;
+    Ok(drop)
 }
 
 pub(in crate::svg::pipeline) fn parsed_attribute_violates_resvg_contract(
@@ -330,9 +385,14 @@ fn is_same_document_fragment_normalized(value: &str) -> bool {
         .is_some_and(|fragment| !fragment.is_empty())
 }
 
-fn css_value_violates_url_safety(value: &str) -> bool {
+fn css_value_violates_url_safety<E>(
+    value: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<bool, E> {
+    checkpoint()?;
     let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
-    sanitize_css_value(decoded.as_ref()).is_none()
+    checkpoint()?;
+    Ok(sanitize_css_value_with_checkpoints(decoded.as_ref(), checkpoint)?.is_none())
 }
 
 fn normalize_url_attr_for_scheme_check(value: &str) -> String {
@@ -467,15 +527,21 @@ fn is_namespace_declaration(name: &str) -> bool {
     name == "xmlns" || name.starts_with("xmlns:")
 }
 
-fn find_close_tag_end(svg: &str, from: usize, name: &str) -> Option<usize> {
+fn find_close_tag_end<E>(
+    svg: &str,
+    from: usize,
+    name: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<usize>, E> {
     let mut scanner = SvgTagScanner::new(svg);
     scanner.skip_to(from);
-    while let Some(tag) = scanner.next() {
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
         if close_tag_matches(tag.raw(), name) {
-            return Some(scanner.cursor());
+            return Ok(Some(scanner.cursor()));
         }
     }
-    None
+    checkpoint()?;
+    Ok(None)
 }
 
 fn close_tag_matches(tag: &str, expected: &str) -> bool {
@@ -530,11 +596,19 @@ fn is_bad_rect_tag(tag: &str) -> bool {
         || is_missing_or_invalid_rect_dimension(height.as_deref())
 }
 
-fn sanitize_style_attribute(value: &str) -> String {
+fn sanitize_style_attribute<E>(
+    value: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<String, E> {
     let mut out = Vec::new();
 
-    for (property, value) in parse_css_declarations(value) {
-        let Some(normalized_value) = sanitize_css_value(&value) else {
+    for (index, (property, value)) in parse_css_declarations(value, checkpoint)?
+        .into_iter()
+        .enumerate()
+    {
+        checkpoint_loop(index, checkpoint)?;
+        let Some(normalized_value) = sanitize_css_value_with_checkpoints(&value, checkpoint)?
+        else {
             continue;
         };
         if normalized_value.is_empty()
@@ -549,16 +623,23 @@ fn sanitize_style_attribute(value: &str) -> String {
         out.push(format!("{property}:{normalized_value}"));
     }
 
-    escape_xml_attr(&out.join(";"))
+    checkpoint()?;
+    Ok(escape_xml_attr(&out.join(";")))
 }
 
-fn parse_css_declarations(value: &str) -> Vec<(String, String)> {
+fn parse_css_declarations<E>(
+    value: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Vec<(String, String)>, E> {
+    checkpoint()?;
     let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
+    checkpoint()?;
     let mut input = ParserInput::new(&decoded);
     let mut parser = Parser::new(&mut input);
     let mut declarations = Vec::new();
 
     while !parser.is_exhausted() {
+        checkpoint()?;
         let declaration = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
             let property = declaration.expect_ident_cloned()?.to_string();
             declaration.expect_colon()?;
@@ -569,11 +650,12 @@ fn parse_css_declarations(value: &str) -> Vec<(String, String)> {
             let value = declaration.slice_from(value_start).trim().to_string();
             Ok::<_, cssparser::ParseError<'_, ()>>((property, value))
         });
+        checkpoint()?;
         if let Ok(declaration) = declaration {
             declarations.push(declaration);
         }
     }
-    declarations
+    Ok(declarations)
 }
 
 fn is_invalid_style_property_value(property: &str, value: &str) -> bool {

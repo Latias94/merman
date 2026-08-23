@@ -12,6 +12,8 @@ use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use merman_core::{MermaidConfig, geom::Size};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -21,7 +23,7 @@ use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds_controlled;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{
-    FlowEdge, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources, FlowchartRenderModelRef,
+    FlowEdge, FlowSubgraph, FlowchartModel, FlowchartRenderContext, FlowchartRenderModelRef,
 };
 use super::{
     FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
@@ -1415,7 +1417,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
 ) -> Result<FlowchartLayout> {
     layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         measurer,
         math_renderer,
@@ -1426,7 +1428,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
 
 pub(crate) fn layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1447,7 +1449,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_l
 
 fn layout_flowchart_with_model(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1707,13 +1709,14 @@ fn layout_flowchart_with_model(
             continue;
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
+        let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
         let sg_text_style = flowchart_effective_text_style_for_classes(
             cluster_label_base_style,
             &model.class_defs,
-            &sg.classes,
-            &sg.styles,
+            classes,
+            styles,
         );
-        let title = model.subgraph_title_for_render(sg);
+        let title = model.subgraph_title_for_render(subgraph_index, sg);
         // Mermaid renders an empty subgraph through the ordinary node `labelHelper`: wrapping
         // probes use `flowchart.wrappingWidth` and `getComputedTextLength()`, while the final label
         // dimensions come from `getBBox()`. Selecting `ComputedLength` here would add a post-wrap
@@ -1741,7 +1744,7 @@ fn layout_flowchart_with_model(
                 label_type,
                 sg_text_style.as_ref(),
                 &model.class_defs,
-                &sg.classes,
+                classes,
             );
         }
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
@@ -2185,7 +2188,8 @@ fn layout_flowchart_with_model(
         ctx: &ClusterTitleMetricsContext<'_>,
     ) -> Option<(f64, f64)> {
         let sg = ctx.subgraphs_by_id.get(id)?;
-        let title = ctx.model.subgraph_title_for_render(sg);
+        let subgraph_index = ctx.subgraph_index_by_id.get(id).copied()?;
+        let title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
         let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
@@ -2193,12 +2197,9 @@ fn layout_flowchart_with_model(
         } else {
             ctx.text_style
         };
-        let text_style = flowchart_effective_text_style_for_classes(
-            base_style,
-            ctx.class_defs,
-            &sg.classes,
-            &sg.styles,
-        );
+        let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
+        let text_style =
+            flowchart_effective_text_style_for_classes(base_style, ctx.class_defs, classes, styles);
         let owner = ctx
             .subgraph_index_by_id
             .get(id)
@@ -3296,18 +3297,26 @@ fn layout_flowchart_with_model(
             }
 
             let label_type = sg.label_type.as_deref().unwrap_or("text");
-            let title = ctx.model.subgraph_title_for_render(sg);
+            let subgraph_index = ctx
+                .subgraph_index_by_id
+                .get(frame.id.as_str())
+                .copied()
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("missing canonical subgraph index for {}", frame.id),
+                })?;
+            let title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
             let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
             let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
                 ctx.html_label_text_style
             } else {
                 ctx.text_style
             };
+            let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
             let text_style = flowchart_effective_text_style_for_classes(
                 base_style,
                 ctx.class_defs,
-                &sg.classes,
-                &sg.styles,
+                classes,
+                styles,
             );
             let owner = ctx
                 .subgraph_index_by_id
@@ -3391,6 +3400,7 @@ fn layout_flowchart_with_model(
     }
 
     struct ClusterTitleAdjustContext<'a> {
+        model: &'a FlowchartRenderModelRef<'a>,
         class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         subgraph_index_by_id: &'a HashMap<&'a str, usize>,
         measurer: &'a dyn TextMeasurer,
@@ -3407,6 +3417,7 @@ fn layout_flowchart_with_model(
 
     fn adjust_cluster_rect_for_title(
         mut rect: Rect,
+        declaration_ordinal: usize,
         sg: &FlowSubgraph,
         title: &str,
         label_type: &str,
@@ -3419,12 +3430,9 @@ fn layout_flowchart_with_model(
         } else {
             ctx.text_style
         };
-        let text_style = flowchart_effective_text_style_for_classes(
-            base_style,
-            ctx.class_defs,
-            &sg.classes,
-            &sg.styles,
-        );
+        let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
+        let text_style =
+            flowchart_effective_text_style_for_classes(base_style, ctx.class_defs, classes, styles);
         let owner = ctx
             .subgraph_index_by_id
             .get(sg.id.as_str())
@@ -3498,6 +3506,7 @@ fn layout_flowchart_with_model(
         visiting: &mut visiting,
     };
     let title_adjust_ctx = ClusterTitleAdjustContext {
+        model,
         class_defs: &model.class_defs,
         subgraph_index_by_id: &subgraph_index_by_id,
         measurer,
@@ -3516,7 +3525,7 @@ fn layout_flowchart_with_model(
         if !nonempty_subgraph_ids.contains(sg.id.as_str()) {
             continue;
         }
-        let title = model.subgraph_title_for_render(sg);
+        let title = model.subgraph_title_for_render(subgraph_index, sg);
 
         let (rect, base_width) = if extracted_graphs.contains_key(&sg.id) {
             // For extracted (recursive) clusters, match Mermaid's `updateNodeBounds(...)` intent by
@@ -3536,6 +3545,7 @@ fn layout_flowchart_with_model(
                 .unwrap_or_else(|| rect.width());
             let rect = adjust_cluster_rect_for_title(
                 rect,
+                subgraph_index,
                 sg,
                 title,
                 sg.label_type.as_deref().unwrap_or("text"),
@@ -3547,6 +3557,7 @@ fn layout_flowchart_with_model(
             let base_width = r.width();
             let rect = adjust_cluster_rect_for_title(
                 r,
+                subgraph_index,
                 sg,
                 title,
                 sg.label_type.as_deref().unwrap_or("text"),
@@ -3566,11 +3577,12 @@ fn layout_flowchart_with_model(
         } else {
             &text_style
         };
+        let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
         let title_text_style = flowchart_effective_text_style_for_classes(
             base_style,
             &model.class_defs,
-            &sg.classes,
-            &sg.styles,
+            classes,
+            styles,
         );
         let title_metrics = measure_flowchart_svg_label_for_layout(
             svg_label_sidecar,
@@ -3972,7 +3984,7 @@ mod tests {
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };
-        let labels = FlowchartRenderLabelSources::default();
+        let labels = FlowchartRenderContext::default();
         let builder = FlowchartSvgLabelSidecarBuilder::default();
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
@@ -4499,8 +4511,12 @@ mod tests {
             label_type: None,
             edge_type: None,
             arrow: "-->".to_string(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::Point,
             is_user_defined_id: false,
             stroke: None,
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
             interpolate: None,
             classes: Vec::new(),
             style: Vec::new(),

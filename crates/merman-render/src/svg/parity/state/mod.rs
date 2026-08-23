@@ -1,14 +1,9 @@
 use super::*;
 use rustc_hash::FxHashMap;
-use std::rc::Rc;
 mod context;
 mod edge;
 mod node;
 mod rough_cache;
-#[cfg(test)]
-mod rough_dispatch_tests;
-#[cfg(test)]
-mod rough_lifecycle_probe;
 pub(in crate::svg::parity) mod roughjs;
 mod style;
 mod viewport;
@@ -29,8 +24,6 @@ use context::*;
 use edge::*;
 use node::*;
 use rough_cache::*;
-#[cfg(test)]
-use rough_lifecycle_probe::*;
 use style::*;
 use viewport::*;
 
@@ -41,7 +34,7 @@ type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
 type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
 type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
 struct StateRenderCtx<'a> {
-    diagram_id: String,
+    diagram_id: SvgDiagramId<'a>,
     diagram_look: String,
     hand_drawn_seed: roughr::core::RoughRandomness,
     html_labels: bool,
@@ -65,10 +58,6 @@ struct StateRenderCtx<'a> {
     text_style: crate::text::TextStyle,
     theme_defaults: StateThemeDefaults,
     rough_cache: StateRoughCache,
-    // Keep this field after the operation cache. Rust drops fields in declaration order, so the
-    // test-only probe observes retained global/TLS state after operation-owned entries release.
-    #[cfg(test)]
-    rough_lifecycle_probe: StateRoughLifecycleOperationProbe,
 }
 
 mod render;

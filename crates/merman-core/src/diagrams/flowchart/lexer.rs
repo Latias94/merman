@@ -2,7 +2,8 @@ use super::{
     ArrowToken, ClickAction, ClickStmt, DirectionStatementToken, LabeledText, LexError, LinkToken,
     NodeLabelToken, SubgraphHeader, TitleKind, Tok,
     ast::{FlowchartClickEditorEvidence, FlowchartDirectiveEditorEvidence},
-    destruct_end_link, destruct_start_link, is_ecmascript_trim_char, lex, parse_label_text,
+    destruct_end_link, destruct_labeled_end_link, destruct_start_link, is_ecmascript_trim_char,
+    lex, parse_label_text,
 };
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, SourceSpan, editor::source_value_span,
@@ -1108,38 +1109,31 @@ impl<'input> Lexer<'input> {
 
         let compute_link =
             |end: String, start: Option<String>| -> std::result::Result<LinkToken, LexError> {
-                let (end_type, stroke, length) = destruct_end_link(&end);
-                let mut edge_type = end_type;
+                let end_semantics = if start.is_some() {
+                    destruct_labeled_end_link(&end)
+                } else {
+                    destruct_end_link(&end)
+                };
+                let mut start_marker = end_semantics.start_marker;
 
                 if let Some(start_str) = start.as_deref() {
-                    let (start_type, start_stroke) = destruct_start_link(start_str);
-                    if start_stroke != stroke.as_str() {
+                    let start_semantics = destruct_start_link(start_str);
+                    if start_semantics.stroke_kind != end_semantics.stroke_kind {
                         return Err(LexError::new(
                             "Invalid link: stroke mismatch between start and end".to_string(),
                         ));
                     }
 
-                    if start_type == "arrow_open" {
-                        edge_type = edge_type.clone();
-                    } else {
-                        if start_type != edge_type.as_str() {
-                            return Err(LexError::new(
-                                "Invalid link: start/end arrowhead mismatch".to_string(),
-                            ));
-                        }
-                        edge_type = format!("double_{start_type}");
-                    }
-
-                    if edge_type == "double_arrow" {
-                        edge_type = "double_arrow_point".to_string();
-                    }
+                    start_marker = start_semantics.marker;
                 }
 
                 Ok(LinkToken {
                     end,
-                    edge_type,
-                    stroke,
-                    length,
+                    start_marker,
+                    end_marker: end_semantics.end_marker,
+                    stroke_kind: end_semantics.stroke_kind,
+                    visibility: end_semantics.visibility,
+                    length: end_semantics.length,
                 })
             };
 

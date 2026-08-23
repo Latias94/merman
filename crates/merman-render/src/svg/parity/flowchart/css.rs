@@ -2,14 +2,60 @@
 
 use super::*;
 
-pub(in crate::svg::parity) fn flowchart_css(
-    diagram_id: &str,
+fn scope_flowchart_drop_shadow(
+    diagram_id: impl std::fmt::Display + Copy,
+    value: &str,
+    checkpoint: &dyn Fn() -> Result<()>,
+) -> Result<String> {
+    const SMALL: &str = "url(#drop-shadow-small)";
+    const REGULAR: &str = "url(#drop-shadow)";
+
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    loop {
+        let next = match (rest.find(SMALL), rest.find(REGULAR)) {
+            (Some(small), Some(regular)) if small <= regular => {
+                Some((small, SMALL.len(), "drop-shadow-small"))
+            }
+            (Some(_), Some(regular)) => Some((regular, REGULAR.len(), "drop-shadow")),
+            (Some(small), None) => Some((small, SMALL.len(), "drop-shadow-small")),
+            (None, Some(regular)) => Some((regular, REGULAR.len(), "drop-shadow")),
+            (None, None) => None,
+        };
+        let Some((index, matched_len, local_id)) = next else {
+            out.push_str(rest);
+            return Ok(out);
+        };
+        out.push_str(&rest[..index]);
+        let _ = write!(out, "url(#{diagram_id}-{local_id})");
+        checkpoint()?;
+        rest = &rest[index + matched_len..];
+    }
+}
+
+pub(in crate::svg::parity::flowchart) fn flowchart_css(
+    diagram_id: SvgDiagramId<'_>,
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
-    class_defs: &IndexMap<String, Vec<String>>,
+    emit: FlowchartEmitCheckpoint<'_>,
 ) -> Result<String> {
-    let id = escape_xml(diagram_id);
+    flowchart_css_for_id(
+        diagram_id,
+        effective_config,
+        font_family,
+        font_size,
+        &|| emit.checkpoint(),
+    )
+}
+
+fn flowchart_css_for_id(
+    diagram_id: impl std::fmt::Display + Copy,
+    effective_config: &serde_json::Value,
+    font_family: &str,
+    font_size: f64,
+    checkpoint: &dyn Fn() -> Result<()>,
+) -> Result<String> {
     let theme = PresentationTheme::new(effective_config).node_diagram();
     let stroke = theme.common.line_color.as_str();
     let arrowhead_color = theme.arrowhead_color.as_str();
@@ -30,161 +76,146 @@ pub(in crate::svg::parity) fn flowchart_css(
     let cluster_border = theme.cluster_border.as_str();
 
     let label_bkg = css_rgba_fade(edge_label_background, 0.5)?;
-    let scoped_drop_shadow = drop_shadow
-        .replace(
-            "url(#drop-shadow-small)",
-            &format!("url(#{id}-drop-shadow-small)"),
-        )
-        .replace("url(#drop-shadow)", &format!("url(#{id}-drop-shadow)"));
-
+    let id = diagram_id;
     let mut out = String::new();
     let _ = write!(
         &mut out,
         r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id.as_str(),
+        id,
         font_family,
         fmt(font_size),
         text_color
     );
+    checkpoint()?;
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
     );
     let _ = write!(
         &mut out,
         r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id.as_str(),
-        id.as_str()
+        id, id
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        id.as_str(),
-        error_bkg,
-        id.as_str(),
-        error_text,
-        error_text
+        id, error_bkg, id, error_text, error_text
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id.as_str(),
-        stroke_width,
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
-        id.as_str()
+        id, stroke_width, id, id, id, id, id
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        id.as_str(),
-        stroke,
-        stroke,
-        id.as_str(),
-        stroke
+        id, stroke, stroke, id, stroke
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};color:{};}}"#,
-        id.as_str(),
+        id,
         font_family,
         fmt(font_size),
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
         font_family,
         node_text_color
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span{{color:{};}}#{} .cluster-label span p{{background-color:transparent;}}#{} .label text,#{} span{{fill:{};color:{};}}"#,
-        id.as_str(),
-        title_color,
-        id.as_str(),
-        title_color,
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
-        node_text_color,
-        node_text_color
+        id, title_color, id, title_color, id, id, id, node_text_color, node_text_color
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{id} .node rect,#{id} .node circle,#{id} .node ellipse,#{id} .node polygon,#{id} .node path{{fill:{main_bkg};stroke:{node_border};stroke-width:{stroke_width}px;}}#{id} .rough-node .label text,#{id} .node .label text,#{id} .image-shape .label,#{id} .icon-shape .label{{text-anchor:middle;}}#{id} .node .katex path{{fill:#000;stroke:#000;stroke-width:1px;}}#{id} .rough-node .label,#{id} .node .label,#{id} .image-shape .label,#{id} .icon-shape .label{{text-align:center;}}#{id} .node.clickable{{cursor:pointer;}}"#
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePath .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
-        id.as_str(),
-        stroke,
-        stroke,
-        id.as_str(),
-        arrowhead_color,
-        id.as_str(),
-        stroke,
-        stroke_width,
-        id.as_str(),
-        stroke
+        id, stroke, stroke, id, arrowhead_color, id, stroke, stroke_width, id, stroke
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
-        id.as_str(),
+        id,
         edge_label_background,
-        id.as_str(),
+        id,
         edge_label_background,
-        id.as_str(),
+        id,
         edge_label_background,
         edge_label_background,
-        id.as_str(),
+        id,
         label_bkg
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}"#,
-        escape_xml(diagram_id),
+        diagram_id,
         cluster_bkg,
         cluster_border,
-        escape_xml(diagram_id),
+        diagram_id,
         title_color,
-        escape_xml(diagram_id),
+        diagram_id,
         title_color,
-        escape_xml(diagram_id),
+        diagram_id,
         font_family,
         tertiary,
         cluster_border,
-        escape_xml(diagram_id),
+        diagram_id,
         text_color,
-        escape_xml(diagram_id)
+        diagram_id
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
         edge_label_background,
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
         edge_label_background,
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
         edge_label_background,
         edge_label_background,
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
+        id,
         font_family
     );
+    checkpoint()?;
     if neo {
+        let scoped_drop_shadow = scope_flowchart_drop_shadow(diagram_id, drop_shadow, checkpoint)?;
         let _ = write!(
             &mut out,
             r#"#{id} .node[data-look="neo"] rect.basic.label-container{{rx:{radius}px;ry:{radius}px;}}#{id} .node[data-look="neo"] .label-container{{filter:{scoped_drop_shadow};stroke-linejoin:round;}}#{id} .flowchart-link[data-look="neo"]{{stroke-linecap:round;stroke-linejoin:round;}}#{id} .edgeLabel rect{{opacity:1;}}#{id} .labelBkg{{background-color:{edge_label_background};}}"#,
         );
+        checkpoint()?;
     }
 
-    // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
-    // - HTML labels: `.classDef > *` + `.classDef span`
-    // - SVG labels: `.classDef rect|polygon|ellipse|circle|path`
+    Ok(out)
+}
+
+// Writes the amplified class-definition component separately so callers can count and admit it
+// before materializing repeated selectors.
+pub(super) fn write_flowchart_class_defs_css<W: std::fmt::Write + ?Sized>(
+    out: &mut W,
+    diagram_id: impl std::fmt::Display + Copy,
+    effective_config: &serde_json::Value,
+    class_defs: &IndexMap<String, Vec<String>>,
+) -> std::fmt::Result {
+    // Mermaid chooses different selectors based on htmlLabels.
     let html_labels =
         crate::flowchart::FlowchartConfigView::new(effective_config).effective_html_labels();
     let shape_elements: &[&str] = &["rect", "polygon", "ellipse", "circle", "path"];
@@ -207,43 +238,33 @@ pub(in crate::svg::parity) fn flowchart_css(
         if style.is_empty() {
             continue;
         }
+        let escaped_class = escape_xml(class);
         if html_labels {
-            // Mermaid (via Stylis) ends up serializing the `>` combinator inside `<style>` as
-            // `&gt;` in the final SVG string (see upstream baselines).
-            let _ = write!(
-                &mut out,
+            write!(
+                out,
                 r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                id.as_str(),
-                escape_xml(class),
-                style,
-                id.as_str(),
-                escape_xml(class),
-                style
-            );
+                diagram_id, escaped_class, style, diagram_id, escaped_class, style
+            )?;
         } else {
             for css_element in shape_elements {
-                let _ = write!(
-                    &mut out,
+                write!(
+                    out,
                     r#"#{} .{} {}{{{}}}"#,
-                    id.as_str(),
-                    escape_xml(class),
-                    css_element,
-                    style
-                );
+                    diagram_id, escaped_class, css_element, style
+                )?;
             }
         }
         if let Some(c) = text_color.as_deref() {
-            let _ = write!(
-                &mut out,
+            write!(
+                out,
                 r#"#{} .{} tspan{{fill:{}!important;}}"#,
-                id.as_str(),
-                escape_xml(class),
+                diagram_id,
+                escaped_class,
                 escape_xml(c)
-            );
+            )?;
         }
     }
-
-    Ok(out)
+    Ok(())
 }
 
 #[inline]
@@ -298,7 +319,7 @@ mod tests {
 
     #[test]
     fn khroma_named_edge_label_background_preserves_channels() {
-        let css = flowchart_css(
+        let css = flowchart_css_for_id(
             "theme_named_color",
             &json!({
                 "themeVariables": {
@@ -307,7 +328,7 @@ mod tests {
             }),
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
-            &IndexMap::new(),
+            &|| Ok(()),
         )
         .expect("valid khroma color");
 
@@ -318,7 +339,7 @@ mod tests {
 
     #[test]
     fn unsupported_edge_label_background_returns_color_error() {
-        let error = flowchart_css(
+        let error = flowchart_css_for_id(
             "theme_unknown_color",
             &json!({
                 "themeVariables": {
@@ -327,7 +348,7 @@ mod tests {
             }),
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
-            &IndexMap::new(),
+            &|| Ok(()),
         )
         .expect_err("unsupported khroma color must fail");
 

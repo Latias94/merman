@@ -224,12 +224,13 @@
   },
   "asciiSupport": {
     "unsupported": "不支持",
-    "summary": "摘要",
+    "summary": "结构化文本",
+    "structuredText": "结构化文本",
     "summaryFallback": "复杂终端布局可能改用摘要输出。",
     "levels": {
       "full": "完整 ASCII",
       "partial": "部分 ASCII",
-      "summary": "摘要 ASCII",
+      "summary": "结构化文本",
       "unsupported": "不支持"
     }
   },
