@@ -47,6 +47,7 @@ void main() {
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
   rejectsInconsistentNativeErrorRelations();
+  acceptsFutureNativeCancellationPhases();
   rejectsMalformedNativeDiagnosticDetails();
   rejectsMismatchedNativeErrorSchema();
   preservesAllocationTokenExhaustionStatus();
@@ -1828,7 +1829,7 @@ void rejectsInconsistentNativeErrorRelations() {
     cancellationEnvelope(status: native.MERMAN_NATIVE_STATUS_PARSE_ERROR),
     cancellationEnvelope(statusName: 'parse-error'),
     cancellationEnvelope(reason: 'bogus'),
-    cancellationEnvelope(phase: 'future-phase'),
+    cancellationEnvelope(phase: 'future phase'),
     cancellationEnvelope(kind: 'missing-capability', capabilityId: 'svg'),
     cancellationEnvelope(kind: 'future-kind'),
   ];
@@ -1921,6 +1922,29 @@ void rejectsInconsistentNativeErrorRelations() {
       testCase.label,
     );
   }
+}
+
+void acceptsFutureNativeCancellationPhases() {
+  final payload = {
+    'version': native.MERMAN_NATIVE_RESULT_SCHEMA_VERSION,
+    'ok': false,
+    'status': native.MERMAN_NATIVE_STATUS_CANCELLED,
+    'status_name': 'cancelled',
+    'kind': 'generic',
+    'capability_id': null,
+    'details': {
+      'cancellation': {'reason': 'requested', 'phase': 'future-render-stage'},
+    },
+    'message': 'cancelled',
+  };
+  final error = MermanException.fromNative(
+    native.MERMAN_NATIVE_STATUS_CANCELLED,
+    Uint8List.fromList(utf8.encode(jsonEncode(payload))),
+  );
+  _expect(
+    error.cancellationDetails?.phase == 'future-render-stage',
+    'future cancellation phases must remain forward-compatible',
+  );
 }
 
 void rejectsMalformedNativeDiagnosticDetails() {

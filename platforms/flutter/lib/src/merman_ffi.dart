@@ -644,17 +644,7 @@ MermanIconRegistryErrorDetails? _parseIconRegistryErrorDetails(
 }
 
 const _nativeCancellationReasons = {'requested', 'deadline_exceeded'};
-const _nativeCancellationPhases = {
-  'admission',
-  'parse',
-  'semantic',
-  'analysis',
-  'layout',
-  'emit',
-  'postprocess',
-  'export',
-  'unknown',
-};
+final _nativeCancellationPhasePattern = RegExp(r'^[a-z][a-z0-9_-]{0,63}$');
 
 MermanCancellationErrorDetails? _parseCancellationErrorDetails(
   Map<Object?, Object?> cancellation,
@@ -664,7 +654,7 @@ MermanCancellationErrorDetails? _parseCancellationErrorDetails(
   if (reason is! String ||
       !_nativeCancellationReasons.contains(reason) ||
       phase is! String ||
-      !_nativeCancellationPhases.contains(phase)) {
+      !_nativeCancellationPhasePattern.hasMatch(phase)) {
     return null;
   }
   return MermanCancellationErrorDetails(reason: reason, phase: phase);

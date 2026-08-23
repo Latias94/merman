@@ -206,7 +206,29 @@ class MermanExceptionTest {
         listOf(
             """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"bogus","phase":"layout"}},"message":"operation cancelled"}""",
             """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"requested","phase":"unknown phase"}},"message":"operation cancelled"}""",
-            """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"requested","phase":"future_phase"}},"message":"operation cancelled"}""",
+            """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"requested","phase":"FuturePhase"}},"message":"operation cancelled"}""",
+        ).forEach(::assertInvalidNativeErrorPayload)
+    }
+
+    @Test
+    fun acceptsFutureCancellationPhaseIdentifiers() {
+        val error = MermanException(
+            """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"requested","phase":"future-render-stage"}},"message":"operation cancelled"}""",
+        )
+
+        assertEquals("future-render-stage", error.cancellationDetails?.phase)
+    }
+
+    @Test
+    fun rejectsCoercedNestedNativeFieldTypes() {
+        listOf(
+            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"cause":7,"limit_id":"max_source_bytes","phase":"source","actual":5,"max":4,"profile":"interactive"}},"message":"source exceeded"}""",
+            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"cause":"ceiling","limit_id":"max_source_bytes","phase":"source","actual":5.5,"max":4,"profile":"interactive"}},"message":"source exceeded"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":{"start":"3","end":4,"kind":"exact"},"field":null,"diagram_type":null}},"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":{"start":true,"end":4,"kind":"exact"},"field":null,"diagram_type":null}},"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":6,"code_name":"MERMAN_RENDER_ERROR","kind":"generic","capability_id":null,"details":{"icon_registry":{"kind_id":"invalid_xml","pack_index":"2","registration_name":null}},"message":"icon body is invalid"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":null,"field":7,"diagram_type":null}},"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":6,"code_name":"MERMAN_RENDER_ERROR","kind":"generic","capability_id":null,"details":{"icon_registry":{"kind_id":"invalid_xml","pack_index":null,"registration_name":7}},"message":"icon body is invalid"}""",
         ).forEach(::assertInvalidNativeErrorPayload)
     }
 
