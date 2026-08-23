@@ -1,12 +1,14 @@
 use std::collections::BTreeSet;
 
+use merman_render::__private::{SvgArtifactReceipt, SvgElementObservation};
+
+use super::super::artifact_observation::descendant_text;
 use super::*;
 
-pub(super) fn prove_native_role_text<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    svg: &str,
+pub(super) fn prove_native_role_text(
+    receipt: &SvgArtifactReceipt,
     root_id: &str,
-    surfaces: &SequenceSurfaces<'document, 'input>,
+    surfaces: &SequenceSurfaces<'_>,
     font_family: Option<&str>,
     message_text_count: usize,
     contract: SequenceProofContract<'_>,
@@ -14,11 +16,9 @@ pub(super) fn prove_native_role_text<'document, 'input>(
 ) -> C6ProofResult<()> {
     c6_ensure!(
         "sequence-svg-text",
-        document.descendants().any(|node| node.has_tag_name("text"))
-            && !document
-                .descendants()
-                .any(|node| node.has_tag_name("foreignObject"))
-            && !svg.contains("merman-prepared-"),
+        receipt.has_native_text()
+            && !receipt.has_foreign_object()
+            && !receipt.has_prepared_tokens(),
         "Brutalist Sequence did not retain terminal native SVG text"
     );
 
@@ -32,7 +32,7 @@ pub(super) fn prove_native_role_text<'document, 'input>(
     };
     if let Some(role_text) = role_text {
         prove_exact_role_text_surfaces(
-            document,
+            receipt,
             root_id,
             surfaces,
             contract,
@@ -46,15 +46,16 @@ pub(super) fn prove_native_role_text<'document, 'input>(
             ("noteText", 1),
             ("loopText", 1),
         ] {
-            let texts = document
-                .descendants()
-                .filter(|node| node.has_tag_name("text") && class_contains(*node, role))
+            let texts = receipt
+                .elements()
+                .iter()
+                .filter(|node| node.tag_name() == "text" && node.has_class(role))
                 .collect::<Vec<_>>();
             c6_ensure!(
                 "sequence-svg-font",
                 texts.len() >= minimum
                     && texts.iter().all(|node| {
-                        style_value(*node, "font-family")
+                        node.style_value("font-family")
                             .is_some_and(|actual| css_family_matches(actual, font_family))
                     }),
                 "Sequence requires at least {minimum} native `{role}` texts with `{font_family}`"
@@ -62,35 +63,44 @@ pub(super) fn prove_native_role_text<'document, 'input>(
         }
     }
 
-    let typed_font_styles = document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("style") && node.attribute("data-merman-typed-fonts") == Some("v1")
-        })
+    let typed_font_styles = receipt
+        .stylesheets()
+        .iter()
+        .filter(|stylesheet| stylesheet.typed_font_marker() && stylesheet.parse_valid())
         .collect::<Vec<_>>();
     c6_ensure!(
         "sequence-svg-font",
         typed_font_styles.len() == 1
-            && typed_font_styles[0].text().is_some_and(|css| {
-                css.contains("@font-face")
-                    && css.contains("data:font/")
-                    && css.contains(font_family)
+            && typed_font_styles[0].font_faces().iter().any(|font_face| {
+                let family = font_face
+                    .declarations()
+                    .iter()
+                    .find(|declaration| declaration.property() == "font-family")
+                    .map(|declaration| declaration.value());
+                let source = font_face
+                    .declarations()
+                    .iter()
+                    .find(|declaration| declaration.property() == "src")
+                    .map(|declaration| declaration.value());
+                family.is_some_and(|value| value.contains(font_family))
+                    && source.is_some_and(|value| value.contains("data:font/"))
             }),
         "Sequence standalone SVG lacks its sealed embedded `{font_family}` font face"
     );
     Ok(())
 }
 
-fn prove_exact_role_text_surfaces<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
+fn prove_exact_role_text_surfaces(
+    receipt: &SvgArtifactReceipt,
     root_id: &str,
-    surfaces: &SequenceSurfaces<'document, 'input>,
+    surfaces: &SequenceSurfaces<'_>,
     contract: SequenceProofContract<'_>,
     role_text: SequenceRoleTextProofContract<'_>,
     font_family: &str,
 ) -> C6ProofResult<()> {
-    let canvas = document
-        .descendants()
+    let canvas = receipt
+        .elements()
+        .iter()
         .filter(|node| node.attribute("data-merman-theme-canvas") == Some("base"))
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -107,21 +117,31 @@ fn prove_exact_role_text_surfaces<'document, 'input>(
     let loop_selector = format!(
         "#{root_id} .loopText,#{root_id} .loopText>tspan,#{root_id} .sectionTitle,#{root_id} .sectionTitle>tspan,#{root_id} .labelText,#{root_id} .labelText>tspan"
     );
-    require_exact_writer_declaration(document, &actor_selector, "fill", role_text.actor_text)?;
-    require_exact_writer_declaration(document, &message_selector, "fill", role_text.message_text)?;
-    require_exact_writer_declaration(document, &note_selector, "fill", role_text.note_text)?;
-    require_exact_writer_declaration(document, &loop_selector, "fill", role_text.loop_text)?;
-    require_exact_writer_declaration(
-        document,
+    super::require_exact_writer_declaration(
+        receipt,
+        &actor_selector,
+        "fill",
+        role_text.actor_text,
+    )?;
+    super::require_exact_writer_declaration(
+        receipt,
+        &message_selector,
+        "fill",
+        role_text.message_text,
+    )?;
+    super::require_exact_writer_declaration(receipt, &note_selector, "fill", role_text.note_text)?;
+    super::require_exact_writer_declaration(receipt, &loop_selector, "fill", role_text.loop_text)?;
+    super::require_exact_writer_declaration(
+        receipt,
         &format!("#{root_id} .labelBox"),
         "fill",
         role_text.loop_label_surface,
     )?;
 
-    prove_actor_text_occurrences(document, surfaces, role_text, font_family)?;
-    prove_message_text_occurrences(document, surfaces, role_text, font_family)?;
-    prove_note_text_occurrence(document, surfaces, role_text, font_family)?;
-    prove_loop_text_occurrences(document, role_text, font_family)?;
+    prove_actor_text_occurrences(receipt, surfaces, role_text, font_family)?;
+    prove_message_text_occurrences(receipt, surfaces, role_text, font_family)?;
+    prove_note_text_occurrence(receipt, surfaces, role_text, font_family)?;
+    prove_loop_text_occurrences(receipt, role_text, font_family)?;
 
     prove_role_contrast("actor-label", role_text.actor_text, contract.actor.fill)?;
     prove_role_contrast("message-label", role_text.message_text, role_text.canvas)?;
@@ -142,14 +162,15 @@ fn prove_exact_role_text_surfaces<'document, 'input>(
 }
 
 fn prove_actor_text_occurrences(
-    document: &roxmltree::Document<'_>,
-    surfaces: &SequenceSurfaces<'_, '_>,
+    receipt: &SvgArtifactReceipt,
+    surfaces: &SequenceSurfaces<'_>,
     role_text: SequenceRoleTextProofContract<'_>,
     font_family: &str,
 ) -> C6ProofResult<()> {
-    let all_texts = document
-        .descendants()
-        .filter(|node| node.has_tag_name("text") && class_contains(*node, "actor"))
+    let all_texts = receipt
+        .elements()
+        .iter()
+        .filter(|node| node.tag_name() == "text" && node.has_class("actor"))
         .count();
     c6_ensure!(
         "sequence-svg-text-role",
@@ -158,17 +179,20 @@ fn prove_actor_text_occurrences(
     );
     let mut occurrences = BTreeSet::new();
     for surface in &surfaces.actor_rects {
-        let owner = surface.parent().ok_or_else(|| {
-            C6ProofError::new(
-                "sequence-svg-text-surface",
-                "Sequence actor surface lacks its terminal occurrence wrapper",
-            )
-        })?;
-        let texts = owner
-            .descendants()
-            .filter(|node| node.has_tag_name("text") && class_contains(*node, "actor"))
+        let owner = surface
+            .parent_index()
+            .and_then(|index| receipt.element(index))
+            .ok_or_else(|| {
+                C6ProofError::new(
+                    "sequence-svg-text-surface",
+                    "Sequence actor surface lacks its terminal occurrence wrapper",
+                )
+            })?;
+        let texts = receipt
+            .descendants_of(owner.index())
+            .filter(|node| node.tag_name() == "text" && node.has_class("actor"))
             .collect::<Vec<_>>();
-        let position = if class_contains(*surface, "actor-top") {
+        let position = if surface.has_class("actor-top") {
             "top"
         } else {
             "bottom"
@@ -181,6 +205,7 @@ fn prove_actor_text_occurrences(
             "Sequence actor `{occurrence_id}` lacks one exact terminal text occurrence"
         );
         prove_role_text_node(
+            receipt,
             texts[0],
             "actor-label",
             &occurrence_id,
@@ -197,14 +222,15 @@ fn prove_actor_text_occurrences(
 }
 
 fn prove_message_text_occurrences(
-    document: &roxmltree::Document<'_>,
-    surfaces: &SequenceSurfaces<'_, '_>,
+    receipt: &SvgArtifactReceipt,
+    surfaces: &SequenceSurfaces<'_>,
     role_text: SequenceRoleTextProofContract<'_>,
     font_family: &str,
 ) -> C6ProofResult<()> {
-    let all_texts = document
-        .descendants()
-        .filter(|node| node.has_tag_name("text") && class_contains(*node, "messageText"))
+    let all_texts = receipt
+        .elements()
+        .iter()
+        .filter(|node| node.tag_name() == "text" && node.has_class("messageText"))
         .count();
     c6_ensure!(
         "sequence-svg-text-role",
@@ -214,7 +240,7 @@ fn prove_message_text_occurrences(
     let mut occurrences = BTreeSet::new();
     for line in &surfaces.message_lines {
         let occurrence_id = line.attribute("data-id").unwrap_or_default();
-        let text = previous_element_sibling(*line).ok_or_else(|| {
+        let text = previous_element_sibling(receipt, line).ok_or_else(|| {
             C6ProofError::new(
                 "sequence-svg-text-role",
                 format!("Sequence message `{occurrence_id}` lacks its adjacent terminal text"),
@@ -224,11 +250,12 @@ fn prove_message_text_occurrences(
             "sequence-svg-text-role",
             !occurrence_id.is_empty()
                 && occurrences.insert(occurrence_id.to_string())
-                && text.has_tag_name("text")
-                && class_contains(text, "messageText"),
+                && text.tag_name() == "text"
+                && text.has_class("messageText"),
             "Sequence message `{occurrence_id}` is not bound to one exact text occurrence"
         );
         prove_role_text_node(
+            receipt,
             text,
             "message-label",
             occurrence_id,
@@ -240,36 +267,38 @@ fn prove_message_text_occurrences(
 }
 
 fn prove_note_text_occurrence(
-    document: &roxmltree::Document<'_>,
-    surfaces: &SequenceSurfaces<'_, '_>,
+    receipt: &SvgArtifactReceipt,
+    surfaces: &SequenceSurfaces<'_>,
     role_text: SequenceRoleTextProofContract<'_>,
     font_family: &str,
 ) -> C6ProofResult<()> {
-    let notes = document
-        .descendants()
-        .filter(|node| node.has_tag_name("g") && node.attribute("data-et") == Some("note"))
+    let notes = receipt
+        .elements()
+        .iter()
+        .filter(|node| node.tag_name() == "g" && node.attribute("data-et") == Some("note"))
         .collect::<Vec<_>>();
     c6_ensure!(
         "sequence-svg-text-role",
         notes.len() == 1
-            && notes[0]
-                .descendants()
-                .filter(|node| node.has_tag_name("rect") && class_contains(*node, "note"))
+            && receipt
+                .descendants_of(notes[0].index())
+                .filter(|node| node.tag_name() == "rect" && node.has_class("note"))
                 .count()
                 == 1,
         "Sequence note requires one exact text/surface occurrence"
     );
-    let texts = notes[0]
-        .descendants()
-        .filter(|node| node.has_tag_name("text") && class_contains(*node, "noteText"))
+    let texts = receipt
+        .descendants_of(notes[0].index())
+        .filter(|node| node.tag_name() == "text" && node.has_class("noteText"))
         .collect::<Vec<_>>();
     let occurrence_id = notes[0].attribute("data-id").unwrap_or_default();
     c6_ensure!(
         "sequence-svg-text-role",
-        !occurrence_id.is_empty() && texts.len() == 1 && class_contains(surfaces.note, "note"),
+        !occurrence_id.is_empty() && texts.len() == 1 && surfaces.note.has_class("note"),
         "Sequence note `{occurrence_id}` lacks one exact terminal text occurrence"
     );
     prove_role_text_node(
+        receipt,
         texts[0],
         "note-label",
         occurrence_id,
@@ -279,14 +308,15 @@ fn prove_note_text_occurrence(
 }
 
 fn prove_loop_text_occurrences(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     role_text: SequenceRoleTextProofContract<'_>,
     font_family: &str,
 ) -> C6ProofResult<()> {
-    let loops = document
-        .descendants()
+    let loops = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("g") && node.attribute("data-et") == Some("control-structure")
+            node.tag_name() == "g" && node.attribute("data-et") == Some("control-structure")
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -295,21 +325,21 @@ fn prove_loop_text_occurrences(
         "Sequence fixture requires one exact loop occurrence"
     );
     let loop_id = loops[0].attribute("data-id").unwrap_or_default();
-    let label_boxes = loops[0]
-        .descendants()
-        .filter(|node| class_contains(*node, "labelBox"))
+    let label_boxes = receipt
+        .descendants_of(loops[0].index())
+        .filter(|node| node.has_class("labelBox"))
         .collect::<Vec<_>>();
-    let label_texts = loops[0]
-        .descendants()
-        .filter(|node| node.has_tag_name("text") && class_contains(*node, "labelText"))
+    let label_texts = receipt
+        .descendants_of(loops[0].index())
+        .filter(|node| node.tag_name() == "text" && node.has_class("labelText"))
         .collect::<Vec<_>>();
-    let body_texts = loops[0]
-        .descendants()
-        .filter(|node| node.has_tag_name("text") && class_contains(*node, "loopText"))
+    let body_texts = receipt
+        .descendants_of(loops[0].index())
+        .filter(|node| node.tag_name() == "text" && node.has_class("loopText"))
         .collect::<Vec<_>>();
-    let section_titles = loops[0]
-        .descendants()
-        .filter(|node| node.has_tag_name("text") && class_contains(*node, "sectionTitle"))
+    let section_titles = receipt
+        .descendants_of(loops[0].index())
+        .filter(|node| node.tag_name() == "text" && node.has_class("sectionTitle"))
         .count();
     c6_ensure!(
         "sequence-svg-text-role",
@@ -321,6 +351,7 @@ fn prove_loop_text_occurrences(
         "Sequence loop `{loop_id}` text/surface roles differ from the fixed fixture"
     );
     prove_role_text_node(
+        receipt,
         label_texts[0],
         "loop-label",
         &format!("{loop_id}:label"),
@@ -328,6 +359,7 @@ fn prove_loop_text_occurrences(
         font_family,
     )?;
     prove_role_text_node(
+        receipt,
         body_texts[0],
         "loop-label",
         &format!("{loop_id}:body"),
@@ -337,7 +369,8 @@ fn prove_loop_text_occurrences(
 }
 
 fn prove_role_text_node(
-    node: roxmltree::Node<'_, '_>,
+    receipt: &SvgArtifactReceipt,
+    node: &SvgElementObservation,
     role: &str,
     occurrence_id: &str,
     expected_fill: &str,
@@ -350,7 +383,7 @@ fn prove_role_text_node(
     );
     c6_ensure!(
         "sequence-svg-font",
-        style_value(node, "font-family")
+        node.style_value("font-family")
             .is_some_and(|actual| css_family_matches(actual, font_family)),
         "Sequence `{role}/{occurrence_id}` lacks terminal `{font_family}` typography"
     );
@@ -358,8 +391,9 @@ fn prove_role_text_node(
         "sequence-svg-text-paint",
         std::iter::once(node)
             .chain(
-                node.descendants()
-                    .filter(|descendant| descendant.has_tag_name("tspan")),
+                receipt
+                    .descendants_of(node.index())
+                    .filter(|descendant| descendant.tag_name() == "tspan"),
             )
             .filter_map(terminal_node_fill)
             .all(|fill| fill == expected_fill),
@@ -368,40 +402,22 @@ fn prove_role_text_node(
     Ok(())
 }
 
-fn require_exact_writer_declaration(
-    document: &roxmltree::Document<'_>,
-    selector: &str,
-    property: &str,
-    expected: &str,
-) -> C6ProofResult<()> {
-    let selector_marker = format!("{selector}{{");
-    let declaration = format!("{property}:{expected};");
-    let count = document
-        .descendants()
-        .filter(|node| node.has_tag_name("style"))
-        .filter_map(|node| node.text())
-        .map(|css| exact_writer_property_count(css, &selector_marker, &declaration))
-        .sum::<usize>();
-    c6_ensure!(
-        "sequence-svg-text-paint",
-        count == 1,
-        "Sequence production writer property `{selector}` `{declaration}` must occur exactly once, found {count}"
-    );
-    Ok(())
+fn previous_element_sibling<'a>(
+    receipt: &'a SvgArtifactReceipt,
+    node: &SvgElementObservation,
+) -> Option<&'a SvgElementObservation> {
+    let parent = node.parent_index()?;
+    receipt
+        .elements()
+        .iter()
+        .filter(|candidate| {
+            candidate.parent_index() == Some(parent) && candidate.index() < node.index()
+        })
+        .next_back()
 }
 
-fn exact_writer_property_count(css: &str, selector_marker: &str, declaration: &str) -> usize {
-    let mut remaining = css;
-    let mut count = 0usize;
-    while let Some(rule_start) = remaining.find(selector_marker) {
-        let body = &remaining[rule_start + selector_marker.len()..];
-        let Some(rule_end) = body.find('}') else {
-            break;
-        };
-        count = count.saturating_add(body[..rule_end].match_indices(declaration).count());
-        remaining = &body[rule_end + 1..];
-    }
-    count
+fn terminal_node_fill(node: &SvgElementObservation) -> Option<&str> {
+    node.style_value("fill").or_else(|| node.attribute("fill"))
 }
 
 fn css_family_matches(actual: &str, expected: &str) -> bool {
@@ -411,31 +427,6 @@ fn css_family_matches(actual: &str, expected: &str) -> bool {
         .map(str::trim)
         .map(|family| family.trim_matches(['\'', '"']))
         == Some(expected)
-}
-
-fn previous_element_sibling<'document, 'input>(
-    mut node: roxmltree::Node<'document, 'input>,
-) -> Option<roxmltree::Node<'document, 'input>> {
-    while let Some(previous) = node.prev_sibling() {
-        if previous.is_element() {
-            return Some(previous);
-        }
-        node = previous;
-    }
-    None
-}
-
-fn terminal_node_fill<'a>(node: roxmltree::Node<'a, '_>) -> Option<&'a str> {
-    style_value(node, "fill").or_else(|| node.attribute("fill"))
-}
-
-fn descendant_text(node: roxmltree::Node<'_, '_>) -> String {
-    node.descendants()
-        .filter(|descendant| descendant.is_text())
-        .filter_map(|descendant| descendant.text())
-        .collect::<String>()
-        .trim()
-        .to_string()
 }
 
 fn prove_role_contrast(role: &str, foreground: &str, background: &str) -> C6ProofResult<()> {

@@ -136,6 +136,7 @@ pub mod __theme_acceptance {
     pub struct TargetArtifactView<'a> {
         bytes: &'a [u8],
         receipt: &'a crate::TargetAdmissionReceipt,
+        svg_artifact_receipt: Option<&'a merman_render::__private::SvgArtifactReceipt>,
         flowchart_svg_artifact_receipt:
             Option<&'a merman_render::__private::FlowchartSvgArtifactReceipt>,
     }
@@ -145,6 +146,7 @@ pub mod __theme_acceptance {
             Self {
                 bytes: document.svg().as_bytes(),
                 receipt: document.standalone_svg_admission(),
+                svg_artifact_receipt: document.svg_artifact_receipt(),
                 flowchart_svg_artifact_receipt: document.flowchart_svg_artifact_receipt(),
             }
         }
@@ -154,6 +156,7 @@ pub mod __theme_acceptance {
             Self {
                 bytes: output.bytes(),
                 receipt: output.admission(),
+                svg_artifact_receipt: None,
                 flowchart_svg_artifact_receipt: None,
             }
         }
@@ -163,6 +166,7 @@ pub mod __theme_acceptance {
             Self {
                 bytes: output.bytes(),
                 receipt: output.admission(),
+                svg_artifact_receipt: None,
                 flowchart_svg_artifact_receipt: None,
             }
         }
@@ -181,8 +185,14 @@ pub mod __theme_acceptance {
             self.flowchart_svg_artifact_receipt
         }
 
+        pub const fn svg_artifact_receipt(
+            self,
+        ) -> Option<&'a merman_render::__private::SvgArtifactReceipt> {
+            self.svg_artifact_receipt
+        }
+
         pub const fn renderer_receipt_digest(self) -> [u8; 32] {
-            match self.flowchart_svg_artifact_receipt {
+            match self.svg_artifact_receipt {
                 Some(receipt) => receipt.digest(),
                 None => self.receipt.receipt_digest(),
             }

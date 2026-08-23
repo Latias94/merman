@@ -42,6 +42,8 @@ pub struct RenderedDocument {
     #[cfg(feature = "internal-theme-acceptance")]
     theme_route_cutover_receipts: Box<[merman_render::__private::ThemeRouteCutoverReceipt]>,
     #[cfg(feature = "internal-theme-acceptance")]
+    svg_artifact_receipt: Option<merman_render::__private::SvgArtifactReceipt>,
+    #[cfg(feature = "internal-theme-acceptance")]
     flowchart_svg_artifact_receipt: Option<merman_render::__private::FlowchartSvgArtifactReceipt>,
 }
 
@@ -150,6 +152,11 @@ impl RenderedDocument {
             merman_render::__private::seal_theme_route_cutover_receipts(&family, public_svg_digest)
                 .into_boxed_slice();
         #[cfg(feature = "internal-theme-acceptance")]
+        let svg_artifact_receipt = merman_render::__private::SvgArtifactReceipt::observe_svg(
+            svg.as_str(),
+            public_svg_digest,
+        );
+        #[cfg(feature = "internal-theme-acceptance")]
         let flowchart_svg_artifact_receipt =
             merman_render::__private::FlowchartSvgArtifactReceipt::observe_svg(
                 svg.as_str(),
@@ -184,6 +191,8 @@ impl RenderedDocument {
             standalone_svg_admission,
             #[cfg(feature = "internal-theme-acceptance")]
             theme_route_cutover_receipts,
+            #[cfg(feature = "internal-theme-acceptance")]
+            svg_artifact_receipt,
             #[cfg(feature = "internal-theme-acceptance")]
             flowchart_svg_artifact_receipt,
         }
@@ -235,6 +244,13 @@ impl RenderedDocument {
         &self,
     ) -> &[merman_render::__private::ThemeRouteCutoverReceipt] {
         &self.theme_route_cutover_receipts
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fn svg_artifact_receipt(
+        &self,
+    ) -> Option<&merman_render::__private::SvgArtifactReceipt> {
+        self.svg_artifact_receipt.as_ref()
     }
 
     #[cfg(feature = "internal-theme-acceptance")]

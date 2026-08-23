@@ -1,14 +1,17 @@
 use std::collections::BTreeMap;
 
 use merman_export::RasterPlan;
+use merman_render::__private::{SvgArtifactReceipt, SvgElementObservation};
 use merman_theme_fixtures::ReferenceThemeMechanism;
+#[cfg(test)]
+use sha2::Digest as _;
 
 use crate::observation::C6ObservedMechanismDisposition;
 
 use super::{
     BrutalistSequenceFixtureContract, C6BoundTargetProof, C6ProofError, C6ProofResult,
-    C6RasterImage, C6TargetArtifact, class_contains, decode_bounded_png_artifact, parse_c6_hex_rgb,
-    parse_c6_svg_view_box, style_value,
+    C6RasterImage, C6TargetArtifact, artifact_observation::sealed_svg_receipt,
+    decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
 #[path = "c6_sequence_proof/role_text.rs"]
@@ -167,9 +170,11 @@ fn prove_sequence_svg_internal(
     artifact: C6TargetArtifact<'_>,
 ) -> C6ProofResult<SequenceSvgProof> {
     let mechanisms = applied_mechanisms(cell_mechanisms);
-    let (geometry, target_proof) =
-        artifact.check_with(semantic_assertion_id, mechanisms.clone(), |bytes| {
-            check_sequence_svg_internal(contract, role_text, bytes)
+    let receipt = sealed_svg_receipt(&artifact)?;
+    let geometry = check_sequence_svg_internal(contract, role_text, receipt)?;
+    let (_, target_proof) =
+        artifact.check_with(semantic_assertion_id, mechanisms.clone(), |_| {
+            Ok::<(), C6ProofError>(())
         })?;
     Ok(SequenceSvgProof {
         mechanisms,
@@ -195,7 +200,13 @@ fn check_sequence_svg(
     contract: SequenceProofContract<'_>,
     bytes: &[u8],
 ) -> C6ProofResult<SequenceSvgGeometry> {
-    check_sequence_svg_internal(contract, None, bytes)
+    let svg = std::str::from_utf8(bytes)
+        .map_err(|error| C6ProofError::new("sequence-svg-utf8", error.to_string()))?;
+    let digest = sha2::Sha256::digest(svg.as_bytes()).into();
+    let receipt = SvgArtifactReceipt::observe_svg(svg, digest).ok_or_else(|| {
+        C6ProofError::new("sequence-svg-observation", "test SVG was not observed")
+    })?;
+    check_sequence_svg_internal(contract, None, &receipt)
 }
 
 #[cfg(test)]
@@ -204,31 +215,29 @@ fn check_sequence_svg_with_role_text(
     role_text: SequenceRoleTextProofContract<'_>,
     bytes: &[u8],
 ) -> C6ProofResult<SequenceSvgGeometry> {
-    check_sequence_svg_internal(contract, Some(role_text), bytes)
+    let svg = std::str::from_utf8(bytes)
+        .map_err(|error| C6ProofError::new("sequence-svg-utf8", error.to_string()))?;
+    let digest = sha2::Sha256::digest(svg.as_bytes()).into();
+    let receipt = SvgArtifactReceipt::observe_svg(svg, digest).ok_or_else(|| {
+        C6ProofError::new("sequence-svg-observation", "test SVG was not observed")
+    })?;
+    check_sequence_svg_internal(contract, Some(role_text), &receipt)
 }
 
 fn check_sequence_svg_internal(
     contract: SequenceProofContract<'_>,
     role_text: Option<SequenceRoleTextProofContract<'_>>,
-    bytes: &[u8],
+    receipt: &SvgArtifactReceipt,
 ) -> C6ProofResult<SequenceSvgGeometry> {
-    let svg = std::str::from_utf8(bytes)
-        .map_err(|error| C6ProofError::new("sequence-svg-utf8", error.to_string()))?;
-    let document = roxmltree::Document::parse(svg)
-        .map_err(|error| C6ProofError::new("sequence-svg-parse", error.to_string()))?;
-    let root = document.root_element();
-    let root_id = root
-        .attribute("id")
+    let root_id = receipt
+        .root_id()
         .ok_or_else(|| C6ProofError::new("sequence-svg-root", "Sequence SVG root lacks an id"))?;
-    let view_box = parse_c6_svg_view_box(root.attribute("viewBox").ok_or_else(|| {
-        C6ProofError::new("sequence-svg-root", "Sequence SVG root lacks a viewBox")
-    })?)?;
+    let view_box = receipt.view_box();
 
-    prove_terminal_styles(&document, root_id, contract)?;
-    let surfaces = prove_terminal_surfaces(&document, contract)?;
+    prove_terminal_styles(receipt, root_id, contract)?;
+    let surfaces = prove_terminal_surfaces(receipt, contract)?;
     role_text::prove_native_role_text(
-        &document,
-        svg,
+        receipt,
         root_id,
         &surfaces,
         contract.font_family,
@@ -253,25 +262,25 @@ fn check_sequence_svg_internal(
 }
 
 fn prove_terminal_styles(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     root_id: &str,
     contract: SequenceProofContract<'_>,
 ) -> C6ProofResult<()> {
     let actor_selector = format!("#{root_id} .actor");
-    require_stylesheet_property(document, &actor_selector, "fill", contract.actor.fill)?;
-    require_stylesheet_property(document, &actor_selector, "stroke", contract.actor.stroke)?;
+    require_stylesheet_property(receipt, &actor_selector, "fill", contract.actor.fill)?;
+    require_stylesheet_property(receipt, &actor_selector, "stroke", contract.actor.stroke)?;
 
     if let Some(lifeline) = contract.lifeline {
         let selector = format!("#{root_id} .actor-line");
-        require_stylesheet_property(document, &selector, "stroke", lifeline.stroke)?;
+        require_stylesheet_property(receipt, &selector, "stroke", lifeline.stroke)?;
         if let Some(width_px) = lifeline.width_px {
-            require_stylesheet_number(document, &selector, "stroke-width", width_px)?;
+            require_stylesheet_number(receipt, &selector, "stroke-width", width_px)?;
         }
     }
 
     let message_selector = format!("#{root_id} .messageLine0,#{root_id} .messageLine1");
     require_stylesheet_property(
-        document,
+        receipt,
         &message_selector,
         "stroke",
         contract.message_stroke,
@@ -279,37 +288,38 @@ fn prove_terminal_styles(
 
     if let Some(note) = contract.note {
         let selector = format!("#{root_id} .note");
-        require_stylesheet_property(document, &selector, "fill", note.fill)?;
-        require_stylesheet_property(document, &selector, "stroke", note.stroke)?;
+        require_stylesheet_property(receipt, &selector, "fill", note.fill)?;
+        require_stylesheet_property(receipt, &selector, "stroke", note.stroke)?;
     }
 
     if let Some(activation) = contract.activation {
         let selector =
             format!("#{root_id} .activation0,#{root_id} .activation1,#{root_id} .activation2");
-        require_stylesheet_property(document, &selector, "fill", activation.fill)?;
-        require_stylesheet_property(document, &selector, "stroke", activation.stroke)?;
+        require_stylesheet_property(receipt, &selector, "fill", activation.fill)?;
+        require_stylesheet_property(receipt, &selector, "stroke", activation.stroke)?;
     }
 
     Ok(())
 }
 
-struct SequenceSurfaces<'document, 'input> {
-    actor_rects: Vec<roxmltree::Node<'document, 'input>>,
-    lifelines: Vec<roxmltree::Node<'document, 'input>>,
-    note: roxmltree::Node<'document, 'input>,
-    message_lines: Vec<roxmltree::Node<'document, 'input>>,
+struct SequenceSurfaces<'a> {
+    actor_rects: Vec<&'a SvgElementObservation>,
+    lifelines: Vec<&'a SvgElementObservation>,
+    note: &'a SvgElementObservation,
+    message_lines: Vec<&'a SvgElementObservation>,
 }
 
-fn prove_terminal_surfaces<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
+fn prove_terminal_surfaces<'a>(
+    receipt: &'a SvgArtifactReceipt,
     contract: SequenceProofContract<'_>,
-) -> C6ProofResult<SequenceSurfaces<'document, 'input>> {
-    let actor_rects = document
-        .descendants()
+) -> C6ProofResult<SequenceSurfaces<'a>> {
+    let actor_rects = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("rect")
-                && class_contains(*node, "actor")
-                && (class_contains(*node, "actor-top") || class_contains(*node, "actor-bottom"))
+            node.tag_name() == "rect"
+                && node.has_class("actor")
+                && (node.has_class("actor-top") || node.has_class("actor-bottom"))
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -322,21 +332,20 @@ fn prove_terminal_surfaces<'document, 'input>(
     if contract.require_actor_man {
         c6_ensure!(
             "sequence-svg-actors",
-            document.descendants().any(|node| {
-                (node.has_tag_name("circle") || node.has_tag_name("line"))
-                    && node
-                        .ancestors()
-                        .any(|ancestor| class_contains(ancestor, "actor-man"))
+            receipt.elements().iter().any(|node| {
+                (node.tag_name() == "circle" || node.tag_name() == "line")
+                    && super::artifact_observation::has_ancestor_class(receipt, node, "actor-man")
             }),
             "Sequence actor source did not retain an actor-man terminal surface"
         );
     }
 
-    let lifelines = document
-        .descendants()
+    let lifelines = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("line")
-                && class_contains(*node, "actor-line")
+            node.tag_name() == "line"
+                && node.has_class("actor-line")
                 && node.attribute("data-et") == Some("life-line")
         })
         .collect::<Vec<_>>();
@@ -349,9 +358,10 @@ fn prove_terminal_surfaces<'document, 'input>(
         );
     }
 
-    let notes = document
-        .descendants()
-        .filter(|node| node.has_tag_name("rect") && class_contains(*node, "note"))
+    let notes = receipt
+        .elements()
+        .iter()
+        .filter(|node| node.tag_name() == "rect" && node.has_class("note"))
         .collect::<Vec<_>>();
     c6_ensure!(
         "sequence-svg-note",
@@ -359,13 +369,14 @@ fn prove_terminal_surfaces<'document, 'input>(
         "Brutalist Sequence requires one terminal note rect; got {}",
         notes.len()
     );
-    let activations = document
-        .descendants()
+    let activations = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("rect")
+            node.tag_name() == "rect"
                 && ["activation0", "activation1", "activation2"]
                     .into_iter()
-                    .any(|class| class_contains(*node, class))
+                    .any(|class| node.has_class(class))
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -375,12 +386,13 @@ fn prove_terminal_surfaces<'document, 'input>(
         activations.len()
     );
 
-    let message_lines = document
-        .descendants()
+    let message_lines = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("line")
+            node.tag_name() == "line"
                 && node.attribute("data-et") == Some("message")
-                && (class_contains(*node, "messageLine0") || class_contains(*node, "messageLine1"))
+                && (node.has_class("messageLine0") || node.has_class("messageLine1"))
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -388,12 +400,12 @@ fn prove_terminal_surfaces<'document, 'input>(
         message_lines.len() == contract.message_line_counts.iter().sum::<usize>()
             && message_lines
                 .iter()
-                .filter(|node| class_contains(**node, "messageLine0"))
+                .filter(|node| node.has_class("messageLine0"))
                 .count()
                 == contract.message_line_counts[0]
             && message_lines
                 .iter()
-                .filter(|node| class_contains(**node, "messageLine1"))
+                .filter(|node| node.has_class("messageLine1"))
                 .count()
                 == contract.message_line_counts[1],
         "Sequence terminal message-line counts differ from {:?}",
@@ -529,12 +541,12 @@ fn applied_mechanisms(
 }
 
 fn require_stylesheet_property(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     selector: &str,
     property: &str,
     expected: &str,
 ) -> C6ProofResult<()> {
-    let actual = exact_writer_stylesheet_property(document, selector, property)?;
+    let actual = exact_writer_stylesheet_property(receipt, selector, property)?;
     c6_ensure!(
         "sequence-svg-stylesheet",
         actual == expected,
@@ -544,12 +556,12 @@ fn require_stylesheet_property(
 }
 
 fn require_stylesheet_number(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     selector: &str,
     property: &str,
     expected: f64,
 ) -> C6ProofResult<()> {
-    let value = exact_writer_stylesheet_property(document, selector, property)?;
+    let value = exact_writer_stylesheet_property(receipt, selector, property)?;
     let actual = value
         .strip_suffix("px")
         .unwrap_or(value)
@@ -563,16 +575,30 @@ fn require_stylesheet_number(
     Ok(())
 }
 
-fn exact_writer_stylesheet_property<'input>(
-    document: &'input roxmltree::Document<'input>,
+fn require_exact_writer_declaration(
+    receipt: &SvgArtifactReceipt,
     selector: &str,
     property: &str,
-) -> C6ProofResult<&'input str> {
-    let values = document
-        .descendants()
-        .filter(|node| node.has_tag_name("style"))
-        .filter_map(|node| node.text())
-        .flat_map(|css| exact_writer_css_properties(css, selector, property))
+    expected: &str,
+) -> C6ProofResult<()> {
+    require_stylesheet_property(receipt, selector, property, expected)
+}
+
+fn exact_writer_stylesheet_property<'a>(
+    receipt: &'a SvgArtifactReceipt,
+    selector: &str,
+    property: &str,
+) -> C6ProofResult<&'a str> {
+    let values = receipt
+        .stylesheets()
+        .iter()
+        .filter(|stylesheet| stylesheet.parse_valid())
+        .flat_map(|stylesheet| stylesheet.rules())
+        .filter(|rule| rule.selector() == selector)
+        .filter_map(|rule| {
+            rule.declaration(property)
+                .map(|declaration| declaration.value())
+        })
         .collect::<Vec<_>>();
     c6_ensure!(
         "sequence-svg-stylesheet",
@@ -583,44 +609,7 @@ fn exact_writer_stylesheet_property<'input>(
     Ok(values[0])
 }
 
-fn exact_writer_css_properties<'a>(css: &'a str, selector: &str, property: &str) -> Vec<&'a str> {
-    let marker = format!("{selector}{{");
-    let mut cursor = 0;
-    let mut values = Vec::new();
-    while let Some(relative_start) = css
-        .get(cursor..)
-        .and_then(|remaining| remaining.find(&marker))
-    {
-        let Some(body_start) = cursor
-            .checked_add(relative_start)
-            .and_then(|start| start.checked_add(marker.len()))
-        else {
-            break;
-        };
-        let Some(relative_end) = css
-            .get(body_start..)
-            .and_then(|remaining| remaining.find('}'))
-        else {
-            break;
-        };
-        let Some(body_end) = body_start.checked_add(relative_end) else {
-            break;
-        };
-        if let Some(body) = css.get(body_start..body_end) {
-            values.extend(body.split(';').filter_map(|declaration| {
-                let (name, value) = declaration.split_once(':')?;
-                (name.trim() == property).then(|| value.trim())
-            }));
-        }
-        let Some(next_cursor) = body_end.checked_add(1) else {
-            break;
-        };
-        cursor = next_cursor;
-    }
-    values
-}
-
-fn corner_fill_region(node: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> {
+fn corner_fill_region(node: &SvgElementObservation) -> C6ProofResult<[f64; 4]> {
     let [x, y, width, height] = rect_geometry(node)?;
     let inset = 4.0;
     let available_width = width - inset * 2.0;
@@ -638,7 +627,7 @@ fn corner_fill_region(node: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> 
     ])
 }
 
-fn rect_geometry(node: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> {
+fn rect_geometry(node: &SvgElementObservation) -> C6ProofResult<[f64; 4]> {
     let [x, y, width, height] =
         ["x", "y", "width", "height"].map(|name| numeric_attribute(node, name));
     let geometry = [x?, y?, width?, height?];
@@ -650,7 +639,7 @@ fn rect_geometry(node: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> {
     Ok(geometry)
 }
 
-fn middle_line_region(line: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> {
+fn middle_line_region(line: &SvgElementObservation) -> C6ProofResult<[f64; 4]> {
     let x1 = numeric_attribute(line, "x1")?;
     let y1 = numeric_attribute(line, "y1")?;
     let x2 = numeric_attribute(line, "x2")?;
@@ -664,7 +653,7 @@ fn middle_line_region(line: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> 
     Ok([x1.min(x2) + width * 0.3, y1 - 2.0, width * 0.4, 4.0])
 }
 
-fn vertical_line_region(line: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> {
+fn vertical_line_region(line: &SvgElementObservation) -> C6ProofResult<[f64; 4]> {
     let x1 = numeric_attribute(line, "x1")?;
     let y1 = numeric_attribute(line, "y1")?;
     let x2 = numeric_attribute(line, "x2")?;
@@ -679,12 +668,10 @@ fn vertical_line_region(line: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]
     Ok([x1 - 2.0, y1.min(y2) + height * 0.05, 4.0, height * 0.15])
 }
 
-fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> C6ProofResult<f64> {
+fn numeric_attribute(node: &SvgElementObservation, name: &str) -> C6ProofResult<f64> {
     let value = node
-        .attribute(name)
-        .ok_or_else(|| C6ProofError::new("sequence-svg-roi", format!("missing {name}")))?
-        .parse::<f64>()
-        .map_err(|error| C6ProofError::new("sequence-svg-roi", error.to_string()))?;
+        .numeric_attribute(name)
+        .ok_or_else(|| C6ProofError::new("sequence-svg-roi", format!("missing {name}")))?;
     c6_ensure!(
         "sequence-svg-roi",
         value.is_finite(),

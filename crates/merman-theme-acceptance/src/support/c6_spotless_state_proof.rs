@@ -1,14 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use merman_export::RasterPlan;
+use merman_render::__private::{SvgArtifactReceipt, SvgElementObservation};
 use merman_theme_fixtures::ReferenceThemeMechanism;
 
 use crate::observation::C6ObservedMechanismDisposition;
 
 use super::{
     C6BoundTargetProof, C6ProofError, C6ProofResult, C6RasterImage, C6TargetArtifact,
-    class_contains, decode_bounded_png_artifact, parse_c6_hex_rgb, parse_c6_svg_view_box,
-    style_value,
+    artifact_observation::{
+        approx_eq, descendant_text, local_fragment_id, percent_value, sealed_svg_receipt,
+        subtree_style_contains, subtree_style_number, subtree_style_value,
+    },
+    decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
 const STATE_LABELS: [(&str, &str); 4] = [
@@ -72,10 +76,12 @@ pub(crate) fn prove_spotless_state_svg(
             .into_iter()
             .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
             .collect();
-    let ((view_box, overlay_regions), target_proof) = artifact.check_with(
+    let receipt = sealed_svg_receipt(&artifact)?;
+    let (view_box, overlay_regions) = check_spotless_state_receipt(contract, receipt)?;
+    let (_, target_proof) = artifact.check_with(
         "spotless-state-standalone-svg-v1",
         mechanisms.clone(),
-        |bytes| check_spotless_state_svg(contract, bytes),
+        |_| Ok::<(), C6ProofError>(()),
     )?;
     Ok(SpotlessStateSvgProof {
         mechanisms,
@@ -87,30 +93,21 @@ pub(crate) fn prove_spotless_state_svg(
 
 type SpotlessStateSvgGeometry = ([f64; 4], [[f64; 4]; 2]);
 
-fn check_spotless_state_svg(
+fn check_spotless_state_receipt(
     contract: SpotlessStateProofContract<'_>,
-    bytes: &[u8],
+    receipt: &SvgArtifactReceipt,
 ) -> C6ProofResult<SpotlessStateSvgGeometry> {
-    let svg = std::str::from_utf8(bytes)
-        .map_err(|error| C6ProofError::new("spotless-state-svg-utf8", error.to_string()))?;
-    let document = roxmltree::Document::parse(svg)
-        .map_err(|error| C6ProofError::new("spotless-state-svg-parse", error.to_string()))?;
-    let root = document.root_element();
-    let view_box = parse_c6_svg_view_box(root.attribute("viewBox").ok_or_else(|| {
-        C6ProofError::new("spotless-state-svg-root", "State SVG root lacks a viewBox")
-    })?)?;
+    let view_box = receipt.view_box();
 
-    prove_terminal_canvas(&document, contract)?;
+    prove_terminal_canvas(receipt, contract)?;
     for (state_id, expected_label) in STATE_LABELS {
-        prove_terminal_state(&document, state_id, expected_label, contract)?;
+        prove_terminal_state(receipt, state_id, expected_label, contract)?;
     }
     c6_ensure!(
         "spotless-state-svg-text",
-        document.descendants().any(|node| node.has_tag_name("text"))
-            && !document
-                .descendants()
-                .any(|node| node.has_tag_name("foreignObject"))
-            && !svg.contains("merman-prepared-"),
+        receipt.has_native_text()
+            && !receipt.has_foreign_object()
+            && !receipt.has_prepared_tokens(),
         "Spotless State did not retain native terminal text"
     );
 
@@ -167,13 +164,14 @@ fn spotless_state_png_mechanisms(
 }
 
 fn prove_terminal_canvas(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     contract: SpotlessStateProofContract<'_>,
 ) -> C6ProofResult<()> {
-    let bases = document
-        .descendants()
+    let bases = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("rect") && node.attribute("data-merman-theme-canvas") == Some("base")
+            node.tag_name() == "rect" && node.attribute("data-merman-theme-canvas") == Some("base")
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -182,10 +180,11 @@ fn prove_terminal_canvas(
         "Spotless State requires one terminal solid canvas base"
     );
 
-    let layers = document
-        .descendants()
+    let layers = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("g") && node.attribute("data-merman-theme-canvas-layer").is_some()
+            node.tag_name() == "g" && node.attribute("data-merman-theme-canvas-layer").is_some()
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -195,51 +194,51 @@ fn prove_terminal_canvas(
         layers.len()
     );
     let mut resource_ids = BTreeSet::new();
-    let linear = resolve_layer_paint(document, layers[0], 0, "linearGradient", &mut resource_ids)?;
+    let linear = resolve_layer_paint(receipt, layers[0], 0, "linearGradient", &mut resource_ids)?;
     c6_ensure!(
         "spotless-state-svg-canvas",
         linear.attribute("spreadMethod") == Some("repeat"),
         "Spotless State linear overlay is not a repeating gradient"
     );
-    prove_gradient_stops(linear, &contract.linear_stops, "linear")?;
+    prove_gradient_stops(receipt, linear, &contract.linear_stops, "linear")?;
 
-    let pattern = resolve_layer_paint(document, layers[1], 1, "pattern", &mut resource_ids)?;
-    let tile = only_element_child(pattern, "Spotless State radial pattern")?;
+    let pattern = resolve_layer_paint(receipt, layers[1], 1, "pattern", &mut resource_ids)?;
+    let tile = only_element_child(receipt, pattern, "Spotless State radial pattern")?;
     c6_ensure!(
         "spotless-state-svg-canvas",
-        tile.has_tag_name("rect"),
+        tile.tag_name() == "rect",
         "Spotless State radial pattern does not contain one terminal tile"
     );
     let radial = resolve_local_paint(
-        document,
+        receipt,
         tile,
         "radialGradient",
         "radial tile",
         &mut resource_ids,
     )?;
     prove_tiled_radial_geometry(pattern, tile, radial, contract.overlay_period_px)?;
-    prove_gradient_stops(radial, &contract.radial_stops, "radial")?;
+    prove_gradient_stops(receipt, radial, &contract.radial_stops, "radial")?;
     Ok(())
 }
 
-fn resolve_layer_paint<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    layer: roxmltree::Node<'document, 'input>,
+fn resolve_layer_paint<'document>(
+    receipt: &'document SvgArtifactReceipt,
+    layer: &'document SvgElementObservation,
     layer_index: usize,
     expected_tag: &str,
     resource_ids: &mut BTreeSet<&'document str>,
-) -> C6ProofResult<roxmltree::Node<'document, 'input>> {
+) -> C6ProofResult<&'document SvgElementObservation> {
     let actual_index = layer
         .attribute("data-merman-theme-canvas-layer")
         .and_then(|value| value.parse::<usize>().ok());
-    let source = only_element_child(layer, "Spotless State canvas layer")?;
+    let source = only_element_child(receipt, layer, "Spotless State canvas layer")?;
     c6_ensure!(
         "spotless-state-svg-canvas",
-        actual_index == Some(layer_index) && source.has_tag_name("rect"),
+        actual_index == Some(layer_index) && source.tag_name() == "rect",
         "Spotless State canvas layer {layer_index} is not one ordered terminal paint"
     );
     resolve_local_paint(
-        document,
+        receipt,
         source,
         expected_tag,
         &format!("canvas layer {layer_index}"),
@@ -247,13 +246,13 @@ fn resolve_layer_paint<'document, 'input>(
     )
 }
 
-fn resolve_local_paint<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    source: roxmltree::Node<'document, 'input>,
+fn resolve_local_paint<'document>(
+    receipt: &'document SvgArtifactReceipt,
+    source: &'document SvgElementObservation,
     expected_tag: &str,
     label: &str,
     resource_ids: &mut BTreeSet<&'document str>,
-) -> C6ProofResult<roxmltree::Node<'document, 'input>> {
+) -> C6ProofResult<&'document SvgElementObservation> {
     let id = source
         .attribute("fill")
         .and_then(local_fragment_id)
@@ -263,27 +262,30 @@ fn resolve_local_paint<'document, 'input>(
                 format!("Spotless State {label} lacks one local paint reference"),
             )
         })?;
-    let definitions = document
-        .descendants()
+    let definitions = receipt
+        .elements()
+        .iter()
         .filter(|node| node.attribute("id") == Some(id))
         .collect::<Vec<_>>();
     c6_ensure!(
         "spotless-state-svg-canvas",
         definitions.len() == 1
-            && definitions[0].tag_name().name() == expected_tag
+            && definitions[0].tag_name() == expected_tag
             && resource_ids.insert(id),
         "Spotless State {label} paint `{id}` does not uniquely resolve to {expected_tag}"
     );
     Ok(definitions[0])
 }
 
-fn only_element_child<'document, 'input>(
-    node: roxmltree::Node<'document, 'input>,
+fn only_element_child<'document>(
+    receipt: &'document SvgArtifactReceipt,
+    node: &'document SvgElementObservation,
     label: &str,
-) -> C6ProofResult<roxmltree::Node<'document, 'input>> {
-    let elements = node
-        .children()
-        .filter(|node| node.is_element())
+) -> C6ProofResult<&'document SvgElementObservation> {
+    let elements = receipt
+        .elements()
+        .iter()
+        .filter(|element| element.parent_index() == Some(node.index()))
         .collect::<Vec<_>>();
     c6_ensure!(
         "spotless-state-svg-canvas",
@@ -294,9 +296,9 @@ fn only_element_child<'document, 'input>(
 }
 
 fn prove_tiled_radial_geometry(
-    pattern: roxmltree::Node<'_, '_>,
-    tile: roxmltree::Node<'_, '_>,
-    radial: roxmltree::Node<'_, '_>,
+    pattern: &SvgElementObservation,
+    tile: &SvgElementObservation,
+    radial: &SvgElementObservation,
     period_px: f64,
 ) -> C6ProofResult<()> {
     c6_ensure!(
@@ -330,7 +332,7 @@ fn prove_tiled_radial_geometry(
     Ok(())
 }
 
-fn geometry_matches(node: roxmltree::Node<'_, '_>, expected: [f64; 4]) -> C6ProofResult<bool> {
+fn geometry_matches(node: &SvgElementObservation, expected: [f64; 4]) -> C6ProofResult<bool> {
     ["x", "y", "width", "height"]
         .into_iter()
         .zip(expected)
@@ -339,7 +341,7 @@ fn geometry_matches(node: roxmltree::Node<'_, '_>, expected: [f64; 4]) -> C6Proo
         })
 }
 
-fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> C6ProofResult<f64> {
+fn numeric_attribute(node: &SvgElementObservation, name: &str) -> C6ProofResult<f64> {
     let value = node
         .attribute(name)
         .ok_or_else(|| {
@@ -359,19 +361,21 @@ fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> C6ProofResult
 }
 
 fn prove_gradient_stops(
-    gradient: roxmltree::Node<'_, '_>,
+    receipt: &SvgArtifactReceipt,
+    gradient: &SvgElementObservation,
     expected: &[(f64, &str)],
     label: &str,
 ) -> C6ProofResult<()> {
-    let stops = gradient
-        .children()
-        .filter(|node| node.is_element())
+    let stops = receipt
+        .elements()
+        .iter()
+        .filter(|node| node.parent_index() == Some(gradient.index()))
         .collect::<Vec<_>>();
     c6_ensure!(
         "spotless-state-svg-canvas",
         stops.len() == expected.len()
             && stops.iter().zip(expected).all(|(stop, (offset, color))| {
-                stop.has_tag_name("stop")
+                stop.tag_name() == "stop"
                     && stop
                         .attribute("offset")
                         .and_then(percent_value)
@@ -383,31 +387,18 @@ fn prove_gradient_stops(
     Ok(())
 }
 
-fn local_fragment_id(value: &str) -> Option<&str> {
-    value
-        .strip_prefix("url(#")
-        .and_then(|value| value.strip_suffix(')'))
-}
-
-fn percent_value(value: &str) -> Option<f64> {
-    value
-        .strip_suffix('%')?
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
-}
-
 fn prove_terminal_state(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     state_id: &str,
     expected_label: &str,
     contract: SpotlessStateProofContract<'_>,
 ) -> C6ProofResult<()> {
     let marker = format!("-state-{state_id}-");
-    let wrappers = document
-        .descendants()
+    let wrappers = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("g") && node.attribute("id").is_some_and(|id| id.contains(&marker))
+            node.tag_name() == "g" && node.attribute("id").is_some_and(|id| id.contains(&marker))
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -417,32 +408,34 @@ fn prove_terminal_state(
         wrappers.len()
     );
     let wrapper = wrappers[0];
-    let rects = wrapper
-        .children()
+    let rects = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("rect")
-                && class_contains(*node, "basic")
-                && class_contains(*node, "label-container")
+            node.parent_index() == Some(wrapper.index())
+                && node.tag_name() == "rect"
+                && node.has_class("basic")
+                && node.has_class("label-container")
         })
         .collect::<Vec<_>>();
     c6_ensure!(
         "spotless-state-svg-node",
-        rects.len() == 1 && style_value(rects[0], "fill") == Some(contract.surface),
+        rects.len() == 1 && rects[0].style_value("fill") == Some(contract.surface),
         "State `{state_id}` does not retain the Spotless surface token"
     );
 
-    let label = wrapper
-        .descendants()
-        .find(|node| node.has_tag_name("g") && class_contains(*node, "label"))
+    let label = receipt
+        .descendants_of(wrapper.index())
+        .find(|node| node.tag_name() == "g" && node.has_class("label"))
         .ok_or_else(|| {
             C6ProofError::new(
                 "spotless-state-svg-text",
                 format!("State `{state_id}` lacks a terminal label group"),
             )
         })?;
-    let text = label
-        .descendants()
-        .find(|node| node.has_tag_name("text"))
+    let text = receipt
+        .descendants_of(label.index())
+        .find(|node| node.tag_name() == "text")
         .ok_or_else(|| {
             C6ProofError::new(
                 "spotless-state-svg-text",
@@ -452,45 +445,13 @@ fn prove_terminal_state(
     c6_ensure!(
         "spotless-state-svg-text",
         descendant_text(text) == expected_label
-            && subtree_style_value(label, "fill") == Some(contract.text)
-            && subtree_style_number(label, "letter-spacing")
+            && subtree_style_value(receipt, label, "fill") == Some(contract.text)
+            && subtree_style_number(receipt, label, "letter-spacing")
                 .is_some_and(|value| approx_eq(value, contract.letter_spacing_px))
-            && subtree_style_contains(label, "font-family", contract.font_family),
+            && subtree_style_contains(receipt, label, "font-family", contract.font_family),
         "State `{state_id}` does not retain transformed, spaced, embedded-font terminal text"
     );
     Ok(())
-}
-
-fn descendant_text(node: roxmltree::Node<'_, '_>) -> String {
-    node.descendants()
-        .filter(|descendant| descendant.is_text())
-        .filter_map(|descendant| descendant.text())
-        .collect::<String>()
-        .trim()
-        .to_string()
-}
-
-fn subtree_style_value<'a>(node: roxmltree::Node<'a, '_>, property: &str) -> Option<&'a str> {
-    std::iter::once(node)
-        .chain(node.descendants())
-        .find_map(|descendant| style_value(descendant, property))
-}
-
-fn subtree_style_number(node: roxmltree::Node<'_, '_>, property: &str) -> Option<f64> {
-    let value = subtree_style_value(node, property)?;
-    value
-        .strip_suffix("px")
-        .unwrap_or(value)
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
-}
-
-fn subtree_style_contains(node: roxmltree::Node<'_, '_>, property: &str, value: &str) -> bool {
-    std::iter::once(node)
-        .chain(node.descendants())
-        .filter_map(|descendant| style_value(descendant, property))
-        .any(|actual| actual.contains(value))
 }
 
 fn overlay_visibility_regions(view_box: [f64; 4], period: f64) -> C6ProofResult<[[f64; 4]; 2]> {
@@ -557,13 +518,10 @@ fn prove_overlay_visibility(
     Ok(())
 }
 
-fn approx_eq(left: f64, right: f64) -> bool {
-    (left - right).abs() <= 1e-6
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest as _, Sha256};
 
     #[test]
     fn spotless_state_png_scope_excludes_text_font_canvas_and_foreground_claims() {
@@ -621,7 +579,7 @@ mod tests {
     }
 
     fn valid_canvas_svg() -> &'static str {
-        r##"<svg>
+        r##"<svg viewBox="0 0 100 100">
           <rect data-merman-theme-canvas="base" fill="#ede8dc"/>
           <defs><linearGradient id="layer-0-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="14.142136" y2="-14.142136" spreadMethod="repeat"><stop offset="0%" stop-color="#2c241608"/><stop offset="50%" stop-color="#2c241608"/><stop offset="51%" stop-color="#2c24160d"/><stop offset="100%" stop-color="#2c24160d"/></linearGradient></defs>
           <defs><radialGradient id="layer-1-gradient" gradientUnits="userSpaceOnUse" cx="10" cy="10" r="10"><stop offset="0%" stop-color="#2c24162e"/><stop offset="10%" stop-color="#2c24162e"/><stop offset="11%" stop-color="#2c241600"/><stop offset="100%" stop-color="#2c241600"/></radialGradient><pattern id="layer-1-pattern" patternUnits="userSpaceOnUse" x="0" y="0" width="20" height="20"><rect x="0" y="0" width="20" height="20" fill="url(#layer-1-gradient)"/></pattern></defs>
@@ -630,20 +588,25 @@ mod tests {
         </svg>"##
     }
 
+    fn test_receipt(svg: &str) -> SvgArtifactReceipt {
+        let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
+        SvgArtifactReceipt::observe_svg(svg, digest).expect("test SVG must produce a receipt")
+    }
+
     #[test]
     fn canvas_layers_reject_dangling_or_wrong_paint_resources() {
         let valid = valid_canvas_svg();
-        let document = roxmltree::Document::parse(valid).unwrap();
-        assert!(prove_terminal_canvas(&document, contract()).is_ok());
+        let receipt = test_receipt(valid);
+        assert!(prove_terminal_canvas(&receipt, contract()).is_ok());
 
         let mutations = [
             valid.replace("url(#layer-1-pattern)", "url(#missing-pattern)"),
             valid.replace("radialGradient", "linearGradient"),
         ];
         for mutated in mutations {
-            let document = roxmltree::Document::parse(&mutated).unwrap();
+            let receipt = test_receipt(&mutated);
             assert!(
-                prove_terminal_canvas(&document, contract()).is_err(),
+                prove_terminal_canvas(&receipt, contract()).is_err(),
                 "mutation unexpectedly retained the paint closure: {mutated}"
             );
         }
@@ -652,10 +615,10 @@ mod tests {
     #[test]
     fn tiled_radial_canvas_rejects_mutated_geometry() {
         let valid = valid_canvas_svg();
-        let document = roxmltree::Document::parse(valid).unwrap();
+        let receipt = test_receipt(valid);
         let mut wrong_period = contract();
         wrong_period.overlay_period_px = 21.0;
-        assert!(prove_terminal_canvas(&document, wrong_period).is_err());
+        assert!(prove_terminal_canvas(&receipt, wrong_period).is_err());
 
         let mutations = [
             (
@@ -735,9 +698,9 @@ mod tests {
 
         for (label, mutated) in mutations {
             assert_ne!(mutated, valid, "{label} mutation did not alter the fixture");
-            let document = roxmltree::Document::parse(&mutated).unwrap();
+            let receipt = test_receipt(&mutated);
             assert!(
-                prove_terminal_canvas(&document, contract()).is_err(),
+                prove_terminal_canvas(&receipt, contract()).is_err(),
                 "{label} mutation unexpectedly retained canonical canvas geometry"
             );
         }

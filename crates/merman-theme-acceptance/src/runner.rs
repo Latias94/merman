@@ -207,6 +207,10 @@ mod c6_cyberpunk_sequence_group;
 #[path = "support/c6_reference_theme_groups.rs"]
 mod c6_reference_theme_groups;
 
+#[path = "support/artifact_observation.rs"]
+mod artifact_observation;
+
+use artifact_observation::{sealed_svg_receipt, style_number as observation_style_number};
 use c6_cyberpunk_flowchart_group::CYBERPUNK_FLOWCHART_ADAPTER;
 use c6_cyberpunk_sequence_group::CYBERPUNK_SEQUENCE_ADAPTER;
 use c6_flowchart_proof::{
@@ -1849,10 +1853,12 @@ fn prove_brutalist_state_svg(
     artifact: C6TargetArtifact<'_>,
 ) -> C6ProofResult<BrutalistStateSvgProof> {
     let mechanisms = brutalist_state_applied_mechanisms();
+    let receipt = sealed_svg_receipt(&artifact)?;
+    check_brutalist_state_receipt(contract, receipt)?;
     let (_, target_proof) = artifact.check_with(
         "brutalist-state-standalone-svg-v1",
         mechanisms.clone(),
-        |bytes| check_brutalist_state_svg(contract, bytes),
+        |_| Ok::<(), C6ProofError>(()),
     )?;
     Ok(BrutalistStateSvgProof {
         mechanisms,
@@ -1860,19 +1866,15 @@ fn prove_brutalist_state_svg(
     })
 }
 
-fn check_brutalist_state_svg(
+fn check_brutalist_state_receipt(
     contract: &BrutalistStateFixtureContract<'_>,
-    bytes: &[u8],
+    receipt: &merman_render::__private::SvgArtifactReceipt,
 ) -> C6ProofResult<()> {
-    let svg = std::str::from_utf8(bytes)
-        .map_err(|error| C6ProofError::new("standalone-svg-utf8", error.to_string()))?;
-    let document = roxmltree::Document::parse(svg)
-        .map_err(|error| C6ProofError::new("standalone-svg-parse", error.to_string()))?;
-
-    let canvas = document
-        .descendants()
+    let canvas = receipt
+        .elements()
+        .iter()
         .find(|node| {
-            node.has_tag_name("rect") && node.attribute("data-merman-theme-canvas") == Some("base")
+            node.tag_name() == "rect" && node.attribute("data-merman-theme-canvas") == Some("base")
         })
         .ok_or_else(|| {
             C6ProofError::new("standalone-svg-canvas", "typed canvas base was not emitted")
@@ -1883,12 +1885,13 @@ fn check_brutalist_state_svg(
         "canvas fill differs from the background token"
     );
 
-    let state_rects = document
-        .descendants()
+    let state_rects = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("rect")
-                && class_contains(*node, "basic")
-                && class_contains(*node, "label-container")
+            node.tag_name() == "rect"
+                && node.has_class("basic")
+                && node.has_class("label-container")
         })
         .collect::<Vec<_>>();
     let expected_ordinal_fills = [
@@ -1908,7 +1911,7 @@ fn check_brutalist_state_svg(
         let rect = state_rects
             .iter()
             .copied()
-            .find(|node| state_rect_belongs_to(*node, state_id))
+            .find(|node| state_rect_belongs_to_observation(receipt, node, state_id))
             .ok_or_else(|| {
                 C6ProofError::new(
                     "standalone-svg-state-node",
@@ -1917,7 +1920,7 @@ fn check_brutalist_state_svg(
             })?;
         c6_ensure!(
             "standalone-svg-ordinal-fill",
-            style_value(rect, "fill") == Some(expected_fill),
+            rect.style_value("fill") == Some(expected_fill),
             "State ordinal palette mapping is wrong for `{state_id}`"
         );
     }
@@ -1925,19 +1928,20 @@ fn check_brutalist_state_svg(
     c6_ensure!(
         "standalone-svg-node-style",
         state_rects.iter().all(|node| {
-            style_value(*node, "stroke") == Some(contract.border.color())
-                && style_number(*node, "stroke-width")
-                    == Some(f32::from(contract.border.width_px()))
-                && number_attribute(*node, "rx") == Some(radius)
-                && number_attribute(*node, "ry") == Some(radius)
+            node.style_value("stroke") == Some(contract.border.color())
+                && observation_style_number(*node, "stroke-width")
+                    == Some(f64::from(contract.border.width_px()))
+                && node.numeric_attribute("rx") == Some(f64::from(radius))
+                && node.numeric_attribute("ry") == Some(f64::from(radius))
         }),
         "one or more State nodes omitted the typed border or radius"
     );
 
-    let effect_filters = document
-        .descendants()
+    let effect_filters = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("filter")
+            node.tag_name() == "filter"
                 && node
                     .attribute("id")
                     .is_some_and(|id| id.contains(SHADOW_EFFECT_ID))
@@ -1960,9 +1964,10 @@ fn check_brutalist_state_svg(
             filter.attribute("color-interpolation-filters") == Some("linearRGB"),
             "hard-shadow filter does not use linearRGB"
         );
-        let primitives = filter
-            .children()
-            .filter(|node| node.is_element())
+        let primitives = receipt
+            .elements()
+            .iter()
+            .filter(|node| node.parent_index() == Some(filter.index()))
             .collect::<Vec<_>>();
         c6_ensure!(
             "standalone-svg-filter-primitives",
@@ -1973,16 +1978,16 @@ fn check_brutalist_state_svg(
         let drop_shadow = primitives[0];
         c6_ensure!(
             "standalone-svg-filter-primitive",
-            drop_shadow.has_tag_name("feDropShadow")
+            drop_shadow.tag_name() == "feDropShadow"
                 && drop_shadow.attribute("in") == Some("SourceGraphic"),
             "filter primitive is not a SourceGraphic feDropShadow"
         );
         c6_ensure!(
             "standalone-svg-filter-shadow",
-            number_attribute(drop_shadow, "dx") == Some(f32::from(contract.shadow.offset_x_px()))
-                && number_attribute(drop_shadow, "dy")
-                    == Some(f32::from(contract.shadow.offset_y_px()))
-                && number_attribute(drop_shadow, "stdDeviation") == Some(0.0)
+            drop_shadow.numeric_attribute("dx") == Some(f64::from(contract.shadow.offset_x_px()))
+                && drop_shadow.numeric_attribute("dy")
+                    == Some(f64::from(contract.shadow.offset_y_px()))
+                && drop_shadow.numeric_attribute("stdDeviation") == Some(0.0)
                 && drop_shadow.attribute("flood-color") == Some(contract.shadow.color()),
             "emitted hard shadow differs from the fixture contract"
         );
@@ -2004,8 +2009,7 @@ fn check_brutalist_state_svg(
     for node in &state_rects {
         let id = node
             .attribute("filter")
-            .and_then(|value| value.strip_prefix("url(#"))
-            .and_then(|value| value.strip_suffix(')'))
+            .and_then(artifact_observation::local_fragment_id)
             .ok_or_else(|| {
                 C6ProofError::new(
                     "standalone-svg-filter-reference",
@@ -2022,7 +2026,7 @@ fn check_brutalist_state_svg(
                     format!("State node references missing hard-shadow filter `{id}`"),
                 )
             })?;
-        prove_state_hard_shadow_filter_region(*node, filter)?;
+        prove_state_hard_shadow_filter_region_observation(receipt, *node, filter)?;
         referenced_effect_ids.insert(id);
     }
     c6_ensure!(
@@ -2033,109 +2037,87 @@ fn check_brutalist_state_svg(
 
     c6_ensure!(
         "standalone-svg-surface",
-        document.descendants().any(|node| {
-            node.has_tag_name("rect")
-                && style_value(node, "fill") == Some(contract.tokens.surface())
+        receipt.elements().iter().any(|node| {
+            node.tag_name() == "rect" && node.style_value("fill") == Some(contract.tokens.surface())
         }),
         "no emitted rect consumes the surface token"
     );
     c6_ensure!(
         "standalone-svg-text-color",
-        document.descendants().any(|node| {
-            matches!(node.tag_name().name(), "text" | "tspan")
-                && style_value(node, "fill") == Some(contract.tokens.text())
+        receipt.elements().iter().any(|node| {
+            matches!(node.tag_name(), "text" | "tspan")
+                && node.style_value("fill") == Some(contract.tokens.text())
         }),
         "no emitted text consumes the text token"
     );
 
-    let root = document.root_element();
-    let font_style = root
-        .children()
-        .find(|node| {
-            node.has_tag_name("style") && node.attribute("data-merman-typed-fonts") == Some("v1")
-        })
+    let font_style = receipt
+        .stylesheets()
+        .iter()
+        .find(|stylesheet| stylesheet.typed_font_marker())
         .ok_or_else(|| {
             C6ProofError::new(
                 "standalone-svg-font-style",
                 "terminally validated typed font stylesheet was not emitted",
             )
         })?;
-    let font_css = font_style.text().unwrap_or_default();
     c6_ensure!(
         "standalone-svg-font-style",
-        font_css.contains("@font-face")
-            && font_css.contains("data:font/ttf;base64,")
-            && font_css.contains(r#"font-family:"Excalifont""#),
+        font_style.font_faces().iter().any(|font_face| {
+            font_face
+                .declarations()
+                .iter()
+                .find(|declaration| declaration.property() == "font-family")
+                .is_some_and(|declaration| declaration.value().contains("Excalifont"))
+                && font_face
+                    .declarations()
+                    .iter()
+                    .find(|declaration| declaration.property() == "src")
+                    .is_some_and(|declaration| {
+                        declaration.value().contains("data:font/ttf;base64,")
+                    })
+        }),
         "typed font stylesheet is incomplete"
     );
     c6_ensure!(
         "standalone-svg-text",
-        document.descendants().any(|node| node.has_tag_name("text")),
+        receipt.has_native_text(),
         "standalone SVG contains no text elements"
     );
     c6_ensure!(
         "standalone-svg-foreign-object",
-        !document
-            .descendants()
-            .any(|node| node.has_tag_name("foreignObject")),
+        !receipt.has_foreign_object(),
         "standalone SVG retained foreignObject text"
     );
     c6_ensure!(
         "standalone-svg-prepared-token",
-        !svg.contains("merman-prepared-"),
+        !receipt.has_prepared_tokens(),
         "standalone SVG leaked prepared-text tokens"
     );
 
     Ok(())
 }
 
-pub(crate) fn class_contains(node: roxmltree::Node<'_, '_>, class_name: &str) -> bool {
-    node.attribute("class").is_some_and(|classes| {
-        classes
-            .split_ascii_whitespace()
-            .any(|class| class == class_name)
-    })
-}
-
-fn state_rect_belongs_to(node: roxmltree::Node<'_, '_>, state_id: &str) -> bool {
+fn state_rect_belongs_to_observation(
+    receipt: &merman_render::__private::SvgArtifactReceipt,
+    node: &merman_render::__private::SvgElementObservation,
+    state_id: &str,
+) -> bool {
     let expected_fragment = format!("-state-{state_id}-");
-    node.parent()
-        .and_then(|parent| parent.attribute("id"))
+    node.parent_index()
+        .and_then(|index| receipt.element(index))
+        .and_then(merman_render::__private::SvgElementObservation::id)
         .is_some_and(|id| id.contains(&expected_fragment))
 }
 
-pub(crate) fn style_value<'a>(node: roxmltree::Node<'a, '_>, property: &str) -> Option<&'a str> {
-    node.attribute("style")?.split(';').find_map(|declaration| {
-        let (name, value) = declaration.split_once(':')?;
-        (name.trim() == property).then(|| {
-            value
-                .trim()
-                .strip_suffix("!important")
-                .unwrap_or(value.trim())
-                .trim()
-        })
-    })
-}
-
-fn style_number(node: roxmltree::Node<'_, '_>, property: &str) -> Option<f32> {
-    style_value(node, property)?
-        .strip_suffix("px")
-        .unwrap_or(style_value(node, property)?)
-        .parse()
-        .ok()
-}
-
-fn number_attribute(node: roxmltree::Node<'_, '_>, attribute: &str) -> Option<f32> {
-    node.attribute(attribute)?.parse().ok()
-}
-
-fn prove_state_hard_shadow_filter_region(
-    rect: roxmltree::Node<'_, '_>,
-    filter: roxmltree::Node<'_, '_>,
+fn prove_state_hard_shadow_filter_region_observation(
+    receipt: &merman_render::__private::SvgArtifactReceipt,
+    rect: &merman_render::__private::SvgElementObservation,
+    filter: &merman_render::__private::SvgElementObservation,
 ) -> C6ProofResult<()> {
-    let width = required_positive_number_attribute(rect, "width")?;
-    let height = required_positive_number_attribute(rect, "height")?;
-    let stroke_width = style_number(rect, "stroke-width").ok_or_else(|| {
+    let width = required_positive_observation_attribute(rect, "width")?;
+    let height = required_positive_observation_attribute(rect, "height")?;
+    let stroke_width = observation_style_number(rect, "stroke-width").ok_or_else(|| {
         C6ProofError::new(
             "standalone-svg-filter-region",
             "State node has no numeric painting stroke width",
@@ -2146,25 +2128,26 @@ fn prove_state_hard_shadow_filter_region(
         stroke_width.is_finite() && stroke_width >= 0.0,
         "State node has an invalid painting stroke width `{stroke_width}`"
     );
-
-    let drop_shadow = filter
-        .children()
-        .find(|node| node.is_element() && node.has_tag_name("feDropShadow"))
+    let drop_shadow = receipt
+        .elements()
+        .iter()
+        .find(|element| {
+            element.parent_index() == Some(filter.index()) && element.tag_name() == "feDropShadow"
+        })
         .ok_or_else(|| {
             C6ProofError::new(
                 "standalone-svg-filter-region",
                 "hard-shadow filter has no feDropShadow primitive",
             )
         })?;
-    let offset_x = required_number_attribute(drop_shadow, "dx")?;
-    let offset_y = required_number_attribute(drop_shadow, "dy")?;
+    let offset_x = required_observation_attribute(drop_shadow, "dx")?;
+    let offset_y = required_observation_attribute(drop_shadow, "dy")?;
     let region = [
-        required_number_attribute(filter, "x")?,
-        required_number_attribute(filter, "y")?,
-        required_positive_number_attribute(filter, "width")?,
-        required_positive_number_attribute(filter, "height")?,
+        required_observation_attribute(filter, "x")?,
+        required_observation_attribute(filter, "y")?,
+        required_positive_observation_attribute(filter, "width")?,
+        required_positive_observation_attribute(filter, "height")?,
     ];
-
     let half_stroke = stroke_width / 2.0;
     let expected_outsets = [
         half_stroke + (-offset_y).max(0.0),
@@ -2193,37 +2176,58 @@ fn prove_state_hard_shadow_filter_region(
     Ok(())
 }
 
-fn required_number_attribute(node: roxmltree::Node<'_, '_>, attribute: &str) -> C6ProofResult<f32> {
-    let value = number_attribute(node, attribute).ok_or_else(|| {
+fn required_observation_attribute(
+    node: &merman_render::__private::SvgElementObservation,
+    attribute: &str,
+) -> C6ProofResult<f64> {
+    let value = node.numeric_attribute(attribute).ok_or_else(|| {
         C6ProofError::new(
             "standalone-svg-filter-region",
-            format!(
-                "{} has no numeric `{attribute}` attribute",
-                node.tag_name().name()
-            ),
+            format!("{} has no numeric `{attribute}` attribute", node.tag_name()),
         )
     })?;
     c6_ensure!(
         "standalone-svg-filter-region",
         value.is_finite(),
         "{} has a non-finite `{attribute}` attribute",
-        node.tag_name().name()
+        node.tag_name()
     );
     Ok(value)
 }
 
-fn required_positive_number_attribute(
-    node: roxmltree::Node<'_, '_>,
+fn required_positive_observation_attribute(
+    node: &merman_render::__private::SvgElementObservation,
     attribute: &str,
-) -> C6ProofResult<f32> {
-    let value = required_number_attribute(node, attribute)?;
+) -> C6ProofResult<f64> {
+    let value = required_observation_attribute(node, attribute)?;
     c6_ensure!(
         "standalone-svg-filter-region",
         value > 0.0,
         "{} must have a positive `{attribute}` attribute, got {value}",
-        node.tag_name().name()
+        node.tag_name()
     );
     Ok(value)
+}
+
+pub(crate) fn class_contains(node: roxmltree::Node<'_, '_>, class_name: &str) -> bool {
+    node.attribute("class").is_some_and(|classes| {
+        classes
+            .split_ascii_whitespace()
+            .any(|class| class == class_name)
+    })
+}
+
+pub(crate) fn style_value<'a>(node: roxmltree::Node<'a, '_>, property: &str) -> Option<&'a str> {
+    node.attribute("style")?.split(';').find_map(|declaration| {
+        let (name, value) = declaration.split_once(':')?;
+        (name.trim() == property).then(|| {
+            value
+                .trim()
+                .strip_suffix("!important")
+                .unwrap_or(value.trim())
+                .trim()
+        })
+    })
 }
 
 #[cfg(test)]

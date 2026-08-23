@@ -1,15 +1,15 @@
 use std::collections::BTreeMap;
 
 use merman_export::RasterPlan;
-use merman_render::__private::NativeSvgFilterReceipt;
+use merman_render::__private::{NativeSvgFilterReceipt, SvgArtifactReceipt, SvgElementObservation};
 use merman_theme_fixtures::ReferenceThemeMechanism;
 
 use crate::observation::C6ObservedMechanismDisposition;
 
 use super::{
-    C6BoundTargetProof, C6ProofError, C6ProofResult, C6TargetArtifact, class_contains,
-    decode_bounded_png_artifact, parse_c6_hex_rgb, parse_c6_svg_view_box, state_rect_belongs_to,
-    style_value, transformed_c6_svg_rect,
+    C6BoundTargetProof, C6ProofError, C6ProofResult, C6TargetArtifact,
+    artifact_observation::{descendant_text, local_fragment_id, sealed_svg_receipt, style_number},
+    decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
 pub(crate) const CYBERPUNK_STATE_EFFECT_ID: &str = "c6-cyberpunk-state-glow";
@@ -70,10 +70,13 @@ pub(crate) fn prove_cyberpunk_state_svg(
             .into_iter()
             .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
             .collect();
-    let ((view_box, glow_region), target_proof) = artifact.check_with(
+    let receipt = sealed_svg_receipt(&artifact)?;
+    let (view_box, glow_region) =
+        check_cyberpunk_state_receipt(contract, native_filter_receipt, receipt)?;
+    let (_, target_proof) = artifact.check_with(
         "cyberpunk-state-standalone-svg-v1",
         mechanisms.clone(),
-        |bytes| check_cyberpunk_state_svg(contract, native_filter_receipt, bytes),
+        |_| Ok::<(), C6ProofError>(()),
     )?;
     Ok(CyberpunkStateSvgProof {
         mechanisms,
@@ -85,24 +88,18 @@ pub(crate) fn prove_cyberpunk_state_svg(
 
 type CyberpunkStateSvgGeometry = ([f64; 4], [f64; 4]);
 
-fn check_cyberpunk_state_svg(
+fn check_cyberpunk_state_receipt(
     contract: CyberpunkStateProofContract<'_>,
     native_filter_receipt: NativeSvgFilterReceipt,
-    bytes: &[u8],
+    receipt: &SvgArtifactReceipt,
 ) -> C6ProofResult<CyberpunkStateSvgGeometry> {
-    let svg = std::str::from_utf8(bytes)
-        .map_err(|error| C6ProofError::new("cyberpunk-state-svg-utf8", error.to_string()))?;
-    let document = roxmltree::Document::parse(svg)
-        .map_err(|error| C6ProofError::new("cyberpunk-state-svg-parse", error.to_string()))?;
-    let root = document.root_element();
-    let view_box = parse_c6_svg_view_box(root.attribute("viewBox").ok_or_else(|| {
-        C6ProofError::new("cyberpunk-state-svg-root", "State SVG root lacks a viewBox")
-    })?)?;
+    let view_box = receipt.view_box();
 
-    let canvas = document
-        .descendants()
+    let canvas = receipt
+        .elements()
+        .iter()
         .find(|node| {
-            node.has_tag_name("rect") && node.attribute("data-merman-theme-canvas") == Some("base")
+            node.tag_name() == "rect" && node.attribute("data-merman-theme-canvas") == Some("base")
         })
         .ok_or_else(|| C6ProofError::new("cyberpunk-state-svg-canvas", "missing typed canvas"))?;
     c6_ensure!(
@@ -114,25 +111,27 @@ fn check_cyberpunk_state_svg(
     let state_rects = STATE_IDS
         .into_iter()
         .map(|state_id| {
-            let rect = find_state_rect(&document, state_id)?;
+            let rect = find_state_rect(receipt, state_id)?;
             prove_node_style(rect, state_id, contract)?;
             Ok(rect)
         })
         .collect::<C6ProofResult<Vec<_>>>()?;
-    prove_filter_references(&document, &state_rects, native_filter_receipt)?;
-    let first_node = transformed_c6_svg_rect(state_rects[0])?;
+    prove_filter_references(receipt, &state_rects, native_filter_receipt)?;
+    let first_node = state_rects[0]
+        .bounds()
+        .ok_or_else(|| C6ProofError::new("cyberpunk-state-svg-node", "State node lacks bounds"))?;
     let glow_region = glow_visibility_region(view_box, first_node, contract)?;
-    prove_native_text(&document, svg, contract)?;
+    prove_native_text(receipt, contract)?;
 
     Ok((view_box, glow_region))
 }
 
-fn prove_filter_references<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    state_rects: &[roxmltree::Node<'document, 'input>],
+fn prove_filter_references(
+    receipt: &SvgArtifactReceipt,
+    state_rects: &[&SvgElementObservation],
     native_filter_receipt: NativeSvgFilterReceipt,
 ) -> C6ProofResult<()> {
-    prove_local_filter_references(document, state_rects)?;
+    prove_local_filter_references(receipt, state_rects)?;
     let expected_count = u32::try_from(state_rects.len())
         .map_err(|error| C6ProofError::new("cyberpunk-state-native-filter", error.to_string()))?;
     c6_ensure!(
@@ -148,23 +147,24 @@ fn prove_filter_references<'document, 'input>(
     Ok(())
 }
 
-fn prove_local_filter_references<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    state_rects: &[roxmltree::Node<'document, 'input>],
+fn prove_local_filter_references(
+    receipt: &SvgArtifactReceipt,
+    state_rects: &[&SvgElementObservation],
 ) -> C6ProofResult<()> {
     for state_rect in state_rects {
-        prove_local_filter_reference(document, *state_rect)?;
+        prove_local_filter_reference(receipt, state_rect)?;
     }
     Ok(())
 }
 
-fn prove_local_filter_reference<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    state_rect: roxmltree::Node<'document, 'input>,
+fn prove_local_filter_reference(
+    receipt: &SvgArtifactReceipt,
+    state_rect: &SvgElementObservation,
 ) -> C6ProofResult<()> {
     let wrapper_id = state_rect
-        .parent()
-        .and_then(|node| node.attribute("id"))
+        .parent_index()
+        .and_then(|index| receipt.element(index))
+        .and_then(SvgElementObservation::id)
         .ok_or_else(|| {
             C6ProofError::new(
                 "cyberpunk-state-svg-filter-reference",
@@ -181,15 +181,16 @@ fn prove_local_filter_reference<'document, 'input>(
                 "State node does not reference one local glow filter",
             )
         })?;
-    let definitions = document
-        .descendants()
+    let definitions = receipt
+        .elements()
+        .iter()
         .filter(|node| node.attribute("id") == Some(referenced_id))
         .collect::<Vec<_>>();
     c6_ensure!(
         "cyberpunk-state-svg-filter-reference",
         referenced_id == expected_id.as_str()
             && definitions.len() == 1
-            && definitions[0].has_tag_name("filter"),
+            && definitions[0].tag_name() == "filter",
         "State node glow reference `{referenced_id}` does not resolve to `{expected_id}`"
     );
     Ok(())
@@ -244,68 +245,59 @@ fn cyberpunk_state_png_mechanisms(
         .collect()
 }
 
-fn find_state_rect<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
+fn find_state_rect<'a>(
+    receipt: &'a SvgArtifactReceipt,
     state_id: &str,
-) -> C6ProofResult<roxmltree::Node<'document, 'input>> {
-    let mut rects = document.descendants().filter(|node| {
-        node.has_tag_name("rect")
-            && class_contains(*node, "basic")
-            && class_contains(*node, "label-container")
-            && state_rect_belongs_to(*node, state_id)
-    });
-    let rect = rects.next().ok_or_else(|| {
-        C6ProofError::new(
-            "cyberpunk-state-svg-node",
-            format!("missing State node `{state_id}`"),
-        )
-    })?;
+) -> C6ProofResult<&'a SvgElementObservation> {
+    let rects = receipt
+        .elements()
+        .iter()
+        .filter(|node| {
+            node.tag_name() == "rect"
+                && node.has_class("basic")
+                && node.has_class("label-container")
+                && state_rect_belongs_to(receipt, node, state_id)
+        })
+        .collect::<Vec<_>>();
     c6_ensure!(
         "cyberpunk-state-svg-node",
-        rects.next().is_none(),
+        !rects.is_empty(),
+        "missing State node `{state_id}`"
+    );
+    c6_ensure!(
+        "cyberpunk-state-svg-node",
+        rects.len() == 1,
         "State node `{state_id}` was emitted more than once"
     );
-    Ok(rect)
+    Ok(rects[0])
 }
 
 fn prove_node_style(
-    rect: roxmltree::Node<'_, '_>,
+    rect: &SvgElementObservation,
     state_id: &str,
     contract: CyberpunkStateProofContract<'_>,
 ) -> C6ProofResult<()> {
-    let style_number = |property| {
-        style_value(rect, property)
-            .map(|value| value.strip_suffix("px").unwrap_or(value))
-            .and_then(|value| value.parse::<f64>().ok())
-    };
-    let attr_number = |name| {
-        rect.attribute(name)
-            .and_then(|value| value.parse::<f64>().ok())
-    };
     c6_ensure!(
         "cyberpunk-state-svg-node",
-        style_value(rect, "fill") == Some(contract.surface)
-            && style_value(rect, "stroke") == Some(contract.primary)
-            && style_number("stroke-width") == Some(contract.border_width)
-            && attr_number("rx") == Some(contract.radius)
-            && attr_number("ry") == Some(contract.radius),
+        rect.style_value("fill") == Some(contract.surface)
+            && rect.style_value("stroke") == Some(contract.primary)
+            && style_number(rect, "stroke-width") == Some(contract.border_width)
+            && rect.numeric_attribute("rx") == Some(contract.radius)
+            && rect.numeric_attribute("ry") == Some(contract.radius),
         "State `{state_id}` differs from the Cyberpunk style contract"
     );
     Ok(())
 }
 
 fn prove_native_text(
-    document: &roxmltree::Document<'_>,
-    svg: &str,
+    receipt: &SvgArtifactReceipt,
     contract: CyberpunkStateProofContract<'_>,
 ) -> C6ProofResult<()> {
     c6_ensure!(
         "cyberpunk-state-svg-text",
-        document.descendants().any(|node| node.has_tag_name("text"))
-            && !document
-                .descendants()
-                .any(|node| node.has_tag_name("foreignObject"))
-            && !svg.contains("merman-prepared-"),
+        receipt.has_native_text()
+            && !receipt.has_foreign_object()
+            && !receipt.has_prepared_tokens(),
         "Cyberpunk State did not retain sealed native terminal text"
     );
     prove_role_contrast("state-label", contract.text, contract.surface)?;
@@ -316,32 +308,35 @@ fn prove_native_text(
     )?;
 
     for state_id in STATE_IDS {
-        prove_state_label_occurrence(document, state_id, contract)?;
+        prove_state_label_occurrence(receipt, state_id, contract)?;
     }
-    prove_transition_label_occurrences(document, contract)?;
+    prove_transition_label_occurrences(receipt, contract)?;
     Ok(())
 }
 
 fn prove_state_label_occurrence(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     state_id: &str,
     contract: CyberpunkStateProofContract<'_>,
 ) -> C6ProofResult<()> {
-    let surface = find_state_rect(document, state_id)?;
+    let surface = find_state_rect(receipt, state_id)?;
     c6_ensure!(
         "cyberpunk-state-svg-text-surface",
-        style_value(surface, "fill") == Some(contract.surface),
+        surface.style_value("fill") == Some(contract.surface),
         "State `{state_id}` label is not bound to its Cyberpunk surface"
     );
-    let wrapper = surface.parent().ok_or_else(|| {
-        C6ProofError::new(
-            "cyberpunk-state-svg-text-surface",
-            format!("State `{state_id}` surface lacks its terminal wrapper"),
-        )
-    })?;
-    let labels = wrapper
-        .descendants()
-        .filter(|node| node.has_tag_name("g") && class_contains(*node, "label"))
+    let wrapper = surface
+        .parent_index()
+        .and_then(|index| receipt.element(index))
+        .ok_or_else(|| {
+            C6ProofError::new(
+                "cyberpunk-state-svg-text-surface",
+                format!("State `{state_id}` surface lacks its terminal wrapper"),
+            )
+        })?;
+    let labels = receipt
+        .descendants_of(wrapper.index())
+        .filter(|node| node.tag_name() == "g" && node.has_class("label"))
         .collect::<Vec<_>>();
     c6_ensure!(
         "cyberpunk-state-svg-text-role",
@@ -349,6 +344,7 @@ fn prove_state_label_occurrence(
         "State `{state_id}` requires exactly one terminal label occurrence"
     );
     prove_exact_text_occurrence(
+        receipt,
         labels[0],
         "state-label",
         state_id,
@@ -359,15 +355,17 @@ fn prove_state_label_occurrence(
 }
 
 fn prove_transition_label_occurrences(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     contract: CyberpunkStateProofContract<'_>,
 ) -> C6ProofResult<()> {
-    let visible_edge_labels = document
-        .descendants()
-        .filter(|node| node.has_tag_name("g") && class_contains(*node, "edgeLabel"))
+    let visible_edge_labels = receipt
+        .elements()
+        .iter()
+        .filter(|node| node.tag_name() == "g" && node.has_class("edgeLabel"))
         .filter(|node| {
-            node.descendants()
-                .any(|descendant| descendant.has_tag_name("text"))
+            receipt
+                .descendants_of(node.index())
+                .any(|descendant| descendant.tag_name() == "text")
         })
         .count();
     c6_ensure!(
@@ -378,11 +376,12 @@ fn prove_transition_label_occurrences(
     );
 
     for (edge_id, expected_text) in TRANSITION_LABELS {
-        let labels = document
-            .descendants()
+        let labels = receipt
+            .elements()
+            .iter()
             .filter(|node| {
-                node.has_tag_name("g")
-                    && class_contains(*node, "label")
+                node.tag_name() == "g"
+                    && node.has_class("label")
                     && node.attribute("data-id") == Some(edge_id)
             })
             .collect::<Vec<_>>();
@@ -391,18 +390,19 @@ fn prove_transition_label_occurrences(
             labels.len() == 1,
             "Transition `{edge_id}` requires exactly one terminal label occurrence"
         );
-        let backgrounds = labels[0]
-            .descendants()
-            .filter(|node| node.has_tag_name("rect") && class_contains(*node, "background"))
+        let backgrounds = receipt
+            .descendants_of(labels[0].index())
+            .filter(|node| node.tag_name() == "rect" && node.has_class("background"))
             .collect::<Vec<_>>();
         c6_ensure!(
             "cyberpunk-state-svg-text-surface",
             backgrounds.len() == 1
-                && style_value(backgrounds[0], "fill") == Some(contract.transition_surface)
+                && backgrounds[0].style_value("fill") == Some(contract.transition_surface)
                 && style_property_is_important(backgrounds[0], "fill"),
             "Transition `{edge_id}` lacks its exact terminal Cyberpunk label background"
         );
         prove_exact_text_occurrence(
+            receipt,
             labels[0],
             "transition-label",
             edge_id,
@@ -415,16 +415,17 @@ fn prove_transition_label_occurrences(
 }
 
 fn prove_exact_text_occurrence(
-    owner: roxmltree::Node<'_, '_>,
+    receipt: &SvgArtifactReceipt,
+    owner: &SvgElementObservation,
     role: &str,
     occurrence_id: &str,
     expected_text: &str,
     expected_fill: &str,
     expected_font_family: &str,
 ) -> C6ProofResult<()> {
-    let texts = owner
-        .descendants()
-        .filter(|node| node.has_tag_name("text"))
+    let texts = receipt
+        .descendants_of(owner.index())
+        .filter(|node| node.tag_name() == "text")
         .collect::<Vec<_>>();
     c6_ensure!(
         "cyberpunk-state-svg-text-role",
@@ -434,23 +435,23 @@ fn prove_exact_text_occurrence(
     let text = texts[0];
     c6_ensure!(
         "cyberpunk-state-svg-text-paint",
-        style_value(text, "fill") == Some(expected_fill)
-            && style_property_is_important(text, "fill"),
+        text.style_value("fill") == Some(expected_fill) && text.style_is_important("fill"),
         "terminal `{role}/{occurrence_id}` lacks the final typed text-paint owner"
     );
     c6_ensure!(
         "cyberpunk-state-svg-text-font",
-        style_value(text, "font-family")
+        text.style_value("font-family")
             .is_some_and(|value| css_family_matches(value, expected_font_family)),
         "terminal `{role}/{occurrence_id}` lacks `{expected_font_family}`"
     );
     c6_ensure!(
         "cyberpunk-state-svg-text-paint",
-        text.descendants()
-            .filter(|node| node.has_tag_name("tspan"))
+        receipt
+            .descendants_of(text.index())
+            .filter(|node| node.tag_name() == "tspan")
             .all(|node| {
-                if let Some(value) = style_value(node, "fill") {
-                    value == expected_fill && style_property_is_important(node, "fill")
+                if let Some(value) = node.style_value("fill") {
+                    value == expected_fill && node.style_is_important("fill")
                 } else {
                     node.attribute("fill").is_none()
                 }
@@ -460,24 +461,20 @@ fn prove_exact_text_occurrence(
     Ok(())
 }
 
-fn descendant_text(node: roxmltree::Node<'_, '_>) -> String {
-    node.descendants()
-        .filter(|descendant| descendant.is_text())
-        .filter_map(|descendant| descendant.text())
-        .collect::<String>()
-        .trim()
-        .to_string()
+fn style_property_is_important(node: &SvgElementObservation, property: &str) -> bool {
+    node.style_is_important(property)
 }
 
-fn style_property_is_important(node: roxmltree::Node<'_, '_>, property: &str) -> bool {
-    node.attribute("style").is_some_and(|style| {
-        style.split(';').any(|declaration| {
-            let Some((name, value)) = declaration.split_once(':') else {
-                return false;
-            };
-            name.trim() == property && value.trim().ends_with("!important")
-        })
-    })
+fn state_rect_belongs_to(
+    receipt: &SvgArtifactReceipt,
+    node: &SvgElementObservation,
+    state_id: &str,
+) -> bool {
+    let expected_fragment = format!("-state-{state_id}-");
+    node.parent_index()
+        .and_then(|index| receipt.element(index))
+        .and_then(SvgElementObservation::id)
+        .is_some_and(|id| id.contains(&expected_fragment))
 }
 
 fn css_family_matches(actual: &str, expected: &str) -> bool {
@@ -519,10 +516,6 @@ fn relative_luminance(rgb: [u8; 3]) -> f64 {
     0.2126 * red + 0.7152 * green + 0.0722 * blue
 }
 
-fn local_fragment_id(value: &str) -> Option<&str> {
-    value.strip_prefix("url(#")?.strip_suffix(')')
-}
-
 fn glow_visibility_region(
     view_box: [f64; 4],
     rect: [f64; 4],
@@ -555,6 +548,7 @@ fn glow_visibility_region(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest as _, Sha256};
 
     const TEXT_CONTRACT: CyberpunkStateProofContract<'static> = CyberpunkStateProofContract {
         canvas: "#020617",
@@ -605,14 +599,15 @@ mod tests {
         const BOOT_FILTER_ID: &str = "fixture-state-Boot-0-theme-effect-c6-cyberpunk-state-glow";
         const SCAN_FILTER_ID: &str = "fixture-state-Scan-1-theme-effect-c6-cyberpunk-state-glow";
         let valid = format!(
-            r##"<svg><g id="fixture-state-Boot-0"><rect filter="url(#{BOOT_FILTER_ID})"/></g><g id="fixture-state-Scan-1"><rect filter="url(#{SCAN_FILTER_ID})"/></g><defs><filter id="{BOOT_FILTER_ID}"/><filter id="{SCAN_FILTER_ID}"/></defs></svg>"##
+            r##"<svg viewBox="0 0 100 100"><g id="fixture-state-Boot-0"><rect filter="url(#{BOOT_FILTER_ID})"/></g><g id="fixture-state-Scan-1"><rect filter="url(#{SCAN_FILTER_ID})"/></g><defs><filter id="{BOOT_FILTER_ID}"/><filter id="{SCAN_FILTER_ID}"/></defs></svg>"##
         );
-        let document = roxmltree::Document::parse(&valid).unwrap();
-        let rects = document
-            .descendants()
-            .filter(|node| node.has_tag_name("rect"))
+        let receipt = test_receipt(&valid);
+        let rects = receipt
+            .elements()
+            .iter()
+            .filter(|node| node.tag_name() == "rect")
             .collect::<Vec<_>>();
-        assert!(prove_local_filter_references(&document, &rects).is_ok());
+        assert!(prove_local_filter_references(&receipt, &rects).is_ok());
 
         let mutations = [
             valid.replace(
@@ -622,13 +617,14 @@ mod tests {
             valid.replace(&format!("<filter id=\"{SCAN_FILTER_ID}\"/>"), ""),
         ];
         for mutated in mutations {
-            let document = roxmltree::Document::parse(&mutated).unwrap();
-            let rects = document
-                .descendants()
-                .filter(|node| node.has_tag_name("rect"))
+            let receipt = test_receipt(&mutated);
+            let rects = receipt
+                .elements()
+                .iter()
+                .filter(|node| node.tag_name() == "rect")
                 .collect::<Vec<_>>();
             assert!(
-                prove_local_filter_references(&document, &rects).is_err(),
+                prove_local_filter_references(&receipt, &rects).is_err(),
                 "mutation unexpectedly retained the filter reference closure: {mutated}"
             );
         }
@@ -637,48 +633,53 @@ mod tests {
     #[test]
     fn cyberpunk_state_text_contract_covers_every_state_and_transition_occurrence() {
         let svg = state_text_proof_svg("#e0f2fe", "#0f172a", true);
-        let document = roxmltree::Document::parse(&svg).unwrap();
+        let receipt = test_receipt(&svg);
 
-        assert!(prove_native_text(&document, &svg, TEXT_CONTRACT).is_ok());
+        assert!(prove_native_text(&receipt, TEXT_CONTRACT).is_ok());
     }
 
     #[test]
     fn cyberpunk_state_text_contract_rejects_one_wrong_transition_paint_or_surface() {
         let wrong_paint = state_text_proof_svg("#333333", "#0f172a", true);
-        let document = roxmltree::Document::parse(&wrong_paint).unwrap();
-        assert!(prove_native_text(&document, &wrong_paint, TEXT_CONTRACT).is_err());
+        let receipt = test_receipt(&wrong_paint);
+        assert!(prove_native_text(&receipt, TEXT_CONTRACT).is_err());
 
         let wrong_surface = state_text_proof_svg("#e0f2fe", "#ececff", true);
-        let document = roxmltree::Document::parse(&wrong_surface).unwrap();
-        assert!(prove_native_text(&document, &wrong_surface, TEXT_CONTRACT).is_err());
+        let receipt = test_receipt(&wrong_surface);
+        assert!(prove_native_text(&receipt, TEXT_CONTRACT).is_err());
 
         let child_override = state_text_proof_svg("#e0f2fe", "#0f172a", true).replacen(
             "<tspan>acquire target</tspan>",
             r##"<tspan fill="#333333">acquire target</tspan>"##,
             1,
         );
-        let document = roxmltree::Document::parse(&child_override).unwrap();
-        assert!(prove_native_text(&document, &child_override, TEXT_CONTRACT).is_err());
+        let receipt = test_receipt(&child_override);
+        assert!(prove_native_text(&receipt, TEXT_CONTRACT).is_err());
     }
 
     #[test]
     fn cyberpunk_state_text_contract_rejects_a_missing_transition_occurrence() {
         let svg = state_text_proof_svg("#e0f2fe", "#0f172a", false);
-        let document = roxmltree::Document::parse(&svg).unwrap();
+        let receipt = test_receipt(&svg);
 
-        assert!(prove_native_text(&document, &svg, TEXT_CONTRACT).is_err());
+        assert!(prove_native_text(&receipt, TEXT_CONTRACT).is_err());
     }
 
     #[test]
     fn cyberpunk_state_text_contract_rejects_an_unreadable_foreground_surface_pair() {
         let svg = state_text_proof_svg("#0f172a", "#0f172a", true).replace("#e0f2fe", "#0f172a");
-        let document = roxmltree::Document::parse(&svg).unwrap();
+        let receipt = test_receipt(&svg);
         let low_contrast = CyberpunkStateProofContract {
             text: "#0f172a",
             ..TEXT_CONTRACT
         };
 
-        assert!(prove_native_text(&document, &svg, low_contrast).is_err());
+        assert!(prove_native_text(&receipt, low_contrast).is_err());
+    }
+
+    fn test_receipt(svg: &str) -> SvgArtifactReceipt {
+        let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
+        SvgArtifactReceipt::observe_svg(svg, digest).expect("test SVG must produce a receipt")
     }
 
     fn state_text_proof_svg(edge2_fill: &str, edge2_surface: &str, include_edge2: bool) -> String {
@@ -687,7 +688,7 @@ mod tests {
             .enumerate()
             .map(|(index, state_id)| {
                 format!(
-                    r#"<g class="node statediagram-state" id="fixture-state-{state_id}-{index}"><rect class="basic label-container" style="fill:#0f172a !important"/><g class="label"><text style="fill:#e0f2fe !important;font-family:Excalifont !important"><tspan>{state_id}</tspan></text></g></g>"#
+                    r#"<g class="node statediagram-state" id="fixture-state-{state_id}-{index}"><rect class="basic label-container" rx="10" ry="10" style="fill:#0f172a !important;stroke:#22d3ee !important;stroke-width:2 !important"/><g class="label"><text style="fill:#e0f2fe !important;font-family:Excalifont !important"><tspan>{state_id}</tspan></text></g></g>"#
                 )
             })
             .collect::<String>();
@@ -710,6 +711,6 @@ mod tests {
                 )
             })
             .collect::<String>();
-        format!(r#"<svg>{states}{transitions}</svg>"#)
+        format!(r#"<svg viewBox="0 0 100 100">{states}{transitions}</svg>"#)
     }
 }

@@ -285,11 +285,17 @@ impl<'a> C6TargetArtifact<'a> {
         self.view.flowchart_svg_artifact_receipt()
     }
 
+    pub(crate) const fn svg_artifact_receipt(
+        &self,
+    ) -> Option<&merman_render::__private::SvgArtifactReceipt> {
+        self.view.svg_artifact_receipt()
+    }
+
     /// Returns the renderer-owned receipt digest bound to this exact target.
     ///
-    /// A family-specific artifact observation takes precedence when the renderer sealed one;
-    /// otherwise the target admission receipt is the production-owned terminal seal. There is no
-    /// valid C6 proof state without one of these renderer-issued digests.
+    /// A renderer-owned SVG observation takes precedence when the target is a finalized document;
+    /// otherwise the target admission receipt remains the production-owned terminal seal. There
+    /// is no valid C6 proof state without one of these renderer-issued digests.
     pub(crate) const fn renderer_receipt_digest(&self) -> [u8; 32] {
         self.view.renderer_receipt_digest()
     }
