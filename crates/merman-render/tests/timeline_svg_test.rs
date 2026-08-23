@@ -433,6 +433,46 @@ fn timeline_static_event_radius_overrides_redux_sharp_baseline() {
 }
 
 #[test]
+fn timeline_redux_event_radius_clear_preserves_sharp_geometry_and_terminal_evidence() {
+    let mermaid = MermaidThemeCompatibility::default()
+        .with_theme("redux")
+        .expect("valid Redux Mermaid theme");
+    let theme = timeline_event_rules_theme_with_mermaid(
+        mermaid,
+        [ThemeRule::new(
+            ThemeTarget::TimelineEvent,
+            timeline_event_radius_style(Specified::Clear),
+        )],
+    );
+    let rendered = try_render_timeline_with_theme_requirement(
+        "timeline\n    section Release\n        2026 : Ship\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("Redux Clear radius must render in best-effort mode");
+    let svg = rendered.svg().to_owned();
+    let document = roxmltree::Document::parse(&svg).expect("valid Redux Timeline SVG XML");
+    let event_path = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .nth(1)
+        .expect("Redux Timeline event path");
+    let path = event_path.attribute("d").expect("Redux event path data");
+    assert!(
+        !path.split_whitespace().any(|token| token.starts_with('q')),
+        "Redux Clear radius must preserve sharp geometry: {path}"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn timeline_static_event_radius_preserves_f32_token_and_normalizes_negative_zero() {
     let fractional = render_timeline_svg_with_theme(
         "timeline\n    2026 : Ship\n",
