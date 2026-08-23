@@ -394,12 +394,14 @@ pub(crate) struct TimelineEventThemeReceipt {
 }
 
 impl TimelineEventThemeReceipt {
+    #[cfg(test)]
     fn new(event_count: usize) -> Self {
         Self::from_expectations(
             vec![TimelineEventTerminalExpectation::baseline(); event_count].into_boxed_slice(),
         )
     }
 
+    #[cfg(test)]
     fn from_expectations(
         expectations: Box<[TimelineEventTerminalExpectation]>,
     ) -> TimelineEventThemeReceipt {
