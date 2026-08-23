@@ -2,7 +2,8 @@
 //!
 //! These observations are deliberately feature-gated. The non-published acceptance harness may
 //! evaluate its own fixture contract against these immutable facts, but it does not parse the
-//! production SVG or reimplement the renderer's DOM/CSS interpretation.
+//! production SVG or reimplement the renderer's DOM/CSS interpretation. Synthetic observations
+//! for unit tests are exposed only through the workspace-only acceptance feature.
 
 use roxmltree::{Document, Node};
 use sha2::{Digest as _, Sha256};
@@ -10,8 +11,8 @@ use sha2::{Digest as _, Sha256};
 /// Renderer-owned, family-neutral observations of one finalized SVG artifact.
 ///
 /// The acceptance harness receives this immutable projection instead of reparsing the terminal
-/// XML/CSS. It may interpret semantic fixture contracts over these facts, but it cannot change the
-/// observed artifact or mint a receipt for unrelated bytes.
+/// XML/CSS. It may interpret semantic fixture contracts over these facts, but production code
+/// cannot change the observed artifact or mint a receipt for unrelated bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SvgArtifactReceipt {
     artifact_digest: [u8; 32],
@@ -80,8 +81,13 @@ impl SvgArtifactReceipt {
         Self::observe_verified_svg(svg, artifact_digest)
     }
 
-    /// Observes the finalized public SVG and binds the projection to its exact byte digest.
-    pub fn observe_svg(svg: &str, artifact_digest: [u8; 32]) -> Option<Self> {
+    /// Builds a synthetic receipt for renderer/acceptance unit tests.
+    ///
+    /// This constructor is deliberately unavailable to ordinary builds. Runtime acceptance must
+    /// obtain the receipt from the finalized renderer artifact instead of observing arbitrary bytes.
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[doc(hidden)]
+    pub fn observe_svg_for_test(svg: &str, artifact_digest: [u8; 32]) -> Option<Self> {
         if artifact_digest == [0; 32]
             || Sha256::digest(svg.as_bytes()).as_slice() != artifact_digest
         {
@@ -882,7 +888,8 @@ mod tests {
 <g id="owner" class="actor"><rect x="2" y="3" width="10" height="8" style="fill:#abc;stroke:#111!important"/><text> Ready </text></g>
 </svg>"##.to_owned();
         let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
-        let receipt = SvgArtifactReceipt::observe_svg(&svg, digest).expect("generic receipt");
+        let receipt =
+            SvgArtifactReceipt::observe_svg_for_test(&svg, digest).expect("generic receipt");
         assert!(receipt.proves_artifact(digest));
         assert_eq!(receipt.root_id(), Some("state"));
         assert_eq!(receipt.view_box(), [0.0, 0.0, 40.0, 30.0]);

@@ -679,7 +679,8 @@ mod tests {
 
     fn test_receipt(svg: &str) -> SvgArtifactReceipt {
         let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
-        SvgArtifactReceipt::observe_svg(svg, digest).expect("test SVG must produce a receipt")
+        SvgArtifactReceipt::observe_svg_for_test(svg, digest)
+            .expect("test SVG must produce a receipt")
     }
 
     fn state_text_proof_svg(edge2_fill: &str, edge2_surface: &str, include_edge2: bool) -> String {

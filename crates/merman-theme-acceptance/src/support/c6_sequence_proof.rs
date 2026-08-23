@@ -203,7 +203,7 @@ fn check_sequence_svg(
     let svg = std::str::from_utf8(bytes)
         .map_err(|error| C6ProofError::new("sequence-svg-utf8", error.to_string()))?;
     let digest = sha2::Sha256::digest(svg.as_bytes()).into();
-    let receipt = SvgArtifactReceipt::observe_svg(svg, digest).ok_or_else(|| {
+    let receipt = SvgArtifactReceipt::observe_svg_for_test(svg, digest).ok_or_else(|| {
         C6ProofError::new("sequence-svg-observation", "test SVG was not observed")
     })?;
     check_sequence_svg_internal(contract, None, &receipt)
@@ -218,7 +218,7 @@ fn check_sequence_svg_with_role_text(
     let svg = std::str::from_utf8(bytes)
         .map_err(|error| C6ProofError::new("sequence-svg-utf8", error.to_string()))?;
     let digest = sha2::Sha256::digest(svg.as_bytes()).into();
-    let receipt = SvgArtifactReceipt::observe_svg(svg, digest).ok_or_else(|| {
+    let receipt = SvgArtifactReceipt::observe_svg_for_test(svg, digest).ok_or_else(|| {
         C6ProofError::new("sequence-svg-observation", "test SVG was not observed")
     })?;
     check_sequence_svg_internal(contract, Some(role_text), &receipt)
