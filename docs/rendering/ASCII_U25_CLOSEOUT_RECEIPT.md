@@ -1,6 +1,6 @@
 # ASCII U25 Closeout Receipt
 
-Status: exact-current-source evidence for the U25 closeout. The measured product source is commit 861fc0ba33ac6f0a724263b3a6f303a3f26eee15. This receipt and its attachments are documentation-only evidence for that source point.
+Status: source-bound evidence for the U25 closeout. The measured ASCII product source is commit 861fc0ba33ac6f0a724263b3a6f303a3f26eee15. This receipt and its attachments are documentation-only evidence for that source point; they are not a whole-repository receipt for unrelated render families or platform changes carried by later commits.
 
 ## Evidence boundary
 
@@ -90,4 +90,4 @@ These are P2 follow-ups, not unresolved closeout rows. The maintainer dispositio
 
 ## Validity rule
 
-This receipt is valid only for product source commit 861fc0ba33ac6f0a724263b3a6f303a3f26eee15 and tree fc552d5c52f9555c619a67294d523baaf2c89203. Any later product, lockfile, fixture, benchmark-harness, CI-contract, or performance-evidence change requires a new source freeze and affected evidence rerun. The 50 microsecond value is lane-specific materiality, not a universal pass/fail promise.
+This receipt is valid for the U25 evidence closure at product source commit 861fc0ba33ac6f0a724263b3a6f303a3f26eee15 and tree fc552d5c52f9555c619a67294d523baaf2c89203. A later change requires a new source freeze and affected evidence rerun when it changes the ASCII production path, Cargo.lock, the ASCII benchmark harness or corpus, a recorded U25 verification contract, or the retained performance evidence. Changes outside that closure, such as another SVG family's implementation, a test-only stack allowance, generated documentation receipts, or CI size budgets, require their own gates but do not rewrite the measured ASCII result. The 50 microsecond value is lane-specific materiality, not a universal pass/fail promise.

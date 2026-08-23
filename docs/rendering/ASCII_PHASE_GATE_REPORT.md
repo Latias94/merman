@@ -2,7 +2,7 @@
 
 ## Current U25 receipt
 
-The exact-current-HEAD closeout evidence is maintained in
+The source-bound U25 closeout evidence is maintained in
 [ASCII_U25_CLOSEOUT_RECEIPT.md](ASCII_U25_CLOSEOUT_RECEIPT.md). This phase report remains the
 historical Phase 0-3 admission artifact; it is not a second performance scorecard.
 
