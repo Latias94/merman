@@ -225,8 +225,11 @@ Advanced renderer parameters:
   The package keeps `scoped-css` unopinionated by default: Merman resolves fallback typography
   from the original SVG/XHTML context before removing `foreignObject`, so ClassDiagram labels do
   not need a hidden global 16px override. If a document deliberately wants a host-specific paint
-  policy, pass an explicit `scoped-css` string; remember that CSS injected after fallback can
-  change painted font metrics but cannot recompute wrapping or placement.
+  policy, pass an explicit `scoped-css` string. Selectors matching the original SVG/XHTML context
+  can affect fallback measurement; selectors matching the generated
+  `.merman-foreignobject-fallback-text` marker are post-fallback paint hooks and cannot recompute
+  wrapping or placement. CSS injected after fallback can therefore change painted font metrics but
+  must not be treated as a new measurement pass.
 - `fixed-today`, `fixed-local-offset-minutes`: deterministic date controls for date-sensitive diagrams.
 - `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. The plugin reserves the constrained `resources` ceiling; documents may provide stricter limits, while looser profiles or overrides return a structured options error.
 

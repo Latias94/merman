@@ -606,6 +606,36 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn render_svg_json_keeps_explicit_typography_in_the_resvg_safe_transport() {
+        let payload: Value = serde_json::from_slice(&render_svg_json(
+            br#"classDiagram
+    class User {
+        +String name
+    }"#,
+            br#"{
+                "presentation": {
+                    "theme": {
+                        "font_family": "Typst Explicit Sans",
+                        "font_size": "18px"
+                    }
+                },
+                "svg": { "pipeline": "resvg-safe" }
+            }"#,
+        ))
+        .expect("valid JSON payload");
+
+        assert_success_envelope(&payload, RENDER_OPERATION);
+        let svg = payload["data"]["svg"].as_str().expect("SVG payload");
+        assert!(!svg.contains("<foreignObject"), "{svg}");
+        assert!(svg.contains("Typst Explicit Sans"), "{svg}");
+        assert!(
+            svg.contains("font-size:18px") || svg.contains("font-size: 18px"),
+            "explicit Typst typography must reach the fallback text: {svg}"
+        );
+    }
+
     #[cfg(feature = "layout-elk")]
     #[test]
     fn render_svg_json_renders_flowchart_elk_from_default_artifact() {

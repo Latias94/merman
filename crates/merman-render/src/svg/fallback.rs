@@ -543,6 +543,27 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_overlay_does_not_inherit_background_color_by_default() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g style="background-color:#ff0000"><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>Hello</p></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        assert!(
+            !out.contains(r##"fill="#ff0000""##),
+            "background-color is not inherited by a child without a specified value: {out}"
+        );
+
+        let explicit_initial = r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg{background-color:initial}</style><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>Hello</p></div></foreignObject></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(explicit_initial);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+        assert!(
+            !fallback.contains("rgba(232, 232, 232, 0.5)"),
+            "explicit background-color: initial must not become the compatibility gray: {out}"
+        );
+    }
+
+    #[test]
     fn foreign_object_overlay_splits_literal_backslash_n() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(10, 20)"><foreignObject width="80" height="48"><div xmlns="http://www.w3.org/1999/xhtml"><p>Layer 7\nHTTP</p></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(svg);
@@ -723,6 +744,22 @@ mod tests {
             out.contains("font-size: 16px"),
             "an invalid ordinary selector list must discard its complete rule: {out}"
         );
+
+        let malformed_combinator = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>span >> .nodeLabel{font-size:10px}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(malformed_combinator);
+        assert!(
+            out.contains("font-size: 16px") && !out.contains("font-size: 10px"),
+            "malformed repeated child combinators must fail closed: {out}"
+        );
+
+        let malformed_compound = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel,$bad{font-size:10px}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(malformed_compound);
+        assert!(
+            out.contains("font-size: 16px") && !out.contains("font-size: 10px"),
+            "an invalid compound must invalidate its complete selector list: {out}"
+        );
     }
 
     #[test]
@@ -758,6 +795,47 @@ mod tests {
         assert!(
             out.contains("font-size: 14px"),
             "an unsupported high-priority value must not erase a lower valid declaration: {out}"
+        );
+
+        let invalid_non_metric_winner = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-weight:600;font-weight:9999 !important;font-style:italic;font-style:bogus !important;fill:#123456;fill:definitely-not-a-paint !important;color:#abcdef;color:VAR(--missing) !important}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(invalid_non_metric_winner);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+        assert!(fallback.contains("font-weight: 600"), "got: {out}");
+        assert!(fallback.contains("font-style: italic"), "got: {out}");
+        assert!(fallback.contains(r##"fill="#123456""##), "got: {out}");
+        assert!(
+            !fallback.contains("9999"),
+            "invalid font weight leaked: {out}"
+        );
+        assert!(
+            !fallback.contains("bogus"),
+            "invalid font style leaked: {out}"
+        );
+        assert!(
+            !fallback.contains("definitely-not-a-paint"),
+            "invalid fill leaked: {out}"
+        );
+        assert!(
+            !fallback.contains("VAR("),
+            "case-insensitive var() leaked: {out}"
+        );
+
+        let invalid_relative_values = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-size:14px;line-height:1.5}.nodeLabel{font-size:20 px !important;line-height:1e308 !important}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(invalid_relative_values);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+        assert!(fallback.contains("font-size: 14px"), "got: {out}");
+        assert!(fallback.contains("line-height: 21px"), "got: {out}");
+        assert!(
+            !fallback.contains("20 px") && !fallback.contains("inf"),
+            "non-finite metric leaked: {out}"
         );
     }
 

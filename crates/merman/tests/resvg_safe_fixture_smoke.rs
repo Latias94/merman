@@ -90,23 +90,6 @@ const FALLBACK_OWNER_REPRESENTATIVES: &[(&str, &str)] = &[
     ),
 ];
 
-const FALLBACK_OWNER_FIXTURE_DIRS: &[&str] = &[
-    "architecture",
-    "block",
-    "class",
-    "er",
-    "eventmodeling",
-    "flowchart",
-    "swimlane",
-    "journey",
-    "kanban",
-    "mindmap",
-    "requirement",
-    "sequence",
-    "state",
-    "venn",
-];
-
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
@@ -215,29 +198,53 @@ fn all_fixture_paths_for_dirs(family_dirs: &[&'static str]) -> Vec<PathBuf> {
         }
 
         let dir = fixtures_root.join(family);
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        out.extend(
-            entries
-                .flatten()
-                .map(|entry| entry.path())
-                .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("mmd"))
-                .filter(|path| {
-                    let Some(filter) = &name_filter else {
-                        return true;
-                    };
-                    let name = path
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or_default();
-                    name.contains(filter)
-                }),
-        );
+        collect_fixture_paths_recursively(&dir, &name_filter, &mut out);
     }
 
     out.sort();
     out
+}
+
+fn collect_fixture_paths_recursively(
+    directory: &Path,
+    name_filter: &Option<String>,
+    output: &mut Vec<PathBuf>,
+) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            collect_fixture_paths_recursively(&path, name_filter, output);
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("mmd") {
+            continue;
+        }
+        if let Some(filter) = name_filter
+            && !path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .contains(filter)
+        {
+            continue;
+        }
+        output.push(path);
+    }
+}
+
+fn fallback_owner_fixture_dirs() -> Vec<&'static str> {
+    FALLBACK_OWNER_MANIFEST
+        .iter()
+        .flat_map(|(_, directories)| directories.iter().copied())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn all_supported_fixture_paths() -> Vec<PathBuf> {
@@ -245,7 +252,8 @@ fn all_supported_fixture_paths() -> Vec<PathBuf> {
 }
 
 fn all_fallback_owner_fixture_paths() -> Vec<PathBuf> {
-    all_fixture_paths_for_dirs(FALLBACK_OWNER_FIXTURE_DIRS)
+    let directories = fallback_owner_fixture_dirs();
+    all_fixture_paths_for_dirs(&directories)
 }
 
 fn boundary_fixture_paths() -> Vec<PathBuf> {
@@ -1152,7 +1160,7 @@ fn fallback_owner_manifest_covers_thirteen_owners_and_fourteen_fixture_directori
     assert_eq!(directories.len(), 14);
     assert_eq!(
         directories,
-        FALLBACK_OWNER_FIXTURE_DIRS.iter().copied().collect()
+        fallback_owner_fixture_dirs().into_iter().collect()
     );
 
     for (owner, fixture_dirs) in FALLBACK_OWNER_MANIFEST {
@@ -1274,8 +1282,9 @@ fn all_supported_fixtures_render_typed_resvg_safe_audit() {
 #[ignore = "manual fallback-owner audit; default smoke stays representative"]
 fn all_fallback_owner_fixtures_render_typed_resvg_safe_audit() {
     let fixtures = all_fallback_owner_fixture_paths();
-    let filtered_audit = audit_family_filter(FALLBACK_OWNER_FIXTURE_DIRS).is_some()
-        || audit_name_filter().as_deref().is_some();
+    let owner_dirs = fallback_owner_fixture_dirs();
+    let filtered_audit =
+        audit_family_filter(&owner_dirs).is_some() || audit_name_filter().as_deref().is_some();
     assert!(
         filtered_audit || !fixtures.is_empty(),
         "expected fallback-owner fixtures, or a non-empty filtered audit"

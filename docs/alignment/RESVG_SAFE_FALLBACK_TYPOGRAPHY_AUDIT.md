@@ -2,7 +2,7 @@
 
 Date: 2026-08-23
 
-This ledger records the issue #89 closure and the adjacent fallback-owner audit. It is an
+This ledger records the issue #89 review and the adjacent fallback-owner audit. It is an
 adapter-level audit: Mermaid parity SVG, the pinned Mermaid source, and the `repo-ref/mermaid` and
 `repo-ref/zed` checkouts are not modified.
 
@@ -31,7 +31,7 @@ with `MERMAN_RESVG_SAFE_AUDIT_FAMILY`.
 | Class | `class` | public 16px regression and owner render | 251 rendered / 0 skipped |
 | ER | `er` | public entity 16px / relationship 14px regression | 101 rendered / 0 skipped |
 | Event Modeling | `eventmodeling` | owner manifest + typed resvg-safe render | 10 rendered / 0 skipped |
-| Flowchart | `flowchart`, `swimlane` | owner manifest + Zed-like fallback contract | 1160 rendered / 1 parser-only skipped |
+| Flowchart | `flowchart`, `swimlane` (recursive) | owner manifest + Zed-like fallback contract | 1190 rendered / 1 parser-only skipped |
 | Journey | `journey` | owner manifest + typed resvg-safe render | 26 rendered / 0 skipped |
 | Kanban | `kanban` | owner manifest + typed resvg-safe render | 87 rendered / 0 skipped |
 | Mindmap | `mindmap` | owner manifest + typed resvg-safe render | 114 rendered / 0 skipped |
@@ -58,15 +58,16 @@ ordinary text content, so valid labels are not mistaken for invalid geometry.
 
 ### Issue #89 comment adjudication
 
-The issue discussion correctly records that the pinned Mermaid layout golden measures ClassDiagram
-rows at the 16px theme size. That fact does not make the fallback's former 10px result a parity
-requirement. In the captured ClassDiagram SVG, `classLabel` and `classGroup` occur in the stylesheet
-but not in the rendered element ancestry, so `.classLabel .label` and `g.classGroup text` do not
-match those XHTML labels under ordinary CSS selector semantics. The former fallback index extracted
-class tokens from those selectors and applied their declarations to any `.label`, which is the
-Merman adapter defect fixed here. The resolver therefore preserves the upstream 16px measurement
-and removes only the false selector match; it does not change Mermaid layout, parity SVG, or the
-pinned baseline.
+The August 23, 2026 issue comment correctly records that the pinned Mermaid layout golden measures
+ClassDiagram rows at the 16px theme size while the SVG stylesheet paints a 10px rule. That is
+intentional Mermaid behavior and is not a request to change Mermaid parity. In the captured
+ClassDiagram SVG, `classLabel` and `classGroup` occur in the stylesheet but not in the rendered
+element ancestry, so `.classLabel .label` and `g.classGroup text` do not match those XHTML labels
+under ordinary CSS selector semantics. The former fallback index extracted class tokens from those
+selectors and applied their declarations to any `.label`, which was the Merman adapter defect.
+This change is therefore a `resvg-safe` source-context adapter: it prevents the false selector
+match while preserving the source metric used for measurement. It does not change Mermaid layout,
+parity SVG, or the pinned baseline.
 
 The focused semantic suite covers:
 
@@ -105,8 +106,8 @@ change:
   current `scoped-css` option already provides an explicit opt-in without changing parity or
   package defaults.
 
-The recommended handling is to close #92 as superseded for the #89 correctness path, keep the
-Typst package unopinionated, and document that metric-affecting CSS must be supplied before
+The recommended handling is to close #92 as superseded for the #89 adapter path, keep the Typst
+package unopinionated, and document that metric-affecting CSS must be supplied before
 fallback. A future Typst-only readability profile can be considered separately if it is scoped to
 an explicit user choice and has per-family/non-16px regression coverage; it must not be a hidden
 global override.
@@ -117,4 +118,5 @@ Metric-affecting host CSS must be supplied before the fallback stage. CSS inject
 `<text>` exists can change paint in a consumer, but it cannot cause Merman to remeasure wrapping or
 recompute placement. Zed's current global fallback `font-size: 16px !important` rule remains a
 downstream limitation and is intentionally not changed in this issue; the Merman output is
-correct before that rule is injected.
+validated before that rule is injected, while a post-return host composition is a separate
+paint-only contract.

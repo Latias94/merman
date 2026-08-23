@@ -45,8 +45,38 @@ fn fallback_text_style(svg: &str, label: &str) -> String {
 }
 
 fn assert_usvg_parseable(svg: &str) {
-    let options = usvg::Options::default();
+    let mut options = usvg::Options::default();
+    options.fontdb_mut().load_system_fonts();
     usvg::Tree::from_str(svg, &options).expect("resvg-safe SVG should remain usvg-parseable");
+}
+
+fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
+    fn find_font_size(group: &usvg::Group, label: &str) -> Option<f32> {
+        for node in group.children() {
+            match node {
+                usvg::Node::Group(group) => {
+                    if let Some(size) = find_font_size(group, label) {
+                        return Some(size);
+                    }
+                }
+                usvg::Node::Text(text) => {
+                    for chunk in text.chunks() {
+                        if chunk.text().trim() == label {
+                            return chunk.spans().first().map(|span| span.font_size().get());
+                        }
+                    }
+                }
+                usvg::Node::Path(_) | usvg::Node::Image(_) => {}
+            }
+        }
+        None
+    }
+
+    let mut options = usvg::Options::default();
+    options.fontdb_mut().load_system_fonts();
+    let tree = usvg::Tree::from_str(svg, &options).expect("resvg-safe output should parse in usvg");
+    find_font_size(tree.root(), label)
+        .unwrap_or_else(|| panic!("expected usvg text span for {label:?}: {svg}"))
 }
 
 #[test]
@@ -70,6 +100,11 @@ fn class_diagram_fallback_keeps_source_context_typography() {
         assert!(
             !style.contains("font-size: 10px") && !style.contains("font-size:10px"),
             "{label:?} must not receive the SVG-only class text selector: {style}"
+        );
+        assert_eq!(
+            usvg_fallback_text_font_size(&svg, label),
+            16.0,
+            "{label:?} must paint at 16px after usvg style resolution"
         );
     }
     assert_usvg_parseable(&svg);
@@ -112,6 +147,11 @@ fn er_fallback_keeps_entity_and_relationship_selector_sizes_distinct() {
             || relationship_style.contains("font-size:14px"),
         "only the matching .edgeLabel .label context should use 14px: {relationship_style}"
     );
+    assert_eq!(
+        usvg_fallback_text_font_size(&svg, "places"),
+        14.0,
+        "ER relationship text must paint at its contextual 14px size"
+    );
     assert_usvg_parseable(&svg);
 }
 
@@ -132,6 +172,11 @@ venn-beta
     assert!(
         style.contains("font-size: 20px") || style.contains("font-size:20px"),
         "Venn text nodes should inherit the .venn-text-area presentation size (20px at width 800): {style}"
+    );
+    assert_eq!(
+        usvg_fallback_text_font_size(&svg, "React"),
+        20.0,
+        "Venn text must paint at the inherited 20px size"
     );
     assert_usvg_parseable(&svg);
 }

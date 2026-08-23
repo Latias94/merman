@@ -14,6 +14,9 @@ use std::sync::Arc;
 const DEFAULT_FONT_SIZE: f64 = 16.0;
 const DEFAULT_FONT_FAMILY: &str = "trebuchet ms,verdana,arial,sans-serif";
 const DEFAULT_FILL: &str = "#333";
+// Fallback text is a bounded adapter, so pathological CSS magnitudes must not enter output or
+// overflow relative-unit and line-height calculations.
+const MAX_CSS_NUMERIC_VALUE: f64 = 1_000_000.0;
 const MAX_UNIVERSAL_POSTINGS: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -56,6 +59,7 @@ pub(super) struct ResolvedStyle {
     line_height: LineHeight,
     pub(super) fill: String,
     pub(super) background_color: Option<String>,
+    background_color_specified: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -429,6 +433,7 @@ impl CascadeIndex {
                 .map(|value| value.value.as_str()),
             parent.background_color.as_deref(),
         );
+        let background_color_specified = specified.contains_key("background-color");
         checkpoint()?;
         Ok(ResolvedStyle {
             font_size,
@@ -438,6 +443,7 @@ impl CascadeIndex {
             line_height,
             fill,
             background_color,
+            background_color_specified,
         })
     }
 
@@ -528,10 +534,12 @@ impl CascadeIndex {
         let label_background = label_background_path
             .map(|path| self.resolve_full_path(&path, checkpoint))
             .transpose()?
-            .map(|style| {
-                style
-                    .background_color
-                    .unwrap_or_else(|| "rgba(232, 232, 232, 0.5)".to_string())
+            .and_then(|style| {
+                if style.background_color_specified {
+                    style.background_color
+                } else {
+                    Some("rgba(232, 232, 232, 0.5)".to_string())
+                }
             });
         checkpoint()?;
         Ok(ResolvedFallbackTypography {
@@ -809,6 +817,7 @@ fn default_style() -> ResolvedStyle {
         line_height: LineHeight::Normal,
         fill: DEFAULT_FILL.to_string(),
         background_color: None,
+        background_color_specified: false,
     }
 }
 
@@ -828,7 +837,11 @@ fn is_supported_property(property: &str) -> bool {
 
 fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
     let value = value.trim();
-    if value.is_empty() || value.contains("var(") || value.contains("calc(") {
+    if value.is_empty()
+        || lower_ascii_contains(value, "var(")
+        || lower_ascii_contains(value, "calc(")
+        || lower_ascii_contains(value, "env(")
+    {
         return false;
     }
     let lower = value.to_ascii_lowercase();
@@ -848,19 +861,14 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
                     | "xx-large"
                     | "smaller"
                     | "larger"
-            ) || lower
-                .strip_suffix("px")
-                .or_else(|| lower.strip_suffix("rem"))
-                .or_else(|| lower.strip_suffix("em"))
-                .or_else(|| lower.strip_suffix('%'))
-                .and_then(parse_number)
-                .and_then(finite_positive)
-                .is_some()
+            ) || ["px", "rem", "em", "%"]
+                .iter()
+                .any(|unit| parse_css_number_with_unit(&lower, unit).is_some())
                 || (presentation
                     && lower
                         .parse::<f64>()
                         .ok()
-                        .and_then(finite_positive)
+                        .and_then(bounded_positive)
                         .is_some())
         }
         "line-height" => {
@@ -868,19 +876,70 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
                 || lower
                     .parse::<f64>()
                     .ok()
-                    .and_then(finite_positive)
+                    .and_then(bounded_positive)
                     .is_some()
-                || lower
-                    .strip_suffix("px")
-                    .or_else(|| lower.strip_suffix("rem"))
-                    .or_else(|| lower.strip_suffix("em"))
-                    .or_else(|| lower.strip_suffix('%'))
-                    .and_then(parse_number)
-                    .and_then(finite_positive)
-                    .is_some()
+                || ["px", "rem", "em", "%"]
+                    .iter()
+                    .any(|unit| parse_css_number_with_unit(&lower, unit).is_some())
         }
-        _ => true,
+        "font-weight" => is_admitted_font_weight(&lower),
+        "font-style" => matches!(lower.as_str(), "normal" | "italic" | "oblique"),
+        "fill" | "color" | "background-color" => is_admitted_paint(&lower),
+        "font-family" => is_admitted_font_family(value),
+        _ => false,
     }
+}
+
+fn lower_ascii_contains(value: &str, needle: &str) -> bool {
+    value.to_ascii_lowercase().contains(needle)
+}
+
+fn parse_css_number_with_unit(value: &str, unit: &str) -> Option<f64> {
+    let number = value.strip_suffix(unit)?;
+    if number.is_empty() || number.chars().any(char::is_whitespace) {
+        return None;
+    }
+    number.parse::<f64>().ok().and_then(bounded_positive)
+}
+
+fn is_admitted_font_weight(value: &str) -> bool {
+    matches!(value, "normal" | "bold" | "bolder" | "lighter")
+        || value
+            .parse::<u16>()
+            .ok()
+            .is_some_and(|weight| (1..=1000).contains(&weight))
+}
+
+fn is_admitted_font_family(value: &str) -> bool {
+    !value
+        .chars()
+        .any(|character| character.is_control() || matches!(character, '{' | '}' | ';'))
+}
+
+fn is_admitted_paint(value: &str) -> bool {
+    if matches!(value, "none" | "transparent" | "currentcolor") {
+        return true;
+    }
+    if value.starts_with('#') {
+        return value
+            .strip_prefix('#')
+            .is_some_and(|hex| cssparser::color::parse_hash_color(hex.as_bytes()).is_ok());
+    }
+    if cssparser::color::parse_named_color(value).is_ok() {
+        return true;
+    }
+    let Some(open) = value.find('(') else {
+        return false;
+    };
+    let name = &value[..open];
+    if !matches!(name, "rgb" | "rgba" | "hsl" | "hsla") || !value.ends_with(')') {
+        return false;
+    }
+    let body = &value[open + 1..value.len() - 1];
+    !body.is_empty()
+        && !body.chars().any(|character| {
+            character.is_control() || matches!(character, '{' | '}' | ';' | '"' | '\'')
+        })
 }
 
 struct ParsedQualifiedRule {
@@ -1186,6 +1245,11 @@ fn parse_branch<E>(
                 if compounds.is_empty() {
                     return Ok(BranchParse::Invalid);
                 }
+                if pending == Some(Combinator::Child) {
+                    return Ok(BranchParse::Invalid);
+                }
+                // Whitespace immediately before `>` is part of the same explicit
+                // child combinator, so replace the provisional descendant marker.
                 pending = Some(Combinator::Child);
             }
             '+' | '~' | '|' | ':' => {
@@ -1229,7 +1293,7 @@ fn parse_branch<E>(
                     .saturating_add(u32::from(compound.local_name.is_some()));
                 parsed.push(compound);
             }
-            None => return Ok(BranchParse::ValidButUnadmitted),
+            None => return Ok(BranchParse::Invalid),
         }
     }
     Ok(BranchParse::Admitted(Branch {
@@ -1583,19 +1647,19 @@ fn resolve_font_size(
         return finite_positive(DEFAULT_FONT_SIZE);
     }
     if let Some(number) = value.strip_suffix("px").and_then(parse_number) {
-        return finite_positive(number);
+        return bounded_positive(number);
     }
     if let Some(number) = value.strip_suffix("rem").and_then(parse_number) {
-        return finite_positive(root * number);
+        return bounded_positive(root * number);
     }
     if let Some(number) = value.strip_suffix("em").and_then(parse_number) {
-        return finite_positive(parent * number);
+        return bounded_positive(parent * number);
     }
     if let Some(number) = value.strip_suffix('%').and_then(parse_number) {
-        return finite_positive(parent * number / 100.0);
+        return bounded_positive(parent * number / 100.0);
     }
     if svg_unitless {
-        return value.parse::<f64>().ok().and_then(finite_positive);
+        return value.parse::<f64>().ok().and_then(bounded_positive);
     }
     match value.as_str() {
         "xx-small" => finite_positive(9.0),
@@ -1650,27 +1714,27 @@ fn resolve_line_height(
         return LineHeight::Normal;
     }
     if let Ok(number) = lower.parse::<f64>() {
-        return finite_positive(number)
+        return bounded_positive(number)
             .map(LineHeight::Multiplier)
             .unwrap_or_else(|| inherited.clone());
     }
     if let Some(number) = lower.strip_suffix("px").and_then(parse_number) {
-        return finite_positive(number)
+        return bounded_positive(number)
             .map(LineHeight::AbsolutePx)
             .unwrap_or_else(|| inherited.clone());
     }
     if let Some(number) = lower.strip_suffix("rem").and_then(parse_number) {
-        return finite_positive(root * number)
+        return bounded_positive(root * number)
             .map(LineHeight::AbsolutePx)
             .unwrap_or_else(|| inherited.clone());
     }
     if let Some(number) = lower.strip_suffix("em").and_then(parse_number) {
-        return finite_positive(font_size * number)
+        return bounded_positive(font_size * number)
             .map(LineHeight::AbsolutePx)
             .unwrap_or_else(|| inherited.clone());
     }
     if let Some(number) = lower.strip_suffix('%').and_then(parse_number) {
-        return finite_positive(font_size * number / 100.0)
+        return bounded_positive(font_size * number / 100.0)
             .map(LineHeight::AbsolutePx)
             .unwrap_or_else(|| inherited.clone());
     }
@@ -1695,4 +1759,8 @@ fn finite_positive(value: f64) -> Option<f64> {
         .is_finite()
         .then_some(value)
         .filter(|value| *value > 0.0)
+}
+
+fn bounded_positive(value: f64) -> Option<f64> {
+    finite_positive(value).filter(|value| *value <= MAX_CSS_NUMERIC_VALUE)
 }
