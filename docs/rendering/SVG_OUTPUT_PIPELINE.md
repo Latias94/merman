@@ -51,6 +51,21 @@ Typical choices:
 | `SvgPipeline::readable()` | Adds best-effort SVG `<text>` overlays while retaining `<foreignObject>` labels. Consumers that render both representations may display duplicate text. |
 | `SvgPipeline::resvg_safe()` | Adds readable fallbacks, strips the original `<foreignObject>` elements, and removes common `usvg` / `resvg` hazards. Structural references are limited to same-document fragments; ordinary image resources require an approved inline PNG/JPEG/GIF/WebP data URL whose encoding is syntactically decodable; `feImage` accepts either form. `<a>` navigation links remain metadata outside the raster-resource contract. |
 
+### Fallback typography boundary
+
+The fallback stage resolves supported typography against the original SVG and XHTML source context
+before it removes `foreignObject`. It does not flatten stylesheet class tokens: selector ancestry,
+element type, attributes, cascade priority, and inheritance are retained for the admitted subset.
+The resolved font size, family, weight, style, fill, and line height are shared by text measurement,
+wrapping, placement, and generated `<text>` styling. This keeps a ClassDiagram label measured at
+16px from becoming a synthetic 10px label merely because an SVG-only `text` selector exists.
+
+This is a bounded consumer adapter, not a browser CSS engine. Rich-text runs, browser font shaping,
+and CSS features outside the admitted subset remain residuals. Hosts that need metric-affecting
+styles must inject them before the fallback stage (through the same `SvgPipeline`); styling added
+after generated text exists may change paint, but cannot make Merman remeasure wrapping or geometry.
+Stable `data-merman-foreignobject` markers and fallback classes remain available to host consumers.
+
 For Mermaid 11.16 Quadrant, parity output intentionally retains upstream's invalid
 `hsl(..., NaN%)` point presentation attributes. A browser ignores them and uses the SVG initial
 black fill with no stroke. The typed Quadrant resvg-safe path explicitly emits

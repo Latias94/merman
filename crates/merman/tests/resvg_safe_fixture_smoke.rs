@@ -39,6 +39,74 @@ const SUPPORTED_FIXTURE_DIRS: &[&str] = &[
 
 const BOUNDARY_FIXTURE_DIRS: &[&str] = &["error", "info", "zenuml"];
 
+// These are the owner paths that can emit fallback-reachable foreignObject labels. Flowchart
+// owns the separate swimlane fixture directory, so the owner count (13) and directory count (14)
+// are intentionally different.
+const FALLBACK_OWNER_MANIFEST: &[(&str, &[&str])] = &[
+    ("architecture", &["architecture"]),
+    ("block", &["block"]),
+    ("class", &["class"]),
+    ("er", &["er"]),
+    ("eventmodeling", &["eventmodeling"]),
+    ("flowchart", &["flowchart", "swimlane"]),
+    ("journey", &["journey"]),
+    ("kanban", &["kanban"]),
+    ("mindmap", &["mindmap"]),
+    ("requirement", &["requirement"]),
+    ("sequence", &["sequence"]),
+    ("state", &["state"]),
+    ("venn", &["venn"]),
+];
+
+const FALLBACK_OWNER_REPRESENTATIVES: &[(&str, &str)] = &[
+    (
+        "architecture",
+        "fixtures/architecture/probe_architecture_icontext_anchor_b_mix_992.mmd",
+    ),
+    (
+        "block",
+        "fixtures/block/stress_block_font_size_precedence_001.mmd",
+    ),
+    ("class", "fixtures/class/basic.mmd"),
+    ("er", "fixtures/er/basic.mmd"),
+    (
+        "eventmodeling",
+        "fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_a_state_change_pattern_002.mmd",
+    ),
+    ("flowchart", "fixtures/flowchart/basic.mmd"),
+    ("swimlane", "fixtures/swimlane/basic_flowchart_reuse.mmd"),
+    (
+        "journey",
+        "fixtures/journey/stress_journey_font_size_precedence_001.mmd",
+    ),
+    ("kanban", "fixtures/kanban/basic.mmd"),
+    ("mindmap", "fixtures/mindmap/basic.mmd"),
+    ("requirement", "fixtures/requirement/basic.mmd"),
+    ("sequence", "fixtures/sequence/activation_explicit.mmd"),
+    ("state", "fixtures/state/basic.mmd"),
+    (
+        "venn",
+        "fixtures/venn/upstream_cypress_venn_handdrawn_custom_styles_018.mmd",
+    ),
+];
+
+const FALLBACK_OWNER_FIXTURE_DIRS: &[&str] = &[
+    "architecture",
+    "block",
+    "class",
+    "er",
+    "eventmodeling",
+    "flowchart",
+    "swimlane",
+    "journey",
+    "kanban",
+    "mindmap",
+    "requirement",
+    "sequence",
+    "state",
+    "venn",
+];
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
@@ -133,13 +201,13 @@ fn fixture_sample_paths() -> Vec<PathBuf> {
     out
 }
 
-fn all_supported_fixture_paths() -> Vec<PathBuf> {
+fn all_fixture_paths_for_dirs(family_dirs: &[&'static str]) -> Vec<PathBuf> {
     let fixtures_root = workspace_root().join("fixtures");
     let mut out = Vec::new();
-    let family_filter = audit_family_filter();
+    let family_filter = audit_family_filter(family_dirs);
     let name_filter = audit_name_filter();
 
-    for family in SUPPORTED_FIXTURE_DIRS {
+    for family in family_dirs {
         if let Some(filter) = &family_filter
             && !filter.contains(*family)
         {
@@ -172,11 +240,19 @@ fn all_supported_fixture_paths() -> Vec<PathBuf> {
     out
 }
 
+fn all_supported_fixture_paths() -> Vec<PathBuf> {
+    all_fixture_paths_for_dirs(SUPPORTED_FIXTURE_DIRS)
+}
+
+fn all_fallback_owner_fixture_paths() -> Vec<PathBuf> {
+    all_fixture_paths_for_dirs(FALLBACK_OWNER_FIXTURE_DIRS)
+}
+
 fn boundary_fixture_paths() -> Vec<PathBuf> {
     fixture_paths_for_dirs(BOUNDARY_FIXTURE_DIRS)
 }
 
-fn audit_family_filter() -> Option<BTreeSet<&'static str>> {
+fn audit_family_filter(family_dirs: &[&'static str]) -> Option<BTreeSet<&'static str>> {
     let raw = std::env::var("MERMAN_RESVG_SAFE_AUDIT_FAMILY").ok()?;
     let requested = raw
         .split(',')
@@ -189,7 +265,7 @@ fn audit_family_filter() -> Option<BTreeSet<&'static str>> {
     }
 
     Some(
-        SUPPORTED_FIXTURE_DIRS
+        family_dirs
             .iter()
             .copied()
             .filter(|family| requested.contains(*family))
@@ -378,6 +454,10 @@ fn is_known_unrenderable_fixture(relative_name: &str, source: &str) -> bool {
         relative_name,
         // Mermaid 11.15 parser tests classify this trailing-comma Radar example as invalid.
         "fixtures/radar/upstream_docs_radar_examples_005.mmd"
+            // The pinned sequence lexer rejects Mermaid's parenthesized `end` participant syntax
+            // before SVG fallback; keep this audit-only boundary local so provenance manifests do
+            // not change for a typography fix.
+            | "fixtures/sequence/stress_end_keyword_016.mmd"
             // These Treemap classDef bare-token fixtures have `diagramType: "error"` goldens.
             // Strict public rendering should reject them; the all-supported renderability audit
             // skips them so it can keep testing contentful Treemap fixtures.
@@ -387,7 +467,7 @@ fn is_known_unrenderable_fixture(relative_name: &str, source: &str) -> bool {
 
 fn assert_resvg_safe_output(name: &str, source: &str, svg: &str) {
     assert!(svg.starts_with("<svg"), "{name}: expected SVG output");
-    roxmltree::Document::parse(svg)
+    let document = roxmltree::Document::parse(svg)
         .unwrap_or_else(|err| panic!("{name}: resvg-safe output should be XML-parseable: {err}"));
 
     assert!(
@@ -399,25 +479,63 @@ fn assert_resvg_safe_output(name: &str, source: &str, svg: &str) {
         "{name}: resvg-safe output should strip unsupported CSS constructs"
     );
 
-    for bad in [
-        "NaN",
-        "Infinity",
-        r#"fill="undefined""#,
-        r#"stroke="undefined""#,
-        r#"width="undefined""#,
-        r#"height="undefined""#,
-        r#"transform="undefined""#,
-        r#"d="undefined""#,
-        "fill:undefined",
-        "stroke:undefined",
-        "width:undefined",
-        "height:undefined",
-        "transform:undefined",
-    ] {
-        assert!(
-            !svg.contains(bad),
-            "{name}: output should not leak invalid visual value {bad:?}"
-        );
+    const VISUAL_ATTRIBUTES: &[&str] = &[
+        "d",
+        "points",
+        "transform",
+        "viewBox",
+        "x",
+        "y",
+        "x1",
+        "x2",
+        "y1",
+        "y2",
+        "cx",
+        "cy",
+        "r",
+        "rx",
+        "ry",
+        "width",
+        "height",
+        "font-size",
+        "stroke-width",
+        "stroke-dasharray",
+        "stroke-dashoffset",
+        "fill",
+        "stroke",
+        "opacity",
+        "fill-opacity",
+        "stroke-opacity",
+        "gradientTransform",
+        "patternTransform",
+        "markerWidth",
+        "markerHeight",
+        "refX",
+        "refY",
+        "style",
+    ];
+    for node in document.descendants().filter(roxmltree::Node::is_element) {
+        for attribute in node.attributes() {
+            if VISUAL_ATTRIBUTES
+                .iter()
+                .any(|name| attribute.name().eq_ignore_ascii_case(name))
+            {
+                assert!(
+                    !contains_non_finite_visual_token(attribute.value())
+                        && !attribute.value().contains("undefined"),
+                    "{name}: output should not leak invalid visual attribute {}={:?}",
+                    attribute.name(),
+                    attribute.value()
+                );
+            }
+        }
+        if node.has_tag_name("style") {
+            let css = node.text().unwrap_or_default();
+            assert!(
+                !contains_non_finite_visual_token(css) && !css.contains(":undefined"),
+                "{name}: output stylesheet should not contain invalid visual values: {css}"
+            );
+        }
     }
 
     let mut cursor = 0;
@@ -439,6 +557,14 @@ fn assert_resvg_safe_output(name: &str, source: &str, svg: &str) {
     }
 
     assert_rasterizes_when_enabled(name, source, svg);
+}
+
+fn contains_non_finite_visual_token(value: &str) -> bool {
+    value
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric() || matches!(character, '-' | '+' | '_'))
+        })
+        .any(|token| matches!(token, "NaN" | "Infinity" | "-Infinity" | "+Infinity"))
 }
 
 fn assert_expected_labels_and_colors(
@@ -1017,6 +1143,55 @@ fn representative_fixtures_render_typed_resvg_safe() {
 }
 
 #[test]
+fn fallback_owner_manifest_covers_thirteen_owners_and_fourteen_fixture_directories() {
+    assert_eq!(FALLBACK_OWNER_MANIFEST.len(), 13);
+    let directories = FALLBACK_OWNER_MANIFEST
+        .iter()
+        .flat_map(|(_, directories)| directories.iter().copied())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(directories.len(), 14);
+    assert_eq!(
+        directories,
+        FALLBACK_OWNER_FIXTURE_DIRS.iter().copied().collect()
+    );
+
+    for (owner, fixture_dirs) in FALLBACK_OWNER_MANIFEST {
+        assert!(
+            !fixture_dirs.is_empty(),
+            "{owner} must own a fixture directory"
+        );
+        for directory in *fixture_dirs {
+            assert!(
+                workspace_root().join("fixtures").join(directory).is_dir(),
+                "{owner} fixture directory is missing: {directory}"
+            );
+        }
+    }
+    let owners = FALLBACK_OWNER_REPRESENTATIVES
+        .iter()
+        .map(|(owner, _)| *owner)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(owners.len(), 14);
+    assert!(owners.contains("swimlane"));
+}
+
+#[test]
+#[cfg(feature = "layout-cytoscape")]
+fn fallback_owner_representatives_render_typed_resvg_safe() {
+    for (owner, relative_name) in FALLBACK_OWNER_REPRESENTATIVES {
+        let path = workspace_root().join(relative_name);
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{owner}: read {relative_name}: {error}"));
+        let diagram_id = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("fallback-owner");
+        let svg = render_resvg_safe_for_fixture(diagram_id, &source, relative_name, false);
+        assert_resvg_safe_output(relative_name, &source, &svg);
+    }
+}
+
+#[test]
 fn boundary_fixtures_render_typed_resvg_safe() {
     let fixtures = boundary_fixture_paths();
     assert!(
@@ -1058,8 +1233,8 @@ fn boundary_fixtures_render_typed_resvg_safe() {
 #[ignore = "manual HPD-080 audit over all supported fixtures; default smoke stays representative"]
 fn all_supported_fixtures_render_typed_resvg_safe_audit() {
     let fixtures = all_supported_fixture_paths();
-    let filtered_audit =
-        audit_family_filter().is_some() || audit_name_filter().as_deref().is_some();
+    let filtered_audit = audit_family_filter(SUPPORTED_FIXTURE_DIRS).is_some()
+        || audit_name_filter().as_deref().is_some();
     assert!(
         fixtures.len() > 100 || (filtered_audit && !fixtures.is_empty()),
         "expected a broad supported fixture corpus, or a non-empty filtered audit"
@@ -1096,6 +1271,51 @@ fn all_supported_fixtures_render_typed_resvg_safe_audit() {
 }
 
 #[test]
+#[ignore = "manual fallback-owner audit; default smoke stays representative"]
+fn all_fallback_owner_fixtures_render_typed_resvg_safe_audit() {
+    let fixtures = all_fallback_owner_fixture_paths();
+    let filtered_audit = audit_family_filter(FALLBACK_OWNER_FIXTURE_DIRS).is_some()
+        || audit_name_filter().as_deref().is_some();
+    assert!(
+        filtered_audit || !fixtures.is_empty(),
+        "expected fallback-owner fixtures, or a non-empty filtered audit"
+    );
+
+    let mut rendered = 0usize;
+    let mut skipped_unrenderable = 0usize;
+    for path in fixtures {
+        let relative_name = path
+            .strip_prefix(workspace_root())
+            .unwrap_or(path.as_path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{relative_name}: read {}: {error}", path.display()));
+        if is_known_unrenderable_fixture(&relative_name, &source) {
+            skipped_unrenderable += 1;
+            continue;
+        }
+        let diagram_id = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("fallback-owner");
+        let svg = render_resvg_safe_for_fixture(diagram_id, &source, &relative_name, false);
+        assert_resvg_safe_output(&relative_name, &source, &svg);
+        rendered += 1;
+    }
+    assert!(
+        rendered > 0,
+        "fallback-owner audit rendered no fixtures; skipped_unrenderable={skipped_unrenderable}"
+    );
+    eprintln!(
+        "fallback-owner audit: total={} rendered={} skipped_unrenderable={}",
+        rendered + skipped_unrenderable,
+        rendered,
+        skipped_unrenderable
+    );
+}
+
+#[test]
 fn known_error_golden_fixtures_are_skipped_by_manual_audit() {
     assert!(is_known_unrenderable_fixture(
         "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db.mmd",
@@ -1108,6 +1328,10 @@ fn known_error_golden_fixtures_are_skipped_by_manual_audit() {
         ),
         "a parser-only-looking filename must not grant a renderability exemption"
     );
+    assert!(is_known_unrenderable_fixture(
+        "fixtures/sequence/stress_end_keyword_016.mmd",
+        "sequenceDiagram\n  participant (end) as end\n"
+    ));
 }
 
 #[test]

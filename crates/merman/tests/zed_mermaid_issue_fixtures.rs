@@ -71,6 +71,22 @@ fn render_resvg_safe(name: &str, source: &str) -> String {
     .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
+fn fallback_text_style(svg: &str, label: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("resvg-safe output should be XML");
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.ancestors().any(|ancestor| {
+                    ancestor.attribute("data-merman-foreignobject") == Some("fallback")
+                })
+                && node.text().is_some_and(|text| text.trim() == label)
+        })
+        .and_then(|node| node.attribute("style"))
+        .map(str::to_owned)
+        .unwrap_or_else(|| panic!("expected fallback text {label:?}: {svg}"))
+}
+
 fn deeply_nested_flowchart(depth: usize) -> String {
     let mut lines = vec!["flowchart TD".to_string()];
     for i in 0..depth {
@@ -253,6 +269,40 @@ fn zed_class_generics_fallback_text_is_not_double_escaped() {
         svg.contains("List&lt;Animal"),
         "expected class generic marker to remain readable in fallback text: {svg}"
     );
+}
+
+#[test]
+fn issue_89_class_fallback_resolves_mermaid_typography_before_zed_css_injection() {
+    let svg = render_resvg_safe(
+        "issue-89-class-typography",
+        r#"classDiagram
+    class User {
+        +String id
+        +String name
+        +signIn()
+    }"#,
+    );
+
+    assert!(
+        !svg.contains("<foreignObject"),
+        "resvg-safe output must replace HTML labels before a host injects CSS: {svg}"
+    );
+    let user_style = fallback_text_style(&svg, "User");
+    let name_style = fallback_text_style(&svg, "+String name");
+    for (label, style) in [("User", user_style), ("+String name", name_style)] {
+        assert!(
+            style.contains("font-size: 16px") || style.contains("font-size:16px"),
+            "{label:?} must use Mermaid's pre-injection source typography, not a flattened 10px class rule: {style}"
+        );
+        assert!(
+            !style.contains("font-size: 10px") && !style.contains("font-size:10px"),
+            "{label:?} must not inherit the SVG-only class text selector: {style}"
+        );
+    }
+
+    let options = usvg::Options::default();
+    usvg::Tree::from_str(&svg, &options)
+        .unwrap_or_else(|error| panic!("issue #89 output must remain usvg-parseable: {error}"));
 }
 
 #[test]

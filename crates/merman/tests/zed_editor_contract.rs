@@ -189,6 +189,22 @@ fn assert_zed_safe_svg(name: &str, svg: &str) {
     }
 }
 
+fn fallback_text_style(svg: &str, label: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Zed SVG XML");
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.ancestors().any(|ancestor| {
+                    ancestor.attribute("data-merman-foreignobject") == Some("fallback")
+                })
+                && node.text().is_some_and(|text| text.trim() == label)
+        })
+        .and_then(|node| node.attribute("style"))
+        .map(str::to_owned)
+        .unwrap_or_else(|| panic!("expected fallback text {label:?}: {svg}"))
+}
+
 #[test]
 #[cfg(feature = "layout-cytoscape")]
 fn zed_like_editor_pipeline_keeps_resvg_safe_themeable_svg_contract() {
@@ -294,6 +310,44 @@ flowchart TD
     assert!(
         !svg.contains("@keyframes"),
         "resvg-safe output should remove animation rules: {svg}"
+    );
+}
+
+#[test]
+fn zed_like_pipeline_separates_pre_injection_metrics_from_host_hooks() {
+    let source = r#"classDiagram
+    class User {
+        +String name
+    }"#;
+    let merman_svg = render_zed_safe("zed-issue-89-pre-injection", source);
+    let merman_style = fallback_text_style(&merman_svg, "User");
+    assert!(
+        merman_style.contains("font-size:16px") || merman_style.contains("font-size: 16px"),
+        "Merman must resolve issue #89 before Zed injects product CSS: {merman_style}"
+    );
+    assert!(
+        !merman_style.contains("font-size:10px") && !merman_style.contains("font-size: 10px"),
+        "the SVG-only class text selector must not leak into the source XHTML label: {merman_style}"
+    );
+
+    let composed = render_zed_with_host_css(
+        "zed-issue-89-host-hooks",
+        source,
+        ".merman-foreignobject-fallback-text { font-size: 18px; }",
+    );
+    assert_zed_safe_svg("zed-issue-89-host-hooks", &composed);
+    assert!(
+        composed.contains("data-merman-foreignobject=\"fallback\""),
+        "stable fallback marker must remain available to Zed postprocessing: {composed}"
+    );
+    assert!(
+        composed.contains("font-size: 18px"),
+        "the scoped host stylesheet should remain discoverable after Merman's terminal pass: {composed}"
+    );
+    let composed_style = fallback_text_style(&composed, "User");
+    assert!(
+        composed_style.contains("font-size:16px") || composed_style.contains("font-size: 16px"),
+        "Merman's inline metric remains the measurement/emission contract; post-fallback host metric changes are a documented limitation: {composed_style}"
     );
 }
 

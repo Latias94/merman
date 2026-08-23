@@ -5,31 +5,25 @@
 // support HTML inside `<foreignObject>` (e.g. many rasterizers).
 
 mod attr;
+mod cascade;
 mod context;
 mod css;
 mod html;
 
 use crate::svg::pipeline::{
-    SvgPostprocessExecution, SvgStructureMetrics, checkpoint_loop,
+    SvgPostprocessExecution, SvgStructureMetrics, SvgTagScanner, checkpoint_loop, end_tag_name,
     escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
     extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
-    find_with_checkpoints, rfind_with_checkpoints,
+    find_with_checkpoints, rfind_with_checkpoints, start_tag_name,
 };
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::TextMeasurer;
 use std::convert::Infallible;
 use std::fmt::{self, Write};
 
 use attr::is_self_closing;
-use context::{
-    GFrame, class_attr_tokens, extract_svg_font_style_from_context,
-    extract_svg_text_fill_from_ancestors, fallback_text_class_attr_tokens, sum_translate,
-};
-use css::FallbackStyleIndex;
-use html::{
-    extract_inline_html_color, extract_inline_html_style_property,
-    foreign_object_html_soft_wrap_width, htmlish_to_text_lines, parse_css_px,
-    wrap_html_lines_to_width,
-};
+use cascade::{CascadeIndex, Namespace, SourceElement};
+use context::{GFrame, class_attr_tokens, fallback_text_class_attr_tokens, sum_translate};
+use html::{foreign_object_html_soft_wrap_width, htmlish_to_text_lines, wrap_html_lines_to_width};
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
@@ -113,12 +107,8 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     let mut overlays = String::new();
     let mut generated_elements = 0usize;
     let mut g_stack: Vec<GFrame> = Vec::new();
-    let style_index = FallbackStyleIndex::new(svg, checkpoint)?;
-    let label_bkg_default = "rgba(232, 232, 232, 0.5)".to_string();
-    let label_bkg = style_index
-        .background_color_for_class("labelBkg")
-        .map(str::to_owned)
-        .unwrap_or(label_bkg_default);
+    let mut source_stack: Vec<SourceElement> = Vec::new();
+    let mut cascade_index = None;
     let mut i = 0usize;
     let mut iteration = 0usize;
     while let Some(lt_rel) = find_with_checkpoints(&svg[i..], "<", checkpoint)? {
@@ -142,23 +132,23 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
             continue;
         }
 
-        if tag.starts_with("</g") {
-            let _ = g_stack.pop();
-            out.push_str(tag);
-            i = gt;
-            continue;
-        }
-
-        if tag.starts_with("<g") {
-            if !is_self_closing(tag) {
-                g_stack.push(GFrame::from_g_tag(tag, checkpoint)?);
+        if let Some(name) = end_tag_name(tag) {
+            if name.eq_ignore_ascii_case("g") {
+                let _ = g_stack.pop();
+            }
+            if source_stack
+                .last()
+                .is_some_and(|element| element.local_name.eq_ignore_ascii_case(name))
+            {
+                source_stack.pop();
             }
             out.push_str(tag);
             i = gt;
             continue;
         }
 
-        if tag.starts_with("<foreignObject") {
+        let start_name = start_tag_name(tag);
+        if start_name.is_some_and(|name| name.eq_ignore_ascii_case("foreignObject")) {
             let start_end = gt;
             let Some(close_rel) = find_with_checkpoints(&svg[start_end..], close_tag, checkpoint)?
             else {
@@ -199,6 +189,17 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                 checkpoint()?;
                 let raw_lines = htmlish_to_text_lines(inner, checkpoint)?;
                 if !raw_lines.is_empty() {
+                    let cascade = match cascade_index.as_ref() {
+                        Some(cascade) => cascade,
+                        None => {
+                            cascade_index = Some(CascadeIndex::new(svg, checkpoint)?);
+                            cascade_index
+                                .as_ref()
+                                .expect("cascade index was initialized")
+                        }
+                    };
+                    let typography =
+                        cascade.resolve_foreign_object(&source_stack, tag, inner, checkpoint)?;
                     let source_attr = if from_switch {
                         r#" data-merman-foreignobject-source="switch-native-fallback""#
                     } else {
@@ -223,11 +224,9 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         preflight_generated,
                     )?;
 
-                    let wants_label_bkg =
-                        find_with_checkpoints(inner, "labelBkg", checkpoint)?.is_some();
-                    if wants_label_bkg {
+                    if let Some(label_bkg) = &typography.label_background {
                         let escaped_label_bkg =
-                            escape_xml_attr_with_checkpoints(&label_bkg, checkpoint)?;
+                            escape_xml_attr_with_checkpoints(label_bkg, checkpoint)?;
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
@@ -241,69 +240,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         )?;
                     }
 
-                    let font_size_value =
-                        match extract_inline_html_style_property(inner, "font-size", checkpoint)? {
-                            Some(value) => value,
-                            None => extract_svg_font_style_from_context(
-                                &style_index,
-                                &g_stack,
-                                "font-size",
-                                checkpoint,
-                            )?
-                            .unwrap_or_else(|| "16px".to_string()),
-                        };
-                    let font_size = parse_css_px(&font_size_value, 16.0);
-                    let fill = match extract_inline_html_color(inner, checkpoint)? {
-                        Some(value) => value,
-                        None => extract_svg_text_fill_from_ancestors(
-                            &style_index,
-                            &g_stack,
-                            checkpoint,
-                        )?
-                        .unwrap_or_else(|| "#333".to_string()),
-                    };
-                    let font_family =
-                        match extract_inline_html_style_property(inner, "font-family", checkpoint)?
-                        {
-                            Some(value) => value,
-                            None => extract_svg_font_style_from_context(
-                                &style_index,
-                                &g_stack,
-                                "font-family",
-                                checkpoint,
-                            )?
-                            .unwrap_or_else(|| "trebuchet ms,verdana,arial,sans-serif".to_string()),
-                        };
-                    let font_weight =
-                        match extract_inline_html_style_property(inner, "font-weight", checkpoint)?
-                        {
-                            Some(value) => Some(value),
-                            None => extract_svg_font_style_from_context(
-                                &style_index,
-                                &g_stack,
-                                "font-weight",
-                                checkpoint,
-                            )?,
-                        };
-                    let font_style = match extract_inline_html_style_property(
-                        inner,
-                        "font-style",
-                        checkpoint,
-                    )? {
-                        Some(value) => Some(value),
-                        None => extract_svg_font_style_from_context(
-                            &style_index,
-                            &g_stack,
-                            "font-style",
-                            checkpoint,
-                        )?,
-                    };
-                    let measure_style = TextStyle {
-                        font_family: Some(font_family.clone()),
-                        font_size,
-                        font_weight: font_weight.clone(),
-                        font_style: None,
-                    };
+                    let measure_style = typography.text_style();
                     let wrap_width = foreign_object_html_soft_wrap_width(tag, inner, checkpoint)?;
                     let lines = wrap_html_lines_to_width(
                         raw_lines,
@@ -312,31 +249,32 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         &measure_style,
                         checkpoint,
                     )?;
-                    let line_height = font_size * 1.5;
+                    let line_height = typography.line_height;
                     let n = lines.len() as f64;
                     let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
                     let mut text_style = format!(
-                        "text-anchor: {anchor}; font-size: {font_size_value}; font-family: {font_family};"
+                        "text-anchor: {anchor}; font-size: {}px; font-family: {}; line-height: {}px;",
+                        typography.font_size, typography.font_family, typography.line_height,
                     );
-                    if let Some(font_weight) = font_weight {
+                    if let Some(font_weight) = &typography.font_weight {
                         text_style.push_str(" font-weight: ");
-                        text_style.push_str(&font_weight);
+                        text_style.push_str(font_weight);
                         text_style.push(';');
                     }
-                    if let Some(font_style) = font_style {
+                    if let Some(font_style) = &typography.font_style {
                         text_style.push_str(" font-style: ");
-                        text_style.push_str(&font_style);
+                        text_style.push_str(font_style);
                         text_style.push(';');
                     }
                     let text_class = fallback_text_class_attr_tokens(&g_stack, inner, checkpoint)?;
+                    let escaped_fill =
+                        escape_xml_attr_with_checkpoints(&typography.fill, checkpoint)?;
+                    let escaped_style = escape_xml_attr_with_checkpoints(&text_style, checkpoint)?;
 
                     for (idx, line) in lines.iter().enumerate() {
                         checkpoint_loop(idx, checkpoint)?;
                         let y_line = y0 + (idx as f64) * line_height;
                         let text = escape_xml_text_with_checkpoints(line, checkpoint)?;
-                        let escaped_fill = escape_xml_attr_with_checkpoints(&fill, checkpoint)?;
-                        let escaped_style =
-                            escape_xml_attr_with_checkpoints(&text_style, checkpoint)?;
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
@@ -360,9 +298,45 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     )?;
                 }
             }
-
             i = i_next;
             continue;
+        }
+
+        // Source styles are consumed by `CascadeIndex` in its first pass. Do
+        // not treat CSS text (or CDATA containing a literal `</style>`) as SVG
+        // structure while building the source ancestry for conversion.
+        if start_name.is_some_and(|name| name.eq_ignore_ascii_case("style"))
+            && !is_self_closing(tag)
+        {
+            let mut scanner = SvgTagScanner::new(svg);
+            scanner.skip_to(gt);
+            let mut close_end = None;
+            while let Some(candidate) = scanner.next_with_checkpoints(checkpoint)? {
+                if end_tag_name(candidate.raw())
+                    .is_some_and(|name| name.eq_ignore_ascii_case("style"))
+                {
+                    close_end = Some(scanner.cursor());
+                    break;
+                }
+            }
+            if let Some(close_end) = close_end {
+                out.push_str(&svg[lt..close_end]);
+                i = close_end;
+                continue;
+            }
+        }
+
+        if let Some(name) = start_name {
+            if name.eq_ignore_ascii_case("g") && !is_self_closing(tag) {
+                g_stack.push(GFrame::from_g_tag(tag, checkpoint)?);
+            }
+            if !is_self_closing(tag) {
+                source_stack.push(CascadeIndex::source_element(
+                    tag,
+                    Namespace::Svg,
+                    checkpoint,
+                )?);
+            }
         }
 
         out.push_str(tag);
@@ -499,7 +473,24 @@ fn is_start_switch_tag(tag: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::foreign_object_label_fallback_svg_text as render_fallback;
-    use crate::text::VendoredFontMetricsTextMeasurer;
+    use crate::text::{TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer};
+    use std::cell::RefCell;
+
+    #[derive(Default)]
+    struct RecordingMeasurer {
+        styles: RefCell<Vec<TextStyle>>,
+    }
+
+    impl TextMeasurer for RecordingMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.styles.borrow_mut().push(style.clone());
+            TextMetrics {
+                width: text.chars().count() as f64 * style.font_size,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
 
     fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
         render_fallback(svg, &VendoredFontMetricsTextMeasurer::default())
@@ -650,6 +641,213 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_overlay_does_not_flatten_descendant_font_selector() {
+        let svg = r#"<svg id="class-context" xmlns="http://www.w3.org/2000/svg"><style>#class-context{font-size:16px}.classLabel .label{font-size:10px}</style><g class="node"><g class="label"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains("font-size: 16px"),
+            "a missing .classLabel ancestor must not collapse the selector to .label: {out}"
+        );
+        assert!(
+            !out.contains("font-size: 10px"),
+            "the contextual 10px rule must not leak into the class-node label: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_matches_real_descendant_font_selector() {
+        let svg = r#"<svg id="class-context-positive" xmlns="http://www.w3.org/2000/svg"><style>#class-context-positive{font-size:16px}.classLabel .label{font-size:10px}</style><g class="classLabel"><g class="label"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains("font-size: 10px"),
+            "a fully matching contextual selector must remain effective: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_does_not_match_svg_text_selector_to_xhtml_text() {
+        let svg = r#"<svg id="element-context" xmlns="http://www.w3.org/2000/svg"><style>#element-context{font-size:16px}g.classGroup text{font-size:10px}</style><g class="classGroup"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains("font-size: 16px"),
+            "an SVG text selector must not match an XHTML span target: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_inherits_font_size_presentation_attribute() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g font-size="20px"><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains("font-size: 20px"),
+            "font-size presentation attributes must participate in inheritance: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_uses_nested_xhtml_font_style() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml" style="line-height:1.5"><span style="font-size:18px;font-style:italic">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(out.contains("font-size: 18px"), "got: {out}");
+        assert!(out.contains("font-style: italic"), "got: {out}");
+    }
+
+    #[test]
+    fn foreign_object_overlay_matches_admitted_attribute_selectors() {
+        let svg = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>[data-fallback-role=label][data-tags~=choice]{font-size:13px}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span data-fallback-role='label' data-tags="primary choice">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(out.contains("font-size: 13px"), "got: {out}");
+    }
+
+    #[test]
+    fn foreign_object_overlay_keeps_admitted_selector_siblings_and_rejects_invalid_lists() {
+        let valid_but_unadmitted = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>span:hover,.nodeLabel{font-size:13px}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(valid_but_unadmitted);
+        assert!(
+            out.contains("font-size: 13px"),
+            "a valid-but-unadmitted sibling must not discard an admitted branch: {out}"
+        );
+
+        let invalid = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel,{font-size:13px}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(invalid);
+        assert!(
+            out.contains("font-size: 16px"),
+            "an invalid ordinary selector list must discard its complete rule: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_skips_nested_at_rules_without_leaking_inner_selectors() {
+        let svg = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>@media screen {.nodeLabel{font-size:10px}} .nodeLabel{font-size:14px}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        assert!(
+            out.contains("font-size: 14px"),
+            "nested @media rules are outside the admitted fallback cascade and must not leak: {out}"
+        );
+        assert!(
+            !out.contains("font-size: 10px"),
+            "an inner at-rule selector must not be parsed as a top-level rule: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_resolves_important_inline_and_invalid_value_cascade() {
+        let stylesheet_important = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-size:12px !important}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel" style="font-size:14px">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(stylesheet_important);
+        assert!(out.contains("font-size: 12px"), "got: {out}");
+
+        let inline_important = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-size:12px !important}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel" style="font-size:14px !important">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(inline_important);
+        assert!(out.contains("font-size: 14px"), "got: {out}");
+
+        let unsupported_winner = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-size:14px;font-size:calc(2px) !important}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(unsupported_winner);
+        assert!(
+            out.contains("font-size: 14px"),
+            "an unsupported high-priority value must not erase a lower valid declaration: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_resolves_specified_values_before_inheritance_and_source_order() {
+        let inherited_important = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>#root{font-size:20px !important}.nodeLabel{font-size:14px}</style><g id="root"><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(inherited_important);
+        assert!(
+            out.contains("font-size: 14px"),
+            "a child's specified normal value must win before inheriting a parent's important value: {out}"
+        );
+
+        let presentation_vs_stylesheet = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>.host{font-size:12px}</style><g class="host" font-size="20px"><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(presentation_vs_stylesheet);
+        assert!(
+            out.contains("font-size: 12px"),
+            "stylesheet declarations must follow presentation attributes in author source order: {out}"
+        );
+
+        let source_order = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-size:12px}.nodeLabel{font-size:14px}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(source_order);
+        assert!(
+            out.contains("font-size: 14px"),
+            "later equal-specificity declarations must win by stylesheet source order: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_uses_root_rem_and_measurement_matches_emission() {
+        let svg = r#"
+<svg style="font-size:20px" xmlns="http://www.w3.org/2000/svg"><g style="font-size:10px"><foreignObject width="80" height="60"><div xmlns="http://www.w3.org/1999/xhtml" style="white-space:normal;width:80px;line-height:1.5"><span style="font-size:2rem;font-family:Inter;font-weight:600;font-style:italic">Alpha</span></div></foreignObject></g></svg>"#;
+        let measurer = RecordingMeasurer::default();
+        let out = render_fallback(svg, &measurer);
+        let styles = measurer.styles.borrow();
+
+        assert!(
+            styles.iter().any(|style| {
+                style.font_size == 40.0
+                    && style.font_family.as_deref() == Some("Inter")
+                    && style.font_weight.as_deref() == Some("600")
+                    && style.font_style.as_deref() == Some("italic")
+            }),
+            "measurement must receive the resolved typography: {styles:?}"
+        );
+        assert!(out.contains("font-size: 40px"), "got: {out}");
+        assert!(out.contains("font-family: Inter"), "got: {out}");
+        assert!(out.contains("font-weight: 600"), "got: {out}");
+        assert!(out.contains("font-style: italic"), "got: {out}");
+        assert!(out.contains("line-height: 60px"), "got: {out}");
+    }
+
+    #[test]
+    fn foreign_object_overlay_preserves_inherited_line_height_forms() {
+        let multiplier = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="80" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="line-height:1.5"><span style="font-size:20px">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(multiplier);
+        assert!(
+            out.contains("font-size: 20px") && out.contains("line-height: 30px"),
+            "a unitless inherited line-height must scale at the child font size: {out}"
+        );
+
+        let absolute = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="80" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="line-height:24px"><span style="font-size:20px">Alpha</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(absolute);
+        assert!(
+            out.contains("font-size: 20px") && out.contains("line-height: 24px"),
+            "an absolute inherited line-height must remain absolute: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_uses_common_ancestor_for_mixed_text_leaves() {
+        let svg = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml" style="font-size:14px"><span>Alpha</span><strong style="font-size:20px">Beta</strong></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains("font-size: 14px"),
+            "mixed text leaves should use their deepest common ancestor's fallback typography: {out}"
+        );
+        assert!(
+            !out.contains("font-size: 20px"),
+            "the fallback must not arbitrarily select one rich-text leaf: {out}"
+        );
+    }
+
+    #[test]
     fn foreign_object_overlay_reads_unicode_root_style_identity() {
         let svg = r##"<svg id="图表-α" xmlns="http://www.w3.org/2000/svg"><style>#图表-α{font-family:Inter;font-size:14px;fill:#ddeeff;}</style><g><foreignObject width="80" height="21"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha</p></div></foreignObject></g></svg>"##;
         let out = foreign_object_label_fallback_svg_text(svg);
@@ -671,7 +869,11 @@ mod tests {
             .unwrap_or_else(|| panic!("expected fallback text tag end: {out}"));
         let text_tag = &out[text_tag_start..=text_tag_end];
 
-        assert!(text_tag.contains(r##"fill="#ebdbb2""##), "got: {out}");
+        assert!(text_tag.contains(r##"fill="#665c54""##), "got: {out}");
+        assert!(
+            !text_tag.contains(r##"fill="#ebdbb2""##),
+            "the SVG-only `text` branch must not match the XHTML source leaf: {out}"
+        );
         assert!(
             !text_tag.contains(r#"class="merman-foreignobject-fallback-text edgeLabel label "#)
                 && !text_tag.contains(r#" label""#),

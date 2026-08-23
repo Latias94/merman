@@ -1,7 +1,7 @@
 # Zed Mermaid Issue Audit
 
 Date: 2026-05-28
-Updated: 2026-08-13
+Updated: 2026-08-23
 
 This audit maps Mermaid-related Zed issues and PRs to merman behavior. It focuses on the Zed
 migration from `mermaid-rs-renderer` to `merman` in zed-industries/zed#57644, plus the issue shapes
@@ -57,6 +57,21 @@ representative Zed preview diagram families. Treat Zed wrapper code as requireme
 as code to copy into this repository.
 
 ## Recent Issue Signal
+
+### Issue #89: fallback typography context
+
+Issue #89 is owned by Merman's generic `foreignObject` adapter, not by a Zed-only font-size
+workaround. `SvgPipeline::resvg_safe()` now resolves typography against the original SVG/XHTML
+ancestry before stripping HTML, so ClassDiagram class labels retain 16px while real contextual
+selectors such as ER relationship labels can retain their distinct 14px size. The Merman result is
+verified before Zed postprocessing and remains parseable by the pinned workspace `usvg`.
+
+The Zed ordering remains important: `strip_existing_important()` runs in the Merman pipeline, while
+Zed's theme CSS is injected after `render_mermaid()` returns. Zed's current global
+`.merman-foreignobject-fallback-text { font-size: 16px !important; }` rule is therefore a downstream
+metric override. It is intentionally not changed by this issue; Zed should remove that workaround
+in a later consumer change if it wants to preserve user-defined or Venn-specific non-16px metrics.
+The stable fallback marker/class hooks remain available for that migration.
 
 The newest public Zed issues and competing fixes were reviewed newest first. Open status does not
 mean the defect belongs in Merman: several reports are caused by Zed's detector, family allowlist,
