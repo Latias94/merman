@@ -390,7 +390,7 @@ fn render_timeline_diagram_svg_inner(
         is_redux_theme: bool,
     ) -> (Option<&'a str>, bool) {
         let Some(path_d) = output
-            .split_once(r#"class="node-bkg node-undefined" d=""#)
+            .split_once("class=\"node-bkg node-undefined\" d=\"")
             .and_then(|(_, rest)| rest.split_once('"').map(|(path, _)| path))
         else {
             return (None, false);

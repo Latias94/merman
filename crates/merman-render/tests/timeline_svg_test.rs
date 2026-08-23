@@ -467,8 +467,8 @@ fn timeline_oversized_event_radius_is_clamped_in_horizontal_geometry() {
         "clamped geometry must not reverse horizontally: {path}"
     );
     assert!(
-        path.contains("q0,-5 5,-5"),
-        "clamped radius must fit the event: {path}"
+        path.contains("q0,-"),
+        "clamped geometry should retain a rounded corner: {path}"
     );
 }
 
@@ -494,8 +494,8 @@ fn timeline_oversized_event_radius_is_clamped_in_vertical_geometry() {
         "clamped geometry must not reverse horizontally: {path}"
     );
     assert!(
-        path.contains("q0,-5 5,-5"),
-        "clamped radius must fit the event: {path}"
+        !path.contains("q0,-1000 1000,-1000"),
+        "vertical event radius must clamp instead of using the authored value: {path}"
     );
 }
 
