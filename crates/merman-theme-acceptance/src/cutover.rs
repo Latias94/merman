@@ -745,21 +745,10 @@ fn render_cutover_case(
         case_label(case)
     );
 
+    let route_value = expected_route.value();
     let theme = compile_cutover_theme(case)?;
     let renderer = cutover_renderer(case.id);
-    let svg_request = portable_svg_request();
-    let document_output = renderer
-        .render(
-            RenderRequest::document(case.source, OperationControl::new(), svg_request)
-                .with_theme(theme.clone()),
-        )
-        .map_err(|error| C6ProofError::new("route-svg-render", error.to_string()))?;
-    let RenderOutput::Document(Some(document)) = document_output else {
-        return Err(C6ProofError::new(
-            "route-svg-render",
-            "route witness did not produce a completed document",
-        ));
-    };
+    let document = render_cutover_document(&renderer, case, theme.clone())?;
     let render_evidence = document.evidence();
     prove_portable_family_evidence(
         render_evidence,
@@ -824,6 +813,18 @@ fn render_cutover_case(
         "PNG route projection produced an empty artifact"
     );
 
+    let control_theme = compile_cutover_theme_with_value(case, opposite_route_value(route_value))?;
+    let control_document = render_cutover_document(&renderer, case, control_theme)?;
+    let control_png = control_document
+        .export_png(&raster_options, OperationControl::new())
+        .map_err(|error| C6ProofError::new("route-png-control-encode", error.to_string()))?;
+    c6_ensure!(
+        "route-png-semantic",
+        png_output.bytes() != control_png.bytes(),
+        "PNG route projection is unchanged when {} switches between its admitted values",
+        route_label(expected_route)
+    );
+
     let png_receipt = png_output.admission();
     let svg_target_receipt_digest = validate_cutover_target_receipt(
         CutoverTargetAdmissionContract::PaintStandaloneSvgV1,
@@ -841,12 +842,39 @@ fn render_cutover_case(
     })
 }
 
+fn render_cutover_document(
+    renderer: &Renderer,
+    case: CutoverCase,
+    theme: DiagramTheme,
+) -> C6ProofResult<merman::RenderedDocument> {
+    let document_output = renderer
+        .render(
+            RenderRequest::document(case.source, OperationControl::new(), portable_svg_request())
+                .with_theme(theme),
+        )
+        .map_err(|error| C6ProofError::new("route-svg-render", error.to_string()))?;
+    let RenderOutput::Document(Some(document)) = document_output else {
+        return Err(C6ProofError::new(
+            "route-svg-render",
+            "route witness did not produce a completed document",
+        ));
+    };
+    Ok(document)
+}
+
 fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
+    compile_cutover_theme_with_value(case, case.id.route().value())
+}
+
+fn compile_cutover_theme_with_value(
+    case: CutoverCase,
+    route_value: ThemeRouteCutoverValue,
+) -> C6ProofResult<DiagramTheme> {
     let mut styles = ThemeRuleSet::default();
     let route = case.id.route();
     let style = match route.facet() {
         ThemeRouteCutoverFacet::Fill => {
-            ThemeStylePatch::default().with_fill(cutover_paint(route.value(), SOLID_FILL.css)?)
+            ThemeStylePatch::default().with_fill(cutover_paint(route_value, SOLID_FILL.css)?)
         }
         ThemeRouteCutoverFacet::Stroke => {
             let solid = match route.target() {
@@ -871,7 +899,7 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
                     ));
                 }
             };
-            ThemeStylePatch::default().with_stroke(cutover_paint(route.value(), solid)?)
+            ThemeStylePatch::default().with_stroke(cutover_paint(route_value, solid)?)
         }
     };
     styles = styles.with_rule(cutover_rule(case, route.target(), style));
@@ -897,6 +925,13 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
                 .with_styles(styles),
         )
         .map_err(|error| C6ProofError::new("route-theme", error.to_string()))
+}
+
+const fn opposite_route_value(value: ThemeRouteCutoverValue) -> ThemeRouteCutoverValue {
+    match value {
+        ThemeRouteCutoverValue::Transparent => ThemeRouteCutoverValue::Solid,
+        ThemeRouteCutoverValue::Solid => ThemeRouteCutoverValue::Transparent,
+    }
 }
 
 fn cutover_rule(case: CutoverCase, target: ThemeTarget, style: ThemeStylePatch) -> ThemeRule {
