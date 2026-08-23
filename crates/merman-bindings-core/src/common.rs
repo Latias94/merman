@@ -1164,6 +1164,12 @@ fn reject_untrusted_binding_css_options(value: &Value) -> Result<(), BindingErro
                 "site_config.secure is not accepted by general bindings because callers cannot replace the host security boundary; configure it only through a trusted Rust or native CLI host",
             ));
         }
+        for field in ["themeVariables", "theme_variables"] {
+            if let Some(theme_variables) = site_config.get(field) {
+                let path = format!("site_config.{field}");
+                reject_untrusted_theme_variable_values(theme_variables, &path)?;
+            }
+        }
     }
 
     #[cfg(feature = "svg")]
@@ -1193,6 +1199,37 @@ fn reject_untrusted_binding_css_options(value: &Value) -> Result<(), BindingErro
     }
 
     Ok(())
+}
+
+fn reject_untrusted_theme_variable_values(value: &Value, path: &str) -> Result<(), BindingError> {
+    match value {
+        Value::String(value) if !is_safe_binding_css_value(value) => Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            format!(
+                "{path} contains a CSS value that is not accepted by general bindings; use a typed theme value or a trusted Rust or native CLI host"
+            ),
+        )),
+        Value::Array(values) => values.iter().enumerate().try_for_each(|(index, value)| {
+            reject_untrusted_theme_variable_values(value, &format!("{path}[{index}]"))
+        }),
+        Value::Object(values) => values.iter().try_for_each(|(key, value)| {
+            reject_untrusted_theme_variable_values(value, &format!("{path}.{key}"))
+        }),
+        _ => Ok(()),
+    }
+}
+
+fn is_safe_binding_css_value(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    !value.bytes().any(|byte| {
+        byte.is_ascii_control() || matches!(byte, b'<' | b'>' | b'{' | b'}' | b';' | b'\\')
+    }) && !value.contains("/*")
+        && !value.contains("*/")
+        && !lower.contains("url(")
+        && !lower.contains("expression(")
+        && !lower.contains("@import")
+        && !lower.contains("<!--")
+        && !lower.contains("-->")
 }
 
 fn validate_options_schema_version(value: &Value) -> Result<(), BindingError> {
@@ -4066,6 +4103,24 @@ mod tests {
             assert!(
                 error.message().contains("site_config.themeCSS")
                     || error.message().contains("site_config.secure"),
+                "{input}: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_binding_artifact_rejects_unsafe_site_config_theme_variables() {
+        for input in [
+            r##"{"site_config":{"themeVariables":{"mainBkg":"#fff;}</style><script>alert(1)</script>"}}}"##,
+            r#"{"site_config":{"themeVariables":{"nodeBorder":"url(javascript:alert(1))"}}}"#,
+            r#"{"analysis":{"site_config":{"themeVariables":{"fontFamily":"u\\72l(javascript:alert(1))"}}}}"#,
+            r#"{"merman":{"site_config":{"themeVariables":{"nested":["red;stroke:blue"]}}}}"#,
+        ] {
+            let error = parse_options(input.as_bytes()).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError, "{input}");
+            assert!(
+                error.message().contains("themeVariables")
+                    || error.message().contains("theme_variables"),
                 "{input}: {error:?}"
             );
         }

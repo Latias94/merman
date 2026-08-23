@@ -335,6 +335,24 @@ B -->|No| D[Debug]";
     }
 
     #[test]
+    fn general_bindings_reject_unsafe_theme_variable_css() {
+        let error = render_svg(
+            b"flowchart TD\nA[Plain source]",
+            br##"{
+                "site_config": {
+                    "themeVariables": {
+                        "mainBkg": "#fff;}</style><script>alert(1)</script>"
+                    }
+                }
+            }"##,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("themeVariables"), "{error:?}");
+    }
+
+    #[test]
     fn one_shot_binding_rejects_site_config_secure_override() {
         let error = render_svg(
             br##"%%{init: {"themeCSS": ".node rect { fill: red; }"}}%%
