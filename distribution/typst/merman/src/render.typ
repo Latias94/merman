@@ -1,5 +1,5 @@
 #import "context.typ": typst-layout
-#import "errors.typ": validate-error-mode
+#import "errors.typ": diagram-error, error-message, validate-error-mode
 #import "image.typ": result-image, svg-bytes-or-panic
 #import "options.typ": config-with-context-width, context-text-style, options-bytes, render-config
 #import "plugin.typ": merman-plugin
@@ -136,7 +136,35 @@
   }
 }
 
-#let mermaid-theme-definition(source, definition, ..args) = {
-  let materialized = materialize-theme(definition)
-  mermaid(source, diagram-theme: materialized.spec, ..args)
+#let mermaid-theme-definition(
+  source,
+  definition,
+  width: auto,
+  height: auto,
+  fit: "contain",
+  scale: none,
+  alt: none,
+  error-mode: "panic",
+  ..args,
+) = {
+  let error-mode = validate-error-mode(error-mode)
+  let config = render-config(..args)
+  let materialized = materialize-theme(definition, options: config.binding_options)
+  if "spec" in materialized {
+    let binding-options = (: ..config.binding_options, theme: (spec: materialized.spec))
+    mermaid(
+      source,
+      width: width,
+      height: height,
+      fit: fit,
+      scale: scale,
+      alt: alt,
+      error-mode: error-mode,
+      options: binding-options,
+    )
+  } else if error-mode == "panic" {
+    panic(error-message(materialized))
+  } else {
+    diagram-error(materialized, error-mode, width)
+  }
 }

@@ -178,6 +178,21 @@
 #assert.eq(materialized-theme.spec_schema_version, 1)
 #assert(materialized-theme.spec.styles.len() > 0)
 
+#let materialization-limit = materialize-theme(
+  theme-definition,
+  options: (
+    version: 3,
+    resources: (
+      profile: "constrained",
+      limits: (max_theme_encoded_bytes: 1),
+    ),
+  ),
+)
+#assert(
+  not ("spec" in materialization-limit),
+  message: "materialization must enforce caller resource limits before decoding",
+)
+
 #let theme-support = describe-theme-support((
   schema_version: 2,
   family: "sequence",
@@ -268,6 +283,17 @@
 #mermaid-theme-definition(
   "flowchart LR\nA[Dark] --> B[Authored]",
   dark-definition,
+  width: 80%,
+)
+#mermaid-theme-definition(
+  "flowchart LR\nA[Invalid] --> B[Theme]",
+  (:),
+  error-mode: "text",
+)
+#mermaid-theme-definition(
+  "flowchart LR\nA[Invalid] --> B[Theme]",
+  (:),
+  error-mode: "placeholder",
   width: 80%,
 )
 #assert(
