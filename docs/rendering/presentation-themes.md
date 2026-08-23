@@ -131,6 +131,23 @@ SVG. Browser SVG and PNG/JPEG/PDF remain `Unverified` until their terminal or ex
 qualification into this contract. Only the evidence and target-admission receipt from an actual
 render can report application, residuals, host dependence, or portability.
 
+## Private C6a Evidence Boundary
+
+`internal-theme-acceptance` is a workspace-only feature used by the non-published
+`merman-theme-acceptance` crate. It is not a public theme capability and it does not add a
+runtime dependency to ordinary `merman` builds. The feature exposes one generic,
+renderer-owned `SvgArtifactReceipt` through a hidden seam so the acceptance harness can inspect
+immutable facts from the finalized SVG without reparsing the SVG or rebuilding CSS and geometry
+semantics.
+
+The C6a harness then applies fixture-specific semantic predicates to those facts and combines
+them with the target-owned admission receipts. PNG checks are projections of the same
+`RenderedDocument`: they may use the document's sealed SVG receipt for source geometry and the
+PNG target receipt for the encoded bytes. The harness emits the private `C6aEligibilityReceipt`
+only for the versioned 18-cell representative ledger (three proof recipes × Flowchart, State,
+and Sequence × Standalone SVG and PNG). This receipt is an internal qualification checkpoint,
+not a public claim that every family, theme, or output target is supported.
+
 `DiagramThemeSpec` can also be assembled directly. Its typed sections are Mermaid compatibility,
 typography, semantic rules and ordinal palettes, canvas, effects, resource assets, and declared
 requirements. The compiler validates the complete recipe and returns a `DiagramTheme`; it does not

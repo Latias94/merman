@@ -296,11 +296,15 @@ C6 and preset qualification have six deliberately separate layers:
    successful route receipt authorizes only that route's ownership cutover; it never counts toward
    the 18-cell C6a ledger, preset qualification, or C7a eligibility.
 4. **Target proof receipts** are opaque inputs produced and sealed once by the production document
-   and target adapters. Standalone SVG receives deep normalized-DOM, final-attribute, resource,
-   layout-invariant, and admission assertions. PNG reuses the same sealed document and adds bounded
-   ROI or differential assertions only where rasterization adds information. The acceptance harness
-   must not reconstruct CSS cascade, geometry, font selection, PDF drawing, or rasterization facts
-   already owned by production receipts.
+   and target adapters. With the private `internal-theme-acceptance` seam enabled, `merman-render`
+   captures one generic `SvgArtifactReceipt` while finalizing `RenderedDocument`; it records
+   family-neutral DOM, inline-style, stylesheet, text, and basic geometry facts and binds them to
+   the exact SVG artifact digest. Standalone SVG predicates consume that receipt together with the
+   target admission receipt. PNG reuses the same sealed document receipt for source geometry and
+   its own target receipt for encoded bytes, adding bounded ROI or differential assertions only
+   where rasterization adds information. The acceptance harness must not reconstruct CSS cascade,
+   geometry, font selection, PDF drawing, or rasterization facts already owned by production
+   receipts.
 5. **`C6ObservedReport`** is constructed and evaluated only inside a non-published
    `merman-theme-acceptance` harness crate that depends on `merman`, `merman-export`, and
    `merman-theme-fixtures`. This avoids a dependency cycle while preventing ordinary callers from
@@ -315,10 +319,11 @@ C6 and preset qualification have six deliberately separate layers:
 The representative ledger began as a draft that executed the nine render groups without issuing
 the final eligibility receipt. That historical state is now closed: the current private harness
 executes all 18 catalog cells and seals the exact versioned ledger with
-`C6aEligibilityReceipt`. The observation boundary remains private to the non-published harness:
-fixture crates retain only catalog/specification types, target adapters seal artifact digests and
-mechanism proofs, and unsupported enforced cells return an explicit runner error instead of being
-silently skipped. The harness additionally proves the current legacy-replacing typed-route
+`C6aEligibilityReceipt`. The observation boundary remains private to the non-published harness and
+its hidden renderer feature: fixture crates retain only catalog/specification types, production
+adapters seal artifact digests and mechanism proofs, and unsupported enforced cells return an
+explicit runner error instead of being silently skipped. The harness additionally proves the
+current legacy-replacing typed-route
 inventory against finalized Standalone SVG and PNG output, but those route receipts remain
 non-cell authorization evidence and do not change the matrix counts. Historical JPEG/PDF
 observations likewise do not increase C6a progress.

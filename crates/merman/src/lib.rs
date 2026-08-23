@@ -131,7 +131,10 @@ pub mod __theme_acceptance {
     /// Borrowed production-owned artifact and its inseparable target admission receipt.
     ///
     /// The acceptance harness may inspect the exact bytes, but it cannot pair arbitrary bytes with
-    /// a receipt or reconstruct the production target seal.
+    /// a receipt or reconstruct the production target seal. A finalized document view also carries
+    /// the generic SVG observation. Raster and PDF views intentionally expose only their own
+    /// target receipt; callers that need source-document SVG facts must retain the originating
+    /// `RenderedDocument` view.
     #[derive(Debug, Clone, Copy)]
     pub struct TargetArtifactView<'a> {
         bytes: &'a [u8],
