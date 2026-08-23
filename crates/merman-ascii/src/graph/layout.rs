@@ -9,6 +9,15 @@ use crate::resource::{LogicalExtent, ResourceContext};
 mod grid;
 mod groups;
 
+pub(super) fn charge_sort_work(len: usize, resources: &ResourceContext) -> Result<()> {
+    let comparison_height = if len <= 1 {
+        1
+    } else {
+        usize::BITS as usize - (len - 1).leading_zeros() as usize
+    };
+    resources.charge_layout_work(resources.checked_work_mul(len, comparison_height)?)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GraphLayout {
     pub(super) nodes: Vec<NodeLayout>,

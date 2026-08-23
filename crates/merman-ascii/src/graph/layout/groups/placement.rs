@@ -5,7 +5,7 @@ use super::{
     separate_external_nodes_from_groups, stack_divider_sections, try_bool_slots,
 };
 use crate::error::Result;
-use crate::graph::layout::GridCoord;
+use crate::graph::layout::{GridCoord, charge_sort_work};
 use crate::graph::model::{AsciiGraph, GraphDirection};
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::operation::AsciiExecution;
@@ -944,15 +944,6 @@ fn placement_state_is_valid(
 
 fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
     execution.checkpoint(OperationPhase::Layout)
-}
-
-fn charge_sort_work(len: usize, resources: &ResourceContext) -> Result<()> {
-    let comparison_height = if len <= 1 {
-        1
-    } else {
-        usize::BITS as usize - (len - 1).leading_zeros() as usize
-    };
-    resources.charge_layout_work(resources.checked_work_mul(len, comparison_height)?)
 }
 
 fn root_axis_position(direction: GraphDirection, placement: GridCoord) -> usize {

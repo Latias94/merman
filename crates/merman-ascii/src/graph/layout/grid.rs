@@ -4,7 +4,7 @@ use super::super::model::{
 };
 use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
-use super::{GridCoord, NodeLayout};
+use super::{GridCoord, NodeLayout, charge_sort_work};
 use crate::error::{AsciiError, Result};
 use crate::graph::topology::GraphGroupTopology;
 use crate::operation::AsciiExecution;
@@ -487,15 +487,6 @@ fn index_order(len: usize) -> Result<Vec<usize>> {
     try_reserve_vec(&mut order, len)?;
     order.extend(0..len);
     Ok(order)
-}
-
-fn charge_sort_work(len: usize, resources: &ResourceContext) -> Result<()> {
-    let comparison_height = if len <= 1 {
-        1
-    } else {
-        usize::BITS as usize - (len - 1).leading_zeros() as usize
-    };
-    resources.charge_layout_work(resources.checked_work_mul(len, comparison_height)?)
 }
 
 fn reserve_grid_spot(
