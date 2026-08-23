@@ -44,6 +44,13 @@ fn kanban_task_fill_theme(paint: CanvasPaint) -> DiagramTheme {
     )])
 }
 
+fn kanban_task_stroke_theme(paint: CanvasPaint) -> DiagramTheme {
+    kanban_task_rules_theme([ThemeRule::new(
+        ThemeTarget::Task,
+        ThemeStylePatch::default().with_stroke(paint),
+    )])
+}
+
 fn kanban_task_palette_styles(colors: &[&str]) -> ThemeRuleSet {
     let palette = OrdinalPalette::new(
         colors
@@ -425,6 +432,77 @@ fn kanban_static_task_fill_respects_the_mermaid_background_owner() {
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid Kanban background-owned SVG");
     assert!(!kanban_task_rect_style(&document, "kanban-palette-task").contains("#123456"));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn kanban_static_task_stroke_reaches_each_terminal_rect() {
+    let source = concat!(
+        "kanban\n",
+        "  todo[Todo]\n",
+        "    first[First]\n",
+        "    second[Second]\n",
+    );
+
+    for (paint, expected_stroke) in [
+        (
+            CanvasPaint::solid("#654321").expect("valid Kanban task stroke"),
+            "stroke:#654321;",
+        ),
+        (CanvasPaint::Transparent, "stroke:transparent;"),
+    ] {
+        let rendered = render_kanban_with_theme_and_engine(
+            source,
+            &kanban_task_stroke_theme(paint),
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Kanban stroke SVG");
+        assert_eq!(
+            kanban_task_rect_style(&document, "kanban-palette-first"),
+            expected_stroke
+        );
+        assert_eq!(
+            kanban_task_rect_style(&document, "kanban-palette-second"),
+            expected_stroke
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn kanban_static_task_stroke_respects_the_mermaid_node_border_owner() {
+    let rendered = render_kanban_with_theme_and_engine(
+        "kanban\n  todo[Todo]\n    task[Task]\n",
+        &kanban_task_stroke_theme(CanvasPaint::solid("#654321").expect("valid Kanban task stroke")),
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": { "nodeBorder": "#fedcba" }
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid Kanban nodeBorder-owned SVG");
+    assert_eq!(
+        kanban_task_rect_style(&document, "kanban-palette-task"),
+        "",
+        "source-owned nodeBorder must leave the terminal without typed inline stroke"
+    );
+    assert!(rendered.svg().contains("stroke:#fedcba;"));
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
@@ -1071,7 +1149,7 @@ fn kanban_task_radius_handles_duplicate_section_ids_without_replaying_items() {
 }
 
 #[test]
-fn kanban_task_radius_rejects_qualified_and_mixed_rules() {
+fn kanban_task_radius_rejects_qualified_rules_but_accepts_mixed_direct_paint() {
     let source = "kanban\n  todo[Todo]\n    task[Task]\n";
     let radius_style = kanban_task_radius_style(Specified::Value(8.0));
     for rule in [
@@ -1091,19 +1169,19 @@ fn kanban_task_radius_rejects_qualified_and_mixed_rules() {
         );
     }
 
-    let mixed_legacy = ThemeRule::new(
+    let mixed_direct = ThemeRule::new(
         ThemeTarget::Task,
         radius_style.with_stroke(CanvasPaint::solid("#123456").expect("valid task stroke")),
     );
-    let error = try_render_kanban_svg_with_theme(source, &kanban_task_rules_theme([mixed_legacy]))
-        .expect_err("a mixed direct and legacy Kanban rule must not be signed Applied");
-    assert!(matches!(
-        error,
-        merman_render::Error::LegacyFamilyThemeCompatibility {
-            family_id: merman_render::DiagramFamilyId::KANBAN,
-            ..
-        }
-    ));
+    let (layout, svg) =
+        try_render_kanban_svg_with_theme(source, &kanban_task_rules_theme([mixed_direct]))
+            .expect("mixed direct Kanban radius and stroke should be portable");
+    assert_eq!(layout.items[0].rx, 8.0);
+    let document = roxmltree::Document::parse(&svg).expect("valid mixed direct Kanban SVG");
+    assert_eq!(
+        kanban_task_rect_style(&document, "kanban-markdown-task"),
+        "stroke:#123456;"
+    );
 }
 
 #[test]

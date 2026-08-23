@@ -330,6 +330,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_STROKES)
         }
+        (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_KANBAN_TASK_STROKE)
+        }
         (
             DiagramFamilyId::JOURNEY,
             ThemeTarget::JourneyTask,
@@ -1354,6 +1357,18 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::KANBAN
+        && target == ThemeTarget::Task
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::GANTT
         && target == ThemeTarget::Task
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
@@ -1713,6 +1728,12 @@ fn legacy_paint_supported(
     variant: Option<ThemeVariant>,
     channel: PaintChannel,
 ) -> bool {
+    if family == DiagramFamilyId::KANBAN
+        && target == ThemeTarget::Task
+        && channel == PaintChannel::Stroke
+    {
+        return variant.is_none();
+    }
     let variants = legacy_paint_variants(family, target, channel);
     !variants.is_empty() && variant.is_none_or(|variant| variants.contains(&variant))
 }
@@ -3058,6 +3079,15 @@ mod tests {
             .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
+        assert_eq!(
+            compile_rule_routes(
+                DiagramFamilyId::KANBAN,
+                0,
+                &ThemeRule::new(ThemeTarget::Task, task_stroke.clone()),
+            )[0]
+            .disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
         for variant in [
             ThemeVariant::Default,
             ThemeVariant::Active,
@@ -3072,6 +3102,15 @@ mod tests {
                 )[0]
                 .disposition(),
                 FamilyThemeDisposition::LegacyCompatibility
+            );
+            assert_eq!(
+                compile_rule_routes(
+                    DiagramFamilyId::KANBAN,
+                    0,
+                    &ThemeRule::new(ThemeTarget::Task, task_stroke.clone()).with_variant(variant),
+                )[0]
+                .disposition(),
+                FamilyThemeDisposition::Unsupported
             );
         }
     }
@@ -4341,6 +4380,48 @@ mod tests {
                 Fill,
                 Solid,
                 vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::JOURNEY,
+                ThemeTarget::JourneyTask,
+                Fill,
+                Transparent,
+                vec!["task.paint-text"],
+            ),
+            (
+                DiagramFamilyId::JOURNEY,
+                ThemeTarget::JourneyTask,
+                Fill,
+                Solid,
+                vec!["task.paint-text"],
+            ),
+            (
+                DiagramFamilyId::JOURNEY,
+                ThemeTarget::JourneyTask,
+                Stroke,
+                Transparent,
+                vec!["task.paint-text"],
+            ),
+            (
+                DiagramFamilyId::JOURNEY,
+                ThemeTarget::JourneyTask,
+                Stroke,
+                Solid,
+                vec!["task.paint-text"],
+            ),
+            (
+                DiagramFamilyId::KANBAN,
+                ThemeTarget::Task,
+                Stroke,
+                Transparent,
+                vec!["task.default.stroke"],
+            ),
+            (
+                DiagramFamilyId::KANBAN,
+                ThemeTarget::Task,
+                Stroke,
+                Solid,
+                vec!["task.default.stroke"],
             ),
             (
                 DiagramFamilyId::MINDMAP,

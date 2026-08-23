@@ -284,6 +284,11 @@ const JOURNEY_TASK_PAINT_SOURCE: &str = r#"journey
   section Delivery
     Ship release: 5: Maintainer
 "#;
+const KANBAN_TASK_STROKE_SOURCE: &str = r#"kanban
+  todo[Todo]
+    first[First]
+    second[Second]
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
@@ -501,6 +506,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::JourneyTask,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(JOURNEY_TASK_PAINT_SOURCE),
+        (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(KANBAN_TASK_STROKE_SOURCE)
+        }
         _ => Err(C6ProofError::new(
             "route-source",
             format!("no route-cutover witness source for {}", route_label(route)),
@@ -1393,6 +1401,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::GANTT
+            | DiagramFamilyId::KANBAN
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::INFO => Ok("transparent"),
             family => Err(C6ProofError::new(
@@ -1611,11 +1620,12 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_one_hundred_routes_and_one_hundred_sixteen_artifact_witnesses() {
+    fn route_inventory_retains_one_hundred_two_routes_and_one_hundred_eighteen_artifact_witnesses()
+    {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 100);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 116);
+        assert_eq!(inventory.len(), 102);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 118);
     }
 
     #[test]

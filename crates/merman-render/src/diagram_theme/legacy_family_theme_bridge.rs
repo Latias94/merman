@@ -704,7 +704,7 @@ fn compile_task_family(
         }
         DiagramFamilyId::KANBAN => {
             contributions.add_theme_variables(
-                "task.default",
+                ThemeRouteCutoverProjection::KanbanTaskStroke.contribution_id(),
                 [("nodeBorder", reader.stroke(ThemeTarget::Task))],
             );
         }

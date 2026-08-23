@@ -152,13 +152,20 @@ struct KanbanTaskRectEmission {
     rx: f64,
     ry: f64,
     fill: Option<String>,
+    stroke: Option<String>,
 }
 
 impl KanbanTaskRectEmission {
-    fn matches_theme(&self, expected_radius: f64, expected_fill: Option<&str>) -> bool {
+    fn matches_theme(
+        &self,
+        expected_radius: f64,
+        expected_fill: Option<&str>,
+        expected_stroke: Option<&str>,
+    ) -> bool {
         self.rx == expected_radius
             && self.ry == expected_radius
             && self.fill.as_deref() == expected_fill
+            && self.stroke.as_deref() == expected_stroke
     }
 }
 
@@ -168,17 +175,21 @@ fn write_kanban_task_rect(
     rect_x: f64,
     rect_y: f64,
     fill: Option<&str>,
+    stroke: Option<&str>,
 ) -> KanbanTaskRectEmission {
     let emission = KanbanTaskRectEmission {
         rx: item.rx,
         ry: item.ry,
         fill: fill.map(str::to_string),
+        stroke: stroke.map(str::to_string),
     };
-    let style = emission
-        .fill
-        .as_deref()
-        .map(|fill| format!("fill:{fill};"))
-        .unwrap_or_default();
+    let mut style = String::new();
+    if let Some(fill) = emission.fill.as_deref() {
+        let _ = write!(&mut style, "fill:{fill};");
+    }
+    if let Some(stroke) = emission.stroke.as_deref() {
+        let _ = write!(&mut style, "stroke:{stroke};");
+    }
     let _ = write!(
         out,
         r##"<rect class="basic label-container __APA__" style="{style}" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/>"##,
@@ -456,8 +467,14 @@ pub(crate) fn render_kanban_diagram_svg(
             y = fmt(n.center_y),
         );
         let terminal_decision = &task_terminal_decisions[item_index];
-        let task_rect_emission =
-            write_kanban_task_rect(&mut out, n, rect_x, rect_y, terminal_decision.fill_css());
+        let task_rect_emission = write_kanban_task_rect(
+            &mut out,
+            n,
+            rect_x,
+            rect_y,
+            terminal_decision.fill_css(),
+            terminal_decision.stroke_css(),
+        );
 
         let label_context = KanbanLabelRenderContext {
             max_width: max_w,
@@ -627,7 +644,11 @@ pub(crate) fn render_kanban_diagram_svg(
                 item_index,
                 &n.id,
                 task_theme.radius_px(item_index).is_some_and(|expected| {
-                    task_rect_emission.matches_theme(expected, terminal_decision.fill_css())
+                    task_rect_emission.matches_theme(
+                        expected,
+                        terminal_decision.fill_css(),
+                        terminal_decision.stroke_css(),
+                    )
                 }),
                 terminal_decision,
             );

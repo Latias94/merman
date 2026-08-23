@@ -49,6 +49,7 @@ pub(super) fn deep_family_route_observation(
             gantt_task_stroke_observation(document, route, profile)
         }
         DiagramFamilyId::GANTT => gantt_task_fill_observation(document, route, profile),
+        DiagramFamilyId::KANBAN => kanban_task_stroke_observation(document, route, profile),
         DiagramFamilyId::JOURNEY => journey_task_paint_observation(document, route, profile),
         family => Err(C6ProofError::new(
             "route-svg-proof",
@@ -97,6 +98,7 @@ pub(super) fn deep_family_underlay_colors(
             prove_gantt_transparent_underlay(document)?;
             gantt_task_text_underlay_colors(document)?
         }
+        DiagramFamilyId::KANBAN => kanban_task_underlay_colors(document)?,
         DiagramFamilyId::JOURNEY => journey_task_underlay_colors(document, route)?,
         family => {
             return Err(C6ProofError::new(
@@ -170,6 +172,128 @@ fn journey_task_paint_observation(
         terminal_digest: sha256(terminal),
         target_regions,
     })
+}
+
+fn kanban_task_stroke_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+    profile: CutoverWitnessProfile,
+) -> C6ProofResult<DeepFamilyRouteObservation> {
+    require_route(route, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke)?;
+    require_classic_profile(profile, "Kanban Task.stroke")?;
+    c6_ensure!(
+        "route-svg-proof",
+        route.projections().len() == 1
+            && route
+                .projections()
+                .contains(ThemeRouteCutoverProjection::KanbanTaskStroke),
+        "Kanban Task.stroke route lost its dedicated projection contract"
+    );
+
+    let tasks = document
+        .descendants()
+        .filter(|node| node.has_tag_name("rect") && class_contains(*node, "label-container"))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        tasks.len() == 2,
+        "Kanban Task.stroke witness expected two task rects, found {}",
+        tasks.len()
+    );
+
+    let mut common_value = None;
+    let mut target_regions = Vec::with_capacity(tasks.len() * 4);
+    let mut terminal = b"merman.c6-route-kanban-task-stroke.v1\0".to_vec();
+    for task in tasks {
+        let class = task.attribute("class").ok_or_else(|| {
+            C6ProofError::new("route-svg-proof", "Kanban task rect lacks a class")
+        })?;
+        c6_ensure!(
+            "route-svg-proof",
+            ["basic", "label-container", "__APA__"]
+                .into_iter()
+                .all(|token| class.split_ascii_whitespace().any(|class| class == token))
+                && ["x", "y", "width", "height", "rx", "ry"]
+                    .into_iter()
+                    .all(|attribute| task.attribute(attribute).is_some()),
+            "Kanban task rect lost its terminal geometry or identity: class={class}"
+        );
+        let value = required_style_value(task, "stroke", "Kanban task rect")?;
+        observe_common_value(&mut common_value, value, "Kanban task rect")?;
+        c6_ensure!(
+            "route-svg-proof",
+            task.attribute("stroke").is_none() && task.attribute("fill").is_none(),
+            "Kanban task rect exposed a non-style stroke or fill owner"
+        );
+        append_len_prefixed(&mut terminal, class.as_bytes());
+        append_len_prefixed(&mut terminal, value.as_bytes());
+        for region in kanban_task_stroke_regions(task)? {
+            target_regions.push(region);
+            append_rect(&mut terminal, region);
+        }
+    }
+
+    Ok(DeepFamilyRouteObservation {
+        value: common_value.ok_or_else(|| {
+            C6ProofError::new("route-svg-proof", "Kanban task witness has no stroke value")
+        })?,
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
+fn kanban_task_stroke_regions(task: roxmltree::Node<'_, '_>) -> C6ProofResult<Vec<[f64; 4]>> {
+    let [x, y, width, height] = raw_element_bounds(task)?.rect(0.0)?;
+    let edge = 3.0;
+    let horizontal_inset = number_attribute_or(task, "rx", 0.0)? + edge;
+    let vertical_inset = number_attribute_or(task, "ry", 0.0)? + edge;
+    c6_ensure!(
+        "route-svg-geometry",
+        width > horizontal_inset * 2.0 && height > vertical_inset * 2.0,
+        "Kanban task rect is too small for a stroke-only evidence ROI"
+    );
+    Ok(vec![
+        [
+            x + horizontal_inset,
+            y,
+            width - horizontal_inset * 2.0,
+            edge,
+        ],
+        [
+            x + horizontal_inset,
+            y + height - edge,
+            width - horizontal_inset * 2.0,
+            edge,
+        ],
+        [x, y + vertical_inset, edge, height - vertical_inset * 2.0],
+        [
+            x + width - edge,
+            y + vertical_inset,
+            edge,
+            height - vertical_inset * 2.0,
+        ],
+    ])
+}
+
+fn kanban_task_underlay_colors(document: &roxmltree::Document<'_>) -> C6ProofResult<Vec<[u8; 3]>> {
+    let root_id = root_id(document, "Kanban")?;
+    let selector = format!(
+        "#{root_id} .node rect,#{root_id} .node circle,#{root_id} .node ellipse,#{root_id} .node polygon,#{root_id} .node path"
+    );
+    let mut colors = Vec::new();
+    for raw in document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .flat_map(|css| exact_writer_css_properties(css, &selector, "fill"))
+    {
+        if let Some(color) = parse_optional_css_rgb(raw)?
+            && !colors.contains(&color)
+        {
+            colors.push(color);
+        }
+    }
+    Ok(colors)
 }
 
 fn journey_task_underlay_colors(

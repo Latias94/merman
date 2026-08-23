@@ -10,7 +10,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -27,6 +28,7 @@ pub(crate) struct KanbanTaskTheme {
     evidence: FamilyThemeEvidence,
     pending_radius_key: Option<FamilyThemeMechanismKey>,
     pending_fill_keys: BTreeSet<FamilyThemeMechanismKey>,
+    pending_stroke_keys: BTreeSet<FamilyThemeMechanismKey>,
     palette_key: Option<FamilyThemeMechanismKey>,
     pending_label_keys: BTreeSet<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<KanbanTaskThemeReceipt>,
@@ -37,6 +39,7 @@ struct KanbanTaskResolvedItem {
     occurrence: KanbanTaskOccurrence,
     radius_px: f64,
     typed_fill: Option<KanbanTaskTypedFill>,
+    typed_stroke: Option<KanbanTaskTypedStroke>,
     palette_fill: Option<KanbanTaskPaletteFill>,
     label_foreground: Option<KanbanTaskLabelForeground>,
 }
@@ -49,6 +52,13 @@ struct KanbanTaskPaletteFill {
 
 #[derive(Debug)]
 struct KanbanTaskTypedFill {
+    css: String,
+    capability: ThemeCapability,
+    rule_index: usize,
+}
+
+#[derive(Debug)]
+struct KanbanTaskTypedStroke {
     css: String,
     capability: ThemeCapability,
     rule_index: usize,
@@ -161,6 +171,10 @@ impl KanbanTaskTheme {
             effective_config,
             "themeVariables.background",
         );
+        let source_owned_card_stroke = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.nodeBorder",
+        );
         // Query only the terminal path consumed by the Kanban writer. Core provenance may carry
         // derived ownership into `textColor`; upstream inputs such as `primaryTextColor` are not
         // enumerated here as a second ownership authority.
@@ -170,6 +184,7 @@ impl KanbanTaskTheme {
         );
         let mut items = Vec::with_capacity(item_count);
         let mut typed_fill_rule_occurrences = BTreeMap::<usize, usize>::new();
+        let mut typed_stroke_rule_occurrences = BTreeMap::<usize, usize>::new();
         let mut label_rule_visible = BTreeSet::new();
         let mut label_rule_shadowed = BTreeSet::new();
         let mut winner_properties = BTreeSet::new();
@@ -195,6 +210,16 @@ impl KanbanTaskTheme {
             if let Some(fill) = typed_fill.as_ref() {
                 *typed_fill_rule_occurrences
                     .entry(fill.rule_index)
+                    .or_default() += 1;
+            }
+            let typed_stroke = if source_owned_card_stroke {
+                None
+            } else {
+                typed_task_stroke(theme, &style)
+            };
+            if let Some(stroke) = typed_stroke.as_ref() {
+                *typed_stroke_rule_occurrences
+                    .entry(stroke.rule_index)
                     .or_default() += 1;
             }
             let palette_fill = if !source_owned_card_fill
@@ -253,6 +278,7 @@ impl KanbanTaskTheme {
                 occurrence,
                 radius_px,
                 typed_fill,
+                typed_stroke,
                 palette_fill,
                 label_foreground,
             });
@@ -262,6 +288,7 @@ impl KanbanTaskTheme {
         let mut observations = BTreeMap::<(usize, ThemeTarget), KanbanTaskRuleObservation>::new();
         let mut palette_key = None;
         let mut pending_fill_keys = BTreeSet::new();
+        let mut pending_stroke_keys = BTreeSet::new();
         let mut pending_label_keys = BTreeSet::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -312,6 +339,28 @@ impl KanbanTaskTheme {
                                 match typed_fill_rule_occurrences.get(&rule_index).copied() {
                                     Some(count) if count == item_count => {
                                         observation.fill_pending = true;
+                                    }
+                                    Some(_) | None => {
+                                        observation.residual =
+                                            Some(FamilyThemeResidualReason::UnsupportedPaint);
+                                    }
+                                }
+                            }
+                        }
+                        (
+                            ThemeTarget::Task,
+                            FamilyThemeDisposition::TypedAdapter,
+                            FamilyThemeRuleFacet::Stroke(
+                                crate::diagram_theme::FamilyThemePaintKind::Transparent
+                                | crate::diagram_theme::FamilyThemePaintKind::Solid,
+                            ),
+                        ) => {
+                            if source_owned_card_stroke {
+                                observation.suppressed = true;
+                            } else {
+                                match typed_stroke_rule_occurrences.get(&rule_index).copied() {
+                                    Some(count) if count == item_count => {
+                                        observation.stroke_pending = true;
                                     }
                                     Some(_) | None => {
                                         observation.residual =
@@ -401,6 +450,10 @@ impl KanbanTaskTheme {
                     pending_fill_keys.insert(key.clone());
                     pending = true;
                 }
+                if observation.stroke_pending {
+                    pending_stroke_keys.insert(key.clone());
+                    pending = true;
+                }
                 if observation.label_pending {
                     pending_label_keys.insert(key.clone());
                     pending = true;
@@ -416,6 +469,7 @@ impl KanbanTaskTheme {
             evidence,
             pending_radius_key,
             pending_fill_keys,
+            pending_stroke_keys,
             palette_key,
             pending_label_keys,
             terminal_receipt: OnceLock::new(),
@@ -438,6 +492,7 @@ impl KanbanTaskTheme {
                     occurrence,
                     radius_px: MERMAID_TASK_RADIUS_PX,
                     typed_fill: None,
+                    typed_stroke: None,
                     palette_fill: None,
                     label_foreground: None,
                 })
@@ -445,6 +500,7 @@ impl KanbanTaskTheme {
             evidence: FamilyThemeEvidence::default(),
             pending_radius_key: None,
             pending_fill_keys: BTreeSet::new(),
+            pending_stroke_keys: BTreeSet::new(),
             palette_key: None,
             pending_label_keys: BTreeSet::new(),
             terminal_receipt: OnceLock::new(),
@@ -489,11 +545,15 @@ impl KanbanTaskTheme {
                 };
                 (fill_css, fill.map(|fill| fill.capability), None)
             };
+        let stroke = item.typed_stroke.as_ref();
         let label = item.label_foreground.as_ref();
         Ok(KanbanTaskTerminalDecision {
             fill_css,
             fill_capability,
             fill_rule_index,
+            stroke_css: stroke.map(|stroke| stroke.css.clone()),
+            stroke_capability: stroke.map(|stroke| stroke.capability),
+            stroke_rule_index: stroke.map(|stroke| stroke.rule_index),
             label_css: label.map(|label| label.css.clone()),
             label_capability: label.map(|label| label.capability),
             label_rule_index: label.map(|label| label.rule_index),
@@ -506,6 +566,7 @@ impl KanbanTaskTheme {
     ) -> Option<KanbanTaskThemeReceipt> {
         (self.pending_radius_key.is_some()
             || !self.pending_fill_keys.is_empty()
+            || !self.pending_stroke_keys.is_empty()
             || self.palette_key.is_some()
             || !self.pending_label_keys.is_empty())
         .then(|| KanbanTaskThemeReceipt::new(&self.items, decisions))
@@ -514,6 +575,7 @@ impl KanbanTaskTheme {
     pub(crate) fn record_terminal(&self, receipt: KanbanTaskThemeReceipt) -> bool {
         (self.pending_radius_key.is_some()
             || !self.pending_fill_keys.is_empty()
+            || !self.pending_stroke_keys.is_empty()
             || self.palette_key.is_some()
             || !self.pending_label_keys.is_empty())
             && receipt.proves(self.items.len())
@@ -550,6 +612,20 @@ impl KanbanTaskTheme {
                         .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
                 }
             }
+            for key in &self.pending_stroke_keys {
+                let FamilyThemeMechanismKey::Rule { index, .. } = key else {
+                    unreachable!("Kanban task stroke evidence must be rule-backed")
+                };
+                if receipt.proves_stroke_rule(*index) {
+                    evidence.mark_applied_with_capabilities(
+                        key.clone(),
+                        receipt.typed_stroke_capabilities[index].iter().copied(),
+                    );
+                } else {
+                    evidence
+                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                }
+            }
             for key in &self.pending_label_keys {
                 let FamilyThemeMechanismKey::Rule { index, .. } = key else {
                     unreachable!("Kanban task-label evidence must be rule-backed")
@@ -568,6 +644,9 @@ impl KanbanTaskTheme {
             for key in &self.pending_fill_keys {
                 evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
             }
+            for key in &self.pending_stroke_keys {
+                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+            }
             if let Some(key) = self.palette_key.clone() {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
             }
@@ -584,6 +663,9 @@ pub(crate) struct KanbanTaskTerminalDecision {
     fill_css: Option<String>,
     fill_capability: Option<ThemeCapability>,
     fill_rule_index: Option<usize>,
+    stroke_css: Option<String>,
+    stroke_capability: Option<ThemeCapability>,
+    stroke_rule_index: Option<usize>,
     label_css: Option<String>,
     label_capability: Option<ThemeCapability>,
     label_rule_index: Option<usize>,
@@ -596,6 +678,10 @@ impl KanbanTaskTerminalDecision {
 
     pub(crate) fn label_css(&self) -> Option<&str> {
         self.label_css.as_deref()
+    }
+
+    pub(crate) fn stroke_css(&self) -> Option<&str> {
+        self.stroke_css.as_deref()
     }
 }
 
@@ -653,6 +739,24 @@ fn typed_task_fill(
     })
 }
 
+fn typed_task_stroke(
+    theme: &ResolvedDiagramTheme,
+    style: &crate::diagram_theme::ResolvedThemeStyle,
+) -> Option<KanbanTaskTypedStroke> {
+    let stroke = resolve_direct_static_stroke(
+        theme,
+        style,
+        &[ThemeTarget::Task],
+        DirectStaticSelectorDomain::Unqualified,
+    )?;
+    let (css, rule_index, capability) = stroke.into_parts();
+    Some(KanbanTaskTypedStroke {
+        css: css.into(),
+        capability,
+        rule_index,
+    })
+}
+
 fn typed_radius_px(
     theme: &ResolvedDiagramTheme,
     style: &crate::diagram_theme::ResolvedThemeStyle,
@@ -678,6 +782,7 @@ pub(crate) struct KanbanTaskThemeReceipt {
     schema_valid: bool,
     palette_capabilities: BTreeSet<ThemeCapability>,
     typed_fill_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
+    typed_stroke_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     label_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     unverified_label_rules: BTreeSet<usize>,
 }
@@ -710,6 +815,7 @@ impl KanbanTaskThemeReceipt {
             schema_valid,
             palette_capabilities: BTreeSet::new(),
             typed_fill_capabilities: BTreeMap::new(),
+            typed_stroke_capabilities: BTreeMap::new(),
             label_capabilities: BTreeMap::new(),
             unverified_label_rules: BTreeSet::new(),
         }
@@ -740,6 +846,14 @@ impl KanbanTaskThemeReceipt {
                     .insert(fill_capability);
             } else {
                 self.palette_capabilities.insert(fill_capability);
+            }
+        }
+        if let Some(stroke_capability) = terminal_decision.stroke_capability {
+            if let Some(rule_index) = terminal_decision.stroke_rule_index {
+                self.typed_stroke_capabilities
+                    .entry(rule_index)
+                    .or_default()
+                    .insert(stroke_capability);
             }
         }
     }
@@ -805,6 +919,14 @@ impl KanbanTaskThemeReceipt {
                 .is_some_and(|capabilities| !capabilities.is_empty())
     }
 
+    fn proves_stroke_rule(&self, rule_index: usize) -> bool {
+        self.schema_valid
+            && self
+                .typed_stroke_capabilities
+                .get(&rule_index)
+                .is_some_and(|capabilities| !capabilities.is_empty())
+    }
+
     fn terminal_occurrences_complete(&self) -> bool {
         self.items
             .iter()
@@ -834,6 +956,7 @@ struct KanbanTaskRuleObservation {
     residual: Option<FamilyThemeResidualReason>,
     radius_pending: bool,
     fill_pending: bool,
+    stroke_pending: bool,
     label_pending: bool,
     suppressed: bool,
 }
@@ -851,6 +974,9 @@ mod tests {
             fill_css: None,
             fill_capability: None,
             fill_rule_index: None,
+            stroke_css: None,
+            stroke_capability: None,
+            stroke_rule_index: None,
             label_css: Some("#000000".to_string()),
             label_capability: Some(ThemeCapability::SolidPaint),
             label_rule_index: Some(7),
@@ -862,6 +988,9 @@ mod tests {
             fill_css: Some("#ffffff".to_string()),
             fill_capability: Some(ThemeCapability::SolidPaint),
             fill_rule_index: None,
+            stroke_css: None,
+            stroke_capability: None,
+            stroke_rule_index: None,
             label_css: None,
             label_capability: None,
             label_rule_index: None,
@@ -873,6 +1002,7 @@ mod tests {
             occurrence,
             radius_px: MERMAID_TASK_RADIUS_PX,
             typed_fill: None,
+            typed_stroke: None,
             palette_fill: None,
             label_foreground: None,
         }

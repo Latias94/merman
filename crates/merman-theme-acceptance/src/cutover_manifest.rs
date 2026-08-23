@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 19;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 20;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 36] = [
+); 37] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -160,6 +160,10 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjection::JourneyTaskPaint,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
+    (
+        ThemeRouteCutoverProjection::KanbanTaskStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
 ];
 
 #[derive(Clone, Copy)]
@@ -259,6 +263,8 @@ const GANTT_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
 ];
 const JOURNEY_TASK_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::JourneyTaskPaint];
+const KANBAN_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::KanbanTaskStroke];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -273,7 +279,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 100] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 102] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -973,6 +979,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 100] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         JOURNEY_TASK_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::KANBAN,
+        ThemeTarget::Task,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        KANBAN_TASK_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::KANBAN,
+        ThemeTarget::Task,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        KANBAN_TASK_STROKE_PROJECTIONS,
     ),
 ];
 
