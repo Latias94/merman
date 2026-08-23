@@ -1,6 +1,15 @@
 use merman_ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy};
 use merman_core::diagram::{ParsedDiagramRender, RenderSemanticModel};
-use merman_core::{OperationControl, runtime::OperationContext};
+use merman_core::{Engine, OperationControl, ParseOptions, runtime::OperationContext};
+
+pub(crate) fn parse_model(source: &str) -> RenderSemanticModel {
+    Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("diagram should parse")
+        .expect("diagram should be detected")
+        .into_parts()
+        .1
+}
 
 #[allow(dead_code)]
 pub(crate) fn render_model(
@@ -41,6 +50,11 @@ pub(crate) fn render_parsed(
         &context,
         AsciiResourcePolicy::default(),
     )
+}
+
+#[allow(dead_code)]
+pub(crate) fn render_source(source: &str) -> String {
+    render_model(&parse_model(source), &AsciiRenderOptions::ascii()).expect("diagram should render")
 }
 
 pub(crate) fn render_controlled_model(

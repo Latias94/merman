@@ -9,17 +9,8 @@ use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRe
 use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock};
 use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
-use merman_core::{Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel};
-use support::{render_controlled_model, render_model};
-
-fn parse_model(source: &str) -> RenderSemanticModel {
-    Engine::new()
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("diagram should parse")
-        .expect("diagram should be detected")
-        .into_parts()
-        .1
-}
+use merman_core::{Engine, OperationControl, OperationPhase, RenderSemanticModel};
+use support::{parse_model, render_controlled_model, render_model};
 
 fn operation_context() -> merman_core::runtime::OperationContext {
     Engine::new()

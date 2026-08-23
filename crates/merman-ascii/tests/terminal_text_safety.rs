@@ -3,17 +3,8 @@ mod support;
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions, TerminalWidthProfile};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::git_graph::{GitGraphBranchRenderModel, GitGraphRenderModel};
-use merman_core::{Engine, ParseOptions};
-use support::render_model;
+use support::{parse_model, render_model};
 use unicode_width::UnicodeWidthStr;
-
-fn parse_model(source: &str) -> RenderSemanticModel {
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("diagram should parse")
-        .expect("diagram should be detected");
-    parsed.into_parts().1
-}
 
 fn render(source: &str, options: &AsciiRenderOptions) -> String {
     render_model(&parse_model(source), options).expect("diagram should render")

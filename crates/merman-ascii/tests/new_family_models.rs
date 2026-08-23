@@ -20,7 +20,7 @@ use merman_core::diagrams::timeline::{
 };
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 use merman_core::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
-use support::{render_controlled_model, render_model};
+use support::{render_controlled_model, render_model, render_source};
 
 fn render(model: RenderSemanticModel) -> String {
     render_model(&model, &AsciiRenderOptions::ascii()).unwrap()
@@ -30,13 +30,8 @@ fn render_with_options(model: RenderSemanticModel, options: &AsciiRenderOptions)
     render_model(&model, options).unwrap()
 }
 
-fn render_parsed(input: &str) -> String {
-    let engine = merman_core::Engine::new();
-    let parsed = engine
-        .parse_diagram_for_render_model_sync(input, merman_core::ParseOptions::strict())
-        .unwrap()
-        .unwrap();
-    render_model(parsed.model(), &AsciiRenderOptions::ascii()).unwrap()
+fn render_parsed(source: &str) -> String {
+    render_source(source)
 }
 
 fn render_with_scheduled_cancellation(
