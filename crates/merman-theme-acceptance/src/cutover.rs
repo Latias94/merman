@@ -23,28 +23,6 @@ use merman_render::__private::{
     legacy_replacing_typed_theme_routes,
 };
 
-#[cfg(test)]
-mod flowchart_cluster_proof;
-#[cfg(test)]
-mod png_proof;
-#[cfg(test)]
-mod sequence_message_proof;
-#[cfg(test)]
-mod svg_proof;
-
-#[cfg(test)]
-use flowchart_cluster_proof::prove_flowchart_cluster_svg;
-#[cfg(test)]
-use png_proof::prove_terminal_png_pair;
-#[cfg(test)]
-use png_proof::require_marker_pixel_counts;
-#[cfg(test)]
-use sequence_message_proof::prove_sequence_message_svg;
-#[cfg(test)]
-use svg_proof::transformed_path_terminals;
-#[cfg(test)]
-use svg_proof::{prove_flowchart_markers_svg, prove_svg_routes};
-
 #[derive(Clone, Copy)]
 struct ControlColor {
     css: &'static str,
@@ -845,6 +823,7 @@ fn render_cutover_case(
         !png_output.bytes().is_empty(),
         "PNG route projection produced an empty artifact"
     );
+
     let png_receipt = png_output.admission();
     let svg_target_receipt_digest = validate_cutover_target_receipt(
         CutoverTargetAdmissionContract::PaintStandaloneSvgV1,
@@ -1215,7 +1194,7 @@ mod tests {
         CutoverTargetAdmissionContract, CutoverWitnessId, CutoverWitnessProfile,
         RouteCutoverAuthorizationReceipt, RouteCutoverReceipt, evaluate_route_receipts,
         expected_cutover_witnesses, legacy_replacing_typed_theme_routes,
-        require_marker_pixel_counts, run_route_cutover_witnesses, transformed_path_terminals,
+        run_route_cutover_witnesses,
     };
 
     #[test]
@@ -1372,48 +1351,5 @@ mod tests {
                 "missing {profile:?} Edge witness must reject cutover authorization"
             );
         }
-    }
-
-    #[test]
-    fn marker_png_receipt_rejects_removed_or_transparent_markers() {
-        assert!(require_marker_pixel_counts(6, 6).is_ok());
-        assert!(require_marker_pixel_counts(0, 6).is_err());
-        assert!(require_marker_pixel_counts(6, 0).is_err());
-    }
-
-    #[test]
-    fn marker_path_terminals_follow_relative_segments_and_nested_transforms() {
-        let document = roxmltree::Document::parse(
-            r#"<svg><g transform="translate(10 20)"><g transform="scale(2)"><path id="edge" d="m 1 2 h 3 v 4 c 1 1 2 2 3 3"/></g></g></svg>"#,
-        )
-        .expect("parse SVG");
-        let path = document
-            .descendants()
-            .find(|node| node.attribute("id") == Some("edge"))
-            .expect("find path");
-
-        assert_eq!(
-            transformed_path_terminals(path, path.attribute("d").expect("path data"))
-                .expect("resolve path terminals"),
-            ((12.0, 24.0), (24.0, 38.0))
-        );
-    }
-
-    #[test]
-    fn marker_path_close_returns_to_the_transformed_subpath_start() {
-        let document = roxmltree::Document::parse(
-            r#"<svg><g transform="translate(10 20)"><path id="edge" d="M 1 2 h 3 v 4 z"/></g></svg>"#,
-        )
-        .expect("parse SVG");
-        let path = document
-            .descendants()
-            .find(|node| node.attribute("id") == Some("edge"))
-            .expect("find path");
-
-        assert_eq!(
-            transformed_path_terminals(path, path.attribute("d").expect("path data"))
-                .expect("resolve path terminals"),
-            ((11.0, 22.0), (11.0, 22.0))
-        );
     }
 }

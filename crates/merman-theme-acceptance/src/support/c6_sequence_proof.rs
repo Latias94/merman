@@ -190,6 +190,7 @@ struct SequenceSvgGeometry {
     message_stroke_region: [f64; 4],
 }
 
+#[cfg(test)]
 fn check_sequence_svg(
     contract: SequenceProofContract<'_>,
     bytes: &[u8],
@@ -197,6 +198,7 @@ fn check_sequence_svg(
     check_sequence_svg_internal(contract, None, bytes)
 }
 
+#[cfg(test)]
 fn check_sequence_svg_with_role_text(
     contract: SequenceProofContract<'_>,
     role_text: SequenceRoleTextProofContract<'_>,
