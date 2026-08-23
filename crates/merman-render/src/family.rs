@@ -320,6 +320,8 @@ pub(crate) struct FamilyStyleReport {
     output_mutated: bool,
     theme_required: Vec<FamilyThemeMechanismKey>,
     theme_applied: Vec<FamilyThemeMechanismKey>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    theme_route_cutover_facts: Vec<crate::theme_route_cutover::ThemeRouteCutoverFact>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
     #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
     architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
@@ -359,6 +361,8 @@ impl FamilyStyleReport {
             output_mutated: plan.output_mutated,
             theme_required: plan.theme_evidence.required.clone(),
             theme_applied: plan.theme_evidence.applied.clone(),
+            #[cfg(feature = "internal-theme-acceptance")]
+            theme_route_cutover_facts: plan.theme_route_cutover_facts(),
             native_filter_receipt: plan.native_filter_receipt,
             #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt: plan.architecture_text_cutover_receipt.clone(),
@@ -385,6 +389,8 @@ impl FamilyStyleReport {
             }
         }
         self.native_filter_receipt = None;
+        #[cfg(feature = "internal-theme-acceptance")]
+        self.theme_route_cutover_facts.clear();
         #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
         {
             self.architecture_text_cutover_receipt = None;
@@ -629,6 +635,13 @@ impl FamilyRenderReport {
 
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
         &self.style
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fn theme_route_cutover_facts(
+        &self,
+    ) -> &[crate::theme_route_cutover::ThemeRouteCutoverFact] {
+        &self.style.theme_route_cutover_facts
     }
 
     pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
@@ -909,6 +922,18 @@ impl ResolvedFamilyStylePlan {
             mermaid_compatibility_residual_count: 0,
             payload,
         }
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    fn theme_route_cutover_facts(&self) -> Vec<crate::theme_route_cutover::ThemeRouteCutoverFact> {
+        self.resolved_theme
+            .as_deref()
+            .map_or_else(Vec::new, |theme| {
+                crate::theme_route_cutover::collect_theme_route_cutover_facts(
+                    theme,
+                    &self.theme_evidence.applied,
+                )
+            })
     }
 
     fn adapt_state(

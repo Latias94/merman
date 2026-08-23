@@ -5,7 +5,12 @@ use std::fmt;
 use crate::DiagramFamilyId;
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use crate::diagram_theme::ThemeTarget;
-#[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+#[cfg(feature = "internal-theme-acceptance")]
+use crate::diagram_theme::{
+    FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind, FamilyThemeRuleFacet,
+    ResolvedDiagramTheme,
+};
+#[cfg(feature = "internal-theme-acceptance")]
 use sha2::{Digest as _, Sha256};
 
 /// Renderer-owned visual facts for one terminal covered by an Architecture Text cutover.
@@ -646,6 +651,195 @@ impl ThemeRouteCutoverDescriptor {
     pub const fn projections(self) -> ThemeRouteCutoverProjectionSet {
         self.projections
     }
+}
+
+/// Renderer-owned route fact captured after the family adapter reports a terminal application.
+#[cfg(feature = "internal-theme-acceptance")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct ThemeRouteCutoverFact {
+    descriptor: ThemeRouteCutoverDescriptor,
+    mechanism_index: usize,
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+impl ThemeRouteCutoverFact {
+    pub(crate) const fn descriptor(self) -> ThemeRouteCutoverDescriptor {
+        self.descriptor
+    }
+
+    const fn mechanism_index(self) -> usize {
+        self.mechanism_index
+    }
+}
+
+/// Opaque production receipt for one finalized typed route that replaced a legacy projection.
+///
+/// The acceptance harness may correlate this receipt with the route manifest, but it cannot
+/// reconstruct the writer evidence or manufacture a passing digest from expectation fields.
+#[cfg(feature = "internal-theme-acceptance")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ThemeRouteCutoverReceipt {
+    descriptor: ThemeRouteCutoverDescriptor,
+    mechanism_index: usize,
+    artifact_digest: [u8; 32],
+    digest: [u8; 32],
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+impl ThemeRouteCutoverReceipt {
+    pub(crate) fn seal(fact: ThemeRouteCutoverFact, artifact_digest: [u8; 32]) -> Option<Self> {
+        (artifact_digest != [0; 32]).then(|| {
+            let digest = route_cutover_receipt_digest(fact, artifact_digest);
+            Self {
+                descriptor: fact.descriptor(),
+                mechanism_index: fact.mechanism_index(),
+                artifact_digest,
+                digest,
+            }
+        })
+    }
+
+    pub const fn descriptor(self) -> ThemeRouteCutoverDescriptor {
+        self.descriptor
+    }
+
+    pub const fn artifact_digest(self) -> [u8; 32] {
+        self.artifact_digest
+    }
+
+    pub const fn digest(self) -> [u8; 32] {
+        self.digest
+    }
+
+    pub fn proves_artifact(self, artifact_digest: [u8; 32]) -> bool {
+        artifact_digest != [0; 32]
+            && self.artifact_digest == artifact_digest
+            && self.digest
+                == route_cutover_receipt_digest(
+                    ThemeRouteCutoverFact {
+                        descriptor: self.descriptor,
+                        mechanism_index: self.mechanism_index,
+                    },
+                    self.artifact_digest,
+                )
+    }
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+fn route_cutover_receipt_digest(
+    fact: ThemeRouteCutoverFact,
+    artifact_digest: [u8; 32],
+) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(b"merman.theme-route-cutover-receipt.v1\0");
+    hasher.update(fact.descriptor.family_id().as_str().as_bytes());
+    hasher.update([0]);
+    hasher.update(fact.descriptor.target().id().as_bytes());
+    hasher.update([0]);
+    hasher.update(route_selector_id(fact.descriptor.selector()).as_bytes());
+    hasher.update([0]);
+    hasher.update(route_facet_id(fact.descriptor.facet()).as_bytes());
+    hasher.update([0]);
+    hasher.update(route_value_id(fact.descriptor.value()).as_bytes());
+    hasher.update([0]);
+    hasher.update(fact.descriptor.projections().0.to_be_bytes());
+    hasher.update((fact.mechanism_index() as u64).to_be_bytes());
+    hasher.update(artifact_digest);
+    hasher.finalize().into()
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+const fn route_selector_id(selector: ThemeRouteCutoverSelector) -> &'static str {
+    match selector {
+        ThemeRouteCutoverSelector::StaticUnqualified => "static-unqualified",
+    }
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+const fn route_facet_id(facet: ThemeRouteCutoverFacet) -> &'static str {
+    match facet {
+        ThemeRouteCutoverFacet::Fill => "fill",
+        ThemeRouteCutoverFacet::Stroke => "stroke",
+    }
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+const fn route_value_id(value: ThemeRouteCutoverValue) -> &'static str {
+    match value {
+        ThemeRouteCutoverValue::Transparent => "transparent",
+        ThemeRouteCutoverValue::Solid => "solid",
+    }
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+pub(crate) fn collect_theme_route_cutover_facts(
+    theme: &ResolvedDiagramTheme,
+    applied: &[FamilyThemeMechanismKey],
+) -> Vec<ThemeRouteCutoverFact> {
+    let Ok(descriptors) = crate::diagram_theme::legacy_replacing_typed_routes() else {
+        return Vec::new();
+    };
+    let routes = theme.family_mechanism_routes();
+    descriptors
+        .into_iter()
+        .filter(|descriptor| descriptor.family_id() == theme.family_id())
+        .filter_map(|descriptor| {
+            routes.iter().copied().find_map(|route| {
+                let FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target,
+                    selector,
+                    facet,
+                } = route.mechanism()
+                else {
+                    return None;
+                };
+                if route.disposition() != crate::diagram_theme::FamilyThemeDisposition::TypedAdapter
+                    || target != descriptor.target()
+                    || !selector.is_static_unqualified()
+                    || !route_facet_matches(facet, descriptor)
+                {
+                    return None;
+                }
+                let key = FamilyThemeMechanismKey::Rule {
+                    index: rule_index,
+                    target,
+                };
+                applied.contains(&key).then_some(ThemeRouteCutoverFact {
+                    descriptor,
+                    mechanism_index: rule_index,
+                })
+            })
+        })
+        .collect()
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+fn route_facet_matches(
+    facet: FamilyThemeRuleFacet,
+    descriptor: ThemeRouteCutoverDescriptor,
+) -> bool {
+    let expected = match descriptor.value() {
+        ThemeRouteCutoverValue::Transparent => FamilyThemePaintKind::Transparent,
+        ThemeRouteCutoverValue::Solid => FamilyThemePaintKind::Solid,
+    };
+    match (descriptor.facet(), facet) {
+        (ThemeRouteCutoverFacet::Fill, FamilyThemeRuleFacet::Fill(kind))
+        | (ThemeRouteCutoverFacet::Stroke, FamilyThemeRuleFacet::Stroke(kind)) => kind == expected,
+        _ => false,
+    }
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+pub(crate) fn seal_theme_route_cutover_receipts(
+    facts: &[ThemeRouteCutoverFact],
+    artifact_digest: [u8; 32],
+) -> Vec<ThemeRouteCutoverReceipt> {
+    facts
+        .iter()
+        .copied()
+        .filter_map(|fact| ThemeRouteCutoverReceipt::seal(fact, artifact_digest))
+        .collect()
 }
 
 /// Failure to bind a typed legacy-replacing route to every bridge projection it owns.

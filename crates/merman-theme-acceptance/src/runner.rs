@@ -218,9 +218,8 @@ use c6_raster_proof::prove_brutalist_state_png;
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 use c6_raster_proof::{PngArtifactProof, prove_brutalist_state_jpeg};
 pub(crate) use c6_raster_proof::{
-    RasterImage as C6RasterImage, decode_bounded_png_artifact,
-    decode_bounded_png_artifact_allow_transparent, parse_c6_hex_rgb, parse_c6_svg_view_box,
-    transformed_c6_svg_rect,
+    RasterImage as C6RasterImage, decode_bounded_png_artifact, parse_c6_hex_rgb,
+    parse_c6_svg_view_box, transformed_c6_svg_rect,
 };
 use c6_reference_theme_groups::{
     CYBERPUNK_STATE_ADAPTER, SPOTLESS_FLOWCHART_ADAPTER, SPOTLESS_STATE_ADAPTER,

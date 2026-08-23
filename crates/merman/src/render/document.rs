@@ -39,6 +39,8 @@ pub struct RenderedDocument {
     evidence: Arc<RenderEvidence>,
     portability: DocumentPortabilityReport,
     standalone_svg_admission: TargetAdmissionReceipt,
+    #[cfg(feature = "internal-theme-acceptance")]
+    theme_route_cutover_receipts: Box<[merman_render::__private::ThemeRouteCutoverReceipt]>,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -140,9 +142,13 @@ impl RenderedDocument {
         family: merman_render::family::FamilyRenderReport,
     ) -> Self {
         let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
+        let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
+        #[cfg(feature = "internal-theme-acceptance")]
+        let theme_route_cutover_receipts =
+            merman_render::__private::seal_theme_route_cutover_receipts(&family, public_svg_digest)
+                .into_boxed_slice();
         let evidence = Arc::new(RenderEvidence::from_family(family));
         let portability = document_portability_report(&svg, &evidence);
-        let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
         let native_svg = svg.native_export_svg();
         let native_svg_digest = if native_svg == svg.as_str() {
             public_svg_digest
@@ -168,6 +174,8 @@ impl RenderedDocument {
             evidence,
             portability,
             standalone_svg_admission,
+            #[cfg(feature = "internal-theme-acceptance")]
+            theme_route_cutover_receipts,
         }
     }
 
@@ -210,6 +218,13 @@ impl RenderedDocument {
     /// their own target-owned receipts.
     pub const fn standalone_svg_admission(&self) -> &TargetAdmissionReceipt {
         &self.standalone_svg_admission
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fn theme_route_cutover_receipts(
+        &self,
+    ) -> &[merman_render::__private::ThemeRouteCutoverReceipt] {
+        &self.theme_route_cutover_receipts
     }
 
     #[cfg(feature = "png")]

@@ -143,6 +143,11 @@ pub(crate) enum FamilyThemeSelectorShape {
 }
 
 impl FamilyThemeSelectorShape {
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) const fn is_static_unqualified(self) -> bool {
+        matches!(self, Self::Static { variant: None })
+    }
+
     fn from_rule(rule: &ThemeRule) -> Self {
         match rule.ordinal() {
             None => Self::Static {

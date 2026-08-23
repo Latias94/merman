@@ -92,7 +92,7 @@ pub mod __private {
         ThemeRouteCutoverDescriptor, ThemeRouteCutoverFacet, ThemeRouteCutoverId,
         ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjection,
         ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
-        ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
+        ThemeRouteCutoverReceipt, ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
     };
 
     #[cfg(feature = "internal-theme-acceptance")]
@@ -125,6 +125,21 @@ pub mod __private {
         ThemeLegacyProjectionRetirementInventoryError,
     > {
         crate::diagram_theme::legacy_projection_retirement_receipts()
+    }
+
+    /// Seals renderer-owned route receipts against the finalized SVG artifact digest.
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub fn seal_theme_route_cutover_receipts(
+        report: &FamilyRenderReport,
+        artifact_digest: [u8; 32],
+    ) -> Vec<ThemeRouteCutoverReceipt> {
+        if !report.style_report().is_verified() {
+            return Vec::new();
+        }
+        crate::theme_route_cutover::seal_theme_route_cutover_receipts(
+            report.theme_route_cutover_facts(),
+            artifact_digest,
+        )
     }
 
     /// Returns the renderer-owned Architecture Text cutover facts sealed by the final writer.

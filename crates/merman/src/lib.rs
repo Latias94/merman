@@ -306,6 +306,13 @@ pub mod __theme_acceptance {
     ) -> Option<&merman_render::__private::ArchitectureTextCutoverReceipt> {
         evidence.architecture_text_cutover_receipt()
     }
+
+    /// Returns the opaque renderer-owned route receipts for one finalized document.
+    pub fn theme_route_cutover_receipts(
+        document: &crate::RenderedDocument,
+    ) -> &[merman_render::__private::ThemeRouteCutoverReceipt] {
+        document.theme_route_cutover_receipts()
+    }
 }
 
 /// ASCII target-local types and model-level backend interface.
