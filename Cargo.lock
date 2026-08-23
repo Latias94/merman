@@ -2707,10 +2707,8 @@ dependencies = [
  "merman-render",
  "merman-theme-fixtures",
  "png",
- "roxmltree 0.21.1",
  "serde_json",
  "sha2 0.10.9",
- "svgtypes",
  "tempfile",
  "thiserror 2.0.20",
 ]

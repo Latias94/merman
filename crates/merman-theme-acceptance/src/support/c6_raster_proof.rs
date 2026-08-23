@@ -3,6 +3,7 @@ use std::io::Cursor;
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 use image::{ColorType, ImageDecoder, ImageFormat, ImageReader, Limits};
 use merman_export::{DEFAULT_MAX_RASTER_PIXELS, DEFAULT_MAX_RASTER_SIDE_LENGTH, RasterPlan};
+use merman_render::__private::SvgArtifactReceipt;
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 use std::cmp::Ordering;
 
@@ -30,12 +31,12 @@ pub(crate) struct PngArtifactProof {
 
 pub(crate) fn prove_brutalist_state_png(
     fixture: &BrutalistStateFixtureContract<'_>,
-    sealed_svg: &str,
+    receipt: &SvgArtifactReceipt,
     bytes: &[u8],
     raster_plan: RasterPlan,
 ) -> C6ProofResult<PngArtifactProof> {
     let contract = BrutalistStateVisualContract::from_fixture(fixture)?;
-    let geometry = StateRasterGeometry::from_sealed_svg(sealed_svg)?;
+    let geometry = StateRasterGeometry::from_receipt(receipt)?;
     let raster = RasterImage::decode_png(bytes, raster_plan)?;
     c6_ensure!(
         "raster-geometry",
@@ -70,16 +71,6 @@ pub(crate) fn decode_bounded_png_artifact_allow_transparent(
     raster_plan: RasterPlan,
 ) -> C6ProofResult<RasterImage> {
     RasterImage::decode_png(bytes, raster_plan)
-}
-
-pub(crate) fn parse_c6_svg_view_box(value: &str) -> C6ProofResult<[f64; 4]> {
-    let rect = parse_view_box(value)?;
-    Ok([rect.left, rect.top, rect.width, rect.height])
-}
-
-pub(crate) fn transformed_c6_svg_rect(node: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> {
-    let rect = transformed_rect(node)?;
-    Ok([rect.left, rect.top, rect.width, rect.height])
 }
 
 pub(crate) fn parse_c6_hex_rgb(value: &str) -> C6ProofResult<[u8; 3]> {
@@ -335,17 +326,20 @@ struct StateRasterGeometry {
 }
 
 impl StateRasterGeometry {
-    fn from_sealed_svg(svg: &str) -> C6ProofResult<Self> {
-        let document = roxmltree::Document::parse(svg).map_err(|error| {
+    fn from_receipt(receipt: &SvgArtifactReceipt) -> C6ProofResult<Self> {
+        let [left, top, width, height] = receipt.view_box();
+        let view_box = Rect {
+            left,
+            top,
+            width,
+            height,
+        };
+        let root = receipt.root_element().ok_or_else(|| {
             C6ProofError::new(
                 "raster-geometry",
-                format!("failed to parse sealed C6 SVG geometry: {error}"),
+                "sealed C6 SVG receipt has no root element",
             )
         })?;
-        let root = document.root_element();
-        let view_box = parse_view_box(root.attribute("viewBox").ok_or_else(|| {
-            C6ProofError::new("raster-geometry", "sealed C6 SVG is missing viewBox")
-        })?)?;
         c6_ensure!(
             "raster-geometry",
             root.attribute("preserveAspectRatio").is_none(),
@@ -356,13 +350,11 @@ impl StateRasterGeometry {
             .into_iter()
             .map(|state_id| {
                 let fragment = format!("-state-{state_id}-");
-                let groups = document
-                    .descendants()
+                let groups = receipt
+                    .elements()
+                    .iter()
                     .filter(|node| {
-                        node.has_tag_name("g")
-                            && node
-                                .attribute("id")
-                                .is_some_and(|id| id.contains(&fragment))
+                        node.tag_name() == "g" && node.id().is_some_and(|id| id.contains(&fragment))
                     })
                     .collect::<Vec<_>>();
                 c6_ensure!(
@@ -377,18 +369,12 @@ impl StateRasterGeometry {
                         format!("expected one State group for {state_id}"),
                     )
                 })?;
-                let rects = group
-                    .descendants()
+                let rects = receipt
+                    .descendants_of(group.index())
                     .filter(|node| {
-                        node.has_tag_name("rect")
-                            && node.attribute("class").is_some_and(|classes| {
-                                classes
-                                    .split_ascii_whitespace()
-                                    .any(|class| class == "basic")
-                                    && classes
-                                        .split_ascii_whitespace()
-                                        .any(|class| class == "label-container")
-                            })
+                        node.tag_name() == "rect"
+                            && node.has_class("basic")
+                            && node.has_class("label-container")
                     })
                     .collect::<Vec<_>>();
                 c6_ensure!(
@@ -403,9 +389,20 @@ impl StateRasterGeometry {
                         format!("expected one State rect for {state_id}"),
                     )
                 })?;
+                let bounds = rect.bounds().ok_or_else(|| {
+                    C6ProofError::new(
+                        "raster-geometry",
+                        format!("State geometry rect for {state_id} lacks finite bounds"),
+                    )
+                })?;
                 Ok(NodeGeometry {
                     id: state_id,
-                    rect: transformed_rect(rect)?,
+                    rect: Rect {
+                        left: bounds[0],
+                        top: bounds[1],
+                        width: bounds[2],
+                        height: bounds[3],
+                    },
                 })
             })
             .collect::<C6ProofResult<Vec<_>>>()?;
@@ -417,167 +414,6 @@ impl StateRasterGeometry {
 struct NodeGeometry {
     id: &'static str,
     rect: Rect,
-}
-
-#[derive(Clone, Copy)]
-struct AffineTransform {
-    a: f64,
-    b: f64,
-    c: f64,
-    d: f64,
-    e: f64,
-    f: f64,
-}
-
-impl AffineTransform {
-    const IDENTITY: Self = Self {
-        a: 1.0,
-        b: 0.0,
-        c: 0.0,
-        d: 1.0,
-        e: 0.0,
-        f: 0.0,
-    };
-
-    fn from_svg(transform: svgtypes::Transform) -> Self {
-        Self {
-            a: transform.a,
-            b: transform.b,
-            c: transform.c,
-            d: transform.d,
-            e: transform.e,
-            f: transform.f,
-        }
-    }
-
-    fn multiply(self, child: Self) -> Self {
-        Self {
-            a: self.a * child.a + self.c * child.b,
-            b: self.b * child.a + self.d * child.b,
-            c: self.a * child.c + self.c * child.d,
-            d: self.b * child.c + self.d * child.d,
-            e: self.a * child.e + self.c * child.f + self.e,
-            f: self.b * child.e + self.d * child.f + self.f,
-        }
-    }
-
-    fn apply(self, x: f64, y: f64) -> (f64, f64) {
-        (
-            self.a * x + self.c * y + self.e,
-            self.b * x + self.d * y + self.f,
-        )
-    }
-}
-
-fn transformed_rect(node: roxmltree::Node<'_, '_>) -> C6ProofResult<Rect> {
-    let x = number_attribute(node, "x")?;
-    let y = number_attribute(node, "y")?;
-    let width = number_attribute(node, "width")?;
-    let height = number_attribute(node, "height")?;
-    c6_ensure!(
-        "raster-geometry",
-        width > 0.0 && height > 0.0,
-        "State geometry rect dimensions must be positive; width={width}, height={height}"
-    );
-
-    let mut transform = AffineTransform::IDENTITY;
-    let ancestors = node
-        .ancestors()
-        .filter_map(|ancestor| ancestor.attribute("transform"))
-        .collect::<Vec<_>>();
-    for raw in ancestors.into_iter().rev() {
-        let parsed = raw.parse::<svgtypes::Transform>().map_err(|error| {
-            C6ProofError::new(
-                "raster-geometry",
-                format!("invalid C6 geometry transform {raw:?}: {error}"),
-            )
-        })?;
-        transform = transform.multiply(AffineTransform::from_svg(parsed));
-    }
-    c6_ensure!(
-        "raster-geometry",
-        transform.b.abs() <= 1e-9 && transform.c.abs() <= 1e-9,
-        "State geometry transform may not skew or rotate; b={}, c={}",
-        transform.b,
-        transform.c
-    );
-    c6_ensure!(
-        "raster-geometry",
-        transform.a > 0.0 && transform.d > 0.0,
-        "State geometry transform scale must be positive; a={}, d={}",
-        transform.a,
-        transform.d
-    );
-    let (left, top) = transform.apply(x, y);
-    let (right, bottom) = transform.apply(x + width, y + height);
-    Ok(Rect {
-        left,
-        top,
-        width: right - left,
-        height: bottom - top,
-    })
-}
-
-fn parse_view_box(value: &str) -> C6ProofResult<Rect> {
-    let values = value
-        .split_ascii_whitespace()
-        .map(|part| {
-            part.parse::<f64>().map_err(|error| {
-                C6ProofError::new(
-                    "raster-geometry",
-                    format!("invalid C6 viewBox number {part:?}: {error}"),
-                )
-            })
-        })
-        .collect::<C6ProofResult<Vec<_>>>()?;
-    let [left, top, width, height] = values.as_slice() else {
-        return Err(C6ProofError::new(
-            "raster-geometry",
-            format!(
-                "C6 viewBox must contain four numbers, found {}",
-                values.len()
-            ),
-        ));
-    };
-    c6_ensure!(
-        "raster-geometry",
-        values.iter().all(|value| value.is_finite()),
-        "C6 viewBox numbers must be finite"
-    );
-    c6_ensure!(
-        "raster-geometry",
-        *width > 0.0 && *height > 0.0,
-        "C6 viewBox dimensions must be positive; width={}, height={}",
-        width,
-        height
-    );
-    Ok(Rect {
-        left: *left,
-        top: *top,
-        width: *width,
-        height: *height,
-    })
-}
-
-fn number_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> C6ProofResult<f64> {
-    let raw = node.attribute(name).ok_or_else(|| {
-        C6ProofError::new(
-            "raster-geometry",
-            format!("missing {name} on C6 geometry node"),
-        )
-    })?;
-    let value = raw.parse::<f64>().map_err(|error| {
-        C6ProofError::new(
-            "raster-geometry",
-            format!("invalid {name} on C6 geometry node: {error}"),
-        )
-    })?;
-    c6_ensure!(
-        "raster-geometry",
-        value.is_finite(),
-        "{name} on C6 geometry node must be finite"
-    );
-    Ok(value)
 }
 
 #[derive(Clone, Debug)]

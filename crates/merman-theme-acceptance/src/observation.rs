@@ -279,12 +279,6 @@ impl<'a> C6TargetArtifact<'a> {
         self.view.receipt()
     }
 
-    pub(crate) const fn flowchart_svg_artifact_receipt(
-        &self,
-    ) -> Option<&merman_render::__private::FlowchartSvgArtifactReceipt> {
-        self.view.flowchart_svg_artifact_receipt()
-    }
-
     pub(crate) const fn svg_artifact_receipt(
         &self,
     ) -> Option<&merman_render::__private::SvgArtifactReceipt> {

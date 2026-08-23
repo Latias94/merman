@@ -44,6 +44,12 @@ pub(crate) fn style_number(element: &SvgElementObservation, property: &str) -> O
         .filter(|value: &f64| value.is_finite())
 }
 
+pub(crate) fn numeric_attribute(element: &SvgElementObservation, name: &str) -> Option<f64> {
+    element
+        .numeric_attribute(name)
+        .filter(|value| value.is_finite())
+}
+
 pub(crate) fn subtree_style_value<'a>(
     receipt: &'a SvgArtifactReceipt,
     element: &'a SvgElementObservation,

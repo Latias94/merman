@@ -1,14 +1,16 @@
 use std::collections::BTreeMap;
 
 use merman_export::RasterPlan;
-use merman_render::__private::FlowchartSvgArtifactReceipt;
+use merman_render::__private::SvgArtifactReceipt;
 use merman_theme_fixtures::ReferenceThemeMechanism;
 
 use crate::observation::C6ObservedMechanismDisposition;
 
 use super::{
     BrutalistFlowchartFixtureContract, C6BoundTargetProof, C6ProofError, C6ProofResult,
-    C6RasterImage, C6TargetArtifact, decode_bounded_png_artifact, parse_c6_hex_rgb,
+    C6RasterImage, C6TargetArtifact,
+    artifact_observation::{approx_eq, sealed_svg_receipt, style_number},
+    decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
 const NODE_IDS: [&str; 6] = ["A", "B", "C", "D", "E", "F"];
@@ -53,42 +55,20 @@ pub(crate) fn prove_brutalist_flowchart_svg(
     artifact: C6TargetArtifact<'_>,
 ) -> C6ProofResult<BrutalistFlowchartSvgProof> {
     let mechanisms = applied_cell_mechanisms();
-    let renderer_receipt = artifact.flowchart_svg_artifact_receipt().ok_or_else(|| {
-        C6ProofError::new(
-            "flowchart-svg-observation",
-            "renderer did not seal a Flowchart SVG receipt",
-        )
-    })?;
-    let artifact_digest = artifact.receipt().artifact_digest();
-    c6_ensure!(
-        "flowchart-svg-observation",
-        renderer_receipt.proves_artifact(artifact_digest),
-        "renderer Flowchart SVG receipt is not bound to the target artifact"
-    );
+    let renderer_receipt = sealed_svg_receipt(&artifact)?;
     let palette = contract
         .palette_colors
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    c6_ensure!(
-        "flowchart-svg-contract",
-        proves_brutalist_flowchart_contract(
-            renderer_receipt,
-            &palette,
-            contract.border.color(),
-            f64::from(contract.border.width_px()),
-            f64::from(contract.radius_px),
-        ),
-        "renderer Flowchart SVG receipt does not satisfy the Brutalist contract"
-    );
+    let nodes = proves_brutalist_flowchart_contract(
+        renderer_receipt,
+        &palette,
+        contract.border.color(),
+        f64::from(contract.border.width_px()),
+        f64::from(contract.radius_px),
+    )?;
     let view_box = renderer_receipt.view_box();
-    let nodes = renderer_receipt
-        .node_observations()
-        .iter()
-        .map(|node| NodeGeometry {
-            rect: node.region(),
-        })
-        .collect::<Vec<_>>();
     let ((view_box, nodes), target_proof) = artifact.check_with(
         "brutalist-flowchart-standalone-svg-v1",
         mechanisms.clone(),
@@ -103,33 +83,77 @@ pub(crate) fn prove_brutalist_flowchart_svg(
 }
 
 fn proves_brutalist_flowchart_contract(
-    receipt: &FlowchartSvgArtifactReceipt,
+    receipt: &SvgArtifactReceipt,
     palette: &[&str],
     border: &str,
     stroke_width: f64,
     radius: f64,
-) -> bool {
-    receipt.has_native_text()
-        && !receipt.has_foreign_object()
-        && !receipt.has_prepared_tokens()
-        && receipt.node_observations().len() == NODE_IDS.len()
-        && palette.len() == 3
-        && receipt
-            .node_observations()
-            .iter()
-            .enumerate()
-            .all(|(ordinal, node)| {
-                node.id() == NODE_IDS[ordinal]
-                    && node.fill() == Some(palette[ordinal % palette.len()])
-                    && node.stroke() == border
-                    && approx_eq(node.stroke_width(), stroke_width)
-                    && approx_eq(node.radius_x(), radius)
-                    && approx_eq(node.radius_y(), radius)
+) -> C6ProofResult<Vec<NodeGeometry>> {
+    c6_ensure!(
+        "flowchart-svg-contract",
+        receipt.has_native_text()
+            && !receipt.has_foreign_object()
+            && !receipt.has_prepared_tokens()
+            && palette.len() == 3,
+        "renderer Flowchart SVG receipt does not satisfy the Brutalist contract"
+    );
+    let wrappers = receipt
+        .elements()
+        .iter()
+        .filter(|node| {
+            node.tag_name() == "g"
+                && node.attribute("data-et") == Some("node")
+                && node.attribute("data-id").is_some()
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "flowchart-svg-contract",
+        wrappers.len() == NODE_IDS.len(),
+        "renderer Flowchart SVG receipt does not contain exactly six node wrappers"
+    );
+    let mut geometries = Vec::with_capacity(wrappers.len());
+    for (ordinal, wrapper) in wrappers.into_iter().enumerate() {
+        c6_ensure!(
+            "flowchart-svg-contract",
+            wrapper.attribute("data-id") == Some(NODE_IDS[ordinal]),
+            "renderer Flowchart SVG receipt emitted an unexpected node order"
+        );
+        let rects = receipt
+            .descendants_of(wrapper.index())
+            .filter(|node| {
+                node.tag_name() == "rect"
+                    && node.has_class("basic")
+                    && node.has_class("label-container")
             })
-}
-
-fn approx_eq(left: f64, right: f64) -> bool {
-    (left - right).abs() <= 1e-6
+            .collect::<Vec<_>>();
+        c6_ensure!(
+            "flowchart-svg-contract",
+            rects.len() == 1,
+            "renderer Flowchart SVG receipt emitted an invalid node surface"
+        );
+        let rect = rects[0];
+        c6_ensure!(
+            "flowchart-svg-contract",
+            rect.style_value("fill").or_else(|| rect.attribute("fill"))
+                == Some(palette[ordinal % palette.len()])
+                && rect.style_value("stroke") == Some(border)
+                && style_number(rect, "stroke-width")
+                    .is_some_and(|value| approx_eq(value, stroke_width))
+                && rect
+                    .numeric_attribute("rx")
+                    .is_some_and(|value| approx_eq(value, radius))
+                && rect
+                    .numeric_attribute("ry")
+                    .is_some_and(|value| approx_eq(value, radius)),
+            "renderer Flowchart SVG receipt does not satisfy the Brutalist node contract"
+        );
+        geometries.push(NodeGeometry {
+            rect: rect.bounds().ok_or_else(|| {
+                C6ProofError::new("flowchart-svg-contract", "node rect lacks finite bounds")
+            })?,
+        });
+    }
+    Ok(geometries)
 }
 
 pub(crate) fn prove_brutalist_flowchart_png(

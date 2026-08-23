@@ -223,7 +223,6 @@ use c6_raster_proof::prove_brutalist_state_png;
 use c6_raster_proof::{PngArtifactProof, prove_brutalist_state_jpeg};
 pub(crate) use c6_raster_proof::{
     RasterImage as C6RasterImage, decode_bounded_png_artifact, parse_c6_hex_rgb,
-    parse_c6_svg_view_box, transformed_c6_svg_rect,
 };
 use c6_reference_theme_groups::{
     CYBERPUNK_STATE_ADAPTER, SPOTLESS_FLOWCHART_ADAPTER, SPOTLESS_STATE_ADAPTER,
@@ -898,7 +897,7 @@ fn complete_c6_svg_png_render_group(
     identity: &crate::observation::C6RenderIdentity,
     standalone_svg_proof: C6BoundTargetProof,
     prove_png_artifact: impl FnOnce(
-        &str,
+        &merman_render::__private::SvgArtifactReceipt,
         C6TargetArtifact<'_>,
         RasterPlan,
     ) -> C6ProofResult<C6BoundTargetProof>,
@@ -924,11 +923,14 @@ fn complete_c6_svg_png_render_group(
                 .map_err(|error| C6ProofError::new("png-render", error.to_string())),
         )?;
         let target_artifact = bind_raster_artifact(&output);
+        let source_artifact = bind_document_svg_artifact(document);
+        let source_receipt =
+            sealed_svg_receipt(&source_artifact).map_err(|error| error.into_runtime(&group.key))?;
         let target_proof = prove_target(
             &group.key,
             ExpectedOutputTarget::Png,
             &png_dependents,
-            prove_png_artifact(document.svg(), target_artifact, output.plan()),
+            prove_png_artifact(source_receipt, target_artifact, output.plan()),
         )?;
         Some(C6TargetObservation::new(identity.clone(), target_proof))
     };
@@ -1014,11 +1016,11 @@ fn execute_brutalist_state_group(
         &rendered.document,
         &rendered.identity,
         rendered.svg_proof.target_proof(),
-        |svg, artifact, plan| {
+        |receipt, artifact, plan| {
             let (_, target_proof) = artifact.check_with(
                 "brutalist-state-png-v1",
                 brutalist_state_applied_mechanisms(),
-                |bytes| prove_brutalist_state_png(&rendered.contract, svg, bytes, plan),
+                |bytes| prove_brutalist_state_png(&rendered.contract, receipt, bytes, plan),
             )?;
             Ok(target_proof)
         },
@@ -1535,8 +1537,10 @@ fn prove_brutalist_state_png_projection(
             OperationControl::new(),
         )
         .map_err(|error| C6ProofError::new("png-render", error.to_string()))?;
+    let artifact = bind_document_svg_artifact(document);
+    let receipt = sealed_svg_receipt(&artifact)?;
     let artifact_proof =
-        prove_brutalist_state_png(contract, document.svg(), output.bytes(), output.plan())?;
+        prove_brutalist_state_png(contract, receipt, output.bytes(), output.plan())?;
     Ok(ProvenPngProjection {
         target_receipt: output.admission().clone(),
         artifact_proof,
@@ -2207,27 +2211,6 @@ fn required_positive_observation_attribute(
         node.tag_name()
     );
     Ok(value)
-}
-
-pub(crate) fn class_contains(node: roxmltree::Node<'_, '_>, class_name: &str) -> bool {
-    node.attribute("class").is_some_and(|classes| {
-        classes
-            .split_ascii_whitespace()
-            .any(|class| class == class_name)
-    })
-}
-
-pub(crate) fn style_value<'a>(node: roxmltree::Node<'a, '_>, property: &str) -> Option<&'a str> {
-    node.attribute("style")?.split(';').find_map(|declaration| {
-        let (name, value) = declaration.split_once(':')?;
-        (name.trim() == property).then(|| {
-            value
-                .trim()
-                .strip_suffix("!important")
-                .unwrap_or(value.trim())
-                .trim()
-        })
-    })
 }
 
 #[cfg(test)]

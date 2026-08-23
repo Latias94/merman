@@ -25,10 +25,8 @@ merman-theme-fixtures = { path = "../merman-theme-fixtures" }
 image = { workspace = true, optional = true }
 lopdf = { workspace = true, optional = true }
 png = { workspace = true, optional = true }
-roxmltree.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-svgtypes.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

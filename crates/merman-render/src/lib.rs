@@ -79,9 +79,7 @@ pub mod __private {
 
     #[cfg(feature = "internal-theme-acceptance")]
     pub use crate::svg_artifact_receipts::{
-        FlowchartSvgArtifactReceipt, FlowchartSvgCanvasObservation,
-        FlowchartSvgGradientStopObservation, FlowchartSvgNodeObservation, SvgArtifactReceipt,
-        SvgAttributeObservation, SvgElementObservation, SvgFontFaceObservation,
+        SvgArtifactReceipt, SvgAttributeObservation, SvgElementObservation, SvgFontFaceObservation,
         SvgStyleDeclarationObservation, SvgStyleRuleObservation, SvgStylesheetObservation,
     };
 

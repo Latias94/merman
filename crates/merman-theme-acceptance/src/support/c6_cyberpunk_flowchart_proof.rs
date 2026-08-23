@@ -1,14 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use merman_export::RasterPlan;
+use merman_render::__private::{SvgArtifactReceipt, SvgElementObservation};
 use merman_theme_fixtures::ReferenceThemeMechanism;
 
 use crate::observation::C6ObservedMechanismDisposition;
 
 use super::{
     C6BoundTargetProof, C6ProofError, C6ProofResult, C6RasterImage, C6TargetArtifact,
-    class_contains, decode_bounded_png_artifact, parse_c6_hex_rgb, parse_c6_svg_view_box,
-    style_value, transformed_c6_svg_rect,
+    artifact_observation::{
+        approx_eq, local_fragment_id, numeric_attribute, percent_value, sealed_svg_receipt,
+        style_number,
+    },
+    decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
 const NODE_IDS: [&str; 4] = ["A", "B", "C", "D"];
@@ -20,9 +24,6 @@ const CELL_MECHANISMS: [ReferenceThemeMechanism; 5] = [
     ReferenceThemeMechanism::CanvasPattern,
     ReferenceThemeMechanism::StrokeStyling,
 ];
-// The bounded PNG ROI proves that at least one non-base canvas layer survives rasterization. It
-// does not distinguish the exact blend, gradient, or tiled-pattern implementation, and it does
-// not cover node strokes.
 const PNG_MECHANISMS: [ReferenceThemeMechanism; 1] = [ReferenceThemeMechanism::CanvasLayering];
 const MIN_CANVAS_DIFFERENCE: u8 = 6;
 const MIN_CANVAS_DIFFERENCE_COVERAGE: f64 = 0.25;
@@ -62,10 +63,12 @@ pub(crate) fn prove_cyberpunk_flowchart_svg(
         .into_iter()
         .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
         .collect::<BTreeMap<_, _>>();
-    let ((view_box, canvas_region), target_proof) = artifact.check_with(
+    let receipt = sealed_svg_receipt(&artifact)?;
+    let (view_box, canvas_region) = check_cyberpunk_flowchart_svg(contract, receipt)?;
+    let (_, target_proof) = artifact.check_with(
         "cyberpunk-flowchart-standalone-svg-v1",
         mechanisms.clone(),
-        |bytes| check_cyberpunk_flowchart_svg(contract, bytes),
+        |_| Ok::<(), C6ProofError>(()),
     )?;
     Ok(CyberpunkFlowchartSvgProof {
         mechanisms,
@@ -77,35 +80,21 @@ pub(crate) fn prove_cyberpunk_flowchart_svg(
 
 fn check_cyberpunk_flowchart_svg(
     contract: CyberpunkFlowchartProofContract<'_>,
-    bytes: &[u8],
+    receipt: &SvgArtifactReceipt,
 ) -> C6ProofResult<([f64; 4], [f64; 4])> {
-    let svg = std::str::from_utf8(bytes)
-        .map_err(|error| C6ProofError::new("cyberpunk-flowchart-svg-utf8", error.to_string()))?;
-    let document = roxmltree::Document::parse(svg)
-        .map_err(|error| C6ProofError::new("cyberpunk-flowchart-svg-parse", error.to_string()))?;
-    let root = document.root_element();
-    let view_box = parse_c6_svg_view_box(root.attribute("viewBox").ok_or_else(|| {
-        C6ProofError::new(
-            "cyberpunk-flowchart-svg-root",
-            "Flowchart SVG root lacks a viewBox",
-        )
-    })?)?;
-
-    prove_terminal_canvas(&document, contract)?;
+    let view_box = receipt.view_box();
+    prove_terminal_canvas(receipt, contract)?;
     let nodes = NODE_IDS
         .into_iter()
-        .map(|node_id| prove_terminal_node(&document, node_id, contract))
+        .map(|node_id| prove_terminal_node(receipt, node_id, contract))
         .collect::<C6ProofResult<Vec<_>>>()?;
     c6_ensure!(
         "cyberpunk-flowchart-svg-text",
-        document.descendants().any(|node| node.has_tag_name("text"))
-            && !document
-                .descendants()
-                .any(|node| node.has_tag_name("foreignObject"))
-            && !svg.contains("merman-prepared-"),
+        receipt.has_native_text()
+            && !receipt.has_foreign_object()
+            && !receipt.has_prepared_tokens(),
         "Cyberpunk Flowchart did not retain native terminal text"
     );
-
     Ok((view_box, canvas_gap_region(nodes[0], nodes[1])?))
 }
 
@@ -156,13 +145,14 @@ fn cyberpunk_flowchart_png_mechanisms(
 }
 
 fn prove_terminal_canvas(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     contract: CyberpunkFlowchartProofContract<'_>,
 ) -> C6ProofResult<()> {
-    let bases = document
-        .descendants()
+    let bases = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("rect") && node.attribute("data-merman-theme-canvas") == Some("base")
+            node.tag_name() == "rect" && node.attribute("data-merman-theme-canvas") == Some("base")
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -171,10 +161,11 @@ fn prove_terminal_canvas(
         "Cyberpunk Flowchart requires one terminal solid canvas base"
     );
 
-    let layers = document
-        .descendants()
+    let layers = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("g") && node.attribute("data-merman-theme-canvas-layer").is_some()
+            node.tag_name() == "g" && node.attribute("data-merman-theme-canvas-layer").is_some()
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -190,7 +181,7 @@ fn prove_terminal_canvas(
                 .attribute("data-merman-theme-canvas-layer")
                 .and_then(|value| value.parse::<usize>().ok())
                 == Some(index)
-                && style_value(*layer, "mix-blend-mode") == Some(contract.blend_mode)
+                && layer.style_value("mix-blend-mode") == Some(contract.blend_mode)
                 && layer.attribute("opacity").is_none()
                 && layer.attribute("transform").is_none(),
             "Cyberpunk Flowchart canvas layer {index} lost its order or blend mode"
@@ -198,77 +189,77 @@ fn prove_terminal_canvas(
     }
 
     let mut resource_ids = BTreeSet::new();
-    prove_tiled_linear_layer(document, layers[0], contract, &mut resource_ids)?;
-    prove_linear_wash_layer(document, layers[1], contract, &mut resource_ids)?;
-    prove_radial_layer(document, layers[2], contract, &mut resource_ids)?;
+    prove_tiled_linear_layer(receipt, layers[0], contract, &mut resource_ids)?;
+    prove_linear_wash_layer(receipt, layers[1], contract, &mut resource_ids)?;
+    prove_radial_layer(receipt, layers[2], contract, &mut resource_ids)?;
     Ok(())
 }
 
-fn prove_tiled_linear_layer<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    layer: roxmltree::Node<'document, 'input>,
+fn prove_tiled_linear_layer(
+    receipt: &SvgArtifactReceipt,
+    layer: &SvgElementObservation,
     contract: CyberpunkFlowchartProofContract<'_>,
-    resource_ids: &mut BTreeSet<&'document str>,
+    resource_ids: &mut BTreeSet<String>,
 ) -> C6ProofResult<()> {
-    let source = only_element_child(layer, "Cyberpunk Flowchart grid layer")?;
+    let source = only_element_child(receipt, layer, "Cyberpunk Flowchart grid layer")?;
     c6_ensure!(
         "cyberpunk-flowchart-svg-canvas",
-        source.has_tag_name("rect"),
+        source.tag_name() == "rect",
         "Cyberpunk Flowchart grid layer must contain one terminal rect"
     );
-    let pattern = resolve_local_paint(document, source, "pattern", "grid layer", resource_ids)?;
+    let pattern = resolve_local_paint(receipt, source, "pattern", "grid layer", resource_ids)?;
     let [tile_width, tile_height] = contract.tile_size_px;
     c6_ensure!(
         "cyberpunk-flowchart-svg-pattern",
         pattern.attribute("patternUnits") == Some("userSpaceOnUse")
-            && numeric_attribute(pattern, "x").is_ok_and(|value| approx_eq(value, 0.0))
-            && numeric_attribute(pattern, "y").is_ok_and(|value| approx_eq(value, 0.0))
-            && numeric_attribute(pattern, "width").is_ok_and(|value| approx_eq(value, tile_width))
+            && numeric_attribute(pattern, "x").is_some_and(|value| approx_eq(value, 0.0))
+            && numeric_attribute(pattern, "y").is_some_and(|value| approx_eq(value, 0.0))
+            && numeric_attribute(pattern, "width")
+                .is_some_and(|value| approx_eq(value, tile_width))
             && numeric_attribute(pattern, "height")
-                .is_ok_and(|value| approx_eq(value, tile_height)),
+                .is_some_and(|value| approx_eq(value, tile_height)),
         "Cyberpunk Flowchart grid pattern geometry differs from the fixed tile"
     );
-    let tile = only_element_child(pattern, "Cyberpunk Flowchart grid pattern")?;
+    let tile = only_element_child(receipt, pattern, "Cyberpunk Flowchart grid pattern")?;
     c6_ensure!(
         "cyberpunk-flowchart-svg-pattern",
-        tile.has_tag_name("rect")
-            && numeric_attribute(tile, "x").is_ok_and(|value| approx_eq(value, 0.0))
-            && numeric_attribute(tile, "y").is_ok_and(|value| approx_eq(value, 0.0))
-            && numeric_attribute(tile, "width").is_ok_and(|value| approx_eq(value, tile_width))
-            && numeric_attribute(tile, "height").is_ok_and(|value| approx_eq(value, tile_height)),
+        tile.tag_name() == "rect"
+            && numeric_attribute(tile, "x").is_some_and(|value| approx_eq(value, 0.0))
+            && numeric_attribute(tile, "y").is_some_and(|value| approx_eq(value, 0.0))
+            && numeric_attribute(tile, "width").is_some_and(|value| approx_eq(value, tile_width))
+            && numeric_attribute(tile, "height").is_some_and(|value| approx_eq(value, tile_height)),
         "Cyberpunk Flowchart grid tile does not cover the fixed pattern bounds"
     );
-    let gradient =
-        resolve_local_paint(document, tile, "linearGradient", "grid tile", resource_ids)?;
+    let gradient = resolve_local_paint(receipt, tile, "linearGradient", "grid tile", resource_ids)?;
     c6_ensure!(
         "cyberpunk-flowchart-svg-pattern",
         gradient.attribute("gradientUnits") == Some("userSpaceOnUse")
             && gradient.attribute("spreadMethod").is_none()
-            && numeric_attribute(gradient, "x1").is_ok_and(|value| approx_eq(value, 0.0))
+            && numeric_attribute(gradient, "x1").is_some_and(|value| approx_eq(value, 0.0))
             && numeric_attribute(gradient, "y1")
-                .is_ok_and(|value| approx_eq(value, tile_height / 2.0))
-            && numeric_attribute(gradient, "x2").is_ok_and(|value| approx_eq(value, tile_width))
+                .is_some_and(|value| approx_eq(value, tile_height / 2.0))
+            && numeric_attribute(gradient, "x2").is_some_and(|value| approx_eq(value, tile_width))
             && numeric_attribute(gradient, "y2")
-                .is_ok_and(|value| approx_eq(value, tile_height / 2.0)),
+                .is_some_and(|value| approx_eq(value, tile_height / 2.0)),
         "Cyberpunk Flowchart grid must retain one non-repeating tile-local linear gradient"
     );
-    prove_gradient_stops(gradient, &contract.grid_stops, "grid")
+    prove_gradient_stops(receipt, gradient, &contract.grid_stops, "grid")
 }
 
-fn prove_linear_wash_layer<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    layer: roxmltree::Node<'document, 'input>,
+fn prove_linear_wash_layer(
+    receipt: &SvgArtifactReceipt,
+    layer: &SvgElementObservation,
     contract: CyberpunkFlowchartProofContract<'_>,
-    resource_ids: &mut BTreeSet<&'document str>,
+    resource_ids: &mut BTreeSet<String>,
 ) -> C6ProofResult<()> {
-    let source = only_element_child(layer, "Cyberpunk Flowchart linear wash layer")?;
+    let source = only_element_child(receipt, layer, "Cyberpunk Flowchart linear wash layer")?;
     c6_ensure!(
         "cyberpunk-flowchart-svg-canvas",
-        source.has_tag_name("rect"),
+        source.tag_name() == "rect",
         "Cyberpunk Flowchart linear wash layer must contain one terminal rect"
     );
     let gradient = resolve_local_paint(
-        document,
+        receipt,
         source,
         "linearGradient",
         "linear wash layer",
@@ -278,27 +269,26 @@ fn prove_linear_wash_layer<'document, 'input>(
         "cyberpunk-flowchart-svg-canvas",
         gradient.attribute("gradientUnits") == Some("userSpaceOnUse")
             && gradient.attribute("spreadMethod").is_none()
-            && linear_vector(gradient)
-                .is_some_and(|[x, y]| { x > 0.0 && y > 0.0 && approx_eq(x, y) }),
+            && linear_vector(gradient).is_some_and(|[x, y]| x > 0.0 && y > 0.0 && approx_eq(x, y)),
         "Cyberpunk Flowchart linear wash lacks finite terminal geometry"
     );
-    prove_gradient_stops(gradient, &contract.wash_stops, "linear wash")
+    prove_gradient_stops(receipt, gradient, &contract.wash_stops, "linear wash")
 }
 
-fn prove_radial_layer<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    layer: roxmltree::Node<'document, 'input>,
+fn prove_radial_layer(
+    receipt: &SvgArtifactReceipt,
+    layer: &SvgElementObservation,
     contract: CyberpunkFlowchartProofContract<'_>,
-    resource_ids: &mut BTreeSet<&'document str>,
+    resource_ids: &mut BTreeSet<String>,
 ) -> C6ProofResult<()> {
-    let source = only_element_child(layer, "Cyberpunk Flowchart radial layer")?;
+    let source = only_element_child(receipt, layer, "Cyberpunk Flowchart radial layer")?;
     c6_ensure!(
         "cyberpunk-flowchart-svg-canvas",
-        source.has_tag_name("rect"),
+        source.tag_name() == "rect",
         "Cyberpunk Flowchart radial layer must contain one terminal rect"
     );
     let gradient = resolve_local_paint(
-        document,
+        receipt,
         source,
         "radialGradient",
         "radial layer",
@@ -310,22 +300,23 @@ fn prove_radial_layer<'document, 'input>(
             && gradient.attribute("spreadMethod").is_none()
             && ["cx", "cy", "r"]
                 .into_iter()
-                .all(|name| numeric_attribute(gradient, name).is_ok())
-            && numeric_attribute(gradient, "r").is_ok_and(|value| value > 0.0),
+                .all(|name| numeric_attribute(gradient, name).is_some())
+            && numeric_attribute(gradient, "r").is_some_and(|value| value > 0.0),
         "Cyberpunk Flowchart radial glow lacks finite terminal geometry"
     );
-    prove_gradient_stops(gradient, &contract.radial_stops, "radial glow")
+    prove_gradient_stops(receipt, gradient, &contract.radial_stops, "radial glow")
 }
 
-fn resolve_local_paint<'document, 'input>(
-    document: &'document roxmltree::Document<'input>,
-    source: roxmltree::Node<'document, 'input>,
+fn resolve_local_paint<'a>(
+    receipt: &'a SvgArtifactReceipt,
+    source: &SvgElementObservation,
     expected_tag: &str,
     label: &str,
-    resource_ids: &mut BTreeSet<&'document str>,
-) -> C6ProofResult<roxmltree::Node<'document, 'input>> {
+    resource_ids: &mut BTreeSet<String>,
+) -> C6ProofResult<&'a SvgElementObservation> {
     let id = source
-        .attribute("fill")
+        .style_value("fill")
+        .or_else(|| source.attribute("fill"))
         .and_then(local_fragment_id)
         .ok_or_else(|| {
             C6ProofError::new(
@@ -333,27 +324,30 @@ fn resolve_local_paint<'document, 'input>(
                 format!("Cyberpunk Flowchart {label} lacks one local paint reference"),
             )
         })?;
-    let definitions = document
-        .descendants()
+    let definitions = receipt
+        .elements()
+        .iter()
         .filter(|node| node.attribute("id") == Some(id))
         .collect::<Vec<_>>();
     c6_ensure!(
         "cyberpunk-flowchart-svg-resource",
         definitions.len() == 1
-            && definitions[0].tag_name().name() == expected_tag
-            && resource_ids.insert(id),
+            && definitions[0].tag_name() == expected_tag
+            && resource_ids.insert(id.to_owned()),
         "Cyberpunk Flowchart {label} paint `{id}` does not uniquely resolve to {expected_tag}"
     );
     Ok(definitions[0])
 }
 
-fn only_element_child<'document, 'input>(
-    node: roxmltree::Node<'document, 'input>,
+fn only_element_child<'a>(
+    receipt: &'a SvgArtifactReceipt,
+    node: &SvgElementObservation,
     label: &str,
-) -> C6ProofResult<roxmltree::Node<'document, 'input>> {
-    let elements = node
-        .children()
-        .filter(|child| child.is_element())
+) -> C6ProofResult<&'a SvgElementObservation> {
+    let elements = receipt
+        .elements()
+        .iter()
+        .filter(|child| child.parent_index() == Some(node.index()))
         .collect::<Vec<_>>();
     c6_ensure!(
         "cyberpunk-flowchart-svg-canvas",
@@ -365,19 +359,21 @@ fn only_element_child<'document, 'input>(
 }
 
 fn prove_gradient_stops<const N: usize>(
-    gradient: roxmltree::Node<'_, '_>,
+    receipt: &SvgArtifactReceipt,
+    gradient: &SvgElementObservation,
     expected: &[(f64, &str); N],
     label: &str,
 ) -> C6ProofResult<()> {
-    let stops = gradient
-        .children()
-        .filter(|child| child.is_element())
+    let stops = receipt
+        .elements()
+        .iter()
+        .filter(|child| child.parent_index() == Some(gradient.index()))
         .collect::<Vec<_>>();
     c6_ensure!(
         "cyberpunk-flowchart-svg-gradient",
         stops.len() == expected.len()
             && stops.iter().zip(expected).all(|(stop, (offset, color))| {
-                stop.has_tag_name("stop")
+                stop.tag_name() == "stop"
                     && stop
                         .attribute("offset")
                         .and_then(percent_value)
@@ -390,14 +386,15 @@ fn prove_gradient_stops<const N: usize>(
 }
 
 fn prove_terminal_node(
-    document: &roxmltree::Document<'_>,
+    receipt: &SvgArtifactReceipt,
     node_id: &str,
     contract: CyberpunkFlowchartProofContract<'_>,
 ) -> C6ProofResult<[f64; 4]> {
-    let wrappers = document
-        .descendants()
+    let wrappers = receipt
+        .elements()
+        .iter()
         .filter(|node| {
-            node.has_tag_name("g")
+            node.tag_name() == "g"
                 && node.attribute("data-id") == Some(node_id)
                 && node.attribute("data-et") == Some("node")
         })
@@ -408,12 +405,12 @@ fn prove_terminal_node(
         "expected one Flowchart wrapper for `{node_id}`, got {}",
         wrappers.len()
     );
-    let rects = wrappers[0]
-        .descendants()
+    let rects = receipt
+        .descendants_of(wrappers[0].index())
         .filter(|node| {
-            node.has_tag_name("rect")
-                && class_contains(*node, "basic")
-                && class_contains(*node, "label-container")
+            node.tag_name() == "rect"
+                && node.has_class("basic")
+                && node.has_class("label-container")
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -425,13 +422,21 @@ fn prove_terminal_node(
     let rect = rects[0];
     c6_ensure!(
         "cyberpunk-flowchart-svg-node",
-        style_value(rect, "stroke") == Some(contract.node_stroke)
+        rect.style_value("stroke") == Some(contract.node_stroke)
             && style_number(rect, "stroke-width")
                 .is_some_and(|value| approx_eq(value, contract.node_stroke_width))
-            && subtree_style_contains(wrappers[0], "font-family", contract.font_family),
+            && receipt
+                .descendants_of(wrappers[0].index())
+                .filter_map(|node| node.style_value("font-family"))
+                .any(|value| value.contains(contract.font_family)),
         "Flowchart node `{node_id}` differs from the Cyberpunk stroke contract"
     );
-    transformed_c6_svg_rect(rect)
+    rect.bounds().ok_or_else(|| {
+        C6ProofError::new(
+            "cyberpunk-flowchart-svg-node",
+            format!("Flowchart node `{node_id}` lacks finite bounds"),
+        )
+    })
 }
 
 fn canvas_gap_region(first: [f64; 4], second: [f64; 4]) -> C6ProofResult<[f64; 4]> {
@@ -465,69 +470,17 @@ fn prove_canvas_visibility(
     )
 }
 
-fn local_fragment_id(value: &str) -> Option<&str> {
-    value.strip_prefix("url(#")?.strip_suffix(')')
-}
-
-fn percent_value(value: &str) -> Option<f64> {
-    value
-        .strip_suffix('%')?
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
-}
-
-fn style_number(node: roxmltree::Node<'_, '_>, property: &str) -> Option<f64> {
-    let value = style_value(node, property)?;
-    value
-        .strip_suffix("px")
-        .unwrap_or(value)
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
-}
-
-fn subtree_style_contains(node: roxmltree::Node<'_, '_>, property: &str, value: &str) -> bool {
-    node.descendants()
-        .filter_map(|descendant| style_value(descendant, property))
-        .any(|actual| actual.contains(value))
-}
-
-fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> C6ProofResult<f64> {
-    let value = node
-        .attribute(name)
-        .ok_or_else(|| {
-            C6ProofError::new(
-                "cyberpunk-flowchart-svg-geometry",
-                format!("missing {name}"),
-            )
-        })?
-        .parse::<f64>()
-        .map_err(|error| {
-            C6ProofError::new("cyberpunk-flowchart-svg-geometry", error.to_string())
-        })?;
-    c6_ensure!(
-        "cyberpunk-flowchart-svg-geometry",
-        value.is_finite(),
-        "Flowchart SVG {name} is not finite"
-    );
-    Ok(value)
-}
-
-fn linear_vector(node: roxmltree::Node<'_, '_>) -> Option<[f64; 2]> {
+fn linear_vector(node: &SvgElementObservation) -> Option<[f64; 2]> {
     Some([
-        numeric_attribute(node, "x2").ok()? - numeric_attribute(node, "x1").ok()?,
-        numeric_attribute(node, "y2").ok()? - numeric_attribute(node, "y1").ok()?,
+        numeric_attribute(node, "x2")? - numeric_attribute(node, "x1")?,
+        numeric_attribute(node, "y2")? - numeric_attribute(node, "y1")?,
     ])
-}
-
-fn approx_eq(left: f64, right: f64) -> bool {
-    (left - right).abs() <= 1e-6
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest as _, Sha256};
 
     #[test]
     fn cyberpunk_flowchart_png_scope_reports_only_visible_layering() {
@@ -574,15 +527,20 @@ mod tests {
         }
     }
 
+    fn test_receipt(svg: &str) -> SvgArtifactReceipt {
+        let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
+        SvgArtifactReceipt::observe_svg(svg, digest).expect("test SVG must produce a receipt")
+    }
+
     fn valid_canvas_svg() -> &'static str {
-        r##"<svg><rect data-merman-theme-canvas="base" fill="#020617"/><defs><linearGradient id="layer-0-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="12" x2="24" y2="12"><stop offset="0%" stop-color="#22d3ee33"/><stop offset="50%" stop-color="#22d3ee33"/><stop offset="51%" stop-color="#22d3ee00"/><stop offset="100%" stop-color="#22d3ee00"/></linearGradient><pattern id="layer-0-pattern" patternUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect x="0" y="0" width="24" height="24" fill="url(#layer-0-gradient)"/></pattern></defs><defs><linearGradient id="layer-1-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="100"><stop offset="0%" stop-color="#0f172a"/><stop offset="100%" stop-color="#164e63"/></linearGradient></defs><defs><radialGradient id="layer-2-gradient" gradientUnits="userSpaceOnUse" cx="50" cy="40" r="50"><stop offset="0%" stop-color="#67e8f955"/><stop offset="100%" stop-color="#67e8f900"/></radialGradient></defs><g data-merman-theme-canvas-layer="0" style="mix-blend-mode:screen"><rect fill="url(#layer-0-pattern)"/></g><g data-merman-theme-canvas-layer="1" style="mix-blend-mode:screen"><rect fill="url(#layer-1-gradient)"/></g><g data-merman-theme-canvas-layer="2" style="mix-blend-mode:screen"><rect fill="url(#layer-2-gradient)"/></g></svg>"##
+        r##"<svg viewBox="0 0 100 100"><rect data-merman-theme-canvas="base" fill="#020617"/><defs><linearGradient id="layer-0-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="12" x2="24" y2="12"><stop offset="0%" stop-color="#22d3ee33"/><stop offset="50%" stop-color="#22d3ee33"/><stop offset="51%" stop-color="#22d3ee00"/><stop offset="100%" stop-color="#22d3ee00"/></linearGradient><pattern id="layer-0-pattern" patternUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect x="0" y="0" width="24" height="24" fill="url(#layer-0-gradient)"/></pattern></defs><defs><linearGradient id="layer-1-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="100"><stop offset="0%" stop-color="#0f172a"/><stop offset="100%" stop-color="#164e63"/></linearGradient></defs><defs><radialGradient id="layer-2-gradient" gradientUnits="userSpaceOnUse" cx="50" cy="40" r="50"><stop offset="0%" stop-color="#67e8f955"/><stop offset="100%" stop-color="#67e8f900"/></radialGradient></defs><g data-merman-theme-canvas-layer="0" style="mix-blend-mode:screen"><rect fill="url(#layer-0-pattern)"/></g><g data-merman-theme-canvas-layer="1" style="mix-blend-mode:screen"><rect fill="url(#layer-1-gradient)"/></g><g data-merman-theme-canvas-layer="2" style="mix-blend-mode:screen"><rect fill="url(#layer-2-gradient)"/></g></svg>"##
     }
 
     #[test]
     fn canvas_rejects_missing_reordered_or_unblended_layers() {
         let valid = valid_canvas_svg();
-        let document = roxmltree::Document::parse(valid).unwrap();
-        assert!(prove_terminal_canvas(&document, contract()).is_ok());
+        let receipt = test_receipt(valid);
+        assert!(prove_terminal_canvas(&receipt, contract()).is_ok());
 
         let layer_zero = r##"<g data-merman-theme-canvas-layer="0" style="mix-blend-mode:screen"><rect fill="url(#layer-0-pattern)"/></g>"##;
         let layer_one = r##"<g data-merman-theme-canvas-layer="1" style="mix-blend-mode:screen"><rect fill="url(#layer-1-gradient)"/></g>"##;
@@ -596,12 +554,7 @@ mod tests {
             valid.replacen(" style=\"mix-blend-mode:screen\"", "", 1),
         ];
         for mutated in mutations {
-            assert_ne!(mutated, valid, "mutation did not alter the fixture");
-            let document = roxmltree::Document::parse(&mutated).unwrap();
-            assert!(
-                prove_terminal_canvas(&document, contract()).is_err(),
-                "mutation unexpectedly retained layer ordering and blend: {mutated}"
-            );
+            assert!(prove_terminal_canvas(&test_receipt(&mutated), contract()).is_err());
         }
     }
 
@@ -632,28 +585,21 @@ mod tests {
             valid.replacen("stop-color=\"#67e8f955\"", "stop-color=\"#67e8f954\"", 1),
         ];
         for mutated in mutations {
-            assert_ne!(mutated, valid, "mutation did not alter the fixture");
-            let document = roxmltree::Document::parse(&mutated).unwrap();
-            assert!(
-                prove_terminal_canvas(&document, contract()).is_err(),
-                "mutation unexpectedly retained the resource closure: {mutated}"
-            );
+            assert!(prove_terminal_canvas(&test_receipt(&mutated), contract()).is_err());
         }
     }
 
     #[test]
     fn terminal_node_rejects_mutated_stroke() {
-        let valid = r##"<svg><g id="fixture-merman-flowchart-node-0" data-id="A" data-et="node"><rect class="basic label-container" x="0" y="0" width="20" height="10" style="fill:#0f172a;stroke:#22d3ee;stroke-width:2px"/><text style="font-family:Excalifont">A</text></g></svg>"##;
-        let document = roxmltree::Document::parse(valid).unwrap();
-        assert!(prove_terminal_node(&document, "A", contract()).is_ok());
+        let valid = r##"<svg viewBox="0 0 100 100"><g id="fixture-merman-flowchart-node-0" data-id="A" data-et="node"><rect class="basic label-container" x="0" y="0" width="20" height="10" rx="5" ry="5" style="fill:#0f172a;stroke:#22d3ee;stroke-width:2px"/><text style="font-family:Excalifont">A</text></g></svg>"##;
+        assert!(prove_terminal_node(&test_receipt(valid), "A", contract()).is_ok());
 
         for mutated in [
             valid.replace("stroke:#22d3ee", "stroke:#e0f2fe"),
             valid.replace("stroke-width:2px", "stroke-width:1px"),
             valid.replace("font-family:Excalifont", "font-family:sans-serif"),
         ] {
-            let document = roxmltree::Document::parse(&mutated).unwrap();
-            assert!(prove_terminal_node(&document, "A", contract()).is_err());
+            assert!(prove_terminal_node(&test_receipt(&mutated), "A", contract()).is_err());
         }
     }
 
