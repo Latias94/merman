@@ -13,7 +13,7 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-use super::{ClassRelationThemePlan, ClassRelationThemeReceipt};
+use super::{ClassRelationThemePlan, ClassRelationThemeReceipt, ClassTerminalReceiptSummary};
 
 /// Terminal Class theme ledger. The SVG writer may seal it only after the completed root exists.
 #[derive(Debug)]
@@ -62,6 +62,10 @@ impl ClassThemeEvidenceRecorder {
             return Ok(evidence);
         };
         let receipt = self.terminal_receipt.get();
+        let receipt_summary = receipt.map(ClassRelationThemeReceipt::terminal_summary);
+        if let Some(summary) = receipt_summary.as_ref() {
+            work_meter.charge(summary.work_units())?;
+        }
         let has_relations = self.expected_relation_paths != 0;
         let visible_node_count = receipt
             .map(ClassRelationThemeReceipt::expected_node_count)
@@ -94,8 +98,8 @@ impl ClassThemeEvidenceRecorder {
                                         | (ThemeTarget::Node, ResolvedStyleProperty::Stroke)
                                         | (ThemeTarget::NodeLabel, ResolvedStyleProperty::Fill)
                                 ) {
-                                    receipt.is_some_and(|receipt| {
-                                        receipt.has_node_paint_winner_rule(
+                                    receipt_summary.as_ref().is_some_and(|summary| {
+                                        summary.has_node_paint_winner_rule(
                                             rule_index, target, property,
                                         )
                                     })
@@ -119,7 +123,7 @@ impl ClassThemeEvidenceRecorder {
                             ) if matches!(target, ThemeTarget::Node | ThemeTarget::NodeLabel) => {
                                 observe_terminal_node_paint(
                                     observation,
-                                    receipt,
+                                    receipt_summary.as_ref(),
                                     rule_index,
                                     target,
                                     ResolvedStyleProperty::Fill,
@@ -134,7 +138,7 @@ impl ClassThemeEvidenceRecorder {
                             ) if target == ThemeTarget::Node => {
                                 observe_terminal_node_paint(
                                     observation,
-                                    receipt,
+                                    receipt_summary.as_ref(),
                                     rule_index,
                                     target,
                                     ResolvedStyleProperty::Stroke,
@@ -248,8 +252,9 @@ impl ClassThemeEvidenceRecorder {
             ThemeTarget::NodeLabel,
             TerminalVariantDomain::uniform(visible_node_count, ThemeVariant::Default),
         ));
-        if let Some(marker_count) =
-            receipt.and_then(ClassRelationThemeReceipt::visible_marker_occurrence_count)
+        if let Some(marker_count) = receipt_summary
+            .as_ref()
+            .and_then(ClassTerminalReceiptSummary::visible_marker_occurrence_count)
         {
             unsupported_domains.push(UnsupportedTerminalDomain::direct(
                 ThemeTarget::Marker,
@@ -294,7 +299,7 @@ struct ClassRuleObservation {
 
 fn observe_terminal_node_paint(
     observation: &mut ClassRuleObservation,
-    receipt: Option<&ClassRelationThemeReceipt>,
+    receipt: Option<&ClassTerminalReceiptSummary>,
     rule_index: usize,
     target: ThemeTarget,
     property: ResolvedStyleProperty,
@@ -316,7 +321,7 @@ fn observe_terminal_node_paint(
             }
             _ => unreachable!("guarded Class direct node paint"),
         });
-    } else if receipt.proves_complete()
+    } else if receipt.is_complete()
         && !receipt.has_effective_node_paint_rule(rule_index, target, property)
     {
         observation.suppressed = true;

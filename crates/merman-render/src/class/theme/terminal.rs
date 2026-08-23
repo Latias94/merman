@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagram_theme::{ResolvedStyleProperty, ThemeTarget};
 
@@ -384,8 +384,12 @@ impl ClassRelationThemeReceipt {
             && self.proves_complete_marker_emission()
     }
 
-    pub(super) fn visible_marker_occurrence_count(&self) -> Option<usize> {
-        self.proves_complete().then(|| {
+    pub(super) fn terminal_summary(&self) -> ClassTerminalReceiptSummary {
+        let complete_nodes = self.proves_complete_node_emission();
+        let complete_relations = self.proves_complete_relation_emission();
+        let complete_markers = self.proves_complete_marker_emission();
+        let complete = complete_nodes && complete_relations && complete_markers;
+        let visible_marker_occurrence_count = complete.then(|| {
             self.relation_events
                 .iter()
                 .map(|event| {
@@ -393,7 +397,56 @@ impl ClassRelationThemeReceipt {
                         .saturating_add(usize::from(event.end_marker.is_some()))
                 })
                 .sum()
-        })
+        });
+        let mut winner_rules = BTreeSet::new();
+        let mut effective_rules = BTreeSet::new();
+        let mut typed_rejections = BTreeSet::new();
+        for expected in self.expected_nodes.values() {
+            for &(target, property) in &NODE_PAINT_TARGETS {
+                if let Some(rule_index) = expected.winner_rule(target, property) {
+                    winner_rules.insert((rule_index, target, property));
+                }
+                let Some(expected_paint) = expected.expected_paint(target, property) else {
+                    continue;
+                };
+                let key = (expected_paint.rule_index, target, property);
+                let Some(event) = self.node_events.get(expected.id()) else {
+                    typed_rejections.insert(key);
+                    continue;
+                };
+                let paint = node_paint_emission(event, target, property);
+                if paint.terminal_applicable && !paint.source_owned {
+                    effective_rules.insert(key);
+                }
+                if !(!paint.terminal_applicable || paint.source_owned || paint.terminal_verified) {
+                    typed_rejections.insert(key);
+                }
+            }
+        }
+        let typed_rules = effective_rules
+            .iter()
+            .copied()
+            .filter(|key| complete_nodes && !typed_rejections.contains(key))
+            .collect();
+
+        ClassTerminalReceiptSummary {
+            complete,
+            complete_nodes,
+            visible_marker_occurrence_count,
+            winner_rules,
+            effective_rules,
+            typed_rules,
+            work_units: self
+                .expected_nodes
+                .len()
+                .saturating_add(self.node_events.len())
+                .saturating_mul(NODE_PAINT_TARGETS.len())
+                .saturating_add(self.expected_relations.len())
+                .saturating_add(self.relation_events.len())
+                .saturating_add(self.expected_markers.len())
+                .saturating_add(self.marker_events.len())
+                .max(1),
+        }
     }
 
     pub(super) fn proves_typed_width(&self) -> bool {
@@ -418,41 +471,26 @@ impl ClassRelationThemeReceipt {
                     .is_some_and(|(emitted_rule, _)| *emitted_rule == rule_index)
             })
     }
+}
 
-    pub(super) fn has_effective_node_paint_rule(
-        &self,
-        rule_index: usize,
-        target: ThemeTarget,
-        property: ResolvedStyleProperty,
-    ) -> bool {
-        self.expected_nodes.iter().any(|(id, expected)| {
-            expected
-                .expected_paint(target, property)
-                .is_some_and(|paint| paint.rule_index == rule_index)
-                && self.node_events.get(id).is_some_and(|event| {
-                    let paint = node_paint_emission(event, target, property);
-                    paint.terminal_applicable && !paint.source_owned
-                })
-        })
+#[derive(Debug, Clone)]
+pub(crate) struct ClassTerminalReceiptSummary {
+    complete: bool,
+    complete_nodes: bool,
+    visible_marker_occurrence_count: Option<usize>,
+    winner_rules: BTreeSet<(usize, ThemeTarget, ResolvedStyleProperty)>,
+    effective_rules: BTreeSet<(usize, ThemeTarget, ResolvedStyleProperty)>,
+    typed_rules: BTreeSet<(usize, ThemeTarget, ResolvedStyleProperty)>,
+    work_units: usize,
+}
+
+impl ClassTerminalReceiptSummary {
+    pub(super) fn is_complete(&self) -> bool {
+        self.complete
     }
 
-    pub(super) fn proves_typed_node_paint(
-        &self,
-        rule_index: usize,
-        target: ThemeTarget,
-        property: ResolvedStyleProperty,
-    ) -> bool {
-        self.proves_complete_node_emission()
-            && self.has_effective_node_paint_rule(rule_index, target, property)
-            && self.expected_nodes.iter().all(|(id, expected)| {
-                expected
-                    .expected_paint(target, property)
-                    .is_none_or(|paint| paint.rule_index != rule_index)
-                    || self.node_events.get(id).is_some_and(|event| {
-                        let paint = node_paint_emission(event, target, property);
-                        !paint.terminal_applicable || paint.source_owned || paint.terminal_verified
-                    })
-            })
+    pub(super) fn visible_marker_occurrence_count(&self) -> Option<usize> {
+        self.visible_marker_occurrence_count
     }
 
     pub(super) fn has_node_paint_winner_rule(
@@ -461,11 +499,38 @@ impl ClassRelationThemeReceipt {
         target: ThemeTarget,
         property: ResolvedStyleProperty,
     ) -> bool {
-        self.expected_nodes
-            .values()
-            .any(|expected| expected.winner_rule(target, property) == Some(rule_index))
+        self.winner_rules.contains(&(rule_index, target, property))
+    }
+
+    pub(super) fn has_effective_node_paint_rule(
+        &self,
+        rule_index: usize,
+        target: ThemeTarget,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        self.effective_rules
+            .contains(&(rule_index, target, property))
+    }
+
+    pub(super) fn proves_typed_node_paint(
+        &self,
+        rule_index: usize,
+        target: ThemeTarget,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        self.complete_nodes && self.typed_rules.contains(&(rule_index, target, property))
+    }
+
+    pub(super) fn work_units(&self) -> usize {
+        self.work_units
     }
 }
+
+const NODE_PAINT_TARGETS: [(ThemeTarget, ResolvedStyleProperty); 3] = [
+    (ThemeTarget::Node, ResolvedStyleProperty::Fill),
+    (ThemeTarget::Node, ResolvedStyleProperty::Stroke),
+    (ThemeTarget::NodeLabel, ResolvedStyleProperty::Fill),
+];
 
 #[derive(Debug, Clone)]
 struct ClassRelationTerminalEvent {
@@ -646,17 +711,30 @@ mod tests {
         ));
 
         assert!(receipt.proves_complete());
+        let summary = receipt.terminal_summary();
         assert!(
-            receipt.proves_typed_node_paint(1, ThemeTarget::Node, ResolvedStyleProperty::Fill,)
+            summary.proves_typed_node_paint(1, ThemeTarget::Node, ResolvedStyleProperty::Fill,)
         );
-        assert!(receipt.proves_typed_node_paint(
+        assert!(summary.proves_typed_node_paint(
             1,
             ThemeTarget::Node,
             ResolvedStyleProperty::Stroke,
         ));
-        assert!(receipt.proves_typed_node_paint(
+        assert!(summary.proves_typed_node_paint(
             2,
             ThemeTarget::NodeLabel,
+            ResolvedStyleProperty::Fill,
+        ));
+
+        assert!(summary.is_complete());
+        assert!(summary.has_node_paint_winner_rule(
+            1,
+            ThemeTarget::Node,
+            ResolvedStyleProperty::Fill,
+        ));
+        assert!(summary.has_effective_node_paint_rule(
+            1,
+            ThemeTarget::Node,
             ResolvedStyleProperty::Fill,
         ));
     }
@@ -727,17 +805,18 @@ mod tests {
             node_paint(false, None, ""),
         ));
         assert!(receipt.proves_complete());
-        assert!(receipt.has_node_paint_winner_rule(
+        let summary = receipt.terminal_summary();
+        assert!(summary.has_node_paint_winner_rule(
             4,
             ThemeTarget::Node,
             ResolvedStyleProperty::Fill,
         ));
-        assert!(receipt.has_node_paint_winner_rule(
+        assert!(summary.has_node_paint_winner_rule(
             5,
             ThemeTarget::NodeLabel,
             ResolvedStyleProperty::Fill,
         ));
-        assert!(!receipt.proves_typed_node_paint(
+        assert!(!summary.proves_typed_node_paint(
             4,
             ThemeTarget::Node,
             ResolvedStyleProperty::Fill,
@@ -872,11 +951,19 @@ mod tests {
                 expected.end_marker,
             );
         }
-        assert_eq!(receipt.visible_marker_occurrence_count(), Some(2));
+        assert_eq!(
+            receipt.terminal_summary().visible_marker_occurrence_count(),
+            Some(2)
+        );
 
         let incomplete =
             ClassRelationThemeReceipt::new(relations, Vec::new(), expected_stroke(), false);
-        assert_eq!(incomplete.visible_marker_occurrence_count(), None);
+        assert_eq!(
+            incomplete
+                .terminal_summary()
+                .visible_marker_occurrence_count(),
+            None
+        );
     }
 
     fn single_hand_drawn_receipt() -> ClassRelationThemeReceipt {

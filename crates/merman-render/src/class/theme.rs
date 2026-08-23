@@ -13,6 +13,7 @@ mod terminal;
 
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
 use node::ClassNodeThemePlan;
+pub(crate) use terminal::ClassTerminalReceiptSummary;
 use terminal::ExpectedStroke;
 pub(crate) use terminal::{
     ClassMarkerTerminalExpectation, ClassNodePaintTerminalEmission, ClassNodeTerminalEmission,
