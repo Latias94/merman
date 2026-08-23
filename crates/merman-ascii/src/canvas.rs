@@ -1055,30 +1055,41 @@ pub(crate) fn finish_styled_line_iter_with_deferred_resources_with_execution<'a,
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    debug_assert_eq!(resources.policy(), *execution.resources());
-    finish_styled_line_iter(lines, options, trim, resources, Some(deferred), execution)
+    finish_styled_line_iter_with_deferred_resources_with_execution_and_observer(
+        lines,
+        options,
+        trim,
+        resources,
+        deferred,
+        execution,
+        || {},
+    )
 }
 
-#[cfg(test)]
-pub(crate) fn finish_styled_line_iter_with_deferred_probe<'a, 'text, I>(
+pub(crate) fn finish_styled_line_iter_with_deferred_resources_with_execution_and_observer<
+    'a,
+    'text,
+    I,
+>(
     lines: I,
     options: &AsciiRenderOptions,
     trim: bool,
     resources: &mut ResourceContext,
     deferred: &DeferredTextRegistry<'text>,
+    execution: AsciiExecution<'_>,
     before_materialize: impl FnOnce(),
 ) -> crate::Result<String>
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    let policy = resources.policy();
+    debug_assert_eq!(resources.policy(), *execution.resources());
     finish_styled_line_iter_with_observer(
         lines,
         options,
         trim,
         resources,
         Some(deferred),
-        AsciiExecution::for_test(&policy),
+        execution,
         before_materialize,
     )
 }

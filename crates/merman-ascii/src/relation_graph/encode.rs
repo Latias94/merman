@@ -1,10 +1,8 @@
 use super::RelationGraphLine;
 use crate::Result;
 #[cfg(test)]
-use crate::canvas::finish_styled_line_iter_with_deferred_probe;
-#[cfg(test)]
 use crate::canvas::finish_styled_line_iter_with_deferred_resources;
-use crate::canvas::finish_styled_line_iter_with_deferred_resources_with_execution;
+use crate::canvas::finish_styled_line_iter_with_deferred_resources_with_execution_and_observer;
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
@@ -57,19 +55,37 @@ pub(crate) fn render_lines_with_deferred_options_with_execution(
     deferred: &DeferredTextRegistry<'_>,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    render_lines_with_deferred_options_with_execution_and_observer(
+        lines,
+        options,
+        resources,
+        deferred,
+        execution,
+        || {},
+    )
+}
+
+pub(crate) fn render_lines_with_deferred_options_with_execution_and_observer(
+    lines: &[RelationGraphLine],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'_>,
+    execution: AsciiExecution<'_>,
+    before_materialize: impl FnOnce(),
+) -> Result<String> {
     if lines.is_empty() {
         return Ok(String::new());
     }
 
     assert_width_profile(lines, options);
-    let mut resources = execution.resource_context(resources, merman_core::OperationPhase::Emit);
-    finish_styled_line_iter_with_deferred_resources_with_execution(
+    finish_styled_line_iter_with_deferred_resources_with_execution_and_observer(
         lines.iter().map(RelationGraphLine::styled),
         options,
         true,
-        &mut resources,
+        resources,
         deferred,
         execution,
+        before_materialize,
     )
 }
 
@@ -81,17 +97,13 @@ pub(crate) fn render_lines_with_deferred_probe(
     deferred: &DeferredTextRegistry<'_>,
     before_materialize: impl FnOnce(),
 ) -> Result<String> {
-    if lines.is_empty() {
-        return Ok(String::new());
-    }
-
-    assert_width_profile(lines, options);
-    finish_styled_line_iter_with_deferred_probe(
-        lines.iter().map(RelationGraphLine::styled),
+    let policy = resources.policy();
+    render_lines_with_deferred_options_with_execution_and_observer(
+        lines,
         options,
-        true,
         resources,
         deferred,
+        AsciiExecution::for_test(&policy),
         before_materialize,
     )
 }
