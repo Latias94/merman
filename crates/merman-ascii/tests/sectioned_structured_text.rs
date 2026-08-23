@@ -4,17 +4,7 @@ use merman_ascii::{AsciiError, AsciiRenderOptions};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
-use merman_core::{Engine, ParseOptions};
-use support::render_model;
-
-fn render_parsed(source: &str) -> String {
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("diagram should parse")
-        .expect("diagram should be detected");
-    render_model(parsed.model(), &AsciiRenderOptions::ascii())
-        .expect("parsed structured-text diagram should render")
-}
+use support::{render_model, render_source};
 
 fn timeline_task(section: &str, section_index: Option<usize>, task: &str) -> TimelineRenderTask {
     TimelineRenderTask {
@@ -42,7 +32,7 @@ fn journey_task(section: &str, section_index: Option<usize>, task: &str) -> Jour
 
 #[test]
 fn timeline_duplicate_section_fixture_preserves_occurrence_ownership() {
-    let rendered = render_parsed(include_str!(
+    let rendered = render_source(include_str!(
         "../../../fixtures/timeline/timeline_stress_section_name_repeated.mmd"
     ));
 
@@ -65,7 +55,7 @@ fn timeline_duplicate_section_fixture_preserves_occurrence_ownership() {
 
 #[test]
 fn journey_duplicate_sections_preserve_parser_occurrence_ownership() {
-    let rendered = render_parsed(concat!(
+    let rendered = render_source(concat!(
         "journey\n",
         "title Repeated journey\n",
         "section Repeated\n",
