@@ -56,7 +56,8 @@ pub fn describe_theme_support(query: &ThemeSupportQueryV1) -> ThemeCapabilityDes
         );
     };
     if let Err(rejection) = qualify_common_support(family, output, Some(target)) {
-        return reject_v1(query, rejection);
+        let SupportRejection { state, reason_id } = rejection;
+        return descriptor(query, state, [reason_id]);
     }
 
     let claim = match facet {
@@ -169,7 +170,8 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
         ResolvedSubject::BaseTypography(_) => None,
     };
     if let Err(rejection) = qualify_common_support(family, output, target) {
-        return reject_v2(query, rejection);
+        let SupportRejection { state, reason_id } = rejection;
+        return descriptor_v2(query, state, [reason_id]);
     }
 
     let claim = match subject {
@@ -185,7 +187,6 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
     descriptor_v2_from_claim(query, claim)
 }
 
-#[derive(Clone, Copy)]
 struct SupportRejection {
     state: ThemeSupportStateV1,
     reason_id: &'static str,
@@ -217,14 +218,10 @@ fn qualify_common_support(
                 reason_id: "theme-support.terminal-qualification-incomplete",
             });
         }
-        ThemeSupportOutputV1::Png | ThemeSupportOutputV1::Jpeg | ThemeSupportOutputV1::Pdf => {
-            return Err(SupportRejection {
-                state: ThemeSupportStateV1::Unverified,
-                reason_id: "theme-support.output-qualification-not-owned-by-renderer",
-            });
-        }
         ThemeSupportOutputV1::StandaloneSvg => {}
         _ => {
+            // Unknown future output identifiers stay fail-closed until the renderer owns their
+            // terminal qualification and the support manifest has an explicit row.
             return Err(SupportRejection {
                 state: ThemeSupportStateV1::Unverified,
                 reason_id: "theme-support.output-qualification-not-owned-by-renderer",
@@ -244,20 +241,6 @@ fn qualify_common_support(
         });
     }
     Ok(())
-}
-
-fn reject_v1(
-    query: &ThemeSupportQueryV1,
-    rejection: SupportRejection,
-) -> ThemeCapabilityDescriptorV1 {
-    descriptor(query, rejection.state, [rejection.reason_id])
-}
-
-fn reject_v2(
-    query: &ThemeSupportQueryV2,
-    rejection: SupportRejection,
-) -> ThemeCapabilityDescriptorV2 {
-    descriptor_v2(query, rejection.state, [rejection.reason_id])
 }
 
 fn descriptor_from_claim(
