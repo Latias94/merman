@@ -14,6 +14,7 @@ pub struct FlowchartC6SvgReceipt {
     native_text: bool,
     has_foreign_object: bool,
     has_prepared_tokens: bool,
+    canvas: Option<FlowchartC6CanvasReceipt>,
     nodes: Box<[FlowchartC6NodeReceipt]>,
     digest: [u8; 32],
 }
@@ -21,12 +22,31 @@ pub struct FlowchartC6SvgReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlowchartC6NodeReceipt {
     id: Box<str>,
-    fill: Box<str>,
+    fill: Option<Box<str>>,
     stroke: Box<str>,
     stroke_width_bits: u64,
     radius_x_bits: u64,
     radius_y_bits: u64,
+    dasharray: Box<str>,
+    font_family: Box<str>,
     region_bits: [u64; 4],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowchartC6CanvasReceipt {
+    gradient_units: Box<str>,
+    spread_method: Box<str>,
+    x1_bits: u64,
+    y1_bits: u64,
+    x2_bits: u64,
+    y2_bits: u64,
+    stops: Box<[FlowchartC6GradientStopReceipt]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowchartC6GradientStopReceipt {
+    offset_bits: u64,
+    color: Box<str>,
 }
 
 impl FlowchartC6SvgReceipt {
@@ -66,7 +86,9 @@ impl FlowchartC6SvgReceipt {
                 return None;
             }
             let rect = rects[0];
-            let fill = style_value(rect, "fill")?.to_owned().into_boxed_str();
+            let fill = style_or_attribute_fill(rect)
+                .map(str::to_owned)
+                .map(String::into_boxed_str);
             let stroke = style_value(rect, "stroke")?.to_owned().into_boxed_str();
             let stroke_width = style_value(rect, "stroke-width")?
                 .trim()
@@ -83,6 +105,16 @@ impl FlowchartC6SvgReceipt {
             {
                 return None;
             }
+            let dasharray = style_value(rect, "stroke-dasharray")
+                .unwrap_or_default()
+                .to_owned()
+                .into_boxed_str();
+            let font_family = wrapper
+                .descendants()
+                .find_map(|node| style_value(node, "font-family"))
+                .unwrap_or_default()
+                .to_owned()
+                .into_boxed_str();
             nodes.push(FlowchartC6NodeReceipt {
                 id: id.to_owned().into_boxed_str(),
                 fill,
@@ -90,6 +122,8 @@ impl FlowchartC6SvgReceipt {
                 stroke_width_bits: stroke_width.to_bits(),
                 radius_x_bits: radius_x.to_bits(),
                 radius_y_bits: radius_y.to_bits(),
+                dasharray,
+                font_family,
                 region_bits: region.map(f64::to_bits),
             });
         }
@@ -101,6 +135,7 @@ impl FlowchartC6SvgReceipt {
                 .descendants()
                 .any(|node| node.has_tag_name("foreignObject")),
             has_prepared_tokens: svg.contains("merman-prepared-"),
+            canvas: observe_canvas(&document),
             nodes: nodes.into_boxed_slice(),
             digest: [0; 32],
         };
@@ -147,7 +182,7 @@ impl FlowchartC6SvgReceipt {
             && self.nodes.len() == 6
             && self.nodes.iter().enumerate().all(|(ordinal, node)| {
                 node.id.as_ref() == node_ids[ordinal]
-                    && node.fill.as_ref() == palette[ordinal % palette.len()]
+                    && node.fill.as_deref() == Some(palette[ordinal % palette.len()])
                     && node.stroke.as_ref() == border
                     && approx_eq(node.stroke_width(), stroke_width)
                     && approx_eq(node.radius_x(), radius)
@@ -155,9 +190,42 @@ impl FlowchartC6SvgReceipt {
             })
     }
 
+    pub fn proves_spotless_flowchart_contract(
+        &self,
+        node_ids: &[&str],
+        stripe_colors: &[&str],
+        stop_offsets: &[f64],
+        period_px: f64,
+        stroke: &str,
+        stroke_width: f64,
+        dasharray: &str,
+        radius: f64,
+        font_family: &str,
+    ) -> bool {
+        node_ids.len() == 4
+            && stripe_colors.len() == 2
+            && stop_offsets.len() == 4
+            && self.native_text
+            && !self.has_foreign_object
+            && !self.has_prepared_tokens
+            && self.nodes.len() == 4
+            && self.canvas.as_ref().is_some_and(|canvas| {
+                canvas.matches_repeating_gradient(stripe_colors, stop_offsets, period_px)
+            })
+            && self.nodes.iter().enumerate().all(|(ordinal, node)| {
+                node.id.as_ref() == node_ids[ordinal]
+                    && node.stroke.as_ref() == stroke
+                    && approx_eq(node.stroke_width(), stroke_width)
+                    && node.dasharray.as_ref() == dasharray
+                    && approx_eq(node.radius_x(), radius)
+                    && approx_eq(node.radius_y(), radius)
+                    && node.font_family.contains(font_family)
+            })
+    }
+
     fn canonical_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        hasher.update(b"merman.flowchart-c6-svg-receipt.v1\0");
+        hasher.update(b"merman.flowchart-c6-svg-receipt.v2\0");
         hasher.update(self.artifact_digest);
         for value in self.view_box_bits {
             hasher.update(value.to_be_bytes());
@@ -170,14 +238,29 @@ impl FlowchartC6SvgReceipt {
         hasher.update((self.nodes.len() as u64).to_be_bytes());
         for node in self.nodes.iter() {
             update_len_prefixed(&mut hasher, node.id.as_bytes());
-            update_len_prefixed(&mut hasher, node.fill.as_bytes());
+            match &node.fill {
+                Some(fill) => {
+                    hasher.update([1]);
+                    update_len_prefixed(&mut hasher, fill.as_bytes());
+                }
+                None => hasher.update([0]),
+            }
             update_len_prefixed(&mut hasher, node.stroke.as_bytes());
             hasher.update(node.stroke_width_bits.to_be_bytes());
             hasher.update(node.radius_x_bits.to_be_bytes());
             hasher.update(node.radius_y_bits.to_be_bytes());
+            update_len_prefixed(&mut hasher, node.dasharray.as_bytes());
+            update_len_prefixed(&mut hasher, node.font_family.as_bytes());
             for value in node.region_bits {
                 hasher.update(value.to_be_bytes());
             }
+        }
+        match &self.canvas {
+            Some(canvas) => {
+                hasher.update([1]);
+                canvas.update_digest(&mut hasher);
+            }
+            None => hasher.update([0]),
         }
         hasher.finalize().into()
     }
@@ -205,6 +288,68 @@ impl FlowchartC6NodeReceipt {
     }
 }
 
+impl FlowchartC6CanvasReceipt {
+    fn matches_repeating_gradient(
+        &self,
+        stripe_colors: &[&str],
+        stop_offsets: &[f64],
+        period_px: f64,
+    ) -> bool {
+        if stripe_colors.len() != 2 || stop_offsets.len() != 4 {
+            return false;
+        }
+        let x1 = f64::from_bits(self.x1_bits);
+        let y1 = f64::from_bits(self.y1_bits);
+        let x2 = f64::from_bits(self.x2_bits);
+        let y2 = f64::from_bits(self.y2_bits);
+        let expected_colors = [
+            stripe_colors[0],
+            stripe_colors[0],
+            stripe_colors[1],
+            stripe_colors[1],
+        ];
+        let vector_x = x2 - x1;
+        let vector_y = y2 - y1;
+        self.gradient_units.as_ref() == "userSpaceOnUse"
+            && self.spread_method.as_ref() == "repeat"
+            && approx_eq(x1, 0.0)
+            && approx_eq(y1, 0.0)
+            && vector_x > 0.0
+            && vector_y < 0.0
+            && approx_eq(vector_x, -vector_y)
+            && period_px.is_finite()
+            && period_px > 0.0
+            && approx_eq(vector_x.hypot(vector_y), period_px)
+            && self.stops.len() == stop_offsets.len()
+            && self
+                .stops
+                .iter()
+                .zip(stop_offsets.iter().zip(expected_colors))
+                .all(|(stop, (offset, color))| {
+                    approx_eq(stop.offset(), *offset) && stop.color.as_ref() == color
+                })
+    }
+
+    fn update_digest(&self, hasher: &mut Sha256) {
+        update_len_prefixed(hasher, self.gradient_units.as_bytes());
+        update_len_prefixed(hasher, self.spread_method.as_bytes());
+        for value in [self.x1_bits, self.y1_bits, self.x2_bits, self.y2_bits] {
+            hasher.update(value.to_be_bytes());
+        }
+        hasher.update((self.stops.len() as u64).to_be_bytes());
+        for stop in self.stops.iter() {
+            hasher.update(stop.offset_bits.to_be_bytes());
+            update_len_prefixed(hasher, stop.color.as_bytes());
+        }
+    }
+}
+
+impl FlowchartC6GradientStopReceipt {
+    fn offset(&self) -> f64 {
+        f64::from_bits(self.offset_bits)
+    }
+}
+
 fn update_len_prefixed(hasher: &mut Sha256, value: &[u8]) {
     hasher.update((value.len() as u64).to_be_bytes());
     hasher.update(value);
@@ -223,6 +368,94 @@ fn parse_view_box(raw: &str) -> Option<[f64; 4]> {
         return None;
     }
     Some([*left, *top, *width, *height])
+}
+
+fn observe_canvas(document: &Document<'_>) -> Option<FlowchartC6CanvasReceipt> {
+    let bases = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect") && node.attribute("data-merman-theme-canvas") == Some("base")
+        })
+        .collect::<Vec<_>>();
+    if bases.len() != 1
+        || document
+            .descendants()
+            .any(|node| node.attribute("data-merman-theme-canvas-layer").is_some())
+    {
+        return None;
+    }
+    let base = bases[0];
+    let gradient_id = style_or_attribute_fill(base).and_then(local_url_id)?;
+    let gradients = document
+        .descendants()
+        .filter(|node| node.attribute("id") == Some(gradient_id))
+        .collect::<Vec<_>>();
+    if gradients.len() != 1 || !gradients[0].has_tag_name("linearGradient") {
+        return None;
+    }
+    let gradient = gradients[0];
+    let x1 = numeric_attribute(gradient, "x1")?;
+    let y1 = numeric_attribute(gradient, "y1")?;
+    let x2 = numeric_attribute(gradient, "x2")?;
+    let y2 = numeric_attribute(gradient, "y2")?;
+    let elements = gradient
+        .children()
+        .filter(|node| node.is_element())
+        .collect::<Vec<_>>();
+    if elements.is_empty() || elements.iter().any(|node| !node.has_tag_name("stop")) {
+        return None;
+    }
+    let stops = elements
+        .into_iter()
+        .map(|stop| {
+            Some(FlowchartC6GradientStopReceipt {
+                offset_bits: percent_value(stop.attribute("offset")?)?.to_bits(),
+                color: stop.attribute("stop-color")?.to_owned().into_boxed_str(),
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(FlowchartC6CanvasReceipt {
+        gradient_units: gradient
+            .attribute("gradientUnits")
+            .unwrap_or_default()
+            .to_owned()
+            .into_boxed_str(),
+        spread_method: gradient
+            .attribute("spreadMethod")
+            .unwrap_or_default()
+            .to_owned()
+            .into_boxed_str(),
+        x1_bits: x1.to_bits(),
+        y1_bits: y1.to_bits(),
+        x2_bits: x2.to_bits(),
+        y2_bits: y2.to_bits(),
+        stops: stops.into_boxed_slice(),
+    })
+}
+
+fn style_or_attribute_fill<'a>(node: Node<'a, '_>) -> Option<&'a str> {
+    style_value(node, "fill").or_else(|| node.attribute("fill"))
+}
+
+fn local_url_id(value: &str) -> Option<&str> {
+    value
+        .strip_prefix("url(#")
+        .and_then(|value| value.strip_suffix(')'))
+}
+
+fn percent_value(value: &str) -> Option<f64> {
+    value
+        .strip_suffix('%')?
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+}
+
+fn numeric_attribute(node: Node<'_, '_>, name: &str) -> Option<f64> {
+    node.attribute(name)?
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
 }
 
 fn class_contains(node: Node<'_, '_>, class_name: &str) -> bool {
@@ -387,5 +620,102 @@ mod tests {
             5.0,
         ));
         assert_ne!(receipt.digest(), digest);
+    }
+
+    #[test]
+    fn receipt_proves_spotless_flowchart_gradient_and_terminal_nodes() {
+        let svg = sample_spotless_svg();
+        assert_spotless_contract(&spotless_receipt(&svg));
+    }
+
+    #[test]
+    fn receipt_rejects_mutated_spotless_gradient_or_terminal_style() {
+        let valid = sample_spotless_svg();
+        let mutations = [
+            valid.replace("offset=\"50%\"", "offset=\"0%\""),
+            valid.replace("url(#stripe)", "url(#missing-gradient)"),
+            valid.replace("x2=\"14.1421356237\"", "x2=\"10\""),
+            valid.replace("stroke-dasharray:6 4", "stroke-dasharray:4 2"),
+            valid.replace("font-family:Excalifont", "font-family:Arial"),
+        ];
+
+        for mutated in mutations {
+            assert!(
+                !spotless_receipt(&mutated).proves_spotless_flowchart_contract(
+                    &["A", "B", "C", "D"],
+                    &["#e7e2d6", "#d2ccc0"],
+                    &[0.0, 50.0, 51.0, 100.0],
+                    20.0,
+                    "#2c2416",
+                    2.0,
+                    "6 4",
+                    4.0,
+                    "Excalifont",
+                ),
+                "mutation unexpectedly retained the Spotless contract: {mutated}"
+            );
+        }
+    }
+
+    #[test]
+    fn receipt_rejects_ambiguous_spotless_canvas_structure() {
+        let valid = sample_spotless_svg();
+        let mutations = [
+            valid.replace(
+                "</svg>",
+                "<rect data-merman-theme-canvas=\"base\" fill=\"url(#stripe)\"/></svg>",
+            ),
+            valid.replace("</svg>", "<g data-merman-theme-canvas-layer=\"0\"/></svg>"),
+            valid.replace("</linearGradient>", "<g/></linearGradient>"),
+        ];
+
+        for mutated in mutations {
+            let receipt = spotless_receipt(&mutated);
+            assert!(
+                !receipt.proves_spotless_flowchart_contract(
+                    &["A", "B", "C", "D"],
+                    &["#e7e2d6", "#d2ccc0"],
+                    &[0.0, 50.0, 51.0, 100.0],
+                    20.0,
+                    "#2c2416",
+                    2.0,
+                    "6 4",
+                    4.0,
+                    "Excalifont",
+                ),
+                "ambiguous canvas unexpectedly retained the Spotless contract: {mutated}"
+            );
+        }
+    }
+
+    fn spotless_receipt(svg: &str) -> FlowchartC6SvgReceipt {
+        let digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
+        FlowchartC6SvgReceipt::observe_svg(svg, digest).expect("seal receipt")
+    }
+
+    fn assert_spotless_contract(receipt: &FlowchartC6SvgReceipt) {
+        assert!(receipt.proves_spotless_flowchart_contract(
+            &["A", "B", "C", "D"],
+            &["#e7e2d6", "#d2ccc0"],
+            &[0.0, 50.0, 51.0, 100.0],
+            20.0,
+            "#2c2416",
+            2.0,
+            "6 4",
+            4.0,
+            "Excalifont",
+        ));
+    }
+
+    fn sample_spotless_svg() -> String {
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 80">
+<defs><linearGradient id="stripe" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="14.1421356237" y2="-14.1421356237" spreadMethod="repeat"><stop offset="0%" stop-color="#e7e2d6"/><stop offset="50%" stop-color="#e7e2d6"/><stop offset="51%" stop-color="#d2ccc0"/><stop offset="100%" stop-color="#d2ccc0"/></linearGradient></defs>
+<rect data-merman-theme-canvas="base" fill="url(#stripe)" x="0" y="0" width="180" height="80"/>
+<text x="0" y="10">native</text>
+<g data-id="A" data-et="node"><rect class="basic label-container" x="10" y="25" width="30" height="20" rx="4" ry="4" style="fill:#fff;stroke:#2c2416;stroke-width:2px;stroke-dasharray:6 4"/><text style="font-family:Excalifont">A</text></g>
+<g data-id="B" data-et="node"><rect class="basic label-container" x="55" y="25" width="30" height="20" rx="4" ry="4" style="fill:#fff;stroke:#2c2416;stroke-width:2px;stroke-dasharray:6 4"/><text style="font-family:Excalifont">B</text></g>
+<g data-id="C" data-et="node"><rect class="basic label-container" x="100" y="25" width="30" height="20" rx="4" ry="4" style="fill:#fff;stroke:#2c2416;stroke-width:2px;stroke-dasharray:6 4"/><text style="font-family:Excalifont">C</text></g>
+<g data-id="D" data-et="node"><rect class="basic label-container" x="145" y="25" width="30" height="20" rx="4" ry="4" style="fill:#fff;stroke:#2c2416;stroke-width:2px;stroke-dasharray:6 4"/><text style="font-family:Excalifont">D</text></g>
+</svg>"##.to_owned()
     }
 }
