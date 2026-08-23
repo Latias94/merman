@@ -595,6 +595,43 @@ fn requirement_source_class_and_inline_fills_outrank_typed_fill_per_node() {
 }
 
 #[test]
+fn requirement_source_styles_reject_css_injection_tokens() {
+    let source = r#"requirementDiagram
+  requirement unsafe {
+    id: 1
+    text: Unsafe source style
+    risk: low
+    verifymethod: analysis
+  }
+  classDef unsafe fill:#123456;stroke:url(javascript:alert(1))
+  class unsafe unsafe
+  style unsafe stroke:#654321;fill:red
+"#;
+    let theme = requirement_fill_and_stroke_theme(
+        CanvasPaint::solid("#abcdef").expect("valid Requirement fill"),
+        CanvasPaint::solid("#fedcba").expect("valid Requirement stroke"),
+    );
+    let rendered = render_requirement_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Requirement SVG");
+    let requirement = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("requirement-theme-unsafe"))
+        .expect("unsafe Requirement node");
+    let emitted_styles = requirement
+        .descendants()
+        .filter_map(|node| node.attribute("style"))
+        .collect::<Vec<_>>()
+        .join(";");
+
+    assert!(
+        !emitted_styles.contains("url("),
+        "unsafe URL reached SVG: {emitted_styles}"
+    );
+    assert!(!emitted_styles.contains("javascript:"));
+    assert!(!emitted_styles.contains(";fill:red"));
+}
+
+#[test]
 fn requirement_fill_is_not_applicable_when_every_node_has_a_source_owner() {
     let source = r#"requirementDiagram
   requirement assigned {

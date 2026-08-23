@@ -252,18 +252,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
         let mut styles: IndexMap<String, String> = IndexMap::new();
         for raw in css_styles {
-            let s = raw.trim().trim_end_matches(';');
-            let Some((k, v)) = s.split_once(':') else {
+            let Some(parsed) = crate::mermaid_style::parse_style_declaration(raw) else {
                 continue;
             };
-            let k = k.trim().to_string();
-            let mut v = v.trim().to_string();
-            if k.is_empty() || v.is_empty() {
-                continue;
-            }
-            if let Some((vv, _)) = v.split_once("!important") {
-                v = vv.trim().to_string();
-            }
+            let k = parsed.property().to_string();
+            let v = parsed.value().to_string();
 
             // JS `Map#set` overwrites the value without changing the key order.
             if let Some(existing) = styles.get_mut(&k) {
