@@ -1411,7 +1411,10 @@ pub(super) fn classify_rule_facet(
     if family == DiagramFamilyId::TIMELINE
         && target == ThemeTarget::TimelineEvent
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
-        && facet == FamilyThemeRuleFacet::Opacity
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Radius | FamilyThemeRuleFacet::Opacity
+        )
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -3168,7 +3171,7 @@ mod tests {
     }
 
     #[test]
-    fn timeline_owns_only_unqualified_static_event_opacity() {
+    fn timeline_owns_only_unqualified_static_event_geometry_and_opacity() {
         let event_opacity = ThemeStylePatch {
             paint: ThemePaintPatch {
                 opacity: Specified::Value(0.42),
@@ -3176,18 +3179,30 @@ mod tests {
             },
             ..ThemeStylePatch::default()
         };
-        let unqualified = ThemeRule::new(ThemeTarget::TimelineEvent, event_opacity.clone());
-        let routes = compile_rule_routes(DiagramFamilyId::TIMELINE, 0, &unqualified);
-        assert_eq!(routes.len(), 1);
-        assert_eq!(
-            routes[0].disposition(),
-            FamilyThemeDisposition::TypedAdapter
-        );
+        let event_radius = ThemeStylePatch {
+            geometry: ThemeGeometryPatch {
+                radius: Specified::Value(8.0),
+            },
+            ..ThemeStylePatch::default()
+        };
+        for style in [event_opacity.clone(), event_radius.clone()] {
+            let unqualified = ThemeRule::new(ThemeTarget::TimelineEvent, style);
+            let routes = compile_rule_routes(DiagramFamilyId::TIMELINE, 0, &unqualified);
+            assert_eq!(routes.len(), 1);
+            assert_eq!(
+                routes[0].disposition(),
+                FamilyThemeDisposition::TypedAdapter
+            );
+        }
 
         for rule in [
             ThemeRule::new(ThemeTarget::TimelineEvent, event_opacity.clone())
                 .with_variant(ThemeVariant::Default),
-            ThemeRule::new(ThemeTarget::TimelineEvent, event_opacity)
+            ThemeRule::new(ThemeTarget::TimelineEvent, event_opacity.clone())
+                .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+            ThemeRule::new(ThemeTarget::TimelineEvent, event_radius.clone())
+                .with_variant(ThemeVariant::Default),
+            ThemeRule::new(ThemeTarget::TimelineEvent, event_radius)
                 .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
         ] {
             assert!(

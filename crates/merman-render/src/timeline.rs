@@ -13,7 +13,10 @@ mod config;
 mod theme;
 
 pub(crate) use config::TimelineConfigView;
-pub(crate) use theme::{TimelineEventOpacityThemeReceipt, TimelineEventTheme};
+pub(crate) use theme::{TimelineEventTheme, TimelineEventThemeReceipt};
+
+pub(crate) const MERMAID_EVENT_RADIUS_PX: f64 = 5.0;
+pub(crate) const MERMAID_EVENT_RADIUS_TOKEN: &str = "5";
 
 const MAX_SECTIONS: i64 = 12;
 
