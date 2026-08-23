@@ -297,7 +297,8 @@ C6 and preset qualification have six deliberately separate layers:
    the 18-cell C6a ledger, preset qualification, or C7a eligibility.
 4. **Target proof receipts** are opaque inputs produced and sealed once by the production document
    and target adapters. With the private `internal-theme-acceptance` seam enabled, `merman-render`
-   captures one generic `SvgArtifactReceipt` while finalizing `RenderedDocument`; it records
+   captures one generic `SvgArtifactReceipt` while finalizing the renderer-owned
+   `StandaloneSvgArtifact`; `RenderedDocument` retains and borrows that sealed receipt. It records
    family-neutral DOM, inline-style, stylesheet, text, and basic geometry facts and binds them to
    the exact SVG artifact digest. Standalone SVG predicates consume that receipt together with the
    target admission receipt. PNG reuses the same sealed document receipt for source geometry and

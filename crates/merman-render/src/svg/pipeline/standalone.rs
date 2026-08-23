@@ -41,6 +41,8 @@ impl StandaloneSvgTerminalStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StandaloneSvgArtifact {
     inner: StandaloneSvgArtifactKind,
+    #[cfg(feature = "internal-theme-acceptance")]
+    artifact_receipt: Option<crate::svg_artifact_receipts::SvgArtifactReceipt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,8 +66,13 @@ struct ObservedStandaloneSvg {
 
 impl StandaloneSvgArtifact {
     pub(crate) fn from_resvg_compatible(svg: ResvgCompatibleSvg) -> Self {
+        #[cfg(feature = "internal-theme-acceptance")]
+        let artifact_receipt =
+            crate::svg_artifact_receipts::SvgArtifactReceipt::observe_finalized_svg(svg.as_str());
         Self {
             inner: StandaloneSvgArtifactKind::ResvgCompatible(svg),
+            #[cfg(feature = "internal-theme-acceptance")]
+            artifact_receipt,
         }
     }
 
@@ -121,6 +128,9 @@ impl StandaloneSvgArtifact {
             }
             Err(error) => return Err(error),
         };
+        #[cfg(feature = "internal-theme-acceptance")]
+        let artifact_receipt =
+            crate::svg_artifact_receipts::SvgArtifactReceipt::observe_finalized_svg(&svg);
         Ok(Self {
             inner: StandaloneSvgArtifactKind::Observed(ObservedStandaloneSvg {
                 svg,
@@ -133,6 +143,8 @@ impl StandaloneSvgArtifact {
                 finalization_report,
                 resource_fingerprint,
             }),
+            #[cfg(feature = "internal-theme-acceptance")]
+            artifact_receipt,
         })
     }
 
@@ -202,6 +214,15 @@ impl StandaloneSvgArtifact {
             StandaloneSvgArtifactKind::ResvgCompatible(svg) => Some(svg),
             StandaloneSvgArtifactKind::Observed(_) => None,
         }
+    }
+
+    /// Returns the renderer-owned observation of this exact finalized SVG when the private theme
+    /// acceptance feature is enabled.
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub fn svg_artifact_receipt(
+        &self,
+    ) -> Option<&crate::svg_artifact_receipts::SvgArtifactReceipt> {
+        self.artifact_receipt.as_ref()
     }
 
     pub fn into_string(self) -> String {
@@ -334,5 +355,24 @@ mod tests {
         .expect_err("a resvg-safe artifact must fail closed on terminal validation errors");
 
         assert!(matches!(error, crate::Error::SvgPostprocess { .. }));
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    #[test]
+    fn finalized_svg_artifact_owns_the_generic_theme_receipt() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0h1v1z"/></svg>"#;
+        let sealed = crate::svg::SvgPipeline::resvg_safe()
+            .process_resvg_compatible(svg, &session)
+            .unwrap();
+        let artifact = StandaloneSvgArtifact::from_resvg_compatible(sealed);
+        let receipt = artifact
+            .svg_artifact_receipt()
+            .expect("the finalized renderer artifact must retain its receipt");
+
+        assert!(receipt.proves_artifact(receipt.artifact_digest()));
+        assert_eq!(receipt.view_box(), [0.0, 0.0, 10.0, 10.0]);
     }
 }

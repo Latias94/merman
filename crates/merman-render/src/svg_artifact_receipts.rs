@@ -71,6 +71,15 @@ pub struct SvgFontFaceObservation {
 }
 
 impl SvgArtifactReceipt {
+    /// Observes one renderer-finalized SVG and derives the artifact digest internally.
+    ///
+    /// The terminal SVG artifact uses this entry point so the receipt is created at the renderer
+    /// boundary rather than reconstructed by a higher-level facade.
+    pub(crate) fn observe_finalized_svg(svg: &str) -> Option<Self> {
+        let artifact_digest: [u8; 32] = Sha256::digest(svg.as_bytes()).into();
+        Self::observe_verified_svg(svg, artifact_digest)
+    }
+
     /// Observes the finalized public SVG and binds the projection to its exact byte digest.
     pub fn observe_svg(svg: &str, artifact_digest: [u8; 32]) -> Option<Self> {
         if artifact_digest == [0; 32]
@@ -78,6 +87,10 @@ impl SvgArtifactReceipt {
         {
             return None;
         }
+        Self::observe_verified_svg(svg, artifact_digest)
+    }
+
+    fn observe_verified_svg(svg: &str, artifact_digest: [u8; 32]) -> Option<Self> {
         let document = Document::parse(svg).ok()?;
         let root = document.root_element();
         let view_box = parse_view_box(root.attribute("viewBox")?)?;

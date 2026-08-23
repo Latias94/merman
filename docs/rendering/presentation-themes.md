@@ -136,9 +136,10 @@ render can report application, residuals, host dependence, or portability.
 `internal-theme-acceptance` is a workspace-only feature used by the non-published
 `merman-theme-acceptance` crate. It is not a public theme capability and it does not add a
 runtime dependency to ordinary `merman` builds. The feature exposes one generic,
-renderer-owned `SvgArtifactReceipt` through a hidden seam so the acceptance harness can inspect
-immutable facts from the finalized SVG without reparsing the SVG or rebuilding CSS and geometry
-semantics.
+renderer-owned `SvgArtifactReceipt` through a hidden seam. The receipt is sealed when the
+renderer creates its finalized `StandaloneSvgArtifact`; the facade only retains and borrows that
+receipt. The acceptance harness can therefore inspect immutable facts from the finalized SVG
+without reparsing the SVG or rebuilding CSS and geometry semantics.
 
 The C6a harness then applies fixture-specific semantic predicates to those facts and combines
 them with the target-owned admission receipts. PNG checks are projections of the same
