@@ -136,6 +136,7 @@ pub mod __theme_acceptance {
     pub struct TargetArtifactView<'a> {
         bytes: &'a [u8],
         receipt: &'a crate::TargetAdmissionReceipt,
+        flowchart_c6_svg_receipt: Option<&'a merman_render::__private::FlowchartC6SvgReceipt>,
     }
 
     impl<'a> TargetArtifactView<'a> {
@@ -143,6 +144,7 @@ pub mod __theme_acceptance {
             Self {
                 bytes: document.svg().as_bytes(),
                 receipt: document.standalone_svg_admission(),
+                flowchart_c6_svg_receipt: document.flowchart_c6_svg_receipt(),
             }
         }
 
@@ -151,6 +153,7 @@ pub mod __theme_acceptance {
             Self {
                 bytes: output.bytes(),
                 receipt: output.admission(),
+                flowchart_c6_svg_receipt: None,
             }
         }
 
@@ -159,6 +162,7 @@ pub mod __theme_acceptance {
             Self {
                 bytes: output.bytes(),
                 receipt: output.admission(),
+                flowchart_c6_svg_receipt: None,
             }
         }
 
@@ -168,6 +172,12 @@ pub mod __theme_acceptance {
 
         pub const fn receipt(self) -> &'a crate::TargetAdmissionReceipt {
             self.receipt
+        }
+
+        pub const fn flowchart_c6_svg_receipt(
+            self,
+        ) -> Option<&'a merman_render::__private::FlowchartC6SvgReceipt> {
+            self.flowchart_c6_svg_receipt
         }
     }
 

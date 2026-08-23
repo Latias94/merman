@@ -41,6 +41,8 @@ pub struct RenderedDocument {
     standalone_svg_admission: TargetAdmissionReceipt,
     #[cfg(feature = "internal-theme-acceptance")]
     theme_route_cutover_receipts: Box<[merman_render::__private::ThemeRouteCutoverReceipt]>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    flowchart_c6_svg_receipt: Option<merman_render::__private::FlowchartC6SvgReceipt>,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -147,6 +149,11 @@ impl RenderedDocument {
         let theme_route_cutover_receipts =
             merman_render::__private::seal_theme_route_cutover_receipts(&family, public_svg_digest)
                 .into_boxed_slice();
+        #[cfg(feature = "internal-theme-acceptance")]
+        let flowchart_c6_svg_receipt = merman_render::__private::FlowchartC6SvgReceipt::observe_svg(
+            svg.as_str(),
+            public_svg_digest,
+        );
         let evidence = Arc::new(RenderEvidence::from_family(family));
         let portability = document_portability_report(&svg, &evidence);
         let native_svg = svg.native_export_svg();
@@ -176,6 +183,8 @@ impl RenderedDocument {
             standalone_svg_admission,
             #[cfg(feature = "internal-theme-acceptance")]
             theme_route_cutover_receipts,
+            #[cfg(feature = "internal-theme-acceptance")]
+            flowchart_c6_svg_receipt,
         }
     }
 
@@ -225,6 +234,13 @@ impl RenderedDocument {
         &self,
     ) -> &[merman_render::__private::ThemeRouteCutoverReceipt] {
         &self.theme_route_cutover_receipts
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fn flowchart_c6_svg_receipt(
+        &self,
+    ) -> Option<&merman_render::__private::FlowchartC6SvgReceipt> {
+        self.flowchart_c6_svg_receipt.as_ref()
     }
 
     #[cfg(feature = "png")]

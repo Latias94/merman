@@ -275,6 +275,16 @@ impl<'a> C6TargetArtifact<'a> {
         Self { view }
     }
 
+    pub(crate) const fn receipt(&self) -> &TargetAdmissionReceipt {
+        self.view.receipt()
+    }
+
+    pub(crate) const fn flowchart_c6_svg_receipt(
+        &self,
+    ) -> Option<&merman_render::__private::FlowchartC6SvgReceipt> {
+        self.view.flowchart_c6_svg_receipt()
+    }
+
     /// Runs a semantic checker against the bound bytes and seals only after that checker succeeds.
     pub(crate) fn check_with<T, E>(
         self,
@@ -289,6 +299,7 @@ impl<'a> C6TargetArtifact<'a> {
                 target_receipt: self.view.receipt().clone(),
                 semantic_assertion_id,
                 mechanism_dispositions,
+                renderer_receipt_digest: None,
             },
         ))
     }
@@ -301,11 +312,18 @@ pub(crate) struct C6BoundTargetProof {
     target_receipt: TargetAdmissionReceipt,
     semantic_assertion_id: &'static str,
     mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+    renderer_receipt_digest: Option<[u8; 32]>,
 }
 
 impl C6BoundTargetProof {
     pub(crate) const fn target_receipt(&self) -> &TargetAdmissionReceipt {
         &self.target_receipt
+    }
+
+    pub(crate) fn attach_renderer_receipt(&mut self, digest: [u8; 32]) {
+        if digest != [0; 32] {
+            self.renderer_receipt_digest = Some(digest);
+        }
     }
 }
 
@@ -318,6 +336,7 @@ pub(crate) struct C6CellReceipt {
     target_receipt: TargetAdmissionReceipt,
     semantic_assertion_id: String,
     mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+    renderer_receipt_digest: Option<[u8; 32]>,
     residual_ids: BTreeSet<String>,
     digest: [u8; 32],
 }
@@ -335,6 +354,7 @@ pub(crate) fn seal_cell_from_evidence(
         target_receipt,
         semantic_assertion_id,
         mechanism_dispositions,
+        renderer_receipt_digest,
     } = proof;
     require_evidence(
         key,
@@ -415,6 +435,7 @@ pub(crate) fn seal_cell_from_evidence(
         target_receipt,
         semantic_assertion_id: semantic_assertion_id.to_owned(),
         mechanism_dispositions,
+        renderer_receipt_digest,
         residual_ids,
         digest: [0; 32],
     };
@@ -424,11 +445,18 @@ pub(crate) fn seal_cell_from_evidence(
 
 impl C6CellReceipt {
     fn canonical_digest(&self) -> [u8; 32] {
-        let mut value = b"merman.c6-cell-receipt.v8\0".to_vec();
+        let mut value = b"merman.c6-cell-receipt.v9\0".to_vec();
         encode_cell_key(&mut value, self.key);
         encode_render_group_key(&mut value, &self.render_group_key);
         value.extend_from_slice(&self.render_group_digest);
         value.extend_from_slice(&self.target_receipt.receipt_digest());
+        match self.renderer_receipt_digest {
+            Some(digest) => {
+                value.push(1);
+                value.extend_from_slice(&digest);
+            }
+            None => value.push(0),
+        }
         append_len_prefixed(&mut value, self.semantic_assertion_id.as_bytes());
         append_len_prefixed(&mut value, b"mechanism-dispositions");
         value.extend_from_slice(&mechanism_digest(&self.mechanism_dispositions));
@@ -1096,6 +1124,7 @@ mod tests {
             target_receipt: target_receipt.clone(),
             semantic_assertion_id: expectation.semantic_assertion_id().to_owned(),
             mechanism_dispositions,
+            renderer_receipt_digest: None,
             residual_ids: expectation.expected_residual_ids().clone(),
             digest: [0; 32],
         };

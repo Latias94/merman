@@ -7,8 +7,7 @@ use crate::observation::C6ObservedMechanismDisposition;
 
 use super::{
     BrutalistFlowchartFixtureContract, C6BoundTargetProof, C6ProofError, C6ProofResult,
-    C6RasterImage, C6TargetArtifact, class_contains, decode_bounded_png_artifact, parse_c6_hex_rgb,
-    parse_c6_svg_view_box, style_value, transformed_c6_svg_rect,
+    C6RasterImage, C6TargetArtifact, decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
 const NODE_IDS: [&str; 6] = ["A", "B", "C", "D", "E", "F"];
@@ -53,108 +52,55 @@ pub(crate) fn prove_brutalist_flowchart_svg(
     artifact: C6TargetArtifact<'_>,
 ) -> C6ProofResult<BrutalistFlowchartSvgProof> {
     let mechanisms = applied_cell_mechanisms();
-    let ((view_box, nodes), target_proof) = artifact.check_with(
+    let renderer_receipt = artifact.flowchart_c6_svg_receipt().ok_or_else(|| {
+        C6ProofError::new(
+            "flowchart-svg-observation",
+            "renderer did not seal a Flowchart SVG receipt",
+        )
+    })?;
+    let artifact_digest = artifact.receipt().artifact_digest();
+    c6_ensure!(
+        "flowchart-svg-observation",
+        renderer_receipt.proves_artifact(artifact_digest),
+        "renderer Flowchart SVG receipt is not bound to the target artifact"
+    );
+    let palette = contract
+        .palette_colors
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "flowchart-svg-contract",
+        renderer_receipt.proves_flowchart_node_contract(
+            &NODE_IDS,
+            &palette,
+            contract.border.color(),
+            f64::from(contract.border.width_px()),
+            f64::from(contract.radius_px),
+        ),
+        "renderer Flowchart SVG receipt does not satisfy the Brutalist contract"
+    );
+    let view_box = renderer_receipt.view_box();
+    let nodes = renderer_receipt
+        .node_regions()
+        .iter()
+        .map(|node| NodeGeometry {
+            rect: node.region(),
+        })
+        .collect::<Vec<_>>();
+    let renderer_receipt_digest = renderer_receipt.digest();
+    let ((view_box, nodes), mut target_proof) = artifact.check_with(
         "brutalist-flowchart-standalone-svg-v1",
         mechanisms.clone(),
-        |bytes| check_brutalist_flowchart_svg(contract, bytes),
+        |_| Ok((view_box, nodes)),
     )?;
+    target_proof.attach_renderer_receipt(renderer_receipt_digest);
     Ok(BrutalistFlowchartSvgProof {
         mechanisms,
         target_proof,
         view_box,
         nodes,
     })
-}
-
-fn check_brutalist_flowchart_svg(
-    contract: &BrutalistFlowchartFixtureContract<'_>,
-    bytes: &[u8],
-) -> C6ProofResult<([f64; 4], Vec<NodeGeometry>)> {
-    let svg = std::str::from_utf8(bytes)
-        .map_err(|error| C6ProofError::new("flowchart-svg-utf8", error.to_string()))?;
-    let document = roxmltree::Document::parse(svg)
-        .map_err(|error| C6ProofError::new("flowchart-svg-parse", error.to_string()))?;
-    let root = document.root_element();
-    let view_box = parse_c6_svg_view_box(root.attribute("viewBox").ok_or_else(|| {
-        C6ProofError::new("flowchart-svg-root", "Flowchart SVG root lacks a viewBox")
-    })?)?;
-
-    c6_ensure!(
-        "flowchart-svg-text",
-        document.descendants().any(|node| node.has_tag_name("text"))
-            && !document
-                .descendants()
-                .any(|node| node.has_tag_name("foreignObject"))
-            && !svg.contains("merman-prepared-"),
-        "Brutalist Flowchart did not retain terminal native SVG text"
-    );
-
-    let nodes = NODE_IDS
-        .iter()
-        .enumerate()
-        .map(|(ordinal, node_id)| {
-            let wrappers = document
-                .descendants()
-                .filter(|node| {
-                    node.has_tag_name("g")
-                        && node.attribute("data-id") == Some(*node_id)
-                        && node.attribute("data-et") == Some("node")
-                })
-                .collect::<Vec<_>>();
-            c6_ensure!(
-                "flowchart-svg-node",
-                wrappers.len() == 1,
-                "expected one Flowchart wrapper for {node_id}, found {}",
-                wrappers.len()
-            );
-            let wrapper = wrappers[0];
-            let rects = wrapper
-                .descendants()
-                .filter(|node| {
-                    node.has_tag_name("rect")
-                        && class_contains(*node, "basic")
-                        && class_contains(*node, "label-container")
-                })
-                .collect::<Vec<_>>();
-            c6_ensure!(
-                "flowchart-svg-node",
-                rects.len() == 1,
-                "expected one classic process rect for {node_id}, found {}",
-                rects.len()
-            );
-            let rect = rects[0];
-            let expected_fill = &contract.palette_colors[ordinal % contract.palette_colors.len()];
-            require_style(rect, "fill", expected_fill, node_id)?;
-            require_style(rect, "stroke", contract.border.color(), node_id)?;
-            let stroke_width = css_px(style_value(rect, "stroke-width").ok_or_else(|| {
-                C6ProofError::new(
-                    "flowchart-svg-node",
-                    format!("Flowchart node {node_id} lacks stroke-width"),
-                )
-            })?)?;
-            c6_ensure!(
-                "flowchart-svg-node",
-                approx_eq(stroke_width, f64::from(contract.border.width_px())),
-                "Flowchart node {node_id} stroke width is {stroke_width}, expected {}",
-                contract.border.width_px()
-            );
-            for name in ["rx", "ry"] {
-                let radius = numeric_attribute(rect, name)?;
-                c6_ensure!(
-                    "flowchart-svg-node",
-                    approx_eq(radius, f64::from(contract.radius_px)),
-                    "Flowchart node {node_id} {name} is {radius}, expected {}",
-                    contract.radius_px
-                );
-            }
-
-            Ok(NodeGeometry {
-                rect: transformed_c6_svg_rect(rect)?,
-            })
-        })
-        .collect::<C6ProofResult<Vec<_>>>()?;
-
-    Ok((view_box, nodes))
 }
 
 pub(crate) fn prove_brutalist_flowchart_png(
@@ -263,26 +209,6 @@ fn applied_cell_mechanisms() -> BTreeMap<ReferenceThemeMechanism, C6ObservedMech
         .collect()
 }
 
-fn require_style(
-    node: roxmltree::Node<'_, '_>,
-    property: &str,
-    expected: &str,
-    node_id: &str,
-) -> C6ProofResult<()> {
-    let actual = style_value(node, property).ok_or_else(|| {
-        C6ProofError::new(
-            "flowchart-svg-node",
-            format!("Flowchart node {node_id} lacks {property}"),
-        )
-    })?;
-    c6_ensure!(
-        "flowchart-svg-node",
-        actual == expected,
-        "Flowchart node {node_id} {property} is {actual}, expected {expected}"
-    );
-    Ok(())
-}
-
 fn fill_region(rect: [f64; 4], radius: f64, stroke_width: f64) -> C6ProofResult<[f64; 4]> {
     let [left, top, width, height] = rect;
     let inset = radius + stroke_width / 2.0 + 3.0;
@@ -356,32 +282,6 @@ fn prove_stroke_width(
         );
     }
     Ok(())
-}
-
-fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> C6ProofResult<f64> {
-    let value = node
-        .attribute(name)
-        .ok_or_else(|| C6ProofError::new("flowchart-svg-geometry", format!("missing {name}")))?
-        .parse::<f64>()
-        .map_err(|error| C6ProofError::new("flowchart-svg-geometry", error.to_string()))?;
-    c6_ensure!(
-        "flowchart-svg-geometry",
-        value.is_finite(),
-        "Flowchart SVG {name} is not finite"
-    );
-    Ok(value)
-}
-
-fn css_px(raw: &str) -> C6ProofResult<f64> {
-    raw.trim()
-        .strip_suffix("px")
-        .unwrap_or(raw.trim())
-        .parse::<f64>()
-        .map_err(|error| C6ProofError::new("flowchart-svg-node", error.to_string()))
-}
-
-fn approx_eq(left: f64, right: f64) -> bool {
-    (left - right).abs() <= 1e-6
 }
 
 #[cfg(test)]
