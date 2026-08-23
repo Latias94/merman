@@ -24,12 +24,15 @@ impl TimelineEventRadius {
         let max_radius = node.width.max(1.0).min(node.height.max(1.0)) / 2.0;
         let normalized_value = if value == 0.0 { 0.0 } else { value };
         let authored_value_px = f64::from(normalized_value);
-        let value_px = authored_value_px.min(max_radius);
+        let effective_value_px = authored_value_px.min(max_radius);
         let token = if authored_value_px > max_radius {
-            value_px.to_string()
+            effective_value_px.to_string()
         } else {
             normalized_value.to_string()
         };
+        let value_px = token
+            .parse::<f64>()
+            .expect("Timeline event radius token must be a canonical finite number");
         Self {
             token: token.into_boxed_str(),
             value_px,
@@ -421,6 +424,7 @@ impl TimelineEventThemeReceipt {
         &mut self,
         event_index: usize,
         emitted_opacity_token: Option<&str>,
+        emitted_opacity_matches: bool,
         emitted_radius_token: Option<&str>,
         emitted_radius_geometry_matches: bool,
     ) {
@@ -438,7 +442,7 @@ impl TimelineEventThemeReceipt {
                 .map(|radius| radius.token.as_ref())
                 .or(self.baseline_radius_token);
             (
-                emitted_opacity_token == expected_opacity_token,
+                emitted_opacity_matches && emitted_opacity_token == expected_opacity_token,
                 emitted_radius_geometry_matches
                     && expected_radius_token.map_or(emitted_radius_token.is_none(), |token| {
                         emitted_radius_token == Some(token)
@@ -483,25 +487,25 @@ mod tests {
     #[test]
     fn timeline_event_receipt_requires_each_terminal_event_once() {
         let mut complete = TimelineEventThemeReceipt::new(1);
-        complete.record_checkpointed_event(0, None, None, true);
+        complete.record_checkpointed_event(0, None, true, None, true);
         assert!(complete.proves(1));
 
         let mut incomplete = TimelineEventThemeReceipt::new(2);
-        incomplete.record_checkpointed_event(0, None, None, true);
+        incomplete.record_checkpointed_event(0, None, true, None, true);
         assert!(!incomplete.proves(2));
 
         let mut duplicate = TimelineEventThemeReceipt::new(1);
-        duplicate.record_checkpointed_event(0, None, None, true);
-        duplicate.record_checkpointed_event(0, None, None, true);
+        duplicate.record_checkpointed_event(0, None, true, None, true);
+        duplicate.record_checkpointed_event(0, None, true, None, true);
         assert!(!duplicate.proves(1));
 
         let mut out_of_order = TimelineEventThemeReceipt::new(2);
-        out_of_order.record_checkpointed_event(1, None, None, true);
-        out_of_order.record_checkpointed_event(0, None, None, true);
+        out_of_order.record_checkpointed_event(1, None, true, None, true);
+        out_of_order.record_checkpointed_event(0, None, true, None, true);
         assert!(!out_of_order.proves(2));
 
         let mut mismatch = TimelineEventThemeReceipt::new(1);
-        mismatch.record_checkpointed_event(0, Some("1"), None, true);
+        mismatch.record_checkpointed_event(0, Some("1"), true, None, true);
         assert!(!mismatch.proves(1));
     }
 
@@ -518,7 +522,7 @@ mod tests {
         }]
         .into_boxed_slice();
         let mut receipt = TimelineEventThemeReceipt::from_expectations(expectations);
-        receipt.record_checkpointed_event(0, None, Some("12"), true);
+        receipt.record_checkpointed_event(0, None, true, Some("12"), true);
 
         assert!(receipt.proves(1));
         assert!(receipt.radius_rules.contains(&7));
@@ -537,7 +541,7 @@ mod tests {
         }]
         .into_boxed_slice();
         let mut receipt = TimelineEventThemeReceipt::from_expectations(expectations.clone());
-        receipt.record_checkpointed_event(0, Some("0.5"), Some("12"), true);
+        receipt.record_checkpointed_event(0, Some("0.5"), true, Some("12"), true);
 
         assert!(receipt.proves(1));
         assert!(receipt.proves_rule(
@@ -550,8 +554,19 @@ mod tests {
         ));
 
         let mut mismatch = TimelineEventThemeReceipt::from_expectations(expectations);
-        mismatch.record_checkpointed_event(0, Some("0.5"), Some("13"), true);
+        mismatch.record_checkpointed_event(0, Some("0.5"), true, Some("13"), true);
         assert!(!mismatch.proves(1));
+
+        let expectations = vec![TimelineEventTerminalExpectation {
+            radius: None,
+            radius_rule_index: None,
+            opacity_token: Some("0.5".into()),
+            opacity_rule_index: Some(7),
+        }]
+        .into_boxed_slice();
+        let mut unobserved_opacity = TimelineEventThemeReceipt::from_expectations(expectations);
+        unobserved_opacity.record_checkpointed_event(0, Some("0.5"), false, None, true);
+        assert!(!unobserved_opacity.proves(1));
     }
 
     #[test]
@@ -561,16 +576,16 @@ mod tests {
             expectations.clone(),
             Some(crate::timeline::MERMAID_EVENT_RADIUS_TOKEN),
         );
-        classic.record_checkpointed_event(0, None, None, true);
+        classic.record_checkpointed_event(0, None, true, None, true);
         assert!(!classic.proves(1));
 
         let mut redux =
             TimelineEventThemeReceipt::from_expectations_with_baseline(expectations, None);
-        redux.record_checkpointed_event(0, None, None, true);
+        redux.record_checkpointed_event(0, None, true, None, true);
         assert!(redux.proves(1));
 
         let mut malformed = TimelineEventThemeReceipt::new(1);
-        malformed.record_checkpointed_event(0, None, None, false);
+        malformed.record_checkpointed_event(0, None, true, None, false);
         assert!(!malformed.proves(1));
     }
 }

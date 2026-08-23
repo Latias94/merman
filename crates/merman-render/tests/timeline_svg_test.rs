@@ -343,10 +343,12 @@ fn timeline_static_event_radius_reaches_each_terminal_node_path() {
         "        2026 : Plan\n",
         "             : Ship\n",
     );
-    let svg = render_timeline_svg_with_theme(
+    let rendered = try_render_timeline_with_theme(
         source,
         &timeline_event_radius_theme(Specified::Value(12.0)),
-    );
+    )
+    .expect("render themed Timeline SVG");
+    let svg = rendered.svg().to_owned();
     let document = roxmltree::Document::parse(&svg).expect("valid themed Timeline SVG XML");
     let event_paths = document
         .descendants()
@@ -369,6 +371,12 @@ fn timeline_static_event_radius_reaches_each_terminal_node_path() {
             .expect("second event path")
             .contains("q12,0 12,12")
     );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -434,14 +442,31 @@ fn timeline_static_event_radius_preserves_f32_token_and_normalizes_negative_zero
         fractional.contains("q0,-0.1 0.1,-0.1"),
         "fractional radius should keep its authored f32 token: {fractional}"
     );
+    assert!(
+        !fractional.contains("0.100000001"),
+        "fractional radius geometry must use the authored canonical token: {fractional}"
+    );
 
     let negative_zero = render_timeline_svg_with_theme(
         "timeline\n    2026 : Ship\n",
         &timeline_event_radius_theme(Specified::Value(-0.0)),
     );
+    let negative_zero_document =
+        roxmltree::Document::parse(&negative_zero).expect("valid negative-zero Timeline SVG");
+    let negative_zero_path = negative_zero_document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+        .and_then(|wrapper| {
+            wrapper.descendants().find(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("class") == Some("node-bkg node-undefined")
+            })
+        })
+        .and_then(|path| path.attribute("d"))
+        .expect("Timeline event path for negative zero");
     assert!(
-        !negative_zero.contains("--0"),
-        "negative zero must not create an invalid SVG path token: {negative_zero}"
+        !negative_zero_path.contains("--0") && !negative_zero_path.contains("-0"),
+        "negative zero must be normalized throughout the SVG path: {negative_zero_path}"
     );
 }
 
@@ -454,10 +479,13 @@ fn timeline_oversized_event_radius_is_clamped_in_horizontal_geometry() {
     let document = roxmltree::Document::parse(&svg).expect("valid oversized-radius Timeline SVG");
     let event_path = document
         .descendants()
-        .filter(|node| {
-            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+        .and_then(|wrapper| {
+            wrapper.descendants().find(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("class") == Some("node-bkg node-undefined")
+            })
         })
-        .nth(1)
         .expect("Timeline event path");
     let path = event_path.attribute("d").expect("event path data");
 
@@ -481,10 +509,13 @@ fn timeline_oversized_event_radius_is_clamped_in_vertical_geometry() {
     let document = roxmltree::Document::parse(&svg).expect("valid oversized-radius Timeline SVG");
     let event_path = document
         .descendants()
-        .filter(|node| {
-            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+        .and_then(|wrapper| {
+            wrapper.descendants().find(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("class") == Some("node-bkg node-undefined")
+            })
         })
-        .nth(1)
         .expect("Timeline event path");
     let path = event_path.attribute("d").expect("event path data");
 

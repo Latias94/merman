@@ -152,7 +152,8 @@ fn write_timeline_event_wrapper_open<'a>(
     out: &mut impl SvgOutput,
     event: &TimelineNodeLayout,
     opacity_token: Option<&'a str>,
-) -> Result<Option<&'a str>> {
+) -> Result<(Option<&'a str>, bool)> {
+    let output_start = out.len();
     match opacity_token {
         Some(opacity_token) => {
             let _ = write!(
@@ -173,7 +174,115 @@ fn write_timeline_event_wrapper_open<'a>(
         }
     }
     out.checkpoint()?;
-    Ok(opacity_token)
+    let opening = out
+        .as_str()
+        .get(output_start..)
+        .and_then(|output| output.split_once('>').map(|(opening, _)| opening))
+        .unwrap_or_default();
+    let actual_opacity = opening
+        .split_once(" opacity=\"")
+        .and_then(|(_, rest)| rest.split_once('"').map(|(value, _)| value));
+    let opacity_matches = opening.contains("class=\"eventWrapper\"")
+        && match opacity_token {
+            Some(expected) => actual_opacity == Some(expected),
+            None => actual_opacity.is_none(),
+        };
+    Ok((opacity_token, opacity_matches))
+}
+
+fn negative_radius_token(token: &str, radius_value: f64) -> String {
+    if radius_value == 0.0 {
+        "0".to_string()
+    } else {
+        format!("-{token}")
+    }
+}
+
+fn observe_timeline_event_radius<'a>(
+    output: &str,
+    event: &TimelineNodeLayout,
+    event_radius: Option<(&'a str, f64)>,
+    is_redux_theme: bool,
+) -> (Option<&'a str>, bool) {
+    let Some(path_d) = output
+        .split_once("class=\"node-bkg node-undefined\" d=\"")
+        .and_then(|(_, rest)| rest.split_once('"').map(|(path, _)| path))
+    else {
+        return (None, false);
+    };
+
+    let w = event.width.max(1.0);
+    let h = event.height.max(1.0);
+    let expected_tokens = match event_radius {
+        Some((radius_token, radius_value)) => {
+            let negative_token = negative_radius_token(radius_token, radius_value);
+            vec![
+                "M0".to_string(),
+                fmt(h - radius_value).to_string(),
+                format!("v{}", fmt(-h + 2.0 * radius_value)),
+                format!("q0,{negative_token}"),
+                format!("{radius_token},{negative_token}"),
+                format!("h{}", fmt(w - 2.0 * radius_value)),
+                format!("q{radius_token},0"),
+                format!("{radius_token},{radius_token}"),
+                format!("v{}", fmt(h - radius_value)),
+                "H0".to_string(),
+                "Z".to_string(),
+            ]
+        }
+        None if is_redux_theme => {
+            let radius = crate::timeline::MERMAID_EVENT_RADIUS_PX;
+            vec![
+                "M0".to_string(),
+                fmt(h - radius).to_string(),
+                format!("v{}", fmt(-(h - radius))),
+                format!("h{}", fmt(w)),
+                format!("v{}", fmt(h)),
+                "H0".to_string(),
+                "Z".to_string(),
+            ]
+        }
+        None => {
+            let radius = crate::timeline::MERMAID_EVENT_RADIUS_PX;
+            vec![
+                "M0".to_string(),
+                fmt(h - radius).to_string(),
+                format!("v{}", fmt(-h + 2.0 * radius)),
+                format!("q0,-{}", crate::timeline::MERMAID_EVENT_RADIUS_TOKEN),
+                format!(
+                    "{token},-{token}",
+                    token = crate::timeline::MERMAID_EVENT_RADIUS_TOKEN
+                ),
+                format!("h{}", fmt(w - 2.0 * radius)),
+                format!(
+                    "q{token},0",
+                    token = crate::timeline::MERMAID_EVENT_RADIUS_TOKEN
+                ),
+                format!(
+                    "{token},{token}",
+                    token = crate::timeline::MERMAID_EVENT_RADIUS_TOKEN
+                ),
+                format!("v{}", fmt(h - radius)),
+                "H0".to_string(),
+                "Z".to_string(),
+            ]
+        }
+    };
+    let actual_tokens = path_d.split_whitespace().collect::<Vec<_>>();
+    let matches = actual_tokens.len() == expected_tokens.len()
+        && actual_tokens
+            .iter()
+            .zip(expected_tokens.iter())
+            .all(|(actual, expected)| *actual == expected);
+
+    match event_radius {
+        Some((token, _)) => (matches.then_some(token), matches),
+        None if is_redux_theme => (None, matches),
+        None => (
+            matches.then_some(crate::timeline::MERMAID_EVENT_RADIUS_TOKEN),
+            matches,
+        ),
+    }
 }
 
 struct TimelineEventEmissionState<'a> {
@@ -195,18 +304,19 @@ impl<'a> TimelineEventEmissionState<'a> {
         &self,
         out: &mut impl SvgOutput,
         event: &TimelineNodeLayout,
-    ) -> Result<(usize, Option<&'a str>)> {
+    ) -> Result<(usize, Option<&'a str>, bool)> {
         let event_index = self.next_event_index;
         let expected_opacity_token = self.theme.opacity_token_for_event(event_index);
-        let emitted_opacity_token =
+        let (emitted_opacity_token, emitted_opacity_matches) =
             write_timeline_event_wrapper_open(out, event, expected_opacity_token)?;
-        Ok((event_index, emitted_opacity_token))
+        Ok((event_index, emitted_opacity_token, emitted_opacity_matches))
     }
 
     fn record_event_terminal(
         &mut self,
         event_index: usize,
         emitted_opacity_token: Option<&str>,
+        emitted_opacity_matches: bool,
         emitted_radius_token: Option<&str>,
         emitted_radius_geometry_matches: bool,
     ) {
@@ -214,6 +324,7 @@ impl<'a> TimelineEventEmissionState<'a> {
             receipt.record_checkpointed_event(
                 event_index,
                 emitted_opacity_token,
+                emitted_opacity_matches,
                 emitted_radius_token,
                 emitted_radius_geometry_matches,
             );
@@ -295,8 +406,9 @@ fn render_timeline_diagram_svg_inner(
         let h = n.height.max(1.0);
         let rd = event_radius.map_or(crate::timeline::MERMAID_EVENT_RADIUS_PX, |(_, value)| value);
         let d = if let Some((radius_token, radius_value)) = event_radius {
+            let negative_radius = negative_radius_token(radius_token, radius_value);
             format!(
-                "M0 {y0} v{v1} q0,-{rd} {rd},-{rd} h{hw} q{rd},0 {rd},{rd} v{v2} H0 Z",
+                "M0 {y0} v{v1} q0,{negative_radius} {rd},{negative_radius} h{hw} q{rd},0 {rd},{rd} v{v2} H0 Z",
                 y0 = fmt(h - radius_value),
                 v1 = fmt(-h + 2.0 * radius_value),
                 rd = radius_token,
@@ -384,36 +496,6 @@ fn render_timeline_diagram_svg_inner(
         Ok(())
     }
 
-    fn observe_event_radius<'a>(
-        output: &str,
-        event_radius: Option<(&'a str, f64)>,
-        is_redux_theme: bool,
-    ) -> (Option<&'a str>, bool) {
-        let Some(path_d) = output
-            .split_once("class=\"node-bkg node-undefined\" d=\"")
-            .and_then(|(_, rest)| rest.split_once('"').map(|(path, _)| path))
-        else {
-            return (None, false);
-        };
-
-        match event_radius {
-            Some((token, _)) => {
-                let first_corner = format!("q0,-{token} {token},-{token}");
-                let second_corner = format!("q{token},0 {token},{token}");
-                let matches = path_d.contains(&first_corner) && path_d.contains(&second_corner);
-                (matches.then_some(token), matches)
-            }
-            None if is_redux_theme => (None, !path_d.contains('q')),
-            None => {
-                let matches = path_d.contains("q0,-5 5,-5") && path_d.contains("q5,0 5,5");
-                (
-                    matches.then_some(crate::timeline::MERMAID_EVENT_RADIUS_TOKEN),
-                    matches,
-                )
-            }
-        }
-    }
-
     fn render_event_node<'a>(
         out: &mut impl SvgOutput,
         diagram_id: &str,
@@ -433,7 +515,12 @@ fn render_timeline_diagram_svg_inner(
             event_radius,
         )?;
         let output = out.as_str().get(output_start..).unwrap_or_default();
-        Ok(observe_event_radius(output, event_radius, is_redux_theme))
+        Ok(observe_timeline_event_radius(
+            output,
+            event,
+            event_radius,
+            is_redux_theme,
+        ))
     }
 
     fn render_event(
@@ -444,7 +531,7 @@ fn render_timeline_diagram_svg_inner(
         is_redux_theme: bool,
         event_emission: &mut TimelineEventEmissionState<'_>,
     ) -> Result<()> {
-        let (event_index, emitted_opacity_token) =
+        let (event_index, emitted_opacity_token, emitted_opacity_matches) =
             event_emission.write_event_wrapper_open(out, event)?;
         let event_radius = event_emission.theme.radius_for_event(event_index);
         let (emitted_radius_token, emitted_radius_geometry_matches) = render_event_node(
@@ -460,6 +547,7 @@ fn render_timeline_diagram_svg_inner(
         event_emission.record_event_terminal(
             event_index,
             emitted_opacity_token,
+            emitted_opacity_matches,
             emitted_radius_token,
             emitted_radius_geometry_matches,
         );
@@ -688,7 +776,7 @@ fn render_timeline_diagram_svg_inner(
 mod tests {
     use super::*;
     use crate::DiagramFamilyId;
-    use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout};
+    use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout};
     use std::fmt;
     use std::ops::Range;
 
@@ -749,6 +837,44 @@ mod tests {
                 Ok(())
             }
         }
+    }
+
+    fn test_event_node(width: f64, height: f64) -> TimelineNodeLayout {
+        TimelineNodeLayout {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+            content_width: width,
+            padding: 0.0,
+            section_class: "section-0".to_string(),
+            label: "event".to_string(),
+            label_lines: vec!["event".to_string()],
+            kind: "event".to_string(),
+        }
+    }
+
+    #[test]
+    fn timeline_radius_observer_rejects_incomplete_custom_path() {
+        let event = test_event_node(100.0, 50.0);
+        let output = r#"<path class="node-bkg node-undefined" d="q0,-12 12,-12 q12,0 12,12"/>"#;
+
+        let (token, matches) =
+            observe_timeline_event_radius(output, &event, Some(("12", 12.0)), false);
+
+        assert_eq!(token, None);
+        assert!(!matches);
+    }
+
+    #[test]
+    fn timeline_radius_observer_rejects_truncated_redux_path() {
+        let event = test_event_node(100.0, 50.0);
+        let output = r#"<path class="node-bkg node-undefined" d="M0 0"/>"#;
+
+        let (token, matches) = observe_timeline_event_radius(output, &event, None, true);
+
+        assert_eq!(token, None);
+        assert!(!matches);
     }
 
     #[test]
