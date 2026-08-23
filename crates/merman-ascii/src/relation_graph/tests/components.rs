@@ -1,6 +1,29 @@
 use super::*;
 use merman_core::{CancelReason, OperationControl, OperationPhase};
 
+fn render_test_relation_components<R>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    policy: AsciiResourcePolicy,
+    adapter: &TestRelationAdapter,
+) -> Result<String>
+where
+    R: TestRelationEndpoints,
+{
+    let mut resources = test_resources(policy);
+    let mut deferred = DeferredTextRegistry::new();
+    let control = OperationControl::new();
+    render_relation_components_with_deferred_with_execution(
+        boxes,
+        relations,
+        &AsciiRenderOptions::ascii(),
+        &mut resources,
+        adapter,
+        &mut deferred,
+        AsciiExecution::new(&control, &policy),
+    )
+}
+
 #[test]
 fn relation_components_split_disconnected_relation_subgraphs() {
     let boxes = [
@@ -106,9 +129,17 @@ fn render_layered_relation_component_propagates_grid_resource_errors() {
     let policy = AsciiResourcePolicy::default()
         .with_limit(AsciiResourceLimitId::MaxGridCells, 1)
         .expect("test resource limit should be valid");
-    let error =
-        render_layered_relation_component(&boxes, &relations, &options, policy, 1, &adapter)
-            .expect_err("grid resource errors must not become summary fallback");
+    let mut resources = test_resources(policy);
+    let Err(error) = plan_layered_relation_component_result(
+        &boxes,
+        &relations,
+        &options,
+        1,
+        &mut resources,
+        &adapter,
+    ) else {
+        panic!("grid resource errors must not become summary fallback");
+    };
 
     assert!(matches!(
         error,
@@ -165,19 +196,18 @@ fn render_layered_relation_component_uses_summary_when_route_path_overlaps_box()
     let boxes = vec![
         RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
         RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
     ];
-    let relations = vec![("a", "b")];
+    let relations = vec![("a", "b"), ("a", "c")];
     let adapter = TestRelationAdapter {
         summary_reason: Cell::new(None),
         overlap: TestRelationOverlap::Route,
     };
 
-    let rendered = render_layered_relation_component(
+    let rendered = render_test_relation_components(
         &boxes,
         &relations,
-        &AsciiRenderOptions::ascii(),
         AsciiResourcePolicy::default(),
-        1,
         &adapter,
     )
     .expect("route-overlapping layered relation should render as a summary");
@@ -186,7 +216,7 @@ fn render_layered_relation_component_uses_summary_when_route_path_overlaps_box()
         adapter.summary_reason.get(),
         Some(LayeredRelationSummaryReason::RouteCollision)
     );
-    assert!(rendered.contains("relations:\nA --> B\n"));
+    assert!(rendered.contains("relations:\nA --> B\nA --> B\n"));
 }
 
 #[test]
@@ -202,12 +232,10 @@ fn render_layered_relation_component_uses_summary_when_overlay_overlaps_box() {
         overlap: TestRelationOverlap::Overlay,
     };
 
-    let rendered = render_layered_relation_component(
+    let rendered = render_test_relation_components(
         &boxes,
         &relations,
-        &AsciiRenderOptions::ascii(),
         AsciiResourcePolicy::default(),
-        1,
         &adapter,
     )
     .expect("overlay-overlapping layered relation should render as a summary");

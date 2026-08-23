@@ -1072,7 +1072,7 @@ where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
     let policy = resources.policy();
-    finish_styled_line_iter_with_probe(
+    finish_styled_line_iter_with_observer(
         lines,
         options,
         trim,
@@ -1094,27 +1094,18 @@ fn finish_styled_line_iter<'a, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    let resources = execution.resource_context(resources, merman_core::OperationPhase::Emit);
-    resources.transaction(|resources| {
-        let Some(encoded_bytes) =
-            admit_styled_line_iter(lines.clone(), options, trim, resources, deferred, execution)?
-        else {
-            return Ok(String::new());
-        };
-        materialize_styled_line_iter(
-            lines,
-            options,
-            trim,
-            resources,
-            deferred,
-            execution,
-            encoded_bytes,
-        )
-    })
+    finish_styled_line_iter_with_observer(
+        lines,
+        options,
+        trim,
+        resources,
+        deferred,
+        execution,
+        || {},
+    )
 }
 
-#[cfg(test)]
-fn finish_styled_line_iter_with_probe<'a, I>(
+fn finish_styled_line_iter_with_observer<'a, I>(
     lines: I,
     options: &AsciiRenderOptions,
     trim: bool,
@@ -1126,7 +1117,7 @@ fn finish_styled_line_iter_with_probe<'a, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    let resources = resources.clone();
+    let resources = execution.resource_context(resources, merman_core::OperationPhase::Emit);
     resources.transaction(|resources| {
         let Some(encoded_bytes) =
             admit_styled_line_iter(lines.clone(), options, trim, resources, deferred, execution)?
@@ -2568,7 +2559,7 @@ mod tests {
         let control = OperationControl::new();
         let execution = AsciiExecution::new(&control, &policy);
 
-        let error = finish_styled_line_iter_with_probe(
+        let error = finish_styled_line_iter_with_observer(
             std::iter::once(&line),
             &options,
             true,
