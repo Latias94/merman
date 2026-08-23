@@ -522,7 +522,8 @@ fn prepare_journey_family(
     )?;
     let task_theme = crate::journey::JourneyTaskTheme::resolve(
         execution.resolved_theme(),
-        layout.tasks.len(),
+        &meta.effective_config,
+        &layout.tasks,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Journey(Box::new(

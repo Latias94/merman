@@ -280,6 +280,10 @@ Critical: crit, crit-task, 2024-01-04, 1d
 Active critical: crit, active, active-crit-task, 2024-01-05, 1d
 Done critical: crit, done, done-crit-task, 2024-01-06, 1d
 "#;
+const JOURNEY_TASK_PAINT_SOURCE: &str = r#"journey
+  section Delivery
+    Ship release: 5: Maintainer
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
@@ -492,6 +496,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Task,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(GANTT_TASK_FILL_SOURCE),
+        (
+            DiagramFamilyId::JOURNEY,
+            ThemeTarget::JourneyTask,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(JOURNEY_TASK_PAINT_SOURCE),
         _ => Err(C6ProofError::new(
             "route-source",
             format!("no route-cutover witness source for {}", route_label(route)),
@@ -988,7 +997,8 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
                 | ThemeTarget::Message
                 | ThemeTarget::Requirement
                 | ThemeTarget::PieSlice
-                | ThemeTarget::Task => SOLID_STROKE.css,
+                | ThemeTarget::Task
+                | ThemeTarget::JourneyTask => SOLID_STROKE.css,
                 target => {
                     return Err(C6ProofError::new(
                         "route-theme",
@@ -1325,6 +1335,7 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             | ThemeTarget::Requirement
             | ThemeTarget::Text
             | ThemeTarget::Task
+            | ThemeTarget::JourneyTask
             | ThemeTarget::PieSlice,
             ThemeRouteCutoverFacet::Fill,
         ) => Ok(SOLID_FILL),
@@ -1339,7 +1350,8 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             | ThemeTarget::Message
             | ThemeTarget::Requirement
             | ThemeTarget::PieSlice
-            | ThemeTarget::Task,
+            | ThemeTarget::Task
+            | ThemeTarget::JourneyTask,
             ThemeRouteCutoverFacet::Stroke,
         ) => Ok(SOLID_STROKE),
         (ThemeTarget::Edge | ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
@@ -1381,6 +1393,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::GANTT
+            | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::INFO => Ok("transparent"),
             family => Err(C6ProofError::new(
                 "route-svg-proof",
@@ -1405,6 +1418,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 | ThemeTarget::Requirement
                 | ThemeTarget::Text
                 | ThemeTarget::Task
+                | ThemeTarget::JourneyTask
                 | ThemeTarget::PieSlice,
                 ThemeRouteCutoverFacet::Fill,
             ) => Ok(SOLID_FILL.css),
@@ -1419,7 +1433,8 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 | ThemeTarget::Message
                 | ThemeTarget::Requirement
                 | ThemeTarget::PieSlice
-                | ThemeTarget::Task,
+                | ThemeTarget::Task
+                | ThemeTarget::JourneyTask,
                 ThemeRouteCutoverFacet::Stroke,
             ) => Ok(SOLID_STROKE.css),
             (ThemeTarget::Edge | ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
@@ -1596,11 +1611,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_ninety_six_routes_and_one_hundred_twelve_artifact_witnesses() {
+    fn route_inventory_retains_one_hundred_routes_and_one_hundred_sixteen_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 96);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 112);
+        assert_eq!(inventory.len(), 100);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 116);
     }
 
     #[test]

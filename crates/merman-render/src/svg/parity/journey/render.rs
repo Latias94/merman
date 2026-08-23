@@ -149,21 +149,73 @@ fn write_task_rect<'a>(
     out: &mut impl SvgOutput,
     task: &crate::model::JourneyTaskLayout,
     radius_token: &'a str,
+    fill: Option<&str>,
+    stroke: Option<&str>,
 ) -> (&'a str, &'a str) {
     let emitted_rx = radius_token;
     let emitted_ry = radius_token;
-    let _ = write!(
-        out,
-        r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
-        x = fmt(task.x),
-        y = fmt(task.y),
-        fill = escape_attr(&task.fill),
-        w = fmt(task.width),
-        h = fmt(task.height),
-        rx = emitted_rx,
-        ry = emitted_ry,
-        num = task.num,
-    );
+    match (fill, stroke) {
+        (Some(fill), Some(stroke)) => {
+            let _ = write!(
+                out,
+                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" style="fill:{typed_fill};stroke:{typed_stroke};" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
+                x = fmt(task.x),
+                y = fmt(task.y),
+                fill = escape_attr(&task.fill),
+                typed_fill = escape_attr(fill),
+                typed_stroke = escape_attr(stroke),
+                w = fmt(task.width),
+                h = fmt(task.height),
+                rx = emitted_rx,
+                ry = emitted_ry,
+                num = task.num,
+            );
+        }
+        (Some(fill), None) => {
+            let _ = write!(
+                out,
+                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" style="fill:{typed_fill};" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
+                x = fmt(task.x),
+                y = fmt(task.y),
+                fill = escape_attr(&task.fill),
+                typed_fill = escape_attr(fill),
+                w = fmt(task.width),
+                h = fmt(task.height),
+                rx = emitted_rx,
+                ry = emitted_ry,
+                num = task.num,
+            );
+        }
+        (None, Some(stroke)) => {
+            let _ = write!(
+                out,
+                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" style="stroke:{typed_stroke};" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
+                x = fmt(task.x),
+                y = fmt(task.y),
+                fill = escape_attr(&task.fill),
+                typed_stroke = escape_attr(stroke),
+                w = fmt(task.width),
+                h = fmt(task.height),
+                rx = emitted_rx,
+                ry = emitted_ry,
+                num = task.num,
+            );
+        }
+        (None, None) => {
+            let _ = write!(
+                out,
+                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
+                x = fmt(task.x),
+                y = fmt(task.y),
+                fill = escape_attr(&task.fill),
+                w = fmt(task.width),
+                h = fmt(task.height),
+                rx = emitted_rx,
+                ry = emitted_ry,
+                num = task.num,
+            );
+        }
+    }
     (emitted_rx, emitted_ry)
 }
 
@@ -523,7 +575,19 @@ pub(crate) fn render_journey_diagram_svg_model(
 
         out.push_str("</g>");
 
-        let (emitted_rx, emitted_ry) = write_task_rect(&mut out, task, task_theme.radius_token());
+        let emitted_fill = task_theme
+            .terminal_fill_for_task(task_index)
+            .map(|(_, css)| css);
+        let emitted_stroke = task_theme
+            .terminal_stroke_for_task(task_index)
+            .map(|(_, css)| css);
+        let (emitted_rx, emitted_ry) = write_task_rect(
+            &mut out,
+            task,
+            task_theme.terminal_radius_for_task(task_index),
+            emitted_fill,
+            emitted_stroke,
+        );
 
         for c in &task.actor_circles {
             let _ = write!(
@@ -559,7 +623,13 @@ pub(crate) fn render_journey_diagram_svg_model(
         out.push_str("</g>");
         out.checkpoint()?;
         if let Some(receipt) = task_radius_receipt.as_mut() {
-            receipt.record_checkpointed_task(task_index, emitted_rx, emitted_ry);
+            receipt.record_checkpointed_task_with_paint(
+                task_index,
+                emitted_rx,
+                emitted_ry,
+                task_theme.terminal_fill_for_task(task_index),
+                task_theme.terminal_stroke_for_task(task_index),
+            );
         }
     }
 
@@ -685,7 +755,7 @@ mod tests {
             SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::JOURNEY)
                 .expect("SVG execution");
         let layout = bounded_journey_layout();
-        let task_theme = crate::journey::JourneyTaskTheme::baseline(layout.tasks.len());
+        let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
         render_journey_diagram_svg_model(
             &layout,
             &JourneyDiagramRenderModel::default(),
@@ -838,7 +908,7 @@ mod tests {
             diagram_id: Some("journey".to_string()),
             ..Default::default()
         };
-        let task_theme = crate::journey::JourneyTaskTheme::baseline(layout.tasks.len());
+        let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
@@ -892,7 +962,7 @@ mod tests {
             diagram_id: Some("journeyFixed".to_string()),
             ..Default::default()
         };
-        let task_theme = crate::journey::JourneyTaskTheme::baseline(layout.tasks.len());
+        let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(

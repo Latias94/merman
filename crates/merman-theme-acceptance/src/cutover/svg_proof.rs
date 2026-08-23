@@ -180,6 +180,7 @@ pub(super) fn prove_svg_routes(
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::GANTT
+            | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::SWIMLANE => {
                 let observation = deep_family_paint::deep_family_route_observation(
                     &document,
@@ -392,6 +393,7 @@ fn target_underlay_colors(
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::GANTT
+            | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::SWIMLANE,
             _,
             _,

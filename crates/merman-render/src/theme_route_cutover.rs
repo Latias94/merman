@@ -347,11 +347,12 @@ pub enum ThemeRouteCutoverProjection {
     GanttTaskActiveStroke = 32,
     GanttTaskSuccessStroke = 33,
     GanttTaskErrorStroke = 34,
+    JourneyTaskPaint = 35,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 35] = [
+    const ALL: [Self; 36] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -387,6 +388,7 @@ impl ThemeRouteCutoverProjection {
         Self::GanttTaskActiveStroke,
         Self::GanttTaskSuccessStroke,
         Self::GanttTaskErrorStroke,
+        Self::JourneyTaskPaint,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -426,6 +428,7 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskActiveStroke => "task.active.stroke",
             Self::GanttTaskSuccessStroke => "task.success.stroke",
             Self::GanttTaskErrorStroke => "task.error.stroke",
+            Self::JourneyTaskPaint => "task.paint-text",
         }
     }
 
@@ -466,7 +469,8 @@ impl ThemeRouteCutoverProjection {
             | Self::GanttTaskDefaultStroke
             | Self::GanttTaskActiveStroke
             | Self::GanttTaskSuccessStroke
-            | Self::GanttTaskErrorStroke => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::GanttTaskErrorStroke
+            | Self::JourneyTaskPaint => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -556,6 +560,8 @@ impl ThemeRouteCutoverProjectionSet {
             | ThemeRouteCutoverProjection::GanttTaskSuccessStroke.bit()
             | ThemeRouteCutoverProjection::GanttTaskErrorStroke.bit(),
     );
+    pub const REPLACE_JOURNEY_TASK_PAINT: Self =
+        Self::replacing(ThemeRouteCutoverProjection::JourneyTaskPaint);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())

@@ -331,6 +331,11 @@ fn legacy_bridge_projections(
             Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_STROKES)
         }
         (
+            DiagramFamilyId::JOURNEY,
+            ThemeTarget::JourneyTask,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_JOURNEY_TASK_PAINT),
+        (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
             ThemeTarget::Cluster,
             ThemeRouteCutoverFacet::Fill,
@@ -1406,6 +1411,20 @@ pub(super) fn classify_rule_facet(
         && target == ThemeTarget::JourneyTask
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && facet == FamilyThemeRuleFacet::Radius
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::JOURNEY
+        && target == ThemeTarget::JourneyTask
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
     {
         return FamilyThemeDisposition::TypedAdapter;
     }

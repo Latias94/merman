@@ -2238,7 +2238,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_journey_task_fill_creates_a_direct_contribution() {
+    fn explicit_journey_task_fill_is_owned_by_the_typed_writer() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
                 ThemeRule::new(
@@ -2251,7 +2251,7 @@ mod tests {
         let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::JOURNEY);
 
         assert!(
-            artifact
+            !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.journey.task.paint-text")
         );

@@ -419,7 +419,7 @@ Public presets declare per-target admission expectations and allowed residual ID
   claim, produce
   `C6aEligibilityReceipt`, or unblock C7a. Direct-only typed mechanisms that never had a bridge
   projection remain governed by family-local writer evidence and do not enter this inventory. The
-  current manifest is version 18 and contains 96 route-level authorizations producing 112 finalized
+  current manifest is version 19 and contains 100 route-level authorizations producing 116 finalized
   artifact witnesses. The Block scalar-fill batch contributes two routes and two artifact witnesses,
   binding all six canonical node shells while preserving property-local config, class, and inline
   ownership. The Pie scalar-fill batch contributes two routes and two artifact witnesses,
@@ -431,6 +431,11 @@ Public presets declare per-target admission expectations and allowed residual ID
   its final scoped stylesheet and inline title terminal, and EventModeling binds both SVG swimlane
   text and XHTML box text. Raster regions and underlay colors are derived from emitted terminal
   structure, and transparent text may reveal only transparency or a verified terminal underlay.
+  The Journey batch contributes four scalar routes and four artifact witnesses for static
+  unqualified `JourneyTask.fill` and `JourneyTask.stroke` (solid and transparent). Each receipt
+  binds the terminal task rectangle's inline paint and geometry while section fill remains an
+  independent baseline surface; transparent fill uses a bounded no-underlay reveal contract and
+  transparent stroke may reveal only the writer's verified task-type underlay.
   The deep-family batch contributes twelve scalar routes and fourteen artifact witnesses: Class
   `Edge.stroke` proves Classic and HandDrawn relation paths plus only their referenced markers and
   replaces `edge.stroke` together with retirement of `marker.paint-from-edge`; ER

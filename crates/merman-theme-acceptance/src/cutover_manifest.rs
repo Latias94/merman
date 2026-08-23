@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 18;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 19;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 35] = [
+); 36] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -156,6 +156,10 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjection::GanttTaskErrorStroke,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
+    (
+        ThemeRouteCutoverProjection::JourneyTaskPaint,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
 ];
 
 #[derive(Clone, Copy)]
@@ -253,6 +257,8 @@ const GANTT_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
     ThemeRouteCutoverProjection::GanttTaskErrorStroke,
 ];
+const JOURNEY_TASK_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::JourneyTaskPaint];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -267,7 +273,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 96] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 100] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -939,6 +945,34 @@ const ACTIVE_ROUTES: [RouteAuthorization; 96] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         GANTT_TASK_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::JOURNEY,
+        ThemeTarget::JourneyTask,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        JOURNEY_TASK_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::JOURNEY,
+        ThemeTarget::JourneyTask,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        JOURNEY_TASK_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::JOURNEY,
+        ThemeTarget::JourneyTask,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        JOURNEY_TASK_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::JOURNEY,
+        ThemeTarget::JourneyTask,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        JOURNEY_TASK_PAINT_PROJECTIONS,
     ),
 ];
 

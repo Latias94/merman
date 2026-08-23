@@ -49,6 +49,7 @@ pub(super) fn deep_family_route_observation(
             gantt_task_stroke_observation(document, route, profile)
         }
         DiagramFamilyId::GANTT => gantt_task_fill_observation(document, route, profile),
+        DiagramFamilyId::JOURNEY => journey_task_paint_observation(document, route, profile),
         family => Err(C6ProofError::new(
             "route-svg-proof",
             format!("unsupported deep-family cutover route {family}"),
@@ -96,6 +97,7 @@ pub(super) fn deep_family_underlay_colors(
             prove_gantt_transparent_underlay(document)?;
             gantt_task_text_underlay_colors(document)?
         }
+        DiagramFamilyId::JOURNEY => journey_task_underlay_colors(document, route)?,
         family => {
             return Err(C6ProofError::new(
                 "route-svg-proof",
@@ -104,6 +106,86 @@ pub(super) fn deep_family_underlay_colors(
         }
     };
     Ok(std::iter::repeat_n(colors, target_regions.len()).collect())
+}
+
+fn journey_task_paint_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+    profile: CutoverWitnessProfile,
+) -> C6ProofResult<DeepFamilyRouteObservation> {
+    require_route(route, ThemeTarget::JourneyTask, route.facet())?;
+    require_classic_profile(profile, "Journey Task paint")?;
+    c6_ensure!(
+        "route-svg-proof",
+        route.projections().len() == 1
+            && route
+                .projections()
+                .contains(ThemeRouteCutoverProjection::JourneyTaskPaint),
+        "Journey Task paint route lost its dedicated projection contract"
+    );
+
+    let tasks = document
+        .descendants()
+        .filter(|node| node.has_tag_name("rect") && class_contains(*node, "task"))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        tasks.len() == 1,
+        "Journey Task paint witness expected one task rect, found {}",
+        tasks.len()
+    );
+
+    let property = facet_property(route.facet());
+    let mut common_value = None;
+    let mut target_regions = Vec::with_capacity(tasks.len());
+    let mut terminal = b"merman.c6-route-journey-task-paint.v1\0".to_vec();
+    for task in tasks {
+        let class = task.attribute("class").ok_or_else(|| {
+            C6ProofError::new("route-svg-proof", "Journey task rect lacks a class")
+        })?;
+        c6_ensure!(
+            "route-svg-proof",
+            class == "task task-type-0"
+                && ["x", "y", "width", "height", "rx", "ry"]
+                    .into_iter()
+                    .all(|attribute| task.attribute(attribute).is_some()),
+            "Journey task rect lost its terminal geometry or identity: class={class}"
+        );
+        let value = required_style_value(task, property, "Journey task rect")?;
+        observe_common_value(&mut common_value, value, "Journey task rect")?;
+        let region = element_bounds(task, route.facet())?;
+        target_regions.push(region);
+        append_len_prefixed(&mut terminal, class.as_bytes());
+        append_len_prefixed(&mut terminal, value.as_bytes());
+        append_rect(&mut terminal, region);
+    }
+
+    Ok(DeepFamilyRouteObservation {
+        value: common_value.ok_or_else(|| {
+            C6ProofError::new(
+                "route-svg-proof",
+                "Journey task witness has no terminal value",
+            )
+        })?,
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
+fn journey_task_underlay_colors(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<Vec<[u8; 3]>> {
+    if route.facet() == ThemeRouteCutoverFacet::Fill {
+        return Ok(Vec::new());
+    }
+    let root_id = root_id(document, "Journey")?;
+    let selector = format!("#{root_id} .task-type-0,#{root_id} .section-type-0");
+    Ok(
+        parse_optional_css_rgb(stylesheet_property(document, &selector, "fill")?)?
+            .into_iter()
+            .collect(),
+    )
 }
 
 fn swimlane_cluster_observation(
