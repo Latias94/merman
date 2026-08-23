@@ -206,6 +206,12 @@ impl FamilyThemeProgram {
         )
     }
 
+    pub(super) fn has_legacy_compatibility(&self) -> bool {
+        self.mechanism_routes
+            .iter()
+            .any(|route| route.disposition() == FamilyThemeDisposition::LegacyCompatibility)
+    }
+
     pub(super) fn rule_facet_disposition(
         &self,
         rule_index: usize,

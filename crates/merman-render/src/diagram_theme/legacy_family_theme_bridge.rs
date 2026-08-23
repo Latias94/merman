@@ -151,6 +151,23 @@ fn compile_selected_family(
     family_programs: &FamilyThemeProgramCache,
     family: DiagramFamilyId,
 ) -> LegacyFamilyThemeArtifact {
+    if !family_programs
+        .get_or_compile(family)
+        .has_legacy_compatibility()
+    {
+        let (overlay, contribution_ids, accepted_projections) =
+            OverlayBuilder::new(family).finish();
+        #[cfg(not(any(test, feature = "internal-theme-acceptance")))]
+        let _ = (&contribution_ids, accepted_projections);
+        return LegacyFamilyThemeArtifact {
+            overlay,
+            #[cfg(any(test, feature = "internal-theme-acceptance"))]
+            contribution_ids,
+            #[cfg(any(test, feature = "internal-theme-acceptance"))]
+            accepted_projections,
+        };
+    }
+
     let mut builder = OverlayBuilder::new(family);
     match family {
         DiagramFamilyId::FLOWCHART
