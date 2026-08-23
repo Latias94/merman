@@ -989,3 +989,54 @@ fn v2_preserves_the_v1_output_qualification_gates() {
         assert_eq!(support.reason_ids(), [expected_reason], "output={output:?}");
     }
 }
+
+#[test]
+fn v2_preserves_target_and_family_capability_gates() {
+    let not_applicable = describe_theme_support_v2(&ThemeSupportQueryV2::rule(
+        DiagramFamilyId::ER.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::Requirement.id(),
+        ThemeRuleFacetV1::Fill,
+    ));
+    assert_eq!(not_applicable.state(), ThemeSupportStateV1::NotApplicable);
+    assert_eq!(
+        not_applicable.reason_ids(),
+        ["theme-support.target-not-applicable-to-family"]
+    );
+
+    let root_query = ThemeSupportQueryV2::rule(
+        DiagramFamilyId::FLOWCHART.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::Canvas.id(),
+        ThemeRuleFacetV1::Fill,
+    );
+    let root_support = describe_theme_support_v2(&root_query);
+    assert_eq!(root_support.state(), ThemeSupportStateV1::Unverified);
+    assert_eq!(
+        root_support.reason_ids(),
+        ["theme-support.root-support-query-not-yet-modeled"]
+    );
+
+    let architecture = describe_theme_support_v2(&ThemeSupportQueryV2::rule(
+        DiagramFamilyId::ARCHITECTURE.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::Cluster.id(),
+        ThemeRuleFacetV1::Fill,
+    ));
+    if merman_render::layout_cytoscape_available() {
+        assert_eq!(architecture.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            architecture.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ]
+        );
+    } else {
+        assert_eq!(architecture.state(), ThemeSupportStateV1::Unverified);
+        assert_eq!(
+            architecture.reason_ids(),
+            ["theme-support.family-render-capability-not-built"]
+        );
+    }
+}
