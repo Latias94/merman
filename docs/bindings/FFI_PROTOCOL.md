@@ -341,9 +341,11 @@ the operation stopped:
 }
 ```
 
-Stable reasons are `requested` and `deadline_exceeded`. The phase is the checkpoint that observed
-the terminal state (`admission`, `parse`, `semantic`, `analysis`, `layout`, `emit`, `postprocess`,
-`export`, or `unknown`). Cancellation is not `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED`:
+Stable reasons are `requested` and `deadline_exceeded`. The phase is a non-empty, bounded
+lowercase identifier naming the checkpoint that observed the terminal state. Current producers use
+`admission`, `parse`, `semantic`, `analysis`, `layout`, `emit`, `postprocess`, `export`, and
+`unknown`; consumers must preserve future phase identifiers rather than rejecting them. Cancellation
+is not `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED`:
 resource limits provide deterministic work ceilings, whereas controls stop work that the host no
 longer wants.
 

@@ -41,15 +41,15 @@ This is not a claim that the relative slowdown is zero.
 
 ### Five-family large A/A observation
 
-current-large-aa-861fc.json (target artifact) is 1079620 bytes (SHA-256 442225004208d2927e5f9e15bb23de3d52533e93424cad01c7a807e6205805ff). Its tracked Markdown projection is 1176 bytes (SHA-256 6ab83718731e85ef4125885a98f0b49688c214ee4ec08f711502b4592b4e7083). Five rows were comparable, with zero contract failures and matched output identities; Flowchart, Sequence, and Class A/A calibration remained inconclusive, while ER and XYChart were confirmed non-regressions.
+current-large-aa-861fc.json (target artifact) is 1079620 bytes (SHA-256 442225004208d2927e5f9e15bb23de3d52533e93424cad01c7a807e6205805ff). Its tracked Markdown projection is 1176 bytes (SHA-256 6ab83718731e85ef4125885a98f0b49688c214ee4ec08f711502b4592b4e7083). Five rows were comparable, with zero contract failures and matched output identities; Flowchart, Sequence, and Class A/A calibration remained inconclusive, while ER and XYChart showed same-source A/A stability. This is supporting measurement evidence, not a cross-version product comparison.
 
 | Fixture | Output bytes / SHA-256 | Result |
 | --- | --- | --- |
 | flowchart_large | output identity matched | Inconclusive: A/A calibration did not stabilize within the registered pair cap |
 | sequence_mermaid_api_large | output identity matched | Inconclusive: A/A calibration did not stabilize within the registered pair cap |
 | class_large | output identity matched | Inconclusive: A/A calibration did not stabilize within the registered pair cap |
-| er_large | output identity matched | Confirmed non-regression; relative interval -0.44%..+0.84% |
-| xychart_large | output identity matched | Confirmed non-regression; relative interval -0.15%..+0.98% |
+| er_large | output identity matched | Same-source A/A stability observed; relative interval -0.44%..+0.84% |
+| xychart_large | output identity matched | Same-source A/A stability observed; relative interval -0.15%..+0.98% |
 
 The old baseline changes output identity for Class, ER, and XYChart. The runner correctly rejects those rows as causal A/B comparisons; this receipt does not claim old-version performance equivalence for them.
 
@@ -86,7 +86,7 @@ Accepted P2 residuals:
 5. grapheme_safe_trim and some layered sorting/lane scans lack fine-grained mid-loop checkpoints; this receipt does not claim complete cancellation-latency closure.
 6. AsciiRenderer::render_model remains a documented downgrade boundary for parser-owned CSS/source provenance and is not claimed as parser parity.
 
-These are P2 follow-ups, not unresolved closeout rows. The maintainer disposition is: accept the medium observations as below this lane's 50-microsecond materiality boundary while retaining their relative inconclusive status; accept the large Flowchart/Sequence/Class A/A statistical insufficiency; accept the confirmed ER/XYChart large non-regressions; and exclude any changed-output baseline rows from causal claims.
+These are P2 follow-ups, not unresolved closeout rows. The maintainer disposition is: accept the medium observations as below this lane's 50-microsecond materiality boundary while retaining their relative inconclusive status; accept the large Flowchart/Sequence/Class A/A statistical insufficiency; retain the ER/XYChart same-source A/A stability observations as supporting evidence only; and exclude any changed-output baseline rows from causal claims.
 
 ## Validity rule
 

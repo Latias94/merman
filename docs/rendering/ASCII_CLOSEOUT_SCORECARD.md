@@ -10,7 +10,7 @@ Status: current index; [ASCII_U25_CLOSEOUT_RECEIPT.md](ASCII_U25_CLOSEOUT_RECEIP
 | Mermaid baseline | `11.16.1` |
 | Public ASCII entry point | `Renderer::render(RenderRequest::ascii(...))` |
 | Verification status | Rust, bindings, generated artifacts, web, playground, and CLI representative gates recorded as passed in the receipt |
-| Performance status | Medium relative results inconclusive but below the lane-specific materiality boundary; large Flowchart/Sequence/Class A/A inconclusive; ER/XYChart non-regressions |
+| Performance status | Medium relative results inconclusive but below the lane-specific materiality boundary; large Flowchart/Sequence/Class A/A inconclusive; ER/XYChart same-source A/A stability observed |
 | Support boundary | Diagrammatic: Flowchart, Sequence, State, Class, ER, XYChart; structured text remains explicitly non-diagrammatic; unsupported families remain unsupported |
 
 ## Maintainer decision

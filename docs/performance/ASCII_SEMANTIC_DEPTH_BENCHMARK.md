@@ -23,8 +23,8 @@ The 50 microsecond value is a preregistered materiality boundary for this low-la
 | `flowchart_large` | A/A calibration inconclusive | Accepted as insufficient calibration evidence. |
 | `sequence_mermaid_api_large` | A/A calibration inconclusive | Accepted as insufficient calibration evidence. |
 | `class_large` | A/A calibration inconclusive | Accepted as insufficient calibration evidence. |
-| `er_large` | Confirmed non-regression | Retained as supporting evidence. |
-| `xychart_large` | Confirmed non-regression | Retained as supporting evidence. |
+| `er_large` | Same-source A/A stability observed | Retained as supporting evidence; this is not a cross-version product comparison. |
+| `xychart_large` | Same-source A/A stability observed | Retained as supporting evidence; this is not a cross-version product comparison. |
 
 All comparable rows had zero contract failures and matched output identities. Changed-output baseline rows are excluded from causal performance claims. No universal performance pass is asserted.
 
