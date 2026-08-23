@@ -33,6 +33,7 @@ pub(crate) enum FamilyThemeDisposition {
     Unsupported,
 }
 
+#[cfg(test)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct FamilyThemeSupportSummary {
     typed: bool,
@@ -40,6 +41,7 @@ pub(super) struct FamilyThemeSupportSummary {
     unsupported: bool,
 }
 
+#[cfg(test)]
 impl FamilyThemeSupportSummary {
     fn record(&mut self, disposition: FamilyThemeDisposition) {
         match disposition {
@@ -711,6 +713,7 @@ fn classify_ordinal_palette(
 ///
 /// This deliberately returns only aggregate disposition presence. Selectors, paint classes, route
 /// identities, and writer evidence remain private implementation details.
+#[cfg(test)]
 pub(super) fn summarize_theme_support(
     family: DiagramFamilyId,
     target: ThemeTarget,
@@ -762,6 +765,7 @@ pub(super) fn summarize_theme_support(
 ///
 /// The property match is only a contract-to-renderer vocabulary translation. Route ownership
 /// remains exclusively defined by `classify_base_typography`.
+#[cfg(test)]
 pub(super) fn summarize_base_typography_support(
     family: DiagramFamilyId,
     property: ThemeSupportBaseTypographyPropertyV2,
@@ -788,6 +792,7 @@ pub(super) fn summarize_base_typography_support(
     summary
 }
 
+#[cfg(test)]
 fn for_each_public_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
     for variant in std::iter::once(None).chain(ThemeVariant::ALL.iter().copied().map(Some)) {
         visit(FamilyThemeSelectorShape::Static { variant });
@@ -805,6 +810,7 @@ fn for_each_public_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
     }
 }
 
+#[cfg(test)]
 fn for_each_public_rule_facet(
     facet: ThemeRuleFacetV1,
     mut visit: impl FnMut(FamilyThemeRuleFacet),

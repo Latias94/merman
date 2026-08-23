@@ -37,6 +37,7 @@ mod semantic;
 mod source_styles;
 mod spec;
 mod support;
+mod support_manifest;
 mod typography;
 mod wire_decode;
 

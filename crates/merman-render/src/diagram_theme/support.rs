@@ -7,13 +7,13 @@ use merman_theme_contract::{
 
 use crate::DiagramFamilyId;
 
-use super::family_mechanism_matrix::{
-    FamilyThemeSupportSummary, summarize_base_typography_support, summarize_theme_support,
-};
 use super::semantic::ThemeTarget;
+use super::support_manifest::{self, SupportClaimKind};
 
-const THEME_SUPPORT_CLAIM_REVISION_V1: u32 = 1;
-const THEME_SUPPORT_CLAIM_REVISION_V2: u32 = 1;
+const THEME_SUPPORT_CLAIM_REVISION_V1: u32 =
+    super::support_manifest::SUPPORT_CLAIM_MANIFEST_REVISION;
+const THEME_SUPPORT_CLAIM_REVISION_V2: u32 =
+    super::support_manifest::SUPPORT_CLAIM_MANIFEST_REVISION;
 
 /// Describes the current build's coarse static support for one theme capability.
 ///
@@ -101,54 +101,12 @@ pub fn describe_theme_support(query: &ThemeSupportQueryV1) -> ThemeCapabilityDes
         );
     }
 
-    let summary = summarize_theme_support(family, target, facet);
-    if summary.has_typed() {
-        if summary.has_legacy() || summary.has_unsupported() {
-            return descriptor(
-                query,
-                ThemeSupportStateV1::Conditional,
-                [
-                    "theme-support.family-owned-consumer-present",
-                    "theme-support.public-value-domain-partial",
-                ],
-            );
-        }
-        return descriptor(
-            query,
-            ThemeSupportStateV1::Conditional,
-            [
-                "theme-support.family-owned-consumer-present",
-                "theme-support.document-surface-dependent",
-            ],
-        );
-    }
-    if summary.has_legacy() {
-        let reasons = if summary.has_unsupported() {
-            [
-                "theme-support.legacy-compatibility-only",
-                "theme-support.public-value-domain-partial",
-            ]
-        } else {
-            [
-                "theme-support.legacy-compatibility-only",
-                "theme-support.document-surface-dependent",
-            ]
-        };
-        return descriptor(query, ThemeSupportStateV1::Conditional, reasons);
-    }
-    if summary.has_unsupported() {
-        return descriptor(
-            query,
-            ThemeSupportStateV1::Unsupported,
-            ["theme-support.no-supported-route"],
-        );
-    }
-
-    descriptor(
-        query,
-        ThemeSupportStateV1::Unverified,
-        ["theme-support.support-claim-missing"],
-    )
+    let claim = match facet {
+        ThemeSupportFacetV1::Rule(facet) => support_manifest::rule_claim(family, target, facet),
+        ThemeSupportFacetV1::OrdinalPalette => support_manifest::ordinal_claim(family, target),
+        _ => SupportClaimKind::Missing,
+    };
+    descriptor_from_claim(query, claim)
 }
 
 /// Describes the current build's coarse static support for one unstable alpha V2 subject.
@@ -302,66 +260,117 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
         );
     }
 
-    let summary = match subject {
-        ResolvedSubject::Target { target, facet } => summarize_theme_support(family, target, facet),
+    let claim = match subject {
+        ResolvedSubject::Target { target, facet } => match facet {
+            ThemeSupportFacetV1::Rule(facet) => support_manifest::rule_claim(family, target, facet),
+            ThemeSupportFacetV1::OrdinalPalette => support_manifest::ordinal_claim(family, target),
+            _ => SupportClaimKind::Missing,
+        },
         ResolvedSubject::BaseTypography(property) => {
-            summarize_base_typography_support(family, property)
+            support_manifest::base_typography_claim(family, property)
         }
     };
-    descriptor_v2_from_summary(query, summary)
+    descriptor_v2_from_claim(query, claim)
 }
 
-fn descriptor_v2_from_summary(
-    query: &ThemeSupportQueryV2,
-    summary: FamilyThemeSupportSummary,
-) -> ThemeCapabilityDescriptorV2 {
-    if summary.has_typed() {
-        if summary.has_legacy() || summary.has_unsupported() {
-            return descriptor_v2(
-                query,
-                ThemeSupportStateV1::Conditional,
-                [
-                    "theme-support.family-owned-consumer-present",
-                    "theme-support.public-value-domain-partial",
-                ],
-            );
-        }
-        return descriptor_v2(
+fn descriptor_from_claim(
+    query: &ThemeSupportQueryV1,
+    claim: SupportClaimKind,
+) -> ThemeCapabilityDescriptorV1 {
+    match claim {
+        SupportClaimKind::TypedSurface => descriptor(
             query,
             ThemeSupportStateV1::Conditional,
             [
                 "theme-support.family-owned-consumer-present",
                 "theme-support.document-surface-dependent",
             ],
-        );
-    }
-    if summary.has_legacy() {
-        let reasons = if summary.has_unsupported() {
+        ),
+        SupportClaimKind::TypedPartial => descriptor(
+            query,
+            ThemeSupportStateV1::Conditional,
             [
-                "theme-support.legacy-compatibility-only",
+                "theme-support.family-owned-consumer-present",
                 "theme-support.public-value-domain-partial",
-            ]
-        } else {
+            ],
+        ),
+        SupportClaimKind::LegacySurface => descriptor(
+            query,
+            ThemeSupportStateV1::Conditional,
             [
                 "theme-support.legacy-compatibility-only",
                 "theme-support.document-surface-dependent",
-            ]
-        };
-        return descriptor_v2(query, ThemeSupportStateV1::Conditional, reasons);
-    }
-    if summary.has_unsupported() {
-        return descriptor_v2(
+            ],
+        ),
+        SupportClaimKind::LegacyPartial => descriptor(
+            query,
+            ThemeSupportStateV1::Conditional,
+            [
+                "theme-support.legacy-compatibility-only",
+                "theme-support.public-value-domain-partial",
+            ],
+        ),
+        SupportClaimKind::Unsupported => descriptor(
             query,
             ThemeSupportStateV1::Unsupported,
             ["theme-support.no-supported-route"],
-        );
+        ),
+        SupportClaimKind::Missing => descriptor(
+            query,
+            ThemeSupportStateV1::Unverified,
+            ["theme-support.support-claim-missing"],
+        ),
     }
+}
 
-    descriptor_v2(
-        query,
-        ThemeSupportStateV1::Unverified,
-        ["theme-support.support-claim-missing"],
-    )
+fn descriptor_v2_from_claim(
+    query: &ThemeSupportQueryV2,
+    claim: SupportClaimKind,
+) -> ThemeCapabilityDescriptorV2 {
+    match claim {
+        SupportClaimKind::TypedSurface => descriptor_v2(
+            query,
+            ThemeSupportStateV1::Conditional,
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ],
+        ),
+        SupportClaimKind::TypedPartial => descriptor_v2(
+            query,
+            ThemeSupportStateV1::Conditional,
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ],
+        ),
+        SupportClaimKind::LegacySurface => descriptor_v2(
+            query,
+            ThemeSupportStateV1::Conditional,
+            [
+                "theme-support.legacy-compatibility-only",
+                "theme-support.document-surface-dependent",
+            ],
+        ),
+        SupportClaimKind::LegacyPartial => descriptor_v2(
+            query,
+            ThemeSupportStateV1::Conditional,
+            [
+                "theme-support.legacy-compatibility-only",
+                "theme-support.public-value-domain-partial",
+            ],
+        ),
+        SupportClaimKind::Unsupported => descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unsupported,
+            ["theme-support.no-supported-route"],
+        ),
+        SupportClaimKind::Missing => descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unverified,
+            ["theme-support.support-claim-missing"],
+        ),
+    }
 }
 
 fn descriptor<const N: usize>(
