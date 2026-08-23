@@ -171,6 +171,26 @@ mindmap
 }
 
 #[test]
+fn unsupported_look_values_cannot_escape_into_css_selectors() {
+    let svg = render_svg(
+        "look-unsafe",
+        r##"%%{init: {"look": "neo\"]{color:red}"}}%%
+requirementDiagram
+  requirement req1 {
+    id: 1
+    text: Visible requirement
+    risk: high
+    verifymethod: analysis
+  }
+"##,
+    );
+
+    assert!(svg.contains(r#"data-look="classic""#), "{svg}");
+    assert!(!svg.contains(r#"neo\"]{color:red"#), "{svg}");
+    assert!(!svg.contains(r#"[data-look="neo"]{color:red"#), "{svg}");
+}
+
+#[test]
 fn sequence_look_matrix_covers_css_theme_consumption() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "look": "neo",

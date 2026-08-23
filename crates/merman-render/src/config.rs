@@ -64,7 +64,7 @@ impl<'a> DiagramLook<'a> {
     pub(crate) fn from_raw(raw: Option<&'a str>) -> Self {
         let value = raw
             .map(str::trim)
-            .filter(|look| !look.is_empty())
+            .filter(|look| matches!(*look, "classic" | "handDrawn" | "neo"))
             .unwrap_or(DEFAULT_DIAGRAM_LOOK);
         Self { value }
     }
@@ -367,6 +367,10 @@ mod tests {
         );
         assert_eq!(
             config_diagram_look(&json!({ "look": "" })).as_str(),
+            DEFAULT_DIAGRAM_LOOK
+        );
+        assert_eq!(
+            config_diagram_look(&json!({ "look": "neo\"]{color:red}" })).as_str(),
             DEFAULT_DIAGRAM_LOOK
         );
     }
