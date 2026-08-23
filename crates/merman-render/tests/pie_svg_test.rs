@@ -4,9 +4,10 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{DiagramFamilyId, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
-    OrdinalSelector, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget, ThemeVariant,
+    CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, OrdinalPalette, OrdinalSelector,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
 use merman_render::family;
@@ -152,6 +153,29 @@ fn pie_slice_default_fill_theme(fill: CanvasPaint) -> DiagramTheme {
             ),
         )
         .expect("compile explicit-Default Pie fill theme")
+}
+
+fn pie_slice_effect_theme() -> DiagramTheme {
+    let effect_id = "pie-slice-blur";
+    let effects = DiagramEffectSet::default()
+        .with_graph(
+            EffectGraph::new(
+                effect_id,
+                [EffectPrimitive::GaussianBlur {
+                    input: EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                }],
+            )
+            .expect("valid Pie effect graph"),
+        )
+        .expect("unique Pie effect graph")
+        .with_binding(
+            EffectBinding::new(ThemeTarget::PieSlice, effect_id).expect("valid Pie effect binding"),
+        )
+        .expect("unique Pie effect binding");
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_effects(effects))
+        .expect("compile Pie effect theme")
 }
 
 fn pie_slice_fill_with_later_ordinal_theme() -> DiagramTheme {
@@ -832,6 +856,36 @@ fn pie_static_fill_is_not_applicable_without_visible_slices() {
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_effect_binding_is_reconciled_against_visible_slice_occurrences() {
+    let theme = pie_slice_effect_theme();
+    let visible = try_render_pie_with_theme_requirement(
+        "pie\n  \"Alpha\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort Pie effect render");
+    let evidence = merman_render::__private::family_evidence(visible.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let empty = try_render_pie_with_theme_requirement(
+        "pie\n",
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("an empty Pie makes the effect binding not applicable");
+    let evidence = merman_render::__private::family_evidence(empty.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

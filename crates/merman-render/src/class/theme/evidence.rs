@@ -239,7 +239,15 @@ impl ClassThemeEvidenceRecorder {
             }
         }
 
-        let mut unsupported_domains = Vec::with_capacity(4);
+        let mut unsupported_domains = Vec::with_capacity(6);
+        unsupported_domains.push(UnsupportedTerminalDomain::fallbacks_only(
+            ThemeTarget::Node,
+            TerminalVariantDomain::uniform(visible_node_count, ThemeVariant::Default),
+        ));
+        unsupported_domains.push(UnsupportedTerminalDomain::fallbacks_only(
+            ThemeTarget::NodeLabel,
+            TerminalVariantDomain::uniform(visible_node_count, ThemeVariant::Default),
+        ));
         if let Some(marker_count) =
             receipt.and_then(ClassRelationThemeReceipt::visible_marker_occurrence_count)
         {

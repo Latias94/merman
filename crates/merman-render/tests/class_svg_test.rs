@@ -132,6 +132,47 @@ fn class_node_ordinal_surface_theme() -> DiagramTheme {
     ])
 }
 
+fn class_node_fallback_theme() -> DiagramTheme {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#123456").expect("valid Class node palette color")
+    ])
+    .expect("non-empty Class node palette");
+    let effect_id = "class-node-blur";
+    let effects = DiagramEffectSet::default()
+        .with_graph(
+            EffectGraph::new(
+                effect_id,
+                [EffectPrimitive::GaussianBlur {
+                    input: EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                }],
+            )
+            .expect("valid Class node effect graph"),
+        )
+        .expect("unique Class node effect graph")
+        .with_binding(
+            EffectBinding::new(ThemeTarget::Node, effect_id)
+                .expect("valid Class node effect binding"),
+        )
+        .expect("unique Class node effect binding");
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_ordinal_palette(ThemeTarget::Node, palette)
+                        .with_ordinal_palette(
+                            ThemeTarget::NodeLabel,
+                            OrdinalPalette::new([ThemeColorValue::parse("#abcdef")
+                                .expect("valid Class label palette color")])
+                            .expect("non-empty Class label palette"),
+                        ),
+                )
+                .with_effects(effects),
+        )
+        .expect("compile Class node fallback theme")
+}
+
 fn class_table_palette_theme() -> DiagramTheme {
     let palette = OrdinalPalette::new([
         ThemeColorValue::parse("#123456").expect("valid Class table palette color")
@@ -1829,6 +1870,38 @@ fn class_table_palette_and_effect_require_real_row_occurrences() {
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
     }
+}
+
+#[test]
+fn class_node_and_label_fallbacks_are_reconciled_against_visible_nodes() {
+    let theme = class_node_fallback_theme();
+    let visible = try_render_class_svg_with_theme_requirement(
+        "classDiagram\n  class A\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort Class node fallback render");
+    let evidence = merman_render::__private::family_evidence(visible.into_completion().report());
+    assert_eq!(evidence.required_count(), 3);
+    assert_eq!(evidence.accounted_count(), 3);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 3);
+
+    let empty = try_render_class_svg_with_theme_requirement(
+        "classDiagram\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("an empty Class makes node fallbacks not applicable");
+    let evidence = merman_render::__private::family_evidence(empty.into_completion().report());
+    assert_eq!(evidence.required_count(), 3);
+    assert_eq!(evidence.accounted_count(), 3);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 3);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

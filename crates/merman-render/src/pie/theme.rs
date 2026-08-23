@@ -12,6 +12,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -403,6 +404,15 @@ impl PieThemePlan {
                 self.evidence.mark_not_applicable(key);
             }
         }
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut self.evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::PieSlice,
+                TerminalVariantDomain::uniform(occurrence_count, ThemeVariant::Default),
+            )],
+            work_meter,
+        )?;
         Ok(())
     }
 
