@@ -55,50 +55,8 @@ pub fn describe_theme_support(query: &ThemeSupportQueryV1) -> ThemeCapabilityDes
             ["theme-support.unknown-facet"],
         );
     };
-    if !target.valid_for(family) {
-        return descriptor(
-            query,
-            ThemeSupportStateV1::NotApplicable,
-            ["theme-support.target-not-applicable-to-family"],
-        );
-    }
-    if output == ThemeSupportOutputV1::Ascii {
-        return descriptor(
-            query,
-            ThemeSupportStateV1::NotApplicable,
-            ["theme-support.visual-theme-not-applicable-to-output"],
-        );
-    }
-    if output == ThemeSupportOutputV1::BrowserSvg {
-        return descriptor(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.terminal-qualification-incomplete"],
-        );
-    }
-    if matches!(
-        output,
-        ThemeSupportOutputV1::Png | ThemeSupportOutputV1::Jpeg | ThemeSupportOutputV1::Pdf
-    ) {
-        return descriptor(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.output-qualification-not-owned-by-renderer"],
-        );
-    }
-    if target == ThemeTarget::Canvas {
-        return descriptor(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.root-support-query-not-yet-modeled"],
-        );
-    }
-    if family == DiagramFamilyId::ARCHITECTURE && !crate::layout_cytoscape_available() {
-        return descriptor(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.family-render-capability-not-built"],
-        );
+    if let Err(rejection) = qualify_common_support(family, output, Some(target)) {
+        return reject_v1(query, rejection);
     }
 
     let claim = match facet {
@@ -206,58 +164,12 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
         }
     };
 
-    if let ResolvedSubject::Target { target, .. } = subject {
-        if !target.valid_for(family) {
-            return descriptor_v2(
-                query,
-                ThemeSupportStateV1::NotApplicable,
-                ["theme-support.target-not-applicable-to-family"],
-            );
-        }
-    }
-    if output == ThemeSupportOutputV1::Ascii {
-        return descriptor_v2(
-            query,
-            ThemeSupportStateV1::NotApplicable,
-            ["theme-support.visual-theme-not-applicable-to-output"],
-        );
-    }
-    if output == ThemeSupportOutputV1::BrowserSvg {
-        return descriptor_v2(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.terminal-qualification-incomplete"],
-        );
-    }
-    if matches!(
-        output,
-        ThemeSupportOutputV1::Png | ThemeSupportOutputV1::Jpeg | ThemeSupportOutputV1::Pdf
-    ) {
-        return descriptor_v2(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.output-qualification-not-owned-by-renderer"],
-        );
-    }
-    if matches!(
-        subject,
-        ResolvedSubject::Target {
-            target: ThemeTarget::Canvas,
-            ..
-        }
-    ) {
-        return descriptor_v2(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.root-support-query-not-yet-modeled"],
-        );
-    }
-    if family == DiagramFamilyId::ARCHITECTURE && !crate::layout_cytoscape_available() {
-        return descriptor_v2(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.family-render-capability-not-built"],
-        );
+    let target = match subject {
+        ResolvedSubject::Target { target, .. } => Some(target),
+        ResolvedSubject::BaseTypography(_) => None,
+    };
+    if let Err(rejection) = qualify_common_support(family, output, target) {
+        return reject_v2(query, rejection);
     }
 
     let claim = match subject {
@@ -271,6 +183,81 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
         }
     };
     descriptor_v2_from_claim(query, claim)
+}
+
+#[derive(Clone, Copy)]
+struct SupportRejection {
+    state: ThemeSupportStateV1,
+    reason_id: &'static str,
+}
+
+fn qualify_common_support(
+    family: DiagramFamilyId,
+    output: ThemeSupportOutputV1,
+    target: Option<ThemeTarget>,
+) -> Result<(), SupportRejection> {
+    if let Some(target) = target {
+        if !target.valid_for(family) {
+            return Err(SupportRejection {
+                state: ThemeSupportStateV1::NotApplicable,
+                reason_id: "theme-support.target-not-applicable-to-family",
+            });
+        }
+    }
+    match output {
+        ThemeSupportOutputV1::Ascii => {
+            return Err(SupportRejection {
+                state: ThemeSupportStateV1::NotApplicable,
+                reason_id: "theme-support.visual-theme-not-applicable-to-output",
+            });
+        }
+        ThemeSupportOutputV1::BrowserSvg => {
+            return Err(SupportRejection {
+                state: ThemeSupportStateV1::Unverified,
+                reason_id: "theme-support.terminal-qualification-incomplete",
+            });
+        }
+        ThemeSupportOutputV1::Png | ThemeSupportOutputV1::Jpeg | ThemeSupportOutputV1::Pdf => {
+            return Err(SupportRejection {
+                state: ThemeSupportStateV1::Unverified,
+                reason_id: "theme-support.output-qualification-not-owned-by-renderer",
+            });
+        }
+        ThemeSupportOutputV1::StandaloneSvg => {}
+        _ => {
+            return Err(SupportRejection {
+                state: ThemeSupportStateV1::Unverified,
+                reason_id: "theme-support.output-qualification-not-owned-by-renderer",
+            });
+        }
+    }
+    if target == Some(ThemeTarget::Canvas) {
+        return Err(SupportRejection {
+            state: ThemeSupportStateV1::Unverified,
+            reason_id: "theme-support.root-support-query-not-yet-modeled",
+        });
+    }
+    if family == DiagramFamilyId::ARCHITECTURE && !crate::layout_cytoscape_available() {
+        return Err(SupportRejection {
+            state: ThemeSupportStateV1::Unverified,
+            reason_id: "theme-support.family-render-capability-not-built",
+        });
+    }
+    Ok(())
+}
+
+fn reject_v1(
+    query: &ThemeSupportQueryV1,
+    rejection: SupportRejection,
+) -> ThemeCapabilityDescriptorV1 {
+    descriptor(query, rejection.state, [rejection.reason_id])
+}
+
+fn reject_v2(
+    query: &ThemeSupportQueryV2,
+    rejection: SupportRejection,
+) -> ThemeCapabilityDescriptorV2 {
+    descriptor_v2(query, rejection.state, [rejection.reason_id])
 }
 
 fn descriptor_from_claim(
