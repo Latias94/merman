@@ -48,9 +48,42 @@ fn fallback_text_style(svg: &str, label: &str) -> String {
 }
 
 fn assert_usvg_parseable(svg: &str) {
-    let mut options = usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = usvg_options_with_system_sans_serif();
     usvg::Tree::from_str(svg, &options).expect("resvg-safe SVG should remain usvg-parseable");
+}
+
+fn usvg_options_with_system_sans_serif() -> usvg::Options<'static> {
+    const PREFERRED_FAMILIES: &[&str] = &[
+        "DejaVu Sans",
+        "Liberation Sans",
+        "Noto Sans",
+        "Arial",
+        "Helvetica",
+    ];
+
+    let mut options = usvg::Options::default();
+    let fallback_family = {
+        let fontdb = options.fontdb_mut();
+        fontdb.load_system_fonts();
+        PREFERRED_FAMILIES
+            .iter()
+            .find_map(|preferred| {
+                fontdb
+                    .faces()
+                    .flat_map(|face| face.families.iter())
+                    .find(|(family, _)| family.eq_ignore_ascii_case(preferred))
+                    .map(|(family, _)| family.clone())
+            })
+            .or_else(|| {
+                fontdb
+                    .faces()
+                    .find_map(|face| face.families.first().map(|(family, _)| family.clone()))
+            })
+    }
+    .expect("usvg typography assertions require at least one system font");
+    options.font_family = fallback_family.clone();
+    options.fontdb_mut().set_sans_serif_family(fallback_family);
+    options
 }
 
 fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
@@ -82,14 +115,40 @@ fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
         None
     }
 
-    let mut options = usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = usvg_options_with_system_sans_serif();
     let tree = usvg::Tree::from_str(svg, &options).expect("resvg-safe output should parse in usvg");
     find_font_size(tree.root(), label)
         .unwrap_or_else(|| panic!("expected usvg text span for {label:?}: {svg}"))
 }
 
 fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
+    fn find_flattened_fill(group: &usvg::Group) -> Option<(u8, u8, u8)> {
+        for node in group.children() {
+            match node {
+                usvg::Node::Group(group) => {
+                    if let Some(fill) = find_flattened_fill(group) {
+                        return Some(fill);
+                    }
+                }
+                usvg::Node::Path(path) => {
+                    let Some(fill) = path.fill() else {
+                        continue;
+                    };
+                    if let usvg::Paint::Color(color) = fill.paint() {
+                        return Some((color.red, color.green, color.blue));
+                    }
+                }
+                usvg::Node::Text(text) => {
+                    if let Some(fill) = find_flattened_fill(text.flattened()) {
+                        return Some(fill);
+                    }
+                }
+                usvg::Node::Image(_) => {}
+            }
+        }
+        None
+    }
+
     fn find_fill(group: &usvg::Group, label: &str) -> Option<(u8, u8, u8)> {
         for node in group.children() {
             match node {
@@ -107,17 +166,7 @@ fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
                     if text_content.trim() != label {
                         continue;
                     }
-                    for chunk in text.chunks() {
-                        let Some(span) = chunk.spans().first() else {
-                            continue;
-                        };
-                        let Some(fill) = span.fill() else {
-                            continue;
-                        };
-                        if let usvg::Paint::Color(color) = fill.paint() {
-                            return Some((color.red, color.green, color.blue));
-                        }
-                    }
+                    return find_flattened_fill(text.flattened());
                 }
                 usvg::Node::Path(_) | usvg::Node::Image(_) => {}
             }
@@ -125,8 +174,7 @@ fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
         None
     }
 
-    let mut options = usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = usvg_options_with_system_sans_serif();
     let tree = usvg::Tree::from_str(svg, &options).expect("resvg-safe output should parse in usvg");
     find_fill(tree.root(), label)
 }
