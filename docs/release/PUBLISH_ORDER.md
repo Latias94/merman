@@ -130,12 +130,15 @@ under the requested final tag in platform-first order, with the WASM package bef
 loader.
 
 The first version of each npm package cannot use npm Trusted Publishing before the package exists.
-For that one bootstrap, download the verified group artifact from a non-publishing run, publish the
-five platform tarballs, the WASM tarball, and then the loader directly under the requested final
-tag with a maintainer's 2FA-protected npm credential, configure Trusted Publishing for all seven
-package names,
-and rerun `release-node.yml` with publishing enabled. Thereafter the workflow owns idempotent
-publishing and provenance; do not keep an npm token in GitHub Actions.
+For that one bootstrap, dispatch `release-node.yml` with `publish_to_npm=false` against the reviewed
+immutable source and record its workflow run id. Download the verified
+`merman-node-npm-package-group` artifact from that exact run, publish the five platform tarballs, the
+WASM tarball, and then the loader directly under the requested final tag with a maintainer's
+2FA-protected npm credential, and configure Trusted Publishing for all seven package names. Then
+dispatch `release-node.yml` with the same `release_tag` and `source_ref`,
+`publish_to_npm=true`, and `recovery_run_id=<bootstrap-run-id>`. The recovery run reuses and verifies
+the original tarballs; it must not accept a separately rebuilt candidate. Thereafter the workflow
+owns idempotent publishing and provenance; do not keep an npm token in GitHub Actions.
 
 The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
 changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a

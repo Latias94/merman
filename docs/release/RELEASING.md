@@ -123,8 +123,10 @@ target plus the Node WASM artifact, packages platform binaries and the WASM pack
 loader, and uses the same direct-publish plus integrity-preflight boundary as the browser group.
 npm only allows a trusted publisher to be configured for an existing package, so the first release
 of each new Node package requires the documented one-time, 2FA-protected bootstrap from the
-verified workflow artifact; configure OIDC for all seven names immediately afterward. Do not add a
-persistent npm token to the repository workflow.
+verified `release-node.yml` workflow artifact; configure OIDC for all seven names immediately
+afterward. Dispatch the publishing run with that bootstrap run's `recovery_run_id` so the publisher
+reuses the exact verified tarballs instead of rebuilding them. Do not add a persistent npm token to
+the repository workflow.
 
 For an npm-only alpha test, `release-node.yml` treats `release_tag` as the package version label and
 `source_ref` as the build source. The source may be a reviewed full commit SHA newer than the

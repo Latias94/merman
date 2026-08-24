@@ -657,6 +657,27 @@ jobs:
         if: github.event_name != 'push'
         run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
 
+      - name: Assemble and install-smoke the Node-WASM npm package on PRs
+        if: github.event_name != 'push'
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/node-wasm-package"
+          artifact_dir="$RUNNER_TEMP/node-wasm-smoke-artifact"
+          smoke_root="$RUNNER_TEMP/node-wasm-install-smoke"
+          version="$(node -p "JSON.parse(require('fs').readFileSync('platforms/node/package-surfaces.json', 'utf8')).version")"
+          node platforms/node/scripts/assemble-packages.mjs --wasm --output-root "$package_root"
+          node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
+          mkdir -p "$artifact_dir" "$smoke_root"
+          npm pack "$package_root/node-wasm" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-wasm-pack.json"
+          test "$(find "$artifact_dir" -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
+          cd "$smoke_root"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund "$artifact_dir"/*.tgz >/dev/null
+          node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" \
+            --project "$smoke_root" \
+            --version "$version" \
+            --target node-wasm
+
       - name: Build and probe the real Node N-API candidate on PRs
         if: github.event_name != 'push'
         run: |

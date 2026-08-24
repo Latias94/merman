@@ -97,9 +97,9 @@ Merman CI keeps publication separate from validation:
 - `web-npm-dry-run` builds each admitted TypeScript/WASM package, verifies its package projection,
   then packs and verifies the complete lockstep npm group without publishing it.
 - `release-node.yml` builds, packs, installs, and renders the public Node loader through its real
-  macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native package. Its publisher receives
-  verified tarballs only and publishes platform packages before the root loader under the requested
-  final dist-tag.
+  macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native packages, plus the explicit
+  Node-targeted WASM package. Its publisher receives a verified seven-package group only and
+  publishes platform packages, WASM, and then the root loader under the requested final dist-tag.
 - `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
   VSIX, and verify package contents, target platform, stable manifest version, and pre-release
   marker.
