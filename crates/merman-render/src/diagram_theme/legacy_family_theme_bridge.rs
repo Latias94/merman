@@ -663,48 +663,9 @@ fn compile_task_family(
 
     match family {
         DiagramFamilyId::GANTT => {
-            for (stroke_projection, fill_projection, variant, fill_key, stroke_key) in [
-                (
-                    ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
-                    ThemeRouteCutoverProjection::GanttTaskDefaultFill,
-                    ThemeVariant::Default,
-                    "taskBkgColor",
-                    "taskBorderColor",
-                ),
-                (
-                    ThemeRouteCutoverProjection::GanttTaskActiveStroke,
-                    ThemeRouteCutoverProjection::GanttTaskActiveFill,
-                    ThemeVariant::Active,
-                    "activeTaskBkgColor",
-                    "activeTaskBorderColor",
-                ),
-                (
-                    ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
-                    ThemeRouteCutoverProjection::GanttTaskSuccessFill,
-                    ThemeVariant::Success,
-                    "doneTaskBkgColor",
-                    "doneTaskBorderColor",
-                ),
-                (
-                    ThemeRouteCutoverProjection::GanttTaskErrorStroke,
-                    ThemeRouteCutoverProjection::GanttTaskErrorFill,
-                    ThemeVariant::Error,
-                    "critBkgColor",
-                    "critBorderColor",
-                ),
-            ] {
-                contributions.add_theme_variables(
-                    fill_projection.contribution_id(),
-                    [(fill_key, reader.fill_variant(ThemeTarget::Task, variant))],
-                );
-                contributions.add_theme_variables(
-                    stroke_projection.contribution_id(),
-                    [(
-                        stroke_key,
-                        reader.stroke_variant(ThemeTarget::Task, variant),
-                    )],
-                );
-            }
+            // Gantt task fill/stroke state variants are owned by the typed adapter.
+            // Keep only the warning-line projection, which still has no terminal
+            // typed route.
             contributions.add_theme_variables(
                 "task.warning",
                 [
@@ -3496,7 +3457,9 @@ mod tests {
             gantt
                 .effective_config
                 .get_str("themeVariables.activeTaskBkgColor"),
-            Some("#f1f5f9")
+            gantt_baseline
+                .effective_config
+                .get_str("themeVariables.activeTaskBkgColor")
         );
         assert_eq!(
             gantt
@@ -3510,47 +3473,22 @@ mod tests {
             gantt
                 .effective_config
                 .get_str("themeVariables.doneTaskBorderColor"),
-            Some("#059669")
+            gantt_baseline
+                .effective_config
+                .get_str("themeVariables.doneTaskBorderColor")
         );
         assert_eq!(
             gantt
                 .effective_config
                 .get_str("themeVariables.critBorderColor"),
-            Some("#dc2626")
+            gantt_baseline
+                .effective_config
+                .get_str("themeVariables.critBorderColor")
         );
-        assert!(fallback_contribution_count(&gantt) > 0);
+        assert_eq!(fallback_contribution_count(&gantt), 0);
         let gantt_bridge = bridge(&spec).compile_for_family(DiagramFamilyId::GANTT);
-        assert!(
-            !gantt_bridge
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.gantt.task.default.fill")
-        );
-        assert!(
-            gantt_bridge
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.gantt.task.active.fill")
-        );
-        for mapping in ["task.success.fill", "task.error.fill"] {
-            assert!(
-                !gantt_bridge
-                    .contribution_ids
-                    .contains(&format!("merman.legacy-family-theme.v1.gantt.{mapping}"))
-            );
-        }
-        assert!(!gantt_bridge.contribution_ids.contains(&format!(
-            "merman.legacy-family-theme.v1.gantt.{}",
-            ThemeRouteCutoverProjection::GanttTaskDefaultStroke.contribution_id()
-        )));
-        for projection in [
-            ThemeRouteCutoverProjection::GanttTaskActiveStroke,
-            ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
-            ThemeRouteCutoverProjection::GanttTaskErrorStroke,
-        ] {
-            assert!(gantt_bridge.contribution_ids.contains(&format!(
-                "merman.legacy-family-theme.v1.gantt.{}",
-                projection.contribution_id()
-            )));
-        }
+        assert!(gantt_bridge.overlay.is_empty());
+        assert!(gantt_bridge.contribution_ids.is_empty());
 
         let requirement_baseline = parse(&DiagramThemeSpec::new(), REQUIREMENT_FIXTURE);
         let requirement = parse(&spec, REQUIREMENT_FIXTURE);
@@ -3592,6 +3530,42 @@ mod tests {
             requirement_bridge
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.requirement.relation.paint")
+        );
+    }
+
+    #[test]
+    fn gantt_warning_lines_keep_their_legacy_projection() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Task,
+                    ThemeStylePatch::default().with_stroke(solid("#d97706")),
+                )
+                .for_family(DiagramFamilyId::GANTT)
+                .with_variant(ThemeVariant::Warning),
+            ),
+        );
+        let parsed = parse(&spec, GANTT_FIXTURE);
+        let compiled = bridge(&spec).compile_for_family(DiagramFamilyId::GANTT);
+
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.todayLineColor"),
+            Some("#d97706")
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.vertLineColor"),
+            Some("#d97706")
+        );
+        assert_eq!(fallback_contribution_count(&parsed), 1);
+        assert_eq!(compiled.contribution_ids.len(), 1);
+        assert!(
+            compiled
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.gantt.task.warning")
         );
     }
 

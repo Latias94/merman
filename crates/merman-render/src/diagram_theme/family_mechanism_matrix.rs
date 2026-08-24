@@ -1382,22 +1382,21 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::GANTT
         && target == ThemeTarget::Task
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None
+                    | Some(ThemeVariant::Default)
+                    | Some(ThemeVariant::Active)
+                    | Some(ThemeVariant::Success)
+                    | Some(ThemeVariant::Error)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            )
-        )
-    {
-        return FamilyThemeDisposition::TypedAdapter;
-    }
-    if family == DiagramFamilyId::GANTT
-        && target == ThemeTarget::Task
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
-        && matches!(
-            facet,
-            FamilyThemeRuleFacet::Stroke(
+            ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -2989,7 +2988,7 @@ mod tests {
     }
 
     #[test]
-    fn gantt_and_kanban_own_their_exact_unqualified_static_task_surfaces() {
+    fn gantt_and_kanban_own_their_exact_static_task_surfaces() {
         let task_radius = ThemeStylePatch {
             geometry: ThemeGeometryPatch {
                 radius: Specified::Value(7.0),
@@ -3068,9 +3067,19 @@ mod tests {
                     &ThemeRule::new(ThemeTarget::Task, task_fill.clone()).with_variant(variant),
                 )[0]
                 .disposition(),
-                FamilyThemeDisposition::LegacyCompatibility
+                FamilyThemeDisposition::TypedAdapter
             );
         }
+        assert_eq!(
+            compile_rule_routes(
+                DiagramFamilyId::GANTT,
+                0,
+                &ThemeRule::new(ThemeTarget::Task, task_fill.clone())
+                    .with_variant(ThemeVariant::Warning),
+            )[0]
+            .disposition(),
+            FamilyThemeDisposition::Unsupported
+        );
         assert_eq!(
             compile_rule_routes(
                 DiagramFamilyId::GANTT,
@@ -3115,7 +3124,7 @@ mod tests {
                     &ThemeRule::new(ThemeTarget::Task, task_stroke.clone()).with_variant(variant),
                 )[0]
                 .disposition(),
-                FamilyThemeDisposition::LegacyCompatibility
+                FamilyThemeDisposition::TypedAdapter
             );
             assert_eq!(
                 compile_rule_routes(
@@ -3127,6 +3136,15 @@ mod tests {
                 FamilyThemeDisposition::Unsupported
             );
         }
+        assert_eq!(
+            compile_rule_routes(
+                DiagramFamilyId::GANTT,
+                0,
+                &ThemeRule::new(ThemeTarget::Task, task_stroke).with_variant(ThemeVariant::Warning),
+            )[0]
+            .disposition(),
+            FamilyThemeDisposition::LegacyCompatibility
+        );
     }
 
     #[test]

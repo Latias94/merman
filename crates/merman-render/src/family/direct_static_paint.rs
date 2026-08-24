@@ -7,13 +7,16 @@ use crate::diagram_theme::{
 pub(crate) enum DirectStaticSelectorDomain {
     Unqualified,
     Default,
+    /// A state-specific static rule, with the unqualified rule as its fallback.
+    State(ThemeVariant),
 }
 
 impl DirectStaticSelectorDomain {
-    const fn accepts(self, variant: Option<ThemeVariant>) -> bool {
+    fn accepts(self, variant: Option<ThemeVariant>) -> bool {
         match self {
             Self::Unqualified => variant.is_none(),
             Self::Default => matches!(variant, None | Some(ThemeVariant::Default)),
+            Self::State(state) => variant.is_none() || variant == Some(state),
         }
     }
 }

@@ -5,13 +5,13 @@ use merman_core::MermaidConfig;
 use merman_core::diagrams::gantt::GanttRenderTask;
 
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    FamilyThemePaintKind, FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty,
-    ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
+    Specified, ThemeCapability, ThemeTarget,
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
@@ -451,33 +451,15 @@ fn typed_fill_expectation(
     state: GanttTaskBarState,
     style: &ResolvedThemeStyle,
 ) -> crate::Result<Option<GanttTaskFillExpectation>> {
-    let Some(origin) = style.fill_resolution().winner() else {
+    let Some(typed_fill) = resolve_direct_static_fill(
+        theme,
+        style,
+        &[ThemeTarget::Task],
+        DirectStaticSelectorDomain::State(state.theme_variant()),
+    ) else {
         return Ok(None);
     };
-    let Some(facet) = FamilyThemeRuleFacet::fill(style.fill_resolution().specified()) else {
-        return Ok(None);
-    };
-    if theme.rule_facet_disposition(origin.rule_index(), facet)
-        != Some(FamilyThemeDisposition::TypedAdapter)
-    {
-        return Ok(None);
-    }
-
-    let (typed_css, capability) = match style.fill_resolution().specified() {
-        Specified::Value(CanvasPaint::Transparent) => {
-            ("transparent".to_string(), ThemeCapability::TransparentPaint)
-        }
-        Specified::Value(CanvasPaint::Solid(color)) => {
-            (color.as_css(), ThemeCapability::SolidPaint)
-        }
-        Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(
-            CanvasPaint::LinearGradient(_)
-            | CanvasPaint::RadialGradient(_)
-            | CanvasPaint::Pattern(_),
-        ) => return Ok(None),
-    };
+    let (typed_css, rule_index, capability) = typed_fill.into_parts();
 
     let final_fill_path = state.final_fill_path();
     let owner = if merman_core::__private::config_path_overrides_typed_default(
@@ -487,7 +469,7 @@ fn typed_fill_expectation(
         GanttTaskFillOwner::Mermaid
     } else {
         GanttTaskFillOwner::Typed {
-            rule_index: origin.rule_index(),
+            rule_index,
             capability,
         }
     };
@@ -499,14 +481,11 @@ fn typed_fill_expectation(
                     "Gantt terminal fill owner `{final_fill_path}` had no effective value"
                 ),
             })?
-            .to_string(),
+            .into(),
         GanttTaskFillOwner::Typed { .. } => typed_css,
     };
 
-    Ok(Some(GanttTaskFillExpectation {
-        css: css.into_boxed_str(),
-        owner,
-    }))
+    Ok(Some(GanttTaskFillExpectation { css, owner }))
 }
 
 fn typed_stroke_expectation(
@@ -519,7 +498,7 @@ fn typed_stroke_expectation(
         theme,
         style,
         &[ThemeTarget::Task],
-        DirectStaticSelectorDomain::Unqualified,
+        DirectStaticSelectorDomain::State(state.theme_variant()),
     ) else {
         return Ok(None);
     };
@@ -545,14 +524,11 @@ fn typed_stroke_expectation(
                     "Gantt terminal stroke owner `{final_stroke_path}` had no effective value"
                 ),
             })?
-            .to_string(),
-        GanttTaskStrokeOwner::Typed { .. } => typed_css.to_string(),
+            .into(),
+        GanttTaskStrokeOwner::Typed { .. } => typed_css,
     };
 
-    Ok(Some(GanttTaskStrokeExpectation {
-        css: css.into_boxed_str(),
-        owner,
-    }))
+    Ok(Some(GanttTaskStrokeExpectation { css, owner }))
 }
 
 #[derive(Debug, Default)]

@@ -145,7 +145,7 @@ fn style_property<'a>(style: &'a str, property: &str) -> Option<&'a str> {
         .next_back()
 }
 
-fn gantt_task_terminal_fills(svg: &str) -> Vec<(String, String, String)> {
+fn gantt_task_terminal_inline_paints(svg: &str, property: &str) -> Vec<(String, String, String)> {
     let document = roxmltree::Document::parse(svg).expect("valid themed Gantt SVG XML");
     document
         .descendants()
@@ -155,46 +155,23 @@ fn gantt_task_terminal_fills(svg: &str) -> Vec<(String, String, String)> {
                     .attribute("class")
                     .is_some_and(|class| class.split_ascii_whitespace().next() == Some("task"))
         })
-        .map(|node| {
-            let id = node
-                .attribute("id")
-                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal id: {svg}"));
-            let class = node
-                .attribute("class")
-                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal class: {svg}"));
-            let fill = node
+        .filter_map(|node| {
+            let id = node.attribute("id")?;
+            let class = node.attribute("class")?;
+            let paint = node
                 .attribute("style")
-                .and_then(|style| style_property(style, "fill"))
-                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal fill: {svg}"));
-            (id.to_string(), class.to_string(), fill.to_string())
+                .and_then(|style| style_property(style, property))?;
+            Some((id.to_string(), class.to_string(), paint.to_string()))
         })
         .collect()
 }
 
-fn gantt_task_terminal_strokes(svg: &str) -> Vec<(String, String, String)> {
-    let document = roxmltree::Document::parse(svg).expect("valid themed Gantt SVG XML");
-    document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("rect")
-                && node
-                    .attribute("class")
-                    .is_some_and(|class| class.split_ascii_whitespace().next() == Some("task"))
-        })
-        .map(|node| {
-            let id = node
-                .attribute("id")
-                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal id: {svg}"));
-            let class = node
-                .attribute("class")
-                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal class: {svg}"));
-            let stroke = node
-                .attribute("style")
-                .and_then(|style| style_property(style, "stroke"))
-                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal stroke: {svg}"));
-            (id.to_string(), class.to_string(), stroke.to_string())
-        })
-        .collect()
+fn gantt_task_terminal_inline_fills(svg: &str) -> Vec<(String, String, String)> {
+    gantt_task_terminal_inline_paints(svg, "fill")
+}
+
+fn gantt_task_terminal_inline_strokes(svg: &str) -> Vec<(String, String, String)> {
+    gantt_task_terminal_inline_paints(svg, "stroke")
 }
 
 const GANTT_TASK_FILL_SOURCE: &str = r#"gantt
@@ -209,6 +186,27 @@ Done critical: crit, done, done-crit-task, 2024-01-06, 1d
 Active milestone: milestone, active, active-milestone-task, 2024-01-07, 1d
 Done vertical marker: vert, done, done-vert-task, 2024-01-08, 0d
 "#;
+
+const GANTT_TASK_VARIANT_TERMINALS: [(ThemeVariant, &[&str]); 4] = [
+    (ThemeVariant::Default, &["gantt-config-default-task"]),
+    (
+        ThemeVariant::Active,
+        &[
+            "gantt-config-active-task",
+            "gantt-config-active-crit-task",
+            "gantt-config-active-milestone-task",
+        ],
+    ),
+    (
+        ThemeVariant::Success,
+        &[
+            "gantt-config-done-task",
+            "gantt-config-done-crit-task",
+            "gantt-config-done-vert-task",
+        ],
+    ),
+    (ThemeVariant::Error, &["gantt-config-crit-task"]),
+];
 
 #[test]
 fn gantt_layout_uses_the_operation_container_width_unless_config_overrides_it() {
@@ -302,7 +300,7 @@ fn gantt_static_task_fill_reaches_every_terminal_state_and_shape() {
                 &SvgDebugOptions::default(),
             )
             .expect("render strict portable Gantt task fill");
-        let terminals = gantt_task_terminal_fills(rendered.svg());
+        let terminals = gantt_task_terminal_inline_fills(rendered.svg());
 
         assert_eq!(terminals.len(), 8, "unexpected Gantt task terminal domain");
         for (id, class, actual_fill) in &terminals {
@@ -372,7 +370,7 @@ fn gantt_static_task_stroke_reaches_every_terminal_state_and_shape() {
                 &SvgDebugOptions::default(),
             )
             .expect("render strict portable Gantt task stroke");
-        let terminals = gantt_task_terminal_strokes(rendered.svg());
+        let terminals = gantt_task_terminal_inline_strokes(rendered.svg());
 
         assert_eq!(terminals.len(), 8, "unexpected Gantt task terminal domain");
         for (id, class, actual_stroke) in &terminals {
@@ -430,7 +428,7 @@ fn gantt_final_mermaid_stroke_keys_own_their_states_independently() {
             &SvgDebugOptions::default(),
         )
         .expect("render source-owned Gantt task strokes");
-    let terminals = gantt_task_terminal_strokes(rendered.svg());
+    let terminals = gantt_task_terminal_inline_strokes(rendered.svg());
 
     for (id, _, stroke) in &terminals {
         let expected = match id.as_str() {
@@ -481,7 +479,7 @@ fn gantt_task_stroke_stays_bound_to_semantic_state_after_date_sorting() {
             &SvgDebugOptions::default(),
         )
         .expect("render sorted Gantt task strokes");
-    let terminals = gantt_task_terminal_strokes(rendered.svg());
+    let terminals = gantt_task_terminal_inline_strokes(rendered.svg());
     let by_id = terminals
         .into_iter()
         .map(|(id, _, stroke)| (id, stroke))
@@ -549,7 +547,7 @@ fn gantt_final_mermaid_fill_keys_own_their_states_independently() {
             &SvgDebugOptions::default(),
         )
         .expect("render source-owned Gantt task fills");
-    let terminals = gantt_task_terminal_fills(rendered.svg());
+    let terminals = gantt_task_terminal_inline_fills(rendered.svg());
 
     for (id, _, fill) in &terminals {
         let expected = match id.as_str() {
@@ -621,7 +619,7 @@ fn gantt_each_final_mermaid_fill_key_suppresses_only_its_terminal_states() {
             )
             .expect("render partially source-owned Gantt task fills");
 
-        for (id, _, fill) in gantt_task_terminal_fills(rendered.svg()) {
+        for (id, _, fill) in gantt_task_terminal_inline_fills(rendered.svg()) {
             let expected = if source_owned_ids.contains(&id.as_str()) {
                 source_fill
             } else {
@@ -649,7 +647,7 @@ fn gantt_task_fill_is_not_applicable_without_task_rects() {
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render empty Gantt task domain");
-    assert!(gantt_task_terminal_fills(rendered.svg()).is_empty());
+    assert!(gantt_task_terminal_inline_fills(rendered.svg()).is_empty());
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
@@ -661,7 +659,7 @@ fn gantt_task_fill_is_not_applicable_without_task_rects() {
 }
 
 #[test]
-fn gantt_task_fill_rejects_variant_ordinal_clear_gradient_and_pattern_routes() {
+fn gantt_task_fill_supports_variant_and_rejects_ordinal_clear_gradient_and_pattern_routes() {
     let gradient = LinearGradient::new(
         90.0,
         [
@@ -691,13 +689,6 @@ fn gantt_task_fill_rejects_variant_ordinal_clear_gradient_and_pattern_routes() {
         ThemeStylePatch::default()
             .with_fill(CanvasPaint::solid("#123456").expect("valid Gantt solid fill"))
     };
-    let legacy_cases = [
-        ThemeVariant::Default,
-        ThemeVariant::Active,
-        ThemeVariant::Success,
-        ThemeVariant::Error,
-    ]
-    .map(|variant| ThemeRule::new(ThemeTarget::Task, solid()).with_variant(variant));
     let unsupported_cases = [
         ThemeRule::new(ThemeTarget::Task, solid())
             .with_ordinal(OrdinalSelector::exact(1).expect("valid Gantt task ordinal")),
@@ -712,26 +703,36 @@ fn gantt_task_fill_rejects_variant_ordinal_clear_gradient_and_pattern_routes() {
         ),
     ];
 
-    for rule in legacy_cases {
-        let theme = gantt_task_rule_theme(rule);
-        let error = match try_prepare_gantt_family_with_theme_and_engine(
-            GANTT_TASK_FILL_SOURCE,
-            &theme,
-            Engine::new(),
-        ) {
-            Ok(_) => panic!("legacy Gantt task fill variants must remain compatibility residuals"),
-            Err(error) => error,
-        };
-        match error {
-            merman_render::Error::LegacyFamilyThemeCompatibility {
-                family_id,
-                residual_count,
-            } => {
-                assert_eq!(family_id, merman_render::DiagramFamilyId::GANTT);
-                assert_eq!(residual_count, 1);
-            }
-            other => panic!("expected Gantt legacy compatibility residual, got {other}"),
-        }
+    for (variant, expected_ids) in GANTT_TASK_VARIANT_TERMINALS {
+        let theme =
+            gantt_task_rule_theme(ThemeRule::new(ThemeTarget::Task, solid()).with_variant(variant));
+        let artifact = prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-config".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render typed Gantt task fill variant");
+        let terminals = gantt_task_terminal_inline_fills(rendered.svg());
+        let actual_ids = terminals
+            .iter()
+            .filter(|(_, _, fill)| fill == "#123456")
+            .map(|(id, _, _)| id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual_ids, expected_ids,
+            "unexpected terminal fill scope for {variant:?}"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 
     for rule in unsupported_cases {
@@ -756,7 +757,7 @@ fn gantt_task_fill_rejects_variant_ordinal_clear_gradient_and_pattern_routes() {
 }
 
 #[test]
-fn gantt_task_stroke_rejects_variant_ordinal_clear_gradient_and_pattern_routes() {
+fn gantt_task_stroke_supports_variant_and_rejects_ordinal_clear_gradient_and_pattern_routes() {
     let gradient = LinearGradient::new(
         90.0,
         [
@@ -786,13 +787,6 @@ fn gantt_task_stroke_rejects_variant_ordinal_clear_gradient_and_pattern_routes()
         ThemeStylePatch::default()
             .with_stroke(CanvasPaint::solid("#654321").expect("valid Gantt solid stroke"))
     };
-    let legacy_cases = [
-        ThemeVariant::Default,
-        ThemeVariant::Active,
-        ThemeVariant::Success,
-        ThemeVariant::Error,
-    ]
-    .map(|variant| ThemeRule::new(ThemeTarget::Task, solid()).with_variant(variant));
     let unsupported_cases = [
         ThemeRule::new(ThemeTarget::Task, solid())
             .with_ordinal(OrdinalSelector::exact(1).expect("valid Gantt task ordinal")),
@@ -807,28 +801,36 @@ fn gantt_task_stroke_rejects_variant_ordinal_clear_gradient_and_pattern_routes()
         ),
     ];
 
-    for rule in legacy_cases {
-        let theme = gantt_task_rule_theme(rule);
-        let error = match try_prepare_gantt_family_with_theme_and_engine(
-            GANTT_TASK_FILL_SOURCE,
-            &theme,
-            Engine::new(),
-        ) {
-            Ok(_) => {
-                panic!("legacy Gantt task stroke variants must remain compatibility residuals")
-            }
-            Err(error) => error,
-        };
-        match error {
-            merman_render::Error::LegacyFamilyThemeCompatibility {
-                family_id,
-                residual_count,
-            } => {
-                assert_eq!(family_id, merman_render::DiagramFamilyId::GANTT);
-                assert_eq!(residual_count, 1);
-            }
-            other => panic!("expected Gantt legacy compatibility residual, got {other}"),
-        }
+    for (variant, expected_ids) in GANTT_TASK_VARIANT_TERMINALS {
+        let theme =
+            gantt_task_rule_theme(ThemeRule::new(ThemeTarget::Task, solid()).with_variant(variant));
+        let artifact = prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-config".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render typed Gantt task stroke variant");
+        let terminals = gantt_task_terminal_inline_strokes(rendered.svg());
+        let actual_ids = terminals
+            .iter()
+            .filter(|(_, _, stroke)| stroke == "#654321")
+            .map(|(id, _, _)| id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual_ids, expected_ids,
+            "unexpected terminal stroke scope for {variant:?}"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 
     for rule in unsupported_cases {
@@ -861,7 +863,7 @@ fn gantt_task_stroke_is_not_applicable_without_task_rects() {
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render empty Gantt task domain");
-    assert!(gantt_task_terminal_strokes(rendered.svg()).is_empty());
+    assert!(gantt_task_terminal_inline_strokes(rendered.svg()).is_empty());
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
