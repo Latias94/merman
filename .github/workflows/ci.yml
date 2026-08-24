@@ -533,6 +533,13 @@ jobs:
               npm ci --prefix platforms/node
               node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
             '
+          # The container runs as root while the workspace belongs to the runner user.
+          # Restore ownership of only the mounted build outputs before host-side checks.
+          for path in "$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/platforms/node/artifacts"; do
+            if [ -e "$path" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$path"
+            fi
+          done
 
       - name: Verify committed upstream alignment manifests
         if: matrix.parity
