@@ -18,7 +18,6 @@ const DEFAULT_COLOR: &str = "#000";
 // Fallback text is a bounded adapter, so pathological CSS magnitudes must not enter output or
 // overflow relative-unit and line-height calculations.
 const MAX_CSS_NUMERIC_VALUE: f64 = 1_000_000.0;
-const MAX_UNIVERSAL_POSTINGS: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(super) enum Namespace {
@@ -161,7 +160,10 @@ pub(super) struct CascadeIndex {
 }
 
 impl CascadeIndex {
-    fn with_postings(rules: Vec<Rule>) -> Self {
+    fn with_postings<E>(
+        rules: Vec<Rule>,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, E> {
         let mut index = Self {
             rules,
             id_postings: HashMap::new(),
@@ -171,6 +173,7 @@ impl CascadeIndex {
             universal_postings: Vec::new(),
         };
         for (rule_index, rule) in index.rules.iter().enumerate() {
+            checkpoint_loop(rule_index, checkpoint)?;
             let target = rule
                 .branch
                 .compounds
@@ -203,15 +206,14 @@ impl CascadeIndex {
                     .or_default()
                     .push(rule_index);
             } else {
-                // A universal rightmost selector is the only branch that cannot be narrowed by
-                // source-element postings. Keep this bucket explicitly capped so a compact
-                // hostile stylesheet cannot turn every fallback label into an unbounded scan.
-                if index.universal_postings.len() < MAX_UNIVERSAL_POSTINGS {
-                    index.universal_postings.push(rule_index);
-                }
+                // A universal rightmost selector cannot be narrowed by source-element postings.
+                // Preserve every admitted rule so the index never changes cascade semantics;
+                // controlled callers bound source bytes and can cancel this checkpointed scan.
+                index.universal_postings.push(rule_index);
             }
         }
-        index
+        checkpoint()?;
+        Ok(index)
     }
 
     fn candidate_rule_indices(&self, element: &SourceElement) -> Vec<usize> {
@@ -271,7 +273,7 @@ impl CascadeIndex {
             parse_stylesheet(css, &mut rules, &mut source_order, checkpoint)?;
         }
         checkpoint()?;
-        Ok(Self::with_postings(rules))
+        Self::with_postings(rules, checkpoint)
     }
 
     pub(super) fn source_element<E>(

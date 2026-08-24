@@ -1,6 +1,9 @@
 #![cfg(feature = "svg")]
 
-use merman::svg::{SvgPipeline, SvgRenderOptions};
+use merman::svg::{
+    SvgPipeline, SvgRenderOptions, VendoredFontMetricsTextMeasurer,
+    foreign_object_label_fallback_svg_text,
+};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn render_resvg_safe(name: &str, source: &str) -> String {
@@ -77,6 +80,57 @@ fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
     let tree = usvg::Tree::from_str(svg, &options).expect("resvg-safe output should parse in usvg");
     find_font_size(tree.root(), label)
         .unwrap_or_else(|| panic!("expected usvg text span for {label:?}: {svg}"))
+}
+
+fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
+    fn find_fill(group: &usvg::Group, label: &str) -> Option<(u8, u8, u8)> {
+        for node in group.children() {
+            match node {
+                usvg::Node::Group(group) => {
+                    if let Some(fill) = find_fill(group, label) {
+                        return Some(fill);
+                    }
+                }
+                usvg::Node::Text(text) => {
+                    for chunk in text.chunks() {
+                        if chunk.text().trim() != label {
+                            continue;
+                        }
+                        let span = chunk.spans().first()?;
+                        let fill = span.fill()?;
+                        if let usvg::Paint::Color(color) = fill.paint() {
+                            return Some((color.red, color.green, color.blue));
+                        }
+                    }
+                }
+                usvg::Node::Path(_) | usvg::Node::Image(_) => {}
+            }
+        }
+        None
+    }
+
+    let mut options = usvg::Options::default();
+    options.fontdb_mut().load_system_fonts();
+    let tree = usvg::Tree::from_str(svg, &options).expect("resvg-safe output should parse in usvg");
+    find_fill(tree.root(), label)
+}
+
+#[test]
+fn fallback_text_isolated_from_svg_only_source_selectors() {
+    let source = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>g.classGroup text { font-size:10px !important; fill:#ebdbb2 !important; }</style><g class="classGroup"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></g></svg>"##;
+    let svg =
+        foreign_object_label_fallback_svg_text(source, &VendoredFontMetricsTextMeasurer::default());
+
+    assert_eq!(
+        usvg_fallback_text_font_size(&svg, "Alpha"),
+        16.0,
+        "an SVG-only selector must not change the fallback size after measurement: {svg}"
+    );
+    assert_eq!(
+        usvg_fallback_text_fill(&svg, "Alpha"),
+        Some((0x33, 0x33, 0x33)),
+        "an SVG-only selector must not change the fallback paint after resolution: {svg}"
+    );
 }
 
 #[test]

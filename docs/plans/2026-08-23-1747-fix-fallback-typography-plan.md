@@ -64,7 +64,7 @@ The parity renderer is not the defect boundary. Pinned Mermaid CSS and DOM struc
 
 - R7. Default and explicit Mermaid-parity SVG output must remain unchanged, including the pinned Mermaid 11.16.1 CSS and DOM shape.
 - R8. `foreign_object_label_fallback_svg_text`, arbitrary-SVG finalization, typed render requests, raster targets, bindings, and the Typst plugin must receive the same generic fix without diagram-family conditionals or a new public fallback-style API.
-- R9. The existing `data-merman-foreignobject="fallback"`, `merman-foreignobject-fallback`, `merman-foreignobject-fallback-text`, and useful source-class hooks must remain stable for Zed and other hosts.
+- R9. The existing `data-merman-foreignobject="fallback"`, `merman-foreignobject-fallback`, and `merman-foreignobject-fallback-text` hooks must remain stable for Zed and other hosts; source classes remain available as inert `data-merman-source-classes` metadata rather than live classes that can re-trigger source CSS.
 
 **Bounded implementation and audit**
 

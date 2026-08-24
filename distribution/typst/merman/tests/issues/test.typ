@@ -13,8 +13,17 @@
 )
 #assert(issue-89-class.contains("User"), message: "issue #89 class label should survive Typst export")
 #assert(not issue-89-class.contains("<foreignObject"), message: "Typst default export should be resvg-safe")
+#let issue-89-fallback = issue-89-class
+  .split("data-merman-foreignobject=\"fallback\"")
+  .find(fragment => fragment.contains(">User</text>"))
+#assert(issue-89-fallback != none, message: "issue #89 should emit a tagged fallback text node")
+#let issue-89-user-text-tag = issue-89-fallback
+  .split(">User</text>")
+  .first()
+  .split("<" + "text")
+  .last()
 #assert(
-  issue-89-class.contains("font-size:16px") or issue-89-class.contains("font-size: 16px"),
+  issue-89-user-text-tag.contains("font-size:16px") or issue-89-user-text-tag.contains("font-size: 16px"),
   message: "Typst export should keep the source 16px class fallback metric",
 )
 

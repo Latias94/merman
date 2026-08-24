@@ -148,13 +148,12 @@ fn push_unique_token<E>(
     Ok(())
 }
 
-pub(super) fn class_attr_tokens<E>(
+pub(super) fn source_class_attr_tokens<E>(
     g_stack: &[GFrame],
     inner: &str,
-    base_class: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<String, E> {
-    let mut tokens = vec![base_class.to_string()];
+) -> Result<Option<String>, E> {
+    let mut tokens = Vec::new();
     let mut iteration = 0usize;
     for frame in g_stack {
         for token in &frame.class_tokens {
@@ -165,28 +164,8 @@ pub(super) fn class_attr_tokens<E>(
         push_unique_token(&mut tokens, &token, &mut iteration, checkpoint)?;
     }
     checkpoint()?;
-    escape_xml_attr_with_checkpoints(&tokens.join(" "), checkpoint)
-}
-
-pub(super) fn fallback_text_class_attr_tokens<E>(
-    g_stack: &[GFrame],
-    inner: &str,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<String, E> {
-    let mut tokens = vec!["merman-foreignobject-fallback-text".to_string()];
-    let mut iteration = 0usize;
-    for frame in g_stack {
-        for token in &frame.class_tokens {
-            if token != "label" {
-                push_unique_token(&mut tokens, token, &mut iteration, checkpoint)?;
-            }
-        }
+    if tokens.is_empty() {
+        return Ok(None);
     }
-    for token in parse_class_tokens(inner, checkpoint)? {
-        if token != "label" {
-            push_unique_token(&mut tokens, &token, &mut iteration, checkpoint)?;
-        }
-    }
-    checkpoint()?;
-    escape_xml_attr_with_checkpoints(&tokens.join(" "), checkpoint)
+    escape_xml_attr_with_checkpoints(&tokens.join(" "), checkpoint).map(Some)
 }

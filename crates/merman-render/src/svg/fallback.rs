@@ -22,7 +22,7 @@ use std::fmt::{self, Write};
 
 use attr::is_self_closing;
 use cascade::{CascadeIndex, Namespace, SourceElement};
-use context::{GFrame, class_attr_tokens, fallback_text_class_attr_tokens, sum_translate};
+use context::{GFrame, source_class_attr_tokens, sum_translate};
 use html::{foreign_object_html_soft_wrap_width, htmlish_to_text_lines, wrap_html_lines_to_width};
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
@@ -205,18 +205,17 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     } else {
                         ""
                     };
-                    let fallback_class = class_attr_tokens(
-                        &g_stack,
-                        inner,
-                        "merman-foreignobject-fallback",
-                        checkpoint,
-                    )?;
+                    let source_classes = source_class_attr_tokens(&g_stack, inner, checkpoint)?;
+                    let source_classes_attr = source_classes
+                        .as_deref()
+                        .map(|classes| format!(r#" data-merman-source-classes="{classes}""#))
+                        .unwrap_or_default();
                     push_generated_fmt(
                         &mut overlays,
                         format_args!(
-                            r#"<g data-merman-foreignobject="fallback"{source} class="{cls}">"#,
+                            r#"<g data-merman-foreignobject="fallback"{source} class="merman-foreignobject-fallback"{source_classes}>"#,
                             source = source_attr,
-                            cls = fallback_class,
+                            source_classes = source_classes_attr,
                         ),
                         1,
                         svg.len(),
@@ -266,7 +265,6 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         text_style.push_str(font_style);
                         text_style.push(';');
                     }
-                    let text_class = fallback_text_class_attr_tokens(&g_stack, inner, checkpoint)?;
                     let escaped_fill =
                         escape_xml_attr_with_checkpoints(&typography.fill, checkpoint)?;
                     let escaped_style = escape_xml_attr_with_checkpoints(&text_style, checkpoint)?;
@@ -278,8 +276,13 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
-                                r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="{}" style="{}">{}</text>"##,
-                                text_x, y_line, escaped_fill, text_class, escaped_style, text
+                                r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="merman-foreignobject-fallback-text"{} style="{}">{}</text>"##,
+                                text_x,
+                                y_line,
+                                escaped_fill,
+                                source_classes_attr,
+                                escaped_style,
+                                text
                             ),
                             1,
                             svg.len(),
@@ -582,15 +585,15 @@ mod tests {
 
         assert!(
             out.contains(
-                r#"class="merman-foreignobject-fallback node selected labelBkg host-label""#
+                r#"class="merman-foreignobject-fallback" data-merman-source-classes="node selected labelBkg host-label""#
             ),
-            "expected fallback group to keep host-relevant classes: {out}"
+            "expected fallback group to retain source classes as inert metadata: {out}"
         );
         assert!(
             out.contains(
-                r#"class="merman-foreignobject-fallback-text node selected labelBkg host-label""#
+                r#"class="merman-foreignobject-fallback-text" data-merman-source-classes="node selected labelBkg host-label""#
             ),
-            "expected fallback text to keep host-relevant classes: {out}"
+            "expected fallback text to retain source classes as inert metadata: {out}"
         );
         assert!(
             out.contains(r##"fill="#abcdef""##),
@@ -843,6 +846,23 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_overlay_keeps_late_universal_winners() {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
+        for _ in 0..4096 {
+            svg.push_str("*{font-size:12px}");
+        }
+        svg.push_str(
+            r#"*{font-size:19px}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></svg>"#,
+        );
+
+        let out = foreign_object_label_fallback_svg_text(&svg);
+        assert!(
+            out.contains("font-size: 19px"),
+            "a late admitted universal rule must not disappear from the cascade: {out}"
+        );
+    }
+
+    #[test]
     fn foreign_object_overlay_resolves_specified_values_before_inheritance_and_source_order() {
         let inherited_important = r#"
 <svg xmlns="http://www.w3.org/2000/svg"><style>#root{font-size:20px !important}.nodeLabel{font-size:14px}</style><g id="root"><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
@@ -956,9 +976,9 @@ mod tests {
             "the SVG-only `text` branch must not match the XHTML source leaf: {out}"
         );
         assert!(
-            !text_tag.contains(r#"class="merman-foreignobject-fallback-text edgeLabel label "#)
-                && !text_tag.contains(r#" label""#),
-            "fallback text should not keep the structural label class: {out}"
+            text_tag.contains(r#"class="merman-foreignobject-fallback-text""#)
+                && text_tag.contains(r#"data-merman-source-classes="edgeLabel label labelBkg""#),
+            "fallback text should retain source classes without making them live selectors: {out}"
         );
     }
 

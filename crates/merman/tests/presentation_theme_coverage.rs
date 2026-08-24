@@ -313,8 +313,38 @@ fn assert_gitgraph_branch_labels_keep_mermaid_parity_baseline(name: &str, svg: &
 }
 
 fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[&str]) {
+    fn find_usvg_text_fill(group: &usvg::Group, label: &str) -> Option<(u8, u8, u8)> {
+        for node in group.children() {
+            match node {
+                usvg::Node::Group(group) => {
+                    if let Some(fill) = find_usvg_text_fill(group, label) {
+                        return Some(fill);
+                    }
+                }
+                usvg::Node::Text(text) => {
+                    for chunk in text.chunks() {
+                        if chunk.text().trim() != label {
+                            continue;
+                        }
+                        let span = chunk.spans().first()?;
+                        let fill = span.fill()?;
+                        if let usvg::Paint::Color(color) = fill.paint() {
+                            return Some((color.red, color.green, color.blue));
+                        }
+                    }
+                }
+                usvg::Node::Path(_) | usvg::Node::Image(_) => {}
+            }
+        }
+        None
+    }
+
     let document =
         roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
+    let mut options = usvg::Options::default();
+    options.fontdb_mut().load_system_fonts();
+    let usvg_tree = usvg::Tree::from_str(svg, &options)
+        .unwrap_or_else(|err| panic!("{name}: usvg should parse final fallback output: {err}"));
 
     for label in labels {
         let Some(text) = document.descendants().find(|node| {
@@ -345,6 +375,11 @@ fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[
             text.attribute("class")
                 .is_some_and(|classes| !classes.split_whitespace().any(|class| class == "label")),
             "{name}: fallback text should not carry structural Mermaid label class: {svg}"
+        );
+        assert_eq!(
+            find_usvg_text_fill(usvg_tree.root(), label),
+            Some((0xeb, 0xdb, 0xb2)),
+            "{name}: usvg must paint ER fallback text with XHTML color semantics: {svg}"
         );
     }
 }
