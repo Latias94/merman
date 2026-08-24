@@ -240,11 +240,15 @@ let RenderOutput::Svg(Some(svg)) = output else {
 `ScopedCssPostprocessor` injects a `<style>` element under the root `<svg>` tag and prefixes normal
 selectors with the root SVG id. When the SVG already has style elements, the injected style is placed
 after them so host rules follow Mermaid defaults in cascade order. `CssOverridePolicy::StripExistingImportant`
-is opt-in because it changes cascade semantics. Generated `<foreignObject>` fallback text keeps useful
-classes and inline font/fill hints so host CSS can target readable fallback output. When the same pipeline
-feeds raster export, keep injected CSS in the `usvg` / `resvg` supported subset; browser-only features
-such as CSS custom properties are better reserved for inline-only SVG pipelines or resolved by the host
-before rasterizing.
+is opt-in because it changes cascade semantics. Generated `<foreignObject>` fallback output keeps stable
+live marker classes (`merman-foreignobject-fallback` and `merman-foreignobject-fallback-text`) plus
+inline font/fill hints so hosts can target readable fallback output without re-running Mermaid's source
+selectors against the generated SVG. Source-context classes are preserved only as escaped,
+inert `data-merman-source-classes` metadata for diagnostics. Hosts that previously selected `.node`,
+`.edgeLabel`, `.label`, or similar source classes on generated fallback nodes must migrate to the stable
+marker classes. When the same pipeline feeds raster export, keep injected CSS in the `usvg` / `resvg`
+supported subset; browser-only features such as CSS custom properties are better reserved for inline-only
+SVG pipelines or resolved by the host before rasterizing.
 
 Product-specific rules still belong in host code. For example, Zed-style accent token assignment,
 theme color selection, and diagram-family-specific color semantics should be implemented as custom

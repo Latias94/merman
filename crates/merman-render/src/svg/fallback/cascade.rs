@@ -18,6 +18,7 @@ const DEFAULT_COLOR: &str = "#000";
 // Fallback text is a bounded adapter, so pathological CSS magnitudes must not enter output or
 // overflow relative-unit and line-height calculations.
 const MAX_CSS_NUMERIC_VALUE: f64 = 1_000_000.0;
+pub(super) const MAX_UNIVERSAL_POSTINGS: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(super) enum Namespace {
@@ -157,6 +158,7 @@ pub(super) struct CascadeIndex {
     type_postings: HashMap<(Namespace, String), Vec<usize>>,
     attribute_postings: HashMap<String, Vec<usize>>,
     universal_postings: Vec<usize>,
+    universal_postings_overflow: bool,
 }
 
 impl CascadeIndex {
@@ -171,6 +173,7 @@ impl CascadeIndex {
             type_postings: HashMap::new(),
             attribute_postings: HashMap::new(),
             universal_postings: Vec::new(),
+            universal_postings_overflow: false,
         };
         for (rule_index, rule) in index.rules.iter().enumerate() {
             checkpoint_loop(rule_index, checkpoint)?;
@@ -207,13 +210,24 @@ impl CascadeIndex {
                     .push(rule_index);
             } else {
                 // A universal rightmost selector cannot be narrowed by source-element postings.
-                // Preserve every admitted rule so the index never changes cascade semantics;
-                // controlled callers bound source bytes and can cancel this checkpointed scan.
-                index.universal_postings.push(rule_index);
+                // Keep this bucket bounded: controlled callers reject overflow, while the
+                // infallible helper remains best-effort and ignores rules beyond the cap.
+                if index.universal_postings.len() < MAX_UNIVERSAL_POSTINGS {
+                    index.universal_postings.push(rule_index);
+                } else {
+                    index.universal_postings_overflow = true;
+                }
             }
         }
         checkpoint()?;
         Ok(index)
+    }
+
+    pub(super) fn universal_postings_overflow(&self) -> Option<(usize, usize)> {
+        self.universal_postings_overflow.then_some((
+            MAX_UNIVERSAL_POSTINGS.saturating_add(1),
+            MAX_UNIVERSAL_POSTINGS,
+        ))
     }
 
     fn candidate_rule_indices(&self, element: &SourceElement) -> Vec<usize> {
@@ -537,16 +551,34 @@ impl CascadeIndex {
             let common_path = deepest_common_path(&text_paths);
             self.resolve_full_path(&common_path, checkpoint)?
         };
-        let label_background = label_background_path
-            .map(|path| self.resolve_full_path(&path, checkpoint))
-            .transpose()?
-            .and_then(|style| {
-                if style.background_color_specified {
-                    style.background_color
-                } else {
-                    Some("rgba(232, 232, 232, 0.5)".to_string())
+        let label_background = if let Some(label_path) = label_background_path.as_ref() {
+            let mut background_color = None;
+            let mut background_color_specified = false;
+            let label_style = self.resolve_full_path(label_path, checkpoint)?;
+            if label_style.background_color_specified {
+                background_color_specified = true;
+                background_color = label_style.background_color;
+            }
+            for path in &text_paths {
+                if !path.starts_with(label_path.as_slice()) {
+                    continue;
                 }
-            });
+                for depth in label_path.len()..path.len() {
+                    let style = self.resolve_full_path(&path[..=depth], checkpoint)?;
+                    if style.background_color_specified {
+                        background_color_specified = true;
+                        background_color = style.background_color;
+                    }
+                }
+            }
+            if background_color_specified {
+                background_color
+            } else {
+                Some("rgba(232, 232, 232, 0.5)".to_string())
+            }
+        } else {
+            None
+        };
         let fill = effective_html_text_paint(&style).to_string();
         checkpoint()?;
         Ok(ResolvedFallbackTypography {
@@ -746,6 +778,101 @@ fn is_void_html_element(name: &str) -> bool {
             | "param"
             | "source"
             | "track"
+            | "wbr"
+    )
+}
+
+fn is_xhtml_element_name(name: &str) -> bool {
+    matches!(
+        name,
+        "a" | "abbr"
+            | "address"
+            | "article"
+            | "aside"
+            | "audio"
+            | "b"
+            | "bdi"
+            | "bdo"
+            | "blockquote"
+            | "br"
+            | "button"
+            | "canvas"
+            | "caption"
+            | "cite"
+            | "code"
+            | "col"
+            | "data"
+            | "datalist"
+            | "dd"
+            | "del"
+            | "details"
+            | "dfn"
+            | "div"
+            | "dl"
+            | "dt"
+            | "em"
+            | "fieldset"
+            | "figcaption"
+            | "figure"
+            | "footer"
+            | "form"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "header"
+            | "hgroup"
+            | "hr"
+            | "i"
+            | "iframe"
+            | "img"
+            | "input"
+            | "ins"
+            | "kbd"
+            | "label"
+            | "legend"
+            | "li"
+            | "main"
+            | "mark"
+            | "menu"
+            | "meter"
+            | "nav"
+            | "object"
+            | "ol"
+            | "optgroup"
+            | "option"
+            | "output"
+            | "p"
+            | "picture"
+            | "pre"
+            | "progress"
+            | "q"
+            | "s"
+            | "samp"
+            | "section"
+            | "select"
+            | "small"
+            | "span"
+            | "strong"
+            | "sub"
+            | "summary"
+            | "sup"
+            | "table"
+            | "tbody"
+            | "td"
+            | "template"
+            | "textarea"
+            | "tfoot"
+            | "th"
+            | "thead"
+            | "time"
+            | "tr"
+            | "u"
+            | "ul"
+            | "var"
+            | "video"
             | "wbr"
     )
 }
@@ -1389,7 +1516,7 @@ fn parse_compound<E>(
     }
     checkpoint()?;
     let namespace = match local_name.as_deref() {
-        Some("span" | "p" | "div" | "b" | "strong" | "i" | "em") => Some(Namespace::Xhtml),
+        Some(name) if is_xhtml_element_name(name) => Some(Namespace::Xhtml),
         Some(_) => Some(Namespace::Svg),
         None => None,
     };

@@ -44,6 +44,7 @@ pub fn foreign_object_label_fallback_svg_text(
         text_measurer,
         &mut checkpoint,
         &mut |_, _| Ok::<(), Infallible>(()),
+        &mut |_, _| Ok::<(), Infallible>(()),
     ) {
         Ok(output) => output,
         Err(error) => match error {},
@@ -65,6 +66,7 @@ pub(crate) fn foreign_object_label_fallback_svg_text_controlled(
         svg,
         text_measurer,
         &mut || execution.checkpoint(),
+        &mut |actual, maximum| Err(execution.selector_index_limit(actual, maximum)),
         &mut |projected_bytes, generated_elements| {
             execution.preflight_svg_byte_count(projected_bytes)?;
             execution.preflight_svg_structure(
@@ -94,6 +96,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     svg: &str,
     text_measurer: &dyn TextMeasurer,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
+    selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
     preflight_generated: &mut impl FnMut(usize, usize) -> Result<(), E>,
 ) -> Result<String, E> {
     checkpoint()?;
@@ -192,7 +195,11 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     let cascade = match cascade_index.as_ref() {
                         Some(cascade) => cascade,
                         None => {
-                            cascade_index = Some(CascadeIndex::new(svg, checkpoint)?);
+                            let cascade = CascadeIndex::new(svg, checkpoint)?;
+                            if let Some((actual, maximum)) = cascade.universal_postings_overflow() {
+                                selector_limit(actual, maximum)?;
+                            }
+                            cascade_index = Some(cascade);
                             cascade_index
                                 .as_ref()
                                 .expect("cascade index was initialized")
@@ -848,7 +855,7 @@ mod tests {
     #[test]
     fn foreign_object_overlay_keeps_late_universal_winners() {
         let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
-        for _ in 0..4096 {
+        for _ in 0..super::cascade::MAX_UNIVERSAL_POSTINGS {
             svg.push_str("*{font-size:12px}");
         }
         svg.push_str(
@@ -856,10 +863,64 @@ mod tests {
         );
 
         let out = foreign_object_label_fallback_svg_text(&svg);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output: {out}"));
         assert!(
-            out.contains("font-size: 19px"),
-            "a late admitted universal rule must not disappear from the cascade: {out}"
+            fallback.contains("font-size: 12px") && !fallback.contains("font-size: 19px"),
+            "the infallible helper must ignore universal rules beyond its bounded bucket: {out}"
         );
+    }
+
+    #[test]
+    fn foreign_object_overlay_rejects_universal_selector_overflow_in_controlled_path() {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
+        for _ in 0..=super::cascade::MAX_UNIVERSAL_POSTINGS {
+            svg.push_str("*{font-size:12px}");
+        }
+        svg.push_str(
+            r#"</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></svg>"#,
+        );
+
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let mut checkpoint = || Ok::<(), &'static str>(());
+        let mut selector_limit = |actual, maximum| {
+            assert_eq!(actual, super::cascade::MAX_UNIVERSAL_POSTINGS + 1);
+            assert_eq!(maximum, super::cascade::MAX_UNIVERSAL_POSTINGS);
+            Err("selector limit")
+        };
+        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+            &svg,
+            &measurer,
+            &mut checkpoint,
+            &mut selector_limit,
+            &mut preflight,
+        );
+
+        assert_eq!(result, Err("selector limit"));
+    }
+
+    #[test]
+    fn foreign_object_overlay_resolves_nested_label_background_descendants() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg .nested{background-color:#c0ffee}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="nested">Alpha</span></div></foreignObject></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(r##"fill="#c0ffee""##),
+            "a nested XHTML background declaration must drive the fallback rect: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_classifies_common_xhtml_type_selectors() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><style>a{font-size:13px}code{font-weight:600}label{font-style:italic}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><label><code><a>Alpha</a></code></label></div></foreignObject></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(out.contains("font-size: 13px"), "got: {out}");
+        assert!(out.contains("font-weight: 600"), "got: {out}");
+        assert!(out.contains("font-style: italic"), "got: {out}");
     }
 
     #[test]
