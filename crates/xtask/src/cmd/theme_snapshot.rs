@@ -1,20 +1,21 @@
 //! Pinned Mermaid theme snapshot and behavior-oracle generation.
 //!
-//! Theme classes are ordered JavaScript programs. The checked-in artifact gives the pure-Rust
-//! evaluator exact no-override and dark-mode snapshots, while the compact oracle matrix locks the
-//! value-shape behavior that is easy to lose when translating JavaScript truthiness and merge
-//! semantics.
+//! Theme classes are ordered JavaScript programs. The checked-in artifacts give the pure-Rust
+//! evaluator exact constructor, no-override, and dark-mode snapshots, while compact final-value
+//! and stage oracles lock the ordering, truthiness, and replay behavior that is easy to lose when
+//! translating mutable JavaScript theme classes.
 
+use super::{sort_json_value_keys, write_pretty_json};
 use crate::XtaskError;
 use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value as JsonValue, json};
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const THEME_SNAPSHOT_OUTPUT: &str = "crates/merman-core/src/generated/theme_variables_11_16_1.json";
-const THEME_ARTIFACT_SCHEMA_VERSION: u32 = 1;
+const THEME_ORACLE_OUTPUT: &str = "crates/merman-core/src/generated/theme_oracles_11_16_1.json";
+const THEME_ARTIFACT_SCHEMA_VERSION: u32 = 2;
 const GENERATOR_COMMAND: &str = "cargo run -p xtask -- gen-theme-snapshot";
 const THEME_NAMES: &[&str] = &[
     "default",
@@ -48,39 +49,279 @@ const BASE_ORACLE_CASE_IDS: &[&str] = &[
     "dark-number-one",
     "dark-string",
     "radar-axis-null",
+    "object-field-number",
 ];
+const ORACLE_SELECTED_PATHS: &[&str] = &[
+    "primaryColor",
+    "fontFamily",
+    "fontSize",
+    "cScale0",
+    "cScalePeer0",
+    "cScaleInv0",
+    "cScaleLabel0",
+    "scaleLabelColor",
+    "darkMode",
+    "edgeLabelBackground",
+    "rowOdd",
+    "rowEven",
+    "surface0",
+    "surfacePeer0",
+    "git0",
+    "gitInv0",
+    "radar.axisColor",
+    "radar",
+];
+const CLASSIC_STAGE_ORACLE_PATHS: &[&str] = &[
+    "primaryColor",
+    "secondaryColor",
+    "tertiaryColor",
+    "primaryBorderColor",
+    "secondaryBorderColor",
+    "tertiaryBorderColor",
+    "primaryTextColor",
+    "secondaryTextColor",
+    "tertiaryTextColor",
+    "mainBkg",
+    "nodeBkg",
+    "cScale0",
+    "cScale2",
+    "cScale3",
+    "fillType0",
+    "gradientStart",
+    "gradientStop",
+    "requirementBackground",
+];
+const OPERATOR_STAGE_ORACLE_PATHS: &[&str] =
+    &["primaryBorderColor", "gradientStart", "pieOpacity", "venn1"];
+const NULL_ELISION_STAGE_ORACLE_PATHS: &[&str] = &["venn1"];
+const COLOR_LIMIT_STAGE_ORACLE_PATHS: &[&str] = &[
+    "THEME_COLOR_LIMIT",
+    "darkMode",
+    "scaleLabelColor",
+    "cScaleInv8",
+    "cScaleInv9",
+    "cScalePeer8",
+    "cScalePeer9",
+    "cScaleLabel8",
+    "cScaleLabel9",
+    "pie8",
+    "pie9",
+    "tagBorder",
+    "primaryBorderColor",
+    "tagLabelBorder",
+];
+const FALSY_OR_STAGE_ORACLE_PATHS: &[&str] = &["stateBkg", "primaryTextColor", "stateLabelColor"];
+
+#[derive(Debug, Clone, Copy)]
+struct StageOracleSpec {
+    theme: &'static str,
+    id: &'static str,
+    selected_paths: &'static [&'static str],
+}
+
+const STAGE_ORACLE_CASES: &[StageOracleSpec] = &[
+    StageOracleSpec {
+        theme: "dark",
+        id: "primary-and-derived-replay",
+        selected_paths: CLASSIC_STAGE_ORACLE_PATHS,
+    },
+    StageOracleSpec {
+        theme: "forest",
+        id: "primary-and-derived-replay",
+        selected_paths: CLASSIC_STAGE_ORACLE_PATHS,
+    },
+    StageOracleSpec {
+        theme: "neutral",
+        id: "primary-and-derived-replay",
+        selected_paths: CLASSIC_STAGE_ORACLE_PATHS,
+    },
+    StageOracleSpec {
+        theme: "dark",
+        id: "color-limit-and-tag-replay",
+        selected_paths: COLOR_LIMIT_STAGE_ORACLE_PATHS,
+    },
+    StageOracleSpec {
+        theme: "forest",
+        id: "color-limit-and-tag-replay",
+        selected_paths: COLOR_LIMIT_STAGE_ORACLE_PATHS,
+    },
+    StageOracleSpec {
+        theme: "neutral",
+        id: "color-limit-and-tag-replay",
+        selected_paths: COLOR_LIMIT_STAGE_ORACLE_PATHS,
+    },
+    StageOracleSpec {
+        theme: "dark",
+        id: "falsy-or-chain",
+        selected_paths: FALSY_OR_STAGE_ORACLE_PATHS,
+    },
+    StageOracleSpec {
+        theme: "dark",
+        id: "operator-and-replay",
+        selected_paths: OPERATOR_STAGE_ORACLE_PATHS,
+    },
+    StageOracleSpec {
+        theme: "dark",
+        id: "null-elision",
+        selected_paths: NULL_ELISION_STAGE_ORACLE_PATHS,
+    },
+];
+const THEME_STAGE_NAMES: &[&str] = &[
+    "constructorPrepared",
+    "overridesApplied",
+    "afterUpdate",
+    "explicitReplay",
+];
+
+fn expected_stage_oracle_overrides(spec: StageOracleSpec) -> JsonValue {
+    match spec.id {
+        "primary-and-derived-replay" => {
+            json!({ "primaryColor": "#123456", "nodeBkg": "#abcdef" })
+        }
+        "color-limit-and-tag-replay" => json!({
+            "THEME_COLOR_LIMIT": "0x9",
+            "darkMode": false,
+            "scaleLabelColor": false,
+            "cScaleInv8": false,
+            "cScaleInv9": false,
+            "cScalePeer8": false,
+            "cScalePeer9": false,
+            "cScaleLabel8": false,
+            "cScaleLabel9": false,
+            "pie8": false,
+            "pie9": false,
+            "tagLabelBorder": "#123456",
+        }),
+        "falsy-or-chain" => json!({
+            "stateBkg": false,
+            "primaryTextColor": false,
+            "quadrant2TextFill": "#000",
+            "quadrant3TextFill": "#000",
+            "quadrant4TextFill": "#000",
+        }),
+        "operator-and-replay" => json!({
+            "primaryBorderColor": "#123456",
+            "gradientStart": "#abcdef",
+            "pieOpacity": 0,
+            "venn1": 0,
+        }),
+        "null-elision" => json!({ "venn1": null }),
+        _ => unreachable!("stage oracle IDs are fixed by STAGE_ORACLE_CASES"),
+    }
+}
+
+fn runtime_oracle_manifest() -> JsonValue {
+    let mut oracle_cases = Vec::with_capacity(
+        THEME_NAMES.len() * COMMON_ORACLE_CASE_IDS.len() + BASE_ORACLE_CASE_IDS.len(),
+    );
+    for theme in THEME_NAMES {
+        for id in COMMON_ORACLE_CASE_IDS {
+            oracle_cases.push(json!({
+                "id": id,
+                "theme": theme,
+                "overrides": expected_oracle_overrides(theme, id),
+            }));
+        }
+    }
+    for id in BASE_ORACLE_CASE_IDS {
+        oracle_cases.push(json!({
+            "id": id,
+            "theme": "base",
+            "overrides": expected_oracle_overrides("base", id),
+        }));
+    }
+    let stage_cases = STAGE_ORACLE_CASES
+        .iter()
+        .map(|spec| {
+            json!({
+                "id": spec.id,
+                "theme": spec.theme,
+                "overrides": expected_stage_oracle_overrides(*spec),
+                "paths": spec.selected_paths,
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "themes": THEME_NAMES,
+        "selectedPaths": ORACLE_SELECTED_PATHS,
+        "oracleCases": oracle_cases,
+        "stageNames": THEME_STAGE_NAMES,
+        "stageCases": stage_cases,
+    })
+}
+
+fn expected_oracle_overrides(theme: &str, id: &str) -> JsonValue {
+    match id {
+        "primary-null" => json!({ "primaryColor": null }),
+        "primary-empty" => json!({ "primaryColor": "" }),
+        "primary-number" => json!({ "primaryColor": 17 }),
+        "primary-object" => json!({ "primaryColor": { "invalid": true } }),
+        "dark-and-primary" => json!({ "darkMode": true, "primaryColor": "#123456" }),
+        "font-null" if theme == "base" => json!({ "fontFamily": null }),
+        "font-empty" if theme == "base" => json!({ "fontFamily": "" }),
+        "font-number" if theme == "base" => json!({ "fontFamily": 17 }),
+        "font-size-null" if theme == "base" => json!({ "fontSize": null }),
+        "scale-null" if theme == "base" => json!({ "cScale0": null }),
+        "dark-null" if theme == "base" => json!({ "darkMode": null }),
+        "dark-empty" if theme == "base" => json!({ "darkMode": "" }),
+        "dark-number-zero" if theme == "base" => json!({ "darkMode": 0 }),
+        "dark-number-one" if theme == "base" => json!({ "darkMode": 1 }),
+        "dark-string" if theme == "base" => json!({ "darkMode": "false" }),
+        "radar-axis-null" if theme == "base" => json!({ "radar": { "axisColor": null } }),
+        "object-field-number" if theme == "base" => json!({ "radar": 17 }),
+        _ => unreachable!("oracle IDs and themes are fixed by the oracle manifest"),
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RuntimeThemeProjection {
     version: String,
-    themes: JsonValue,
-    dark_mode_true: JsonValue,
+    prepared_constructors: JsonValue,
+    resolved_without_overrides: JsonValue,
+    resolved_dark_mode_true: JsonValue,
     oracle_cases: JsonValue,
+    stage_oracle_cases: JsonValue,
 }
 
+#[derive(Debug)]
 struct GenerateOptions {
     out_path: PathBuf,
+    oracle_out_path: PathBuf,
 }
 
 pub(crate) fn gen_theme_snapshot(args: Vec<String>) -> Result<(), XtaskError> {
     let options = parse_generate_options(args)?;
     let projection = project_pinned_mermaid_runtime()?;
-    let mut artifact = json!({
-        "schemaVersion": THEME_ARTIFACT_SCHEMA_VERSION,
-        "provenance": {
-            "generator": GENERATOR_COMMAND,
-            "mermaidVersion": crate::cmd::PINNED_MERMAID_VERSION,
-            "mermaidPackageSha256": crate::cmd::PINNED_MERMAID_PACKAGE_SHA256,
-            "mermaidSourceTag": crate::cmd::MERMAID_SOURCE_TAG,
-            "mermaidSourceCommit": crate::cmd::MERMAID_SOURCE_COMMIT,
-        },
-        "themes": projection.themes,
-        "darkModeTrue": projection.dark_mode_true,
-        "oracleCases": projection.oracle_cases,
+    let (mut runtime_artifact, mut oracle_artifact) = build_artifacts(projection);
+    sort_json_value_keys(&mut runtime_artifact);
+    sort_json_value_keys(&mut oracle_artifact);
+    write_pretty_json(&options.out_path, &runtime_artifact)?;
+    write_pretty_json(&options.oracle_out_path, &oracle_artifact)
+}
+
+fn build_artifacts(projection: RuntimeThemeProjection) -> (JsonValue, JsonValue) {
+    let provenance = json!({
+        "generator": GENERATOR_COMMAND,
+        "mermaidVersion": crate::cmd::PINNED_MERMAID_VERSION,
+        "mermaidPackageSha256": crate::cmd::PINNED_MERMAID_PACKAGE_SHA256,
+        "mermaidSourceTag": crate::cmd::MERMAID_SOURCE_TAG,
+        "mermaidSourceCommit": crate::cmd::MERMAID_SOURCE_COMMIT,
     });
-    sort_json_value_keys(&mut artifact);
-    write_pretty_json(&options.out_path, &artifact)
+    let runtime_artifact = json!({
+        "schemaVersion": THEME_ARTIFACT_SCHEMA_VERSION,
+        "provenance": provenance.clone(),
+        "preparedConstructors": projection.prepared_constructors,
+        "resolvedWithoutOverrides": projection.resolved_without_overrides,
+        "resolvedDarkModeTrue": projection.resolved_dark_mode_true,
+    });
+    let oracle_artifact = json!({
+        "schemaVersion": THEME_ARTIFACT_SCHEMA_VERSION,
+        "provenance": provenance,
+        "oracleCases": projection.oracle_cases,
+        "stageOracleCases": projection.stage_oracle_cases,
+    });
+    (runtime_artifact, oracle_artifact)
 }
 
 fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskError> {
@@ -92,21 +333,55 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
     }
 
     let mut out_path = None;
+    let mut oracle_out_path = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--out" => {
                 index += 1;
-                out_path = args.get(index).map(PathBuf::from);
+                out_path = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
+            }
+            "--oracle-out" => {
+                index += 1;
+                oracle_out_path = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
             }
             _ => return Err(XtaskError::Usage),
         }
         index += 1;
     }
 
+    let (out_path, oracle_out_path) = match (out_path, oracle_out_path) {
+        (None, None) => (
+            PathBuf::from(THEME_SNAPSHOT_OUTPUT),
+            PathBuf::from(THEME_ORACLE_OUTPUT),
+        ),
+        (Some(out_path), None) => {
+            let oracle_out_path = paired_output_path(&out_path, THEME_ORACLE_OUTPUT);
+            (out_path, oracle_out_path)
+        }
+        (None, Some(oracle_out_path)) => {
+            let out_path = paired_output_path(&oracle_out_path, THEME_SNAPSHOT_OUTPUT);
+            (out_path, oracle_out_path)
+        }
+        (Some(out_path), Some(oracle_out_path)) => (out_path, oracle_out_path),
+    };
+    if out_path == oracle_out_path {
+        return Err(XtaskError::ThemeSnapshotProjection(
+            "runtime and oracle artifacts require distinct output paths".to_string(),
+        ));
+    }
     Ok(GenerateOptions {
-        out_path: out_path.unwrap_or_else(|| PathBuf::from(THEME_SNAPSHOT_OUTPUT)),
+        out_path,
+        oracle_out_path,
     })
+}
+
+fn paired_output_path(anchor: &Path, default_output: &str) -> PathBuf {
+    anchor.with_file_name(
+        Path::new(default_output)
+            .file_name()
+            .expect("generated output constants name files"),
+    )
 }
 
 fn project_pinned_mermaid_runtime() -> Result<RuntimeThemeProjection, XtaskError> {
@@ -122,10 +397,12 @@ fn project_pinned_mermaid_runtime() -> Result<RuntimeThemeProjection, XtaskError
     let tools_root = crate::cmd::workspace_root().join("tools/mermaid-cli");
     validate_pinned_mermaid_runtime(&tools_root)?;
 
+    let runtime_oracle_manifest = serde_json::to_string(&runtime_oracle_manifest())?;
     let output = Command::new("node")
         .arg("--input-type=module")
         .arg("-e")
         .arg(RUNTIME_THEME_PROJECTION_SCRIPT)
+        .env("MERMAN_THEME_ORACLE_MANIFEST", runtime_oracle_manifest)
         .current_dir(&tools_root)
         .output()
         .map_err(|error| {
@@ -177,8 +454,12 @@ fn validate_projection(
     }
 
     for (label, value) in [
-        ("themes", &projection.themes),
-        ("darkModeTrue", &projection.dark_mode_true),
+        ("preparedConstructors", &projection.prepared_constructors),
+        (
+            "resolvedWithoutOverrides",
+            &projection.resolved_without_overrides,
+        ),
+        ("resolvedDarkModeTrue", &projection.resolved_dark_mode_true),
     ] {
         let Some(object) = value.as_object() else {
             return Err(XtaskError::ThemeSnapshotProjection(format!(
@@ -192,9 +473,12 @@ fn validate_projection(
                 "runtime projection field `{label}` has theme keys {actual:?}, expected {expected:?}"
             )));
         }
-        if object.values().any(|theme| !theme.is_object()) {
+        if object
+            .values()
+            .any(|theme| theme.as_object().is_none_or(JsonMap::is_empty))
+        {
             return Err(XtaskError::ThemeSnapshotProjection(format!(
-                "runtime projection field `{label}` contains a non-object theme"
+                "runtime projection field `{label}` contains an empty or non-object theme"
             )));
         }
     }
@@ -216,6 +500,11 @@ fn validate_projection(
 
     let mut actual_cases = BTreeSet::new();
     for case in oracle_cases {
+        let Some(case_object) = case.as_object() else {
+            return Err(XtaskError::ThemeSnapshotProjection(
+                "every oracle case must be an object".to_string(),
+            ));
+        };
         let theme = case.get("theme").and_then(JsonValue::as_str);
         let id = case.get("id").and_then(JsonValue::as_str);
         let status = case.get("status").and_then(JsonValue::as_str);
@@ -224,15 +513,73 @@ fn validate_projection(
                 "every oracle case must have string `theme`, `id`, and `status` fields".to_string(),
             ));
         };
-        let valid_result = match status {
-            "ok" => case.get("selected").is_some_and(JsonValue::is_object),
-            "error" => case.get("error").is_some_and(JsonValue::is_string),
-            _ => false,
-        };
-        if !valid_result {
+        if !expected_cases.contains(&(theme.to_string(), id.to_string())) {
             return Err(XtaskError::ThemeSnapshotProjection(format!(
-                "oracle case `{theme}/{id}` has an invalid `{status}` result"
+                "oracle case `{theme}/{id}` is not part of the fixed oracle manifest"
             )));
+        }
+        let expected_overrides = expected_oracle_overrides(theme, id);
+        if case.get("overrides") != Some(&expected_overrides) {
+            return Err(XtaskError::ThemeSnapshotProjection(format!(
+                "oracle case `{theme}/{id}` has overrides {}, expected {expected_overrides}",
+                case.get("overrides")
+                    .map(JsonValue::to_string)
+                    .unwrap_or_else(|| "missing".to_string())
+            )));
+        }
+        match status {
+            "ok" => {
+                let expected_fields = ["id", "overrides", "selected", "status", "theme"]
+                    .into_iter()
+                    .collect::<BTreeSet<_>>();
+                let actual_fields = case_object
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>();
+                if actual_fields != expected_fields {
+                    return Err(XtaskError::ThemeSnapshotProjection(format!(
+                        "oracle case `{theme}/{id}` has fields {actual_fields:?}, expected {expected_fields:?}"
+                    )));
+                }
+                let Some(selected) = case.get("selected").and_then(JsonValue::as_object) else {
+                    return Err(XtaskError::ThemeSnapshotProjection(format!(
+                        "oracle case `{theme}/{id}` must have an object `selected` result"
+                    )));
+                };
+                let actual_paths = selected.keys().map(String::as_str).collect::<BTreeSet<_>>();
+                let expected_paths = ORACLE_SELECTED_PATHS
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>();
+                if actual_paths != expected_paths {
+                    return Err(XtaskError::ThemeSnapshotProjection(format!(
+                        "oracle case `{theme}/{id}` has selected paths {actual_paths:?}, expected {expected_paths:?}"
+                    )));
+                }
+                for (path, observation) in selected {
+                    validate_oracle_observation(theme, id, path, observation)?;
+                }
+            }
+            "error" => {
+                let expected_fields = ["error", "id", "overrides", "status", "theme"]
+                    .into_iter()
+                    .collect::<BTreeSet<_>>();
+                let actual_fields = case_object
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>();
+                let error = case.get("error").and_then(JsonValue::as_str);
+                if actual_fields != expected_fields || error.is_none_or(str::is_empty) {
+                    return Err(XtaskError::ThemeSnapshotProjection(format!(
+                        "oracle case `{theme}/{id}` has an invalid error result"
+                    )));
+                }
+            }
+            _ => {
+                return Err(XtaskError::ThemeSnapshotProjection(format!(
+                    "oracle case `{theme}/{id}` has invalid status `{status}`"
+                )));
+            }
         }
         if !actual_cases.insert((theme.to_string(), id.to_string())) {
             return Err(XtaskError::ThemeSnapshotProjection(format!(
@@ -245,67 +592,282 @@ fn validate_projection(
             "runtime oracle cases are incomplete: found {actual_cases:?}, expected {expected_cases:?}"
         )));
     }
+
+    let Some(stage_oracle_cases) = projection.stage_oracle_cases.as_array() else {
+        return Err(XtaskError::ThemeSnapshotProjection(
+            "runtime projection field `stageOracleCases` must be an array".to_string(),
+        ));
+    };
+    let mut actual_stage_cases = BTreeSet::new();
+    for case in stage_oracle_cases {
+        let Some(case_object) = case.as_object() else {
+            return Err(XtaskError::ThemeSnapshotProjection(
+                "every stage oracle case must be an object".to_string(),
+            ));
+        };
+        let actual_case_fields = case_object
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let expected_case_fields = ["id", "overrides", "stages", "theme"]
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        if actual_case_fields != expected_case_fields {
+            return Err(XtaskError::ThemeSnapshotProjection(format!(
+                "stage oracle case fields are {actual_case_fields:?}, expected {expected_case_fields:?}"
+            )));
+        }
+        let theme = case.get("theme").and_then(JsonValue::as_str);
+        let id = case.get("id").and_then(JsonValue::as_str);
+        let overrides = case.get("overrides").and_then(JsonValue::as_object);
+        let stages = case.get("stages").and_then(JsonValue::as_object);
+        let (Some(theme), Some(id), Some(_overrides), Some(stages)) =
+            (theme, id, overrides, stages)
+        else {
+            return Err(XtaskError::ThemeSnapshotProjection(
+                "every stage oracle case must have string `theme` and `id`, object `overrides`, and object `stages` fields"
+                    .to_string(),
+            ));
+        };
+        let Some(spec) = STAGE_ORACLE_CASES
+            .iter()
+            .find(|spec| spec.theme == theme && spec.id == id)
+        else {
+            return Err(XtaskError::ThemeSnapshotProjection(format!(
+                "stage oracle case `{theme}/{id}` is not part of the schema-v2 contract"
+            )));
+        };
+        let expected_overrides = expected_stage_oracle_overrides(*spec);
+        if case.get("overrides") != Some(&expected_overrides) {
+            return Err(XtaskError::ThemeSnapshotProjection(format!(
+                "stage oracle case `{theme}/{id}` has overrides {}, expected {expected_overrides}",
+                case.get("overrides").unwrap()
+            )));
+        }
+        let actual_stages = stages.keys().map(String::as_str).collect::<BTreeSet<_>>();
+        let expected_stages = THEME_STAGE_NAMES.iter().copied().collect::<BTreeSet<_>>();
+        if actual_stages != expected_stages {
+            return Err(XtaskError::ThemeSnapshotProjection(format!(
+                "stage oracle case `{theme}/{id}` has stages {actual_stages:?}, expected {expected_stages:?}"
+            )));
+        }
+        let expected_paths = spec.selected_paths.iter().copied().collect::<BTreeSet<_>>();
+        for (stage, selected) in stages {
+            let Some(selected) = selected.as_object() else {
+                return Err(XtaskError::ThemeSnapshotProjection(format!(
+                    "stage oracle case `{theme}/{id}` stage `{stage}` must be an object"
+                )));
+            };
+            let actual_paths = selected.keys().map(String::as_str).collect::<BTreeSet<_>>();
+            if actual_paths != expected_paths {
+                return Err(XtaskError::ThemeSnapshotProjection(format!(
+                    "stage oracle case `{theme}/{id}` stage `{stage}` has paths {actual_paths:?}, expected {expected_paths:?}"
+                )));
+            }
+            for (path, observation) in selected {
+                validate_stage_observation(theme, id, stage, path, observation)?;
+            }
+        }
+        if !actual_stage_cases.insert((theme.to_string(), id.to_string())) {
+            return Err(XtaskError::ThemeSnapshotProjection(format!(
+                "stage oracle case `{theme}/{id}` is duplicated"
+            )));
+        }
+    }
+    let expected_stage_cases = STAGE_ORACLE_CASES
+        .iter()
+        .map(|spec| (spec.theme.to_string(), spec.id.to_string()))
+        .collect::<BTreeSet<_>>();
+    if actual_stage_cases != expected_stage_cases {
+        return Err(XtaskError::ThemeSnapshotProjection(format!(
+            "runtime stage oracle cases are incomplete: found {actual_stage_cases:?}, expected {expected_stage_cases:?}"
+        )));
+    }
     Ok(projection)
 }
 
-fn sort_json_value_keys(value: &mut JsonValue) {
-    match value {
-        JsonValue::Object(object) => {
-            for child in object.values_mut() {
-                sort_json_value_keys(child);
-            }
-            let mut sorted = JsonMap::new();
-            let mut keys = object.keys().cloned().collect::<Vec<_>>();
-            keys.sort();
-            for key in keys {
-                if let Some(child) = object.remove(&key) {
-                    sorted.insert(key, child);
-                }
-            }
-            *object = sorted;
-        }
-        JsonValue::Array(values) => {
-            for value in values {
-                sort_json_value_keys(value);
-            }
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
-    }
+fn validate_oracle_observation(
+    theme: &str,
+    id: &str,
+    path: &str,
+    observation: &JsonValue,
+) -> Result<(), XtaskError> {
+    validate_observation(&format!("{theme}/{id}/{path}"), observation)
 }
 
-fn write_pretty_json(path: &Path, value: &JsonValue) -> Result<(), XtaskError> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
-        path: parent.display().to_string(),
-        source,
-    })?;
-    let mut output = serde_json::to_string_pretty(value)?;
-    output.push('\n');
-    fs::write(path, output).map_err(|source| XtaskError::WriteFile {
-        path: path.display().to_string(),
-        source,
-    })
+fn validate_stage_observation(
+    theme: &str,
+    id: &str,
+    stage: &str,
+    path: &str,
+    observation: &JsonValue,
+) -> Result<(), XtaskError> {
+    validate_observation(&format!("{theme}/{id}/{stage}/{path}"), observation)
+}
+
+fn validate_observation(context: &str, observation: &JsonValue) -> Result<(), XtaskError> {
+    let Some(observation) = observation.as_object() else {
+        return Err(XtaskError::ThemeSnapshotProjection(format!(
+            "oracle observation `{context}` must be an object"
+        )));
+    };
+    let Some(state) = observation.get("state").and_then(JsonValue::as_str) else {
+        return Err(XtaskError::ThemeSnapshotProjection(format!(
+            "oracle observation `{context}` must have a string `state`"
+        )));
+    };
+    let actual_fields = observation
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let expected_fields = match state {
+        "missing" => ["state"].into_iter().collect::<BTreeSet<_>>(),
+        "value" => ["state", "value"].into_iter().collect::<BTreeSet<_>>(),
+        _ => {
+            return Err(XtaskError::ThemeSnapshotProjection(format!(
+                "oracle observation `{context}` has invalid state `{state}`"
+            )));
+        }
+    };
+    if actual_fields != expected_fields {
+        return Err(XtaskError::ThemeSnapshotProjection(format!(
+            "oracle observation `{context}` has fields {actual_fields:?}, expected {expected_fields:?}"
+        )));
+    }
+    Ok(())
 }
 
 const RUNTIME_THEME_PROJECTION_SCRIPT: &str = r#"
 import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import mermaid from 'mermaid';
 
 const packageJson = JSON.parse(fs.readFileSync('./node_modules/mermaid/package.json', 'utf8'));
-const themes = [
-  'default', 'base', 'dark', 'forest', 'neutral', 'neo', 'neo-dark', 'redux',
-  'redux-dark', 'redux-color', 'redux-dark-color',
-];
-const selectedPaths = [
-  'primaryColor', 'fontFamily', 'fontSize', 'cScale0', 'cScalePeer0', 'cScaleInv0',
-  'cScaleLabel0', 'scaleLabelColor', 'darkMode', 'edgeLabelBackground', 'rowOdd',
-  'rowEven', 'surface0', 'surfacePeer0', 'git0', 'gitInv0', 'radar.axisColor',
-];
+const oracleManifest = JSON.parse(process.env.MERMAN_THEME_ORACLE_MANIFEST);
+const themes = oracleManifest.themes;
+const selectedPaths = oracleManifest.selectedPaths;
+const stageNames = oracleManifest.stageNames;
 
 const cloneJson = (value) => JSON.parse(JSON.stringify(value));
 const resolve = (theme, overrides) => {
   mermaid.initialize({ theme, logLevel: 'fatal', themeVariables: overrides });
   return cloneJson(mermaid.mermaidAPI.getConfig().themeVariables);
+};
+const containsSentinel = (value, sentinels) => {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  if (sentinels.some((sentinel) => Object.hasOwn(value, sentinel))) {
+    return true;
+  }
+  return Object.values(value).some((child) => containsSentinel(child, sentinels));
+};
+const resolveStages = (theme, overrides, { directUndefined = false } = {}) => {
+  if (overrides === null || Array.isArray(overrides) || typeof overrides !== 'object') {
+    throw new Error(`theme ${theme} stage overrides must be a plain JSON object`);
+  }
+  const arrayIndexKeys = Object.keys(overrides).filter((key) => {
+    const index = Number(key);
+    return Number.isInteger(index) && index >= 0 && index < 2 ** 32 - 1 && String(index) === key;
+  });
+  if (arrayIndexKeys.length !== 0) {
+    throw new Error(
+      `theme ${theme} stage overrides contain array-index keys: ${arrayIndexKeys.join(',')}`,
+    );
+  }
+
+  const nonce = randomUUID().replaceAll('-', '');
+  const stageStartSentinel = `__merman_theme_stage_start_${nonce}__`;
+  const stageEndSentinel = `__merman_theme_stage_end_${nonce}__`;
+  if (Object.getOwnPropertyDescriptor(Object.prototype, stageStartSentinel) !== undefined ||
+      Object.getOwnPropertyDescriptor(Object.prototype, stageEndSentinel) !== undefined) {
+    throw new Error('theme stage sentinel names already exist on Object.prototype');
+  }
+
+  const events = [];
+  let stageReceiver;
+  const record = (marker, value, receiver) => {
+    if (value !== true) {
+      throw new Error(`theme ${theme} stage sentinel received a non-true value`);
+    }
+    if (typeof receiver?.calculate !== 'function' ||
+        typeof receiver?.updateColors !== 'function') {
+      throw new Error(`theme ${theme} stage sentinel reached a non-Theme receiver`);
+    }
+    if (stageReceiver === undefined) {
+      stageReceiver = receiver;
+    } else if (stageReceiver !== receiver) {
+      throw new Error(`theme ${theme} stage sentinels reached multiple Theme receivers`);
+    }
+    events.push({
+      marker,
+      variables: cloneJson(receiver),
+      undefinedOwnKeys: Object.keys(receiver).filter((key) => receiver[key] === undefined).sort(),
+    });
+  };
+
+  let resolved;
+  let installedStart = false;
+  let installedEnd = false;
+  try {
+    Object.defineProperty(Object.prototype, stageStartSentinel, {
+      configurable: true,
+      set(value) { record('start', value, this); },
+    });
+    installedStart = true;
+    Object.defineProperty(Object.prototype, stageEndSentinel, {
+      configurable: true,
+      set(value) { record('end', value, this); },
+    });
+    installedEnd = true;
+    const instrumentedOverrides = {
+      [stageStartSentinel]: true,
+      ...overrides,
+      [stageEndSentinel]: true,
+    };
+    mermaid.initialize({ theme, logLevel: 'fatal', themeVariables: instrumentedOverrides });
+    resolved = cloneJson(mermaid.mermaidAPI.getConfig().themeVariables);
+  } finally {
+    const removedStart = !installedStart || Reflect.deleteProperty(Object.prototype, stageStartSentinel);
+    const removedEnd = !installedEnd || Reflect.deleteProperty(Object.prototype, stageEndSentinel);
+    if (!removedStart || !removedEnd ||
+        Object.getOwnPropertyDescriptor(Object.prototype, stageStartSentinel) !== undefined ||
+        Object.getOwnPropertyDescriptor(Object.prototype, stageEndSentinel) !== undefined) {
+      throw new Error('failed to remove theme stage sentinels from Object.prototype');
+    }
+  }
+
+  const markers = events.map(({ marker }) => marker);
+  if (events.length !== 4 || markers.join(',') !== 'start,end,start,end') {
+    throw new Error(
+      `theme ${theme} produced stage markers ${markers.join(',')}; expected start,end,start,end`,
+    );
+  }
+  for (const [index, event] of events.entries()) {
+    const expectedUndefinedOwnKeys = theme === 'default' && index <= 1
+      ? ['rowEven', 'rowOdd', 'scaleLabelColor']
+      : [];
+    if (!isDeepStrictEqual(event.undefinedOwnKeys, expectedUndefinedOwnKeys)) {
+      throw new Error(
+        `theme ${theme} stage ${stageNames[index]} has own undefined keys ` +
+        `${event.undefinedOwnKeys.join(',')}; expected ${expectedUndefinedOwnKeys.join(',')}`,
+      );
+    }
+  }
+  const snapshots = Object.fromEntries(
+    stageNames.map((stage, index) => [stage, events[index].variables]),
+  );
+  const sentinels = [stageStartSentinel, stageEndSentinel];
+  if (containsSentinel(snapshots, sentinels) || containsSentinel(resolved, sentinels)) {
+    throw new Error(`theme ${theme} leaked a stage sentinel into generated evidence`);
+  }
+  const directResolved = resolve(theme, directUndefined ? undefined : overrides);
+  if (!isDeepStrictEqual(snapshots.explicitReplay, resolved) ||
+      !isDeepStrictEqual(resolved, directResolved)) {
+    throw new Error(`theme ${theme} explicit replay stage differs from the resolved config`);
+  }
+  return { snapshots, resolved: directResolved };
 };
 const readPath = (value, path) => {
   let current = value;
@@ -338,42 +900,44 @@ const runCase = (id, theme, overrides) => {
   }
 };
 
-const defaultThemes = {};
-const darkModeTrue = {};
+const preparedConstructors = {};
+const resolvedWithoutOverrides = {};
+const resolvedDarkModeTrue = {};
 const oracleCases = [];
+const stageOracleCases = [];
 for (const theme of themes) {
-  defaultThemes[theme] = resolve(theme, undefined);
-  darkModeTrue[theme] = resolve(theme, { darkMode: true });
-  oracleCases.push(
-    runCase('primary-null', theme, { primaryColor: null }),
-    runCase('primary-empty', theme, { primaryColor: '' }),
-    runCase('primary-number', theme, { primaryColor: 17 }),
-    runCase('primary-object', theme, { primaryColor: { invalid: true } }),
-    runCase('dark-and-primary', theme, { darkMode: true, primaryColor: '#123456' }),
-  );
+  const withoutOverrides = resolveStages(theme, {}, { directUndefined: true });
+  preparedConstructors[theme] = withoutOverrides.snapshots.constructorPrepared;
+  resolvedWithoutOverrides[theme] = withoutOverrides.resolved;
+  resolvedDarkModeTrue[theme] = resolve(theme, { darkMode: true });
 }
 
-for (const [id, overrides] of [
-  ['font-null', { fontFamily: null }],
-  ['font-empty', { fontFamily: '' }],
-  ['font-number', { fontFamily: 17 }],
-  ['font-size-null', { fontSize: null }],
-  ['scale-null', { cScale0: null }],
-  ['dark-null', { darkMode: null }],
-  ['dark-empty', { darkMode: '' }],
-  ['dark-number-zero', { darkMode: 0 }],
-  ['dark-number-one', { darkMode: 1 }],
-  ['dark-string', { darkMode: 'false' }],
-  ['radar-axis-null', { radar: { axisColor: null } }],
-]) {
-  oracleCases.push(runCase(id, 'base', overrides));
+for (const { id, theme, overrides } of oracleManifest.oracleCases) {
+  oracleCases.push(runCase(id, theme, overrides));
+}
+
+for (const { id, theme, overrides, paths } of oracleManifest.stageCases) {
+  const { snapshots } = resolveStages(theme, overrides);
+  stageOracleCases.push({
+    id,
+    theme,
+    overrides,
+    stages: Object.fromEntries(
+      Object.entries(snapshots).map(([stage, variables]) => [
+        stage,
+        Object.fromEntries(paths.map((path) => [path, readPath(variables, path)])),
+      ]),
+    ),
+  });
 }
 
 console.log(JSON.stringify({
   version: packageJson.version,
-  themes: defaultThemes,
-  darkModeTrue,
+  preparedConstructors,
+  resolvedWithoutOverrides,
+  resolvedDarkModeTrue,
   oracleCases,
+  stageOracleCases,
 }));
 "#;
 
@@ -381,20 +945,24 @@ console.log(JSON.stringify({
 mod tests {
     use super::*;
 
-    #[test]
-    fn projection_requires_every_supported_theme_and_oracle_evidence() {
+    fn complete_projection() -> RuntimeThemeProjection {
         let themes = THEME_NAMES
             .iter()
             .map(|theme| ((*theme).to_string(), json!({ "primaryColor": "#fff" })))
             .collect::<JsonMap<_, _>>();
         let mut oracle_cases = Vec::new();
+        let selected = ORACLE_SELECTED_PATHS
+            .iter()
+            .map(|path| ((*path).to_string(), json!({ "state": "missing" })))
+            .collect::<JsonMap<_, _>>();
         for theme in THEME_NAMES {
             for id in COMMON_ORACLE_CASE_IDS {
                 oracle_cases.push(json!({
                     "id": id,
                     "theme": theme,
+                    "overrides": expected_oracle_overrides(theme, id),
                     "status": "ok",
-                    "selected": {},
+                    "selected": selected.clone(),
                 }));
             }
         }
@@ -402,17 +970,183 @@ mod tests {
             oracle_cases.push(json!({
                 "id": id,
                 "theme": "base",
+                "overrides": expected_oracle_overrides("base", id),
                 "status": "ok",
-                "selected": {},
+                "selected": selected.clone(),
             }));
         }
-        let projection = RuntimeThemeProjection {
+        let mut stage_oracle_cases = Vec::new();
+        for spec in STAGE_ORACLE_CASES {
+            let overrides = expected_stage_oracle_overrides(*spec);
+            let selected = spec
+                .selected_paths
+                .iter()
+                .map(|path| ((*path).to_string(), json!({ "state": "missing" })))
+                .collect::<JsonMap<_, _>>();
+            let stages = THEME_STAGE_NAMES
+                .iter()
+                .map(|stage| ((*stage).to_string(), JsonValue::Object(selected.clone())))
+                .collect::<JsonMap<_, _>>();
+            stage_oracle_cases.push(json!({
+                "id": spec.id,
+                "theme": spec.theme,
+                "overrides": overrides,
+                "stages": stages,
+            }));
+        }
+        RuntimeThemeProjection {
             version: crate::cmd::PINNED_MERMAID_VERSION.to_string(),
-            themes: JsonValue::Object(themes.clone()),
-            dark_mode_true: JsonValue::Object(themes),
+            prepared_constructors: JsonValue::Object(themes.clone()),
+            resolved_without_overrides: JsonValue::Object(themes.clone()),
+            resolved_dark_mode_true: JsonValue::Object(themes),
             oracle_cases: JsonValue::Array(oracle_cases),
-        };
+            stage_oracle_cases: JsonValue::Array(stage_oracle_cases),
+        }
+    }
 
-        validate_projection(projection).expect("complete projection is valid");
+    #[test]
+    fn projection_requires_every_supported_theme_and_oracle_evidence() {
+        validate_projection(complete_projection()).expect("complete projection is valid");
+    }
+
+    #[test]
+    fn projection_rejects_stage_oracles_with_missing_selected_paths() {
+        let mut projection = complete_projection();
+        projection.stage_oracle_cases[0]["stages"]["afterUpdate"]
+            .as_object_mut()
+            .unwrap()
+            .remove("primaryColor");
+
+        let error = validate_projection(projection).unwrap_err();
+        assert!(error.to_string().contains("has paths"));
+    }
+
+    #[test]
+    fn projection_rejects_malformed_stage_observations() {
+        let mut projection = complete_projection();
+        projection.stage_oracle_cases[0]["stages"]["afterUpdate"]["primaryColor"] =
+            json!({ "state": "missing", "value": "must not coexist" });
+
+        let error = validate_projection(projection).unwrap_err();
+        assert!(error.to_string().contains("has fields"));
+    }
+
+    #[test]
+    fn projection_rejects_changed_stage_override_values() {
+        let mut projection = complete_projection();
+        projection.stage_oracle_cases[3]["overrides"]["THEME_COLOR_LIMIT"] = json!(8);
+
+        let error = validate_projection(projection).unwrap_err();
+        assert!(error.to_string().contains("has overrides"));
+    }
+
+    #[test]
+    fn projection_rejects_changed_oracle_override_values() {
+        let mut projection = complete_projection();
+        projection.oracle_cases[0]["overrides"]["primaryColor"] = json!("#fff");
+
+        let error = validate_projection(projection).unwrap_err();
+        assert!(error.to_string().contains("has overrides"));
+    }
+
+    #[test]
+    fn generated_artifacts_separate_runtime_data_from_test_oracles() {
+        let (runtime, oracles) = build_artifacts(complete_projection());
+
+        assert_eq!(
+            runtime
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            [
+                "preparedConstructors",
+                "provenance",
+                "resolvedDarkModeTrue",
+                "resolvedWithoutOverrides",
+                "schemaVersion",
+            ]
+            .into_iter()
+            .collect()
+        );
+        assert_eq!(
+            oracles
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            [
+                "oracleCases",
+                "provenance",
+                "schemaVersion",
+                "stageOracleCases"
+            ]
+            .into_iter()
+            .collect()
+        );
+        assert_eq!(runtime["schemaVersion"], oracles["schemaVersion"]);
+        assert_eq!(runtime["provenance"], oracles["provenance"]);
+    }
+
+    #[test]
+    fn generate_options_accept_independent_runtime_and_oracle_outputs() {
+        let options = parse_generate_options(vec![
+            "--out".to_string(),
+            "runtime.json".to_string(),
+            "--oracle-out".to_string(),
+            "oracles.json".to_string(),
+        ])
+        .expect("both output paths are valid");
+
+        assert_eq!(options.out_path, PathBuf::from("runtime.json"));
+        assert_eq!(options.oracle_out_path, PathBuf::from("oracles.json"));
+
+        let runtime_only =
+            parse_generate_options(vec!["--out".to_string(), "tmp/runtime.json".to_string()])
+                .expect("runtime output derives a colocated oracle output");
+        assert_eq!(runtime_only.out_path, PathBuf::from("tmp/runtime.json"));
+        assert_eq!(
+            runtime_only.oracle_out_path,
+            PathBuf::from("tmp/theme_oracles_11_16_1.json")
+        );
+
+        let oracle_only = parse_generate_options(vec![
+            "--oracle-out".to_string(),
+            "tmp/oracles.json".to_string(),
+        ])
+        .expect("oracle output derives a colocated runtime output");
+        assert_eq!(
+            oracle_only.oracle_out_path,
+            PathBuf::from("tmp/oracles.json")
+        );
+        assert_eq!(
+            oracle_only.out_path,
+            PathBuf::from("tmp/theme_variables_11_16_1.json")
+        );
+    }
+
+    #[test]
+    fn generate_options_reject_output_path_collisions() {
+        for args in [
+            vec![
+                "--out".to_string(),
+                "same.json".to_string(),
+                "--oracle-out".to_string(),
+                "same.json".to_string(),
+            ],
+            vec![
+                "--out".to_string(),
+                "tmp/theme_oracles_11_16_1.json".to_string(),
+            ],
+            vec![
+                "--oracle-out".to_string(),
+                "tmp/theme_variables_11_16_1.json".to_string(),
+            ],
+        ] {
+            let error = parse_generate_options(args).expect_err("output paths must not collide");
+            assert!(error.to_string().contains("distinct output paths"));
+        }
     }
 }

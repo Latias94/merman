@@ -56,7 +56,9 @@ pub use editor::{
     EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
     EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
-pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
+pub use error::{
+    Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result, ThemeEvaluationLimitExceeded,
+};
 pub use family::{
     DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_id,
     diagram_type_metadata_id,
@@ -621,7 +623,7 @@ pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
 
 fn build_default_effective_config(
     site_config: &MermaidConfig,
-) -> std::result::Result<MermaidConfig, theme_color::ColorError> {
+) -> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
     let mut effective_config = site_config.clone();
     theme::apply_theme_defaults(&mut effective_config)?;
     Ok(effective_config)
@@ -653,9 +655,9 @@ fn merge_theme_compatibility_config(target: &mut MermaidConfig, mut theme_config
 }
 
 fn generated_default_effective_config()
--> std::result::Result<MermaidConfig, theme_color::ColorError> {
+-> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
     static DEFAULT_EFFECTIVE_CONFIG: std::sync::OnceLock<
-        std::result::Result<MermaidConfig, theme_color::ColorError>,
+        std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
     > = std::sync::OnceLock::new();
     DEFAULT_EFFECTIVE_CONFIG
         .get_or_init(|| build_default_effective_config(&generated::default_site_config()))
@@ -744,7 +746,7 @@ pub struct Engine {
     // is evaluated first; the theme compatibility lane can only fill paths the host did not own.
     post_detection_config_overlay: Option<std::sync::Arc<PostDetectionConfigOverlay>>,
     fallback_post_detection_config_overlay: Option<FallbackPostDetectionConfigOverlay>,
-    default_effective_config: std::result::Result<MermaidConfig, theme_color::ColorError>,
+    default_effective_config: std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
     runtime_policy: runtime::RuntimePolicy,
 }
 

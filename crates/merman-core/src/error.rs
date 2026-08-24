@@ -2,6 +2,19 @@ use crate::{SourceSpan, detect::DetectTypeError};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// A bounded Mermaid theme program requested more generated color slots than Merman admits.
+///
+/// Mermaid exposes `themeVariables.THEME_COLOR_LIMIT` as mutable input and uses it as the bound
+/// for several constructor loops. Merman preserves that behavior within a fixed work ceiling so
+/// hostile or accidental values cannot turn configuration materialization into unbounded work.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("Mermaid theme evaluation limit `{limit}` exceeded: requested={requested}, max={max}")]
+pub struct ThemeEvaluationLimitExceeded {
+    pub limit: &'static str,
+    pub requested: String,
+    pub max: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseDiagnosticSpanKind {
     Exact,
@@ -140,6 +153,9 @@ pub enum Error {
 
     #[error(transparent)]
     ThemeColor(#[from] crate::theme_color::ColorError),
+
+    #[error(transparent)]
+    ThemeEvaluationLimit(#[from] ThemeEvaluationLimitExceeded),
 
     #[error(transparent)]
     RuntimePolicy(#[from] crate::runtime::RuntimePolicyError),

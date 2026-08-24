@@ -1145,7 +1145,7 @@ impl SemanticOperationEngine {
             control,
         ) {
             Err(error) => return Err(BindingError::cancelled(error)),
-            Ok(result) => result.map_err(classify_semantic_error)?,
+            Ok(result) => result.map_err(common::core_error)?,
         }
         .ok_or_else(common::no_diagram_error)?;
 
@@ -1161,18 +1161,11 @@ impl SemanticOperationEngine {
             .model()
             .compatibility_json_controlled(parsed.metadata(), control)
             .map_err(BindingError::cancelled)?
-            .map_err(classify_semantic_error)?;
+            .map_err(common::core_error)?;
         control
             .checkpoint_at(OperationPhase::Postprocess)
             .map_err(BindingError::cancelled)?;
         serde_json::to_vec(&model).map_err(common::internal_json_error)
-    }
-}
-
-fn classify_semantic_error(error: merman::Error) -> BindingError {
-    match error {
-        merman::Error::RuntimePolicy(error) => common::runtime_policy_error(error),
-        error => BindingError::new(crate::BindingStatus::ParseError, error.to_string()),
     }
 }
 
@@ -1185,6 +1178,21 @@ mod tests {
     use std::sync::Arc;
     #[cfg(feature = "svg")]
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn theme_evaluation_limits_keep_resource_status_at_the_binding_boundary() {
+        let error = common::core_error(merman::Error::ThemeEvaluationLimit(
+            merman::ThemeEvaluationLimitExceeded {
+                limit: "THEME_COLOR_LIMIT",
+                requested: "65".to_string(),
+                max: 64,
+            },
+        ));
+
+        assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("THEME_COLOR_LIMIT"));
+        assert_eq!(error.resource_details(), None);
+    }
 
     #[cfg(feature = "svg")]
     struct CountingHostTextMeasurer {

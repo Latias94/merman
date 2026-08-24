@@ -540,6 +540,16 @@ pub(crate) fn input_resource_limit_error(
     )
 }
 
+pub(crate) fn core_error(error: merman::Error) -> BindingError {
+    match error {
+        merman::Error::RuntimePolicy(error) => runtime_policy_error(error),
+        merman::Error::ThemeEvaluationLimit(error) => {
+            BindingError::new(BindingStatus::ResourceLimitExceeded, error.to_string())
+        }
+        error => BindingError::new(BindingStatus::ParseError, error.to_string()),
+    }
+}
+
 #[cfg(feature = "svg")]
 impl From<merman::svg::IconRegistryBuildError> for BindingError {
     fn from(error: merman::svg::IconRegistryBuildError) -> Self {

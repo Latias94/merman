@@ -1602,10 +1602,22 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         },
         CorpusCase {
             name: "invalid theme color",
+            analyzer: invalid_theme_analyzer.clone(),
+            source: concat!(
+                "%%{ init: {",
+                "\"theme\":\"base\",",
+                "\"themeVariables\":{\"primaryColor\":\"not-a-color\"}",
+                "} }%%\n",
+                "flowchart TD\nA-->B\n",
+            ),
+        },
+        CorpusCase {
+            name: "theme evaluation limit",
             analyzer: invalid_theme_analyzer,
             source: concat!(
                 "%%{ init: {",
-                "\"themeVariables\":{\"primaryColor\":\"not-a-color\"}",
+                "\"theme\":\"dark\",",
+                "\"themeVariables\":{\"THEME_COLOR_LIMIT\":65}",
                 "} }%%\n",
                 "flowchart TD\nA-->B\n",
             ),

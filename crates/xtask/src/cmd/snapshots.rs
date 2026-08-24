@@ -601,15 +601,28 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
 }
 
 fn verify_theme_snapshot_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
-    let expected = PathBuf::from("crates/merman-core/src/generated/theme_variables_11_16_1.json");
-    let actual = tmp_dir.join("theme_variables_11_16_1.actual.json");
-    super::gen_theme_snapshot(vec!["--out".to_string(), actual.display().to_string()])?;
-    let expected_json: JsonValue = serde_json::from_str(&read_text(&expected)?)?;
-    let actual_json: JsonValue = serde_json::from_str(&read_text(&actual)?)?;
-    if expected_json != actual_json {
+    let expected_runtime =
+        PathBuf::from("crates/merman-core/src/generated/theme_variables_11_16_1.json");
+    let expected_oracles =
+        PathBuf::from("crates/merman-core/src/generated/theme_oracles_11_16_1.json");
+    let actual_runtime = tmp_dir.join("theme_variables_11_16_1.actual.json");
+    let actual_oracles = tmp_dir.join("theme_oracles_11_16_1.actual.json");
+    super::gen_theme_snapshot(vec![
+        "--out".to_string(),
+        actual_runtime.display().to_string(),
+        "--oracle-out".to_string(),
+        actual_oracles.display().to_string(),
+    ])?;
+    let expected_runtime_json: JsonValue = serde_json::from_str(&read_text(&expected_runtime)?)?;
+    let actual_runtime_json: JsonValue = serde_json::from_str(&read_text(&actual_runtime)?)?;
+    let expected_oracles_json: JsonValue = serde_json::from_str(&read_text(&expected_oracles)?)?;
+    let actual_oracles_json: JsonValue = serde_json::from_str(&read_text(&actual_oracles)?)?;
+    if expected_runtime_json != actual_runtime_json || expected_oracles_json != actual_oracles_json
+    {
         return Ok(Some(format!(
-            "Mermaid theme snapshot mismatch: regenerate with `cargo run -p xtask -- gen-theme-snapshot` ({})",
-            expected.display()
+            "Mermaid theme snapshot/oracle mismatch: regenerate with `cargo run -p xtask -- gen-theme-snapshot` ({}, {})",
+            expected_runtime.display(),
+            expected_oracles.display()
         )));
     }
     Ok(None)

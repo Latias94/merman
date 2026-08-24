@@ -41,6 +41,11 @@ pub(crate) mod wasm_module_surface;
 pub(crate) mod wasm_size_matrix;
 pub(crate) mod web_catalog;
 
+use crate::XtaskError;
+use serde_json::{Map as JsonMap, Value as JsonValue};
+use std::fs;
+use std::path::Path;
+
 pub(crate) use crate::generated::mermaid_reference::*;
 pub(crate) use admission::*;
 pub(crate) use artifact_profiles::*;
@@ -80,3 +85,42 @@ pub(crate) use upstream_svg_support::*;
 pub(crate) use verify::*;
 pub(crate) use wasm_size_matrix::*;
 pub(crate) use web_catalog::*;
+
+fn sort_json_value_keys(value: &mut JsonValue) {
+    match value {
+        JsonValue::Object(object) => {
+            for child in object.values_mut() {
+                sort_json_value_keys(child);
+            }
+            let mut sorted = JsonMap::new();
+            let mut keys = object.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            for key in keys {
+                if let Some(child) = object.remove(&key) {
+                    sorted.insert(key, child);
+                }
+            }
+            *object = sorted;
+        }
+        JsonValue::Array(values) => {
+            for value in values {
+                sort_json_value_keys(value);
+            }
+        }
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
+    }
+}
+
+fn write_pretty_json(path: &Path, value: &JsonValue) -> Result<(), XtaskError> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+        path: parent.display().to_string(),
+        source,
+    })?;
+    let mut output = serde_json::to_string_pretty(value)?;
+    output.push('\n');
+    fs::write(path, output).map_err(|source| XtaskError::WriteFile {
+        path: path.display().to_string(),
+        source,
+    })
+}

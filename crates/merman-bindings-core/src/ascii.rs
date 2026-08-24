@@ -284,9 +284,7 @@ fn classify_render_error(
     match err {
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
         merman::RenderError::RuntimePolicy(err) => crate::common::runtime_policy_error(err),
-        merman::RenderError::Parse(err) => {
-            BindingError::new(BindingStatus::ParseError, err.to_string())
-        }
+        merman::RenderError::Parse(err) => crate::common::core_error(err),
         merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
             match err.cause {
                 merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
@@ -321,6 +319,24 @@ fn classify_render_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn theme_evaluation_limits_keep_resource_status_for_ascii_output() {
+        let error = classify_render_error(
+            merman::RenderError::Parse(merman::Error::ThemeEvaluationLimit(
+                merman::ThemeEvaluationLimitExceeded {
+                    limit: "THEME_COLOR_LIMIT",
+                    requested: "65".to_string(),
+                    max: 64,
+                },
+            )),
+            merman::resources::ResourceProfile::Interactive,
+        );
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("THEME_COLOR_LIMIT"));
+        assert_eq!(error.resource_details(), None);
+    }
 
     #[test]
     fn render_ascii_returns_unicode_text() {

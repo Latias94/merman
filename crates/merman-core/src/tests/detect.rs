@@ -826,7 +826,7 @@ fn theme_parse_evidence_keeps_unconsumed_variables_after_theme_and_dark_mode_rec
 }
 
 #[test]
-fn frozen_binding_keeps_the_validated_input_when_theme_normalization_drops_a_field() {
+fn frozen_binding_keeps_the_validated_input_when_theme_replays_a_dissimilar_field_type() {
     let binding = theme_binding_for(MermaidConfig::from_value(json!({
         "theme": "default",
         "themeVariables": {"cynefin": "ignored-by-assignWithDepth"}
@@ -834,11 +834,14 @@ fn frozen_binding_keeps_the_validated_input_when_theme_normalization_drops_a_fie
     let parsed = Engine::new()
         .with_theme_compatibility(binding.clone())
         .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("parse compatibility config with a normalized-away field");
+        .expect("parse compatibility config with a replayed dissimilar field type");
 
-    assert!(parsed.effective_config.as_value()["themeVariables"]["cynefin"].is_object());
+    assert_eq!(
+        parsed.effective_config.as_value()["themeVariables"]["cynefin"],
+        json!("ignored-by-assignWithDepth")
+    );
     assert_eq!(parsed.theme_parse_binding(), Some(&binding));
-    assert_eq!(parsed.mermaid_compatibility_residual_count(), 1);
+    assert_eq!(parsed.mermaid_compatibility_residual_count(), 2);
 }
 
 #[test]

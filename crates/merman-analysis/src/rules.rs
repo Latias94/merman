@@ -30,6 +30,7 @@ pub const UNSUPPORTED_DIAGRAM_RULE_ID: &str = "merman.compatibility.unsupported_
 pub const RECOVERED_EDITOR_FACTS_RULE_ID: &str = "merman.parse.recovered_editor_facts";
 pub const RESOURCE_LIMIT_RULE_ID: &str = "merman.resource.source_bytes_exceeded";
 pub const DOCUMENT_DIAGRAM_LIMIT_RULE_ID: &str = "merman.resource.document_diagrams_exceeded";
+pub const THEME_EVALUATION_LIMIT_RULE_ID: &str = "merman.resource.theme_evaluation_exceeded";
 pub const MALFORMED_FRONT_MATTER_RULE_ID: &str = "merman.config.malformed_front_matter";
 pub const INVALID_DIRECTIVE_JSON_RULE_ID: &str = "merman.config.invalid_directive_json";
 pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front_matter_yaml";
@@ -349,6 +350,22 @@ const DOCUMENT_DIAGRAM_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
     fixable: false,
 };
 
+pub(crate) const THEME_EVALUATION_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
+    id: THEME_EVALUATION_LIMIT_RULE_ID,
+    description: "Report Mermaid theme configuration that exceeds the bounded evaluation budget.",
+    evidence: &[
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
+        "docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md",
+    ],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Resource,
+    tags: &[],
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanResourcePolicy,
+    fixable: false,
+};
+
 pub(crate) const MALFORMED_FRONT_MATTER_RULE: RuleDescriptor = RuleDescriptor {
     id: MALFORMED_FRONT_MATTER_RULE_ID,
     description: "Report malformed YAML front matter blocks before diagram parsing.",
@@ -523,6 +540,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     RECOVERED_EDITOR_FACTS_RULE,
     RESOURCE_LIMIT_RULE,
     DOCUMENT_DIAGRAM_LIMIT_RULE,
+    THEME_EVALUATION_LIMIT_RULE,
     MALFORMED_FRONT_MATTER_RULE,
     INVALID_DIRECTIVE_JSON_RULE,
     INVALID_FRONT_MATTER_YAML_RULE,
