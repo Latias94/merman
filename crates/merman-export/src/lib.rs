@@ -10,9 +10,17 @@
 mod font_environment;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 mod native_filter_receipt;
+#[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+mod raster_paint_cutover;
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub use font_environment::{ExportFontMode, ExportFontPlan};
+#[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+#[doc(hidden)]
+pub use raster_paint_cutover::{
+    EncodedRasterPaintCutoverPair, RasterPaintCutoverFacet, RasterPaintCutoverReceipt,
+    encode_png_paint_cutover_pair_controlled,
+};
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 use cssparser::{Delimiter, Parser, ParserInput, Token};
@@ -41,6 +49,9 @@ pub enum ExportError {
     InvalidSizing(&'static str),
     #[error("failed to encode PNG")]
     PngEncode,
+    #[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+    #[error("invalid route-local raster paint proof: {0}")]
+    RasterPaintCutover(&'static str),
     #[error("invalid raster matte color")]
     InvalidRasterMatte,
     #[error("JPG rendering requires an opaque matte color (e.g. white)")]
@@ -1383,8 +1394,8 @@ impl PreparedRaster {
         })
     }
 
-    fn into_pixmap(
-        self,
+    fn render_pixmap(
+        &self,
         matte: Option<ExportRgbaColor>,
         control: &OperationControl,
     ) -> Result<tiny_skia::Pixmap> {
@@ -1417,6 +1428,14 @@ impl PreparedRaster {
         resvg::render(&self.tree, transform, &mut pixmap.as_mut());
         export_checkpoint(control)?;
         Ok(pixmap)
+    }
+
+    fn into_pixmap(
+        self,
+        matte: Option<ExportRgbaColor>,
+        control: &OperationControl,
+    ) -> Result<tiny_skia::Pixmap> {
+        self.render_pixmap(matte, control)
     }
 }
 
@@ -1518,8 +1537,17 @@ fn prepare_raster_on_backend_stack(
     options: &RasterOptions,
     control: &OperationControl,
 ) -> Result<PreparedRaster> {
+    prepare_raster_source_on_backend_stack(svg, native_export_svg(svg), options, control)
+}
+
+#[cfg(any(feature = "png", feature = "jpeg"))]
+fn prepare_raster_source_on_backend_stack(
+    svg: &ResvgCompatibleSvg,
+    source: &str,
+    options: &RasterOptions,
+    control: &OperationControl,
+) -> Result<PreparedRaster> {
     export_checkpoint(control)?;
-    let source = native_export_svg(svg);
     let matte = options
         .matte
         .as_deref()

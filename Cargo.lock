@@ -2580,6 +2580,7 @@ dependencies = [
  "png",
  "quick-xml",
  "resvg",
+ "sha2 0.10.9",
  "svgtypes",
  "thiserror 2.0.20",
  "tiny-skia",

@@ -18,6 +18,7 @@ artifact-profile-required = true
 
 [features]
 default = []
+internal-theme-acceptance = ["dep:sha2"]
 png = [
     "dep:cssparser",
     "dep:data-url",
@@ -68,6 +69,7 @@ merman-core = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true, features = ["raster-images"] }
+sha2 = { workspace = true, optional = true }
 svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }

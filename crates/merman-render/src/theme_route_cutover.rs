@@ -651,6 +651,20 @@ impl ThemeRouteCutoverDescriptor {
     pub const fn projections(self) -> ThemeRouteCutoverProjectionSet {
         self.projections
     }
+
+    /// Returns the canonical solid paint used by the private raster cutover witness.
+    ///
+    /// The value is renderer-owned so the acceptance harness cannot silently choose a different
+    /// control palette from the route receipt it is trying to authorize.
+    pub const fn raster_control_css(self) -> &'static str {
+        match (self.facet(), self.target()) {
+            (ThemeRouteCutoverFacet::Fill, _) => "#dc2626",
+            (ThemeRouteCutoverFacet::Stroke, ThemeTarget::Edge | ThemeTarget::Relation) => {
+                "#16a34a"
+            }
+            (ThemeRouteCutoverFacet::Stroke, _) => "#2563eb",
+        }
+    }
 }
 
 /// Renderer-owned route fact captured after the family adapter reports a terminal application.
