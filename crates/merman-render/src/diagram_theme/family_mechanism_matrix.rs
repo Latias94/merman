@@ -345,11 +345,12 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_KANBAN_TASK_STROKE)
         }
-        (
-            DiagramFamilyId::JOURNEY,
-            ThemeTarget::JourneyTask,
-            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
-        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_JOURNEY_TASK_PAINT),
+        (DiagramFamilyId::JOURNEY, ThemeTarget::JourneyTask, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_JOURNEY_TASK_FILL)
+        }
+        (DiagramFamilyId::JOURNEY, ThemeTarget::JourneyTask, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_JOURNEY_TASK_STROKE)
+        }
         (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
             ThemeTarget::Cluster,
@@ -4583,28 +4584,28 @@ mod tests {
                 ThemeTarget::JourneyTask,
                 Fill,
                 Transparent,
-                vec!["task.paint-text"],
+                vec!["task.fill"],
             ),
             (
                 DiagramFamilyId::JOURNEY,
                 ThemeTarget::JourneyTask,
                 Fill,
                 Solid,
-                vec!["task.paint-text"],
+                vec!["task.fill"],
             ),
             (
                 DiagramFamilyId::JOURNEY,
                 ThemeTarget::JourneyTask,
                 Stroke,
                 Transparent,
-                vec!["task.paint-text"],
+                vec!["task.stroke"],
             ),
             (
                 DiagramFamilyId::JOURNEY,
                 ThemeTarget::JourneyTask,
                 Stroke,
                 Solid,
-                vec!["task.paint-text"],
+                vec!["task.stroke"],
             ),
             (
                 DiagramFamilyId::KANBAN,

@@ -11,12 +11,12 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 21;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 22;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 37] = [
+); 38] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -158,11 +158,15 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjectionAction::Replace,
     ),
     (
-        ThemeRouteCutoverProjection::JourneyTaskPaint,
+        ThemeRouteCutoverProjection::JourneyTaskFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
     (
         ThemeRouteCutoverProjection::KanbanTaskStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::JourneyTaskStroke,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
 ];
@@ -298,8 +302,10 @@ const GANTT_TASK_SUCCESS_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::GanttTaskSuccessStroke];
 const GANTT_TASK_ERROR_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::GanttTaskErrorStroke];
-const JOURNEY_TASK_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
-    &[ThemeRouteCutoverProjection::JourneyTaskPaint];
+const JOURNEY_TASK_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::JourneyTaskFill];
+const JOURNEY_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::JourneyTaskStroke];
 const KANBAN_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::KanbanTaskStroke];
 
@@ -1186,28 +1192,28 @@ const ACTIVE_ROUTES: [RouteAuthorization; 126] = [
         ThemeTarget::JourneyTask,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
-        JOURNEY_TASK_PAINT_PROJECTIONS,
+        JOURNEY_TASK_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::JOURNEY,
         ThemeTarget::JourneyTask,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
-        JOURNEY_TASK_PAINT_PROJECTIONS,
+        JOURNEY_TASK_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::JOURNEY,
         ThemeTarget::JourneyTask,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Transparent,
-        JOURNEY_TASK_PAINT_PROJECTIONS,
+        JOURNEY_TASK_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::JOURNEY,
         ThemeTarget::JourneyTask,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
-        JOURNEY_TASK_PAINT_PROJECTIONS,
+        JOURNEY_TASK_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::KANBAN,
@@ -1606,6 +1612,38 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
             assert_eq!(qualified.len(), 4);
+        }
+    }
+
+    #[test]
+    fn manifest_keeps_journey_fill_and_stroke_projection_local() {
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 22);
+
+        let journey_routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| route.id.family_id() == DiagramFamilyId::JOURNEY)
+            .collect::<Vec<_>>();
+        assert_eq!(journey_routes.len(), 4);
+        for (facet, projection) in [
+            (
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::JourneyTaskFill,
+            ),
+            (
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverProjection::JourneyTaskStroke,
+            ),
+        ] {
+            let routes = journey_routes
+                .iter()
+                .filter(|route| route.id.facet() == facet)
+                .collect::<Vec<_>>();
+            assert_eq!(routes.len(), 2);
+            assert!(
+                routes
+                    .iter()
+                    .all(|route| route.projections == &[projection])
+            );
         }
     }
 

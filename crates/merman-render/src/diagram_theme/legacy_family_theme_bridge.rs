@@ -909,10 +909,16 @@ fn compile_journey_family(builder: &mut OverlayBuilder, family_programs: &Family
     let mut contributions = FamilyContributions::new(family);
     contributions.add_typography(&reader);
     contributions.add_theme_variables(
-        "task.paint-text",
+        ThemeRouteCutoverProjection::JourneyTaskFill.contribution_id(),
+        [("mainBkg", reader.fill(ThemeTarget::JourneyTask))],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::JourneyTaskStroke.contribution_id(),
+        [("nodeBorder", reader.stroke(ThemeTarget::JourneyTask))],
+    );
+    contributions.add_theme_variables(
+        "task.text",
         [
-            ("mainBkg", reader.fill(ThemeTarget::JourneyTask)),
-            ("nodeBorder", reader.stroke(ThemeTarget::JourneyTask)),
             ("textColor", reader.text_fill(ThemeTarget::Text)),
             ("titleColor", reader.text_fill(ThemeTarget::Title)),
         ],
@@ -2199,22 +2205,66 @@ mod tests {
     }
 
     #[test]
-    fn explicit_journey_task_fill_is_owned_by_the_typed_writer() {
+    fn journey_direct_paint_suppresses_only_property_local_bridge_projections() {
         let spec = DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
-                    ThemeTarget::JourneyTask,
-                    ThemeStylePatch::default().with_fill(solid("#ef4444")),
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::JourneyTask,
+                        ThemeStylePatch::default()
+                            .with_fill(solid("#ef4444"))
+                            .with_stroke(solid("#2563eb")),
+                    )
+                    .for_family(DiagramFamilyId::JOURNEY),
                 )
-                .for_family(DiagramFamilyId::JOURNEY),
-            ),
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid("#16a34a")),
+                    )
+                    .for_family(DiagramFamilyId::JOURNEY),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(solid("#9333ea")),
+                    )
+                    .for_family(DiagramFamilyId::JOURNEY),
+                ),
         );
-        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::JOURNEY);
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::JOURNEY);
 
         assert!(
             !artifact
                 .contribution_ids
+                .contains("merman.legacy-family-theme.v1.journey.task.fill")
+        );
+        assert!(
+            !artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.journey.task.stroke")
+        );
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.journey.task.text")
+        );
+        assert_eq!(artifact.contribution_ids.len(), 1);
+        assert!(
+            !artifact
+                .contribution_ids
                 .contains("merman.legacy-family-theme.v1.journey.task.paint-text")
+        );
+
+        let parsed = parse(&spec, JOURNEY_FIXTURE);
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.textColor"),
+            Some("#16a34a")
+        );
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.titleColor"),
+            Some("#9333ea")
         );
     }
 
