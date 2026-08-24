@@ -81,6 +81,7 @@ export function buildCandidate({ candidate, target = null }) {
     ) {
       throw new Error("Node candidate dependency closure changed during the build; rerun it.");
     }
+    writeBuildEnvironmentEvidence(stage, recipe);
     writeBuildReceipt(stage, recipe, before, dependencyClosure, runtime);
     replaceDirectory(stage, output);
     console.log(`[merman-node] built ${candidate}${resolvedTarget ? ` for ${resolvedTarget}` : ""}`);
@@ -220,6 +221,7 @@ function writeBuildReceipt(
     target: recipe.targetId,
     rust_target: recipe.rustTarget,
     wasm_pack_target: recipe.wasmPackTarget,
+    glibc_floor: recipe.glibcFloor,
     default_features: false,
     capability_recipe: {
       descriptor: descriptor.capability_recipe.descriptor,
@@ -248,6 +250,40 @@ function writeBuildReceipt(
     artifacts: artifactEntries(stage),
   };
   writeFileSync(path.join(stage, "build-receipt.json"), `${JSON.stringify(receipt, null, 2)}\n`);
+}
+
+function writeBuildEnvironmentEvidence(stage, recipe) {
+  if (recipe.glibcFloor === null) return;
+  const runtimeVersion = process.report?.getReport?.()?.header?.glibcVersionRuntime;
+  if (typeof runtimeVersion !== "string" || runtimeVersion.length === 0) {
+    throw new Error("The Linux GNU candidate build must record its runtime glibc version.");
+  }
+  if (compareGlibcVersions(runtimeVersion, recipe.glibcFloor) > 0) {
+    throw new Error(
+      `The Linux GNU candidate build ran on glibc ${runtimeVersion}, above the ${recipe.glibcFloor} compatibility floor.`,
+    );
+  }
+  writeFileSync(
+    path.join(stage, "build-environment.json"),
+    `${JSON.stringify({
+      schema_version: 1,
+      target: recipe.targetId,
+      libc: "glibc",
+      version: runtimeVersion,
+      floor: recipe.glibcFloor,
+    }, null, 2)}\n`,
+  );
+}
+
+function compareGlibcVersions(left, right) {
+  const parse = (value) => {
+    const match = /^(\d+)\.(\d+)$/.exec(value);
+    if (!match) throw new Error(`Invalid glibc version: ${value}.`);
+    return [Number(match[1]), Number(match[2])];
+  };
+  const [leftMajor, leftMinor] = parse(left);
+  const [rightMajor, rightMinor] = parse(right);
+  return leftMajor - rightMajor || leftMinor - rightMinor;
 }
 
 export function probeCandidateRuntime(stage, recipe) {
@@ -620,6 +656,7 @@ export function resolveCandidateRecipe(candidate, target) {
         rustTarget: wasm.rust_target,
         transportFeature: wasm.transport_feature,
         wasmPackTarget: wasm.wasm_pack_target,
+        glibcFloor: null,
       },
       capabilityFeatures,
     );
@@ -634,6 +671,7 @@ export function resolveCandidateRecipe(candidate, target) {
       rustTarget: nativeTarget.rust_target,
       transportFeature: descriptor.candidates.napi.transport_feature,
       wasmPackTarget: null,
+      glibcFloor: nativeTarget.glibc_floor ?? null,
     },
     capabilityFeatures,
   );
@@ -645,6 +683,9 @@ function completeCandidateRecipe(recipe, capabilityFeatures) {
     !recipe.transportFeature.startsWith("transport-")
   ) {
     throw new Error(`Invalid transport feature for ${recipe.candidate}.`);
+  }
+  if (recipe.glibcFloor !== null && typeof recipe.glibcFloor !== "string") {
+    throw new Error(`Invalid glibc floor for ${recipe.candidate}.`);
   }
   if (capabilityFeatures.includes(recipe.transportFeature)) {
     throw new Error(

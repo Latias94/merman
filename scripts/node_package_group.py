@@ -47,6 +47,13 @@ EXPECTED_ROOT = {
     "name": "@mermanjs/node",
     "directory": "packages/node",
 }
+EXPECTED_WASM = {
+    "name": "@mermanjs/node-wasm",
+    "directory": "packages/node-wasm",
+    "artifact_directory": "artifact",
+    "node_artifact": "merman_node.cjs",
+    "wasm_artifact": "merman_node_bg.wasm",
+}
 EXPECTED_TARGETS = [
     {
         "target": "darwin-arm64",
@@ -107,6 +114,21 @@ REQUIRED_LOADER_FILES = {
     "package/dist/generated/capability-surface.mjs",
     "package/dist/generated/node-wire-contract.json",
 }
+REQUIRED_WASM_FILES = {
+    "package/CHANGELOG.md",
+    "package/dist/index.mjs",
+    "package/dist/index.d.ts",
+    "package/dist/candidates/wasm.mjs",
+    "package/dist/candidates/wrap-engine.mjs",
+    "package/dist/engine.mjs",
+    "package/dist/errors.mjs",
+    "package/dist/native-loader.mjs",
+    "package/dist/generated/binding-contract.mjs",
+    "package/dist/generated/capability-surface.mjs",
+    "package/dist/generated/node-wire-contract.json",
+    "package/artifact/merman_node.cjs",
+    "package/artifact/merman_node_bg.wasm",
+}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -137,6 +159,8 @@ def load_descriptor(path: Path) -> dict[str, Any]:
         raise PackageGroupError("Node descriptor must require Node.js 22 or newer")
     if descriptor.get("root") != EXPECTED_ROOT:
         raise PackageGroupError("Node descriptor loader package does not match the public contract")
+    if descriptor.get("wasm") != EXPECTED_WASM:
+        raise PackageGroupError("Node descriptor WASM package does not match the public contract")
     if descriptor.get("targets") != EXPECTED_TARGETS:
         raise PackageGroupError("Node descriptor target packages do not match the public contract")
     return descriptor
@@ -206,6 +230,7 @@ def descriptor_entries(descriptor: dict[str, Any]) -> dict[str, tuple[str, dict[
     entries: dict[str, tuple[str, dict[str, Any]]] = {}
     for target in descriptor["targets"]:
         entries[target["name"]] = ("platform", target)
+    entries[descriptor["wasm"]["name"]] = ("wasm", descriptor["wasm"])
     entries[descriptor["root"]["name"]] = ("loader", descriptor["root"])
     return entries
 
@@ -241,7 +266,7 @@ def inspect_tarball(
         )
     node_files = sorted(name for name in names if name.endswith(".node"))
     wasm_files = sorted(name for name in names if name.endswith(".wasm"))
-    if wasm_files:
+    if role != "wasm" and wasm_files:
         raise PackageGroupError(f"{package_name} must not contain WASM artifacts")
     if role == "loader":
         missing_loader = REQUIRED_LOADER_FILES - names
@@ -258,6 +283,25 @@ def inspect_tarball(
             )
         if any(key in manifest for key in ("os", "cpu", "libc")):
             raise PackageGroupError(f"{package_name} loader must not declare platform constraints")
+    elif role == "wasm":
+        missing_wasm = REQUIRED_WASM_FILES - names
+        if missing_wasm:
+            raise PackageGroupError(
+                f"{package_name} is missing required WASM files: {', '.join(sorted(missing_wasm))}"
+            )
+        if node_files:
+            raise PackageGroupError(f"{package_name} WASM package must not contain native artifacts")
+        if wasm_files != [f"package/{package_descriptor['artifact_directory']}/{package_descriptor['wasm_artifact']}"]:
+            raise PackageGroupError(f"{package_name} must contain exactly one canonical WASM artifact")
+        cjs_files = sorted(name for name in names if name.endswith(".cjs"))
+        if cjs_files != [f"package/{package_descriptor['artifact_directory']}/{package_descriptor['node_artifact']}"]:
+            raise PackageGroupError(f"{package_name} must contain exactly one Node WASM loader")
+        if manifest.get("main") != "./dist/index.mjs" or manifest.get("types") != "./dist/index.d.ts":
+            raise PackageGroupError(f"{package_name} Node WASM entry point is invalid")
+        if any(key in manifest for key in ("os", "cpu", "libc")):
+            raise PackageGroupError(f"{package_name} WASM package must not declare platform constraints")
+        if any(key in manifest for key in ("dependencies", "optionalDependencies", "peerDependencies")):
+            raise PackageGroupError(f"{package_name} WASM package must not declare runtime dependencies")
     elif node_files != [f"package/{package_descriptor['node_artifact']}"]:
         raise PackageGroupError(
             f"{package_name} must contain exactly package/{package_descriptor['node_artifact']}"
@@ -299,11 +343,12 @@ def validate_manifest(
         raise PackageGroupError("Node package group source_sha must be a full lowercase Git SHA")
     if descriptor is not None:
         expected_names = [target["name"] for target in descriptor["targets"]] + [
-            descriptor["root"]["name"]
+            descriptor["wasm"]["name"],
+            descriptor["root"]["name"],
         ]
         observed_names = [record["name"] for record in manifest["packages"]]
         if observed_names != expected_names:
-            raise PackageGroupError("Node package group must list every platform before the loader")
+            raise PackageGroupError("Node package group must list every platform and WASM package before the loader")
     return manifest
 
 
@@ -327,10 +372,11 @@ def create_manifest(
     ]
     by_name = {record["name"]: record for record in records}
     expected_names = [target["name"] for target in descriptor["targets"]] + [
-        descriptor["root"]["name"]
+        descriptor["wasm"]["name"],
+        descriptor["root"]["name"],
     ]
     if set(by_name) != set(expected_names) or len(records) != len(expected_names):
-        raise PackageGroupError("artifact directory must contain exactly the six Node npm packages")
+        raise PackageGroupError("artifact directory must contain exactly the seven Node npm packages")
     manifest = validate_manifest(
         {
             "schema_version": 1,

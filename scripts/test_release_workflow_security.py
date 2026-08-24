@@ -300,6 +300,24 @@ jobs:
                 self.assertIn("main is allowed only for a non-publishing build", text)
                 self.assertRegex(text, r"\[\[ \"\$SOURCE_REF\" =~ \^\[0-9a-f\]\{40\}\$ \]\]")
 
+    def test_node_publish_supports_verified_cross_run_recovery(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-node.yml")
+        publish = workflow_job(text, "publish")
+        self.assertIn("recovery_run_id:", text)
+        self.assertIn("DISPATCH_RECOVERY_RUN_ID", text)
+        self.assertIn("recovery_run_id requires publish_to_npm=true", text)
+        self.assertIn("actions: read", publish)
+        self.assertIn("always()", publish)
+        self.assertIn(
+            "needs.package-group.result == 'success' || needs.validate-inputs.outputs.recovery_run_id != ''",
+            publish,
+        )
+        self.assertIn("github-token: ${{ github.token }}", publish)
+        self.assertIn(
+            "run-id: ${{ needs.validate-inputs.outputs.recovery_run_id != '' && needs.validate-inputs.outputs.recovery_run_id || github.run_id }}",
+            publish,
+        )
+
     def test_performance_pull_requests_are_read_only_and_summary_only(self) -> None:
         text = read(WORKFLOW_ROOT / "performance.yml")
         self.assertNotIn("pull-requests: write", text)

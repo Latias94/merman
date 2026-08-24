@@ -69,9 +69,9 @@ The repository-owned delivery routes are:
 6. GitHub Release AAR for Android.
 7. lockstep npm publishing for the admitted `@mermanjs/web` browser package group through
    `release-web.yml` after Trusted Publishing setup.
-8. lockstep npm publishing for `@mermanjs/node` and its five native platform packages through
-   `release-node.yml`. Node is an experimental alpha surface; it requires first-publish bootstrap
-   before npm Trusted Publishing can take over.
+8. lockstep npm publishing for `@mermanjs/node`, its five native platform packages, and the
+   explicit `@mermanjs/node-wasm` package through `release-node.yml`. Node is an experimental alpha
+   surface; it requires first-publish bootstrap before npm Trusted Publishing can take over.
 9. Platform VSIX artifacts for the independently versioned VS Code extension through
    `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
    before it is enabled.
@@ -97,9 +97,9 @@ Merman CI keeps publication separate from validation:
 - `web-npm-dry-run` builds each admitted TypeScript/WASM package, verifies its package projection,
   then packs and verifies the complete lockstep npm group without publishing it.
 - `release-node.yml` builds, packs, installs, and renders the public Node loader through its real
-  macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native package. Its publisher receives
-  verified tarballs only and publishes platform packages before the root loader under the requested
-  final dist-tag.
+  macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native packages, plus the explicit
+  Node-targeted WASM package. Its publisher receives a verified seven-package group only and
+  publishes platform packages, WASM, and then the root loader under the requested final dist-tag.
 - `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
   VSIX, and verify package contents, target platform, stable manifest version, and pre-release
   marker.
@@ -203,7 +203,7 @@ library-size evidence.
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
 | Browser/Typst size evidence | The owner-specific Web and Typst size commands share one budget catalog and together cover every admitted artifact exactly once. |
 | Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 2, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `lol_html`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
-| Node npm alpha package group | The selected N-API recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, build receipts, packed tarballs, and five real-target install/render smokes agree. |
+| Node npm alpha package group | The selected N-API recipe, explicit Node-targeted WASM recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, glibc-baseline build receipts, packed tarballs, five native install/render smokes, and one WASM install/render smoke agree. |
 
 ## WASM Size Matrix
 

@@ -508,11 +508,31 @@ jobs:
 
       - name: Build and probe the Node-WASM candidate
         if: matrix.parity && github.event_name == 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate node-wasm
+        run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
 
       - name: Build and probe the Node N-API candidate
         if: matrix.parity && github.event_name == 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --file platforms/node/Dockerfile.gnu \
+            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg RUST_IMAGE=rust:1.95-bullseye \
+            --tag merman-node-gnu:ci \
+            platforms/node
+          docker run --rm \
+            --platform linux/amd64 \
+            -e CARGO_INCREMENTAL=0 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            merman-node-gnu:ci \
+            sh -c '
+              set -eu
+              git config --global --add safe.directory /work
+              npm ci --prefix platforms/node
+              node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
+            '
 
       - name: Verify committed upstream alignment manifests
         if: matrix.parity
@@ -635,11 +655,52 @@ jobs:
 
       - name: Build and probe the real Node-WASM candidate on PRs
         if: github.event_name != 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate node-wasm
+        run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
+
+      - name: Assemble and install-smoke the Node-WASM npm package on PRs
+        if: github.event_name != 'push'
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/node-wasm-package"
+          artifact_dir="$RUNNER_TEMP/node-wasm-smoke-artifact"
+          smoke_root="$RUNNER_TEMP/node-wasm-install-smoke"
+          version="$(node -p "JSON.parse(require('fs').readFileSync('platforms/node/package-surfaces.json', 'utf8')).version")"
+          node platforms/node/scripts/assemble-packages.mjs --wasm --output-root "$package_root"
+          node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
+          mkdir -p "$artifact_dir" "$smoke_root"
+          npm pack "$package_root/node-wasm" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-wasm-pack.json"
+          test "$(find "$artifact_dir" -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
+          cd "$smoke_root"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund "$artifact_dir"/*.tgz >/dev/null
+          node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" \
+            --project "$smoke_root" \
+            --version "$version" \
+            --target node-wasm
 
       - name: Build and probe the real Node N-API candidate on PRs
         if: github.event_name != 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --file platforms/node/Dockerfile.gnu \
+            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg RUST_IMAGE=rust:1.95-bullseye \
+            --tag merman-node-gnu:ci \
+            platforms/node
+          docker run --rm \
+            --platform linux/amd64 \
+            -e CARGO_INCREMENTAL=0 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            merman-node-gnu:ci \
+            sh -c '
+              set -eu
+              git config --global --add safe.directory /work
+              npm ci --prefix platforms/node
+              node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
+            '
 
   typst-package:
     name: typst-package

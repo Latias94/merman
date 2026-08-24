@@ -117,22 +117,28 @@ publish only the missing exact tarballs directly under the requested final tag w
 2FA-protected npm credential, configure Trusted Publishing for those package names, then rerun the
 workflow with publication enabled. Do not keep the bootstrap credential in GitHub Actions.
 
-## Node Native Package Group
+## Node npm Package Group
 
-The experimental Node package is also a lockstep npm group, but it is native rather than browser
-WASM: `@mermanjs/node`, `@mermanjs/node-darwin-arm64`, `@mermanjs/node-darwin-x64`,
+The experimental Node packages are one lockstep npm group: the native loader and five platform
+packages (`@mermanjs/node`, `@mermanjs/node-darwin-arm64`, `@mermanjs/node-darwin-x64`,
 `@mermanjs/node-linux-x64-gnu`, `@mermanjs/node-linux-x64-musl`, and
-`@mermanjs/node-win32-x64-msvc`. Run `release-node.yml` against a reviewed immutable source commit
-after the matching preflight succeeds. It builds and installs every native target, preflights
-existing registry integrity and tags, then publishes missing exact versions directly under the
-requested final tag in platform-first order, with the root loader last.
+`@mermanjs/node-win32-x64-msvc`) plus the explicit Node-targeted WASM package
+`@mermanjs/node-wasm`. Run `release-node.yml` against a reviewed immutable source commit after
+the matching preflight succeeds. It builds and installs every native target and the WASM target,
+preflights existing registry integrity and tags, then publishes missing exact versions directly
+under the requested final tag in platform-first order, with the WASM package before the root
+loader.
 
 The first version of each npm package cannot use npm Trusted Publishing before the package exists.
-For that one bootstrap, download the verified group artifact from a non-publishing run, publish the
-five platform tarballs and then the loader directly under the requested final tag with a
-maintainer's 2FA-protected npm credential, configure Trusted Publishing for all six package names,
-and rerun `release-node.yml` with publishing enabled. Thereafter the workflow owns idempotent
-publishing and provenance; do not keep an npm token in GitHub Actions.
+For that one bootstrap, dispatch `release-node.yml` with `publish_to_npm=false` against the reviewed
+immutable source and record its workflow run id. Download the verified
+`merman-node-npm-package-group` artifact from that exact run, publish the five platform tarballs, the
+WASM tarball, and then the loader directly under the requested final tag with a maintainer's
+2FA-protected npm credential, and configure Trusted Publishing for all seven package names. Then
+dispatch `release-node.yml` with the same `release_tag` and `source_ref`,
+`publish_to_npm=true`, and `recovery_run_id=<bootstrap-run-id>`. The recovery run reuses and verifies
+the original tarballs; it must not accept a separately rebuilt candidate. Thereafter the workflow
+owns idempotent publishing and provenance; do not keep an npm token in GitHub Actions.
 
 The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
 changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a

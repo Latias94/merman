@@ -264,6 +264,10 @@ export declare class MermanMissingPlatformPackageError extends MermanError {
   readonly packageName: string;
   readonly target: string;
 }
+export declare class MermanNativeLoadError extends MermanError {
+  readonly packageName: string;
+  readonly target: string;
+}
 export declare class MermanUnsupportedTargetError extends MermanError {
   readonly platform: string;
   readonly arch: string;

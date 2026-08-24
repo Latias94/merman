@@ -29,6 +29,27 @@ try {
 
 Create an engine once, reuse it for related work, and dispose it during teardown.
 
+## SVG output pipelines
+
+`renderSvg()` and `renderSvgSync()` use the `parity` pipeline by default. This preserves the
+Mermaid-compatible SVG structure for trusted input and parity-sensitive consumers. `parity` is
+not a browser DOM-admission or sanitization check.
+
+For SVG that will be embedded directly into HTML, or when the Mermaid source is not fully trusted,
+select the sealed `resvg-safe` pipeline explicitly:
+
+```js
+const options = {
+  optionsJson: JSON.stringify({ svg: { pipeline: "resvg-safe" } }),
+};
+const svg = await engine.renderSvg(source, options);
+```
+
+The supported pipeline values are `parity`, `readable`, and `resvg-safe`. The safe pipeline can
+remove browser-only SVG features such as active content and `foreignObject` labels. It does not
+provide browser `Document` or owner-document admission APIs; use `@mermanjs/web*` for browser DOM
+mounting.
+
 ## Supported hosts
 
 - macOS arm64 and x64
@@ -39,6 +60,11 @@ Create an engine once, reuse it for related work, and dispose it during teardown
 The root loader selects one matching exact-version `@mermanjs/node-<platform>` optional dependency.
 Do not install platform packages directly. The loader contains no native or WASM binary and never
 downloads one during installation or runtime.
+
+If the native addon is installed but the host dynamic loader rejects it (for example because the
+glibc baseline is too new), construction throws `MermanNativeLoadError` with the target package
+name and an explicit suggestion to use `@mermanjs/node-wasm`. It does not silently switch
+transports.
 
 ## Capability boundary
 

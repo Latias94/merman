@@ -25,6 +25,27 @@ try {
 }
 ```
 
+## SVG output pipelines
+
+`renderSvg()` and `renderSvgSync()` use the `parity` pipeline by default. This preserves the
+Mermaid-compatible SVG structure and is the right choice for trusted input or parity-sensitive
+consumers. `parity` is not a browser DOM-admission or sanitization check.
+
+For SVG that will be embedded directly into HTML, or when the Mermaid source is not fully trusted,
+select the sealed `resvg-safe` pipeline explicitly:
+
+```js
+const options = {
+  optionsJson: JSON.stringify({ svg: { pipeline: "resvg-safe" } }),
+};
+const svg = await engine.renderSvg(source, options);
+```
+
+The supported pipeline values are `parity`, `readable`, and `resvg-safe`. The safe pipeline can
+remove browser-only SVG features such as active content and `foreignObject` labels. It does not
+provide browser `Document` or owner-document admission APIs; use `@mermanjs/web*` for browser DOM
+mounting.
+
 The package supports macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. Its shipped
 recipe includes deterministic SVG plus Cytoscape and ELK layouts. Math, binary export, analysis,
 ASCII, text-measurement callbacks, browser fallback, and runtime downloads remain outside this
@@ -34,12 +55,13 @@ surface.
 
 - `packages/node` contains the public ESM loader, JavaScript engine, declarations, and user README.
 - Generated `@mermanjs/node-<platform>` packages contain the native binary for one supported host.
-- The Node-targeted WASM implementation is an internal comparison transport and is never selected
-  by the public loader. It supports operation deadlines, but its single-threaded execution cannot
-  observe a mid-call JavaScript `AbortSignal`.
+- `@mermanjs/node-wasm` is a separate explicit Node-targeted WASM package for deployments that
+  cannot load a native addon. It does not reuse `@mermanjs/web`, and its single-threaded execution
+  cannot observe a mid-call JavaScript `AbortSignal`.
 
-Install only `@mermanjs/node`; its exact-version optional dependencies keep the selected platform
-package aligned with the loader.
+Install `@mermanjs/node` for native execution or `@mermanjs/node-wasm` when a portable Node
+artifact is preferred. The native loader's exact-version optional dependencies keep the selected
+platform package aligned with the loader; it never silently changes transport.
 
 Native cancellation is cooperative after JavaScript queue admission. The bridge does not forcibly
 remove work already submitted to libuv; the Promise settles when that worker observes cancellation

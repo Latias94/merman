@@ -7,6 +7,13 @@
     "name": "@mermanjs/node",
     "directory": "packages/node"
   },
+  "wasm": {
+    "name": "@mermanjs/node-wasm",
+    "directory": "packages/node-wasm",
+    "artifact_directory": "artifact",
+    "node_artifact": "merman_node.cjs",
+    "wasm_artifact": "merman_node_bg.wasm"
+  },
   "targets": [
     {
       "target": "darwin-arm64",

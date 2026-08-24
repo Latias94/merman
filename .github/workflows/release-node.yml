@@ -12,6 +12,11 @@ on:
         required: true
         default: "main"
         type: string
+      recovery_run_id:
+        description: "Prior non-publishing release-node run containing the verified package group"
+        required: false
+        default: ""
+        type: string
       publish_to_npm:
         description: "Publish the verified @mermanjs/node package group"
         required: true
@@ -35,6 +40,7 @@ jobs:
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
       npm_dist_tag: ${{ steps.release.outputs.npm_dist_tag }}
+      recovery_run_id: ${{ steps.release.outputs.recovery_run_id }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -47,6 +53,7 @@ jobs:
         env:
           DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
           DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          DISPATCH_RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
           DISPATCH_PUBLISH_TO_NPM: ${{ inputs.publish_to_npm }}
         run: |
           set -euo pipefail
@@ -61,6 +68,17 @@ jobs:
             echo "::error::source_ref must be a single line" >&2
             exit 1
           }
+          RECOVERY_RUN_ID="$DISPATCH_RECOVERY_RUN_ID"
+          if [ -n "$RECOVERY_RUN_ID" ]; then
+            [[ "$RECOVERY_RUN_ID" =~ ^[1-9][0-9]*$ ]] || {
+              echo "::error::recovery_run_id must be a positive GitHub Actions run id" >&2
+              exit 1
+            }
+            [[ "$DISPATCH_PUBLISH_TO_NPM" == "true" ]] || {
+              echo "::error::recovery_run_id requires publish_to_npm=true" >&2
+              exit 1
+            }
+          fi
           if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             validated_source_ref="$SOURCE_REF"
           elif [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
@@ -80,6 +98,7 @@ jobs:
             printf 'release_tag=%s\n' "$RELEASE_TAG"
             printf 'version=%s\n' "$version"
             printf 'npm_dist_tag=%s\n' "$npm_dist_tag"
+            printf 'recovery_run_id=%s\n' "$RECOVERY_RUN_ID"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v7.0.1
@@ -139,7 +158,7 @@ jobs:
         run: |
           npm ci --prefix platforms/node
           npm test --prefix platforms/node
-          npm run --prefix platforms/node check:packages
+          node platforms/node/scripts/verify-packages.mjs
 
       - name: Pack loader package
         shell: bash
@@ -161,6 +180,85 @@ jobs:
         with:
           name: merman-node-npm-loader
           path: ${{ runner.temp }}/node-loader-artifact/*.tgz
+          if-no-files-found: error
+
+  node-wasm-package:
+    needs: validate-inputs
+    name: Node WASM package
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify pinned release source and versions
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{commit}')" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          python3 scripts/release-version.py check --version "$VERSION"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: crates/merman-node
+
+      - name: Setup Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: platforms/node/package-lock.json
+
+      - name: Install pinned Node build dependencies
+        run: npm ci --prefix platforms/node
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Build and probe Node WASM candidate
+        run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
+
+      - name: Assemble and verify Node WASM package
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/node-wasm-package"
+          artifact_dir="$RUNNER_TEMP/node-wasm-artifact"
+          node platforms/node/scripts/assemble-packages.mjs --wasm --output-root "$package_root"
+          node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
+          mkdir -p "$artifact_dir"
+          npm pack "$package_root/node-wasm" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-wasm-pack.json"
+
+          smoke_root="$RUNNER_TEMP/node-wasm-install-smoke"
+          mkdir -p "$smoke_root"
+          cd "$smoke_root"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund "$artifact_dir"/*.tgz >/dev/null
+          node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" \
+            --project "$smoke_root" \
+            --version "$VERSION" \
+            --target node-wasm
+
+      - name: Upload Node WASM package
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: merman-node-npm-wasm
+          path: ${{ runner.temp }}/node-wasm-artifact/*.tgz
           if-no-files-found: error
 
   platform:
@@ -207,13 +305,13 @@ jobs:
           python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        if: matrix.target != 'linux-x64-musl'
+        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
-        if: matrix.target != 'linux-x64-musl'
+        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         uses: Swatinem/rust-cache@v2.9.2
         with:
           workspaces: crates/merman-node
@@ -245,13 +343,13 @@ jobs:
               set -eu
               git config --global --add safe.directory /work
               npm ci --prefix platforms/node
-              npm run --prefix platforms/node build:candidate -- --candidate napi --target "$TARGET"
+              node platforms/node/scripts/build-candidate.mjs --candidate napi --target "$TARGET"
               package_root=/runner-temp/node-packages
               artifact_dir=/runner-temp/node-platform-artifact
               smoke_tarballs=/runner-temp/node-smoke-tarballs
               smoke_root=/runner-temp/node-install-smoke
               node platforms/node/scripts/assemble-packages.mjs --target "$TARGET" --output-root "$package_root"
-              npm run --prefix platforms/node check:packages -- --packed-root "$package_root"
+              node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
               mkdir -p "$artifact_dir" "$smoke_tarballs" "$smoke_root"
               npm pack "$package_root/node" --json --pack-destination "$smoke_tarballs" >/runner-temp/node-root-pack.json
               npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" >/runner-temp/node-target-pack.json
@@ -263,8 +361,53 @@ jobs:
               node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$VERSION" --target "$TARGET"
             '
 
+      - name: Build, package, and smoke GNU target
+        if: matrix.target == 'linux-x64-gnu'
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --file platforms/node/Dockerfile.gnu \
+            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg RUST_IMAGE=rust:1.95-bullseye \
+            --tag merman-node-gnu:ci \
+            platforms/node
+          docker run --rm \
+            --platform linux/amd64 \
+            -e CARGO_INCREMENTAL=0 \
+            -e TARGET="$TARGET" \
+            -e VERSION="$VERSION" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -v "$RUNNER_TEMP:/runner-temp" \
+            -w /work \
+            merman-node-gnu:ci \
+            sh -c '
+              set -eu
+              git config --global --add safe.directory /work
+              test "$(node -p "process.report.getReport().header.glibcVersionRuntime")" = "2.31"
+              npm ci --prefix platforms/node
+              node platforms/node/scripts/build-candidate.mjs --candidate napi --target "$TARGET"
+              package_root=/runner-temp/node-packages
+              artifact_dir=/runner-temp/node-platform-artifact
+              smoke_tarballs=/runner-temp/node-smoke-tarballs
+              smoke_root=/runner-temp/node-install-smoke
+              node platforms/node/scripts/assemble-packages.mjs --target "$TARGET" --output-root "$package_root"
+              node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
+              mkdir -p "$artifact_dir" "$smoke_tarballs" "$smoke_root"
+              npm pack "$package_root/node" --json --pack-destination "$smoke_tarballs" >/runner-temp/node-root-pack.json
+              npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" >/runner-temp/node-target-pack.json
+              cp "$artifact_dir"/*.tgz "$smoke_tarballs"/
+              cd "$smoke_root"
+              npm init -y >/dev/null
+              npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
+              node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$VERSION" --target "$TARGET"
+            '
+
       - name: Setup Node
-        if: matrix.target != 'linux-x64-musl'
+        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         uses: actions/setup-node@v7.0.0
         with:
           node-version: "24"
@@ -272,15 +415,15 @@ jobs:
           cache-dependency-path: platforms/node/package-lock.json
 
       - name: Install pinned Node build dependencies
-        if: matrix.target != 'linux-x64-musl'
+        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         run: npm ci --prefix platforms/node
 
       - name: Build and probe native package
-        if: matrix.target != 'linux-x64-musl'
-        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target "${{ matrix.target }}"
+        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        run: node platforms/node/scripts/build-candidate.mjs --candidate napi --target "${{ matrix.target }}"
 
       - name: Assemble and verify target package
-        if: matrix.target != 'linux-x64-musl'
+        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -289,10 +432,10 @@ jobs:
           node platforms/node/scripts/assemble-packages.mjs \
             --target "$TARGET" \
             --output-root "$package_root"
-          npm run --prefix platforms/node check:packages -- --packed-root "$package_root"
+          node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
 
       - name: Pack and install-smoke target package
-        if: matrix.target != 'linux-x64-musl'
+        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         env:
           TARGET: ${{ matrix.target }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -328,6 +471,7 @@ jobs:
     needs:
       - validate-inputs
       - loader
+      - node-wasm-package
       - platform
     name: verified package group
     runs-on: ubuntu-24.04
@@ -376,11 +520,12 @@ jobs:
     needs:
       - validate-inputs
       - package-group
-    if: ${{ inputs.publish_to_npm }}
+    if: ${{ always() && needs.validate-inputs.result == 'success' && inputs.publish_to_npm && (needs.package-group.result == 'success' || needs.validate-inputs.outputs.recovery_run_id != '') }}
     name: publish npm package group
     runs-on: ubuntu-24.04
     environment: npm
     permissions:
+      actions: read
       contents: read
       id-token: write
     steps:
@@ -410,6 +555,8 @@ jobs:
         with:
           name: merman-node-npm-package-group
           path: target/node-npm-package-group
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.validate-inputs.outputs.recovery_run_id != '' && needs.validate-inputs.outputs.recovery_run_id || github.run_id }}
 
       - name: Verify downloaded Node package group
         env:

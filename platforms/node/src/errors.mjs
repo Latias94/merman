@@ -150,6 +150,17 @@ export class MermanMissingPlatformPackageError extends MermanError {
   }
 }
 
+export class MermanNativeLoadError extends MermanError {
+  constructor({ packageName, target, cause }) {
+    super(
+      `The installed Merman platform package ${packageName} could not load its native addon for ${target}. This is a native ABI or shared-library loader failure, not a missing npm package. Use a compatible glibc baseline or opt into @mermanjs/node-wasm.`,
+      { code: "MERMAN_NATIVE_LOAD_ERROR", cause },
+    );
+    this.packageName = packageName;
+    this.target = target;
+  }
+}
+
 export class MermanInvalidTransportError extends MermanError {
   constructor(message, cause) {
     super(message, { code: "MERMAN_INVALID_TRANSPORT", cause });

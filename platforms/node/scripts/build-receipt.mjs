@@ -117,6 +117,7 @@ export function readBuildReceipt(
   if (JSON.stringify(actualArtifactPaths) !== JSON.stringify(recordedArtifactPaths)) {
     throw new Error("candidate build receipt artifact file set does not match its directory.");
   }
+  validateBuildEnvironmentEvidence(receiptRoot, buildRecipe);
   const recordedArtifact = value.artifacts?.find((item) => item.path === artifactPath);
   const artifactDigest = digestFile(artifact);
   if (recordedArtifact?.sha256 !== artifactDigest) {
@@ -134,6 +135,7 @@ export function readBuildReceipt(
     target: value.config.target,
     rust_target: value.config.rust_target,
     wasm_pack_target: value.config.wasm_pack_target,
+    glibc_floor: value.config.glibc_floor,
     commit: value.commit,
     source_digest: value.source_digest,
     cargo_lock_digest: value.cargo_lock_digest,
@@ -289,6 +291,7 @@ function validateCapabilityRecipe(config) {
     "target",
     "rust_target",
     "wasm_pack_target",
+    "glibc_floor",
     "default_features",
     "capability_recipe",
     "features",
@@ -329,7 +332,8 @@ function validateCapabilityRecipe(config) {
   if (
     config.target !== expectedBuildRecipe.targetId ||
     config.rust_target !== expectedBuildRecipe.rustTarget ||
-    config.wasm_pack_target !== expectedBuildRecipe.wasmPackTarget
+    config.wasm_pack_target !== expectedBuildRecipe.wasmPackTarget ||
+    config.glibc_floor !== expectedBuildRecipe.glibcFloor
   ) {
     throw new Error("candidate build receipt target configuration is not canonical.");
   }
@@ -349,6 +353,39 @@ function validateCapabilityRecipe(config) {
       },
     },
   };
+}
+
+function validateBuildEnvironmentEvidence(receiptRoot, buildRecipe) {
+  if (buildRecipe.glibcFloor === null) return;
+  const evidencePath = path.join(receiptRoot, "build-environment.json");
+  assertFile(evidencePath, "glibc build environment evidence");
+  let evidence;
+  try {
+    evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+  } catch (cause) {
+    throw new Error("glibc build environment evidence is not valid JSON.", { cause });
+  }
+  if (
+    evidence?.schema_version !== 1 ||
+    evidence.target !== buildRecipe.targetId ||
+    evidence.libc !== "glibc" ||
+    evidence.floor !== buildRecipe.glibcFloor ||
+    typeof evidence.version !== "string" ||
+    compareGlibcVersions(evidence.version, buildRecipe.glibcFloor) > 0
+  ) {
+    throw new Error("glibc build environment evidence does not prove the canonical compatibility floor.");
+  }
+}
+
+function compareGlibcVersions(left, right) {
+  const parse = (value) => {
+    const match = /^(\d+)\.(\d+)$/.exec(value);
+    if (!match) throw new Error(`Invalid glibc version: ${value}.`);
+    return [Number(match[1]), Number(match[2])];
+  };
+  const [leftMajor, leftMinor] = parse(left);
+  const [rightMajor, rightMinor] = parse(right);
+  return leftMajor - rightMajor || leftMinor - rightMinor;
 }
 
 function validateBuildTools(tools) {

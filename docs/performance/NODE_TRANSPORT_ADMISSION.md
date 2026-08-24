@@ -133,13 +133,13 @@ candidate artifacts serially, then produce and validate a new raw report:
 ```bash
 cd platforms/node
 npm ci
-CARGO_BUILD_JOBS=1 npm run build:candidate -- --candidate napi --target darwin-arm64
-CARGO_BUILD_JOBS=1 npm run build:candidate -- --candidate node-wasm
-npm run benchmark -- --native artifacts/napi/darwin-arm64/merman.node \
+CARGO_BUILD_JOBS=1 node scripts/build-candidate.mjs --candidate napi --target darwin-arm64
+CARGO_BUILD_JOBS=1 node scripts/build-candidate.mjs --candidate node-wasm
+node scripts/benchmark/run.mjs --native artifacts/napi/darwin-arm64/merman.node \
   --wasm artifacts/node-wasm/merman_node.js \
   --output reports/node-transport-comparison-local.json
 npm test
-npm run check:packages
+node scripts/verify-packages.mjs
 ```
 
 The raw report must validate through `scripts/benchmark/report-contract.mjs` against the checked-in

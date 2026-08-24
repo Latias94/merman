@@ -34,11 +34,22 @@ async function main() {
 }
 
 function verifyPackedRoot(root, descriptor) {
-  verifyPackage(path.join(root, "node"), descriptor.root.name, "loader");
+  let verified = false;
+  if (existsForTarget(root, "node")) {
+    verifyPackage(path.join(root, "node"), descriptor.root.name, "loader");
+    verified = true;
+  }
   for (const target of descriptor.targets) {
     if (!existsForTarget(root, target.target)) continue;
     verifyPackage(path.join(root, target.target), target.name, "platform");
+    verified = true;
   }
+  const wasmDirectory = descriptor.wasm?.directory?.split("/").at(-1);
+  if (descriptor.wasm && wasmDirectory && existsForTarget(root, wasmDirectory)) {
+    verifyPackage(path.join(root, wasmDirectory), descriptor.wasm.name, "wasm");
+    verified = true;
+  }
+  if (!verified) throw new Error("packed Node package root contains no recognized package.");
 }
 
 function verifyPackage(packageRoot, packageName, role) {

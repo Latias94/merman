@@ -19,7 +19,8 @@ async function main() {
     );
   }
 
-  const entrypoint = resolveInstalledEntrypoint(project);
+  const packageName = expectedTarget === "node-wasm" ? "@mermanjs/node-wasm" : "@mermanjs/node";
+  const entrypoint = resolveInstalledEntrypoint(project, packageName);
   const packageManifest = JSON.parse(
     await readFile(path.resolve(path.dirname(entrypoint), "..", "package.json"), "utf8"),
   );
@@ -34,7 +35,7 @@ async function main() {
     assert.match(svg, /<\/svg>/);
     console.log(
       JSON.stringify({
-        package: "@mermanjs/node",
+        package: packageName,
         version: expectedVersion,
         target: expectedTarget,
         svg_bytes: Buffer.byteLength(svg),
@@ -45,7 +46,7 @@ async function main() {
   }
 }
 
-export function resolveInstalledEntrypoint(project) {
+export function resolveInstalledEntrypoint(project, packageName = "@mermanjs/node") {
   // Resolve from the installed project with ESM import conditions. createRequire() would select
   // CommonJS conditions and reject this intentionally ESM-only package.
   const entrypointUrl = execFileSync(
@@ -53,7 +54,7 @@ export function resolveInstalledEntrypoint(project) {
     [
       "--input-type=module",
       "--eval",
-      'process.stdout.write(import.meta.resolve("@mermanjs/node"));',
+      `process.stdout.write(import.meta.resolve(${JSON.stringify(packageName)}));`,
     ],
     {
       cwd: path.resolve(project),
