@@ -114,12 +114,12 @@ jobs:
         uses: Swatinem/rust-cache@v2.9.2
 
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2.86.1
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: cargo-about@0.9.1
 
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@v2.86.1
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: cargo-semver-checks@0.50.0
 
@@ -419,7 +419,7 @@ jobs:
           cache-dependency-path: platforms/web/package-lock.json
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.86.1
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: wasm-tools
 

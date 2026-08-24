@@ -225,7 +225,7 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.86.1
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: nextest
 
@@ -263,7 +263,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.21.9
+        uses: DeterminateSystems/determinate-nix-action@v3.22.2
 
       - name: Build reusable Nix derivation
         run: |
@@ -399,7 +399,7 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.86.1
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: nextest
 
@@ -706,7 +706,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.86.1
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: wasm-tools
 
@@ -787,7 +787,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.86.1
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: wasm-tools
 

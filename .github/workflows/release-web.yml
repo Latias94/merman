@@ -131,7 +131,7 @@ jobs:
           package-manager-cache: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.86.1
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: wasm-tools
 
