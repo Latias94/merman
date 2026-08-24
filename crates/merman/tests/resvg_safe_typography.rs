@@ -63,10 +63,17 @@ fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
                     }
                 }
                 usvg::Node::Text(text) => {
-                    for chunk in text.chunks() {
-                        if chunk.text().trim() == label {
-                            return chunk.spans().first().map(|span| span.font_size().get());
-                        }
+                    let text_content = text
+                        .chunks()
+                        .iter()
+                        .map(|chunk| chunk.text())
+                        .collect::<String>();
+                    if text_content.trim() == label {
+                        return text
+                            .chunks()
+                            .iter()
+                            .find_map(|chunk| chunk.spans().first())
+                            .map(|span| span.font_size().get());
                     }
                 }
                 usvg::Node::Path(_) | usvg::Node::Image(_) => {}
@@ -92,12 +99,21 @@ fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
                     }
                 }
                 usvg::Node::Text(text) => {
+                    let text_content = text
+                        .chunks()
+                        .iter()
+                        .map(|chunk| chunk.text())
+                        .collect::<String>();
+                    if text_content.trim() != label {
+                        continue;
+                    }
                     for chunk in text.chunks() {
-                        if chunk.text().trim() != label {
+                        let Some(span) = chunk.spans().first() else {
                             continue;
-                        }
-                        let span = chunk.spans().first()?;
-                        let fill = span.fill()?;
+                        };
+                        let Some(fill) = span.fill() else {
+                            continue;
+                        };
                         if let usvg::Paint::Color(color) = fill.paint() {
                             return Some((color.red, color.green, color.blue));
                         }

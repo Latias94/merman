@@ -322,14 +322,22 @@ fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[
                     }
                 }
                 usvg::Node::Text(text) => {
-                    for chunk in text.chunks() {
-                        if chunk.text().trim() != label {
-                            continue;
-                        }
-                        let span = chunk.spans().first()?;
-                        let fill = span.fill()?;
-                        if let usvg::Paint::Color(color) = fill.paint() {
-                            return Some((color.red, color.green, color.blue));
+                    let text_content = text
+                        .chunks()
+                        .iter()
+                        .map(|chunk| chunk.text())
+                        .collect::<String>();
+                    if text_content.trim() == label {
+                        for chunk in text.chunks() {
+                            let Some(span) = chunk.spans().first() else {
+                                continue;
+                            };
+                            let Some(fill) = span.fill() else {
+                                continue;
+                            };
+                            if let usvg::Paint::Color(color) = fill.paint() {
+                                return Some((color.red, color.green, color.blue));
+                            }
                         }
                     }
                 }
