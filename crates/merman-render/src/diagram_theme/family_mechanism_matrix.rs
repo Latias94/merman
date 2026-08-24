@@ -1558,7 +1558,12 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::REQUIREMENT
         && target == ThemeTarget::Requirement
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -2982,6 +2987,45 @@ mod tests {
                     ),
                     FamilyThemeDisposition::Unsupported,
                     "target=Table facet=Fill({paint_kind:?}) variant={variant:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn requirement_owns_unqualified_and_default_static_scalar_paint() {
+        for paint_kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            for facet in [
+                FamilyThemeRuleFacet::Fill(paint_kind),
+                FamilyThemeRuleFacet::Stroke(paint_kind),
+            ] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    assert_eq!(
+                        classify_rule_facet(
+                            DiagramFamilyId::REQUIREMENT,
+                            ThemeTarget::Requirement,
+                            FamilyThemeSelectorShape::Static { variant },
+                            facet,
+                        ),
+                        FamilyThemeDisposition::TypedAdapter,
+                        "facet={facet:?} variant={variant:?}"
+                    );
+                }
+
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::REQUIREMENT,
+                        ThemeTarget::Requirement,
+                        FamilyThemeSelectorShape::Static {
+                            variant: Some(ThemeVariant::Active),
+                        },
+                        facet,
+                    ),
+                    FamilyThemeDisposition::Unsupported,
+                    "facet={facet:?}"
                 );
             }
         }

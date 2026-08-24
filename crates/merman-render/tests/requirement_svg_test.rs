@@ -479,32 +479,36 @@ fn requirement_source_owned_fill_does_not_hide_direct_stroke_evidence() {
 }
 
 #[test]
-fn requirement_explicit_default_stroke_remains_compatibility_owned() {
+fn requirement_explicit_default_paint_reaches_terminal_receipt() {
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
                         ThemeTarget::Requirement,
-                        ThemeStylePatch::default().with_stroke(
-                            CanvasPaint::solid("#123456")
-                                .expect("valid legacy-compatible Requirement stroke"),
-                        ),
+                        ThemeStylePatch::default()
+                            .with_fill(
+                                CanvasPaint::solid("#654321")
+                                    .expect("valid explicit-Default Requirement fill"),
+                            )
+                            .with_stroke(
+                                CanvasPaint::solid("#123456")
+                                    .expect("valid explicit-Default Requirement stroke"),
+                            ),
                     )
                     .with_variant(ThemeVariant::Default)
                     .for_family(DiagramFamilyId::REQUIREMENT),
                 ),
             ),
         )
-        .expect("compile explicit Default Requirement stroke");
-    let rendered = render_requirement_with_theme_requirement(
-        requirement_source(),
-        &theme,
-        Engine::new(),
-        ThemePortabilityRequirement::BestEffort,
-    );
+        .expect("compile explicit Default Requirement paint");
+    let rendered = render_requirement_with_theme(requirement_source(), &theme);
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid explicit-Default Requirement SVG");
+    assert_eq!(
+        terminal_fill_for(&document, "requirement-theme-req1"),
+        "#654321"
+    );
     assert_eq!(
         terminal_stroke_for(&document, "requirement-theme-req1"),
         "#123456"
@@ -513,8 +517,10 @@ fn requirement_explicit_default_stroke_remains_compatibility_owned() {
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

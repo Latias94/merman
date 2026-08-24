@@ -302,7 +302,7 @@ fn typed_fill_expectation(
         theme,
         style,
         &[ThemeTarget::Requirement],
-        DirectStaticSelectorDomain::Unqualified,
+        DirectStaticSelectorDomain::Default,
     )
     .map(DirectPaintExpectation::from_paint)
 }
@@ -319,7 +319,7 @@ fn typed_stroke_expectation(
         theme,
         style,
         &[ThemeTarget::Requirement],
-        DirectStaticSelectorDomain::Unqualified,
+        DirectStaticSelectorDomain::Default,
     )
     .map(DirectPaintExpectation::from_paint)
 }

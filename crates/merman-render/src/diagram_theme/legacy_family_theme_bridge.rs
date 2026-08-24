@@ -702,23 +702,6 @@ fn compile_requirement_family(
 
     contributions.add_typography(&reader);
     contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::RequirementFill.contribution_id(),
-        [(
-            "requirementBackground",
-            reader.fill(ThemeTarget::Requirement),
-        )],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::RequirementStroke.contribution_id(),
-        [
-            (
-                "requirementBorderColor",
-                reader.stroke(ThemeTarget::Requirement),
-            ),
-            ("nodeBorder", reader.stroke(ThemeTarget::Requirement)),
-        ],
-    );
-    contributions.add_theme_variables(
         "requirement.text",
         [
             ("requirementTextColor", reader.text_fill(ThemeTarget::Text)),
@@ -3570,35 +3553,47 @@ mod tests {
     }
 
     #[test]
-    fn explicit_default_requirement_stroke_keeps_its_legacy_projection() {
+    fn explicit_default_requirement_paint_skips_legacy_projection() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
                 ThemeRule::new(
                     ThemeTarget::Requirement,
-                    ThemeStylePatch::default().with_stroke(solid("#94a3b8")),
+                    ThemeStylePatch::default()
+                        .with_fill(solid("#f8fafc"))
+                        .with_stroke(solid("#94a3b8")),
                 )
                 .for_family(DiagramFamilyId::REQUIREMENT)
                 .with_variant(ThemeVariant::Default),
             ),
         );
+        let baseline = parse(&DiagramThemeSpec::new(), REQUIREMENT_FIXTURE);
         let parsed = parse(&spec, REQUIREMENT_FIXTURE);
         let compiled = bridge(&spec).compile_for_family(DiagramFamilyId::REQUIREMENT);
 
         assert_eq!(
             parsed
                 .effective_config
+                .get_str("themeVariables.requirementBackground"),
+            baseline
+                .effective_config
+                .get_str("themeVariables.requirementBackground")
+        );
+        assert_eq!(
+            parsed
+                .effective_config
                 .get_str("themeVariables.requirementBorderColor"),
-            Some("#94a3b8")
+            baseline
+                .effective_config
+                .get_str("themeVariables.requirementBorderColor")
         );
         assert_eq!(
             parsed.effective_config.get_str("themeVariables.nodeBorder"),
-            Some("#94a3b8")
+            baseline
+                .effective_config
+                .get_str("themeVariables.nodeBorder")
         );
-        assert!(
-            compiled
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.requirement.requirement.paint")
-        );
+        assert!(compiled.overlay.is_empty());
+        assert!(compiled.contribution_ids.is_empty());
     }
 
     #[test]
