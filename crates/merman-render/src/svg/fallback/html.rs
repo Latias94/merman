@@ -273,17 +273,6 @@ pub(super) fn extract_inline_html_style_property<E>(
     extract_style_property_with_checkpoints(style, property, checkpoint)
 }
 
-pub(super) fn extract_inline_html_color<E>(
-    html: &str,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Option<String>, E> {
-    extract_inline_html_style_property(html, "color", checkpoint)
-}
-
-pub(super) fn parse_css_px(value: &str, fallback: f64) -> f64 {
-    parse_css_px_value(value).unwrap_or(fallback)
-}
-
 pub(super) fn foreign_object_html_soft_wrap_width<E>(
     tag: &str,
     inner: &str,

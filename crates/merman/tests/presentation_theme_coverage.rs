@@ -313,8 +313,96 @@ fn assert_gitgraph_branch_labels_keep_mermaid_parity_baseline(name: &str, svg: &
 }
 
 fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[&str]) {
+    fn usvg_options_with_system_sans_serif() -> usvg::Options<'static> {
+        const PREFERRED_FAMILIES: &[&str] = &[
+            "DejaVu Sans",
+            "Liberation Sans",
+            "Noto Sans",
+            "Arial",
+            "Helvetica",
+        ];
+
+        let mut options = usvg::Options::default();
+        let fallback_family = {
+            let fontdb = options.fontdb_mut();
+            fontdb.load_system_fonts();
+            PREFERRED_FAMILIES
+                .iter()
+                .find_map(|preferred| {
+                    fontdb
+                        .faces()
+                        .flat_map(|face| face.families.iter())
+                        .find(|(family, _)| family.eq_ignore_ascii_case(preferred))
+                        .map(|(family, _)| family.clone())
+                })
+                .or_else(|| {
+                    fontdb
+                        .faces()
+                        .find_map(|face| face.families.first().map(|(family, _)| family.clone()))
+                })
+        }
+        .expect("usvg color assertions require at least one system font");
+        options.font_family = fallback_family.clone();
+        options.fontdb_mut().set_sans_serif_family(fallback_family);
+        options
+    }
+
+    fn find_flattened_fill(group: &usvg::Group) -> Option<(u8, u8, u8)> {
+        for node in group.children() {
+            match node {
+                usvg::Node::Group(group) => {
+                    if let Some(fill) = find_flattened_fill(group) {
+                        return Some(fill);
+                    }
+                }
+                usvg::Node::Path(path) => {
+                    let Some(fill) = path.fill() else {
+                        continue;
+                    };
+                    if let usvg::Paint::Color(color) = fill.paint() {
+                        return Some((color.red, color.green, color.blue));
+                    }
+                }
+                usvg::Node::Text(text) => {
+                    if let Some(fill) = find_flattened_fill(text.flattened()) {
+                        return Some(fill);
+                    }
+                }
+                usvg::Node::Image(_) => {}
+            }
+        }
+        None
+    }
+
+    fn find_usvg_text_fill(group: &usvg::Group, label: &str) -> Option<(u8, u8, u8)> {
+        for node in group.children() {
+            match node {
+                usvg::Node::Group(group) => {
+                    if let Some(fill) = find_usvg_text_fill(group, label) {
+                        return Some(fill);
+                    }
+                }
+                usvg::Node::Text(text) => {
+                    let text_content = text
+                        .chunks()
+                        .iter()
+                        .map(|chunk| chunk.text())
+                        .collect::<String>();
+                    if text_content.trim() == label {
+                        return find_flattened_fill(text.flattened());
+                    }
+                }
+                usvg::Node::Path(_) | usvg::Node::Image(_) => {}
+            }
+        }
+        None
+    }
+
     let document =
         roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
+    let options = usvg_options_with_system_sans_serif();
+    let usvg_tree = usvg::Tree::from_str(svg, &options)
+        .unwrap_or_else(|err| panic!("{name}: usvg should parse final fallback output: {err}"));
 
     for label in labels {
         let Some(text) = document.descendants().find(|node| {
@@ -345,6 +433,11 @@ fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[
             text.attribute("class")
                 .is_some_and(|classes| !classes.split_whitespace().any(|class| class == "label")),
             "{name}: fallback text should not carry structural Mermaid label class: {svg}"
+        );
+        assert_eq!(
+            find_usvg_text_fill(usvg_tree.root(), label),
+            Some((0xeb, 0xdb, 0xb2)),
+            "{name}: usvg must paint ER fallback text with XHTML color semantics: {svg}"
         );
     }
 }

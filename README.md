@@ -211,6 +211,9 @@ Browser font fallback, `getBBox()` floats, `foreignObject`, HTML labels, and Rou
 can still produce documented differences where a robust headless equivalent is unavailable.
 Mermaid-style SVG may contain HTML labels. Use `SvgPipeline::resvg_safe()` or a typed PNG, JPEG, or
 PDF target when the consumer cannot render `foreignObject`.
+The resvg-safe fallback resolves supported typography from the original SVG/XHTML context before
+removing HTML; host styles that change font metrics should therefore enter the same pipeline before
+fallback generation. See the [fallback typography audit] for the bounded CSS subset and residuals.
 
 Read the [alignment dashboard], [SVG output pipeline], [rendering security guide], and [benchmark
 methodology] for the current evidence boundary.
@@ -247,6 +250,7 @@ project or its maintainers.
 [resource and options guide]: https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md
 [alignment dashboard]: https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md
 [SVG output pipeline]: https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md
+[fallback typography audit]: https://github.com/Latias94/merman/blob/main/docs/alignment/RESVG_SAFE_FALLBACK_TYPOGRAPHY_AUDIT.md
 [rendering security guide]: https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md
 [benchmark methodology]: https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md
 [`merman-cli`]: https://github.com/Latias94/merman/tree/main/crates/merman-cli#readme

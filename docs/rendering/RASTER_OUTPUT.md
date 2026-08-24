@@ -211,6 +211,9 @@ in addition to output pixels, decoded images, and encoder overhead.
 
 - The `<text>` fallback for browser-only HTML labels is approximate and is not expected to be
   pixel-identical to Chromium.
+- Fallback typography is resolved from the source element context before `foreignObject` removal.
+  Host CSS injected after that point can restyle generated text, but cannot recompute the wrapping
+  or placement that Merman already measured.
 - Complex nested HTML, icons, rich CSS, browser fonts, and filter rendering may differ from the
   upstream browser result.
 - Browser print pagination, margins, and CSS print behavior are outside the pure-Rust PDF contract.
