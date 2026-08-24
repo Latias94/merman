@@ -1,4 +1,4 @@
-#import "@preview/merman:0.2.0": mermaid, show-mermaid-blocks
+#import "@preview/merman:0.2.0": mermaid, mermaid-svg, show-mermaid-blocks
 
 #show raw.where(lang: "mermaid-issue"): show-mermaid-blocks(
   width: 100%,

@@ -798,7 +798,7 @@ mod tests {
         );
 
         let invalid_non_metric_winner = r#"
-<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-weight:600;font-weight:9999 !important;font-style:italic;font-style:bogus !important;fill:#123456;fill:definitely-not-a-paint !important;color:#abcdef;color:VAR(--missing) !important}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
+<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-weight:600;font-weight:9999 !important;font-style:italic;font-style:bogus !important;fill:#123456;fill:definitely-not-a-paint !important;color:#abcdef;color:none !important;color:VAR(--missing) !important}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(invalid_non_metric_winner);
         let fallback = out
             .split(r#"data-merman-foreignobject="fallback""#)
@@ -806,7 +806,10 @@ mod tests {
             .unwrap_or_else(|| panic!("expected fallback output: {out}"));
         assert!(fallback.contains("font-weight: 600"), "got: {out}");
         assert!(fallback.contains("font-style: italic"), "got: {out}");
-        assert!(fallback.contains(r##"fill="#123456""##), "got: {out}");
+        assert!(
+            fallback.contains(r##"fill="#abcdef""##),
+            "XHTML fallback text should prefer CSS color over SVG fill: {out}"
+        );
         assert!(
             !fallback.contains("9999"),
             "invalid font weight leaked: {out}"

@@ -14,6 +14,7 @@ use std::sync::Arc;
 const DEFAULT_FONT_SIZE: f64 = 16.0;
 const DEFAULT_FONT_FAMILY: &str = "trebuchet ms,verdana,arial,sans-serif";
 const DEFAULT_FILL: &str = "#333";
+const DEFAULT_COLOR: &str = "#000";
 // Fallback text is a bounded adapter, so pathological CSS magnitudes must not enter output or
 // overflow relative-unit and line-height calculations.
 const MAX_CSS_NUMERIC_VALUE: f64 = 1_000_000.0;
@@ -58,6 +59,7 @@ pub(super) struct ResolvedStyle {
     pub(super) font_style: Option<String>,
     line_height: LineHeight,
     pub(super) fill: String,
+    color: Option<String>,
     pub(super) background_color: Option<String>,
     background_color_specified: bool,
 }
@@ -420,12 +422,13 @@ impl CascadeIndex {
             root_font_size,
         );
         let fill = resolve_inherited_text_value(
-            specified
-                .get("fill")
-                .or_else(|| specified.get("color"))
-                .map(|value| value.value.as_str()),
+            specified.get("fill").map(|value| value.value.as_str()),
             &parent.fill,
             DEFAULT_FILL,
+        );
+        let color = resolve_optional_color(
+            specified.get("color").map(|value| value.value.as_str()),
+            parent.color.as_deref(),
         );
         let background_color = resolve_background(
             specified
@@ -442,6 +445,7 @@ impl CascadeIndex {
             font_style,
             line_height,
             fill,
+            color,
             background_color,
             background_color_specified,
         })
@@ -541,6 +545,7 @@ impl CascadeIndex {
                     Some("rgba(232, 232, 232, 0.5)".to_string())
                 }
             });
+        let fill = effective_html_text_paint(&style).to_string();
         checkpoint()?;
         Ok(ResolvedFallbackTypography {
             font_size: style.font_size,
@@ -548,7 +553,7 @@ impl CascadeIndex {
             font_weight: style.font_weight,
             font_style: style.font_style,
             line_height: style.line_height.pixels(style.font_size),
-            fill: style.fill,
+            fill,
             label_background,
         })
     }
@@ -764,7 +769,7 @@ fn same_effective_typography(left: &ResolvedStyle, right: &ResolvedStyle) -> boo
         && left.font_style == right.font_style
         && left.line_height.pixels(left.font_size).to_bits()
             == right.line_height.pixels(right.font_size).to_bits()
-        && left.fill == right.fill
+        && effective_html_text_paint(left) == effective_html_text_paint(right)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -816,6 +821,7 @@ fn default_style() -> ResolvedStyle {
         font_style: None,
         line_height: LineHeight::Normal,
         fill: DEFAULT_FILL.to_string(),
+        color: None,
         background_color: None,
         background_color_specified: false,
     }
@@ -884,7 +890,8 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
         }
         "font-weight" => is_admitted_font_weight(&lower),
         "font-style" => matches!(lower.as_str(), "normal" | "italic" | "oblique"),
-        "fill" | "color" | "background-color" => is_admitted_paint(&lower),
+        "fill" => is_admitted_paint(&lower),
+        "color" | "background-color" => lower != "none" && is_admitted_paint(&lower),
         "font-family" => is_admitted_font_family(value),
         _ => false,
     }
@@ -1695,6 +1702,22 @@ fn resolve_optional_text_value(value: Option<&str>, parent: Option<&str>) -> Opt
         "initial" => None,
         _ => Some(value.to_string()),
     }
+}
+
+fn resolve_optional_color(value: Option<&str>, parent: Option<&str>) -> Option<String> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return parent.map(str::to_owned);
+    };
+    match value.to_ascii_lowercase().as_str() {
+        "inherit" | "unset" => parent.map(str::to_owned),
+        "initial" => Some(DEFAULT_COLOR.to_string()),
+        "currentcolor" => Some(parent.unwrap_or(DEFAULT_COLOR).to_string()),
+        _ => Some(value.to_string()),
+    }
+}
+
+fn effective_html_text_paint(style: &ResolvedStyle) -> &str {
+    style.color.as_deref().unwrap_or(&style.fill)
 }
 
 fn resolve_line_height(
