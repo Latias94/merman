@@ -1103,10 +1103,11 @@ impl<'a> ParsePipeline<'a> {
             return Ok(Err(Error::MalformedFrontMatter));
         }
 
-        let has_config_overrides = !pre.config.is_empty_object();
         let (mut effective_config, effective_source_config) =
-            self.effective_config_before_detect(&pre.config);
-        let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
+            match self.effective_config_before_detect(&pre.config) {
+                Ok(config) => config,
+                Err(error) => return Ok(Err(error)),
+            };
         let config_before_detection = effective_config.clone();
 
         let diagram_type = match known_type {
@@ -1134,21 +1135,6 @@ impl<'a> ParsePipeline<'a> {
             &mut effective_config,
             control,
         )?;
-        if has_config_overrides {
-            if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
-                return Ok(Err(error.into()));
-            }
-        } else if cached_effective_config
-            .as_ref()
-            .is_some_and(|cached| effective_config.ptr_eq(cached))
-        {
-            effective_config = match self.engine.default_effective_config() {
-                Ok(config) => config,
-                Err(error) => return Ok(Err(error)),
-            };
-        } else if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
-            return Ok(Err(error.into()));
-        }
         let overlay_provenance = overlay_application.finalize(&effective_config);
         effective_config.set_overlay_provenance(overlay_provenance);
         effective_config.freeze_theme_compatibility();
@@ -1269,18 +1255,25 @@ impl<'a> ParsePipeline<'a> {
     fn effective_config_before_detect(
         &self,
         overrides: &MermaidConfig,
-    ) -> (MermaidConfig, MermaidConfig) {
+    ) -> Result<(MermaidConfig, MermaidConfig)> {
+        let mut materialized_site_config = self.engine.default_effective_config()?;
         if overrides.is_empty_object() {
-            return (
-                self.engine.site_config.clone(),
-                MermaidConfig::empty_object(),
-            );
+            return Ok((materialized_site_config, MermaidConfig::empty_object()));
         }
 
-        let mut effective_config = self.engine.site_config.clone();
-        let effective_overrides = effective_config.secure_filtered_overrides(overrides);
-        effective_config.deep_merge_explicit(effective_overrides.as_value());
-        (effective_config, effective_overrides)
+        let effective_overrides = materialized_site_config.secure_filtered_overrides(overrides);
+        let effective_config = match theme::materialize_source_selected_theme(
+            &self.engine.site_config,
+            &self.engine.fallback_overlay_explicit_config,
+            &effective_overrides,
+        )? {
+            Some(config) => config,
+            None => {
+                materialized_site_config.deep_merge_explicit(effective_overrides.as_value());
+                materialized_site_config
+            }
+        };
+        Ok((effective_config, effective_overrides))
     }
 
     fn apply_post_detection_config_overlay(

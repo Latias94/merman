@@ -482,10 +482,6 @@ impl MermaidConfig {
         )
     }
 
-    pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.value, &other.value)
-    }
-
     pub(crate) fn overlay_provenance(&self) -> &ConfigOverlayProvenance {
         &self.overlay_provenance
     }

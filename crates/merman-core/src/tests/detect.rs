@@ -370,7 +370,7 @@ fn effective_config_tracks_only_high_priority_explicit_owners() {
 }
 
 #[test]
-fn theme_variable_derived_ownership_reaches_base_main_background_from_explicit_inputs() {
+fn theme_variable_derived_ownership_follows_initialization_but_not_source_only_updates() {
     let site = Engine::new()
         .with_site_config(MermaidConfig::from_value(json!({
             "theme": "base",
@@ -389,15 +389,25 @@ fn theme_variable_derived_ownership_reaches_base_main_background_from_explicit_i
             "secure": []
         })))
         .parse_metadata_sync(
-            "%%{init: {\"themeVariables\": {\"primaryColor\": \"#fff4dd\"}}}%%\nflowchart TD\nA-->B",
+            "%%{init: {\"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
         )
         .expect("parse source-owned base primary color");
+    assert_eq!(
+        source
+            .effective_config
+            .get_str("themeVariables.primaryColor"),
+        Some("#123456")
+    );
+    assert_eq!(
+        source.effective_config.get_str("themeVariables.mainBkg"),
+        Some("#fff4dd")
+    );
     assert!(
         source
             .effective_config
             .explicit_config_owns_path("themeVariables.primaryColor")
     );
-    assert!(crate::__private::config_path_overrides_typed_default(
+    assert!(!crate::__private::config_path_overrides_typed_default(
         &source.effective_config,
         "themeVariables.mainBkg"
     ));
@@ -421,7 +431,7 @@ fn theme_variable_derived_ownership_reaches_base_main_background_from_explicit_i
 }
 
 #[test]
-fn extended_dark_primary_color_owns_derived_requirement_background_for_site_and_source() {
+fn extended_dark_primary_color_only_recomputes_requirement_background_during_initialization() {
     for theme in ["neo-dark", "redux-dark"] {
         let site = Engine::new()
             .with_site_config(MermaidConfig::from_value(json!({
@@ -443,28 +453,203 @@ fn extended_dark_primary_color_owns_derived_requirement_background_for_site_and_
             "{theme} must preserve site ownership through the derived Requirement background"
         );
 
-        let source = Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({
-                "theme": theme,
-                "secure": []
-            })))
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": theme,
+            "secure": []
+        })));
+        let baseline = engine
+            .parse_metadata_sync("flowchart TD\nA-->B")
+            .expect("parse extended dark baseline");
+        let source = engine
             .parse_metadata_sync(
                 "%%{init: {\"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
             )
             .expect("parse source-owned extended dark primary color");
         assert_eq!(
             source.effective_config.as_value()["themeVariables"]["requirementBackground"],
-            json!("#123456"),
-            "{theme} must derive Requirement background from the source primary color"
+            baseline.effective_config.as_value()["themeVariables"]["requirementBackground"],
+            "{theme} must retain the already materialized Requirement background"
         );
         assert!(
-            crate::__private::config_path_overrides_typed_default(
+            !crate::__private::config_path_overrides_typed_default(
                 &source.effective_config,
                 "themeVariables.requirementBackground"
             ),
-            "{theme} must preserve source ownership through the derived Requirement background"
+            "{theme} source-only primaryColor must not own the retained Requirement background"
         );
     }
+}
+
+#[test]
+fn source_theme_lifecycle_matches_mermaid_update_current_config() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "theme": "dark",
+        "secure": [],
+        "themeVariables": {
+            "secondaryColor": "#345678"
+        }
+    })));
+    let baseline = engine
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("parse materialized dark site config");
+
+    for source_theme in ["null", "unknown-theme"] {
+        let source = engine
+            .parse_metadata_sync(&format!(
+                "%%{{init: {{\"theme\": \"{source_theme}\", \"themeVariables\": {{\"primaryColor\": \"#123456\"}}}}}}%%\nflowchart TD\nA-->B"
+            ))
+            .expect("parse non-registered source theme");
+
+        assert_eq!(source.effective_config.get_str("theme"), Some(source_theme));
+        assert_eq!(
+            source
+                .effective_config
+                .get_str("themeVariables.primaryColor"),
+            Some("#123456")
+        );
+        for key in ["mainBkg", "nodeBkg", "requirementBackground"] {
+            let path = format!("themeVariables.{key}");
+            assert_eq!(
+                source.effective_config.get_str(&path),
+                baseline.effective_config.get_str(&path),
+                "source theme {source_theme} must retain the materialized site value for {key}"
+            );
+        }
+    }
+
+    let same_theme = engine
+        .parse_metadata_sync(
+            "%%{init: {\"theme\": \"dark\", \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("rematerialize the selected site theme");
+    let equivalent_same_theme_initialization = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({
+            "theme": "dark",
+            "secure": [],
+            "themeVariables": {
+                "primaryColor": "#123456",
+                "secondaryColor": "#345678"
+            }
+        })))
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("materialize equivalent dark initialization");
+    assert_eq!(
+        same_theme.effective_config.as_value()["themeVariables"],
+        equivalent_same_theme_initialization
+            .effective_config
+            .as_value()["themeVariables"],
+        "an explicitly selected registered source theme must rematerialize even when unchanged"
+    );
+
+    let switched = engine
+        .parse_metadata_sync(
+            "%%{init: {\"theme\": \"forest\", \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("switch source theme to forest");
+    let equivalent_initialization = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({
+            "theme": "forest",
+            "secure": [],
+            "themeVariables": {
+                "primaryColor": "#123456",
+                "secondaryColor": "#345678"
+            }
+        })))
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("materialize equivalent forest initialization");
+
+    assert_eq!(switched.effective_config.get_str("theme"), Some("forest"));
+    assert_eq!(
+        switched.effective_config.as_value()["themeVariables"],
+        equivalent_initialization.effective_config.as_value()["themeVariables"],
+        "a registered source theme must rematerialize from raw initialize and source variables"
+    );
+}
+
+#[test]
+fn secure_filtered_source_theme_does_not_trigger_rematerialization() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "theme": "dark",
+        "secure": ["theme"],
+        "themeVariables": {
+            "secondaryColor": "#345678"
+        }
+    })));
+    let baseline = engine
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("parse materialized secure site theme");
+    let source = engine
+        .parse_metadata_sync(
+            "%%{init: {\"theme\": \"forest\", \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("parse source theme filtered by the secure policy");
+
+    assert_eq!(source.effective_config.get_str("theme"), Some("dark"));
+    assert_eq!(
+        source
+            .effective_config
+            .get_str("themeVariables.primaryColor"),
+        Some("#123456")
+    );
+    for key in ["mainBkg", "nodeBkg", "requirementBackground"] {
+        let path = format!("themeVariables.{key}");
+        assert_eq!(
+            source.effective_config.get_str(&path),
+            baseline.effective_config.get_str(&path),
+            "a filtered source theme must not rematerialize {path}"
+        );
+    }
+}
+
+#[test]
+fn fully_filtered_source_config_does_not_change_post_detection_overlay_semantics() {
+    let engine = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({ "theme": "base" })))
+        .with_post_detection_config_overlay(flowchart_overlay(
+            "themeVariables.primaryColor",
+            json!("#123456"),
+        ));
+    let without_source = engine
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("parse without source config");
+    let filtered_source = engine
+        .parse_metadata_sync(
+            "%%{init: {\"themeVariables\": {\"textColor\": \"#22c55e\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("parse fully filtered source config");
+
+    assert_eq!(
+        filtered_source.effective_config.as_value(),
+        without_source.effective_config.as_value(),
+        "a source config removed by the secure policy must be semantically invisible"
+    );
+    assert_eq!(
+        filtered_source.config_overlay_provenance(),
+        without_source.config_overlay_provenance(),
+        "a filtered source config must not change overlay ownership"
+    );
+}
+
+#[test]
+fn registered_source_theme_uses_raw_truthy_initial_theme_variables() {
+    let metadata = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({
+            "secure": [],
+            "themeVariables": true
+        })))
+        .parse_metadata_sync(
+            "%%{init: {\"theme\": \"base\", \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("parse a registered source theme over truthy scalar initialization input");
+
+    assert_eq!(metadata.effective_config.get_str("theme"), Some("base"));
+    assert_eq!(
+        metadata
+            .effective_config
+            .get_str("themeVariables.primaryColor"),
+        Some("#fff4dd"),
+        "truthy scalar initialize input must make assignWithDepth ignore source themeVariables"
+    );
 }
 
 #[test]

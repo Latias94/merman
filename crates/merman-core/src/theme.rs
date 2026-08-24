@@ -2098,6 +2098,44 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), Col
     Ok(())
 }
 
+pub(crate) fn materialize_source_selected_theme(
+    site_config: &MermaidConfig,
+    initialization_config: &MermaidConfig,
+    source_config: &MermaidConfig,
+) -> Result<Option<MermaidConfig>, ColorError> {
+    let Some(requested) = source_config.get_str("theme") else {
+        return Ok(None);
+    };
+    if MermaidThemeId::parse(requested).is_err() {
+        return Ok(None);
+    }
+
+    // Mermaid updates ordinary source config from the already materialized site config. A source
+    // directive that selects a registered theme is the one exception: it rebuilds themeVariables
+    // from the raw initialize inputs plus the source inputs, then materializes the selected theme.
+    // Reconstruct from the unmaterialized site config so ownership is derived exactly once for the
+    // newly selected theme instead of carrying derived paths from the previous site theme.
+    let mut effective_config = site_config.clone();
+    effective_config.deep_merge_explicit(source_config.as_value());
+
+    let initial_theme_variables = initialization_config
+        .as_value()
+        .get("themeVariables")
+        .filter(|value| is_js_truthy(value))
+        .map(crate::config::clone_value_nonrecursive)
+        .unwrap_or_else(|| Value::Object(Map::new()));
+    let mut raw_theme_variables = MermaidConfig::from_value(initial_theme_variables);
+    if let Some(source_theme_variables) = source_config.as_value().get("themeVariables") {
+        raw_theme_variables.deep_merge(source_theme_variables);
+    }
+    effective_config.set_value_preserving_theme_compatibility(
+        "themeVariables",
+        crate::config::clone_value_nonrecursive(raw_theme_variables.as_value()),
+    );
+    apply_theme_defaults(&mut effective_config)?;
+    Ok(Some(effective_config))
+}
+
 fn apply_snapshot_theme_defaults(
     config: &mut MermaidConfig,
     theme: MermaidThemeId,
@@ -3963,6 +4001,33 @@ mod tests {
     }
 
     #[test]
+    fn source_theme_materialization_merges_array_sources_without_object_coercion() {
+        let source = MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": [
+                {"primaryColor": "#123456"},
+                {"secondaryColor": "#654321"}
+            ]
+        }));
+        let materialized = materialize_source_selected_theme(
+            &crate::generated::default_site_config(),
+            &MermaidConfig::empty_object(),
+            &source,
+        )
+        .expect("materialize source theme")
+        .expect("registered source theme");
+
+        assert_eq!(
+            materialized.get_str("themeVariables.primaryColor"),
+            Some("#123456")
+        );
+        assert_eq!(
+            materialized.get_str("themeVariables.secondaryColor"),
+            Some("#654321")
+        );
+    }
+
+    #[test]
     fn supported_theme_defaults_match_upstream_snapshot() {
         for &theme in MermaidThemeId::NAMES {
             let mut cfg = MermaidConfig::from_value(json!({
@@ -4389,7 +4454,7 @@ mod tests {
     }
 
     #[test]
-    fn init_text_color_derives_owned_signal_color_through_the_parse_pipeline() {
+    fn source_text_color_does_not_rematerialize_signal_color_through_the_parse_pipeline() {
         let metadata = crate::Engine::new()
             .with_site_config(MermaidConfig::from_value(json!({
                 "secure": [
@@ -4423,10 +4488,10 @@ Alice->>Bob: Hello
             metadata
                 .effective_config
                 .get_str("themeVariables.signalColor"),
-            Some("#22c55e")
+            Some("#333")
         );
         assert!(
-            metadata
+            !metadata
                 .effective_config
                 .config_path_overrides_typed_default("themeVariables.signalColor")
         );
