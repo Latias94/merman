@@ -15,8 +15,9 @@ use std::sync::Arc;
 use crate::artifact_contract::{DEFAULT_ARTIFACT_SNAPSHOT, ValidatedArtifactContract};
 use crate::option_contract::BindingOptionGroupKey;
 use crate::resource_contract::{
-    BindingResourceLimitDescriptor, BindingResourceScope, binding_resource_contract,
-    resource_limit_descriptor, resource_profile_value,
+    BINDING_OPTIONS_JSON_LIMIT_ID, BINDING_OPTIONS_JSON_MAX_BYTES, BindingResourceLimitDescriptor,
+    BindingResourceScope, binding_resource_contract, resource_limit_descriptor,
+    resource_profile_value,
 };
 
 /// Current schema for constructor and request options JSON.
@@ -1163,6 +1164,21 @@ fn reject_untrusted_binding_css_options(value: &Value) -> Result<(), BindingErro
                 BindingStatus::OptionsJsonError,
                 "site_config.secure is not accepted by general bindings because callers cannot replace the host security boundary; configure it only through a trusted Rust or native CLI host",
             ));
+        }
+        for field in [
+            "securityLevel",
+            "security_level",
+            "dompurifyConfig",
+            "dompurify_config",
+        ] {
+            if site_config.contains_key(field) {
+                return Err(BindingError::new(
+                    BindingStatus::OptionsJsonError,
+                    format!(
+                        "site_config.{field} is not accepted by general bindings because it can replace the host SVG security policy"
+                    ),
+                ));
+            }
         }
         for field in ["themeVariables", "theme_variables"] {
             if let Some(theme_variables) = site_config.get(field) {
@@ -2409,6 +2425,7 @@ fn options_json_value(options_json: &[u8]) -> Result<Value, BindingError> {
 
 #[cfg(not(feature = "svg"))]
 fn options_json_value_unchecked(options_json: &[u8]) -> Result<Value, BindingError> {
+    enforce_options_json_byte_budget(options_json)?;
     if options_json.is_empty() {
         return Ok(Value::Object(Map::new()));
     }
@@ -2431,6 +2448,7 @@ fn options_json_value_with_theme_ceiling(
     options_json: &[u8],
     host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
 ) -> Result<Value, BindingError> {
+    enforce_options_json_byte_budget(options_json)?;
     if options_json.is_empty() {
         return Ok(Value::Object(Map::new()));
     }
@@ -2452,6 +2470,29 @@ fn options_json_value_with_theme_ceiling(
         )
     })?;
     Ok(value)
+}
+
+#[doc(hidden)]
+pub fn enforce_options_json_byte_budget(options_json: &[u8]) -> Result<(), BindingError> {
+    enforce_options_json_byte_len(options_json.len())
+}
+
+#[doc(hidden)]
+pub fn enforce_options_json_byte_len(options_json_bytes: usize) -> Result<(), BindingError> {
+    if options_json_bytes > BINDING_OPTIONS_JSON_MAX_BYTES {
+        return Err(BindingError::resource_limit(
+            "options-json-preflight",
+            BINDING_OPTIONS_JSON_LIMIT_ID,
+            u64::try_from(options_json_bytes).unwrap_or(u64::MAX),
+            u64::try_from(BINDING_OPTIONS_JSON_MAX_BYTES).unwrap_or(u64::MAX),
+            "binding-json",
+            format!(
+                "options_json exceeds the preflight byte limit of {} bytes",
+                BINDING_OPTIONS_JSON_MAX_BYTES
+            ),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(feature = "svg")]
@@ -4093,19 +4134,44 @@ mod tests {
         for input in [
             r#"{"site_config":{"themeCSS":".node {}"}}"#,
             r#"{"site_config":{"secure":[]}}"#,
+            r#"{"site_config":{"securityLevel":"loose"}}"#,
+            r#"{"site_config":{"dompurifyConfig":{"ADD_ATTR":["onclick"]}}}"#,
             r#"{"analysis":{"site_config":{"themeCSS":".node {}"}}}"#,
             r#"{"analysis":{"site_config":{"secure":[]}}}"#,
+            r#"{"analysis":{"site_config":{"securityLevel":"loose"}}}"#,
+            r#"{"analysis":{"site_config":{"dompurifyConfig":{"ADD_URI_SAFE_ATTR":["href"]}}}}"#,
             r#"{"merman":{"site_config":{"themeCSS":".node {}"}}}"#,
             r#"{"merman":{"site_config":{"secure":[]}}}"#,
+            r#"{"merman":{"site_config":{"security_level":"loose"}}}"#,
+            r#"{"merman":{"site_config":{"dompurify_config":{"ADD_ATTR":["onclick"]}}}}"#,
         ] {
             let error = parse_options(input.as_bytes()).unwrap_err();
             assert_eq!(error.status(), BindingStatus::OptionsJsonError, "{input}");
             assert!(
                 error.message().contains("site_config.themeCSS")
-                    || error.message().contains("site_config.secure"),
+                    || error.message().contains("site_config.secure")
+                    || error.message().contains("site_config.securityLevel")
+                    || error.message().contains("site_config.security_level")
+                    || error.message().contains("site_config.dompurifyConfig")
+                    || error.message().contains("site_config.dompurify_config"),
                 "{input}: {error:?}"
             );
         }
+    }
+
+    #[test]
+    fn options_json_byte_budget_is_checked_before_materialization() {
+        enforce_options_json_byte_len(BINDING_OPTIONS_JSON_MAX_BYTES)
+            .expect("the documented maximum must remain admissible");
+        let oversized = vec![b' '; BINDING_OPTIONS_JSON_MAX_BYTES + 1];
+        let error = parse_options(&oversized).expect_err("oversized options must fail closed");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("options byte-limit details");
+        assert_eq!(details.limit_id, BINDING_OPTIONS_JSON_LIMIT_ID);
+        assert_eq!(details.phase, "options-json-preflight");
+        assert_eq!(details.max, BINDING_OPTIONS_JSON_MAX_BYTES as u64);
     }
 
     #[test]

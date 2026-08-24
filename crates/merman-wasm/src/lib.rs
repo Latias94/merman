@@ -374,6 +374,7 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
 /// `OperationControl` deadline. Invalid JSON and invalid UTF-8 remain untouched so the binding
 /// layer preserves its established error classification and precedence.
 fn wasm_options(options_json: &[u8]) -> Result<(Vec<u8>, Option<Duration>), BindingError> {
+    merman_bindings_core::enforce_options_json_byte_budget(options_json)?;
     if options_json.is_empty() {
         return Ok((Vec::new(), None));
     }
@@ -744,6 +745,21 @@ mod tests {
             );
             assert!(error.message().contains("timeout_ms"));
         }
+    }
+
+    #[test]
+    fn wasm_options_rejects_oversized_documents_before_transport_parsing() {
+        let oversized = vec![b' '; merman_bindings_core::BINDING_OPTIONS_JSON_MAX_BYTES + 1];
+        let error = wasm_options(&oversized).expect_err("oversized options must fail closed");
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::ResourceLimitExceeded
+        );
+        let details = error
+            .resource_details()
+            .expect("options byte-limit details");
+        assert_eq!(details.limit_id, "max_options_json_bytes");
+        assert_eq!(details.phase, "options-json-preflight");
     }
 
     #[test]

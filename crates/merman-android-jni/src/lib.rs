@@ -430,8 +430,9 @@ fn native_execute<'local>(
     let Some(source) = required_java_string(env, source, "source") else {
         return Ok(JObject::null());
     };
-    let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
-        return Ok(JObject::null());
+    let options_json = match bounded_options_java_string(env, options_json) {
+        Ok(options_json) => options_json,
+        Err(error) => return result_to_java_operation_result(env, Err(error)),
     };
     let Some(uri) = nullable_java_string(env, uri, "uri") else {
         return Ok(JObject::null());
@@ -465,8 +466,12 @@ fn native_engine_new<'local>(
     icon_pack_registration_names: JObjectArray<'local, JString<'local>>,
     measurer: JObject<'local>,
 ) -> JniResult<jlong> {
-    let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
-        return Ok(0);
+    let options_json = match bounded_options_java_string(env, options_json) {
+        Ok(options_json) => options_json,
+        Err(error) => {
+            throw_merman_exception(env, binding_error_text(error));
+            return Ok(0);
+        }
     };
     let admission = BindingEngineAdmission::new(if measurer.is_null() {
         BindingEngineAdmissionMode::Concurrent
@@ -589,8 +594,9 @@ fn native_engine_execute<'local>(
     let Some(source) = required_java_string(env, source, "source") else {
         return Ok(JObject::null());
     };
-    let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
-        return Ok(JObject::null());
+    let options_json = match bounded_options_java_string(env, options_json) {
+        Ok(options_json) => options_json,
+        Err(error) => return result_to_java_operation_result(env, Err(error)),
     };
     let Some(uri) = nullable_java_string(env, uri, "uri") else {
         return Ok(JObject::null());
@@ -650,14 +656,46 @@ fn required_java_string(env: &mut Env<'_>, value: JString<'_>, name: &str) -> Op
     java_string(env, value)
 }
 
-fn optional_java_string(env: &mut Env<'_>, value: JString<'_>, name: &str) -> Option<String> {
+fn bounded_options_java_string(
+    env: &mut Env<'_>,
+    value: JString<'_>,
+) -> Result<String, BindingError> {
     if value.is_null() {
-        return Some(String::new());
+        return Ok(String::new());
     }
-    java_string(env, value).or_else(|| {
-        throw_merman_exception(env, format!("{name} was not a valid Java string"));
-        None
-    })
+    let expected_utf8_bytes =
+        measure_java_string_utf8(env, &value).map_err(|error| match error {
+            JavaStringMeasureError::Jni(error) => BindingError::internal(format!(
+                "failed to measure optionsJson UTF-8 length: {error}"
+            )),
+            JavaStringMeasureError::InvalidUnicode => {
+                BindingError::invalid_options_json("optionsJson was not valid Unicode")
+            }
+            JavaStringMeasureError::LengthOverflow => {
+                BindingError::internal("optionsJson UTF-8 length did not fit usize")
+            }
+        })?;
+    merman_bindings_core::enforce_options_json_byte_len(expected_utf8_bytes)?;
+
+    let decoded = match decode_java_string_strict(env, &value) {
+        Ok(decoded) => decoded,
+        Err(JavaStringDecodeError::Jni(error)) => {
+            return Err(BindingError::internal(format!(
+                "failed to decode optionsJson after byte preflight: {error}"
+            )));
+        }
+        Err(JavaStringDecodeError::InvalidModifiedUtf8(_)) => {
+            return Err(BindingError::invalid_options_json(
+                "optionsJson was not valid Unicode",
+            ));
+        }
+    };
+    if decoded.len() != expected_utf8_bytes {
+        return Err(BindingError::internal(
+            "optionsJson UTF-8 length changed after byte preflight",
+        ));
+    }
+    Ok(decoded)
 }
 
 fn nullable_java_string(
@@ -691,6 +729,31 @@ fn java_string(env: &mut Env<'_>, value: JString<'_>) -> Option<String> {
 enum JavaStringDecodeError {
     Jni(JniError),
     InvalidModifiedUtf8(simd_cesu8::DecodingError),
+}
+
+enum JavaStringMeasureError {
+    Jni(JniError),
+    InvalidUnicode,
+    LengthOverflow,
+}
+
+fn measure_java_string_utf8(
+    env: &mut Env<'_>,
+    value: &JString<'_>,
+) -> Result<usize, JavaStringMeasureError> {
+    let utf8_bytes = env
+        .call_static_method(
+            jni::jni_str!("io/merman/MermanJniStrings"),
+            jni::jni_str!("utf8Length"),
+            jni::jni_sig!((value: java.lang.String) -> jlong),
+            &[JValue::Object(value)],
+        )
+        .and_then(|value| value.j())
+        .map_err(JavaStringMeasureError::Jni)?;
+    if utf8_bytes < 0 {
+        return Err(JavaStringMeasureError::InvalidUnicode);
+    }
+    usize::try_from(utf8_bytes).map_err(|_| JavaStringMeasureError::LengthOverflow)
 }
 
 fn decode_java_string_strict(
@@ -914,23 +977,17 @@ fn measure_icon_java_string_utf8(
     invalid_message: &'static str,
     limit_message: &'static str,
 ) -> Result<usize, BindingError> {
-    let utf8_bytes = env
-        .call_static_method(
-            jni::jni_str!("io/merman/MermanJniStrings"),
-            jni::jni_str!("utf8Length"),
-            jni::jni_sig!((value: java.lang.String) -> jlong),
-            &[JValue::Object(value)],
-        )
-        .and_then(|value| value.j())
-        .map_err(|error| jni_icon_input_error("measure Java string UTF-8 length", error))?;
-    if utf8_bytes < 0 {
-        return Err(BindingError::icon_registry_invalid_utf8(
-            pack_index,
-            invalid_message,
-        ));
-    }
-    let utf8_bytes = usize::try_from(utf8_bytes)
-        .map_err(|_| BindingError::internal("Java UTF-8 byte length did not fit usize"))?;
+    let utf8_bytes = measure_java_string_utf8(env, value).map_err(|error| match error {
+        JavaStringMeasureError::Jni(error) => {
+            jni_icon_input_error("measure Java string UTF-8 length", error)
+        }
+        JavaStringMeasureError::InvalidUnicode => {
+            BindingError::icon_registry_invalid_utf8(pack_index, invalid_message)
+        }
+        JavaStringMeasureError::LengthOverflow => {
+            BindingError::internal("Java UTF-8 byte length did not fit usize")
+        }
+    })?;
     if utf8_bytes > maximum_bytes {
         return Err(BindingError::icon_registry_resource_limit(
             limit,

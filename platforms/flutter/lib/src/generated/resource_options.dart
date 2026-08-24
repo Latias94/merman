@@ -41,6 +41,12 @@ final class MermanResourceLimitId {
     true,
     1,
   );
+  static const maxOptionsJsonBytes = MermanResourceLimitId._known(
+    'max_options_json_bytes',
+    'options-json-preflight',
+    false,
+    1,
+  );
   static const maxLayoutWorkUnits = MermanResourceLimitId._known(
     'max_layout_work_units',
     'layout_model',
@@ -170,6 +176,7 @@ final class MermanResourceLimitId {
     maxModelItems,
     maxModelTextBytes,
     maxModelNestingDepth,
+    maxOptionsJsonBytes,
     maxLayoutWorkUnits,
     maxPreparedTextRetainedBytes,
     maxSvgBytes,

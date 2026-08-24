@@ -1,5 +1,18 @@
 use std::collections::BTreeMap;
 
+pub const BINDING_OPTIONS_JSON_MAX_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const BINDING_OPTIONS_JSON_LIMIT_ID: &str = "max_options_json_bytes";
+
+const BINDING_OPTIONS_JSON_LIMIT_DESCRIPTOR: BindingResourceLimitDescriptor =
+    BindingResourceLimitDescriptor {
+        stable_id: BINDING_OPTIONS_JSON_LIMIT_ID,
+        phase: "options-json-preflight",
+        description: "Non-overridable encoded options document cap before JSON materialization",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    };
+
 /// One resource limit exposed by the capabilities compiled into this binding artifact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -78,6 +91,7 @@ fn binding_resource_limit_descriptors() -> Vec<BindingResourceLimitDescriptor> {
             minimum_value: descriptor.minimum_value,
         })
         .collect::<Vec<_>>();
+    limits.push(BINDING_OPTIONS_JSON_LIMIT_DESCRIPTOR);
 
     #[cfg(feature = "svg")]
     limits.extend(
@@ -149,6 +163,10 @@ pub(crate) fn resource_profile_value(
     profile: merman::resources::ResourceProfile,
     stable_id: &str,
 ) -> Option<Option<usize>> {
+    if stable_id == BINDING_OPTIONS_JSON_LIMIT_ID {
+        return Some(Some(BINDING_OPTIONS_JSON_MAX_BYTES));
+    }
+
     if let Some(id) = merman::resources::InputResourceLimitId::from_stable_id(stable_id) {
         return Some(merman::resources::InputResourcePolicy::for_profile(profile).value(id));
     }
@@ -190,6 +208,10 @@ pub(crate) enum BindingResourceOwner {
 }
 
 pub(crate) fn resource_limit_owner(stable_id: &str) -> BindingResourceOwner {
+    if stable_id == BINDING_OPTIONS_JSON_LIMIT_ID {
+        return BindingResourceOwner::Artifact;
+    }
+
     if merman::resources::InputResourceLimitId::from_stable_id(stable_id).is_some() {
         return BindingResourceOwner::Artifact;
     }
@@ -411,6 +433,21 @@ mod theme_tests {
                 "generic binding resource profiles must not project theme-owned limit `{id}`"
             );
         }
+    }
+
+    #[test]
+    fn options_document_hard_cap_is_catalogued_for_every_profile() {
+        let contract = binding_resource_contract();
+        let descriptor = contract
+            .limits
+            .iter()
+            .find(|limit| limit.stable_id == BINDING_OPTIONS_JSON_LIMIT_ID)
+            .expect("options document descriptor");
+        assert!(descriptor.hard_cap);
+        assert!(!descriptor.overridable);
+        assert!(contract.profiles.iter().all(|profile| {
+            profile.limits[BINDING_OPTIONS_JSON_LIMIT_ID] == Some(BINDING_OPTIONS_JSON_MAX_BYTES)
+        }));
     }
 }
 

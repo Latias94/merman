@@ -56,7 +56,10 @@ pub use common::{
     render_resource_options_unavailable, resource_options_json,
 };
 #[doc(hidden)]
-pub use common::{BindingJsSafeResourceErrorDetails, binding_error_js_payload_json_bytes};
+pub use common::{
+    BindingJsSafeResourceErrorDetails, binding_error_js_payload_json_bytes,
+    enforce_options_json_byte_budget, enforce_options_json_byte_len,
+};
 pub use engine::BindingEngine;
 pub use lifecycle::{
     BindingCallbackAdmission, BindingEngineAdmission, BindingEngineAdmissionError,
@@ -94,8 +97,8 @@ pub use operation_contract::{
 pub use option_contract::{BindingOptionGroupKey, BindingOptionGroupSpec};
 pub use payload_contract::{BINDING_OPERATION_SCHEMA_VERSION, BindingPayloadSchemaKey};
 pub use resource_contract::{
-    BindingResourceContract, BindingResourceLimitDescriptor, BindingResourceProfileDescriptor,
-    binding_resource_contract,
+    BINDING_OPTIONS_JSON_MAX_BYTES, BindingResourceContract, BindingResourceLimitDescriptor,
+    BindingResourceProfileDescriptor, binding_resource_contract,
 };
 pub use service_contract::{
     ConstructorServiceKey, RuntimePolicyExposure, TextMeasurementProviderKey,

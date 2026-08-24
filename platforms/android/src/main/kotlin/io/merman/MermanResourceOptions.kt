@@ -33,6 +33,7 @@ public class MermanResourceLimitId private constructor(
         public val MAX_MODEL_ITEMS: MermanResourceLimitId = MermanResourceLimitId("max_model_items", "layout_model", true, 1)
         public val MAX_MODEL_TEXT_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_model_text_bytes", "layout_model", true, 1)
         public val MAX_MODEL_NESTING_DEPTH: MermanResourceLimitId = MermanResourceLimitId("max_model_nesting_depth", "layout_model", true, 1)
+        public val MAX_OPTIONS_JSON_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_options_json_bytes", "options-json-preflight", false, 1)
         public val MAX_LAYOUT_WORK_UNITS: MermanResourceLimitId = MermanResourceLimitId("max_layout_work_units", "layout_model", true, 1)
         public val MAX_PREPARED_TEXT_RETAINED_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_prepared_text_retained_bytes", "layout_model", true, 1)
         public val MAX_SVG_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_svg_bytes", "svg_output", true, 1)
@@ -60,6 +61,7 @@ public class MermanResourceLimitId private constructor(
             MAX_MODEL_ITEMS,
             MAX_MODEL_TEXT_BYTES,
             MAX_MODEL_NESTING_DEPTH,
+            MAX_OPTIONS_JSON_BYTES,
             MAX_LAYOUT_WORK_UNITS,
             MAX_PREPARED_TEXT_RETAINED_BYTES,
             MAX_SVG_BYTES,

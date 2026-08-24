@@ -1353,10 +1353,14 @@ mod tests {
             .map(MetadataKey::id)
             .collect::<Vec<_>>();
         assert_eq!(catalog.metadata_ids, expected_metadata_ids);
-        assert_eq!(
-            resources.limits.iter().any(|limit| limit.hard_cap),
-            cfg!(any(feature = "png", feature = "jpeg", feature = "pdf"))
-        );
+        let options_limit = resources
+            .limits
+            .iter()
+            .find(|limit| limit.id == "max_options_json_bytes")
+            .expect("binding options document hard cap");
+        assert!(options_limit.hard_cap);
+        assert!(!options_limit.overridable);
+        assert!(options_limit.operation_ids.is_empty());
         assert!(
             resources
                 .limits
@@ -1379,6 +1383,10 @@ mod tests {
             .find(|profile| profile.id == "interactive")
             .expect("interactive profile");
         assert_eq!(interactive.limits["max_model_items"], Some(32_000));
+        assert_eq!(
+            interactive.limits["max_options_json_bytes"],
+            Some(crate::BINDING_OPTIONS_JSON_MAX_BYTES)
+        );
         let source = resources
             .limits
             .iter()
