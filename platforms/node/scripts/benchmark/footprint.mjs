@@ -117,6 +117,7 @@ export function stageWasmPackage(temporaryRoot, artifact) {
       "  MermanInvalidTransportError,",
       "  MermanLifecycleError,",
       "  MermanMissingPlatformPackageError,",
+      "  MermanNativeLoadError,",
       "  MermanOperationError,",
       "  MermanQueueSaturatedError,",
       "  MermanUnsupportedTargetError,",

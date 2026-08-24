@@ -67,6 +67,8 @@ test("candidate builds project its private capability recipe plus one transport"
     assert.equal(invocation.args.includes("-j1"), true);
     assert.equal(invocation.args.join(" ").includes("rust-static-svg"), false);
   }
+  assert.equal(resolveCandidateRecipe("napi", "linux-x64-gnu").glibcFloor, "2.31");
+  assert.equal(resolveCandidateRecipe("napi", "linux-x64-musl").glibcFloor, null);
 });
 
 test("Windows native candidates request reproducible MSVC linking", () => {

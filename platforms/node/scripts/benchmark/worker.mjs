@@ -15,6 +15,7 @@ const PRODUCT_EXPORTS = [
   "MermanInvalidTransportError",
   "MermanLifecycleError",
   "MermanMissingPlatformPackageError",
+  "MermanNativeLoadError",
   "MermanOperationError",
   "MermanQueueSaturatedError",
   "MermanUnsupportedTargetError",

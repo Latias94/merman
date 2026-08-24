@@ -27,7 +27,7 @@ is zero.
 | `release-flutter.yml` | `merman` with Native Assets for Android, iOS, macOS, Windows, and Linux | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 | `release-web.yml` | admitted `@mermanjs/web` browser package group | npm |
-| `release-node.yml` | experimental `@mermanjs/node` loader and five native platform packages | npm |
+| `release-node.yml` | experimental `@mermanjs/node` loader, five native platform packages, and explicit `@mermanjs/node-wasm` | npm |
 | `release-tree-sitter-mermaid.yml` | `tree-sitter-mermaid` crate, `@mermanjs/tree-sitter-mermaid`, language WASM, and source archive | crates.io, npm, and GitHub Release |
 | `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
@@ -117,15 +117,14 @@ or recovery operator must publish and reconcile the exact candidate from one wor
 rerun only that run's failed jobs. Do not manually publish a candidate from one run and ask a later
 run to accept a separately rebuilt npm tarball as byte-identical.
 
-The experimental native Node group is `@mermanjs/node`, `@mermanjs/node-darwin-arm64`,
-`@mermanjs/node-darwin-x64`, `@mermanjs/node-linux-x64-gnu`,
-`@mermanjs/node-linux-x64-musl`, and `@mermanjs/node-win32-x64-msvc`. Its workflow builds and
-install-smokes each actual target, packages platform binaries before the root loader, and uses the
-same direct-publish plus integrity-preflight boundary as the browser group. npm only allows a
-trusted publisher to be configured for an existing package, so the first release of each new Node
-package requires the documented one-time, 2FA-protected bootstrap from the verified workflow
-artifact; configure OIDC for all six names immediately afterward. Do not add a persistent npm token
-to the repository workflow.
+The experimental Node group is `@mermanjs/node`, its five native platform packages, and the
+explicit `@mermanjs/node-wasm` package. Its workflow builds and install-smokes each actual native
+target plus the Node WASM artifact, packages platform binaries and the WASM package before the root
+loader, and uses the same direct-publish plus integrity-preflight boundary as the browser group.
+npm only allows a trusted publisher to be configured for an existing package, so the first release
+of each new Node package requires the documented one-time, 2FA-protected bootstrap from the
+verified workflow artifact; configure OIDC for all seven names immediately afterward. Do not add a
+persistent npm token to the repository workflow.
 
 For an npm-only alpha test, `release-node.yml` treats `release_tag` as the package version label and
 `source_ref` as the build source. The source may be a reviewed full commit SHA newer than the
@@ -188,7 +187,7 @@ Treat the root `CHANGELOG.md` as the canonical project-wide release narrative an
 
 | Surface | Registry or audience behavior | Changelog source |
 | --- | --- | --- |
-| Node | The root loader tarball includes the user-facing changelog for the six-package group | `platforms/node/CHANGELOG.md` |
+| Node | The root loader tarball includes the user-facing changelog for the seven-package group | `platforms/node/CHANGELOG.md` |
 | Flutter/Dart | pub.dev renders the package-root changelog as its Changelog tab | `platforms/flutter/CHANGELOG.md` |
 | Python | PyPI project metadata links Python users to the package changelog | `platforms/python/merman/CHANGELOG.md` |
 | Android | The Android package README links consumers to its JNI/AAR-specific history | `platforms/android/CHANGELOG.md` |
@@ -332,10 +331,10 @@ npm pack "$package_root/node" --dry-run
 ```
 
 The release preflight and `release-node.yml` remain responsible for building, installing, and
-render-smoke-testing all five native targets. A local host build does not substitute for that
-matrix. Normal Node releases publish the five platform packages before the root loader and verify
-the exact package-group integrity and target tags before publishing any missing package directly
-under the public prerelease tag.
+render-smoke-testing all five native targets plus the explicit Node WASM package. A local host build
+does not substitute for that matrix. Normal Node releases publish the five platform packages and
+the WASM package before the root loader and verify the exact package-group integrity and target tags
+before publishing any missing package directly under the public prerelease tag.
 
 For local VS Code VSIX validation:
 

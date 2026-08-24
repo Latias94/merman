@@ -20,6 +20,7 @@ import {
   MermanDisposedError,
   MermanInvalidTransportError,
   MermanMissingPlatformPackageError,
+  MermanNativeLoadError,
   MermanOperationError,
   MermanUnsupportedTargetError,
   NODE_TRANSPORT_LIMITS,
@@ -134,6 +135,34 @@ test("the loader resolves one target-specific package and no browser package", (
   assert.equal(loaded, binding);
   assert.deepEqual(requested, ["@mermanjs/node-darwin-arm64"]);
   assert.equal(nativePackageName("linux-x64-musl"), "@mermanjs/node-linux-x64-musl");
+});
+
+test("the native loader diagnoses installed packages that fail dynamic loading", () => {
+  const loaderFailure = Object.assign(
+    new Error("/lib64/libm.so.6: version `GLIBC_2.35' not found"),
+    { code: "ERR_DLOPEN_FAILED" },
+  );
+  assert.throws(
+    () =>
+      loadNativeBinding({
+        platform: "linux",
+        arch: "x64",
+        report: glibcReport,
+        loadPackage: () => {
+          throw loaderFailure;
+        },
+      }),
+    (error) => {
+      assert.ok(error instanceof MermanNativeLoadError);
+      assert.equal(error.code, "MERMAN_NATIVE_LOAD_ERROR");
+      assert.equal(error.packageName, "@mermanjs/node-linux-x64-gnu");
+      assert.equal(error.target, "linux-x64-gnu");
+      assert.equal(error.cause, loaderFailure);
+      assert.match(error.message, /ABI|shared-library/i);
+      assert.match(error.message, /node-wasm/);
+      return true;
+    },
+  );
 });
 
 test("the native loader reads its expected version from its own package manifest", () => {

@@ -508,11 +508,31 @@ jobs:
 
       - name: Build and probe the Node-WASM candidate
         if: matrix.parity && github.event_name == 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate node-wasm
+        run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
 
       - name: Build and probe the Node N-API candidate
         if: matrix.parity && github.event_name == 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --file platforms/node/Dockerfile.gnu \
+            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg RUST_IMAGE=rust:1.95-bullseye \
+            --tag merman-node-gnu:ci \
+            platforms/node
+          docker run --rm \
+            --platform linux/amd64 \
+            -e CARGO_INCREMENTAL=0 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            merman-node-gnu:ci \
+            sh -c '
+              set -eu
+              git config --global --add safe.directory /work
+              npm ci --prefix platforms/node
+              node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
+            '
 
       - name: Verify committed upstream alignment manifests
         if: matrix.parity
@@ -635,11 +655,31 @@ jobs:
 
       - name: Build and probe the real Node-WASM candidate on PRs
         if: github.event_name != 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate node-wasm
+        run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
 
       - name: Build and probe the real Node N-API candidate on PRs
         if: github.event_name != 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --file platforms/node/Dockerfile.gnu \
+            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg RUST_IMAGE=rust:1.95-bullseye \
+            --tag merman-node-gnu:ci \
+            platforms/node
+          docker run --rm \
+            --platform linux/amd64 \
+            -e CARGO_INCREMENTAL=0 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            merman-node-gnu:ci \
+            sh -c '
+              set -eu
+              git config --global --add safe.directory /work
+              npm ci --prefix platforms/node
+              node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
+            '
 
   typst-package:
     name: typst-package

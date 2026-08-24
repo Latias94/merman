@@ -66,7 +66,7 @@ def node_package_surface() -> dict:
 
 def node_package_manifests(descriptor: dict | None = None) -> list[Path]:
     surface = descriptor or node_package_surface()
-    entries = [surface["root"], *surface["targets"]]
+    entries = [surface["root"], surface["wasm"], *surface["targets"]]
     return [
         release_projection.NODE_ROOT / entry["directory"] / "package.json"
         for entry in entries

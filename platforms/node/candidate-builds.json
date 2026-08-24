@@ -46,6 +46,7 @@
         {
           "id": "linux-x64-gnu",
           "rust_target": "x86_64-unknown-linux-gnu",
+          "glibc_floor": "2.31",
           "runtime_ci_required": true
         },
         {

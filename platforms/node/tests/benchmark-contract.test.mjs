@@ -377,6 +377,7 @@ function productFacadeTestExports() {
     "export class MermanInvalidTransportError extends Error {}",
     "export class MermanLifecycleError extends Error {}",
     "export class MermanMissingPlatformPackageError extends Error {}",
+    "export class MermanNativeLoadError extends Error {}",
     "export class MermanOperationError extends Error {}",
     "export class MermanQueueSaturatedError extends Error {}",
     "export class MermanUnsupportedTargetError extends Error {}",
@@ -396,7 +397,11 @@ test("benchmark provenance binds every runtime and package assembly input", () =
     "src/engine.mjs",
     "src/candidates/native.mjs",
   ]) {
-    assert.equal(inputs.some((file) => file.endsWith(expected)), true, expected);
+    assert.equal(
+      inputs.some((file) => file.replaceAll(path.sep, "/").endsWith(expected)),
+      true,
+      expected,
+    );
   }
 });
 
@@ -1079,6 +1084,7 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
       target: "darwin-arm64",
       rust_target: "aarch64-apple-darwin",
       wasm_pack_target: null,
+      glibc_floor: null,
       default_features: false,
       capability_recipe: CAPABILITY_RECIPE.capability_recipe,
       features: [
@@ -1161,6 +1167,7 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
     target: "darwin-arm64",
     rust_target: "aarch64-apple-darwin",
     wasm_pack_target: null,
+    glibc_floor: null,
     commit: receipt.commit,
     source_digest: receipt.source_digest,
     cargo_lock_digest: receipt.cargo_lock_digest,

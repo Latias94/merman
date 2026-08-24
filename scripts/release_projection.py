@@ -114,11 +114,12 @@ class _NodePackageEntry:
 class _NodePackageCatalog:
     version: str
     root: _NodePackageEntry
+    wasm: _NodePackageEntry
     targets: tuple[_NodePackageEntry, ...]
 
     @property
     def entries(self) -> tuple[_NodePackageEntry, ...]:
-        return (self.root, *self.targets)
+        return (self.root, self.wasm, *self.targets)
 
 
 class RepositoryView:
@@ -567,9 +568,10 @@ def _collect_cargo_lock_versions(
             )
             continue
         actual = matches[0].get("version")
+        lock_label = str(label or lock_path).replace("\\", "/")
         observations.append(
             VersionObservation(
-                f"{label or lock_path} package {package_name}",
+                f"{lock_label} package {package_name}",
                 lock_path,
                 catalog.authority.canonical,
                 actual if isinstance(actual, str) else "<missing>",
@@ -610,9 +612,10 @@ def _collect_independent_lock_versions(
             )
             continue
         actual = matches[0].get("version")
+        lock_label = str(label or lock_path).replace("\\", "/")
         observations.append(
             VersionObservation(
-                f"{label or lock_path} independent package {package_name}",
+                f"{lock_label} independent package {package_name}",
                 lock_path,
                 expected_version,
                 actual if isinstance(actual, str) else "<missing>",
@@ -700,6 +703,10 @@ def _node_package_catalog(view: RepositoryView) -> _NodePackageCatalog:
         descriptor.get("root"),
         f"{NODE_DESCRIPTOR}.root",
     )
+    wasm = _node_package_entry(
+        descriptor.get("wasm"),
+        f"{NODE_DESCRIPTOR}.wasm",
+    )
     raw_targets = descriptor.get("targets")
     if not isinstance(raw_targets, list):
         raise ReleaseProjectionError(
@@ -712,7 +719,7 @@ def _node_package_catalog(view: RepositoryView) -> _NodePackageCatalog:
         )
         for index, raw_target in enumerate(raw_targets)
     )
-    return _NodePackageCatalog(version=version, root=root, targets=targets)
+    return _NodePackageCatalog(version=version, root=root, wasm=wasm, targets=targets)
 
 
 def _collect_node_candidate_projection(
