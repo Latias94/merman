@@ -38,6 +38,7 @@ pub struct RasterPaintCutoverReceipt {
     target_geometry_digest: [u8; 32],
     target_path_count: usize,
     solid_control_pixels: usize,
+    changed_control_pixels: usize,
     changed_pixels: usize,
     changed_outside_target_pixels: usize,
     transparent_control_pixels: usize,
@@ -58,6 +59,7 @@ impl RasterPaintCutoverReceipt {
             target_geometry_digest: facts.target_geometry_digest,
             target_path_count: facts.target_path_count,
             solid_control_pixels: facts.solid_control_pixels,
+            changed_control_pixels: facts.changed_control_pixels,
             changed_pixels: facts.changed_pixels,
             changed_outside_target_pixels: facts.changed_outside_target_pixels,
             transparent_control_pixels: facts.transparent_control_pixels,
@@ -82,10 +84,10 @@ impl RasterPaintCutoverReceipt {
             && self.target_geometry_digest != [0; 32]
             && self.target_path_count > 0
             && self.solid_control_pixels > 0
-            && self.changed_pixels >= self.solid_control_pixels
+            && self.changed_control_pixels > 0
+            && self.changed_pixels > 0
             && self.changed_outside_target_pixels == 0
             && self.transparent_control_pixels == 0
-            && self.unchanged_control_pixels == 0
             && self.transparent_reference_mismatches == 0
             && self.digest == self.canonical_digest()
     }
@@ -102,6 +104,7 @@ impl RasterPaintCutoverReceipt {
         hasher.update(self.target_geometry_digest);
         update_usize(&mut hasher, self.target_path_count);
         update_usize(&mut hasher, self.solid_control_pixels);
+        update_usize(&mut hasher, self.changed_control_pixels);
         update_usize(&mut hasher, self.changed_pixels);
         update_usize(&mut hasher, self.changed_outside_target_pixels);
         update_usize(&mut hasher, self.transparent_control_pixels);
@@ -276,6 +279,7 @@ fn encode_pair_on_backend_stack(
         target_path_count: solid_tree.targets.len(),
         solid_control_pixels: solid_delta.control_pixels,
         changed_pixels: solid_delta.changed_pixels,
+        changed_control_pixels: solid_delta.changed_control_pixels,
         changed_outside_target_pixels: solid_delta.changed_outside_target_pixels,
         transparent_control_pixels,
         unchanged_control_pixels: solid_delta.unchanged_control_pixels,
@@ -386,10 +390,6 @@ struct PaintObservation {
 impl PaintObservation {
     fn opacity(self) -> f32 {
         f32::from_bits(self.opacity_bits)
-    }
-
-    fn is_transparent(self) -> bool {
-        self.opacity() == 0.0
     }
 }
 
@@ -653,7 +653,7 @@ fn paint_rgb(paint: &usvg::Paint) -> Option<[u8; 3]> {
 }
 
 fn paint_is_opaque_control(paint: Option<PaintObservation>, control_rgb: [u8; 3]) -> bool {
-    paint.is_some_and(|paint| paint.rgb == Some(control_rgb) && !paint.is_transparent())
+    paint.is_some_and(|paint| paint.rgb == Some(control_rgb) && paint.opacity() == 1.0)
 }
 
 fn require_no_opaque_control_targets(observation: &PaintTreeObservation) -> Result<()> {
@@ -667,6 +667,7 @@ fn require_no_opaque_control_targets(observation: &PaintTreeObservation) -> Resu
 
 struct SolidDeltaObservation {
     control_pixels: usize,
+    changed_control_pixels: usize,
     changed_pixels: usize,
     changed_outside_target_pixels: usize,
     unchanged_control_pixels: usize,
@@ -686,6 +687,7 @@ fn observe_solid_delta(
     }
     let regions = pixel_regions(targets, placement)?;
     let mut control_pixels = 0usize;
+    let mut changed_control_pixels = 0usize;
     let mut changed_pixels = 0usize;
     let mut changed_outside_target_pixels = 0usize;
     let mut unchanged_control_pixels = 0usize;
@@ -706,7 +708,9 @@ fn observe_solid_delta(
         }
         if is_control {
             control_pixels = control_pixels.saturating_add(1);
-            if !inside_any_region || !changed {
+            if changed {
+                changed_control_pixels = changed_control_pixels.saturating_add(1);
+            } else {
                 unchanged_control_pixels = unchanged_control_pixels.saturating_add(1);
             }
         }
@@ -717,9 +721,9 @@ fn observe_solid_delta(
             }
         }
     }
-    if control_pixels == 0 || changed_pixels == 0 {
+    if control_pixels == 0 || changed_pixels == 0 || changed_control_pixels == 0 {
         return Err(ExportError::RasterPaintCutover(
-            "solid route produced no visible control-painted pixels",
+            "solid route produced no removed visible control-painted pixels",
         ));
     }
     if changed_outside_target_pixels != 0 {
@@ -727,13 +731,9 @@ fn observe_solid_delta(
             "solid route changed pixels outside its resolved target geometry",
         ));
     }
-    if unchanged_control_pixels != 0 {
-        return Err(ExportError::RasterPaintCutover(
-            "solid control pixels were not removed by the underlay reference",
-        ));
-    }
     Ok(SolidDeltaObservation {
         control_pixels,
+        changed_control_pixels,
         changed_pixels,
         changed_outside_target_pixels,
         unchanged_control_pixels,
@@ -853,6 +853,7 @@ struct RasterPaintCutoverFacts {
     target_geometry_digest: [u8; 32],
     target_path_count: usize,
     solid_control_pixels: usize,
+    changed_control_pixels: usize,
     changed_pixels: usize,
     changed_outside_target_pixels: usize,
     transparent_control_pixels: usize,

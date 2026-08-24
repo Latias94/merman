@@ -824,10 +824,8 @@ fn render_cutover_case(
     );
     c6_ensure!(
         "route-inventory",
-        routes.iter().all(|route| {
-            route.selector() == ThemeRouteCutoverSelector::StaticUnqualified
-                && *route == expected_route
-        }) && CutoverWitnessProfile::for_route(expected_route).contains(&profile),
+        routes.iter().all(|route| { *route == expected_route })
+            && CutoverWitnessProfile::for_route(expected_route).contains(&profile),
         "{} contains a route outside its canonical selector/family/value",
         case_label(case)
     );
@@ -931,11 +929,14 @@ fn compile_cutover_theme_with_value(
 ) -> C6ProofResult<DiagramTheme> {
     let mut styles = ThemeRuleSet::default();
     let route = case.id.route();
+    let control_css = route.raster_control_css();
     let style = match route.facet() {
-        ThemeRouteCutoverFacet::Fill => ThemeStylePatch::default()
-            .with_fill(cutover_paint(route_value, route.raster_control_css())?),
-        ThemeRouteCutoverFacet::Stroke => ThemeStylePatch::default()
-            .with_stroke(cutover_paint(route_value, route.raster_control_css())?),
+        ThemeRouteCutoverFacet::Fill => {
+            ThemeStylePatch::default().with_fill(cutover_paint(route_value, &control_css)?)
+        }
+        ThemeRouteCutoverFacet::Stroke => {
+            ThemeStylePatch::default().with_stroke(cutover_paint(route_value, &control_css)?)
+        }
     };
     styles = styles.with_rule(cutover_rule(case, route.target(), style));
 
@@ -963,7 +964,12 @@ fn compile_cutover_theme_with_value(
 }
 
 fn cutover_rule(case: CutoverCase, target: ThemeTarget, style: ThemeStylePatch) -> ThemeRule {
-    ThemeRule::new(target, style).for_family(case.id.route().family_id())
+    let route = case.id.route();
+    let rule = ThemeRule::new(target, style).for_family(route.family_id());
+    match route.selector() {
+        ThemeRouteCutoverSelector::StaticUnqualified => rule,
+        ThemeRouteCutoverSelector::StaticVariant(variant) => rule.with_variant(variant),
+    }
 }
 
 fn cutover_paint(value: ThemeRouteCutoverValue, solid: &str) -> C6ProofResult<CanvasPaint> {
@@ -1192,10 +1198,8 @@ fn case_label(case: CutoverCase) -> String {
     witness_label(case.id)
 }
 
-fn selector_id(selector: ThemeRouteCutoverSelector) -> &'static str {
-    match selector {
-        ThemeRouteCutoverSelector::StaticUnqualified => "static-unqualified",
-    }
+fn selector_id(selector: ThemeRouteCutoverSelector) -> String {
+    selector.id()
 }
 
 fn projection_set_label(projections: ThemeRouteCutoverProjectionSet) -> String {

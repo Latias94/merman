@@ -244,40 +244,47 @@ pub(crate) fn legacy_replacing_typed_routes()
                 (ThemeRouteCutoverFacet::Fill, PaintChannel::Fill),
                 (ThemeRouteCutoverFacet::Stroke, PaintChannel::Stroke),
             ] {
-                for (value, paint_kind) in [
-                    (
-                        ThemeRouteCutoverValue::Transparent,
-                        FamilyThemePaintKind::Transparent,
-                    ),
-                    (ThemeRouteCutoverValue::Solid, FamilyThemePaintKind::Solid),
-                ] {
-                    let rule_facet = match facet {
-                        ThemeRouteCutoverFacet::Fill => FamilyThemeRuleFacet::Fill(paint_kind),
-                        ThemeRouteCutoverFacet::Stroke => FamilyThemeRuleFacet::Stroke(paint_kind),
-                    };
-                    let selector = FamilyThemeSelectorShape::Static { variant: None };
-                    if classify_rule_facet(family, target, selector, rule_facet)
-                        != FamilyThemeDisposition::TypedAdapter
-                        || !legacy_paint_supported(family, target, None, channel)
-                    {
-                        continue;
-                    }
-                    let projections =
-                        legacy_bridge_projections(family, target, facet).ok_or_else(|| {
+                for selector in legacy_route_selectors(family, target) {
+                    for (value, paint_kind) in [
+                        (
+                            ThemeRouteCutoverValue::Transparent,
+                            FamilyThemePaintKind::Transparent,
+                        ),
+                        (ThemeRouteCutoverValue::Solid, FamilyThemePaintKind::Solid),
+                    ] {
+                        let rule_facet = match facet {
+                            ThemeRouteCutoverFacet::Fill => FamilyThemeRuleFacet::Fill(paint_kind),
+                            ThemeRouteCutoverFacet::Stroke => {
+                                FamilyThemeRuleFacet::Stroke(paint_kind)
+                            }
+                        };
+                        let selector_shape = FamilyThemeSelectorShape::Static {
+                            variant: selector_variant(selector),
+                        };
+                        if classify_rule_facet(family, target, selector_shape, rule_facet)
+                            != FamilyThemeDisposition::TypedAdapter
+                            || !legacy_paint_supported(
+                                family,
+                                target,
+                                selector_variant(selector),
+                                channel,
+                            )
+                        {
+                            continue;
+                        }
+                        let projections = legacy_bridge_projections(
+                            family, target, facet, selector,
+                        )
+                        .ok_or_else(|| {
                             ThemeRouteCutoverInventoryError::missing_projections(
-                                family, target, facet,
+                                family, target, selector, facet,
                             )
                         })?;
-                    routes.push(ThemeRouteCutoverDescriptor::new(
-                        ThemeRouteCutoverId::new(
-                            family,
-                            target,
-                            ThemeRouteCutoverSelector::StaticUnqualified,
-                            facet,
-                            value,
-                        ),
-                        projections,
-                    ));
+                        routes.push(ThemeRouteCutoverDescriptor::new(
+                            ThemeRouteCutoverId::new(family, target, selector, facet, value),
+                            projections,
+                        ));
+                    }
                 }
             }
         }
@@ -291,6 +298,7 @@ fn legacy_bridge_projections(
     family: DiagramFamilyId,
     target: ThemeTarget,
     facet: ThemeRouteCutoverFacet,
+    selector: ThemeRouteCutoverSelector,
 ) -> Option<ThemeRouteCutoverProjectionSet> {
     match (family, target, facet) {
         (
@@ -331,11 +339,8 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::INFO, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
-        (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Fill) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_FILLS)
-        }
-        (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_STROKES)
+        (DiagramFamilyId::GANTT, ThemeTarget::Task, facet) => {
+            gantt_task_projections(facet, selector)
         }
         (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_KANBAN_TASK_STROKE)
@@ -424,6 +429,80 @@ fn legacy_bridge_projections(
         }
         (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_PIE_SLICE_STROKE)
+        }
+        _ => None,
+    }
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn legacy_route_selectors(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+) -> Vec<ThemeRouteCutoverSelector> {
+    let mut selectors = vec![ThemeRouteCutoverSelector::StaticUnqualified];
+    match (family, target) {
+        (DiagramFamilyId::GANTT, ThemeTarget::Task) => selectors.extend([
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Active),
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Success),
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Error),
+        ]),
+        (DiagramFamilyId::REQUIREMENT | DiagramFamilyId::BLOCK, target)
+            if matches!(target, ThemeTarget::Requirement | ThemeTarget::Node) =>
+        {
+            selectors.push(ThemeRouteCutoverSelector::StaticVariant(
+                ThemeVariant::Default,
+            ));
+        }
+        _ => {}
+    }
+    selectors
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+const fn selector_variant(selector: ThemeRouteCutoverSelector) -> Option<ThemeVariant> {
+    match selector {
+        ThemeRouteCutoverSelector::StaticUnqualified => None,
+        ThemeRouteCutoverSelector::StaticVariant(variant) => Some(variant),
+    }
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn gantt_task_projections(
+    facet: ThemeRouteCutoverFacet,
+    selector: ThemeRouteCutoverSelector,
+) -> Option<ThemeRouteCutoverProjectionSet> {
+    use ThemeRouteCutoverSelector::{StaticUnqualified, StaticVariant};
+    match (facet, selector) {
+        (ThemeRouteCutoverFacet::Fill, StaticUnqualified) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_FILLS)
+        }
+        (ThemeRouteCutoverFacet::Stroke, StaticUnqualified) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_STROKES)
+        }
+        (ThemeRouteCutoverFacet::Fill, StaticVariant(ThemeVariant::Default)) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_DEFAULT_FILL)
+        }
+        (ThemeRouteCutoverFacet::Fill, StaticVariant(ThemeVariant::Active)) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_ACTIVE_FILL)
+        }
+        (ThemeRouteCutoverFacet::Fill, StaticVariant(ThemeVariant::Success)) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_SUCCESS_FILL)
+        }
+        (ThemeRouteCutoverFacet::Fill, StaticVariant(ThemeVariant::Error)) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_ERROR_FILL)
+        }
+        (ThemeRouteCutoverFacet::Stroke, StaticVariant(ThemeVariant::Default)) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_DEFAULT_STROKE)
+        }
+        (ThemeRouteCutoverFacet::Stroke, StaticVariant(ThemeVariant::Active)) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_ACTIVE_STROKE)
+        }
+        (ThemeRouteCutoverFacet::Stroke, StaticVariant(ThemeVariant::Success)) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_SUCCESS_STROKE)
+        }
+        (ThemeRouteCutoverFacet::Stroke, StaticVariant(ThemeVariant::Error)) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_ERROR_STROKE)
         }
         _ => None,
     }
@@ -1622,8 +1701,27 @@ pub(super) fn classify_rule_facet(
     }
     if matches!(
         (family, target),
-        (DiagramFamilyId::PIE, ThemeTarget::PieSlice) | (DiagramFamilyId::BLOCK, ThemeTarget::Node)
+        (DiagramFamilyId::PIE, ThemeTarget::PieSlice)
     ) && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::BLOCK
+        && target == ThemeTarget::Node
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -2051,7 +2149,7 @@ mod tests {
     }
 
     #[test]
-    fn pie_and_block_own_only_unqualified_scalar_fill() {
+    fn pie_and_block_own_static_scalar_fill() {
         for (family, target) in [
             (DiagramFamilyId::PIE, ThemeTarget::PieSlice),
             (DiagramFamilyId::BLOCK, ThemeTarget::Node),
@@ -2060,6 +2158,11 @@ mod tests {
                 FamilyThemePaintKind::Transparent,
                 FamilyThemePaintKind::Solid,
             ] {
+                let expected_default = if family == DiagramFamilyId::BLOCK {
+                    FamilyThemeDisposition::TypedAdapter
+                } else {
+                    FamilyThemeDisposition::LegacyCompatibility
+                };
                 assert_eq!(
                     classify_rule_facet(
                         family,
@@ -2079,7 +2182,7 @@ mod tests {
                         },
                         FamilyThemeRuleFacet::Fill(kind),
                     ),
-                    FamilyThemeDisposition::LegacyCompatibility,
+                    expected_default,
                     "{family} {target:?} {kind:?}"
                 );
             }
@@ -2447,7 +2550,7 @@ mod tests {
     }
 
     #[test]
-    fn pie_and_block_own_only_unqualified_scalar_stroke() {
+    fn pie_and_block_own_static_scalar_stroke() {
         for (family, target) in [
             (DiagramFamilyId::PIE, ThemeTarget::PieSlice),
             (DiagramFamilyId::BLOCK, ThemeTarget::Node),
@@ -2456,6 +2559,11 @@ mod tests {
                 FamilyThemePaintKind::Transparent,
                 FamilyThemePaintKind::Solid,
             ] {
+                let expected_default = if family == DiagramFamilyId::BLOCK {
+                    FamilyThemeDisposition::TypedAdapter
+                } else {
+                    FamilyThemeDisposition::LegacyCompatibility
+                };
                 assert_eq!(
                     classify_rule_facet(
                         family,
@@ -2474,7 +2582,7 @@ mod tests {
                         },
                         FamilyThemeRuleFacet::Stroke(kind),
                     ),
-                    FamilyThemeDisposition::LegacyCompatibility
+                    expected_default
                 );
             }
 
@@ -4154,6 +4262,7 @@ mod tests {
         let actual = legacy_replacing_typed_routes()
             .expect("derive typed legacy-replacing routes")
             .into_iter()
+            .filter(|route| route.selector() == ThemeRouteCutoverSelector::StaticUnqualified)
             .map(|route| {
                 (
                     route.family_id(),
@@ -4917,6 +5026,82 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
 
         assert_eq!(ids.len(), routes.len());
+    }
+
+    #[test]
+    fn qualified_cutover_routes_are_bounded_and_projection_local() {
+        let routes = legacy_replacing_typed_routes().expect("derive typed legacy-replacing routes");
+        let qualified = routes
+            .iter()
+            .filter(|route| route.selector() != ThemeRouteCutoverSelector::StaticUnqualified)
+            .copied()
+            .collect::<Vec<_>>();
+
+        assert_eq!(qualified.len(), 24);
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::GANTT)
+                .count(),
+            16
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::REQUIREMENT)
+                .count(),
+            4
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::BLOCK)
+                .count(),
+            4
+        );
+
+        for route in qualified {
+            let projections = route.projections().iter().collect::<Vec<_>>();
+            assert_eq!(projections.len(), 1, "route={route:?}");
+            if route.family_id() == DiagramFamilyId::GANTT {
+                let expected = match (route.selector(), route.facet()) {
+                    (
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                        ThemeRouteCutoverFacet::Fill,
+                    ) => ThemeRouteCutoverProjection::GanttTaskDefaultFill,
+                    (
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Active),
+                        ThemeRouteCutoverFacet::Fill,
+                    ) => ThemeRouteCutoverProjection::GanttTaskActiveFill,
+                    (
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Success),
+                        ThemeRouteCutoverFacet::Fill,
+                    ) => ThemeRouteCutoverProjection::GanttTaskSuccessFill,
+                    (
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Error),
+                        ThemeRouteCutoverFacet::Fill,
+                    ) => ThemeRouteCutoverProjection::GanttTaskErrorFill,
+                    (
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                        ThemeRouteCutoverFacet::Stroke,
+                    ) => ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
+                    (
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Active),
+                        ThemeRouteCutoverFacet::Stroke,
+                    ) => ThemeRouteCutoverProjection::GanttTaskActiveStroke,
+                    (
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Success),
+                        ThemeRouteCutoverFacet::Stroke,
+                    ) => ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
+                    (
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Error),
+                        ThemeRouteCutoverFacet::Stroke,
+                    ) => ThemeRouteCutoverProjection::GanttTaskErrorStroke,
+                    _ => panic!("unexpected Gantt qualified route: {route:?}"),
+                };
+                assert_eq!(projections, vec![expected], "route={route:?}");
+            }
+        }
     }
 
     #[test]

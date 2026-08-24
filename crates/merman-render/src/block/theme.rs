@@ -144,7 +144,9 @@ impl BlockNodePaintThemePlan {
                     match (route.disposition(), selector, facet) {
                         (
                             FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeSelectorShape::Static { variant: None },
+                            FamilyThemeSelectorShape::Static {
+                                variant: None | Some(ThemeVariant::Default),
+                            },
                             FamilyThemeRuleFacet::Fill(
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                             )
@@ -413,7 +415,7 @@ fn typed_stroke_expectation(
         theme,
         style,
         &[ThemeTarget::Node],
-        DirectStaticSelectorDomain::Unqualified,
+        DirectStaticSelectorDomain::Default,
     )
     .map(DirectPaintExpectation::from_paint)
 }
@@ -430,7 +432,7 @@ fn typed_fill_expectation(
         theme,
         style,
         &[ThemeTarget::Node],
-        DirectStaticSelectorDomain::Unqualified,
+        DirectStaticSelectorDomain::Default,
     )
     .map(DirectPaintExpectation::from_paint)
 }

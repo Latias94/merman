@@ -135,11 +135,12 @@ pub mod __private {
         crate::diagram_theme::legacy_projection_retirement_receipts()
     }
 
-    /// Seals renderer-owned route receipts against the finalized SVG artifact digest.
+    /// Seals renderer-owned route receipts against both finalized SVG representations.
     #[cfg(feature = "internal-theme-acceptance")]
     pub fn seal_theme_route_cutover_receipts(
         report: &FamilyRenderReport,
         artifact_digest: [u8; 32],
+        native_artifact_digest: [u8; 32],
     ) -> Vec<ThemeRouteCutoverReceipt> {
         if !report.style_report().is_verified() {
             return Vec::new();
@@ -147,6 +148,7 @@ pub mod __private {
         crate::theme_route_cutover::seal_theme_route_cutover_receipts(
             report.theme_route_cutover_facts(),
             artifact_digest,
+            native_artifact_digest,
         )
     }
 

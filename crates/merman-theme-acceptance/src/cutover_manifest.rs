@@ -7,10 +7,11 @@ use merman_render::__private::{
     ThemeRouteCutoverProjection, ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
     ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
 };
+use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 20;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 21;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
@@ -191,6 +192,26 @@ impl RouteAuthorization {
             projections,
         }
     }
+
+    const fn new_variant(
+        family: DiagramFamilyId,
+        target: ThemeTarget,
+        variant: ThemeVariant,
+        facet: ThemeRouteCutoverFacet,
+        value: ThemeRouteCutoverValue,
+        projections: &'static [ThemeRouteCutoverProjection],
+    ) -> Self {
+        Self {
+            id: ThemeRouteCutoverId::new(
+                family,
+                target,
+                ThemeRouteCutoverSelector::StaticVariant(variant),
+                facet,
+                value,
+            ),
+            projections,
+        }
+    }
 }
 
 const NODE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -261,6 +282,22 @@ const GANTT_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
     ThemeRouteCutoverProjection::GanttTaskErrorStroke,
 ];
+const GANTT_TASK_DEFAULT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GanttTaskDefaultFill];
+const GANTT_TASK_ACTIVE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GanttTaskActiveFill];
+const GANTT_TASK_SUCCESS_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GanttTaskSuccessFill];
+const GANTT_TASK_ERROR_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GanttTaskErrorFill];
+const GANTT_TASK_DEFAULT_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GanttTaskDefaultStroke];
+const GANTT_TASK_ACTIVE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GanttTaskActiveStroke];
+const GANTT_TASK_SUCCESS_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GanttTaskSuccessStroke];
+const GANTT_TASK_ERROR_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GanttTaskErrorStroke];
 const JOURNEY_TASK_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::JourneyTaskPaint];
 const KANBAN_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -279,7 +316,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 102] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 126] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -672,6 +709,38 @@ const ACTIVE_ROUTES: [RouteAuthorization; 102] = [
         ThemeRouteCutoverValue::Solid,
         REQUIREMENT_STROKE_PROJECTIONS,
     ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Requirement,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        REQUIREMENT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Requirement,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        REQUIREMENT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Requirement,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        REQUIREMENT_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Requirement,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        REQUIREMENT_STROKE_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::PIE,
         ThemeTarget::PieSlice,
@@ -724,6 +793,38 @@ const ACTIVE_ROUTES: [RouteAuthorization; 102] = [
     route(
         DiagramFamilyId::BLOCK,
         ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         NODE_STROKE_PROJECTIONS,
@@ -951,6 +1052,134 @@ const ACTIVE_ROUTES: [RouteAuthorization; 102] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         GANTT_TASK_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_DEFAULT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_DEFAULT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Active,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_ACTIVE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Active,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_ACTIVE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Success,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_SUCCESS_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Success,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_SUCCESS_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Error,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_ERROR_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Error,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_ERROR_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_DEFAULT_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_DEFAULT_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Active,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_ACTIVE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Active,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_ACTIVE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Success,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_SUCCESS_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Success,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_SUCCESS_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Error,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_ERROR_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Error,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_ERROR_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::JOURNEY,
@@ -1031,6 +1260,17 @@ const fn route(
     projections: &'static [ThemeRouteCutoverProjection],
 ) -> RouteAuthorization {
     RouteAuthorization::new(family, target, facet, value, projections)
+}
+
+const fn route_variant(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+    variant: ThemeVariant,
+    facet: ThemeRouteCutoverFacet,
+    value: ThemeRouteCutoverValue,
+    projections: &'static [ThemeRouteCutoverProjection],
+) -> RouteAuthorization {
+    RouteAuthorization::new_variant(family, target, variant, facet, value, projections)
 }
 
 pub(super) fn authorize_cutover_routes(
@@ -1278,11 +1518,13 @@ mod tests {
         ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
         ThemeRouteCutoverSelector, ThemeRouteCutoverValue, legacy_replacing_typed_theme_routes,
     };
+    use merman_render::diagram_theme::ThemeVariant;
 
     use super::{
         ACTIVE_ROUTES, ACTOR_FILL_PROJECTIONS, CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
-        CutoverAuthorizationManifest, MANIFEST, PROJECTION_ACTIONS, RouteAuthorization,
-        RouteTombstone, authorize_cutover_routes, reconcile_manifest, validate_projection_actions,
+        CutoverAuthorizationManifest, GANTT_TASK_ACTIVE_FILL_PROJECTIONS, MANIFEST,
+        PROJECTION_ACTIONS, RouteAuthorization, RouteTombstone, authorize_cutover_routes,
+        reconcile_manifest, validate_projection_actions,
     };
 
     fn current_inventory() -> Vec<(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)> {
@@ -1301,6 +1543,70 @@ mod tests {
         .expect("authorize current route inventory");
 
         assert_eq!(routes.routes().len(), ACTIVE_ROUTES.len());
+    }
+
+    #[test]
+    fn manifest_keeps_variant_authority_bounded_and_projection_local() {
+        let gantt_routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| route.id.family_id() == DiagramFamilyId::GANTT)
+            .collect::<Vec<_>>();
+        assert_eq!(gantt_routes.len(), 20);
+
+        for (variant, fill_projection, stroke_projection) in [
+            (
+                ThemeVariant::Default,
+                ThemeRouteCutoverProjection::GanttTaskDefaultFill,
+                ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
+            ),
+            (
+                ThemeVariant::Active,
+                ThemeRouteCutoverProjection::GanttTaskActiveFill,
+                ThemeRouteCutoverProjection::GanttTaskActiveStroke,
+            ),
+            (
+                ThemeVariant::Success,
+                ThemeRouteCutoverProjection::GanttTaskSuccessFill,
+                ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
+            ),
+            (
+                ThemeVariant::Error,
+                ThemeRouteCutoverProjection::GanttTaskErrorFill,
+                ThemeRouteCutoverProjection::GanttTaskErrorStroke,
+            ),
+        ] {
+            for (facet, projection) in [
+                (ThemeRouteCutoverFacet::Fill, fill_projection),
+                (ThemeRouteCutoverFacet::Stroke, stroke_projection),
+            ] {
+                for value in [
+                    ThemeRouteCutoverValue::Transparent,
+                    ThemeRouteCutoverValue::Solid,
+                ] {
+                    let route = gantt_routes
+                        .iter()
+                        .find(|route| {
+                            route.id.selector() == ThemeRouteCutoverSelector::StaticVariant(variant)
+                                && route.id.facet() == facet
+                                && route.id.value() == value
+                        })
+                        .expect("bounded Gantt variant route");
+                    assert_eq!(route.projections, &[projection]);
+                }
+            }
+        }
+
+        for family in [DiagramFamilyId::REQUIREMENT, DiagramFamilyId::BLOCK] {
+            let qualified = ACTIVE_ROUTES
+                .iter()
+                .filter(|route| {
+                    route.id.family_id() == family
+                        && route.id.selector()
+                            == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(qualified.len(), 4);
+        }
     }
 
     #[test]
@@ -1401,5 +1707,18 @@ mod tests {
             ACTOR_FILL_PROJECTIONS,
         );
         assert_eq!(ROUTE.id.family_id(), DiagramFamilyId::SEQUENCE);
+
+        const QUALIFIED_ROUTE: RouteAuthorization = RouteAuthorization::new_variant(
+            DiagramFamilyId::GANTT,
+            ThemeTarget::Task,
+            ThemeVariant::Active,
+            ThemeRouteCutoverFacet::Fill,
+            ThemeRouteCutoverValue::Solid,
+            GANTT_TASK_ACTIVE_FILL_PROJECTIONS,
+        );
+        assert_eq!(
+            QUALIFIED_ROUTE.id.selector(),
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Active)
+        );
     }
 }

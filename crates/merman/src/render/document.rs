@@ -230,18 +230,22 @@ impl RenderedDocument {
     ) -> Self {
         let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
         let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
-        #[cfg(feature = "internal-theme-acceptance")]
-        let theme_route_cutover_receipts =
-            merman_render::__private::seal_theme_route_cutover_receipts(&family, public_svg_digest)
-                .into_boxed_slice();
-        let evidence = Arc::new(RenderEvidence::from_family(family));
-        let portability = document_portability_report(&svg, &evidence);
         let native_svg = svg.native_export_svg();
         let native_svg_digest = if native_svg == svg.as_str() {
             public_svg_digest
         } else {
             artifact_digest(native_svg.as_bytes())
         };
+        #[cfg(feature = "internal-theme-acceptance")]
+        let theme_route_cutover_receipts =
+            merman_render::__private::seal_theme_route_cutover_receipts(
+                &family,
+                public_svg_digest,
+                native_svg_digest,
+            )
+            .into_boxed_slice();
+        let evidence = Arc::new(RenderEvidence::from_family(family));
+        let portability = document_portability_report(&svg, &evidence);
         let document_digest = document_digest(
             public_svg_digest,
             native_svg_digest,
@@ -454,8 +458,18 @@ impl RenderedDocument {
                 ),
             ));
         };
-        if !solid_route_receipt.proves_artifact(solid_svg_artifact_digest)
-            || !transparent_route_receipt.proves_artifact(transparent_svg_artifact_digest)
+        let solid_native_svg_digest = artifact_digest(
+            merman_render::__private::native_export_svg(solid_document.sealed_svg()).as_bytes(),
+        );
+        let transparent_native_svg_digest = artifact_digest(
+            merman_render::__private::native_export_svg(transparent_document.sealed_svg())
+                .as_bytes(),
+        );
+        if !solid_route_receipt.proves_artifacts(solid_svg_artifact_digest, solid_native_svg_digest)
+            || !transparent_route_receipt.proves_artifacts(
+                transparent_svg_artifact_digest,
+                transparent_native_svg_digest,
+            )
         {
             return Err(map_export_error(
                 merman_export::ExportError::RasterPaintCutover(
@@ -475,7 +489,7 @@ impl RenderedDocument {
             options,
             control,
             facet,
-            control_css,
+            &control_css,
         )
         .map_err(map_export_error)?;
         let ((solid_bytes, solid_report), (transparent_bytes, transparent_report), raster_receipt) =
@@ -492,7 +506,7 @@ impl RenderedDocument {
             solid.admission().receipt_digest(),
             transparent.admission().receipt_digest(),
             raster_receipt_digest,
-            control_css,
+            &control_css,
         )
         .ok_or_else(|| {
             map_export_error(merman_export::ExportError::RasterPaintCutover(

@@ -3,13 +3,13 @@ use std::fmt;
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use crate::DiagramFamilyId;
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
-use crate::diagram_theme::ThemeTarget;
 #[cfg(feature = "internal-theme-acceptance")]
 use crate::diagram_theme::{
     FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind, FamilyThemeRuleFacet,
     ResolvedDiagramTheme,
 };
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use crate::diagram_theme::{ThemeTarget, ThemeVariant};
 #[cfg(feature = "internal-theme-acceptance")]
 use sha2::{Digest as _, Sha256};
 
@@ -242,6 +242,18 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
 pub enum ThemeRouteCutoverSelector {
     /// A static rule with neither an ordinal selector nor an explicit variant.
     StaticUnqualified,
+    /// A static rule selected by one explicit, bounded theme variant.
+    StaticVariant(ThemeVariant),
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+impl ThemeRouteCutoverSelector {
+    pub fn id(self) -> String {
+        match self {
+            Self::StaticUnqualified => "static-unqualified".to_owned(),
+            Self::StaticVariant(variant) => format!("static-variant-{}", variant.id()),
+        }
+    }
 }
 
 /// Theme facet proven by one legacy bridge cutover witness.
@@ -569,6 +581,22 @@ impl ThemeRouteCutoverProjectionSet {
             | ThemeRouteCutoverProjection::GanttTaskSuccessStroke.bit()
             | ThemeRouteCutoverProjection::GanttTaskErrorStroke.bit(),
     );
+    pub const REPLACE_GANTT_TASK_DEFAULT_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GanttTaskDefaultFill);
+    pub const REPLACE_GANTT_TASK_ACTIVE_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GanttTaskActiveFill);
+    pub const REPLACE_GANTT_TASK_SUCCESS_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GanttTaskSuccessFill);
+    pub const REPLACE_GANTT_TASK_ERROR_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GanttTaskErrorFill);
+    pub const REPLACE_GANTT_TASK_DEFAULT_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GanttTaskDefaultStroke);
+    pub const REPLACE_GANTT_TASK_ACTIVE_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GanttTaskActiveStroke);
+    pub const REPLACE_GANTT_TASK_SUCCESS_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GanttTaskSuccessStroke);
+    pub const REPLACE_GANTT_TASK_ERROR_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GanttTaskErrorStroke);
     pub const REPLACE_JOURNEY_TASK_PAINT: Self =
         Self::replacing(ThemeRouteCutoverProjection::JourneyTaskPaint);
     pub const REPLACE_KANBAN_TASK_STROKE: Self =
@@ -652,18 +680,28 @@ impl ThemeRouteCutoverDescriptor {
         self.projections
     }
 
-    /// Returns the canonical solid paint used by the private raster cutover witness.
+    /// Returns the route-local solid paint used by the private raster cutover witness.
     ///
     /// The value is renderer-owned so the acceptance harness cannot silently choose a different
     /// control palette from the route receipt it is trying to authorize.
-    pub const fn raster_control_css(self) -> &'static str {
-        match (self.facet(), self.target()) {
-            (ThemeRouteCutoverFacet::Fill, _) => "#dc2626",
-            (ThemeRouteCutoverFacet::Stroke, ThemeTarget::Edge | ThemeTarget::Relation) => {
-                "#16a34a"
+    pub fn raster_control_css(self) -> String {
+        let mut hash = 0x811c9dc5_u32;
+        for bytes in [
+            self.family_id().as_str().as_bytes(),
+            self.target().id().as_bytes(),
+            self.selector().id().as_bytes(),
+            route_facet_id(self.facet()).as_bytes(),
+        ] {
+            for byte in bytes {
+                hash = (hash ^ u32::from(*byte)).wrapping_mul(0x0100_0193);
             }
-            (ThemeRouteCutoverFacet::Stroke, _) => "#2563eb",
         }
+        let rgb = [
+            ((hash >> 16) as u8 & 0x7f).saturating_add(0x40),
+            ((hash >> 8) as u8 & 0x7f).saturating_add(0x40),
+            (hash as u8 & 0x7f).saturating_add(0x40),
+        ];
+        format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
     }
 }
 
@@ -696,18 +734,25 @@ pub struct ThemeRouteCutoverReceipt {
     descriptor: ThemeRouteCutoverDescriptor,
     mechanism_index: usize,
     artifact_digest: [u8; 32],
+    native_artifact_digest: [u8; 32],
     digest: [u8; 32],
 }
 
 #[cfg(feature = "internal-theme-acceptance")]
 impl ThemeRouteCutoverReceipt {
-    pub(crate) fn seal(fact: ThemeRouteCutoverFact, artifact_digest: [u8; 32]) -> Option<Self> {
-        (artifact_digest != [0; 32]).then(|| {
-            let digest = route_cutover_receipt_digest(fact, artifact_digest);
+    pub(crate) fn seal(
+        fact: ThemeRouteCutoverFact,
+        artifact_digest: [u8; 32],
+        native_artifact_digest: [u8; 32],
+    ) -> Option<Self> {
+        (artifact_digest != [0; 32] && native_artifact_digest != [0; 32]).then(|| {
+            let digest =
+                route_cutover_receipt_digest(fact, artifact_digest, native_artifact_digest);
             Self {
                 descriptor: fact.descriptor(),
                 mechanism_index: fact.mechanism_index(),
                 artifact_digest,
+                native_artifact_digest,
                 digest,
             }
         })
@@ -721,13 +766,27 @@ impl ThemeRouteCutoverReceipt {
         self.artifact_digest
     }
 
+    pub const fn native_artifact_digest(self) -> [u8; 32] {
+        self.native_artifact_digest
+    }
+
     pub const fn digest(self) -> [u8; 32] {
         self.digest
     }
 
     pub fn proves_artifact(self, artifact_digest: [u8; 32]) -> bool {
+        self.proves_artifacts(artifact_digest, self.native_artifact_digest)
+    }
+
+    pub fn proves_artifacts(
+        self,
+        artifact_digest: [u8; 32],
+        native_artifact_digest: [u8; 32],
+    ) -> bool {
         artifact_digest != [0; 32]
+            && native_artifact_digest != [0; 32]
             && self.artifact_digest == artifact_digest
+            && self.native_artifact_digest == native_artifact_digest
             && self.digest
                 == route_cutover_receipt_digest(
                     ThemeRouteCutoverFact {
@@ -735,6 +794,7 @@ impl ThemeRouteCutoverReceipt {
                         mechanism_index: self.mechanism_index,
                     },
                     self.artifact_digest,
+                    self.native_artifact_digest,
                 )
     }
 }
@@ -743,14 +803,15 @@ impl ThemeRouteCutoverReceipt {
 fn route_cutover_receipt_digest(
     fact: ThemeRouteCutoverFact,
     artifact_digest: [u8; 32],
+    native_artifact_digest: [u8; 32],
 ) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update(b"merman.theme-route-cutover-receipt.v1\0");
+    hasher.update(b"merman.theme-route-cutover-receipt.v2\0");
     hasher.update(fact.descriptor.family_id().as_str().as_bytes());
     hasher.update([0]);
     hasher.update(fact.descriptor.target().id().as_bytes());
     hasher.update([0]);
-    hasher.update(route_selector_id(fact.descriptor.selector()).as_bytes());
+    hasher.update(fact.descriptor.selector().id().as_bytes());
     hasher.update([0]);
     hasher.update(route_facet_id(fact.descriptor.facet()).as_bytes());
     hasher.update([0]);
@@ -759,17 +820,11 @@ fn route_cutover_receipt_digest(
     hasher.update(fact.descriptor.projections().0.to_be_bytes());
     hasher.update((fact.mechanism_index() as u64).to_be_bytes());
     hasher.update(artifact_digest);
+    hasher.update(native_artifact_digest);
     hasher.finalize().into()
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
-const fn route_selector_id(selector: ThemeRouteCutoverSelector) -> &'static str {
-    match selector {
-        ThemeRouteCutoverSelector::StaticUnqualified => "static-unqualified",
-    }
-}
-
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
 const fn route_facet_id(facet: ThemeRouteCutoverFacet) -> &'static str {
     match facet {
         ThemeRouteCutoverFacet::Fill => "fill",
@@ -777,7 +832,7 @@ const fn route_facet_id(facet: ThemeRouteCutoverFacet) -> &'static str {
     }
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
 const fn route_value_id(value: ThemeRouteCutoverValue) -> &'static str {
     match value {
         ThemeRouteCutoverValue::Transparent => "transparent",
@@ -810,7 +865,7 @@ pub(crate) fn collect_theme_route_cutover_facts(
                 };
                 if route.disposition() != crate::diagram_theme::FamilyThemeDisposition::TypedAdapter
                     || target != descriptor.target()
-                    || !selector.is_static_unqualified()
+                    || !route_selector_matches(selector, descriptor.selector())
                     || !route_facet_matches(facet, descriptor)
                 {
                     return None;
@@ -826,6 +881,22 @@ pub(crate) fn collect_theme_route_cutover_facts(
             })
         })
         .collect()
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+fn route_selector_matches(
+    selector: crate::diagram_theme::FamilyThemeSelectorShape,
+    expected: ThemeRouteCutoverSelector,
+) -> bool {
+    let expected_variant = match expected {
+        ThemeRouteCutoverSelector::StaticUnqualified => None,
+        ThemeRouteCutoverSelector::StaticVariant(variant) => Some(variant),
+    };
+    matches!(
+        selector,
+        crate::diagram_theme::FamilyThemeSelectorShape::Static { variant }
+            if variant == expected_variant
+    )
 }
 
 #[cfg(feature = "internal-theme-acceptance")]
@@ -848,11 +919,14 @@ fn route_facet_matches(
 pub(crate) fn seal_theme_route_cutover_receipts(
     facts: &[ThemeRouteCutoverFact],
     artifact_digest: [u8; 32],
+    native_artifact_digest: [u8; 32],
 ) -> Vec<ThemeRouteCutoverReceipt> {
     facts
         .iter()
         .copied()
-        .filter_map(|fact| ThemeRouteCutoverReceipt::seal(fact, artifact_digest))
+        .filter_map(|fact| {
+            ThemeRouteCutoverReceipt::seal(fact, artifact_digest, native_artifact_digest)
+        })
         .collect()
 }
 
@@ -862,6 +936,7 @@ pub(crate) fn seal_theme_route_cutover_receipts(
 pub struct ThemeRouteCutoverInventoryError {
     family_id: DiagramFamilyId,
     target: ThemeTarget,
+    selector: ThemeRouteCutoverSelector,
     facet: ThemeRouteCutoverFacet,
 }
 
@@ -870,11 +945,13 @@ impl ThemeRouteCutoverInventoryError {
     pub(crate) const fn missing_projections(
         family_id: DiagramFamilyId,
         target: ThemeTarget,
+        selector: ThemeRouteCutoverSelector,
         facet: ThemeRouteCutoverFacet,
     ) -> Self {
         Self {
             family_id,
             target,
+            selector,
             facet,
         }
     }
@@ -885,9 +962,10 @@ impl fmt::Display for ThemeRouteCutoverInventoryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "typed legacy-replacing route {}/{}/{:?} lacks projection obligations",
+            "typed legacy-replacing route {}/{}/{}/{:?} lacks projection obligations",
             self.family_id,
             self.target.id(),
+            self.selector.id(),
             self.facet
         )
     }
