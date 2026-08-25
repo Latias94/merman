@@ -12,6 +12,12 @@ Most applications should use one of the public packages instead:
 
 ## Features
 
+This crate has no default features by design. Binding artifacts select direct capabilities rather
+than inheriting the Rust facade's `complete-svg` convenience aggregate. In particular,
+`layout-elk` is an explicit EPL-2.0 boundary and `math` brings the separately noticed RaTeX/font
+closure. Feature names describe compile-time inputs; the generated runtime catalog, exact artifact
+recipe, and bundled notices describe the resulting artifact.
+
 - `svg` enables SVG rendering through the main Merman facade.
 - `analysis` enables diagnostics analysis, validation JSON, document facts, and lint rule catalog helpers.
 - `ascii` enables ASCII/Unicode text rendering.
@@ -86,3 +92,10 @@ Diagnostics payloads and rich parser-only document facts are independent contrac
 With `svg` enabled, this crate centralizes the host text-measurement result-shape contract. The current transports expose 19 exact operations with contiguous codes `0..18`; operation 18 is `raw-bbox-height` and requires a length result. The text-measurement protocol remains independently versioned at 1, while the native C ABI, UniFFI binding API, and browser WASM transport each report their own API version through the runtime catalog.
 
 For product scope, diagram coverage, and compatibility policy, see the [project README](https://github.com/Latias94/merman#readme) and [alignment status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
+
+## License And Notices
+
+Merman is available under MIT or Apache-2.0. Binding consumers must also review the selected
+feature closure: ELK is EPL-2.0 and the embedded RaTeX fonts are OFL-1.1. The artifact-specific
+recipe and [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
+are the distribution evidence for those components.

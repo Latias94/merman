@@ -132,7 +132,13 @@
     },
     {
       "id": "cli-default",
-      "description": "The default CLI feature closure, including ELK layout and RaTeX math/font support.",
+      "description": "The default CLI feature closure without ELK, retaining the explicit RaTeX math/font support.",
+      "extends": ["ratex-render"],
+      "components": []
+    },
+    {
+      "id": "cli-release",
+      "description": "The published complete CLI release closure, including explicit ELK and RaTeX math/font support.",
       "extends": ["elk-render", "ratex-render"],
       "components": []
     },

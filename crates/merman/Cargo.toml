@@ -30,6 +30,8 @@ features = [
     "pdf",
     "layout-cytoscape",
     "layout-elk",
+    "complete-svg",
+    "complete-svg-elk",
     "math",
     "system-clock",
     "system-timezone",
@@ -61,9 +63,9 @@ pdf = ["svg", "dep:merman-export", "merman-export/pdf"]
 complete-svg = [
     "svg",
     "layout-cytoscape",
-    "layout-elk",
     "math",
 ]
+complete-svg-elk = ["complete-svg", "layout-elk"]
 
 [dependencies]
 merman-core.workspace = true
@@ -220,4 +222,4 @@ required-features = ["svg"]
 
 [[example]]
 name = "layout_work_calibration"
-required-features = ["complete-svg"]
+required-features = ["complete-svg-elk"]

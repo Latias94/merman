@@ -6,12 +6,15 @@ registry metadata maintained by Homebrew, Scoop, or WinGet.
 
 ## Canonical release profile
 
-The complete CLI is defined by the `cli-release` entry in
-`capabilities/artifact-profiles-v1.json`. The same 19 direct features must appear in three places:
+The complete CLI release is defined by the `cli-release` entry in
+`capabilities/artifact-profiles-v1.json`. Its 19 direct features must match in two places:
 
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
-- the CLI's default feature list, which keeps `cargo install merman-cli` complete and predictable.
+
+The CLI's default feature list intentionally contains the same release capabilities except for
+`layout-elk`. This keeps `cargo install merman-cli` useful without silently adding the EPL-2.0 ELK
+closure; users who need ELK should select it explicitly or use the published release archive.
 
 Both cargo-dist and `cli-release` use Cargo's `dist` profile and disable Cargo default features
 before selecting that explicit list. Run the installation contract before changing a target,
@@ -47,7 +50,7 @@ when quiet, and are removed in `v0.9.0`. The explicit `merman-cli mmdc` command 
 | Direct GitHub archive | cargo-dist `cli-release` binary | Yes, under `completions/` and `man/` | Published release artifact |
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
 | `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
-| `cargo install merman-cli` | crates.io source | No | Complete defaults; custom features supported |
+| `cargo install merman-cli` | crates.io source | No | Default capabilities without ELK; custom features supported |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
 | Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
 | Scoop candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |

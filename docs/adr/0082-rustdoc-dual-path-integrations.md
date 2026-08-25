@@ -14,7 +14,10 @@ cost, while the complete default also carries Cytoscape, ELK, and math.
 
 Some users prefer that ergonomics. Published libraries and dependency-sensitive workspaces often
 need the opposite contract: Rustdoc should consume static files without compiling or executing any
-Merman package. docs.rs also cannot be relied on to install or run an external generator.
+Merman package. docs.rs also cannot be relied on to install or run an external generator. The
+`complete-svg` default now carries the base deterministic SVG, Cytoscape layout, and math closure;
+the optional ELK implementation is selected separately by `complete-svg-elk` when a documentation
+artifact accepts its EPL-2.0 notice boundary.
 
 ## Decision
 

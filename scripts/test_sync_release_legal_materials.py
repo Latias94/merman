@@ -99,7 +99,7 @@ class ReleaseLegalMaterialTests(unittest.TestCase):
                 / "playground/public/THIRD_PARTY_LICENSES/npm-production-dependencies.txt"
             )
             external.parent.mkdir(parents=True)
-            external.write_text("generated npm report\n", encoding="utf-8")
+            external.write_bytes(b"generated npm report\n")
             expected = sync.expected_projections(root)
 
             sync.write_projections(root, expected)
@@ -109,19 +109,16 @@ class ReleaseLegalMaterialTests(unittest.TestCase):
 
 
 def seed_root(root: Path) -> None:
-    (root / "LICENSE-MIT").write_text("MIT\n", encoding="utf-8")
-    (root / "LICENSE-APACHE").write_text("Apache\n", encoding="utf-8")
-    (root / "THIRD_PARTY_NOTICES.md").write_text("Notices\n", encoding="utf-8")
+    (root / "LICENSE-MIT").write_bytes(b"MIT\n")
+    (root / "LICENSE-APACHE").write_bytes(b"Apache\n")
+    (root / "THIRD_PARTY_NOTICES.md").write_bytes(b"Notices\n")
     licenses = root / "THIRD_PARTY_LICENSES"
     licenses.mkdir()
-    (licenses / "rust-cargo-dependencies.json").write_text(
-        "workspace report\n",
-        encoding="utf-8",
-    )
+    (licenses / "rust-cargo-dependencies.json").write_bytes(b"workspace report\n")
     for bundle_root, report_path in sync.NATIVE_RUST_REPORTS.items():
         path = root / report_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"{bundle_root} exact report\n", encoding="utf-8")
+        path.write_bytes(f"{bundle_root} exact report\n".encode())
     components = []
     component_ids = sorted(
         {
@@ -133,7 +130,7 @@ def seed_root(root: Path) -> None:
     for component_id in component_ids:
         license_file = licenses / component_id / "LICENSE"
         license_file.parent.mkdir()
-        license_file.write_text(f"{component_id} terms\n", encoding="utf-8")
+        license_file.write_bytes(f"{component_id} terms\n".encode())
         components.append(
             {
                 "id": component_id,
@@ -155,7 +152,7 @@ def seed_root(root: Path) -> None:
         )
     contract = root / "docs/release/THIRD_PARTY_COMPONENTS.json"
     contract.parent.mkdir(parents=True)
-    contract.write_text(json.dumps({"components": components}), encoding="utf-8")
+    contract.write_bytes(json.dumps({"components": components}).encode())
 
 
 if __name__ == "__main__":

@@ -389,6 +389,27 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("ascii", capabilities)
         self.assertTrue(inherits("web-full", "ascii-render"))
 
+    def test_cli_scopes_separate_default_and_release_elk_closures(self) -> None:
+        contract = json.loads(
+            (REPOSITORY_ROOT / "docs/release/THIRD_PARTY_COMPONENTS.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        scopes = {scope["id"]: scope for scope in contract["artifact_scopes"]}
+
+        def resolved(scope_id: str) -> set[str]:
+            result = set(scopes[scope_id]["components"])
+            for parent in scopes[scope_id]["extends"]:
+                result.update(resolved(parent))
+            return result
+
+        self.assertNotIn("eclipse-elk", resolved("cli-default"))
+        self.assertNotIn("elkjs", resolved("cli-default"))
+        self.assertIn("eclipse-elk", resolved("cli-release"))
+        self.assertIn("elkjs", resolved("cli-release"))
+        self.assertIn("katex-fonts", resolved("cli-default"))
+        self.assertIn("katex-fonts", resolved("cli-release"))
+
     def test_every_web_scope_owns_one_exact_rust_dependency_report(self) -> None:
         contract = json.loads(
             (REPOSITORY_ROOT / "docs/release/THIRD_PARTY_COMPONENTS.json").read_text(

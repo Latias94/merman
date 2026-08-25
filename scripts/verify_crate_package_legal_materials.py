@@ -64,6 +64,7 @@ def required_legal_paths(package: dict[str, Any]) -> set[str]:
 
 
 def verify_package_listing(package: dict[str, Any], listing: set[str]) -> None:
+    listing = {path.replace("\\", "/") for path in listing}
     missing = required_legal_paths(package) - listing
     if missing:
         raise PackageLegalMaterialError(
@@ -108,7 +109,13 @@ def package_listing(name: str) -> set[str]:
         stderr=subprocess.PIPE,
         text=True,
     )
-    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    # Cargo prints platform-native separators; normalize before comparing with
+    # the portable package-relative paths derived from ``Path.as_posix()``.
+    return {
+        line.strip().replace("\\", "/")
+        for line in result.stdout.splitlines()
+        if line.strip()
+    }
 
 
 def verify_repository() -> int:

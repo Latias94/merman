@@ -99,7 +99,10 @@ inclusion, Git rollback, and migration from this attribute form.
 
 ## Choose The Renderer Closure
 
-The default feature is `complete-svg`: deterministic SVG rendering with Cytoscape layout, ELK layout, and math. It does not enable host clock, time-zone, random, or timing adapters.
+The default feature is `complete-svg`: deterministic SVG rendering with Cytoscape layout and math.
+It intentionally does not enable the optional EPL-2.0 ELK implementation or host clock, time-zone,
+random, or timing adapters. Use `complete-svg-elk` only when the published artifact is prepared
+with the corresponding ELK notices and source provenance.
 
 Use a smaller closure when the documented diagrams need only the base SVG renderer:
 
@@ -110,7 +113,8 @@ merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, feature
 
 | Feature | Adds |
 | --- | --- |
-| `complete-svg` | `svg`, Cytoscape layout, ELK layout, and math |
+| `complete-svg` | `svg`, Cytoscape layout, and math |
+| `complete-svg-elk` | `complete-svg` plus the ELK layout implementation and its EPL-2.0 closure |
 | `svg` | Base deterministic SVG renderer |
 | `layout-cytoscape` | Architecture and other Cytoscape-backed layouts; implies `svg` |
 | `layout-elk` | ELK-backed layouts; implies `svg` |
@@ -238,12 +242,18 @@ cargo doc --features doc-diagrams
 
 **docs.rs does not render diagrams.** When the dependency is optional, include `features = ["doc-diagrams"]` under `[package.metadata.docs.rs]`.
 
-**A slim build reports a missing capability.** Add `layout-cytoscape`, `layout-elk`, or `math` to the dependency as required, or use the default `complete-svg` profile.
+**A slim build reports a missing capability.** Add `layout-cytoscape` or `math` to the dependency
+as required, use `complete-svg-elk` when the documented diagrams need ELK, or use the default
+`complete-svg` profile for the non-ELK closure.
 
 **A re-export has no rendered diagram.** The upstream item's macro must expand while the upstream docs are built; a downstream re-export cannot render source that was never expanded.
 
-## License
+## License And Notices
 
-Licensed under either Apache-2.0 or MIT at your option.
+Merman's own code is licensed under either Apache-2.0 or MIT at your option. The default
+`complete-svg` closure does not compile ELK; `complete-svg-elk` and any artifact profile that lists
+`layout-elk` additionally carry the EPL-2.0 ELK source closure. Distribute the matching notices and
+source provenance from [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
+with that artifact. Math-enabled builds may also include the OFL-1.1 RaTeX font closure.
 
 The user-facing attribute pattern is inspired by [`aquamarine`](https://github.com/mersinvald/aquamarine). Merman differs by rendering SVG during documentation builds instead of loading Mermaid in the browser.

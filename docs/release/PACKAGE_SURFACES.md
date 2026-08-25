@@ -31,9 +31,11 @@ publication; this repository only validates the external formula after a stable 
 Android, Apple, Python, and Flutter share one default prebuilt native capability SKU: SVG, semantic
 and layout operations, both supported layout engines, ASCII, analysis, validation, and document
 analysis. Math, PNG, JPEG, PDF, and native runtime adapters remain available to custom source
-builds but are not bundled in the default packages. The C ABI crate has no default features, so
-custom embedders can select semantic-only, SVG-only, export-capable, or complete builds. LSP
-remains a separate executable product and is not linked into any native binding artifact.
+builds but are not bundled in the default packages. These platform artifacts intentionally include
+ELK and therefore ship under an artifact-specific notice closure; they are not equivalent to the
+default `merman` Cargo feature. The C ABI crate has no default features, so custom embedders can
+select semantic-only, SVG-only, export-capable, or complete builds. LSP remains a separate
+executable product and is not linked into any native binding artifact.
 
 ## Rustdoc Documentation
 
@@ -147,8 +149,9 @@ Current release semantics are intentionally explicit:
 
 - Cargo features describe positive capabilities; the source of truth for an exact shipped artifact
   is the artifact profile catalog, not historical `full`, `tiny`, or per-diagram feature aliases.
-  The Rust facade keeps only the result-named `complete-svg` convenience aggregate; products and
-  release profiles select direct leaf features.
+  The Rust facade keeps the result-named `complete-svg` convenience aggregate (`svg`, Cytoscape,
+  and math) plus an explicit `complete-svg-elk` opt-in. Products and release profiles select direct
+  leaf features when they need an artifact-specific closure.
 - Native bindings use ABI 3. Hosts must query the generated capability/runtime catalog before
   requesting optional output or a host text-measurement operation, and must reject an ABI mismatch at
   initialization rather than relying on struct layout compatibility.
@@ -172,8 +175,9 @@ describe the loaded artifact precisely.
 
 The C ABI is published as the source-only `merman-ffi` crate. Its `c-abi-native` artifact profile
 continues to build the complete host reference library for ABI and output-path verification, not a
-downloadable default binary SDK. Source users may select `complete-svg`, individual export leaves,
-`native-runtime`, or any other valid direct feature combination.
+downloadable default binary SDK. The binding crates intentionally have no `complete-svg` aggregate:
+source users select direct leaves such as `svg`, `layout-cytoscape`, `layout-elk`, `math`, and
+`native-runtime`, then use the artifact recipe and notices as the legal closure authority.
 
 The corresponding cross-language recipes are intentionally not identical when their interfaces
 differ:

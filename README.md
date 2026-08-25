@@ -106,9 +106,10 @@ silently choosing a different result.
 
 ## Cargo features
 
-The default `merman` dependency enables `complete-svg`: SVG rendering, Cytoscape and ELK layouts,
-and math labels. Analysis, editor APIs, terminal output, binary export, and ambient system adapters
-remain opt-in.
+The default `merman` dependency enables `complete-svg`: SVG rendering, Cytoscape layout, and math
+labels. It intentionally does not pull the optional EPL-2.0 ELK implementation into ordinary Cargo
+dependencies. Analysis, editor APIs, terminal output, binary export, ambient system adapters, and
+ELK remain opt-in.
 
 Cargo features select capabilities and output backends, not Mermaid diagram families. Every
 parser-capable build retains the same language catalog.
@@ -116,6 +117,7 @@ parser-capable build retains the same language catalog.
 | Goal | Cargo selection |
 | --- | --- |
 | Complete deterministic SVG | defaults, or `complete-svg` |
+| Complete SVG plus ELK layout | `default-features = false, features = ["complete-svg-elk"]` |
 | Basic SVG without optional layout engines or math | `default-features = false, features = ["svg"]` |
 | Diagnostics and editor APIs | `default-features = false, features = ["analysis", "editor"]` |
 | Terminal output | `default-features = false, features = ["ascii"]` |
@@ -236,6 +238,9 @@ Merman is available under the [Apache License 2.0](LICENSE-APACHE) or [MIT Licen
 Source translations, fixtures, embedded resources, behavioral references, and their exact
 revisions are recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and the
 [machine-readable component inventory](docs/release/THIRD_PARTY_COMPONENTS.json).
+The crate-level `MIT OR Apache-2.0` grant describes Merman's own code; a shipped artifact's actual
+notice set follows its selected Cargo features and artifact profile. In particular, ELK is an
+explicit EPL-2.0 closure and math may include OFL-1.1 font data.
 
 Merman is independent of, and not affiliated with, endorsed by, or sponsored by the Mermaid
 project or its maintainers.

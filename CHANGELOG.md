@@ -10,6 +10,11 @@ The next workspace release remains in development. This section records only com
 
 ### Breaking changes
 
+- Changed the `merman` and `merman-rustdoc` `complete-svg` aggregate to include SVG, Cytoscape
+  layout, and math without the optional ELK implementation. Applications that require ELK must
+  select the new `complete-svg-elk` aggregate (or the direct `layout-elk` leaf) and distribute the
+  EPL-2.0 notices and source provenance. The CLI source default likewise omits ELK, while the
+  published `cli-release` archive retains it with its artifact-specific legal bundle.
 - Removed Merman's parser-emitted `EditorLexeme*` API, mixed token planner, generated semantic-token
   descriptor, packed token-equivalence evidence, and Web/WASM semantic-token methods. The Web
   editor transport advances to API `5`; completion, hover, diagnostics, navigation, and safe rename

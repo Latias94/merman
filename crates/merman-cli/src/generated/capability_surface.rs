@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:6fc240249551b141cf50f475a7ed89d3787c0b5f9636007f54c6ef555870a9c4";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -617,7 +617,7 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         kind: "tool",
         description: "Compile checked static Mermaid fragment generation for Rustdoc.",
         targets: &[TargetKey::Native, ],
-        implications: &[CapabilityKey::LayoutCytoscape, CapabilityKey::LayoutElk, CapabilityKey::Markdown, CapabilityKey::Math, ],
+        implications: &[CapabilityKey::LayoutCytoscape, CapabilityKey::Markdown, CapabilityKey::Math, ],
     },
     CapabilityDescriptor {
         key: CapabilityKey::ShellCompletions,

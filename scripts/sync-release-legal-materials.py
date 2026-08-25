@@ -265,9 +265,9 @@ def check_projections(root: Path, expected: dict[Path, bytes]) -> list[str]:
     failures: list[str] = []
     for path, expected_bytes in sorted(expected.items()):
         if not path.is_file():
-            failures.append(f"missing projection: {path.relative_to(root)}")
+            failures.append(f"missing projection: {display_relative_path(root, path)}")
         elif path.read_bytes() != expected_bytes:
-            failures.append(f"stale projection: {path.relative_to(root)}")
+            failures.append(f"stale projection: {display_relative_path(root, path)}")
 
     for directory in owned_directories(root):
         if not directory.exists():
@@ -280,8 +280,16 @@ def check_projections(root: Path, expected: dict[Path, bytes]) -> list[str]:
             if (root / relative).is_relative_to(directory)
         }
         for path in sorted(actual_files - expected_files - allowed_external):
-            failures.append(f"unexpected projection file: {path.relative_to(root)}")
+            failures.append(
+                f"unexpected projection file: {display_relative_path(root, path)}"
+            )
     return failures
+
+
+def display_relative_path(root: Path, path: Path) -> str:
+    """Return stable POSIX paths in diagnostics on every host."""
+
+    return path.relative_to(root).as_posix()
 
 
 def owned_directories(root: Path) -> tuple[Path, ...]:

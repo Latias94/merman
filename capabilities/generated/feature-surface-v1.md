@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:6fc240249551b141cf50f475a7ed89d3787c0b5f9636007f54c6ef555870a9c4`
+Semantic digest: `sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7`
 
 ## Public Leaves
 
@@ -21,7 +21,7 @@ Semantic digest: `sha256:6fc240249551b141cf50f475a7ed89d3787c0b5f9636007f54c6ef5
 | `parallel-markdown` | `Tool` | `native` | none | Compile parallel CLI Markdown batch processing. |
 | `pdf` | `Output` | `native` | none | Export rendered diagrams as PDF. |
 | `png` | `Output` | `native` | none | Export rendered diagrams as PNG. |
-| `rustdoc` | `Tool` | `native` | `layout-cytoscape`, `layout-elk`, `markdown`, `math` | Compile checked static Mermaid fragment generation for Rustdoc. |
+| `rustdoc` | `Tool` | `native` | `layout-cytoscape`, `markdown`, `math` | Compile checked static Mermaid fragment generation for Rustdoc. |
 | `shell-completions` | `Tool` | `native` | none | Compile CLI shell completion generation. |
 | `svg` | `Output` | `native`, `web`, `typst` | none | Render Mermaid input as SVG. |
 | `system-clock` | `Adapter` | `native` | none | Compile the native system clock adapter. |

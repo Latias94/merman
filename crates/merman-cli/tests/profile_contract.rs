@@ -39,6 +39,27 @@ const ALL_OPTIONAL_COMMANDS: &[&str] = &[
     "rustdoc",
 ];
 
+const DEFAULT_CAPABILITIES: &[&str] = &[
+    "analysis",
+    "ascii",
+    "icons",
+    "jpeg",
+    "layout-cytoscape",
+    "markdown",
+    "math",
+    "network-icons",
+    "parallel-markdown",
+    "pdf",
+    "png",
+    "rustdoc",
+    "shell-completions",
+    "svg",
+    "system-clock",
+    "system-random",
+    "system-timezone",
+    "system-timing",
+];
+
 const RELEASE_CAPABILITIES: &[&str] = &[
     "analysis",
     "ascii",
@@ -177,21 +198,15 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         "cytoscape-layout" => vec!["layout-cytoscape", "svg"],
         "elk-layout" => vec!["layout-elk", "svg"],
         "math" => vec!["math", "svg"],
-        "rustdoc" => vec![
-            "layout-cytoscape",
-            "layout-elk",
-            "markdown",
-            "math",
-            "rustdoc",
-            "svg",
-        ],
+        "rustdoc" => vec!["layout-cytoscape", "markdown", "math", "rustdoc", "svg"],
         "completions" => vec!["shell-completions"],
         "svg-completions" => vec!["shell-completions", "svg"],
         "system-clock" => vec!["system-clock"],
         "system-timezone" => vec!["system-timezone"],
         "system-random" => vec!["system-random"],
         "system-timing" => vec!["system-timing"],
-        "default" | "release" => RELEASE_CAPABILITIES.to_vec(),
+        "default" => DEFAULT_CAPABILITIES.to_vec(),
+        "release" => RELEASE_CAPABILITIES.to_vec(),
         "auto" => compiled_capabilities_for_auto_detection(),
         other => panic!("unknown {CASE_ENV} value {other:?}"),
     }
@@ -384,7 +399,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
     );
     assert_eq!(payload["outputs"], json!(expected_outputs));
 
-    if matches!(case, "default" | "release") {
+    if case == "release" {
         let release = profiles["profiles"]
             .as_array()
             .expect("artifact profiles")
@@ -394,7 +409,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
         assert_eq!(
             release["expected"]["capabilities"],
             json!(expected_ids),
-            "Cargo defaults and the release row must follow cli-release"
+            "the release feature matrix must follow cli-release"
         );
         assert_eq!(
             release["expected"]["outputs"],
@@ -1216,6 +1231,32 @@ fn workflow_release() {
     }
 }
 
+fn workflow_default() {
+    workflow_base();
+    workflow_analysis();
+    workflow_svg();
+    workflow_ascii();
+    workflow_local_icons();
+    workflow_batch("svg", None);
+    workflow_network_icons();
+    workflow_raster("png", b"\x89PNG\r\n\x1a\n");
+    workflow_raster("jpg", &[0xff, 0xd8, 0xff]);
+    workflow_raster("pdf", b"%PDF-");
+    workflow_batch("pdf", Some("2"));
+    workflow_cytoscape();
+    workflow_math();
+    workflow_rustdoc();
+    workflow_completions();
+    for flag in [
+        "--system-clock",
+        "--system-timezone",
+        "--system-random",
+        "--system-timing",
+    ] {
+        workflow_adapter(flag);
+    }
+}
+
 fn workflow_auto() {
     workflow_base();
     #[cfg(feature = "analysis")]
@@ -1284,7 +1325,8 @@ fn execute_primary_workflow(case: &str) {
         "system-timezone" => workflow_adapter("--system-timezone"),
         "system-random" => workflow_adapter("--system-random"),
         "system-timing" => workflow_adapter("--system-timing"),
-        "default" | "release" => workflow_release(),
+        "default" => workflow_default(),
+        "release" => workflow_release(),
         "auto" => workflow_auto(),
         other => panic!("unknown {CASE_ENV} value {other:?}"),
     }

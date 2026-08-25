@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:6fc240249551b141cf50f475a7ed89d3787c0b5f9636007f54c6ef555870a9c4" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7" as const;
 
 export const TARGETS = [
   {
@@ -161,7 +161,6 @@ export const CAPABILITIES = [
     ],
     "implications": [
       "layout-cytoscape",
-      "layout-elk",
       "markdown",
       "math"
     ]

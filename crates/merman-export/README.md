@@ -21,7 +21,8 @@ The crate has no default features. Enable only the formats the application emits
 
 ## First Export
 
-The `merman` facade owns the shortest source-to-output path. This dependency enables PNG and its required basic SVG path without the default `complete-svg` layout and math engines:
+The `merman` facade owns the shortest source-to-output path. This dependency enables PNG and its
+required basic SVG path without Cytoscape, ELK, or math engines:
 
 ```toml
 [dependencies]

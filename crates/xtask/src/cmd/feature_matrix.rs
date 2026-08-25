@@ -38,7 +38,7 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
     "merman-wasm",
 ];
 const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
-    ("merman", &["complete-svg"]),
+    ("merman", &["complete-svg", "complete-svg-elk"]),
     ("merman-analysis", &[]),
     ("merman-android-jni", &["native-runtime"]),
     ("merman-ascii", &[]),
@@ -50,7 +50,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman-ffi", &["native-runtime"]),
     ("merman-lsp", &["stdio"]),
     ("merman-render", &[]),
-    ("merman-rustdoc", &["complete-svg"]),
+    ("merman-rustdoc", &["complete-svg", "complete-svg-elk"]),
     ("merman-typst-plugin", &[]),
     ("merman-uniffi", &["binding-generation", "native-runtime"]),
     ("merman-wasm", &[]),
@@ -72,7 +72,7 @@ const NATIVE_RUNTIME_FORWARDERS: &[(&str, &str)] = &[
     ("merman-ffi", "merman-bindings-core"),
     ("merman-uniffi", "merman-bindings-core"),
 ];
-const PRODUCT_FEATURE_CONTRACTS: usize = 5;
+const PRODUCT_FEATURE_CONTRACTS: usize = 7;
 
 fn transport_packages() -> impl Iterator<Item = &'static str> {
     TRANSPORT_TARGETS.iter().map(|(package, _)| *package)
@@ -85,10 +85,11 @@ fn wasm_transport_packages() -> impl Iterator<Item = &'static str> {
 }
 
 fn complete_svg_features() -> impl Iterator<Item = &'static str> {
-    SVG_ENGINE_FEATURES
-        .iter()
-        .copied()
-        .chain(std::iter::once("svg"))
+    ["layout-cytoscape", "math", "svg"].into_iter()
+}
+
+fn complete_svg_elk_features() -> impl Iterator<Item = &'static str> {
+    ["complete-svg", "layout-elk"].into_iter()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -716,6 +717,17 @@ impl FeatureGraph {
             )));
         }
 
+        let complete_svg_elk = direct_feature_members(facade, "complete-svg-elk")?;
+        let expected_complete_svg_elk = complete_svg_elk_features()
+            .map(|feature| feature.to_string())
+            .collect::<BTreeSet<_>>();
+        if complete_svg_elk != expected_complete_svg_elk {
+            return Err(matrix_error(format!(
+                "{}: `complete-svg-elk` must contain exactly {expected_complete_svg_elk:?}; found {complete_svg_elk:?}",
+                facade.manifest_path.display()
+            )));
+        }
+
         let rustdoc = self.package("merman-rustdoc")?;
         let rustdoc_defaults = direct_feature_members(rustdoc, "default")?;
         if rustdoc_defaults != expected_defaults {
@@ -729,6 +741,14 @@ impl FeatureGraph {
         if rustdoc_complete_svg != expected_complete_svg {
             return Err(matrix_error(format!(
                 "{}: merman-rustdoc `complete-svg` must contain exactly {expected_complete_svg:?}; found {rustdoc_complete_svg:?}",
+                rustdoc.manifest_path.display()
+            )));
+        }
+
+        let rustdoc_complete_svg_elk = direct_feature_members(rustdoc, "complete-svg-elk")?;
+        if rustdoc_complete_svg_elk != expected_complete_svg_elk {
+            return Err(matrix_error(format!(
+                "{}: merman-rustdoc `complete-svg-elk` must contain exactly {expected_complete_svg_elk:?}; found {rustdoc_complete_svg_elk:?}",
                 rustdoc.manifest_path.display()
             )));
         }
@@ -749,9 +769,17 @@ impl FeatureGraph {
             })?;
         let published_features = dist_recipe.features.into_iter().collect::<BTreeSet<_>>();
         let cli_defaults = direct_feature_members(cli, "default")?;
-        if cli_defaults != published_features {
+        if !published_features.contains("layout-elk") {
             return Err(matrix_error(format!(
-                "{}: CLI default must match the published cargo-dist recipe; expected {published_features:?}, found {cli_defaults:?}",
+                "{}: published cargo-dist recipe must retain explicit `layout-elk`; found {published_features:?}",
+                cli.manifest_path.display()
+            )));
+        }
+        let mut expected_cli_defaults = published_features.clone();
+        expected_cli_defaults.remove("layout-elk");
+        if cli_defaults != expected_cli_defaults {
+            return Err(matrix_error(format!(
+                "{}: CLI default must equal the published cargo-dist recipe minus explicit `layout-elk`; expected {expected_cli_defaults:?}, found {cli_defaults:?}",
                 cli.manifest_path.display()
             )));
         }
@@ -1199,13 +1227,34 @@ fn run_host_artifact_case(
 mod tests {
     use super::*;
 
-    const CLI_DEFAULT_FEATURES: &[&str] = &[
+    const CLI_RELEASE_FEATURES: &[&str] = &[
         "analysis",
         "ascii",
         "icons",
         "jpeg",
         "layout-cytoscape",
         "layout-elk",
+        "markdown",
+        "math",
+        "network-icons",
+        "parallel-markdown",
+        "pdf",
+        "png",
+        "rustdoc",
+        "shell-completions",
+        "svg",
+        "system-clock",
+        "system-random",
+        "system-timezone",
+        "system-timing",
+    ];
+
+    const CLI_DEFAULT_FEATURES: &[&str] = &[
+        "analysis",
+        "ascii",
+        "icons",
+        "jpeg",
+        "layout-cytoscape",
         "markdown",
         "math",
         "network-icons",
@@ -1283,20 +1332,16 @@ mod tests {
                 "merman",
                 &[
                     ("default", &["complete-svg"]),
-                    (
-                        "complete-svg",
-                        &["svg", "layout-cytoscape", "layout-elk", "math"],
-                    ),
+                    ("complete-svg", &["svg", "layout-cytoscape", "math"]),
+                    ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
             ),
             package(
                 "merman-rustdoc",
                 &[
                     ("default", &["complete-svg"]),
-                    (
-                        "complete-svg",
-                        &["svg", "layout-cytoscape", "layout-elk", "math"],
-                    ),
+                    ("complete-svg", &["svg", "layout-cytoscape", "math"]),
+                    ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
             ),
             package_with_metadata(
@@ -1305,7 +1350,7 @@ mod tests {
                 serde_json::json!({
                     "dist": {
                         "default-features": false,
-                        "features": CLI_DEFAULT_FEATURES
+                        "features": CLI_RELEASE_FEATURES
                     }
                 }),
             ),
@@ -1402,7 +1447,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_default_must_match_the_published_cargo_dist_recipe() {
+    fn cli_default_must_be_the_release_recipe_without_elk() {
         let mut graph = product_contract_graph();
         graph.packages.get_mut("merman-cli").unwrap().metadata["dist"]["features"] =
             serde_json::json!(["analysis"]);
@@ -1411,7 +1456,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("CLI default must match the published cargo-dist recipe"),
+                .contains("published cargo-dist recipe must retain explicit `layout-elk`"),
             "{error}"
         );
     }
@@ -1452,7 +1497,11 @@ mod tests {
         );
         assert_eq!(
             complete_svg_features().collect::<Vec<_>>(),
-            vec!["layout-cytoscape", "layout-elk", "math", "svg"]
+            vec!["layout-cytoscape", "math", "svg"]
+        );
+        assert_eq!(
+            complete_svg_elk_features().collect::<Vec<_>>(),
+            vec!["complete-svg", "layout-elk"]
         );
     }
 

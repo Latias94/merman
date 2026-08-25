@@ -230,13 +230,20 @@ def validate_repository_contract(root: Path = ROOT) -> list[ResolvedBinstallArti
     profile_features = _require_string_list(
         cargo_profile.get("features"), "cli-release features"
     )
-    feature_sets = {
-        tuple(sorted(values))
-        for values in (default_features, dist_features, profile_features)
-    }
-    if len(feature_sets) != 1:
+    if set(dist_features) != set(profile_features):
         raise InstallationContractError(
-            "CLI defaults, cargo-dist, and cli-release must select the same complete feature set"
+            "cargo-dist and cli-release must select the same complete feature set"
+        )
+    release_features = set(profile_features)
+    default_feature_set = set(default_features)
+    if "layout-elk" not in release_features:
+        raise InstallationContractError(
+            "cli-release must retain explicit layout-elk for the complete release artifact"
+        )
+    expected_default_features = release_features - {"layout-elk"}
+    if default_feature_set != expected_default_features:
+        raise InstallationContractError(
+            "CLI defaults must equal cli-release features minus explicit layout-elk"
         )
 
     dist_table = dist_config.get("dist", {})
