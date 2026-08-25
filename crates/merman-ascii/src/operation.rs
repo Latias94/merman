@@ -5,8 +5,11 @@
 //! ASCII layout and output resource policy.
 
 use crate::error::Result;
+use crate::options::TerminalWidthProfile;
+use crate::output::{AsciiViewportPolicy, OverflowPolicy};
 use crate::resource::{AsciiResourcePolicy, ResourceContext, operation_terminal_error};
 use merman_core::{OperationControl, OperationPhase};
+use unicode_segmentation::UnicodeSegmentation;
 
 const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
 
@@ -15,12 +18,53 @@ const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
 pub(crate) struct AsciiExecution<'a> {
     control: &'a OperationControl,
     resources: &'a AsciiResourcePolicy,
+    viewport: AsciiViewportPolicy,
+    render_ledger: Option<&'a ResourceContext>,
 }
 
 impl<'a> AsciiExecution<'a> {
     /// Creates a projection from the caller-owned operation state.
     pub const fn new(control: &'a OperationControl, resources: &'a AsciiResourcePolicy) -> Self {
-        Self { control, resources }
+        Self {
+            control,
+            resources,
+            viewport: AsciiViewportPolicy::unrestricted(),
+            render_ledger: None,
+        }
+    }
+
+    pub const fn with_viewport(mut self, viewport: AsciiViewportPolicy) -> Self {
+        self.viewport = viewport;
+        self
+    }
+
+    /// Binds the execution to the render-wide ledger owned by the top-level request.
+    ///
+    /// Standalone family tests keep the historical disposable ledger behavior, while a complete
+    /// source-to-output request shares cumulative layout/document admissions with any fallback
+    /// attempt made after the primary projection.
+    pub(crate) const fn with_render_ledger(mut self, ledger: &'a ResourceContext) -> Self {
+        self.render_ledger = Some(ledger);
+        self
+    }
+
+    pub fn admit_graph_extent(self, width: usize, profile: TerminalWidthProfile) -> Result<()> {
+        let Some(max_width) = self.viewport.max_width else {
+            return Ok(());
+        };
+        if width <= max_width || self.viewport.overflow != OverflowPolicy::Error {
+            return Ok(());
+        }
+        match self.viewport.overflow {
+            OverflowPolicy::Error => Err(crate::AsciiError::WidthOverflow {
+                max_width,
+                actual_width: width,
+                profile,
+            }),
+            OverflowPolicy::Fallback | OverflowPolicy::Allow => {
+                unreachable!("non-error overflow policies return above")
+            }
+        }
     }
 
     /// Creates a real, never-cancelled execution projection for crate-local unit tests.
@@ -38,6 +82,9 @@ impl<'a> AsciiExecution<'a> {
 
     /// Creates a new render-wide resource ledger bound to one operation phase.
     pub(crate) fn new_resource_context(self, phase: OperationPhase) -> ResourceContext {
+        if let Some(ledger) = self.render_ledger {
+            return self.resource_context(ledger, phase);
+        }
         let resources = ResourceContext::new(*self.resources);
         self.resource_context(&resources, phase)
     }
@@ -70,6 +117,39 @@ impl<'a> AsciiExecution<'a> {
         self.control
             .terminal_checkpoint_at(phase)
             .map_err(operation_terminal_error)
+    }
+
+    /// Admits a renderer-owned fallback candidate against the same output dimensions used by
+    /// normal finalizers. Fallbacks are plain text today, so encoded bytes equal UTF-8 bytes.
+    pub(crate) fn admit_fallback_output(
+        self,
+        text: &str,
+        profile: TerminalWidthProfile,
+    ) -> Result<()> {
+        let mut document_cells = 0usize;
+        let mut max_grapheme_bytes = 0usize;
+        for line in text.split('\n') {
+            document_cells = document_cells
+                .checked_add(crate::text::display_width_with_profile(line, profile))
+                .ok_or_else(|| {
+                    self.new_resource_context(OperationPhase::Emit)
+                        .overflow(crate::resource::AsciiResourceLimitId::MaxDocumentCells)
+                })?;
+            for grapheme in line.graphemes(true) {
+                max_grapheme_bytes = max_grapheme_bytes.max(grapheme.len());
+            }
+        }
+        let resources = self.new_resource_context(OperationPhase::Emit);
+        resources.charge_document_cells(document_cells)?;
+        resources.check(
+            crate::resource::AsciiResourceLimitId::MaxOutputBytes,
+            text.len(),
+        )?;
+        resources.check(
+            crate::resource::AsciiResourceLimitId::MaxGraphemeBytes,
+            max_grapheme_bytes,
+        )?;
+        self.checkpoint(OperationPhase::Emit)
     }
 
     /// Checks caller-owned cancellation at a bounded cadence inside deterministic long loops.

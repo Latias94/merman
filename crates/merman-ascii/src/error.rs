@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::options::TerminalWidthProfile;
 use crate::resource::AsciiResourceLimitExceeded;
 
 pub type Result<T> = std::result::Result<T, AsciiError>;
@@ -27,6 +28,22 @@ pub enum AsciiError {
     ResourceLimitExceeded(#[from] AsciiResourceLimitExceeded),
     #[error(transparent)]
     OperationResourceTerminal(merman_core::OperationLedgerError),
+    #[error(
+        "ASCII output exceeds requested width: actual {actual_width} cells > maximum {max_width} ({profile:?})"
+    )]
+    WidthOverflow {
+        max_width: usize,
+        actual_width: usize,
+        profile: TerminalWidthProfile,
+    },
+    #[error(
+        "ASCII structured fallback is unavailable for `{diagram_type}` within {max_width} cells (actual {actual_width})"
+    )]
+    FallbackUnavailable {
+        diagram_type: String,
+        max_width: usize,
+        actual_width: usize,
+    },
 }
 
 impl AsciiError {

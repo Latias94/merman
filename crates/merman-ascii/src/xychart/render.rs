@@ -227,7 +227,10 @@ fn render_xychart_diagram_controlled(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let base_resources = ResourceContext::new(*execution.resources());
+    // Start from the execution-owned context so a top-level report shares the render-wide
+    // layout/document ledger with any later fallback attempt. Standalone family tests still get
+    // an isolated context through `AsciiExecution::new_resource_context`.
+    let base_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
     render_xychart_diagram_controlled_with_base(model, options, execution, &base_resources)
 }
 

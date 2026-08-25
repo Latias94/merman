@@ -203,6 +203,7 @@ impl From<merman::Error> for CliError {
 impl From<merman::RenderError> for CliError {
     fn from(error: merman::RenderError) -> Self {
         match error {
+            merman::RenderError::NoDiagram => Self::NoDiagram,
             merman::RenderError::Parse(error) => Self::Diagnostic(error),
             other => Self::Render(other),
         }

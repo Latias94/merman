@@ -62,3 +62,18 @@ SVG target, while keeping its own graph, routing, canvas, character-width, and o
 `max_grid_cells` is a structured ASCII resource quota; cancellation/deadline is a separate
 operation outcome. The public seam is one model-level backend entry, not per-family source
 render helpers.
+
+## 2026-08 viewport/report addendum
+
+The ASCII request boundary now also accepts a provider-neutral terminal-cell viewport through
+`AsciiViewportPolicy`. The policy is intentionally separate from `AsciiRenderOptions`: callers own
+the requested width and choose `Allow`, `Fallback`, or `Error`, while the renderer owns display-cell
+measurement, complete typed fallback selection, and terminal-safe diagnostics. `AsciiOutput` is the
+canonical renderer/facade result; the named string helpers are projections of its `text` field.
+
+`Fallback` is not clipping, ellipsis, source disclosure, or a resource recovery path. It makes at
+most one typed-model fallback attempt and reports the stable `primary_overflow` reason when that
+attempt is selected. It returns `FallbackUnavailable` when the family cannot
+preserve the required fields within the bound. Resource and cancellation errors retain their
+existing precedence and never become fallback reports. `AsciiLayoutProfile::Compact` is an explicit
+opt-in candidate; canonical geometry and the Issue #53 pre-layout label wrapping remain the default.

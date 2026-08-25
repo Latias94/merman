@@ -18,6 +18,10 @@ pub struct TerminalDiagnosticDetails {
     pub span_kind: Option<merman_core::ParseDiagnosticSpanKind>,
     pub field: Option<String>,
     pub diagram_type: Option<String>,
+    pub requested_max_width: Option<usize>,
+    pub actual_width: Option<usize>,
+    pub width_profile: Option<String>,
+    pub fallback_reason: Option<String>,
 }
 
 /// Bounded terminal-safe projection of a core parser error.
@@ -180,6 +184,10 @@ fn safe_parse_details(error: &merman_core::Error) -> TerminalDiagnosticDetails {
         span_kind: None,
         field: None,
         diagram_type: None,
+        requested_max_width: None,
+        actual_width: None,
+        width_profile: None,
+        fallback_reason: None,
     };
     match error {
         merman_core::Error::OperationCancelled(_) => {
@@ -233,6 +241,10 @@ fn runtime_policy_details() -> TerminalDiagnosticDetails {
         span_kind: None,
         field: None,
         diagram_type: None,
+        requested_max_width: None,
+        actual_width: None,
+        width_profile: None,
+        fallback_reason: None,
     }
 }
 

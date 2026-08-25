@@ -20,6 +20,7 @@ mod kanban;
 mod mindmap;
 mod operation;
 mod options;
+mod output;
 mod packet;
 mod relation_graph;
 mod resource;
@@ -41,7 +42,14 @@ pub use capability::{
 };
 pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
-pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions, TerminalWidthProfile};
+pub use options::{
+    AsciiCharset, AsciiDirection, AsciiLayoutProfile, AsciiRenderOptions, TerminalWidthProfile,
+};
+pub use output::{
+    ASCII_OUTPUT_SCHEMA_VERSION, AsciiExtent, AsciiFallbackCapability, AsciiFallbackReason,
+    AsciiOutput, AsciiOutputOutcome, AsciiOverflowPolicy, AsciiProjection, AsciiTrimPolicy,
+    AsciiViewportPolicy, FallbackMetadata, Lossiness, OverflowPolicy,
+};
 pub use resource::{
     ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiResourceLimitCause,
     AsciiResourceLimitDescriptor, AsciiResourceLimitExceeded, AsciiResourceLimitId,
@@ -69,10 +77,34 @@ use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::runtime::OperationContext;
+use merman_core::{MermaidConfig, ParseMetadata};
 
 #[derive(Debug, Clone, Default)]
 pub struct AsciiRenderer {
     options: AsciiRenderOptions,
+}
+
+struct AsciiRenderRequest<'a> {
+    viewport: AsciiViewportPolicy,
+    control: &'a merman_core::OperationControl,
+    context: &'a OperationContext,
+    resources: AsciiResourcePolicy,
+}
+
+impl<'a> AsciiRenderRequest<'a> {
+    const fn new(
+        viewport: AsciiViewportPolicy,
+        control: &'a merman_core::OperationControl,
+        context: &'a OperationContext,
+        resources: AsciiResourcePolicy,
+    ) -> Self {
+        Self {
+            viewport,
+            control,
+            context,
+            resources,
+        }
+    }
 }
 
 impl AsciiRenderer {
@@ -87,8 +119,8 @@ impl AsciiRenderer {
 
     /// Renders a typed model using caller-owned operation control, runtime context, and resources.
     ///
-    /// This is the crate's only public rendering entrypoint. It never creates a replacement
-    /// operation, deadline, runtime context, or resource policy.
+    /// This convenience entrypoint projects the canonical report down to text. It never creates
+    /// a replacement operation, deadline, runtime context, or resource policy.
     pub fn render_model(
         &self,
         model: &RenderSemanticModel,
@@ -100,10 +132,129 @@ impl AsciiRenderer {
         render_model_with_execution(
             model,
             None,
-            &self.options,
+            &self.options.effective_layout(),
             execution,
             context.local_time_zone(),
         )
+    }
+
+    /// Renders a typed model and returns logical extent/projection/overflow metadata.
+    pub fn render_model_report(
+        &self,
+        model: &RenderSemanticModel,
+        viewport: AsciiViewportPolicy,
+        control: &merman_core::OperationControl,
+        context: &OperationContext,
+        resources: AsciiResourcePolicy,
+    ) -> Result<AsciiOutput> {
+        let metadata = ParseMetadata {
+            diagram_type: model.kind().to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        };
+        self.render_report(
+            model,
+            None,
+            &metadata,
+            AsciiRenderRequest::new(viewport, control, context, resources),
+        )
+    }
+
+    fn render_report(
+        &self,
+        model: &RenderSemanticModel,
+        flowchart_context: Option<&FlowchartRenderContext>,
+        metadata: &ParseMetadata,
+        request: AsciiRenderRequest<'_>,
+    ) -> Result<AsciiOutput> {
+        let AsciiRenderRequest {
+            viewport,
+            control,
+            context,
+            resources,
+        } = request;
+        viewport.validate()?;
+        let render_ledger = resource::ResourceContext::new(resources);
+        let execution = operation::AsciiExecution::new(control, &resources)
+            .with_viewport(viewport)
+            .with_render_ledger(&render_ledger);
+        let options = self.options.effective_layout();
+        let rendered = render_model_with_execution(
+            model,
+            flowchart_context,
+            &options,
+            execution,
+            context.local_time_zone(),
+        )?;
+        let projection = output::projection_for(model, &rendered);
+        let primary_extent = output::AsciiExtent::measure_with_color_mode(
+            &rendered,
+            options.color_mode,
+            options.terminal_width_profile,
+        );
+        let overflowed = viewport
+            .max_width
+            .is_some_and(|max_width| primary_extent.width > max_width);
+        if overflowed && viewport.overflow == output::OverflowPolicy::Fallback {
+            if !output::supports_structured_fallback(model) {
+                return Err(AsciiError::FallbackUnavailable {
+                    diagram_type: model.kind().to_string(),
+                    max_width: viewport.max_width.expect("fallback requires a width bound"),
+                    actual_width: primary_extent.width,
+                });
+            }
+            if projection == AsciiProjection::StructuredText {
+                return output::build_structured_fallback(
+                    model.kind(),
+                    rendered,
+                    primary_extent,
+                    output::OutputBuildContext {
+                        color_mode: options.color_mode,
+                        profile: options.terminal_width_profile,
+                        layout_profile: options.layout_profile,
+                        policy: viewport,
+                        execution,
+                    },
+                );
+            }
+            return output::build_semantic_fallback(
+                model,
+                metadata,
+                primary_extent,
+                output::OutputBuildContext {
+                    color_mode: options.color_mode,
+                    profile: options.terminal_width_profile,
+                    layout_profile: options.layout_profile,
+                    policy: viewport,
+                    execution,
+                },
+            );
+        }
+        // Fallback text is currently emitted as plain terminal text. Keep the report honest for
+        // ANSI/HTML requests: the family may have a semantic fallback in principle, but this
+        // request cannot admit that projection without a dedicated role-aware encoder.
+        let fallback_capability = options.color_mode == color::AsciiColorMode::Plain
+            && output::supports_structured_fallback(model);
+        let mut output = output::build_output(
+            model.kind(),
+            rendered,
+            projection,
+            primary_extent,
+            output::OutputBuildContext {
+                color_mode: options.color_mode,
+                profile: options.terminal_width_profile,
+                layout_profile: options.layout_profile,
+                policy: viewport,
+                execution,
+            },
+        )?;
+        output.fallback.capability = if fallback_capability {
+            output::AsciiFallbackCapability::Available
+        } else {
+            output::AsciiFallbackCapability::Unsupported
+        };
+        Ok(output)
     }
 
     /// Renders one parser-owned model together with its render-only semantic context.
@@ -119,9 +270,27 @@ impl AsciiRenderer {
         render_model_with_execution(
             parsed.model(),
             parsed.flowchart_render_context(),
-            &self.options,
+            &self.options.effective_layout(),
             execution,
             context.local_time_zone(),
+        )
+    }
+
+    /// Renders a parser-owned model and returns logical extent/projection/overflow metadata.
+    #[doc(hidden)]
+    pub fn render_parsed_report(
+        &self,
+        parsed: &ParsedDiagramRender,
+        viewport: AsciiViewportPolicy,
+        control: &merman_core::OperationControl,
+        context: &OperationContext,
+        resources: AsciiResourcePolicy,
+    ) -> Result<AsciiOutput> {
+        self.render_report(
+            parsed.model(),
+            parsed.flowchart_render_context(),
+            parsed.metadata(),
+            AsciiRenderRequest::new(viewport, control, context, resources),
         )
     }
 }
@@ -204,9 +373,8 @@ fn render_flowchart_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let base_resources = resource::ResourceContext::new(*execution.resources());
     let mut semantic_resources =
-        execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+        execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let graph = graph::from_flowchart_model_with_execution(
         model,
         render_context,
@@ -286,7 +454,7 @@ fn render_sequence_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let mut resources = resource::ResourceContext::new(*execution.resources());
+    let mut resources = execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let diagram = sequence::from_sequence_model(
         model,
         options.terminal_width_profile,
@@ -308,9 +476,8 @@ fn render_state_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let base_resources = resource::ResourceContext::new(*execution.resources());
     let mut semantic_resources =
-        execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+        execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let graph = state::from_state_model_with_context_and_execution(
         model,
         options.terminal_width_profile,

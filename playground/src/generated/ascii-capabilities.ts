@@ -223,7 +223,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "Flowchart / graph",
     "semantic_coverage": "partial",
     "primary_projection": "diagrammatic",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "partial",
     "supported_semantics": [
       "root directions",
@@ -268,7 +268,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "Gantt",
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "summary",
     "supported_semantics": [
       "titles",
@@ -307,7 +307,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "GitGraph",
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "summary",
     "supported_semantics": [
       "commits",
@@ -380,7 +380,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "Journey",
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "summary",
     "supported_semantics": [
       "sections",
@@ -410,7 +410,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "Kanban",
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "summary",
     "supported_semantics": [
       "columns",
@@ -445,7 +445,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "Mindmap",
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "summary",
     "supported_semantics": [
       "hierarchical nodes",
@@ -481,7 +481,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "Packet",
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "summary",
     "supported_semantics": [
       "bit ranges",
@@ -625,7 +625,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "Sequence",
     "semantic_coverage": "partial",
     "primary_projection": "diagrammatic",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "partial",
     "supported_semantics": [
       "participants",
@@ -668,7 +668,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "State",
     "semantic_coverage": "partial",
     "primary_projection": "diagrammatic",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "partial",
     "supported_semantics": [
       "states",
@@ -706,7 +706,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "Timeline",
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "summary",
     "supported_semantics": [
       "sections",
@@ -737,7 +737,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "display_name": "TreeView",
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
-    "structured_text_fallback": false,
+    "structured_text_fallback": true,
     "support_level": "summary",
     "supported_semantics": [
       "hierarchical outline order",

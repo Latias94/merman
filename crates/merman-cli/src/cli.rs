@@ -1424,6 +1424,15 @@ pub(crate) struct TextOutputCliArgs {
     )]
     pub(crate) ascii_width_profile: Option<TextWidthProfile>,
 
+    /// Flowchart node-label wrap width in terminal display cells.
+    #[arg(
+        long = "ascii-flowchart-node-label-wrap-width",
+        value_parser = parse_positive_usize,
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_flowchart_wrap_width: Option<usize>,
+
     /// Override the default graph direction when Mermaid input omits one.
     #[arg(
         long = "ascii-direction",
@@ -1477,6 +1486,51 @@ pub(crate) struct TextOutputCliArgs {
         hide_short_help = true
     )]
     pub(crate) ascii_max_grid_cells: Option<usize>,
+
+    /// Maximum terminal display-cell width for ASCII/Unicode output.
+    #[arg(
+        long = "ascii-max-width",
+        value_parser = parse_positive_usize,
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_max_width: Option<usize>,
+
+    /// Width overflow behavior for ASCII/Unicode output.
+    #[arg(
+        long = "ascii-overflow",
+        value_enum,
+        default_value = "allow",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_overflow: TextOverflowPolicy,
+
+    /// Remove renderer-owned trailing spaces from emitted text rows.
+    #[arg(
+        long = "ascii-trim-trailing-spaces",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_trim_trailing_spaces: bool,
+
+    /// Select the canonical or opt-in compact ASCII layout profile.
+    #[arg(
+        long = "ascii-layout-profile",
+        value_enum,
+        default_value = "canonical",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_layout_profile: TextLayoutProfile,
+
+    /// Emit the canonical ASCII report JSON instead of text bytes.
+    #[arg(
+        long = "ascii-report",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_report: bool,
 }
 
 #[cfg(feature = "ascii")]
@@ -1498,6 +1552,23 @@ pub(crate) enum TextWidthProfile {
 pub(crate) enum TextDirection {
     LeftRight,
     TopDown,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub(crate) enum TextOverflowPolicy {
+    #[default]
+    Allow,
+    Fallback,
+    Error,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub(crate) enum TextLayoutProfile {
+    #[default]
+    Canonical,
+    Compact,
 }
 
 #[cfg(feature = "ascii")]

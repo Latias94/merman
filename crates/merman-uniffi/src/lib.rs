@@ -11,9 +11,9 @@
 use merman::OperationControl;
 use merman_bindings_core::BindingEngineServices;
 use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
-    BindingError, BindingErrorKind, BindingOperationMetadata, BindingOutputPlan, BindingStatus,
-    OperationKey, ValidatedArtifactContract,
+    BindingAsciiOutputPlan, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError,
+    BindingEngineAdmissionMode, BindingError, BindingErrorKind, BindingOperationMetadata,
+    BindingOutputPlan, BindingStatus, OperationKey, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
@@ -94,6 +94,10 @@ pub struct MermanDiagnosticErrorDetails {
     pub span: Option<MermanDiagnosticSpan>,
     pub field: Option<String>,
     pub diagram_type: Option<String>,
+    pub requested_max_width: Option<u64>,
+    pub actual_width: Option<u64>,
+    pub width_profile: Option<String>,
+    pub fallback_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -143,6 +147,10 @@ impl MermanError {
                 }),
                 field: details.field.clone(),
                 diagram_type: details.diagram_type.clone(),
+                requested_max_width: details.requested_max_width,
+                actual_width: details.actual_width,
+                width_profile: details.width_profile.clone(),
+                fallback_reason: details.fallback_reason.clone(),
             });
         let icon_registry =
             error
@@ -313,6 +321,27 @@ pub struct MermanPdfFilterImagesOutputPlan {
     pub limited: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MermanAsciiOutputPlan {
+    pub schema_version: u16,
+    pub family: String,
+    pub projection: String,
+    pub primary_width: u64,
+    pub primary_height: u64,
+    pub emitted_width: u64,
+    pub emitted_height: u64,
+    pub width_profile: String,
+    pub layout_profile: String,
+    pub requested_max_width: Option<u64>,
+    pub overflowed: bool,
+    pub outcome: String,
+    pub fallback_capability: String,
+    pub fallback_attempted: bool,
+    pub fallback_reason: Option<String>,
+    pub trimmed: bool,
+    pub lossiness: String,
+}
+
 /// Open output-plan projection for foreign languages.
 ///
 /// Consumers switch on `kind`. Known payloads are optional conveniences; future kinds remain
@@ -323,6 +352,7 @@ pub struct MermanOutputPlan {
     pub raw_json: String,
     pub raster: Option<MermanRasterOutputPlan>,
     pub pdf_filter_images: Option<MermanPdfFilterImagesOutputPlan>,
+    pub ascii: Option<MermanAsciiOutputPlan>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -796,6 +826,14 @@ impl Merman {
         )))
     }
 
+    pub fn render_ascii_result(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<MermanOperationResult, MermanError> {
+        self.execute(operation_request(OperationKey::Ascii, source, options_json))
+    }
+
     pub fn parse_json(
         &self,
         source: String,
@@ -1131,6 +1169,14 @@ impl MermanEngine {
         )))
     }
 
+    pub fn render_ascii_result(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<MermanOperationResult, MermanError> {
+        self.execute(operation_request(OperationKey::Ascii, source, options_json))
+    }
+
     pub fn parse_json(
         &self,
         source: String,
@@ -1432,6 +1478,13 @@ fn uniffi_output_plan(plan: &BindingOutputPlan) -> Result<MermanOutputPlan, Merm
         ))
     })?;
     Ok(match plan {
+        BindingOutputPlan::Ascii(plan) => MermanOutputPlan {
+            kind,
+            raw_json,
+            raster: None,
+            pdf_filter_images: None,
+            ascii: Some(uniffi_ascii_output_plan(plan)),
+        },
         BindingOutputPlan::Raster(plan) => MermanOutputPlan {
             kind,
             raw_json,
@@ -1445,6 +1498,7 @@ fn uniffi_output_plan(plan: &BindingOutputPlan) -> Result<MermanOutputPlan, Merm
                 limited: plan.limited(),
             }),
             pdf_filter_images: None,
+            ascii: None,
         },
         BindingOutputPlan::PdfFilterImages(plan) => MermanOutputPlan {
             kind,
@@ -1458,14 +1512,38 @@ fn uniffi_output_plan(plan: &BindingOutputPlan) -> Result<MermanOutputPlan, Merm
                 effective_image_pixels: plan.effective_image_pixels(),
                 limited: plan.limited(),
             }),
+            ascii: None,
         },
         _ => MermanOutputPlan {
             kind,
             raw_json,
             raster: None,
             pdf_filter_images: None,
+            ascii: None,
         },
     })
+}
+
+fn uniffi_ascii_output_plan(plan: &BindingAsciiOutputPlan) -> MermanAsciiOutputPlan {
+    MermanAsciiOutputPlan {
+        schema_version: plan.schema_version(),
+        family: plan.family().to_string(),
+        projection: plan.projection().to_string(),
+        primary_width: plan.primary_width(),
+        primary_height: plan.primary_height(),
+        emitted_width: plan.emitted_width(),
+        emitted_height: plan.emitted_height(),
+        width_profile: plan.width_profile().to_string(),
+        layout_profile: plan.layout_profile().to_string(),
+        requested_max_width: plan.requested_max_width(),
+        overflowed: plan.overflowed(),
+        outcome: plan.outcome().to_string(),
+        fallback_capability: plan.fallback_capability().to_string(),
+        fallback_attempted: plan.fallback_attempted(),
+        fallback_reason: plan.fallback_reason().map(str::to_owned),
+        trimmed: plan.trimmed(),
+        lossiness: plan.lossiness().to_string(),
+    }
 }
 
 fn binary_operation_output(
@@ -3009,7 +3087,7 @@ mod tests {
             assert_eq!(gantt.support_level, "summary");
             assert_eq!(gantt.semantic_coverage.as_deref(), Some("partial"));
             assert_eq!(gantt.primary_projection, "structured_text");
-            assert!(!gantt.structured_text_fallback);
+            assert!(gantt.structured_text_fallback);
 
             let class = ascii_capabilities
                 .iter()
@@ -3950,6 +4028,10 @@ A@{ icon: "test:rocket", label: "A" }"#
                 }),
                 field: Some("edge".to_string()),
                 diagram_type: Some("flowchart".to_string()),
+                requested_max_width: None,
+                actual_width: None,
+                width_profile: None,
+                fallback_reason: None,
             })
         );
     }

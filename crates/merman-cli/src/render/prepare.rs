@@ -54,6 +54,8 @@ pub(super) struct PreparedTextRender {
     pub(super) renderer: Box<crate::config::ConfiguredRenderer>,
     pub(super) options: merman::ascii::AsciiRenderOptions,
     pub(super) resources: merman::ascii::AsciiResourcePolicy,
+    pub(super) viewport: merman::ascii::AsciiViewportPolicy,
+    pub(super) report: bool,
     pub(super) admission: BackendAdmission,
 }
 
@@ -361,6 +363,8 @@ fn prepare_single(
             destination,
             options,
             resources: legacy_resources,
+            viewport,
+            report,
         } => {
             let options = *options;
             let mut resources = common.resources.ascii_policy();
@@ -389,6 +393,8 @@ fn prepare_single(
                     renderer: Box::new(renderer),
                     options,
                     resources,
+                    viewport,
+                    report,
                     admission,
                 })),
                 publications,

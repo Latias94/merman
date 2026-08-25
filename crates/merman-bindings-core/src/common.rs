@@ -208,6 +208,10 @@ pub struct BindingDiagnosticErrorDetails {
     pub span: Option<BindingDiagnosticSpan>,
     pub field: Option<String>,
     pub diagram_type: Option<String>,
+    pub requested_max_width: Option<u64>,
+    pub actual_width: Option<u64>,
+    pub width_profile: Option<String>,
+    pub fallback_reason: Option<String>,
 }
 
 impl BindingDiagnosticSpan {
@@ -223,6 +227,10 @@ impl BindingDiagnosticErrorDetails {
             span: None,
             field: None,
             diagram_type: None,
+            requested_max_width: None,
+            actual_width: None,
+            width_profile: None,
+            fallback_reason: None,
         }
     }
 
@@ -272,6 +280,14 @@ pub(crate) fn binding_diagnostic_details(
         span,
         field: details.field,
         diagram_type: details.diagram_type,
+        requested_max_width: details
+            .requested_max_width
+            .and_then(|value| u64::try_from(value).ok()),
+        actual_width: details
+            .actual_width
+            .and_then(|value| u64::try_from(value).ok()),
+        width_profile: details.width_profile,
+        fallback_reason: details.fallback_reason,
     }
 }
 
@@ -805,6 +821,13 @@ pub(crate) struct AsciiOptionsJson {
     pub(crate) xychart_horizontal_plot_width: Option<usize>,
     #[serde(default, alias = "relationSummaryDiagnostics")]
     pub(crate) relation_summary_diagnostics: Option<bool>,
+    #[serde(default, alias = "maxWidth")]
+    pub(crate) max_width: Option<usize>,
+    pub(crate) overflow: Option<String>,
+    #[serde(default, alias = "trimTrailingSpaces")]
+    pub(crate) trim_trailing_spaces: Option<bool>,
+    #[serde(default, alias = "layoutProfile")]
+    pub(crate) layout_profile: Option<String>,
 }
 
 #[cfg(feature = "ascii")]

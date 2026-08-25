@@ -88,8 +88,8 @@ fn issue_53_width_matrix_preserves_semantics_and_terminal_extent() {
             fits.windows(2).all(|window| !window[0] || window[1]),
             "width-fit classification must be monotonic for {profile_name}: width={width}, fits={fits:?}"
         );
-        assert_eq!(
-            fits[3], true,
+        assert!(
+            fits[3],
             "the 120-cell characterization bound must contain {profile_name} output"
         );
     }

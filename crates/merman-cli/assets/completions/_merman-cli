@@ -179,12 +179,16 @@ _arguments "${_arguments_options[@]}" : \
 '--hand-drawn-seed=[Stabilize rough/hand-drawn rendering where supported]:HAND_DRAWN_SEED:_default' \
 '--ascii-charset=[Override the text renderer character set]:ASCII_CHARSET:(ascii unicode)' \
 '--ascii-width-profile=[Display-width convention used for terminal text measurement]:ASCII_WIDTH_PROFILE:(unicode cjk)' \
+'--ascii-flowchart-node-label-wrap-width=[Flowchart node-label wrap width in terminal display cells]:ASCII_FLOWCHART_WRAP_WIDTH:_default' \
 '--ascii-direction=[Override the default graph direction when Mermaid input omits one]:ASCII_DIRECTION:(left-right top-down)' \
 '--ascii-color=[Color mode for terminal text output]:ASCII_COLOR:(plain auto ansi16 ansi256 truecolor html)' \
 '--xychart-vertical-plot-height=[XYChart vertical plot height for text output]:XYCHART_VERTICAL_PLOT_HEIGHT:_default' \
 '--xychart-category-band-width=[XYChart category band width for text output]:XYCHART_CATEGORY_BAND_WIDTH:_default' \
 '--xychart-horizontal-plot-width=[XYChart horizontal plot width for text output]:XYCHART_HORIZONTAL_PLOT_WIDTH:_default' \
 '--ascii-max-grid-cells=[Maximum graph grid cells for text route planning]:ASCII_MAX_GRID_CELLS:_default' \
+'--ascii-max-width=[Maximum terminal display-cell width for ASCII/Unicode output]:ASCII_MAX_WIDTH:_default' \
+'--ascii-overflow=[Width overflow behavior for ASCII/Unicode output]:ASCII_OVERFLOW:(allow fallback error)' \
+'--ascii-layout-profile=[Select the canonical or opt-in compact ASCII layout profile]:ASCII_LAYOUT_PROFILE:(canonical compact)' \
 '--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
 constrained\:"Constrained rendering for untrusted or publicly submitted documents"
 trusted-native\:"Local CLI and controlled native batch rendering"
@@ -205,6 +209,8 @@ unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining 
 '--system-random[Use system randomness while keeping other runtime sources deterministic]' \
 '--system-timing[Enable operation timing diagnostics through the compiled system timing adapter]' \
 '--sequence-mirror-actors[Mirror sequence participants below lifelines for ASCII/Unicode output]' \
+'--ascii-trim-trailing-spaces[Remove renderer-owned trailing spaces from emitted text rows]' \
+'--ascii-report[Emit the canonical ASCII report JSON instead of text bytes]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 '-V[Print version]' \

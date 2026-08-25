@@ -30,11 +30,41 @@ pub enum TerminalWidthProfile {
     Cjk,
 }
 
+/// ASCII 布局密度配置。Canonical 保持现有默认几何；Compact 仅作为显式选择的候选配置。
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AsciiLayoutProfile {
+    #[default]
+    Canonical,
+    Compact,
+}
+
+impl AsciiLayoutProfile {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Canonical => "canonical",
+            Self::Compact => "compact",
+        }
+    }
+}
+
+impl TerminalWidthProfile {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unicode => "unicode",
+            Self::Cjk => "cjk",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct AsciiRenderOptions {
     pub charset: AsciiCharset,
     pub terminal_width_profile: TerminalWidthProfile,
+    pub layout_profile: AsciiLayoutProfile,
     pub default_direction: AsciiDirection,
     pub color_mode: AsciiColorMode,
     pub color_theme: AsciiColorTheme,
@@ -50,13 +80,20 @@ pub struct AsciiRenderOptions {
     pub xychart_category_band_width: usize,
     pub xychart_horizontal_plot_width: usize,
     pub relation_summary_diagnostics: bool,
+    pub(crate) layout_overrides: u8,
 }
+
+const OVERRIDE_GRAPH_PADDING_X: u8 = 1 << 0;
+const OVERRIDE_GRAPH_PADDING_Y: u8 = 1 << 1;
+const OVERRIDE_FLOWCHART_WRAP_WIDTH: u8 = 1 << 2;
+const OVERRIDE_SEQUENCE_PARTICIPANT_SPACING: u8 = 1 << 3;
 
 impl Default for AsciiRenderOptions {
     fn default() -> Self {
         Self {
             charset: AsciiCharset::Unicode,
             terminal_width_profile: TerminalWidthProfile::Unicode,
+            layout_profile: AsciiLayoutProfile::Canonical,
             default_direction: AsciiDirection::LeftRight,
             color_mode: AsciiColorMode::Plain,
             color_theme: AsciiColorTheme::default_light(),
@@ -72,6 +109,7 @@ impl Default for AsciiRenderOptions {
             xychart_category_band_width: 3,
             xychart_horizontal_plot_width: 10,
             relation_summary_diagnostics: false,
+            layout_overrides: 0,
         }
     }
 }
@@ -98,6 +136,26 @@ impl AsciiRenderOptions {
         self
     }
 
+    #[must_use]
+    pub fn with_layout_profile(mut self, profile: AsciiLayoutProfile) -> Self {
+        self.layout_profile = profile;
+        self
+    }
+
+    #[must_use]
+    pub fn with_graph_padding_x(mut self, padding: usize) -> Self {
+        self.graph_padding_x = padding;
+        self.layout_overrides |= OVERRIDE_GRAPH_PADDING_X;
+        self
+    }
+
+    #[must_use]
+    pub fn with_graph_padding_y(mut self, padding: usize) -> Self {
+        self.graph_padding_y = padding;
+        self.layout_overrides |= OVERRIDE_GRAPH_PADDING_Y;
+        self
+    }
+
     pub fn with_color_theme(mut self, color_theme: AsciiColorTheme) -> Self {
         self.color_theme = color_theme;
         self
@@ -110,6 +168,14 @@ impl AsciiRenderOptions {
 
     pub fn with_flowchart_node_label_wrap_width(mut self, width: usize) -> Self {
         self.flowchart_node_label_wrap_width = width;
+        self.layout_overrides |= OVERRIDE_FLOWCHART_WRAP_WIDTH;
+        self
+    }
+
+    #[must_use]
+    pub fn with_sequence_participant_spacing(mut self, spacing: usize) -> Self {
+        self.sequence_participant_spacing = spacing;
+        self.layout_overrides |= OVERRIDE_SEQUENCE_PARTICIPANT_SPACING;
         self
     }
 
@@ -131,6 +197,43 @@ impl AsciiRenderOptions {
     pub fn with_relation_summary_diagnostics(mut self, enabled: bool) -> Self {
         self.relation_summary_diagnostics = enabled;
         self
+    }
+
+    /// 应用显式布局 profile 的候选参数，同时保留调用方已经明确覆盖的字段。
+    pub(crate) fn effective_layout(self) -> Self {
+        if self.layout_profile != AsciiLayoutProfile::Compact {
+            return self;
+        }
+        Self {
+            graph_padding_x: if self.layout_overrides & OVERRIDE_GRAPH_PADDING_X == 0 {
+                2
+            } else {
+                self.graph_padding_x
+            },
+            graph_padding_y: if self.layout_overrides & OVERRIDE_GRAPH_PADDING_Y == 0 {
+                2
+            } else {
+                self.graph_padding_y
+            },
+            flowchart_node_label_wrap_width: if self.layout_overrides
+                & OVERRIDE_FLOWCHART_WRAP_WIDTH
+                == 0
+            {
+                24
+            } else {
+                self.flowchart_node_label_wrap_width
+            },
+            sequence_participant_spacing: if self.layout_overrides
+                & OVERRIDE_SEQUENCE_PARTICIPANT_SPACING
+                == 0
+            {
+                3
+            } else {
+                self.sequence_participant_spacing
+            },
+            layout_overrides: self.layout_overrides,
+            ..self
+        }
     }
 
     /// Returns the structural glyph set that can preserve one-cell grid topology.

@@ -209,6 +209,7 @@ fn prepare_graph_render_controlled(
         crate::resource::AsciiResourceLimitId::MaxGridCells,
         extent.cells(),
     )?;
+    execution.admit_graph_extent(width, options.terminal_width_profile)?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let output_transform = OutputTransform::for_direction(graph.direction);
     if !output_transform.is_identity() {
