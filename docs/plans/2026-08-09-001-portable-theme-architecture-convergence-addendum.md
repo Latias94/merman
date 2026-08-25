@@ -30,13 +30,79 @@ record. The current source and generated contract are authoritative for these su
 - The Typst plugin transport is ABI 3 (`TYPST_PLUGIN_ABI_VERSION = 3`). Earlier references in
   this addendum to Typst ABI 2 describe the pre-ABI-3 decision state and must not be used to
   configure or validate the current plugin.
-- KTD17 is manifest version 22 with 126 route authorizations and 142 artifact witnesses. Gantt
-  includes the unqualified aggregate routes plus `Default`, `Active`, `Success`, and `Error`
-  property-local variants; Requirement includes unqualified and `Default`. Gantt `Warning`
-  remains a compatibility residual and is intentionally outside the typed route inventory.
+- The current KTD17 manifest is version 25 with 138 route authorizations and 154 artifact
+  witnesses. Its route authority covers the declared static scalar domain: unqualified routes
+  plus explicitly enumerated static variants. Recent additions include ER `Relation` `Default`,
+  Pie `PieSlice` `Default`, and Class `Node`/`NodeLabel` `Default`; Gantt also includes its
+  unqualified aggregate routes plus `Default`, `Active`, `Success`, and `Error` property-local
+  variants. Gantt `Warning` remains a compatibility residual and is intentionally outside the
+  typed route inventory. These counts describe KTD17 authority only, not complete theme coverage.
 - The acceptance manifest remains an independent, reviewed authority. It is reconciled exactly
   against the renderer inventory but is not generated from it, so a newly introduced runtime route
   cannot self-authorize.
+
+## Execution Freeze Resolution (2026-08-25)
+
+The review pass found several places where the implementation order could be read as an open-ended
+release blocker. The following rules freeze that interpretation without changing the settled KTD14,
+KTD20, or KTD21 product decisions:
+
+- **C5 closes on classification, not universal migration.** The required C5 output is a
+  complete, source-traceable mechanism ledger for all 33 families. A row may end in
+  `TypedAdapter`, `LegacyCompatibility`, or `Unsupported`; `Unverified` is an observation/report
+  state and is never a positive support claim. Remaining `LegacyCompatibility` rows are explicit
+  C7b work. C7a therefore requires the catalog authority, the complete classification ledger, and
+  the primary pre-freeze writer tranche, but it does not wait for every long-tail family to leave
+  the bridge.
+- **C7a has a bounded candidate tranche.** The required direct probes are Flowchart, State,
+  Sequence, Class, Gantt, and Pie. ER and Architecture/C4 remain review probes for entity/card and
+  spatial/container shapes, not additional release blockers unless a probe exposes a missing public
+  recipe shape. Any uncovered family/value domain is reported `Conditional`, `Unsupported`, or
+  `Unverified` and is scheduled in C7b; only a genuinely new public sum type may reopen C1/C5 through
+  a separate decision.
+- **C7a preset inventory is frozen for the candidate wave.** The seven retained legacy entries and
+  the three first alpha candidates (Brutalist, Spotless, Cyberpunk) are the complete
+  `C7a-candidate` inventory. KTD21 remains open after the candidate, but additional entries cannot
+  delay candidate declaration and require their own catalog/qualification change.
+- **C7b has separate blocking classes.** The 33-family classification and bridge-retirement
+  predicate are release-integrity work; the 24-theme reference classification, selected visual
+  comparisons, and optional preset witnesses are traceability or breadth work and do not block the
+  native C7a candidate. Each class is tracked in its own ledger with an explicit owner and gate.
+- **Bridge deletion uses one global predicate.** `LegacyFamilyThemeBridge` may be deleted only
+  when the machine-checkable matrix-wide predicate is true: no executable route is classified
+  `LegacyCompatibility`, every intentionally removed route is `Unsupported` with a tombstone, and
+  KTD17/KTD18/KTD19/KTD23 ledgers agree. The compiler provider and KTD23 probe are migrated before
+  deleting the bridge; a merely out-of-scope route that is still executed does not satisfy the
+  predicate.
+- **Support claims have an independent authority.** The public support-claim manifest is a
+  versioned renderer-owned table, not a projection of the private C5 matrix. Runtime admission and
+  discovery share normalized predicate/value-domain code, while claim rows, revision, unknown-ID
+  normalization, and cross-surface projections are checked against the independent manifest.
+  `claim_revision` remains alpha-only until C7a-contract; every semantic row change increments it,
+  and unknown combinations fail closed as `Unverified`.
+- **Typst document context is an explicit facade contract.** `mermaid-theme-definition` must either
+  forward the same `document-context` semantics as the ordinary Mermaid facade or reject the
+  combination before materialization with a bounded diagnostic. The chosen behavior and its
+  omission/empty/invalid/error/happy tests are part of C7a rollout; it must not fail later through a
+  missing field or an unconditional `.spec` access.
+- **Preset qualification is executable evidence.** `qualified_cells` is never populated from a
+  static catalog row or a same-named C6 fixture. C7a/C7b must add a production-dispatched,
+  opaque `PresetQualificationReceipt` over the exact recipe/resource/admission/qualification
+  fingerprints plus the renderer/compiler/writer and receipt-schema revision. Stale receipts remove
+  cells and reject stable maturity even when the recipe bytes are unchanged.
+- **A receipt is consistency evidence, not a semantic oracle.** Every positive route or cell must
+  bind a model-owned assertion ID, expected value/ownership class, and terminal assignment token to
+  the writer-owned receipt. Narrow mutation tests alter the terminal output or receipt fact and must
+  fail; acceptance does not rebuild CSS, geometry, or rasterization. KTD17 also requires an
+  independent, frozen legacy-projection inventory from the old resolver/compatibility corpus and a
+  pre/post assignment-path diff whose result equals the declared projection set. A manifest is an
+  authorization layer, never the sole completeness oracle.
+- **The acceptance seam is workspace-only.** Receipt constructors remain crate-private, the
+  acceptance verifier is sealed to the workspace harness, published artifacts exclude the feature
+  and module, and package/public-API checks fail if an external Cargo consumer can reach the seam.
+- **The rollout witness needs an independent wire consumer.** A same-process Rust facade does not
+  satisfy the non-Rust/CLI half of C7a. Use a generated binding or a separate-process JSON consumer
+  with an independent canonical-byte oracle; an in-process CLI may supplement but cannot replace it.
 
 ## Why The Order Changes
 
@@ -85,8 +151,8 @@ release when a statement below differs.
 | Theme authoring freedom | Users may create new themes without modifying renderer code either by materializing versioned `ThemeTokensV1` plus the existing typed `ThemeRuleSet`, or by authoring a complete `DiagramThemeSpec` directly. These are explicit authoring paths, not a hidden tokens-plus-spec merge at render time. A new semantic target or drawing primitive requires renderer work and a new capability/evidence gate. | Additive target descriptors may be introduced through versioned discovery; they do not become silently accepted selector strings. |
 | Built-in presets | A preset is a convenient, versioned materialization of the same typed recipe accepted from Rust, JSON, and bindings. The catalog is open to additional generally useful themes; Brutalist, Spotless, Cyberpunk, Modern Slate, or any later theme name is illustrative rather than a fixed roadmap or product-brand hierarchy. A preset must not select layout, Mermaid look, output pipeline, trusted postprocessors, or family-private behavior implicitly. | Alpha candidates may remain discovery-only while coverage is incomplete. Stable status is decided per preset from fresh preset-qualification receipts over the exact catalog recipe and cells, allowed residuals, resource burden, and licensing rather than from a shared proof-theme name or catalog size. |
 | Preset cost boundary | Built-in presets should normally compile from static Merman-owned recipe data and reuse existing code and resources. They must not require a CSS/JavaScript interpreter, network access, brand crawler, application runtime, or substantial preset-only dependency/asset closure. Bundled fonts or other material assets require an explicit redistribution, size, resource-policy, and portability decision. | A heavier theme pack can live in an optional downstream package or host application instead of enlarging the core artifact. |
-| Published binding epochs | `0.8.0-alpha.5` published the leaked family and renderer taxonomy under UniFFI API 3 and Web/WASM transport API 3. The subtractive family-catalog correction therefore supersedes the August 2 FFI-plan KTD9 only for those two epochs: UniFFI advances to API 4 and Web/WASM advances to transport API 4. Native C ABI 3, runtime-catalog schema 1, Android transport API 1, Typst plugin ABI 3, and the Node transport remain unchanged. The incompatible post-alpha.5 Options grammar advances independently to schema 3 under KTD16. The next prerelease must carry the corrected projections; an already published alpha.5 artifact is never republished in place. | A later epoch requires another demonstrably incompatible transport change; additive catalog rows and fields continue to evolve inside the current schema rules. |
-| C5 versus C6 | C5 owns compilation, value-domain declarations, facet-level routing, direct family consumption, and family-local tests. The private C6 harness owns temporary route-cutover authorization and the representative C6a integration ledger. JPEG, PDF, and a future Browser SVG adapter use scoped smoke or release-qualification checks rather than an always-active equal-depth matrix. | The versioned route-cutover manifest governs only its declared scalar domain: static-unqualified atomic fill/stroke routes with solid/transparent values. Removing one of those bridge routes requires an exact receipt binding its family, target, selector, facet, value class, complete legacy projection set, and finalized Standalone SVG plus PNG evidence. Ordinal-palette breadth migrations follow the narrower C7b ledger in KTD18, and individual base-typography property migrations follow the equally narrow C7b ledger in KTD19, rather than either mechanism being misrepresented as scalar route pairs. None of these authorizations is a C6 cell or can emit `C6aEligibilityReceipt`. |
+| Published binding epochs | `0.8.0-alpha.5` published the leaked family and renderer taxonomy under UniFFI API 3 and Web/WASM transport API 3. KTD15 selected the next incompatible family-capability epoch, but the current source has since advanced the concrete UniFFI and Web/WASM transports to API 5; API 4 is a historical intermediate and must not be presented as the current target. Native C ABI 3, runtime-catalog schema 1, Android transport API 2, Typst plugin ABI 3, and the Node transport remain current. The incompatible post-alpha.5 Options grammar is schema 3 under KTD16. The next prerelease must carry the current projections; an already published alpha.5 artifact is never republished in place. | A later epoch requires another demonstrably incompatible transport change; additive catalog rows and fields continue to evolve inside the current schema rules. |
+| C5 versus C6 | C5 owns compilation, value-domain declarations, facet-level routing, direct family consumption, and family-local tests. The private C6 harness owns temporary route-cutover authorization and the representative C6a integration ledger. JPEG, PDF, and a future Browser SVG adapter use scoped smoke or release-qualification checks rather than an always-active equal-depth matrix. The versioned route-cutover manifest governs its declared static scalar domain: unqualified atomic fill/stroke routes plus explicitly enumerated static selector variants, all with solid/transparent values. Removing one of those bridge routes requires an exact receipt binding its family, target, selector, facet, value class, complete legacy projection set, and finalized Standalone SVG plus PNG evidence. Ordinal-palette breadth migrations follow the narrower C7b ledger in KTD18, and individual base-typography property migrations follow the equally narrow C7b ledger in KTD19, rather than either mechanism being misrepresented as scalar route pairs. None of these authorizations is a C6 cell or can emit `C6aEligibilityReceipt`. |
 | Public surface timing | C7a-candidate may be declared only after C6a plus real pre-freeze family-writer/compiler round trips. C7a-rollout migrates bindings, Typst, examples, and native Merman CLI against that alpha candidate. C7a-contract freezes only after rollout verification. Fine-grained mechanism/evidence types and alpha preset IDs remain private or explicitly unstable. | A preset may gain only scoped claims for declared, proven family/target cells. Unqualified all-family or all-target claims require a later release-qualification plan. |
 | Official CLI | New theme selection belongs only to the Merman native render/batch surface. The official `mmdc` compatibility surface remains unchanged except for removal of provisional alpha fields. A document, Options JSON, or project config cannot self-authorize a trusted lane. | Any mmdc expansion requires a separate compatibility decision. |
 
@@ -407,12 +473,14 @@ Public presets declare per-target admission expectations and allowed residual ID
   required record shapes to epoch 3.) The alpha.5 UniFFI record and Web/WASM metadata payload
   exposed `logical_family_kind` and renderer-owned `render_model_kind`; the corrected contract
   exposes the core-owned `family_id` and removes renderer taxonomy. UniFFI and Web/WASM therefore
-  advance to epoch 4. Native C ABI 3 remains valid because its generic metadata transport and
-  function table did not change; runtime-catalog schema 1, Android transport 1, Typst ABI 3, and
-  Node transport 1 also remain unchanged. Options schema 2 was unchanged by this family-catalog
-  decision but is subsequently superseded by KTD16. This narrowly supersedes the August 2
-  FFI-plan KTD9 after alpha.5 publication and governs the family-catalog contraction in C5 and its
-  first-party binding rollout.
+  advance beyond epoch 3; API 4 was the first decision target, while the current source and
+  generated bindings are now at API 5 after a later incompatible transport revision. API 4 is not
+  a supported downgrade or rollout target. Native C ABI 3 remains valid because its generic
+  metadata transport and function table did not change; runtime-catalog schema 1, Android
+  transport 2, Typst ABI 3, and Node transport 1 remain current. Options schema 2 was unchanged
+  by this family-catalog decision but is subsequently superseded by KTD16. This narrowly
+  supersedes the August 2 FFI-plan KTD9 after alpha.5 publication and governs the family-catalog
+  contraction in C5 and its first-party binding rollout.
 - KTD16. **Advance the post-alpha.5 Options grammar to schema 3 instead of reusing published
   schema 2.** (implementation-evidence-settled - chosen over a partial compatibility decoder that
   would advertise support without preserving the complete released grammar.) Alpha.4 and alpha.5
@@ -420,8 +488,8 @@ Public presets declare per-target admission expectations and allowed residual ID
   The current contract replaces those with top-level typed `theme`, `raster.matte`,
   `pdf.page_paint`, and a trusted-host-only raw-CSS lane, so it is not wire-compatible. Runtime
   catalogs advertise only schema 3 and explicit schema-2 requests fail closed; omitted versions
-  materialize to schema 3 for convenience callers. UniFFI/Web transport epoch 4, Native C ABI 3,
-  runtime-catalog schema 1, Android transport 1, Typst ABI 3, and Node transport 1 remain unchanged
+  materialize to schema 3 for convenience callers. UniFFI/Web transport API 5, Native C ABI 3,
+  runtime-catalog schema 1, Android transport 2, Typst ABI 3, and Node transport 1 remain unchanged
   because this is an Options epoch, not a transport-record change. This narrowly supersedes only
   KTD15's Options-schema-2 conclusion; KTD15's family-capability transport decision remains in
   force.
@@ -441,7 +509,7 @@ Public presets declare per-target admission expectations and allowed residual ID
   claim, produce
   `C6aEligibilityReceipt`, or unblock C7a. Direct-only typed mechanisms that never had a bridge
   projection remain governed by family-local writer evidence and do not enter this inventory. The
-  current manifest is version 22 and contains 126 route-level authorizations producing 142 finalized
+  current manifest is version 25 and contains 138 route-level authorizations producing 154 finalized
   artifact witnesses. The Block scalar-fill batch contributes two routes and two artifact witnesses,
   binding all six canonical node shells while preserving property-local config, class, and inline
   ownership. The Pie scalar-fill batch contributes two routes and two artifact witnesses,
@@ -819,10 +887,10 @@ own those product decisions.
 | C3 | Implementation landed; verification retained | Binding, CLI, and Typst now derive host resource ceilings before theme decoding/compilation, and request themes can only restrict them. Keep the gate open until the named cross-host verification commands are signed off. |
 | C4a | Native core and single-face terminal binding landed; broader gate remains open | Native rustybuzz shaping, cluster fallback, projection, bounded wrapping, consumed-label sidecars, and sealed label tokens are retained. The exact tokenized artifact is bound to request/projection/line/run identity, while PNG/JPEG/PDF exporters verify final emitted line text and face/source observations. External results remain `HostDependent`; exact multi-face source/visible range proof remains in C6b. |
 | C4b | Conditional follow-up; assurance excluded | Session-private fallback candidates and basic response admission may remain, but no current product consumer requires the unfinished generation, budget, or circuit-breaker framework. Keep stable injection disabled. Implement those controls only before enabling a concrete crate-private external consumer. External output remains `HostDependent`; any later assurance or promotion requires C7c. |
-| C5 | In progress; program stages 1-2 and catalog authority converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly. Flowchart and Swimlane directly consume family-wide base `FontStack`/`FontSize` plus narrow Node/NodeLabel/Edge tranches; Swimlane also owns Cluster fill/stroke while retaining bridge routes for uncovered mechanisms. Sequence directly consumes family-wide base `FontStack`/`FontSize`, selected Actor, Lifeline, Note, Activation, Loop label-box, Message stroke, four role-label paint/typography routes, and the direct-only SequenceNumberLabel fill route; message fill, loop-frame lines, remaining signal/control surfaces, and unsupported base or label typography siblings remain bridged or fail closed. Recent slices include Treemap `Title.fill`, Block `Node.fill`/`stroke`, Requirement `Requirement.fill`/`stroke`, Pie `PieSlice.fill`/`stroke`, Class `Edge.stroke` plus Node/NodeLabel paint, ER `Relation.stroke` plus Text fill, Mindmap/GitGraph/Architecture `Edge.stroke`, Architecture Node/Marker/Cluster terminal paint and `Text.fill`, Gantt `Task.fill`/`stroke`, Kanban `Task.stroke`, Journey `JourneyTask.fill`/`stroke`, Timeline `TimelineEvent.radius`/`opacity` with clamped geometry and sealed terminal-path observation, C4 and Swimlane `Cluster.fill`/`Cluster.stroke`, Quadrant Chart `ChartSeries.fill`, the direct-only Sankey `Node` ordinal palette, Flowchart/Swimlane/Sequence/Railroad base `FontStack`/`FontSize`, Info/Error/Cynefin/Wardley base `FontStack`, Info `Text.fill`, ZenUML/Venn `Title.fill`, and Ishikawa/EventModeling `Text.fill`. All 33 families now have at least one direct typed surface; 29 remain partial typed plus bridge, none remain without a direct surface, and 29/33 may still enter compatibility. State, Packet, Error, and ZenUML are the four no-legacy families, with the last three intentionally narrow because most of their theme facets remain Unsupported. The version-22 126-route/142-artifact KTD17 manifest authorizes exact scalar ownership only and does not close C6a; Gantt includes its unqualified aggregate routes plus `Default`/`Active`/`Success`/`Error` property-local variants, while `Warning` remains a compatibility residual; Requirement includes unqualified plus `Default`. SequenceNumberLabel has no legacy projection and remains outside KTD17, Sankey remains outside KTD18 because it replaces no legacy palette, each Flowchart/Swimlane/Sequence/Railroad KTD19 property pair retires one family-local bundled typography contribution atomically, and the Info/Error/Cynefin/Wardley KTD19 rows each retire only their family-local `FontStack` projection. KTD23 separately seals 56 historical dead-projection route shapes with 112 nonvisual bridge probes and uses family-owned occurrence facts to distinguish visible Unsupported residuals from absent or shadowed `NotApplicable` rules; it neither expands KTD17 nor creates C6 evidence. The core family catalog is the sole family-ID/alias/detection authority. Final surviving compatibility provenance, additional direct consumers, and parse/session theme binding remain convergence gates. |
+| C5 | In progress; program stages 1-2 and catalog authority converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly. Flowchart and Swimlane directly consume family-wide base `FontStack`/`FontSize` plus narrow Node/NodeLabel/Edge tranches; Swimlane also owns Cluster fill/stroke while retaining bridge routes for uncovered mechanisms. Sequence directly consumes family-wide base `FontStack`/`FontSize`, selected Actor, Lifeline, Note, Activation, Loop label-box, Message stroke, four role-label paint/typography routes, and the direct-only SequenceNumberLabel fill route; message fill, loop-frame lines, remaining signal/control surfaces, and unsupported base or label typography siblings remain bridged or fail closed. Recent slices include Treemap `Title.fill`, Block `Node.fill`/`stroke`, Requirement `Requirement.fill`/`stroke`, Pie `PieSlice.fill`/`stroke`, Class `Edge.stroke` plus Node/NodeLabel paint, ER `Relation.stroke` plus Text fill, Mindmap/GitGraph/Architecture `Edge.stroke`, Architecture Node/Marker/Cluster terminal paint and `Text.fill`, Gantt `Task.fill`/`stroke`, Kanban `Task.stroke`, Journey `JourneyTask.fill`/`stroke`, Timeline `TimelineEvent.radius`/`opacity` with clamped geometry and sealed terminal-path observation, C4 and Swimlane `Cluster.fill`/`Cluster.stroke`, Quadrant Chart `ChartSeries.fill`, the direct-only Sankey `Node` ordinal palette, Flowchart/Swimlane/Sequence/Railroad base `FontStack`/`FontSize`, Info/Error/Cynefin/Wardley base `FontStack`, Info `Text.fill`, ZenUML/Venn `Title.fill`, and Ishikawa/EventModeling `Text.fill`. All 33 families now have at least one direct typed surface; 29 remain partial typed plus bridge, none remain without a direct surface, and 29/33 may still enter compatibility. State, Packet, Error, and ZenUML are the four no-legacy families, with the last three intentionally narrow because most of their theme facets remain Unsupported. The version-25 138-route/154-artifact KTD17 manifest authorizes its declared static scalar domain only and does not close C6a; its selector domain includes unqualified routes plus explicitly enumerated static variants such as Gantt `Default`/`Active`/`Success`/`Error`, Requirement `Default`, ER `Relation` `Default`, Pie `PieSlice` `Default`, and Class `Node`/`NodeLabel` `Default`, while `Warning` remains a compatibility residual. SequenceNumberLabel has no legacy projection and remains outside KTD17, Sankey remains outside KTD18 because it replaces no legacy palette, each Flowchart/Swimlane/Sequence/Railroad KTD19 property pair retires one family-local bundled typography contribution atomically, and the Info/Error/Cynefin/Wardley KTD19 rows each retire only their family-local `FontStack` projection. KTD23 separately seals 56 historical dead-projection route shapes with 112 nonvisual bridge probes and uses family-owned occurrence facts to distinguish visible Unsupported residuals from absent or shadowed `NotApplicable` rules; it neither expands KTD17 nor creates C6 evidence. The core family catalog is the sole family-ID/alias/detection authority. Final surviving compatibility provenance, additional direct consumers, and parse/session theme binding remain convergence gates. |
 | C6a | Complete; `18/18` representative native cells execute and the eligibility receipt is issued | Schema v4 is the current 18-cell authority and binds the immutable schema-v3 predecessor, which remains fixed at its historical 12 enforced and 6 deferred cells. The loader rejects lineage shrinkage, and the private unique issuer emits `C6aEligibilityReceipt` only after all nine Brutalist/Spotless/Cyberpunk by Flowchart/State/Sequence render groups pass on Standalone SVG and PNG with target-owned receipts. Each render group projects both targets from one `RenderedDocument`; Flowchart and Sequence also retain prepared terminal text through their production font seals. The separate route-cutover manifest remains a non-cell ownership proof and does not increase C6a progress. |
 | C6b | Paused; no active denominator | Four historical Brutalist/State cross-target observations exist, but the 45-cell equal-depth certification program is not active. JPEG/PDF retain representative smoke coverage; Browser SVG starts only after a real adapter and release requirement exist. |
-| C7a | Not eligible; intentionally blocked | ADR-0082 is accepted as an unfrozen design authority. Coarse Rust support discovery, the contract-owned `MaterializedThemeWireV1`, bounded typed/JSON materialization, the versioned diagnostic envelope, shared light/dark readable/canonical/materialized vectors, Flowchart/State/Sequence SVG+PNG light-dark-light isolation and cross-renderer reuse, root canvas/base-typography terminal witnesses, complete-spec cold start, all generated expansion rows, and representative Class/Gantt/Pie shape probes have landed. Required first-party transport rollout, continued C5 family migration, the versioned public support-claim authority, and the mandatory non-Rust/CLI author-task verification remain open. Browser SVG and native export discovery qualification also remain separate release work. Do not declare the alpha contract candidate or freeze the contract before those gates close. |
+| C7a | Not eligible; intentionally blocked | ADR-0082 is accepted as an unfrozen design authority. Coarse Rust support discovery, the contract-owned `MaterializedThemeWireV1`, bounded typed/JSON materialization, the versioned diagnostic envelope, shared light/dark readable/canonical/materialized vectors, Flowchart/State/Sequence SVG+PNG light-dark-light isolation and cross-renderer reuse, root canvas/base-typography terminal witnesses, complete-spec cold start, all generated expansion rows, and representative Class/Gantt/Pie shape probes have landed. Required first-party transport rollout, the complete C5 mechanism classification and primary writer tranche, the independent versioned public support-claim authority, executable preset qualification, and the mandatory independent non-Rust wire-consumer author task remain open. Remaining long-tail bridge migration is C7b work unless it exposes a missing public recipe shape. Browser SVG and native export discovery qualification also remain separate release work. Do not declare the alpha contract candidate or freeze the contract before those gates close. |
 | C7b/C7c | Deferred independently | Remaining family/preset/showcase breadth proceeds under C7b without waiting for external assurance. External-host assurance fields remain a separately triggered C7c plan. |
 
 The public alpha migration scaffold already spans Rust, Options JSON, Web/UniFFI, Typst, Playground,
@@ -1166,8 +1234,8 @@ and public theme scope from the independent renderer taxonomy before adding face
   implicit tokens-plus-spec merge. These are C7a candidate inputs, not C6 cells and not inputs to
   `C6aEligibilityReceipt`.
 - **Approach:** Use three ordered gates rather than freezing before consumers can exercise the
-  candidate. `C7a-candidate` follows C1-C3, C4a, C5, C6a, and the pre-freeze family, expansion-row,
-  and authoring witnesses; it
+  candidate. `C7a-candidate` follows C1-C3, C4a, the complete C5 classification ledger and
+  primary writer tranche, C6a, and the pre-freeze family, expansion-row, and authoring witnesses; it
   declares the proposed versioned recipe envelope, compiler entry point, `ThemeTokensV1`, host-policy
   boundary, coarse reports, and exact artifact-filtered preset inventory, but remains alpha. Every
   legacy preset retain/remove decision and every retained alpha descriptor must land before this
@@ -1217,7 +1285,8 @@ and public theme scope from the independent renderer taxonomy before adding face
   qualification claim. Add Brutalist, Spotless, and Cyberpunk as the first alpha candidate wave,
   also with empty initial qualified scope. Their existing C6a cells identify the first cells to run,
   but only a new receipt over the exact catalog recipe/resource fingerprint may populate those
-  cells. Additional candidates enter through the same table and qualification path.
+  cells. Additional candidates enter through the same table and qualification path only after the
+  `C7a-candidate` inventory is frozen; they cannot reopen that candidate wave implicitly.
 
   Each first-party artifact generates an inventory containing only descriptors whose recipe and
   resource closure it actually ships; bindings must not copy a global Rust union and advertise
@@ -1305,10 +1374,13 @@ and public theme scope from the independent renderer taxonomy before adding face
   and C FFI. An alpha preset is discoverable only with an explicit maturity marker. A stable preset
   is eligible only when it declares supported family/target cells, allowed residual IDs, font source,
   and per-target admission expectations backed by a fresh preset-qualification receipt over its
-  exact catalog fingerprint using the C6 production runners.
+  exact catalog fingerprint, renderer/compiler/writer revision, target-receipt schema, and artifact
+  feature/resource profile using the C6 production runners.
 - **Authoring rollout witness:** After `C7a-candidate`, migrate first-party bindings and examples to
-  the shared materialization operations. Rust and at least one non-Rust or CLI consumer must complete
-  the same share-first author tasks: import a self-contained definition JSON; render it without
+  the shared materialization operations. Rust and at least one independently generated non-Rust
+  consumer (or a separate-process CLI that exchanges serialized bytes through the real transport)
+  must complete the same share-first author tasks; an in-process Rust CLI alone does not qualify.
+  The tasks are: import a self-contained definition JSON; render it without
   manually persisting an intermediate spec; export readable JSON; prove typed/JSON canonical
   equivalence; add one typed family-scoped rule; and explain one unsupported or unverified query.
   Omitted, clear, invalid-null, precedence, and complete discovery-state combinations remain contract
@@ -1325,12 +1397,18 @@ and public theme scope from the independent renderer taxonomy before adding face
 
 - **Covers:** The remaining family/preset/reference-comparison work from the August 6 plan. External-host
   assurance is a separate future plan and does not sequence this work.
-- **Approach:** Migrate remaining families according to the per-mechanism support matrix, keep or
-  remove each behavior deliberately, and delete `LegacyFamilyThemeBridge` only when no
-  `LegacyCompatibility` mechanism remains. Complete the source-traceable mechanism classification of
-  all 24 pinned modern_mermaid themes and retained PR #28 contributions, while running detailed
-  visual comparisons only for a selected representative set. Complete the remaining original
-  family-breadth units. Ghibli, Hand Drawn, and Memphis are non-blocking C6
+- **Approach:** Track three bounded ledgers independently: (1) the 33-family mechanism
+  classification and the machine-checkable bridge-retirement predicate, which are release-integrity
+  work; (2) the explicit KTD18/KTD19 migration rows, which are family/mechanism breadth work; and
+  (3) the 24 pinned `modern_mermaid` themes, retained PR #28 contributions, selected visual
+  comparisons, and optional preset witnesses, which are traceability work unless a named release
+  gate promotes one. Migrate remaining families according to the per-mechanism support matrix,
+  keep or remove each behavior deliberately, and delete `LegacyFamilyThemeBridge` only when the
+  global predicate is true: no executable matrix route remains `LegacyCompatibility`, every removed
+  route is explicitly `Unsupported` with a tombstone, and KTD17/KTD18/KTD19/KTD23 agree. Complete
+  the source-traceable mechanism classification of all 24 pinned modern_mermaid themes and retained
+  PR #28 contributions, while running detailed visual comparisons only for a selected representative
+  set. Complete the remaining original family-breadth units. Ghibli, Hand Drawn, and Memphis are non-blocking C6
   mechanism witnesses. A witness may remain test-only or become an alpha preset candidate according
   to its general usefulness and cost; no theme name is required to complete this gate. If this work
   exposes a missing public recipe shape, reopen C7a-contract before adding it.
@@ -1399,10 +1477,12 @@ arbitrary CSS inheritance.
   reviews. Preset candidates additionally verify descriptor maturity, materialized-spec export,
   resource closure, and their declared cells through fresh preset-qualification receipts that reuse
   the C6 production runners.
-- **Done when:** Every remaining family mechanism has an intentional terminal classification, no
-  `LegacyCompatibility` route remains in the supported scope, the complete reference corpus has a
-  typed/unsupported/residual classification with provenance, and no compatibility lane bypasses
-  trust or portability evidence. No fixed theme name is required to become a shipped preset.
+- **Done when:** Every remaining family mechanism has an intentional terminal classification, the
+  global bridge-retirement predicate is true (no executable `LegacyCompatibility` route remains,
+  removed routes are tombstoned `Unsupported`, and KTD17/KTD18/KTD19/KTD23 agree), the complete
+  reference corpus has a typed/unsupported/residual classification with provenance, and no
+  compatibility lane bypasses trust or portability evidence. No fixed theme name is required to
+  become a shipped preset.
 
 ### C7c. Optional External Host Assurance
 
