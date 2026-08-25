@@ -3,8 +3,9 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    OrdinalSelector, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -230,6 +231,46 @@ fn eventmodeling_explicit_text_color_outranks_typed_text_fill() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn eventmodeling_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#abcdef").expect("valid Event Modeling palette color")
+    ])
+    .expect("non-empty Event Modeling text palette");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#123456")
+                                    .expect("valid Event Modeling text fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::EVENT_MODELING),
+                    )
+                    .with_ordinal_palette(ThemeTarget::Text, palette),
+            ),
+        )
+        .expect("compile Event Modeling text fill and ordinal palette theme");
+    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
+        .expect("typed Event Modeling text fill must shadow the unsupported palette");
+    let (swimlane_fills, box_colors) = eventmodeling_terminal_text_values(rendered.svg());
+
+    assert_eq!(swimlane_fills, vec!["#123456"; 3]);
+    assert_eq!(box_colors, vec!["#123456"; 3]);
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
 }

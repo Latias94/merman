@@ -9,6 +9,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::EventModelingDiagramLayout;
@@ -170,26 +171,13 @@ impl EventModelingTextThemePlan {
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Text,
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if occurrences.total() == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
+                    // Reconciled below from the final text style of each actual terminal.
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Text,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if occurrences.total() == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // Reconciled below from the final text style of each actual terminal.
                 }
                 FamilyThemeMechanism::RuleFacet {
                     target: ThemeTarget::Title,
@@ -212,6 +200,16 @@ impl EventModelingTextThemePlan {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Text,
+                TerminalVariantDomain::uniform(occurrences.total(), ThemeVariant::Default),
+            )],
+            work_meter,
+        )?;
 
         let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {
