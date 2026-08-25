@@ -2656,9 +2656,50 @@ pub fn enforce_options_json_byte_len(options_json_bytes: usize) -> Result<(), Bi
 #[cfg(feature = "svg")]
 #[derive(Default)]
 struct ThemeResourceProfileHints {
-    locations: usize,
-    profiles: Vec<merman::resources::ResourceProfile>,
+    // The preflight only needs to distinguish zero, one, and multiple locations/profiles. Keep
+    // those counters saturated so malformed or adversarial input cannot amplify this probe.
+    locations: u8,
+    profile_count: u8,
+    profile_presence: [bool; merman::resources::RESOURCE_PROFILE_COUNT],
     canonical_shape: bool,
+}
+
+#[cfg(feature = "svg")]
+impl ThemeResourceProfileHints {
+    fn record_profile(&mut self, profile: merman::resources::ResourceProfile) {
+        let Some(index) = merman::resources::ResourceProfile::ALL
+            .iter()
+            .position(|candidate| *candidate == profile)
+        else {
+            self.canonical_shape = false;
+            return;
+        };
+        self.profile_count = self.profile_count.saturating_add(1).min(2);
+        self.profile_presence[index] = true;
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.canonical_shape &= other.canonical_shape;
+        self.locations = self.locations.saturating_add(other.locations).min(2);
+        self.profile_count = self
+            .profile_count
+            .saturating_add(other.profile_count)
+            .min(2);
+        for (present, other_present) in self.profile_presence.iter_mut().zip(other.profile_presence)
+        {
+            *present |= other_present;
+        }
+    }
+
+    fn single_profile(&self) -> Option<merman::resources::ResourceProfile> {
+        if self.profile_count != 1 {
+            return None;
+        }
+        merman::resources::ResourceProfile::ALL
+            .into_iter()
+            .enumerate()
+            .find_map(|(index, profile)| self.profile_presence[index].then_some(profile))
+    }
 }
 
 #[cfg(feature = "svg")]
@@ -2737,7 +2778,7 @@ impl<'de> Visitor<'de> for RootThemeProfileProbeVisitor {
             ..ThemeResourceProfileHints::default()
         };
         let mut direct_analysis = false;
-        let mut wrapper_count = 0_usize;
+        let mut wrapper_count = 0_u8;
         while let Some(field) = map.next_key::<ThemeProfileProbeField>()? {
             match field {
                 ThemeProfileProbeField::Resources => {
@@ -2746,12 +2787,9 @@ impl<'de> Visitor<'de> for RootThemeProfileProbeVisitor {
                     merge_resource_profile_scan(&mut hints, scan_resource_profile(raw));
                 }
                 ThemeProfileProbeField::Analysis | ThemeProfileProbeField::Merman => {
-                    wrapper_count += 1;
+                    wrapper_count = wrapper_count.saturating_add(1).min(2);
                     let raw = map.next_value::<&RawValue>()?;
-                    let wrapper = scan_wrapped_resource_profiles(raw);
-                    hints.canonical_shape &= wrapper.canonical_shape;
-                    hints.locations += wrapper.locations;
-                    hints.profiles.extend(wrapper.profiles);
+                    hints.merge(scan_wrapped_resource_profiles(raw));
                 }
                 ThemeProfileProbeField::AnalysisOption => {
                     direct_analysis = true;
@@ -2880,14 +2918,14 @@ impl<'de> Visitor<'de> for ResourceThemeProfileProbeVisitor {
             canonical_shape: true,
             ..ThemeResourceProfileHints::default()
         };
-        let mut profile_count = 0_usize;
+        let mut profile_count = 0_u8;
         while let Some(field) = map.next_key::<ThemeProfileProbeField>()? {
             match field {
                 ThemeProfileProbeField::Profile => {
-                    profile_count += 1;
+                    profile_count = profile_count.saturating_add(1).min(2);
                     let raw = map.next_value::<&RawValue>()?;
                     match scan_known_resource_profile(raw) {
-                        Ok(Some(profile)) => hints.profiles.push(profile),
+                        Ok(Some(profile)) => hints.record_profile(profile),
                         Ok(None) => {}
                         Err(()) => hints.canonical_shape = false,
                     }
@@ -2944,9 +2982,7 @@ fn merge_resource_profile_scan(
     hints: &mut ThemeResourceProfileHints,
     resource: ThemeResourceProfileHints,
 ) {
-    hints.canonical_shape &= resource.canonical_shape;
-    hints.locations += resource.locations;
-    hints.profiles.extend(resource.profiles);
+    hints.merge(resource);
 }
 
 #[cfg(feature = "svg")]
@@ -2954,12 +2990,10 @@ fn theme_resource_preflight_policy(
     hints: &ThemeResourceProfileHints,
     host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
 ) -> merman::svg::ThemeResourcePolicy {
-    if host_ceiling.is_none()
-        && hints.canonical_shape
-        && hints.locations == 1
-        && hints.profiles.len() == 1
-    {
-        return merman::svg::ThemeResourcePolicy::for_profile(hints.profiles[0]);
+    if host_ceiling.is_none() && hints.canonical_shape && hints.locations == 1 {
+        if let Some(profile) = hints.single_profile() {
+            return merman::svg::ThemeResourcePolicy::for_profile(profile);
+        }
     }
 
     let mut policy = host_ceiling.cloned().unwrap_or_else(|| {
@@ -2967,8 +3001,13 @@ fn theme_resource_preflight_policy(
             merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
         )
     });
-    for profile in &hints.profiles {
-        policy = policy.meet(&merman::svg::ThemeResourcePolicy::for_profile(*profile));
+    for (index, profile) in merman::resources::ResourceProfile::ALL
+        .into_iter()
+        .enumerate()
+    {
+        if hints.profile_presence[index] {
+            policy = policy.meet(&merman::svg::ThemeResourcePolicy::for_profile(profile));
+        }
     }
     policy
 }
@@ -4168,6 +4207,65 @@ mod tests {
                 .max,
             u64::try_from(max).unwrap()
         );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn repeated_profile_occurrences_keep_the_strictest_preflight_policy() {
+        let repeated_profiles = std::iter::repeat(r#""profile":"constrained""#)
+            .take(64)
+            .collect::<Vec<_>>()
+            .join(",");
+        let input = format!(r#"{{"resources":{{{repeated_profiles}}}}}"#);
+        let hints = theme_resource_profile_hints(&input);
+        let expected = merman::svg::ThemeResourcePolicy::interactive()
+            .meet(&merman::svg::ThemeResourcePolicy::constrained());
+
+        assert_eq!(theme_resource_preflight_policy(&hints, None), expected);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn distinct_profile_presence_matches_ordered_policy_reduction() {
+        for (first, second) in [
+            (
+                merman::resources::ResourceProfile::Constrained,
+                merman::resources::ResourceProfile::TrustedNative,
+            ),
+            (
+                merman::resources::ResourceProfile::TrustedNative,
+                merman::resources::ResourceProfile::Constrained,
+            ),
+        ] {
+            let input = [
+                r#"{"resources":{"profile":""#,
+                first.id(),
+                r#""},"analysis":{"resources":{"profile":""#,
+                second.id(),
+                r#""}}}"#,
+            ]
+            .concat();
+            let hints = theme_resource_profile_hints(&input);
+            let expected = merman::svg::ThemeResourcePolicy::interactive()
+                .meet(&merman::svg::ThemeResourcePolicy::for_profile(first))
+                .meet(&merman::svg::ThemeResourcePolicy::for_profile(second));
+
+            assert_eq!(theme_resource_preflight_policy(&hints, None), expected);
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn unknown_or_null_profile_falls_back_without_single_profile_panic() {
+        for encoded_profile in ["null", r#""future-profile""#] {
+            let input = format!(r#"{{"resources":{{"profile":{encoded_profile}}}}}"#);
+            let hints = theme_resource_profile_hints(&input);
+
+            assert_eq!(
+                theme_resource_preflight_policy(&hints, None),
+                merman::svg::ThemeResourcePolicy::interactive()
+            );
+        }
     }
 
     #[cfg(feature = "svg")]
