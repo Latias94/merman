@@ -47,8 +47,9 @@ pub use options::{
 };
 pub use output::{
     ASCII_OUTPUT_SCHEMA_VERSION, AsciiExtent, AsciiFallbackCapability, AsciiFallbackReason,
-    AsciiOutput, AsciiOutputOutcome, AsciiOverflowPolicy, AsciiProjection, AsciiTrimPolicy,
-    AsciiViewportPolicy, FallbackMetadata, Lossiness, OverflowPolicy,
+    AsciiOutput, AsciiOutputMetadata, AsciiOutputOutcome, AsciiOutputReport, AsciiOverflowPolicy,
+    AsciiProjection, AsciiTrimPolicy, AsciiViewportPolicy, FallbackMetadata, Lossiness,
+    OverflowPolicy,
 };
 pub use resource::{
     ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiResourceLimitCause,
@@ -180,6 +181,10 @@ impl AsciiRenderer {
             .with_viewport(viewport)
             .with_render_ledger(&render_ledger);
         let options = self.options.effective_layout();
+        let capability = output::capability_for(model);
+        let projection = output::projection_for(capability);
+        let fallback_capability = options.color_mode == color::AsciiColorMode::Plain
+            && capability.is_some_and(|capability| capability.structured_text_fallback);
         let rendered = match render_model_with_execution(
             model,
             flowchart_context,
@@ -194,9 +199,7 @@ impl AsciiRenderer {
                 ..
             }) => {
                 let primary_extent = output::AsciiExtent::new(actual_width, height);
-                if !output::supports_structured_fallback(model)
-                    || options.color_mode != color::AsciiColorMode::Plain
-                {
+                if !fallback_capability {
                     return Err(AsciiError::FallbackUnavailable {
                         diagram_type: model.kind().to_string(),
                         max_width: viewport
@@ -220,18 +223,18 @@ impl AsciiRenderer {
             }
             Err(error) => return Err(error),
         };
-        let projection = output::projection_for(model, &rendered);
-        let primary_extent = output::AsciiExtent::measure_with_execution(
-            &rendered,
+        let primary = output::MeasuredOutput::measure(
+            rendered,
             options.color_mode,
             options.terminal_width_profile,
             execution,
         )?;
+        let primary_extent = primary.metrics().extent;
         let overflowed = viewport
             .max_width
             .is_some_and(|max_width| primary_extent.width > max_width);
         if overflowed && viewport.overflow == output::OverflowPolicy::Fallback {
-            if !output::supports_structured_fallback(model) {
+            if !fallback_capability {
                 return Err(AsciiError::FallbackUnavailable {
                     diagram_type: model.kind().to_string(),
                     max_width: viewport.max_width.expect("fallback requires a width bound"),
@@ -241,8 +244,7 @@ impl AsciiRenderer {
             if projection == AsciiProjection::StructuredText {
                 return output::build_structured_fallback(
                     model.kind(),
-                    rendered,
-                    primary_extent,
+                    primary,
                     output::OutputBuildContext {
                         color_mode: options.color_mode,
                         profile: options.terminal_width_profile,
@@ -252,6 +254,7 @@ impl AsciiRenderer {
                     },
                 );
             }
+            drop(primary);
             return output::build_semantic_fallback(
                 model,
                 metadata,
@@ -265,16 +268,10 @@ impl AsciiRenderer {
                 },
             );
         }
-        // Fallback text is currently emitted as plain terminal text. Keep the report honest for
-        // ANSI/HTML requests: the family may have a semantic fallback in principle, but this
-        // request cannot admit that projection without a dedicated role-aware encoder.
-        let fallback_capability = options.color_mode == color::AsciiColorMode::Plain
-            && output::supports_structured_fallback(model);
         let mut output = output::build_output(
             model.kind(),
-            rendered,
+            primary,
             projection,
-            primary_extent,
             output::OutputBuildContext {
                 color_mode: options.color_mode,
                 profile: options.terminal_width_profile,

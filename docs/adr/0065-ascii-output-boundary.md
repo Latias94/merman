@@ -77,3 +77,20 @@ attempt is selected. It returns `FallbackUnavailable` when the family cannot
 preserve the required fields within the bound. Resource and cancellation errors retain their
 existing precedence and never become fallback reports. `AsciiLayoutProfile::Compact` is an explicit
 opt-in candidate; canonical geometry and the Issue #53 pre-layout label wrapping remain the default.
+
+## 2026-08-25 contract-hardening addendum
+
+Internal output seams may change during the alpha stabilization window, but the merged report
+vocabulary remains schema 1. `AsciiOutput` owns one measured-candidate path for extent, display-cell,
+grapheme, encoded-byte, and output admission observations. Fallback writers perform bounded local
+checks while constructing a complete candidate, then commit its document admission once against the
+render-wide resource ledger; failed candidates never become partial output.
+
+`AsciiOutput::metadata()` is the canonical transport adapter input and `AsciiOutput::report()` is the
+CLI report projection. Bindings, generated fixtures, Web/Playground metadata, and platform DTOs must
+consume those fields rather than hand-copying report vocabulary. Projection and fallback capability
+come from typed family capability records; output-string prefixes are not semantic classifiers.
+Semantic fallback applies typed-model complexity preflight before family compatibility projection;
+Flowchart's typed projection additionally uses a bounded, cancellation-aware JSON writer before
+flattening, keeping intermediate materialization within the active ASCII output policy for bounded
+profiles.

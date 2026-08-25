@@ -58,6 +58,17 @@ overflow outcome, fallback capability/attempt/reason state, trim state, and loss
 clips or ellipsizes authored values; it either returns a complete typed compatibility projection or
 `AsciiError::FallbackUnavailable`.
 
+`AsciiOutput::metadata()` is the canonical schema-1 transport payload for binding operation plans;
+`AsciiOutput::report()` adds the exact text projection for CLI report JSON. Both are derived from the
+same measured candidate, so CLI, Rust, and bindings do not remeasure text or reconstruct enum and
+field names independently. The measured seam accounts for display cells, encoded bytes, grapheme
+limits, and the render-wide layout ledger once per emitted candidate. A fallback candidate is checked
+incrementally in a detached candidate scope and admitted to the render-wide ledger only after it is
+complete and within the requested width. Semantic fallback projection first applies typed-model
+complexity admission; Flowchart's typed JSON projection is serialized through a bounded,
+cancellation-aware writer before flattening, so a rejected candidate does not allocate an
+unbounded intermediate under a bounded resource profile.
+
 Flowchart node labels wrap before layout at a default width of 40 terminal display cells. Use
 `AsciiRenderOptions::with_flowchart_node_label_wrap_width` to tune that family-owned terminal
 policy. The value is not a CSS-pixel conversion of Mermaid's SVG `wrappingWidth`; the same

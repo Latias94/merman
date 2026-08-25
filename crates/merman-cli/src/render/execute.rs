@@ -72,27 +72,7 @@ pub(crate) fn execute_render(
 
 #[cfg(feature = "ascii")]
 fn ascii_report_json(output: &merman::ascii::AsciiOutput) -> Result<Vec<u8>, serde_json::Error> {
-    serde_json::to_vec(&serde_json::json!({
-        "kind": "ascii",
-        "schema_version": output.schema_version(),
-        "family": output.family,
-        "projection": output.projection.as_str(),
-        "primary_width": output.primary_extent.width,
-        "primary_height": output.primary_extent.height,
-        "emitted_width": output.emitted_extent.width,
-        "emitted_height": output.emitted_extent.height,
-        "width_profile": output.width_profile.as_str(),
-        "layout_profile": output.layout_profile.as_str(),
-        "requested_max_width": output.requested_max_width,
-        "overflowed": output.overflowed,
-        "outcome": output.outcome.as_str(),
-        "fallback_capability": output.fallback.capability.as_str(),
-        "fallback_attempted": output.fallback.attempted,
-        "fallback_reason": output.fallback.reason.map(|reason| reason.as_str()),
-        "trimmed": output.trimmed,
-        "lossiness": output.lossiness.as_str(),
-        "text": output.as_text(),
-    }))
+    serde_json::to_vec(&output.report())
 }
 
 #[cfg(feature = "ascii")]

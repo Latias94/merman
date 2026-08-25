@@ -9,8 +9,6 @@ use crate::options::TerminalWidthProfile;
 use crate::output::{AsciiViewportPolicy, OverflowPolicy};
 use crate::resource::{AsciiResourcePolicy, ResourceContext, operation_terminal_error};
 use merman_core::{OperationControl, OperationPhase};
-use unicode_segmentation::UnicodeSegmentation;
-
 const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
 
 /// Narrow operation projection consumed by the model-to-text backend.
@@ -107,6 +105,16 @@ impl<'a> AsciiExecution<'a> {
         self.resource_context(&resources, phase)
     }
 
+    /// Creates a candidate-local resource view that preserves policy and cancellation without
+    /// mutating the render-wide ledger. Final admission commits the measured candidate once.
+    pub(crate) fn detached_resource_context(self, phase: OperationPhase) -> ResourceContext {
+        let resources = self.render_ledger.map_or_else(
+            || ResourceContext::new(*self.resources),
+            ResourceContext::detached,
+        );
+        self.resource_context(&resources, phase)
+    }
+
     pub(crate) fn cloned_control(self) -> OperationControl {
         self.control.clone()
     }
@@ -135,39 +143,6 @@ impl<'a> AsciiExecution<'a> {
         self.control
             .terminal_checkpoint_at(phase)
             .map_err(operation_terminal_error)
-    }
-
-    /// Admits a renderer-owned fallback candidate against the same output dimensions used by
-    /// normal finalizers. Fallbacks are plain text today, so encoded bytes equal UTF-8 bytes.
-    pub(crate) fn admit_fallback_output(
-        self,
-        text: &str,
-        profile: TerminalWidthProfile,
-    ) -> Result<()> {
-        let mut document_cells = 0usize;
-        let mut max_grapheme_bytes = 0usize;
-        for line in text.split('\n') {
-            document_cells = document_cells
-                .checked_add(crate::text::display_width_with_profile(line, profile))
-                .ok_or_else(|| {
-                    self.new_resource_context(OperationPhase::Emit)
-                        .overflow(crate::resource::AsciiResourceLimitId::MaxDocumentCells)
-                })?;
-            for grapheme in line.graphemes(true) {
-                max_grapheme_bytes = max_grapheme_bytes.max(grapheme.len());
-            }
-        }
-        let resources = self.new_resource_context(OperationPhase::Emit);
-        resources.charge_document_cells(document_cells)?;
-        resources.check(
-            crate::resource::AsciiResourceLimitId::MaxOutputBytes,
-            text.len(),
-        )?;
-        resources.check(
-            crate::resource::AsciiResourceLimitId::MaxGraphemeBytes,
-            max_grapheme_bytes,
-        )?;
-        self.checkpoint(OperationPhase::Emit)
     }
 
     /// Checks caller-owned cancellation at a bounded cadence inside deterministic long loops.
