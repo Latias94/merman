@@ -11,6 +11,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -256,11 +257,6 @@ impl GanttTaskTheme {
                     let key = theme.family_mechanism_key(route);
                     if tasks.is_empty() {
                         evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
                     }
                 }
                 FamilyThemeMechanism::EffectBinding {
@@ -270,8 +266,6 @@ impl GanttTaskTheme {
                     let key = theme.family_mechanism_key(route);
                     if tasks.is_empty() {
                         evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
                     }
                 }
                 FamilyThemeMechanism::BaseTypography(_)
@@ -280,6 +274,30 @@ impl GanttTaskTheme {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        let task_variants = task_expectations
+            .iter()
+            .map(|task| task.state.theme_variant())
+            .collect::<Vec<_>>();
+        let source_owned_fills = tasks
+            .iter()
+            .map(|task| {
+                merman_core::__private::config_path_overrides_typed_default(
+                    effective_config,
+                    GanttTaskBarState::from_task(task).final_fill_path(),
+                )
+            })
+            .collect::<Vec<_>>();
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Task,
+                TerminalVariantDomain::per_occurrence(&task_variants),
+            )
+            .with_source_owned_fill(&source_owned_fills)],
+            work_meter,
+        )?;
 
         let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {
@@ -686,8 +704,9 @@ impl GanttTaskThemeReceipt {
 mod tests {
     use super::*;
     use crate::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, ThemeGeometryPatch, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch, ThemeVariant,
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FamilyThemeMechanismKey,
+        OrdinalPalette, ThemeColorValue, ThemeGeometryPatch, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget, ThemeVariant,
     };
     use crate::resources::RenderResourcePolicy;
 
@@ -731,6 +750,47 @@ mod tests {
         ] {
             assert_eq!(GanttTaskBarState::from_task(&task), expected);
         }
+    }
+
+    #[test]
+    fn typed_task_fill_shadows_unsupported_ordinal_palette_per_state() {
+        let palette = OrdinalPalette::new([
+            ThemeColorValue::parse("#123456").expect("valid Gantt palette color")
+        ])
+        .expect("non-empty Gantt palette");
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Task,
+                                ThemeStylePatch::default().with_fill(
+                                    CanvasPaint::solid("#abcdef").expect("valid Gantt task fill"),
+                                ),
+                            )
+                            .for_family(crate::DiagramFamilyId::GANTT),
+                        )
+                        .with_ordinal_palette(ThemeTarget::Task, palette),
+                ),
+            )
+            .expect("compile Gantt palette shadow fixture")
+            .resolve(crate::DiagramFamilyId::GANTT);
+        let task = GanttRenderTask::default();
+        let task_theme = GanttTaskTheme::resolve(
+            Some(&theme),
+            &MermaidConfig::default(),
+            &[task],
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .expect("resolve Gantt palette shadow fixture");
+
+        assert!(task_theme.evidence.not_applicable_mechanisms().contains(
+            &FamilyThemeMechanismKey::OrdinalPalette {
+                target: ThemeTarget::Task,
+            }
+        ));
+        assert!(task_theme.evidence.residuals().is_empty());
     }
 
     #[test]

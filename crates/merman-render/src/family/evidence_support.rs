@@ -135,6 +135,9 @@ pub(crate) enum TerminalVariantDomain<'a> {
         count: usize,
         variant: ThemeVariant,
     },
+    PerOccurrence {
+        variants: &'a [ThemeVariant],
+    },
     GroupedAlternating {
         group_lengths: &'a [usize],
         odd: ThemeVariant,
@@ -145,6 +148,10 @@ pub(crate) enum TerminalVariantDomain<'a> {
 impl<'a> TerminalVariantDomain<'a> {
     pub(crate) const fn uniform(count: usize, variant: ThemeVariant) -> Self {
         Self::Uniform { count, variant }
+    }
+
+    pub(crate) const fn per_occurrence(variants: &'a [ThemeVariant]) -> Self {
+        Self::PerOccurrence { variants }
     }
 
     pub(crate) const fn grouped_alternating(
@@ -167,6 +174,11 @@ impl<'a> TerminalVariantDomain<'a> {
             Self::Uniform { count, variant } => {
                 for ordinal in 1..=count {
                     visit(ordinal, variant)?;
+                }
+            }
+            Self::PerOccurrence { variants } => {
+                for (index, variant) in variants.iter().copied().enumerate() {
+                    visit(index.saturating_add(1), variant)?;
                 }
             }
             Self::GroupedAlternating {
