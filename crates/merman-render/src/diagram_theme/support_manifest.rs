@@ -37,44 +37,6 @@ struct BaseClaim {
     properties: &'static [&'static str],
 }
 
-// These identifiers define the versioned query surface covered by this manifest. New contract
-// identifiers intentionally fall through to Missing until a new manifest row is reviewed.
-const MANIFEST_FAMILY_IDS: &[&str] = &[
-    "error",
-    "flowchart",
-    "swimlane",
-    "mindmap",
-    "architecture",
-    "zenuml",
-    "sequence",
-    "c4",
-    "kanban",
-    "class",
-    "er",
-    "gantt",
-    "info",
-    "pie",
-    "requirement",
-    "timeline",
-    "gitGraph",
-    "state",
-    "journey",
-    "quadrantChart",
-    "sankey",
-    "packet",
-    "xychart",
-    "block",
-    "eventmodeling",
-    "treeView",
-    "radar",
-    "ishikawa",
-    "treemap",
-    "railroad",
-    "venn",
-    "wardley",
-    "cynefin",
-];
-
 const MANIFEST_TARGET_IDS: &[&str] = &[
     "canvas",
     "node",
@@ -1555,21 +1517,22 @@ pub(super) fn rule_claim(
     target: super::semantic::ThemeTarget,
     facet: ThemeRuleFacetV1,
 ) -> SupportClaimKind {
+    rule_claim_for_ids(family.as_str(), target.id(), facet.id())
+}
+
+fn rule_claim_for_ids(family: &str, target: &str, facet: &str) -> SupportClaimKind {
     RULE_CLAIMS
         .iter()
         .find(|claim| {
-            claim.family == family.as_str()
-                && claim.target == target.id()
-                && claim
-                    .facets
-                    .iter()
-                    .any(|candidate| *candidate == facet.id())
+            claim.family == family
+                && claim.target == target
+                && claim.facets.iter().any(|candidate| *candidate == facet)
         })
         .map_or_else(
             || {
-                if MANIFEST_FAMILY_IDS.contains(&family.as_str())
-                    && MANIFEST_TARGET_IDS.contains(&target.id())
-                    && MANIFEST_RULE_FACET_IDS.contains(&facet.id())
+                if is_catalog_family_id(family)
+                    && MANIFEST_TARGET_IDS.contains(&target)
+                    && MANIFEST_RULE_FACET_IDS.contains(&facet)
                 {
                     SupportClaimKind::Unsupported
                 } else {
@@ -1585,18 +1548,20 @@ pub(super) fn ordinal_claim(
     family: DiagramFamilyId,
     target: super::semantic::ThemeTarget,
 ) -> SupportClaimKind {
+    ordinal_claim_for_ids(family.as_str(), target.id())
+}
+
+fn ordinal_claim_for_ids(family: &str, target: &str) -> SupportClaimKind {
     RULE_CLAIMS
         .iter()
         .find(|claim| {
-            claim.family == family.as_str()
-                && claim.target == target.id()
+            claim.family == family
+                && claim.target == target
                 && claim.facets.contains(&"ordinal-palette")
         })
         .map_or_else(
             || {
-                if MANIFEST_FAMILY_IDS.contains(&family.as_str())
-                    && MANIFEST_TARGET_IDS.contains(&target.id())
-                {
+                if is_catalog_family_id(family) && MANIFEST_TARGET_IDS.contains(&target) {
                     SupportClaimKind::Unsupported
                 } else {
                     SupportClaimKind::Missing
@@ -1611,20 +1576,22 @@ pub(super) fn base_typography_claim(
     family: DiagramFamilyId,
     property: ThemeSupportBaseTypographyPropertyV2,
 ) -> SupportClaimKind {
+    base_typography_claim_for_ids(family.as_str(), property.id())
+}
+
+fn base_typography_claim_for_ids(family: &str, property: &str) -> SupportClaimKind {
     BASE_CLAIMS
         .iter()
         .find(|claim| {
-            claim.family == family.as_str()
+            claim.family == family
                 && claim
                     .properties
                     .iter()
-                    .any(|candidate| *candidate == property.id())
+                    .any(|candidate| *candidate == property)
         })
         .map_or_else(
             || {
-                if MANIFEST_FAMILY_IDS.contains(&family.as_str())
-                    && MANIFEST_BASE_PROPERTY_IDS.contains(&property.id())
-                {
+                if is_catalog_family_id(family) && MANIFEST_BASE_PROPERTY_IDS.contains(&property) {
                     SupportClaimKind::Unsupported
                 } else {
                     SupportClaimKind::Missing
@@ -1632,6 +1599,10 @@ pub(super) fn base_typography_claim(
             },
             |claim| claim.kind,
         )
+}
+
+fn is_catalog_family_id(family: &str) -> bool {
+    DiagramFamilyId::from_id(family).is_some()
 }
 
 #[cfg(test)]
@@ -1646,11 +1617,7 @@ mod tests {
     #[test]
     fn manifest_surface_covers_current_contract_catalogs() {
         for &family in DiagramFamilyId::all() {
-            assert!(
-                MANIFEST_FAMILY_IDS.contains(&family.as_str()),
-                "family missing from support manifest: {}",
-                family.as_str()
-            );
+            assert!(is_catalog_family_id(family.as_str()));
         }
         for &target in ThemeTarget::ALL {
             assert!(
@@ -1673,6 +1640,40 @@ mod tests {
                 property.id()
             );
         }
+    }
+
+    #[test]
+    fn manifest_claim_rows_reference_only_catalog_families() {
+        for claim in RULE_CLAIMS {
+            assert!(
+                is_catalog_family_id(claim.family),
+                "rule claim references unknown family: {}",
+                claim.family
+            );
+        }
+        for claim in BASE_CLAIMS {
+            assert!(
+                is_catalog_family_id(claim.family),
+                "base claim references unknown family: {}",
+                claim.family
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_family_ids_fail_closed_to_missing() {
+        assert_eq!(
+            rule_claim_for_ids("future-family", "node", "fill"),
+            SupportClaimKind::Missing
+        );
+        assert_eq!(
+            ordinal_claim_for_ids("future-family", "node"),
+            SupportClaimKind::Missing
+        );
+        assert_eq!(
+            base_typography_claim_for_ids("future-family", "font-size"),
+            SupportClaimKind::Missing
+        );
     }
 
     #[test]
