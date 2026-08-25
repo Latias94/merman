@@ -323,15 +323,13 @@ impl SelectorBudget {
         if self.postings_exhausted {
             return Ok(false);
         }
-        let actual = self.postings.checked_add(additional).unwrap_or(usize::MAX);
+        let actual = self.postings.saturating_add(additional);
         if actual > MAX_SELECTOR_POSTINGS {
             self.postings_exhausted = true;
             selector_limit(actual, MAX_SELECTOR_POSTINGS)?;
             return Ok(false);
         }
-        let universal_actual = current_universal
-            .checked_add(universal_additional)
-            .unwrap_or(usize::MAX);
+        let universal_actual = current_universal.saturating_add(universal_additional);
         if universal_actual > MAX_UNIVERSAL_POSTINGS {
             self.postings_exhausted = true;
             selector_limit(universal_actual, MAX_UNIVERSAL_POSTINGS)?;
@@ -659,7 +657,7 @@ impl CascadeIndex {
                     })
                     .and_then(|work| work.checked_add(rule.declaration_match_weight))
                     .unwrap_or(usize::MAX);
-                total.checked_add(branch_work).unwrap_or(usize::MAX)
+                total.saturating_add(branch_work)
             });
         if !self.budget.charge_match_work(match_work, selector_limit)? {
             candidate_rule_indices.clear();
@@ -791,7 +789,7 @@ impl CascadeIndex {
         checkpoint: &mut impl FnMut() -> Result<(), E>,
         selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
     ) -> Result<ResolvedFallbackTypography, E> {
-        let base_depth = svg_ancestors.len().checked_add(1).unwrap_or(usize::MAX);
+        let base_depth = svg_ancestors.len().saturating_add(1);
         if !self
             .budget
             .check_ancestry_depth(base_depth, selector_limit)?
@@ -1587,13 +1585,11 @@ fn parse_stylesheet<E>(
             let rule_order = *source_order;
             let declaration_match_weight =
                 declarations.iter().fold(0usize, |total, declaration| {
-                    total
-                        .checked_add(
-                            1usize
-                                .saturating_add(declaration.property.len())
-                                .saturating_add(declaration.value.len()),
-                        )
-                        .unwrap_or(usize::MAX)
+                    total.saturating_add(
+                        1usize
+                            .saturating_add(declaration.property.len())
+                            .saturating_add(declaration.value.len()),
+                    )
                 });
             let declarations: Arc<[Declaration]> = declarations.into();
             for branch in parsed_branches {
