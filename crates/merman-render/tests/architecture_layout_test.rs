@@ -10,6 +10,11 @@ use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 
+#[cfg(windows)]
+const DEEP_GROUP_LAYOUT_STACK_SIZE: usize = 512 * 1024;
+#[cfg(not(windows))]
+const DEEP_GROUP_LAYOUT_STACK_SIZE: usize = 128 * 1024;
+
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
     let engine = Engine::new();
     layout_architecture_with_engine(&engine, text)
@@ -268,7 +273,9 @@ fn architecture_layout_handles_deep_group_chain() {
     let engine = Engine::new();
     let handle = std::thread::Builder::new()
         .name("architecture-deep-group-layout".to_string())
-        .stack_size(128 * 1024)
+        // The public artifact pipeline needs more stack headroom on Windows/MSVC than the
+        // parse-only path while retaining the 128 KiB contract on other platforms.
+        .stack_size(DEEP_GROUP_LAYOUT_STACK_SIZE)
         .spawn(move || layout_architecture_with_engine(&engine, &source))
         .expect("spawn architecture deep group layout test");
     let layout = handle

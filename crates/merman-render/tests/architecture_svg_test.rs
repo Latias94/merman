@@ -17,6 +17,13 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+// Full architecture SVG rendering includes the public family pipeline; keep its platform
+// headroom separate from the focused lower-level small-stack traversal tests.
+#[cfg(windows)]
+const DEEP_ARCHITECTURE_RENDER_STACK_SIZE: usize = 512 * 1024;
+#[cfg(not(windows))]
+const DEEP_ARCHITECTURE_RENDER_STACK_SIZE: usize = 128 * 1024;
+
 #[derive(Default)]
 struct CountingArchitectureHost {
     calls: AtomicUsize,
@@ -327,7 +334,7 @@ fn architecture_svg_handles_deep_group_chain() {
         };
         let handle = std::thread::Builder::new()
             .name("architecture-deep-group-svg".to_string())
-            .stack_size(128 * 1024)
+            .stack_size(DEEP_ARCHITECTURE_RENDER_STACK_SIZE)
             .spawn(move || {
                 artifact
                     .render_svg(&options, &SvgDebugOptions::default())
@@ -361,7 +368,7 @@ fn architecture_svg_handles_deep_icon_text_xhtml_fragment() {
     let engine = Engine::new();
     let handle = std::thread::Builder::new()
         .name("architecture-deep-icon-text-svg".to_string())
-        .stack_size(128 * 1024)
+        .stack_size(DEEP_ARCHITECTURE_RENDER_STACK_SIZE)
         .spawn(move || {
             render_architecture_text_with_engine_and_options(
                 &engine,
