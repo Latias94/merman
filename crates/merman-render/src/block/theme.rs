@@ -11,7 +11,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolve_direct_static_fill,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -51,6 +52,7 @@ impl BlockNodePaintThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
         layout: &BlockDiagramLayout,
+        source_owned_fill: &[bool],
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let (node_indices, mut expectations) = terminal_domain(layout);
@@ -175,34 +177,28 @@ impl BlockNodePaintThemePlan {
                 }
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Node,
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if node_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
-                }
+                } => {}
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Node,
                     ..
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if node_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
-                }
+                } => {}
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Node,
+                TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(source_owned_fill)],
+            work_meter,
+        )?;
 
         let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {
@@ -528,6 +524,47 @@ fn source_owns_property(
         || assigned_classes
             .iter()
             .any(|assigned| owning_classes.contains(assigned))
+}
+
+impl BlockNodePaintSourceOwnership {
+    /// Computes source-owned fill for the same visible node order used by the Block writer.
+    pub(crate) fn source_owned_fill_mask(
+        &self,
+        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        layout: &BlockDiagramLayout,
+        mermaid_owns_fill: bool,
+    ) -> Vec<bool> {
+        let mut sources = BTreeMap::<String, BlockNodeSourceProperties>::new();
+        for node in &model.blocks_flat {
+            let source = sources.entry(node.id.clone()).or_default();
+            if !node.classes.is_empty() {
+                source.classes = node.classes.clone();
+            }
+            if !node.styles.is_empty() {
+                source.inline_owns_fill = node.styles.iter().any(|raw| {
+                    crate::mermaid_style::parse_style_declaration(raw)
+                        .is_some_and(|declaration| declaration.property() == "fill")
+                });
+            }
+        }
+
+        layout
+            .nodes
+            .iter()
+            .map(|node| {
+                let Some(source) = sources.get(&node.id) else {
+                    return mermaid_owns_fill;
+                };
+                mermaid_owns_fill || self.owns_fill(source.inline_owns_fill, &source.classes)
+            })
+            .collect()
+    }
+}
+
+#[derive(Default)]
+struct BlockNodeSourceProperties {
+    classes: Vec<String>,
+    inline_owns_fill: bool,
 }
 
 /// Writer-owned proof that every semantic Block node reached every canonical SVG shell.

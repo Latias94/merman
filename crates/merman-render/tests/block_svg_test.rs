@@ -3,8 +3,9 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -150,6 +151,46 @@ fn block_node_fill_and_stroke_theme(fill: CanvasPaint, stroke: CanvasPaint) -> D
         .expect("compile Block node fill and stroke theme")
 }
 
+fn block_node_fill_with_ordinal_palette_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default().with_fill(fill),
+                        )
+                        .for_family(DiagramFamilyId::BLOCK),
+                    )
+                    .with_ordinal_palette(
+                        ThemeTarget::Node,
+                        OrdinalPalette::new([
+                            ThemeColorValue::parse("#123456").expect("valid palette color")
+                        ])
+                        .expect("non-empty Block node palette"),
+                    ),
+            ),
+        )
+        .expect("compile Block node fill and ordinal palette theme")
+}
+
+fn block_node_ordinal_palette_theme() -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(
+                    ThemeTarget::Node,
+                    OrdinalPalette::new([
+                        ThemeColorValue::parse("#123456").expect("valid palette color")
+                    ])
+                    .expect("non-empty Block node palette"),
+                ),
+            ),
+        )
+        .expect("compile Block node ordinal palette theme")
+}
+
 fn render_block_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
@@ -293,6 +334,40 @@ fn block_typed_node_fill_reaches_every_terminal_shape() {
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
     }
+}
+
+#[test]
+fn block_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
+    let theme = block_node_fill_with_ordinal_palette_theme(
+        CanvasPaint::solid("#654321").expect("valid typed Block node fill"),
+    );
+    let rendered =
+        render_block_with_theme_and_engine("block\n  A[\"Alpha\"]\n", &theme, Engine::new());
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn block_ordinal_palette_is_not_applicable_when_source_fill_wins() {
+    let source = r#"block
+  A["Alpha"]
+  classDef default fill:#bb0000
+"#;
+    let rendered = render_block_with_theme_and_engine(
+        source,
+        &block_node_ordinal_palette_theme(),
+        Engine::new(),
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
 }
 
 #[test]
