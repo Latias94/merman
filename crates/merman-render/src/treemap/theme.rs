@@ -9,6 +9,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
@@ -82,6 +83,7 @@ impl TreemapTitleThemePlan {
                 let (css, rule_index, capability) = fill.into_parts();
                 (Some(css), Some(rule_index), Some(capability))
             });
+        let source_owned_fill = [config_owns_fill];
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let mut observations = BTreeMap::<usize, TreemapTitleRuleObservation>::new();
@@ -138,26 +140,13 @@ impl TreemapTitleThemePlan {
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Title,
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if title_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
+                    // Reconciled below from the final title fill winner.
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Title,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if title_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // Reconciled below from the final title style.
                 }
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
@@ -165,6 +154,17 @@ impl TreemapTitleThemePlan {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Title,
+                TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&source_owned_fill)],
+            work_meter,
+        )?;
 
         let mut pending_fill_key = None;
         for (rule_index, observation) in observations {
@@ -282,7 +282,15 @@ struct TreemapTitleRuleObservation {
 
 #[cfg(test)]
 mod tests {
-    use super::TreemapTitleThemeReceipt;
+    use super::{TreemapTitleThemePlan, TreemapTitleThemeReceipt};
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
+        ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    };
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use merman_core::MermaidConfig;
+    use serde_json::json;
 
     #[test]
     fn title_receipt_requires_one_matching_stylesheet_and_title_checkpoint() {
@@ -304,5 +312,42 @@ mod tests {
         wrong_class.record_stylesheet("otherTitle", "#123456");
         wrong_class.record_title_text("treemapTitle");
         assert!(!wrong_class.proves("#123456"));
+    }
+
+    #[test]
+    fn typed_title_fill_shadows_unsupported_ordinal_palette() {
+        let palette = OrdinalPalette::new([
+            ThemeColorValue::parse("#abcdef").expect("valid Treemap ordinal palette color")
+        ])
+        .expect("non-empty Treemap ordinal palette");
+        let resolved = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Title,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#123456").expect("valid Treemap title fill"),
+                            ),
+                        ))
+                        .with_ordinal_palette(ThemeTarget::Title, palette),
+                ),
+            )
+            .expect("compile Treemap title fill and palette theme")
+            .resolve(DiagramFamilyId::TREEMAP);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let config = MermaidConfig::from_value(json!({}));
+        let plan = TreemapTitleThemePlan::resolve(Some(&resolved), &config, Some("Title"), &meter)
+            .expect("resolve Treemap title theme");
+        let mut receipt = plan.begin_terminal_receipt().expect("typed title receipt");
+        receipt.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
+        receipt.record_title_text(super::super::TREEMAP_TITLE_CLASS);
+        assert!(plan.record_terminal(receipt));
+
+        let evidence = plan.finish_evidence();
+        assert_eq!(resolved.family_mechanism_keys().len(), 2);
+        assert_eq!(evidence.applied().len(), 1);
+        assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
+        assert!(evidence.residuals().is_empty());
     }
 }
