@@ -249,7 +249,7 @@ fn render_xychart_diagram_controlled_with_base(
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let emit_resources =
             execution.resource_context(&resources, merman_core::OperationPhase::Emit);
-        let rendered = empty::render(model, orientation, options, emit_resources)?;
+        let rendered = empty::render(model, orientation, options, emit_resources, execution)?;
         checkpoint_emitted_lines(&rendered, execution)?;
         return Ok(rendered);
     }
@@ -258,7 +258,7 @@ fn render_xychart_diagram_controlled_with_base(
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let emit_resources =
             execution.resource_context(&resources, merman_core::OperationPhase::Emit);
-        let rendered = empty::render(model, orientation, options, emit_resources)?;
+        let rendered = empty::render(model, orientation, options, emit_resources, execution)?;
         checkpoint_emitted_lines(&rendered, execution)?;
         return Ok(rendered);
     }
@@ -1834,6 +1834,11 @@ fn finish_chart_lines_controlled(
         return Ok(String::new());
     }
 
+    execution.admit_primary_extent(
+        document.width,
+        document.lines.len(),
+        options.terminal_width_profile,
+    )?;
     finish_styled_lines_with_resources_with_execution(
         &document.lines,
         options,

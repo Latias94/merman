@@ -48,11 +48,16 @@ impl<'a> AsciiExecution<'a> {
         self
     }
 
-    pub fn admit_graph_extent(self, width: usize, profile: TerminalWidthProfile) -> Result<()> {
+    pub(crate) fn admit_primary_extent(
+        self,
+        width: usize,
+        height: usize,
+        profile: TerminalWidthProfile,
+    ) -> Result<()> {
         let Some(max_width) = self.viewport.max_width else {
             return Ok(());
         };
-        if width <= max_width || self.viewport.overflow != OverflowPolicy::Error {
+        if width <= max_width {
             return Ok(());
         }
         match self.viewport.overflow {
@@ -61,10 +66,23 @@ impl<'a> AsciiExecution<'a> {
                 actual_width: width,
                 profile,
             }),
-            OverflowPolicy::Fallback | OverflowPolicy::Allow => {
-                unreachable!("non-error overflow policies return above")
-            }
+            OverflowPolicy::Fallback => Err(crate::AsciiError::PrimaryViewportOverflow {
+                max_width,
+                actual_width: width,
+                height,
+                profile,
+            }),
+            OverflowPolicy::Allow => Ok(()),
         }
+    }
+
+    pub(crate) fn admit_graph_extent(
+        self,
+        width: usize,
+        height: usize,
+        profile: TerminalWidthProfile,
+    ) -> Result<()> {
+        self.admit_primary_extent(width, height, profile)
     }
 
     /// Creates a real, never-cancelled execution projection for crate-local unit tests.

@@ -36,6 +36,17 @@ pub enum AsciiError {
         actual_width: usize,
         profile: TerminalWidthProfile,
     },
+    /// Internal signal used when a family-owned planned extent exceeds a Fallback viewport
+    /// before its primary text has been encoded.
+    #[error(
+        "ASCII primary projection exceeds fallback viewport: actual {actual_width} cells > maximum {max_width} ({profile:?})"
+    )]
+    PrimaryViewportOverflow {
+        max_width: usize,
+        actual_width: usize,
+        height: usize,
+        profile: TerminalWidthProfile,
+    },
     #[error(
         "ASCII structured fallback is unavailable for `{diagram_type}` within {max_width} cells (actual {actual_width})"
     )]

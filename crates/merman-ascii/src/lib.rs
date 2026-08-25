@@ -180,19 +180,53 @@ impl AsciiRenderer {
             .with_viewport(viewport)
             .with_render_ledger(&render_ledger);
         let options = self.options.effective_layout();
-        let rendered = render_model_with_execution(
+        let rendered = match render_model_with_execution(
             model,
             flowchart_context,
             &options,
             execution,
             context.local_time_zone(),
-        )?;
+        ) {
+            Ok(rendered) => rendered,
+            Err(AsciiError::PrimaryViewportOverflow {
+                actual_width,
+                height,
+                ..
+            }) => {
+                let primary_extent = output::AsciiExtent::new(actual_width, height);
+                if !output::supports_structured_fallback(model)
+                    || options.color_mode != color::AsciiColorMode::Plain
+                {
+                    return Err(AsciiError::FallbackUnavailable {
+                        diagram_type: model.kind().to_string(),
+                        max_width: viewport
+                            .max_width
+                            .expect("primary overflow requires a width bound"),
+                        actual_width,
+                    });
+                }
+                return output::build_semantic_fallback(
+                    model,
+                    metadata,
+                    primary_extent,
+                    output::OutputBuildContext {
+                        color_mode: options.color_mode,
+                        profile: options.terminal_width_profile,
+                        layout_profile: options.layout_profile,
+                        policy: viewport,
+                        execution,
+                    },
+                );
+            }
+            Err(error) => return Err(error),
+        };
         let projection = output::projection_for(model, &rendered);
-        let primary_extent = output::AsciiExtent::measure_with_color_mode(
+        let primary_extent = output::AsciiExtent::measure_with_execution(
             &rendered,
             options.color_mode,
             options.terminal_width_profile,
-        );
+            execution,
+        )?;
         let overflowed = viewport
             .max_width
             .is_some_and(|max_width| primary_extent.width > max_width);

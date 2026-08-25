@@ -60,7 +60,7 @@ pub(super) fn render_git_graph_diagram(
         }
     }
 
-    document.finish()
+    document.finish_with_execution(execution)
 }
 
 fn validate_commit_types(

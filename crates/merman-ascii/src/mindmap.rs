@@ -194,7 +194,7 @@ fn render_mindmap_with_resources(
         }
     }
 
-    document.finish()
+    document.finish_with_execution(execution)
 }
 
 fn index_nodes<'a>(

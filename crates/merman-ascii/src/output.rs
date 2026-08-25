@@ -1,5 +1,7 @@
 use crate::color::AsciiColorMode;
+use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
+use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use crate::safe_text::terminal_line_display_width;
 use crate::{AsciiError, Result};
 use merman_core::{OperationPhase, ParseMetadata};
@@ -7,6 +9,7 @@ use serde_json::Value;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 1;
+const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
 
 /// 宽度超限时的输出策略。
 #[non_exhaustive]
@@ -124,24 +127,55 @@ impl AsciiExtent {
 
     #[cfg(test)]
     pub(crate) fn measure(text: &str, profile: TerminalWidthProfile) -> Self {
-        Self::measure_with_color_mode(text, AsciiColorMode::Plain, profile)
-    }
-
-    pub(crate) fn measure_with_color_mode(
-        text: &str,
-        color_mode: AsciiColorMode,
-        profile: TerminalWidthProfile,
-    ) -> Self {
         if text.is_empty() {
             return Self::default();
         }
-        let visible_text = strip_encoding(text, color_mode);
         let mut extent = Self::default();
-        for line in visible_text.split('\n') {
+        for line in text.split('\n') {
             extent.width = extent.width.max(terminal_line_display_width(line, profile));
             extent.height = extent.height.saturating_add(1);
         }
         extent
+    }
+
+    pub(crate) fn measure_with_execution(
+        text: &str,
+        color_mode: AsciiColorMode,
+        profile: TerminalWidthProfile,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        if text.is_empty() {
+            return Ok(Self::default());
+        }
+
+        let resources = execution.new_resource_context(OperationPhase::Emit);
+        let mut extent = Self::default();
+        for (line_index, line) in text.split('\n').enumerate() {
+            execution.checkpoint(OperationPhase::Emit)?;
+            resources.charge_layout_work(1)?;
+            let visible = match color_mode {
+                AsciiColorMode::Plain => std::borrow::Cow::Borrowed(line),
+                AsciiColorMode::Ansi16
+                | AsciiColorMode::Ansi256
+                | AsciiColorMode::TrueColor
+                | AsciiColorMode::Html => std::borrow::Cow::Owned(strip_encoding(line, color_mode)),
+            };
+            let mut line_width = 0usize;
+            let mut grapheme_count = 0usize;
+            for (grapheme_index, grapheme) in visible.graphemes(true).enumerate() {
+                execution.checkpoint_loop(OperationPhase::Emit, grapheme_index)?;
+                line_width = resources
+                    .checked_grid_add(line_width, terminal_line_display_width(grapheme, profile))?;
+                grapheme_count = resources.checked_grid_add(grapheme_count, 1)?;
+            }
+            extent.width = extent.width.max(line_width);
+            extent.height = resources.checked_grid_add(line_index, 1)?;
+
+            let grapheme_work = grapheme_count.div_ceil(EXTENT_CHECKPOINT_INTERVAL);
+            resources.charge_layout_work(grapheme_work)?;
+            execution.checkpoint_loop(OperationPhase::Emit, line_index)?;
+        }
+        Ok(extent)
     }
 }
 
@@ -332,13 +366,14 @@ pub(crate) fn build_output(
         }
     }
 
+    let primary_is_empty = primary_text.is_empty();
     let (emitted_text, emitted_extent, trimmed) = match policy.trim {
         AsciiTrimPolicy::Preserve => (primary_text, primary_extent, false),
         AsciiTrimPolicy::TrimTrailingSpaces => {
             let emitted_text = trim_text(&primary_text, policy.trim);
             let trimmed = emitted_text != primary_text;
             let emitted_extent = if trimmed {
-                AsciiExtent::measure_with_color_mode(&emitted_text, color_mode, profile)
+                AsciiExtent::measure_with_execution(&emitted_text, color_mode, profile, execution)?
             } else {
                 primary_extent
             };
@@ -360,7 +395,7 @@ pub(crate) fn build_output(
         outcome: if overflowed {
             AsciiOutputOutcome::WideAllowed
         } else {
-            if primary_extent.width == 0 || primary_extent.height == 0 {
+            if primary_is_empty {
                 AsciiOutputOutcome::Empty
             } else {
                 AsciiOutputOutcome::Primary
@@ -397,7 +432,8 @@ pub(crate) fn build_structured_fallback(
     let reflowed = reflow_text(&primary_text, max_width, profile, execution)?;
     let emitted_text = trim_text(&reflowed, policy.trim);
     let trimmed = emitted_text != reflowed;
-    let emitted_extent = AsciiExtent::measure_with_color_mode(&emitted_text, color_mode, profile);
+    let emitted_extent =
+        AsciiExtent::measure_with_execution(&emitted_text, color_mode, profile, execution)?;
     if emitted_extent.width > max_width {
         return Err(AsciiError::FallbackUnavailable {
             diagram_type: family.to_string(),
@@ -467,13 +503,14 @@ pub(crate) fn build_semantic_fallback(
                 actual_width: primary_extent.width,
             },
         })?;
-    let mut lines = vec![format!("family: {}", model.kind())];
-    flatten_json_value("model", &value, &mut lines, execution)?;
-    let semantic_text = lines.join("\n");
-    let reflowed = reflow_text(&semantic_text, max_width, profile, execution)?;
+    let mut fallback = SemanticFallbackWriter::new(execution, max_width, profile);
+    fallback.push(format!("family: {}", model.kind()))?;
+    flatten_json_value("model", &value, &mut fallback)?;
+    let reflowed = fallback.finish();
     let emitted_text = trim_text(&reflowed, policy.trim);
     let trimmed = emitted_text != reflowed;
-    let emitted_extent = AsciiExtent::measure_with_color_mode(&emitted_text, color_mode, profile);
+    let emitted_extent =
+        AsciiExtent::measure_with_execution(&emitted_text, color_mode, profile, execution)?;
     if emitted_extent.width > max_width {
         return Err(AsciiError::FallbackUnavailable {
             diagram_type: model.kind().to_string(),
@@ -546,58 +583,156 @@ fn semantic_fallback_value(
     Ok(value)
 }
 
+struct SemanticFallbackWriter<'a> {
+    output: String,
+    semantic_resources: ResourceContext,
+    emit_resources: ResourceContext,
+    execution: AsciiExecution<'a>,
+    max_width: usize,
+    profile: TerminalWidthProfile,
+    output_bytes: usize,
+    document_cells: usize,
+    work: usize,
+    line_count: usize,
+}
+
+impl<'a> SemanticFallbackWriter<'a> {
+    fn new(execution: AsciiExecution<'a>, max_width: usize, profile: TerminalWidthProfile) -> Self {
+        Self {
+            output: String::new(),
+            semantic_resources: execution.new_resource_context(OperationPhase::Semantic),
+            emit_resources: execution.new_resource_context(OperationPhase::Emit),
+            execution,
+            max_width,
+            profile,
+            output_bytes: 0,
+            document_cells: 0,
+            work: 0,
+            line_count: 0,
+        }
+    }
+
+    fn push(&mut self, line: String) -> Result<()> {
+        self.execution.checkpoint(OperationPhase::Semantic)?;
+        if self.line_count > 0 {
+            self.push_fragment("\n")?;
+        }
+        let mut width = 0usize;
+        let mut has_content = false;
+        for grapheme in line.graphemes(true) {
+            self.emit_resources.charge_layout_work(1)?;
+            self.execution
+                .checkpoint_loop(OperationPhase::Emit, self.work)?;
+            self.work = self.work.saturating_add(1);
+            let grapheme_width = terminal_line_display_width(grapheme, self.profile);
+            if has_content
+                && self
+                    .emit_resources
+                    .checked_grid_add(width, grapheme_width)?
+                    > self.max_width
+            {
+                self.push_fragment("\n")?;
+                width = 0;
+            }
+            let next_width = self
+                .emit_resources
+                .checked_grid_add(width, grapheme_width)?;
+            let next_document_cells = self
+                .emit_resources
+                .checked_grid_add(self.document_cells, grapheme_width)?;
+            self.emit_resources
+                .check(AsciiResourceLimitId::MaxDocumentCells, next_document_cells)?;
+            self.push_fragment(grapheme)?;
+            width = next_width;
+            self.document_cells = next_document_cells;
+            has_content = true;
+        }
+        self.line_count = self.emit_resources.checked_grid_add(self.line_count, 1)?;
+        Ok(())
+    }
+
+    fn admit_node(&self, depth: usize) -> Result<()> {
+        self.semantic_resources.charge_layout_work(1)?;
+        self.semantic_resources.check_nesting_depth(depth)
+    }
+
+    fn push_fragment(&mut self, fragment: &str) -> Result<()> {
+        self.emit_resources
+            .check(AsciiResourceLimitId::MaxGraphemeBytes, fragment.len())?;
+        let output_bytes = self
+            .output_bytes
+            .checked_add(fragment.len())
+            .ok_or_else(|| {
+                self.emit_resources
+                    .overflow(AsciiResourceLimitId::MaxOutputBytes)
+            })?;
+        self.emit_resources
+            .check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
+        self.output
+            .try_reserve(fragment.len())
+            .map_err(|_| AsciiError::allocation_failed("ascii_semantic_fallback"))?;
+        self.output.push_str(fragment);
+        self.output_bytes = output_bytes;
+        Ok(())
+    }
+
+    fn finish(self) -> String {
+        self.output
+    }
+}
+
 fn flatten_json_value(
     path: &str,
     value: &Value,
-    lines: &mut Vec<String>,
-    execution: crate::operation::AsciiExecution<'_>,
+    lines: &mut SemanticFallbackWriter<'_>,
 ) -> Result<()> {
-    fn admit_node(depth: usize, execution: crate::operation::AsciiExecution<'_>) -> Result<()> {
-        let resources = execution.new_resource_context(OperationPhase::Semantic);
-        resources.charge_layout_work(1)?;
-        resources.check_nesting_depth(depth)
-    }
-
     fn visit(
         path: &str,
         value: &Value,
-        lines: &mut Vec<String>,
-        execution: crate::operation::AsciiExecution<'_>,
+        lines: &mut SemanticFallbackWriter<'_>,
         depth: usize,
     ) -> Result<()> {
-        admit_node(depth, execution)?;
+        lines.admit_node(depth)?;
         match value {
             Value::Object(object) => {
                 let mut keys = object.keys().collect::<Vec<_>>();
                 keys.sort();
                 for key in keys {
-                    let child_path = format!("{path}.{key}");
-                    visit(&child_path, &object[key], lines, execution, depth + 1)?;
+                    let child_path = append_path_key(path, key);
+                    visit(&child_path, &object[key], lines, depth + 1)?;
                 }
             }
             Value::Array(values) => {
                 for (index, value) in values.iter().enumerate() {
-                    visit(
-                        &format!("{path}[{index}]"),
-                        value,
-                        lines,
-                        execution,
-                        depth + 1,
-                    )?;
+                    visit(&format!("{path}[{index}]"), value, lines, depth + 1)?;
                 }
                 if values.is_empty() {
-                    lines.push(format!("{path}: []"));
+                    lines.push(format!("{path}: []"))?;
                 }
             }
-            Value::String(value) => lines.push(format!("{path}: {value:?}")),
-            Value::Number(value) => lines.push(format!("{path}: {value}")),
-            Value::Bool(value) => lines.push(format!("{path}: {value}")),
-            Value::Null => lines.push(format!("{path}: null")),
+            Value::String(value) => lines.push(format!("{path}: {value:?}"))?,
+            Value::Number(value) => lines.push(format!("{path}: {value}"))?,
+            Value::Bool(value) => lines.push(format!("{path}: {value}"))?,
+            Value::Null => lines.push(format!("{path}: null"))?,
         }
         Ok(())
     }
 
-    visit(path, value, lines, execution, 0)
+    visit(path, value, lines, 0)
+}
+
+fn append_path_key(path: &str, key: &str) -> String {
+    if key.is_empty()
+        || key.chars().any(|character| {
+            character.is_control()
+                || character.is_whitespace()
+                || matches!(character, '.' | '[' | ']' | ':' | '\\' | '"')
+        })
+    {
+        format!("{path}[{key:?}]")
+    } else {
+        format!("{path}.{key}")
+    }
 }
 
 fn trim_text(text: &str, trim: AsciiTrimPolicy) -> String {
@@ -622,12 +757,24 @@ fn reflow_text(
     profile: TerminalWidthProfile,
     execution: crate::operation::AsciiExecution<'_>,
 ) -> Result<String> {
+    reflow_lines(text.split('\n'), max_width, profile, execution)
+}
+
+fn reflow_lines<'a, I>(
+    lines: I,
+    max_width: usize,
+    profile: TerminalWidthProfile,
+    execution: crate::operation::AsciiExecution<'_>,
+) -> Result<String>
+where
+    I: IntoIterator<Item = &'a str>,
+{
     let mut output = String::new();
     let resources = execution.new_resource_context(OperationPhase::Emit);
     let mut work = 0usize;
     // `split('\n')` deliberately retains trailing empty rows so authored hard breaks and a final
     // newline survive the bounded projection. `str::lines()` would silently erase both.
-    for (line_index, line) in text.split('\n').enumerate() {
+    for (line_index, line) in lines.into_iter().enumerate() {
         execution.checkpoint(OperationPhase::Emit)?;
         if line_index > 0 {
             output.push('\n');

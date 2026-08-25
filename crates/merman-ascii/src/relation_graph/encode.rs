@@ -78,6 +78,12 @@ pub(crate) fn render_lines_with_deferred_options_with_execution_and_observer(
     }
 
     assert_width_profile(lines, options);
+    let extent = super::document::relation_lines_extent(lines, resources)?;
+    execution.admit_primary_extent(
+        extent.width(),
+        extent.height(),
+        options.terminal_width_profile,
+    )?;
     finish_styled_line_iter_with_deferred_resources_with_execution_and_observer(
         lines.iter().map(RelationGraphLine::styled),
         options,
