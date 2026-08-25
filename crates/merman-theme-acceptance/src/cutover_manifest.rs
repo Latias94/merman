@@ -11,7 +11,7 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 23;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 24;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
@@ -322,7 +322,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 128] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 132] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -771,6 +771,38 @@ const ACTIVE_ROUTES: [RouteAuthorization; 128] = [
     route(
         DiagramFamilyId::PIE,
         ThemeTarget::PieSlice,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        PIE_SLICE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::PIE,
+        ThemeTarget::PieSlice,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        PIE_SLICE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::PIE,
+        ThemeTarget::PieSlice,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        PIE_SLICE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::PIE,
+        ThemeTarget::PieSlice,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        PIE_SLICE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::PIE,
+        ThemeTarget::PieSlice,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         PIE_SLICE_STROKE_PROJECTIONS,
@@ -1545,8 +1577,9 @@ mod tests {
     use super::{
         ACTIVE_ROUTES, ACTOR_FILL_PROJECTIONS, CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
         CutoverAuthorizationManifest, EDGE_STROKE_ONLY_PROJECTIONS,
-        GANTT_TASK_ACTIVE_FILL_PROJECTIONS, MANIFEST, PROJECTION_ACTIONS, RouteAuthorization,
-        RouteTombstone, authorize_cutover_routes, reconcile_manifest, validate_projection_actions,
+        GANTT_TASK_ACTIVE_FILL_PROJECTIONS, MANIFEST, PIE_SLICE_FILL_PROJECTIONS,
+        PIE_SLICE_STROKE_PROJECTIONS, PROJECTION_ACTIONS, RouteAuthorization, RouteTombstone,
+        authorize_cutover_routes, reconcile_manifest, validate_projection_actions,
     };
 
     fn current_inventory() -> Vec<(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)> {
@@ -1644,11 +1677,29 @@ mod tests {
             route.id.facet() == ThemeRouteCutoverFacet::Stroke
                 && route.projections == EDGE_STROKE_ONLY_PROJECTIONS
         }));
+
+        let pie_slice_default = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::PIE
+                    && route.id.target() == ThemeTarget::PieSlice
+                    && route.id.selector()
+                        == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(pie_slice_default.len(), 4);
+        assert!(pie_slice_default.iter().all(|route| {
+            route.projections
+                == match route.id.facet() {
+                    ThemeRouteCutoverFacet::Fill => PIE_SLICE_FILL_PROJECTIONS,
+                    ThemeRouteCutoverFacet::Stroke => PIE_SLICE_STROKE_PROJECTIONS,
+                }
+        }));
     }
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 23);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 24);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

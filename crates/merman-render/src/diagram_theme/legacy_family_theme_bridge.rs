@@ -2338,7 +2338,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_default_pie_slice_fill_remains_on_the_bridge() {
+    fn direct_default_pie_slice_fill_has_no_legacy_projection() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
                 ThemeRule::new(
@@ -2349,13 +2349,32 @@ mod tests {
                 .with_variant(ThemeVariant::Default),
             ),
         );
-        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::PIE);
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::PIE);
 
-        assert!(
-            artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.pie.slice.fill")
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.pie.slice.fill"));
+    }
+
+    #[test]
+    fn direct_default_pie_slice_stroke_has_no_legacy_projection() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::PieSlice,
+                    ThemeStylePatch::default().with_stroke(solid("#111827")),
+                )
+                .for_family(DiagramFamilyId::PIE)
+                .with_variant(ThemeVariant::Default),
+            ),
         );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::PIE);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.pie.slice.stroke"));
     }
 
     #[test]
@@ -2776,13 +2795,8 @@ mod tests {
             let legacy_bridge = bridge(&legacy_spec);
             let legacy = legacy_bridge.compile_for_family(family);
 
-            if family == DiagramFamilyId::PIE {
-                assert!(legacy.contribution_ids.contains(contribution_id));
-                assert!(legacy_bridge.owns_contribution_id(contribution_id));
-            } else {
-                assert!(!legacy.contribution_ids.contains(contribution_id));
-                assert!(!legacy_bridge.owns_contribution_id(contribution_id));
-            }
+            assert!(!legacy.contribution_ids.contains(contribution_id));
+            assert!(!legacy_bridge.owns_contribution_id(contribution_id));
         }
     }
 

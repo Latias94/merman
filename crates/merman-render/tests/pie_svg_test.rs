@@ -227,6 +227,23 @@ fn pie_slice_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
         .expect("compile Pie stroke theme")
 }
 
+fn pie_slice_default_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::PieSlice,
+                        ThemeStylePatch::default().with_stroke(stroke),
+                    )
+                    .for_family(DiagramFamilyId::PIE)
+                    .with_variant(ThemeVariant::Default),
+                ),
+            ),
+        )
+        .expect("compile explicit-Default Pie stroke theme")
+}
+
 fn pie_slice_ordinal_stroke_theme(selector: OrdinalSelector) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
@@ -987,18 +1004,29 @@ fn pie_later_ordinal_fill_prevents_static_fill_from_claiming_that_occurrence() {
 }
 
 #[test]
-fn pie_explicit_default_fill_remains_legacy_compatibility() {
+fn pie_explicit_default_fill_is_typed_and_verified() {
     let theme = pie_slice_default_fill_theme(
         CanvasPaint::solid("#111827").expect("valid explicit-Default Pie fill"),
     );
-    let rendered = render_pie_with_theme("pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n", &theme);
+    let rendered = try_render_pie_with_theme_requirement(
+        "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("explicit-Default Pie fill is portable");
     let (slice_fills, _) = pie_terminal_fills(rendered.svg());
     assert_eq!(slice_fills, ["#111827", "#111827"]);
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(
+        evidence.status(),
+        merman_render::__private::FamilyEvidenceStatus::Verified
+    );
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1128,6 +1156,43 @@ fn pie_static_stroke_is_verified_from_slice_and_outer_circle_css() {
         );
         assert_eq!(evidence.required_count(), 1);
         assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn pie_explicit_default_stroke_is_verified_from_slice_and_outer_circle_css() {
+    for (stroke, expected_css) in [
+        (
+            CanvasPaint::solid("#7c3aed").expect("valid explicit-Default Pie stroke"),
+            "#7c3aed",
+        ),
+        (CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = pie_slice_default_stroke_theme(stroke);
+        let rendered = try_render_pie_with_theme_requirement(
+            "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n",
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("explicit-Default Pie stroke is portable");
+        let stylesheet =
+            pie_stylesheet_property_values(rendered.svg(), "#merman .pieCircle", "stroke");
+        assert_eq!(stylesheet, [expected_css]);
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), "#merman .pieOuterCircle", "stroke"),
+            [expected_css]
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.status(),
+            merman_render::__private::FamilyEvidenceStatus::Verified
+        );
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);

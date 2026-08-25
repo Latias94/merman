@@ -462,6 +462,11 @@ fn legacy_route_selectors(
                 ThemeVariant::Default,
             ));
         }
+        (DiagramFamilyId::PIE, ThemeTarget::PieSlice) => {
+            selectors.push(ThemeRouteCutoverSelector::StaticVariant(
+                ThemeVariant::Default,
+            ));
+        }
         _ => {}
     }
     selectors
@@ -1715,16 +1720,18 @@ pub(super) fn classify_rule_facet(
     if matches!(
         (family, target),
         (DiagramFamilyId::PIE, ThemeTarget::PieSlice)
-    ) && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
-        && matches!(
-            facet,
-            FamilyThemeRuleFacet::Fill(
-                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            ) | FamilyThemeRuleFacet::Stroke(
+    ) && matches!(
+        selector,
+        FamilyThemeSelectorShape::Static {
+            variant: None | Some(ThemeVariant::Default)
+        }
+    ) && matches!(
+        facet,
+        FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid)
+            | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
-        )
-    {
+    ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::BLOCK
@@ -2171,11 +2178,12 @@ mod tests {
                 FamilyThemePaintKind::Transparent,
                 FamilyThemePaintKind::Solid,
             ] {
-                let expected_default = if family == DiagramFamilyId::BLOCK {
-                    FamilyThemeDisposition::TypedAdapter
-                } else {
-                    FamilyThemeDisposition::LegacyCompatibility
-                };
+                let expected_default =
+                    if matches!(family, DiagramFamilyId::BLOCK | DiagramFamilyId::PIE) {
+                        FamilyThemeDisposition::TypedAdapter
+                    } else {
+                        FamilyThemeDisposition::LegacyCompatibility
+                    };
                 assert_eq!(
                     classify_rule_facet(
                         family,
@@ -2572,11 +2580,12 @@ mod tests {
                 FamilyThemePaintKind::Transparent,
                 FamilyThemePaintKind::Solid,
             ] {
-                let expected_default = if family == DiagramFamilyId::BLOCK {
-                    FamilyThemeDisposition::TypedAdapter
-                } else {
-                    FamilyThemeDisposition::LegacyCompatibility
-                };
+                let expected_default =
+                    if matches!(family, DiagramFamilyId::BLOCK | DiagramFamilyId::PIE) {
+                        FamilyThemeDisposition::TypedAdapter
+                    } else {
+                        FamilyThemeDisposition::LegacyCompatibility
+                    };
                 assert_eq!(
                     classify_rule_facet(
                         family,
@@ -5061,7 +5070,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 26);
+        assert_eq!(qualified.len(), 30);
         assert_eq!(
             qualified
                 .iter()
@@ -5089,6 +5098,13 @@ mod tests {
                 .filter(|route| route.family_id() == DiagramFamilyId::ER)
                 .count(),
             2
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::PIE)
+                .count(),
+            4
         );
 
         for route in qualified {
@@ -5137,6 +5153,12 @@ mod tests {
                     vec![ThemeRouteCutoverProjection::EdgeStroke],
                     "route={route:?}"
                 );
+            } else if route.family_id() == DiagramFamilyId::PIE {
+                let expected = match route.facet() {
+                    ThemeRouteCutoverFacet::Fill => ThemeRouteCutoverProjection::PieSliceFill,
+                    ThemeRouteCutoverFacet::Stroke => ThemeRouteCutoverProjection::PieSliceStroke,
+                };
+                assert_eq!(projections, vec![expected], "route={route:?}");
             }
         }
     }

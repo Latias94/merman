@@ -207,7 +207,10 @@ impl PieThemePlan {
                     } => true,
                     FamilyThemeMechanism::RuleFacet {
                         target: ThemeTarget::PieSlice,
-                        selector: FamilyThemeSelectorShape::Static { variant: None },
+                        selector:
+                            FamilyThemeSelectorShape::Static {
+                                variant: None | Some(ThemeVariant::Default),
+                            },
                         facet:
                             FamilyThemeRuleFacet::Fill(
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
@@ -231,7 +234,7 @@ impl PieThemePlan {
                     theme,
                     &style,
                     &[ThemeTarget::PieSlice],
-                    DirectStaticSelectorDomain::Unqualified,
+                    DirectStaticSelectorDomain::Default,
                 ) else {
                     continue;
                 };
@@ -349,7 +352,9 @@ impl PieThemePlan {
             match (route.disposition(), selector, facet) {
                 (
                     FamilyThemeDisposition::TypedAdapter,
-                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                     FamilyThemeRuleFacet::Fill(
                         FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                     ),
@@ -364,7 +369,9 @@ impl PieThemePlan {
                 }
                 (
                     FamilyThemeDisposition::TypedAdapter,
-                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                     FamilyThemeRuleFacet::Stroke(
                         FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                     ),
@@ -771,7 +778,7 @@ fn typed_static_stroke(
         .family_rules()
         .find_map(|(index, rule)| (index == origin.rule_index()).then_some(rule))?;
     let facet = FamilyThemeRuleFacet::stroke(style.stroke_resolution().specified())?;
-    if rule.variant().is_some()
+    if !matches!(rule.variant(), None | Some(ThemeVariant::Default))
         || rule.ordinal().is_some()
         || theme.rule_facet_disposition(origin.rule_index(), facet)
             != Some(FamilyThemeDisposition::TypedAdapter)

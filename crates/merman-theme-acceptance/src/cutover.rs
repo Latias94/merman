@@ -1285,11 +1285,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_128_routes_and_144_artifact_witnesses() {
+    fn route_inventory_retains_132_routes_and_148_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 128);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 144);
+        assert_eq!(inventory.len(), 132);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 148);
     }
 
     #[test]
