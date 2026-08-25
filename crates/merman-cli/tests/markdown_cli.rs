@@ -119,6 +119,7 @@ fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 }
 
 #[test]
+#[cfg(feature = "layout-elk")]
 fn native_batch_applies_the_selected_presentation_profile() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::write(temp.path().join("input.md"), TWO_CHARTS).expect("write Markdown input");

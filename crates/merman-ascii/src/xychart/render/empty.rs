@@ -2,6 +2,7 @@ use super::super::plot::format_data_number;
 use super::super::plot::plot_type_name;
 use super::ChartOrientation;
 use crate::Result;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
 use crate::safe_text::{
@@ -18,6 +19,7 @@ pub(super) fn render(
     orientation: ChartOrientation,
     options: &AsciiRenderOptions,
     resources: ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::from_resources(resources, options);
     document.push_line("xychart: empty")?;
@@ -30,7 +32,7 @@ pub(super) fn render(
     push_axis(&mut document, "yAxis", &model.y_axis)?;
     push_display_policy(&mut document, model)?;
     push_plots(&mut document, &model.plots)?;
-    document.finish()
+    document.finish_with_execution(execution)
 }
 
 fn push_axis(
@@ -173,8 +175,14 @@ mod tests {
                 .expect("zero-slot probe should fit the configured work budget")
                 .is_empty()
         );
-        render(model, ChartOrientation::Vertical, &options, resources)
-            .expect("unbounded zero-slot projection should render");
+        render(
+            model,
+            ChartOrientation::Vertical,
+            &options,
+            resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .expect("unbounded zero-slot projection should render");
         meter.layout_work_used()
     }
 
@@ -218,8 +226,14 @@ mod tests {
         let options = AsciiRenderOptions::ascii();
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let resources = ResourceContext::new(unbounded);
-        let rendered = render(&model, ChartOrientation::Vertical, &options, resources)
-            .expect("the unbounded empty projection should render");
+        let rendered = render(
+            &model,
+            ChartOrientation::Vertical,
+            &options,
+            resources,
+            AsciiExecution::for_test(&unbounded),
+        )
+        .expect("the unbounded empty projection should render");
 
         let exact = unbounded
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len())
@@ -229,6 +243,7 @@ mod tests {
             ChartOrientation::Vertical,
             &options,
             ResourceContext::new(exact),
+            AsciiExecution::for_test(&exact),
         )
         .expect("the exact empty projection should render");
         assert_eq!(exact_output, rendered);
@@ -241,6 +256,7 @@ mod tests {
             ChartOrientation::Vertical,
             &options,
             ResourceContext::new(below),
+            AsciiExecution::for_test(&below),
         )
         .expect_err("N-1 must reject the output");
 

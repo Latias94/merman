@@ -1733,7 +1733,7 @@ mod tests {
         assert_eq!(flowchart.semantic_coverage, Some("partial"));
         assert_eq!(flowchart.primary_projection, "diagrammatic");
         assert_eq!(flowchart.support_level, "partial");
-        assert!(!flowchart.structured_text_fallback);
+        assert!(flowchart.structured_text_fallback);
         assert!(flowchart.supported_semantics.contains(&"root directions"));
         assert!(flowchart.evidence.iter().any(|evidence| {
             evidence.kind == "local_advantage" && evidence.note.contains("true RL/BT")

@@ -9,15 +9,18 @@ pub use crate::{normalize_terminal_diagnostic, normalize_terminal_text};
 pub use merman_ascii::{
     ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCapability,
     AsciiCapabilityEvidence, AsciiCharset, AsciiColorMode, AsciiColorRole, AsciiColorTheme,
-    AsciiDirection, AsciiError, AsciiEvidenceKind, AsciiPrimaryProjection, AsciiRenderOptions,
-    AsciiRenderer, AsciiResourceLimitCause, AsciiResourceLimitDescriptor,
-    AsciiResourceLimitExceeded, AsciiResourceLimitId, AsciiResourceLimitOverrideError,
-    AsciiResourceLimitPhase, AsciiResourcePolicy, AsciiRgb, AsciiSemanticCoverage,
-    AsciiSupportLevel, AsciiTerminalPalette, MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID,
-    MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
-    MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID, MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID,
-    MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID, TerminalWidthProfile, ascii_capabilities,
-    ascii_diagrammatic_diagram_types, ascii_resource_profile_value, ascii_supported_diagram_types,
+    AsciiDirection, AsciiError, AsciiEvidenceKind, AsciiExtent, AsciiFallbackCapability,
+    AsciiFallbackReason, AsciiLayoutProfile, AsciiOutput, AsciiOutputOutcome, AsciiOverflowPolicy,
+    AsciiPrimaryProjection, AsciiProjection, AsciiRenderOptions, AsciiRenderer,
+    AsciiResourceLimitCause, AsciiResourceLimitDescriptor, AsciiResourceLimitExceeded,
+    AsciiResourceLimitId, AsciiResourceLimitOverrideError, AsciiResourceLimitPhase,
+    AsciiResourcePolicy, AsciiRgb, AsciiSemanticCoverage, AsciiSupportLevel, AsciiTerminalPalette,
+    AsciiTrimPolicy, AsciiViewportPolicy, FallbackMetadata, Lossiness,
+    MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID, MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID,
+    MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID,
+    MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID, MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID,
+    OverflowPolicy, TerminalWidthProfile, ascii_capabilities, ascii_diagrammatic_diagram_types,
+    ascii_resource_profile_value, ascii_supported_diagram_types,
 };
 
 /// Terminal-safe projection for ASCII target errors and shared facade diagnostics.
@@ -122,6 +125,22 @@ fn safe_ascii_error(error: &merman_ascii::AsciiError) -> String {
                 "ASCII rendering does not support `{feature}` for `{diagram_type}` yet"
             ))
         }
+        merman_ascii::AsciiError::WidthOverflow {
+            max_width,
+            actual_width,
+            profile,
+        } => normalize_terminal_diagnostic(&format!(
+            "ASCII output exceeds requested width: actual {actual_width} cells > maximum {max_width} ({profile:?})"
+        )),
+        merman_ascii::AsciiError::FallbackUnavailable {
+            diagram_type,
+            max_width,
+            actual_width,
+        } => bounded_message(
+            "ASCII structured fallback is unavailable for `",
+            diagram_type,
+            &format!("` within {max_width} cells (actual {actual_width})"),
+        ),
         merman_ascii::AsciiError::ResourceLimitExceeded(details) => details.to_string(),
         _ => "ASCII rendering failed".to_string(),
     }
@@ -130,35 +149,60 @@ fn safe_ascii_error(error: &merman_ascii::AsciiError) -> String {
 fn safe_ascii_details(
     error: &merman_ascii::AsciiError,
 ) -> Option<crate::TerminalDiagnosticDetails> {
-    let (code, field, diagram_type) = match error {
-        merman_ascii::AsciiError::InvalidOption { field, .. } => (
-            "merman.ascii.invalid_option",
-            Some(normalize_terminal_diagnostic(field)),
-            None,
-        ),
-        merman_ascii::AsciiError::UnsupportedDiagram { diagram_type } => (
-            "merman.ascii.unsupported_diagram",
-            None,
-            Some(normalize_terminal_diagnostic(diagram_type)),
-        ),
+    let mut details = crate::TerminalDiagnosticDetails {
+        code: "merman.ascii.render".to_string(),
+        span: None,
+        span_kind: None,
+        field: None,
+        diagram_type: None,
+        requested_max_width: None,
+        actual_width: None,
+        width_profile: None,
+        fallback_reason: None,
+    };
+    match error {
+        merman_ascii::AsciiError::InvalidOption { field, .. } => {
+            details.code = "merman.ascii.invalid_option".to_string();
+            details.field = Some(normalize_terminal_diagnostic(field));
+        }
+        merman_ascii::AsciiError::UnsupportedDiagram { diagram_type } => {
+            details.code = "merman.ascii.unsupported_diagram".to_string();
+            details.diagram_type = Some(normalize_terminal_diagnostic(diagram_type));
+        }
         merman_ascii::AsciiError::UnsupportedFeature {
             diagram_type,
             feature,
-        } => (
-            "merman.ascii.unsupported_feature",
-            Some(normalize_terminal_diagnostic(feature)),
-            Some(normalize_terminal_diagnostic(diagram_type)),
-        ),
+        } => {
+            details.code = "merman.ascii.unsupported_feature".to_string();
+            details.field = Some(normalize_terminal_diagnostic(feature));
+            details.diagram_type = Some(normalize_terminal_diagnostic(diagram_type));
+        }
+        merman_ascii::AsciiError::WidthOverflow {
+            max_width,
+            actual_width,
+            profile,
+        } => {
+            details.code = "merman.ascii.width_overflow".to_string();
+            details.requested_max_width = Some(*max_width);
+            details.actual_width = Some(*actual_width);
+            details.width_profile = Some(profile.as_str().to_string());
+        }
+        merman_ascii::AsciiError::FallbackUnavailable {
+            diagram_type,
+            max_width,
+            actual_width,
+        } => {
+            details.code = "merman.ascii.fallback_unavailable".to_string();
+            details.diagram_type = Some(normalize_terminal_diagnostic(diagram_type));
+            details.requested_max_width = Some(*max_width);
+            details.actual_width = Some(*actual_width);
+            details.fallback_reason =
+                Some(AsciiFallbackReason::PrimaryOverflow.as_str().to_string());
+        }
         merman_ascii::AsciiError::ResourceLimitExceeded(_) => return None,
-        _ => ("merman.ascii.render", None, None),
-    };
-    Some(crate::TerminalDiagnosticDetails {
-        code: code.to_string(),
-        span: None,
-        span_kind: None,
-        field,
-        diagram_type,
-    })
+        _ => {}
+    }
+    Some(details)
 }
 
 fn bounded_message(prefix: &str, value: &str, suffix: &str) -> String {
@@ -205,6 +249,16 @@ mod tests {
                 Some("missing endpoint nodes"),
                 Some("flowchart"),
             ),
+            (
+                AsciiDiagnostic::from(merman_ascii::AsciiError::WidthOverflow {
+                    max_width: 80,
+                    actual_width: 101,
+                    profile: merman_ascii::TerminalWidthProfile::Cjk,
+                }),
+                "merman.ascii.width_overflow",
+                None,
+                None,
+            ),
         ];
 
         for (error, code, field, diagram_type) in cases {
@@ -218,6 +272,31 @@ mod tests {
             assert_eq!(details.field.as_deref(), field);
             assert_eq!(details.diagram_type.as_deref(), diagram_type);
         }
+
+        let details = AsciiDiagnostic::from(merman_ascii::AsciiError::WidthOverflow {
+            max_width: 80,
+            actual_width: 101,
+            profile: merman_ascii::TerminalWidthProfile::Cjk,
+        })
+        .terminal_diagnostic_details()
+        .expect("width errors should expose structured dimensions");
+        assert_eq!(details.requested_max_width, Some(80));
+        assert_eq!(details.actual_width, Some(101));
+        assert_eq!(details.width_profile.as_deref(), Some("cjk"));
+    }
+
+    #[test]
+    fn fallback_unavailable_diagnostic_uses_the_canonical_reason() {
+        let details = AsciiDiagnostic::from(merman_ascii::AsciiError::FallbackUnavailable {
+            diagram_type: "xychart".to_string(),
+            max_width: 20,
+            actual_width: 42,
+        })
+        .terminal_diagnostic_details()
+        .expect("fallback-unavailable errors should expose structured details");
+
+        assert_eq!(details.code, "merman.ascii.fallback_unavailable");
+        assert_eq!(details.fallback_reason.as_deref(), Some("primary_overflow"));
     }
 
     #[test]

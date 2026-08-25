@@ -125,7 +125,7 @@ pub(super) fn render_tree_view_diagram(
         }
     }
 
-    document.finish()
+    document.finish_with_execution(execution)
 }
 
 fn validate_tree_view_model(

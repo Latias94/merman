@@ -75,9 +75,10 @@ pub use metadata::{
 };
 pub use metadata_registry::{MetadataKey, MetadataSpec};
 pub use operation::{
-    BindingOperationKind, BindingOperationMetadata, BindingOperationRequest,
-    BindingOperationResult, BindingOutputPlan, BindingPdfFilterImageOutputPlan,
-    BindingRasterOutputPlan, BindingUnknownOutputPlan, compiled_operation_kind_ids, execute_once,
+    BindingAsciiOutputPlan, BindingOperationKind, BindingOperationMetadata,
+    BindingOperationRequest, BindingOperationResult, BindingOutputPlan,
+    BindingPdfFilterImageOutputPlan, BindingRasterOutputPlan, BindingUnknownOutputPlan,
+    compiled_operation_kind_ids, execute_once,
 };
 pub use operation_contract::{
     BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION, BindingJsonFieldContract,
@@ -139,6 +140,14 @@ pub use transport_contract::{BindingTransportExposureSpec, BindingTransportKey};
 #[cfg(not(feature = "ascii"))]
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     execute_once_data("ascii", source, None, options_json)
+}
+
+#[cfg(feature = "ascii")]
+pub fn render_ascii_result(
+    source: &[u8],
+    options_json: &[u8],
+) -> Result<BindingOperationResult, BindingError> {
+    execute_once(BindingOperationRequest::new("ascii", source).with_options_json(options_json))
 }
 
 pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {

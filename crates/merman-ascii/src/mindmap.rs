@@ -51,7 +51,7 @@ pub(super) fn render_mindmap_diagram(
     render_mindmap_with_resources(
         model,
         options,
-        ResourceContext::new(*execution.resources()),
+        execution.new_resource_context(merman_core::OperationPhase::Layout),
         execution,
     )
 }
@@ -194,7 +194,7 @@ fn render_mindmap_with_resources(
         }
     }
 
-    document.finish()
+    document.finish_with_execution(execution)
 }
 
 fn index_nodes<'a>(

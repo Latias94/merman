@@ -298,7 +298,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "Flowchart / graph",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::Diagrammatic,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "root directions",
             "boxed nodes and common shapes",
@@ -342,7 +342,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "Gantt",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "titles",
             "sections",
@@ -380,7 +380,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "GitGraph",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "commits",
             "branches",
@@ -414,7 +414,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "Journey",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "sections",
             "tasks",
@@ -441,7 +441,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "Kanban",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "columns",
             "cards",
@@ -475,7 +475,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "Mindmap",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "hierarchical nodes",
             "stable authored node ids",
@@ -510,7 +510,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "Packet",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &["bit ranges", "labels", "row splitting", "multi-row packets"],
         limits: &[
             "output is an ordered row report rather than a spatial bit-width grid",
@@ -534,7 +534,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "Sequence",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::Diagrammatic,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "participants",
             "Mermaid-valid spaced and Unicode participant identifiers",
@@ -574,7 +574,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "State",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::Diagrammatic,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "states",
             "start and end nodes",
@@ -611,7 +611,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "Timeline",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "sections",
             "events",
@@ -641,7 +641,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "TreeView",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "hierarchical outline order",
             "root and node identities with authored levels",

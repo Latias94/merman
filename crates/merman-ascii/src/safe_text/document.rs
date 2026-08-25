@@ -8,6 +8,7 @@ use super::wrapped::{BudgetedWrappedText, WrappedPassConfig, measure_wrapped_pre
 use crate::Result;
 use crate::color::AsciiColorMode;
 use crate::error::AsciiError;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
@@ -39,6 +40,8 @@ pub(crate) struct BudgetedTextDocument {
     // Debit bytes only when new semantic text enters retained storage. Buffer-to-buffer moves keep
     // ownership of their original debit; line separators and prefixes are admitted separately.
     encoded_bytes_used: usize,
+    planned_width: usize,
+    planned_height: usize,
 }
 
 /// Streams one structured-text row from borrowed fragments.
@@ -48,6 +51,7 @@ pub(crate) struct BudgetedTextDocument {
 pub(crate) struct BudgetedTextLine<'document> {
     document: &'document mut BudgetedTextDocument,
     current: String,
+    current_width: usize,
 }
 
 impl BudgetedTextDocument {
@@ -63,6 +67,8 @@ impl BudgetedTextDocument {
             width_profile: options.terminal_width_profile,
             color_mode: options.color_mode,
             encoded_bytes_used: 0,
+            planned_width: 0,
+            planned_height: 0,
         }
     }
 
@@ -83,6 +89,7 @@ impl BudgetedTextDocument {
         let mut writer = BudgetedTextLine {
             document: self,
             current: String::new(),
+            current_width: 0,
         };
         render(&mut writer)?;
         writer.finish()
@@ -183,7 +190,10 @@ impl BudgetedTextDocument {
         self.resources
             .charge_usage(total_layout_work, plan.document_cells)?;
         self.encoded_bytes_used = total_output_bytes;
-        self.lines.extend(materialized.rows);
+        for row in materialized.rows {
+            self.record_materialized_row(&row)?;
+            self.lines.push(row);
+        }
         Ok(())
     }
 
@@ -196,6 +206,15 @@ impl BudgetedTextDocument {
         )
     }
 
+    pub(crate) fn finish_with_execution(self, execution: AsciiExecution<'_>) -> Result<String> {
+        execution.admit_primary_extent(
+            self.planned_width,
+            self.planned_height,
+            self.width_profile,
+        )?;
+        self.finish()
+    }
+
     pub(crate) fn preflight_text_work(&mut self, value: &str) -> Result<()> {
         self.resources.charge_layout_work(1)?;
         visit_normalized_segments(value, |segment| self.budget_layout_segment(segment))
@@ -206,17 +225,33 @@ impl BudgetedTextDocument {
         self.resources.charge_layout_work(segment.layout_work())
     }
 
-    fn budget_document_segment(&mut self, segment: NormalizedSegment<'_>) -> Result<()> {
+    fn budget_document_segment(&mut self, segment: NormalizedSegment<'_>) -> Result<usize> {
         segment.check_grapheme_budget(&self.resources)?;
-        self.resources
-            .charge_document_cells(segment.display_width(self.width_profile))
+        let width = segment.display_width(self.width_profile);
+        self.resources.charge_document_cells(width)?;
+        Ok(width)
     }
 
-    fn finish_prebudgeted_line(&mut self, line: String) -> Result<()> {
+    fn finish_prebudgeted_line(&mut self, line: String, width: usize) -> Result<()> {
         self.lines
             .try_reserve(1)
             .map_err(|_| document_allocation_error())?;
+        self.planned_width = self.planned_width.max(width);
+        self.planned_height = self
+            .planned_height
+            .checked_add(1)
+            .ok_or_else(|| self.resources.overflow(AsciiResourceLimitId::MaxGridCells))?;
         self.lines.push(line);
+        Ok(())
+    }
+
+    fn record_materialized_row(&mut self, row: &str) -> Result<()> {
+        let width = crate::text::display_width_with_profile(row, self.width_profile);
+        self.planned_width = self.planned_width.max(width);
+        self.planned_height = self
+            .planned_height
+            .checked_add(1)
+            .ok_or_else(|| self.resources.overflow(AsciiResourceLimitId::MaxGridCells))?;
         Ok(())
     }
 
@@ -279,12 +314,19 @@ impl BudgetedTextLine<'_> {
             self.document.budget_layout_segment(segment)?;
             match segment.kind {
                 NormalizedSegmentKind::LineBreak => {
-                    self.document
-                        .finish_prebudgeted_line(std::mem::take(&mut self.current))?;
+                    self.document.finish_prebudgeted_line(
+                        std::mem::take(&mut self.current),
+                        self.current_width,
+                    )?;
+                    self.current_width = 0;
                     self.document.resources.charge_layout_work(1)
                 }
                 _ => {
-                    self.document.budget_document_segment(segment)?;
+                    let width = self.document.budget_document_segment(segment)?;
+                    self.current_width = self
+                        .document
+                        .resources
+                        .checked_grid_add(self.current_width, width)?;
                     try_append_normalized_segment(
                         &mut self.current,
                         segment,
@@ -307,7 +349,8 @@ impl BudgetedTextLine<'_> {
     }
 
     fn finish(self) -> Result<()> {
-        self.document.finish_prebudgeted_line(self.current)
+        self.document
+            .finish_prebudgeted_line(self.current, self.current_width)
     }
 }
 

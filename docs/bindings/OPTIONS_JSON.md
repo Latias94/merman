@@ -365,6 +365,7 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | --- | --- | --- | --- |
 | `ascii.charset` | string | `unicode` | `unicode` or `ascii`. |
 | `ascii.width_profile` / `ascii.widthProfile` | string | `unicode` | `unicode` follows the pinned non-CJK width table; `cjk` treats East Asian ambiguous authored characters as wide and uses single-cell ASCII structural glyphs because Unicode box drawing is East Asian Ambiguous. Select the profile that matches the target terminal. |
+| `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` preserves the established geometry; `compact` is an explicit opt-in density profile and never changes the default. |
 | `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
 | `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`, `truecolor`, or `html`. |
 | `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
@@ -380,6 +381,9 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | `ascii.xychart_category_band_width` / `ascii.xychartCategoryBandWidth` | positive integer | `3` | Compact vertical XYChart category width. |
 | `ascii.xychart_horizontal_plot_width` / `ascii.xychartHorizontalPlotWidth` | positive integer | `10` | Compact horizontal XYChart value axis width. |
 | `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` readability fallbacks include a `reason:` row such as `crossing`, `route_collision`, or `overlay_collision`. Resource limits return structured errors instead. |
+| `ascii.max_width` / `ascii.maxWidth` | positive integer | none | Optional terminal display-cell bound applied after normal layout. It is independent from ASCII resource limits. |
+| `ascii.overflow` | string | `allow` | `allow` emits the complete wide primary projection, `fallback` selects one complete typed structured projection when available, and `error` returns a width diagnostic. |
+| `ascii.trim_trailing_spaces` / `ascii.trimTrailingSpaces` | boolean | `false` | Explicitly removes only trailing spaces/tabs from emitted rows; the primary width gate remains based on the untrimmed projection. |
 
 `relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests

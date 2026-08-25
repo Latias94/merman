@@ -42,13 +42,21 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Sequence, State, Class, ER, XYChart | Core semantics render with documented limits; Class and ER can independently fall back to structured relation text. |
-| Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry. Packet reports ranges in rows rather than preserving spatial bit widths; TreeView is a hierarchy outline rather than two-dimensional geometry. |
+| Partial | Diagrammatic | Flowchart, Sequence, State, Class, ER, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
 Every concrete built-in typed family has one capability record. `semantic_coverage`,
 `primary_projection`, and `structured_text_fallback` are independent; legacy `support_level` is
 derived from them. Other Mermaid families return `AsciiError::UnsupportedDiagram` through the typed
 model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
+
+The canonical report API is `AsciiRenderer::render_model_report` or
+`AsciiRenderer::render_parsed_report`. It returns the text together with the display-cell
+`primary_extent` and `emitted_extent`, projection, width profile, layout profile, requested bound,
+overflow outcome, fallback capability/attempt/reason state, trim state, and lossiness. The convenience
+`render_model`/`render_parsed` helpers project only the text. `AsciiViewportPolicy::Fallback` never
+clips or ellipsizes authored values; it either returns a complete typed compatibility projection or
+`AsciiError::FallbackUnavailable`.
 
 Flowchart node labels wrap before layout at a default width of 40 terminal display cells. Use
 `AsciiRenderOptions::with_flowchart_node_label_wrap_width` to tune that family-owned terminal
@@ -100,7 +108,10 @@ Class and ER diagrams fall back to readable `relations:` summary sections when a
 ## Direct Model API
 
 ```rust,no_run
-use merman_ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy};
+use merman_ascii::{
+    AsciiOutputOutcome, AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy,
+    AsciiViewportPolicy, OverflowPolicy,
+};
 use merman_core::{Engine, OperationControl, ParseOptions, runtime::RuntimePolicy};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -116,9 +127,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let control = OperationControl::new();
     let context = RuntimePolicy::deterministic().begin_operation()?;
     let resources = AsciiResourcePolicy::default();
-    let text = renderer.render_model(parsed.model(), &control, &context, resources)?;
+    let report = renderer.render_model_report(
+        parsed.model(),
+        AsciiViewportPolicy::with_max_width(80).overflow(OverflowPolicy::Fallback),
+        &control,
+        &context,
+        resources,
+    )?;
 
-    println!("{text}");
+    assert!(matches!(
+        report.outcome,
+        AsciiOutputOutcome::Primary
+            | AsciiOutputOutcome::WideAllowed
+            | AsciiOutputOutcome::Fallback
+    ));
+    println!("{} ({}×{})", report.text, report.emitted_extent.width, report.emitted_extent.height);
     Ok(())
 }
 ```

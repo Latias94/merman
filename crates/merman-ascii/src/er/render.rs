@@ -139,9 +139,7 @@ fn render_er_diagram_impl(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let base_resources = ResourceContext::new(*execution.resources());
-    let mut resources =
-        execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+    let mut resources = execution.new_resource_context(merman_core::OperationPhase::Semantic);
     resources.charge_layout_work(model.direction.len().max(1))?;
     let direction =
         RelationDirection::try_from_model(&model.direction, "er", "unknown ER diagram directions");

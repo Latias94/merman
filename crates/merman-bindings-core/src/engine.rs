@@ -315,8 +315,8 @@ impl BindingEngine {
                     configs
                         .ascii
                         .materialize()
-                        .render_ascii(source, control.clone())
-                        .map(BindingOperationOutput::plain)
+                        .render_ascii_output(source, control.clone())
+                        .map(BindingOperationOutput::ascii)
                         .and_then(|output| {
                             control
                                 .checkpoint_at(OperationPhase::Emit)
@@ -543,6 +543,15 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("ascii", source))
     }
 
+    #[cfg(feature = "ascii")]
+    pub fn render_ascii_result(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::BindingOperationResult, BindingError> {
+        self.execute(crate::BindingOperationRequest::new("ascii", source))
+    }
+
+    #[cfg(not(feature = "ascii"))]
     pub(crate) fn render_ascii_data(
         &self,
         source: &[u8],
@@ -558,6 +567,15 @@ impl BindingEngine {
             let _ = (source, control);
             Err(common::feature_required_error("ASCII rendering", "ascii"))
         }
+    }
+
+    #[cfg(feature = "ascii")]
+    pub(crate) fn render_ascii_output(
+        &self,
+        source: &[u8],
+        control: OperationControl,
+    ) -> Result<merman::ascii::AsciiOutput, BindingError> {
+        self.ascii.render_ascii_output(source, control)
     }
 
     pub fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {

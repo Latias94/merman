@@ -227,7 +227,10 @@ fn render_xychart_diagram_controlled(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let base_resources = ResourceContext::new(*execution.resources());
+    // Start from the execution-owned context so a top-level report shares the render-wide
+    // layout/document ledger with any later fallback attempt. Standalone family tests still get
+    // an isolated context through `AsciiExecution::new_resource_context`.
+    let base_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
     render_xychart_diagram_controlled_with_base(model, options, execution, &base_resources)
 }
 
@@ -246,7 +249,7 @@ fn render_xychart_diagram_controlled_with_base(
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let emit_resources =
             execution.resource_context(&resources, merman_core::OperationPhase::Emit);
-        let rendered = empty::render(model, orientation, options, emit_resources)?;
+        let rendered = empty::render(model, orientation, options, emit_resources, execution)?;
         checkpoint_emitted_lines(&rendered, execution)?;
         return Ok(rendered);
     }
@@ -255,7 +258,7 @@ fn render_xychart_diagram_controlled_with_base(
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let emit_resources =
             execution.resource_context(&resources, merman_core::OperationPhase::Emit);
-        let rendered = empty::render(model, orientation, options, emit_resources)?;
+        let rendered = empty::render(model, orientation, options, emit_resources, execution)?;
         checkpoint_emitted_lines(&rendered, execution)?;
         return Ok(rendered);
     }
@@ -1831,6 +1834,11 @@ fn finish_chart_lines_controlled(
         return Ok(String::new());
     }
 
+    execution.admit_primary_extent(
+        document.width,
+        document.lines.len(),
+        options.terminal_width_profile,
+    )?;
     finish_styled_lines_with_resources_with_execution(
         &document.lines,
         options,

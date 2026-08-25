@@ -32,7 +32,7 @@ impl BenchmarkRenderer {
         let RenderOutput::Ascii(Some(output)) = output else {
             panic!("{GROUP}/{name} returned no diagram");
         };
-        output
+        output.into_text()
     }
 }
 
@@ -142,6 +142,7 @@ fn bench_ascii_end_to_end(c: &mut Criterion) {
         request: AsciiRequest {
             options: AsciiRenderOptions::ascii(),
             resources: AsciiResourcePolicy::for_profile(profile),
+            viewport: Default::default(),
         },
     };
     let mut group = c.benchmark_group(GROUP);

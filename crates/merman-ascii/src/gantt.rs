@@ -112,7 +112,7 @@ pub(super) fn render_gantt_diagram(
         }
     }
 
-    document.finish()
+    document.finish_with_execution(execution)
 }
 
 #[derive(Debug, Clone, Copy)]

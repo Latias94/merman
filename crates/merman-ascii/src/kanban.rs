@@ -132,7 +132,7 @@ pub(super) fn render_kanban_diagram(
         }
     }
 
-    document.finish()
+    document.finish_with_execution(execution)
 }
 
 fn push_node_text(

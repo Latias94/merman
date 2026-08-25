@@ -151,6 +151,137 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
   ],
   "output_plans": [
     {
+      "kind": "ascii",
+      "fields": [
+        {
+          "name": "kind",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "schema_version",
+          "json_type": "unsigned-integer",
+          "required": true,
+          "integer_width_bits": 16,
+          "open_value": false
+        },
+        {
+          "name": "family",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "projection",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "primary_width",
+          "json_type": "unsigned-integer",
+          "required": true,
+          "integer_width_bits": 64,
+          "open_value": false
+        },
+        {
+          "name": "primary_height",
+          "json_type": "unsigned-integer",
+          "required": true,
+          "integer_width_bits": 64,
+          "open_value": false
+        },
+        {
+          "name": "emitted_width",
+          "json_type": "unsigned-integer",
+          "required": true,
+          "integer_width_bits": 64,
+          "open_value": false
+        },
+        {
+          "name": "emitted_height",
+          "json_type": "unsigned-integer",
+          "required": true,
+          "integer_width_bits": 64,
+          "open_value": false
+        },
+        {
+          "name": "width_profile",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "layout_profile",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "requested_max_width",
+          "json_type": "unsigned-integer",
+          "required": false,
+          "integer_width_bits": 64,
+          "open_value": false
+        },
+        {
+          "name": "overflowed",
+          "json_type": "boolean",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "outcome",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "fallback_capability",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "fallback_attempted",
+          "json_type": "boolean",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "fallback_reason",
+          "json_type": "string",
+          "required": false,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "trimmed",
+          "json_type": "boolean",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "lossiness",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        }
+      ]
+    },
+    {
       "kind": "raster",
       "fields": [
         {

@@ -158,7 +158,38 @@ const PDF_FILTER_IMAGE_FIELDS: &[BindingJsonFieldContract] = &[
     field("limited", "boolean", true, None, false),
 ];
 
+const ASCII_FIELDS: &[BindingJsonFieldContract] = &[
+    field("kind", "string", true, None, false),
+    field("schema_version", "unsigned-integer", true, Some(16), false),
+    field("family", "string", true, None, true),
+    field("projection", "string", true, None, false),
+    field("primary_width", "unsigned-integer", true, Some(64), false),
+    field("primary_height", "unsigned-integer", true, Some(64), false),
+    field("emitted_width", "unsigned-integer", true, Some(64), false),
+    field("emitted_height", "unsigned-integer", true, Some(64), false),
+    field("width_profile", "string", true, None, false),
+    field("layout_profile", "string", true, None, false),
+    field(
+        "requested_max_width",
+        "unsigned-integer",
+        false,
+        Some(64),
+        false,
+    ),
+    field("overflowed", "boolean", true, None, false),
+    field("outcome", "string", true, None, false),
+    field("fallback_capability", "string", true, None, false),
+    field("fallback_attempted", "boolean", true, None, false),
+    field("fallback_reason", "string", false, None, false),
+    field("trimmed", "boolean", true, None, false),
+    field("lossiness", "string", true, None, false),
+];
+
 const OUTPUT_PLANS: &[BindingOutputPlanContract] = &[
+    BindingOutputPlanContract {
+        kind: "ascii",
+        fields: ASCII_FIELDS,
+    },
     BindingOutputPlanContract {
         kind: "raster",
         fields: RASTER_FIELDS,
@@ -369,7 +400,7 @@ mod tests {
             .find(|field| field.name() == "byte_length")
             .unwrap();
         assert_eq!(byte_length.integer_width_bits(), Some(64));
-        assert_eq!(contract.output_plans().len(), 2);
+        assert_eq!(contract.output_plans().len(), 3);
     }
 
     #[test]

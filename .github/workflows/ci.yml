@@ -468,7 +468,7 @@ jobs:
             -E 'test(two_contenders_are_serialized) | test(dead_owner_is_recovered)'
           cargo nextest run --locked -p merman-ffi \
             --test header_smoke --test c_consumer_smoke --cargo-quiet
-          cargo nextest run --locked -p merman-cli --test markdown_cli --cargo-quiet
+          cargo nextest run --locked -p merman-cli --features layout-elk --test markdown_cli --cargo-quiet
           cargo nextest run --locked -p merman-cli --no-default-features --features rustdoc \
             --test rustdoc_cli --cargo-quiet
 

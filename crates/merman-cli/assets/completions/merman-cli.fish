@@ -155,6 +155,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-c
 unicode\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-width-profile -d 'Display-width convention used for terminal text measurement' -r -f -a "unicode\t''
 cjk\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-flowchart-node-label-wrap-width -d 'Flowchart node-label wrap width in terminal display cells' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-direction -d 'Override the default graph direction when Mermaid input omits one' -r -f -a "left-right\t''
 top-down\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-color -d 'Color mode for terminal text output' -r -f -a "plain\t''
@@ -167,6 +168,12 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l xychart
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l xychart-category-band-width -d 'XYChart category band width for text output' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l xychart-horizontal-plot-width -d 'XYChart horizontal plot width for text output' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-max-grid-cells -d 'Maximum graph grid cells for text route planning' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-max-width -d 'Maximum terminal display-cell width for ASCII/Unicode output' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-overflow -d 'Width overflow behavior for ASCII/Unicode output' -r -f -a "allow\t''
+fallback\t''
+error\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-layout-profile -d 'Select the canonical or opt-in compact ASCII layout profile' -r -f -a "canonical\t''
+compact\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l resource-profile -d 'Resource policy for input, semantic models, output, and CLI acquisition' -r -f -a "interactive\t'General interactive applications and public binding surfaces'
 constrained\t'Constrained rendering for untrusted or publicly submitted documents'
 trusted-native\t'Local CLI and controlled native batch rendering'
@@ -185,6 +192,8 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l system-
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l system-random -d 'Use system randomness while keeping other runtime sources deterministic'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l system-timing -d 'Enable operation timing diagnostics through the compiled system timing adapter'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l sequence-mirror-actors -d 'Mirror sequence participants below lifelines for ASCII/Unicode output'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-trim-trailing-spaces -d 'Remove renderer-owned trailing spaces from emitted text rows'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-report -d 'Emit the canonical ASCII report JSON instead of text bytes'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s V -l version -d 'Print version'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l stdin-file-name -d 'Logical source file name for Markdown read from stdin' -r -F

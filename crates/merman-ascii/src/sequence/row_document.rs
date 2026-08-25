@@ -102,6 +102,12 @@ impl SequenceRowDocument {
             resources,
             layout_checkpoints,
         )?;
+        let output_extent = document.output_extent;
+        layout_checkpoints.execution().admit_primary_extent(
+            output_extent.width(),
+            output_extent.height(),
+            options.terminal_width_profile,
+        )?;
         // Box/title geometry, extent admission, and canvas construction are layout work. Only
         // after those complete do we bind the shared ledger to Emit for byte/document emission.
         let mut emit_resources = resources.with_operation_phase(OperationPhase::Emit);
