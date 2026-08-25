@@ -126,7 +126,7 @@
     },
     {
       "id": "typst-publish",
-      "description": "The published Typst WASM profile, including ELK and wasm-minimal-protocol but excluding RaTeX.",
+      "description": "The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.",
       "extends": ["elk-render"],
       "components": ["wasm-minimal-protocol"]
     },

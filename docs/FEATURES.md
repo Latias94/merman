@@ -327,7 +327,7 @@ their package-specific notices and source provenance are part of the release con
 generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
 missing-capability errors before exposing optional output choices.
 
-Flutter uses `flutter pub add 'merman:^0.8.0-alpha.5'` and `Merman.open()`. Android consumes the
+Flutter's current published baseline uses `flutter pub add 'merman:^0.8.0-alpha.5'` and `Merman.open()`. The workspace source candidate is `0.8.0-alpha.6`; do not present that candidate as a pub.dev installation until its registry evidence exists. Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 1 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
@@ -347,12 +347,7 @@ flowchart TD
 ```)
 ```
 
-The current source tree stages an unreleased `0.2.0` wrapper with SVG, analysis, Cytoscape, and ELK.
-Build it locally and use Typst's `--package-path` until that version is published. Math is not
-advertised until its pure-WASM font, license, import, and parity admission is complete. The source
-package always enforces its constrained resource policy; caller options may tighten it but cannot
-replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md)
-for the published/source version boundary.
+The current source tree prepares a `0.2.0` Typst wrapper candidate from Merman `0.8.0-alpha.6`, requiring Typst `0.15.0`, with SVG, analysis, Cytoscape, and ELK. Build it locally and use Typst's `--package-path` until registry publication is verified. The package includes the ELK dependency closure and its accompanying EPL-2.0 notices; Math is not advertised until its pure-WASM font, license, import, and parity admission is complete. The source package always enforces its constrained resource policy; caller options may tighten it but cannot replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md) for the published/source version boundary.
 
 Native bindings expose the same flat runtime catalog. The catalog contains stable
 `capability_ids`, `operation_ids`, and `output_ids`. Do not infer capabilities from exported

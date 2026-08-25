@@ -126,6 +126,7 @@ def seed_root(root: Path) -> None:
             for values in sync.CRATE_COMPONENTS.values()
             for component_id in values
         }
+        | {"eclipse-elk", "elkjs", "wasm-minimal-protocol", "ratex"}
     )
     for component_id in component_ids:
         license_file = licenses / component_id / "LICENSE"
@@ -150,9 +151,26 @@ def seed_root(root: Path) -> None:
                 "notice": f"{component_id} notice.",
             }
         )
+    typst_components = [
+        component_id for component_id in component_ids if component_id != "ratex"
+    ]
     contract = root / "docs/release/THIRD_PARTY_COMPONENTS.json"
     contract.parent.mkdir(parents=True)
-    contract.write_bytes(json.dumps({"components": components}).encode())
+    contract.write_bytes(
+        json.dumps(
+            {
+                "artifact_scopes": [
+                    {
+                        "id": "typst-publish",
+                        "description": "Typst publish fixture",
+                        "extends": [],
+                        "components": typst_components,
+                    }
+                ],
+                "components": components,
+            }
+        ).encode()
+    )
 
 
 if __name__ == "__main__":

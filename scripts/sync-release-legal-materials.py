@@ -34,6 +34,9 @@ RELEASE_BUNDLE_ROOTS = (
     "tools/vscode-extension",
     "playground/public",
 )
+ARTIFACT_SCOPE_BY_BUNDLE = {
+    "distribution/typst/merman": "typst-publish",
+}
 ANDROID_META_INF = "platforms/android/src/main/resources/META-INF"
 RUST_DEPENDENCY_REPORT = Path("rust-cargo-dependencies.json")
 NATIVE_RUST_REPORTS = {
@@ -140,17 +143,28 @@ def expected_projections(root: Path) -> dict[Path, bytes]:
 
     notice = read_required_file(root / CANONICAL_NOTICE)
     project_license = combined_project_license(root)
+    contract = load_component_contract(root)
     expected: dict[Path, bytes] = {}
     for relative in PROJECT_LICENSE_TARGETS:
         expected[root / relative] = project_license
     for bundle_root in RELEASE_BUNDLE_ROOTS:
         destination = root / bundle_root
-        expected[destination / CANONICAL_NOTICE] = notice
-        add_directory_projection(
-            licenses,
-            destination / CANONICAL_LICENSE_DIRECTORY,
-            expected,
-        )
+        scope_id = ARTIFACT_SCOPE_BY_BUNDLE.get(bundle_root)
+        if scope_id is None:
+            expected[destination / CANONICAL_NOTICE] = notice
+            add_directory_projection(
+                licenses,
+                destination / CANONICAL_LICENSE_DIRECTORY,
+                expected,
+            )
+        else:
+            add_artifact_scope_projection(
+                root,
+                destination,
+                contract,
+                scope_id,
+                expected,
+            )
         if bundle_root == "distribution/typst/merman":
             expected.pop(
                 destination / CANONICAL_LICENSE_DIRECTORY / RUST_DEPENDENCY_REPORT,
@@ -177,21 +191,112 @@ def expected_projections(root: Path) -> dict[Path, bytes]:
         destination = root / crate_root
         expected[destination / "LICENSE-MIT"] = read_required_file(root / "LICENSE-MIT")
         expected[destination / "LICENSE-APACHE"] = read_required_file(root / "LICENSE-APACHE")
-    add_crate_component_projections(root, expected)
+    add_crate_component_projections(root, expected, contract)
     return expected
 
 
-def add_crate_component_projections(root: Path, expected: dict[Path, bytes]) -> None:
+def load_component_contract(root: Path) -> dict[str, object]:
     contract_path = root / "docs/release/THIRD_PARTY_COMPONENTS.json"
     try:
         contract = json.loads(read_required_file(contract_path))
     except (UnicodeError, json.JSONDecodeError) as error:
         raise LegalMaterialError(f"invalid third-party component contract: {error}") from error
+    if not isinstance(contract, dict):
+        raise LegalMaterialError("third-party component contract must be an object")
+    return contract
+
+
+def component_index(contract: dict[str, object]) -> dict[str, dict[str, object]]:
+    raw_components = contract.get("components", [])
+    if not isinstance(raw_components, list):
+        raise LegalMaterialError("third-party component contract components must be an array")
     components = {
         component["id"]: component
-        for component in contract.get("components", [])
+        for component in raw_components
         if isinstance(component, dict) and isinstance(component.get("id"), str)
     }
+    return components
+
+
+def artifact_scope_index(contract: dict[str, object]) -> dict[str, dict[str, object]]:
+    raw_scopes = contract.get("artifact_scopes", [])
+    if not isinstance(raw_scopes, list):
+        raise LegalMaterialError("third-party artifact scopes must be an array")
+    return {
+        scope["id"]: scope
+        for scope in raw_scopes
+        if isinstance(scope, dict) and isinstance(scope.get("id"), str)
+    }
+
+
+def resolve_artifact_components(
+    contract: dict[str, object], scope_id: str
+) -> tuple[dict[str, object], list[dict[str, object]]]:
+    scopes = artifact_scope_index(contract)
+    components = component_index(contract)
+    selected_ids: list[str] = []
+    selected = set()
+    visiting: set[str] = set()
+
+    def visit(current_id: str) -> None:
+        scope = scopes.get(current_id)
+        if scope is None:
+            raise LegalMaterialError(f"artifact scope references unknown scope: {current_id}")
+        if current_id in visiting:
+            raise LegalMaterialError(f"artifact scope cycle detected at: {current_id}")
+        if current_id in selected:
+            return
+        visiting.add(current_id)
+        parents = scope.get("extends", [])
+        if not isinstance(parents, list):
+            raise LegalMaterialError(f"artifact scope extends must be an array: {current_id}")
+        for parent in parents:
+            if not isinstance(parent, str):
+                raise LegalMaterialError(f"artifact scope parent must be a string: {current_id}")
+            visit(parent)
+        own_components = scope.get("components", [])
+        if not isinstance(own_components, list):
+            raise LegalMaterialError(f"artifact scope components must be an array: {current_id}")
+        for component_id in own_components:
+            if not isinstance(component_id, str):
+                raise LegalMaterialError(
+                    f"artifact scope component must be a string: {current_id}"
+                )
+            if component_id not in components:
+                raise LegalMaterialError(
+                    f"artifact scope references unknown component: {component_id}"
+                )
+            if component_id not in selected:
+                selected.add(component_id)
+                selected_ids.append(component_id)
+        visiting.remove(current_id)
+
+    visit(scope_id)
+    return scopes[scope_id], [components[component_id] for component_id in selected_ids]
+
+
+def add_artifact_scope_projection(
+    root: Path,
+    destination: Path,
+    contract: dict[str, object],
+    scope_id: str,
+    expected: dict[Path, bytes],
+) -> None:
+    scope, selected = resolve_artifact_components(contract, scope_id)
+    expected[destination / CANONICAL_NOTICE] = artifact_scope_notice(scope, selected)
+    for component in selected:
+        for license_file in component.get("license_files", []):
+            source_relative = Path(license_file["path"])
+            relative = source_relative.relative_to(CANONICAL_LICENSE_DIRECTORY)
+            expected[destination / CANONICAL_LICENSE_DIRECTORY / relative] = (
+                read_required_file(root / source_relative)
+            )
+
+
+def add_crate_component_projections(
+    root: Path, expected: dict[Path, bytes], contract: dict[str, object]
+) -> None:
+    components = component_index(contract)
     for crate_root, component_ids in CRATE_COMPONENTS.items():
         destination = root / crate_root
         selected = []
@@ -209,6 +314,54 @@ def add_crate_component_projections(root: Path, expected: dict[Path, bytes]) -> 
                     read_required_file(root / source_relative)
                 )
         expected[destination / CANONICAL_NOTICE] = crate_notice(crate_root, selected)
+
+
+def artifact_scope_notice(
+    scope: dict[str, object], components: list[dict[str, object]]
+) -> bytes:
+    scope_id = scope["id"]
+    description = scope.get("description", "")
+    component_ids = ", ".join(f"`{component['id']}`" for component in components)
+    lines = [
+        "# Third-Party Notices",
+        "",
+        f"This file records the third-party material in the `{scope_id}` artifact scope.",
+        "It is generated from the release component contract and is intentionally limited to this artifact.",
+        "The wrapper and Merman-authored code remain under the project license; each component below keeps its own terms.",
+        "",
+        "## Artifact scope",
+        "",
+        f"- ID: `{scope_id}`",
+        f"- Description: {description}",
+        f"- Components: {component_ids}",
+        "",
+        "## Components",
+        "",
+    ]
+    for component in components:
+        source = component["source"]
+        assert isinstance(source, dict)
+        lines.extend(
+            [
+                f"### {component['name']}",
+                "",
+                str(component["notice"]),
+                "",
+                f"- Version: `{component['version']}`",
+                f"- Source: {source['repository']} @ `{source['commit']}`",
+                f"- Source path: `{source['path']}`",
+                f"- Relationship: {', '.join(f'`{value}`' for value in component['relationships'])}",
+                f"- License: `{component['license_expression']}`",
+            ]
+        )
+        local_paths = component.get("local_paths", [])
+        if local_paths:
+            lines.append(f"- Local evidence: {', '.join(f'`{value}`' for value in local_paths)}")
+        for license_file in component["license_files"]:
+            relative = Path(license_file["path"]).relative_to(CANONICAL_LICENSE_DIRECTORY)
+            lines.append(f"- Legal file: `THIRD_PARTY_LICENSES/{relative.as_posix()}`")
+        lines.append("")
+    return ("\n".join(lines).rstrip() + "\n").encode()
 
 
 def crate_notice(crate_root: str, components: list[dict[str, object]]) -> bytes:

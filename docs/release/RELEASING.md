@@ -403,6 +403,8 @@ reuse. Do not package the private raw Cargo output under `target/wasm-build/`. T
 snapshot, and the packaging transaction must fail before replacing the prior version if live source
 or any staged byte changes.
 
+These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the Typst Universe package `@preview/merman:0.2.0` are separate publication surfaces; publishing the crate does not publish the wrapper. After the exact source SHA passes preflight, a maintainer must separately authorize manual Typst Universe submission. The submission operator must retain the generated package and manifests, verify the registry's exact package version after acceptance, and only then change current installation guidance from the local `--package-path` candidate to the registry package.
+
 ## Tag And Push
 
 ```bash

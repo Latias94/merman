@@ -67,7 +67,7 @@ Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singu
 
 ### `typst-publish`
 
-The published Typst WASM profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
+The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
 
 Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `rough-rs`, `roughjs`, `sanitize-url`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
