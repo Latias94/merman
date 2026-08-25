@@ -13,7 +13,7 @@ mod config;
 mod theme;
 
 pub(crate) use config::{JourneyConfigView, default_use_max_width};
-pub(crate) use theme::{JourneyTaskRadiusThemeReceipt, JourneyTaskTheme};
+pub(crate) use theme::{JourneyTaskTheme, JourneyTaskThemeReceipt};
 
 const JOURNEY_LEGEND_CIRCLE_R_PX: f64 = 7.0;
 pub(crate) const JOURNEY_VIEWBOX_TOP_PAD_PX: f64 = 25.0;

@@ -219,10 +219,47 @@ fn write_task_rect<'a>(
     (emitted_rx, emitted_ry)
 }
 
+fn write_section_rect(
+    out: &mut impl SvgOutput,
+    section: &crate::model::JourneySectionLayout,
+    palette_fill: Option<&str>,
+) {
+    let class = format!("journey-section section-type-{}", section.num);
+    out.push_str("<g>");
+    match palette_fill {
+        Some(palette_fill) => {
+            let _ = write!(
+                out,
+                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" style="fill:{palette_fill};" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
+                x = fmt(section.x),
+                y = fmt(section.y),
+                fill = escape_attr(&section.fill),
+                palette_fill = escape_attr(palette_fill),
+                w = fmt(section.width),
+                h = fmt(section.height),
+                class = escape_attr(&class),
+            );
+        }
+        None => {
+            let _ = write!(
+                out,
+                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
+                x = fmt(section.x),
+                y = fmt(section.y),
+                fill = escape_attr(&section.fill),
+                w = fmt(section.width),
+                h = fmt(section.height),
+                class = escape_attr(&class),
+            );
+        }
+    }
+}
+
 fn journey_css(
     diagram_id: impl SvgDiagramIdValue,
     effective_config: &serde_json::Value,
     theme: &JourneyTheme,
+    emit_palette_css: bool,
 ) -> String {
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
@@ -319,12 +356,14 @@ fn journey_css(
         r#"#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}"#,
         diagram_id, font, theme.tertiary_color, theme.border2
     );
-    for (i, fill) in theme.fill_types.iter().enumerate() {
-        let _ = write!(
-            &mut out,
-            r#"#{} .task-type-{},#{} .section-type-{}{{fill:{};}}"#,
-            diagram_id, i, diagram_id, i, fill
-        );
+    if emit_palette_css {
+        for (i, fill) in theme.fill_types.iter().enumerate() {
+            let _ = write!(
+                &mut out,
+                r#"#{} .task-type-{},#{} .section-type-{}{{fill:{};}}"#,
+                diagram_id, i, diagram_id, i, fill
+            );
+        }
     }
     for (i, fill) in theme.actor_colors.iter().enumerate() {
         if let Some(fill) = fill {
@@ -464,7 +503,12 @@ pub(crate) fn render_journey_diagram_svg_model(
     out.checkpoint()?;
 
     let theme = MermaidThemeAdapter::new(effective_config).journey();
-    let css = journey_css(diagram_id, effective_config, &theme);
+    let css = journey_css(
+        diagram_id,
+        effective_config,
+        &theme,
+        !task_theme.palette_surface_owned(),
+    );
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     drop(css);
     out.push_str(r#"<g/>"#);
@@ -501,8 +545,9 @@ pub(crate) fn render_journey_diagram_svg_model(
     }
 
     let mut section_iter = layout.sections.iter();
+    let mut section_index = 0usize;
     let mut last_section: Option<&str> = None;
-    let mut task_radius_receipt: Option<crate::journey::JourneyTaskRadiusThemeReceipt> =
+    let mut task_theme_receipt: Option<crate::journey::JourneyTaskThemeReceipt> =
         task_theme.begin_terminal_receipt();
     for (task_index, task) in layout.tasks.iter().enumerate() {
         if last_section != Some(task.section.as_str()) {
@@ -510,15 +555,10 @@ pub(crate) fn render_journey_diagram_svg_model(
                 break;
             };
             let section_class = format!("journey-section section-type-{}", section.num);
-            let _ = write!(
+            write_section_rect(
                 &mut out,
-                r##"<g><rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
-                x = fmt(section.x),
-                y = fmt(section.y),
-                fill = escape_attr(&section.fill),
-                w = fmt(section.width),
-                h = fmt(section.height),
-                class = escape_attr(&section_class),
+                section,
+                task_theme.terminal_palette_fill_for_section(section_index),
             );
             write_text_candidate(
                 &mut out,
@@ -538,6 +578,13 @@ pub(crate) fn render_journey_diagram_svg_model(
             )?;
             out.push_str("</g>");
             out.checkpoint()?;
+            if let Some(receipt) = task_theme_receipt.as_mut() {
+                receipt.record_checkpointed_section(
+                    section_index,
+                    task_theme.terminal_palette_fill_for_section(section_index),
+                );
+            }
+            section_index += 1;
         }
 
         last_section = Some(task.section.as_str());
@@ -609,9 +656,7 @@ pub(crate) fn render_journey_diagram_svg_model(
 
         out.push_str("</g>");
 
-        let emitted_fill = task_theme
-            .terminal_fill_for_task(task_index)
-            .map(|(_, css)| css);
+        let emitted_fill = task_theme.terminal_fill_css_for_task(task_index);
         let emitted_stroke = task_theme
             .terminal_stroke_for_task(task_index)
             .map(|(_, css)| css);
@@ -656,12 +701,12 @@ pub(crate) fn render_journey_diagram_svg_model(
 
         out.push_str("</g>");
         out.checkpoint()?;
-        if let Some(receipt) = task_radius_receipt.as_mut() {
-            receipt.record_checkpointed_task_with_paint(
+        if let Some(receipt) = task_theme_receipt.as_mut() {
+            receipt.record_checkpointed_task_with_terminal_paint(
                 task_index,
                 emitted_rx,
                 emitted_ry,
-                task_theme.terminal_fill_for_task(task_index),
+                emitted_fill,
                 task_theme.terminal_stroke_for_task(task_index),
             );
         }
@@ -693,7 +738,7 @@ pub(crate) fn render_journey_diagram_svg_model(
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if task_radius_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
+    if task_theme_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
             message: "Journey task radius receipt did not match the terminal SVG".to_string(),
         });
@@ -857,7 +902,7 @@ mod tests {
         });
 
         let theme = MermaidThemeAdapter::new(&cfg).journey();
-        let css = journey_css("journey", &cfg, &theme);
+        let css = journey_css("journey", &cfg, &theme, true);
 
         assert!(css.contains(r#"#journey line{stroke:#101010;}"#));
         assert!(css.contains(r#"#journey .face{fill:#303030;stroke:#999;}"#));

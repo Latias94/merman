@@ -796,6 +796,7 @@ fn classify_ordinal_palette(
         ) && target == ThemeTarget::Node)
         || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
         || (family == DiagramFamilyId::KANBAN && target == ThemeTarget::Task)
+        || (family == DiagramFamilyId::JOURNEY && target == ThemeTarget::JourneyTask)
         || (family == DiagramFamilyId::XY_CHART && target == ThemeTarget::ChartSeries)
         || (family == DiagramFamilyId::RADAR && target == ThemeTarget::ChartSeries)
     {
@@ -2112,7 +2113,6 @@ fn legacy_paint_variants(
 fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> bool {
     match family {
         DiagramFamilyId::TIMELINE => target == ThemeTarget::TimelineEvent,
-        DiagramFamilyId::JOURNEY => target == ThemeTarget::JourneyTask,
         DiagramFamilyId::ERROR
         | DiagramFamilyId::STATE
         | DiagramFamilyId::SEQUENCE
@@ -3350,6 +3350,19 @@ mod tests {
             compile_ordinal_palette_route(DiagramFamilyId::KANBAN, ThemeTarget::Task).disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
+    }
+
+    #[test]
+    fn journey_owns_the_task_ordinal_palette() {
+        assert_eq!(
+            compile_ordinal_palette_route(DiagramFamilyId::JOURNEY, ThemeTarget::JourneyTask)
+                .disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        assert!(!legacy_palette_supported(
+            DiagramFamilyId::JOURNEY,
+            ThemeTarget::JourneyTask
+        ));
     }
 
     #[test]
@@ -5462,12 +5475,9 @@ mod tests {
                     == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
                     && route.disposition() == FamilyThemeDisposition::Unsupported
             }));
-            assert!(
-                routes
-                    .iter()
-                    .all(|route| route.disposition()
-                        != FamilyThemeDisposition::LegacyCompatibility)
-            );
+            assert!(routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility));
         }
     }
 

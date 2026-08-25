@@ -923,11 +923,6 @@ fn compile_journey_family(builder: &mut OverlayBuilder, family_programs: &Family
             ("titleColor", reader.text_fill(ThemeTarget::Title)),
         ],
     );
-    contributions.add_palette(
-        "task.palette",
-        reader.palette(ThemeTarget::JourneyTask),
-        PaletteProjection::Journey { task_limit: 8 },
-    );
     contributions.finish_into(builder);
 }
 
@@ -1127,7 +1122,6 @@ struct MarkerPaintContribution {
 enum PaletteProjection {
     ColorScale { limit: usize },
     Pie { limit: usize },
-    Journey { task_limit: usize },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1273,11 +1267,6 @@ impl FamilyContributions {
             PaletteProjection::Pie { limit } => {
                 for (index, color) in palette.iter().take(limit).enumerate() {
                     variables.insert(format!("pie{}", index + 1), Value::String(color.clone()));
-                }
-            }
-            PaletteProjection::Journey { task_limit } => {
-                for (index, color) in palette.iter().take(task_limit).enumerate() {
-                    variables.insert(format!("fillType{index}"), Value::String(color.clone()));
                 }
             }
         }
@@ -3858,11 +3847,11 @@ mod tests {
                 .contains("merman.legacy-family-theme.v1.radar.series.palette")
         );
 
-        let journey = parse(&spec, JOURNEY_FIXTURE);
-        assert_eq!(
-            journey.effective_config.get_str("themeVariables.fillType0"),
-            Some("#2563eb")
+        let journey = bridge(&spec).compile_for_family(DiagramFamilyId::JOURNEY);
+        assert!(
+            !journey
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.journey.task.palette")
         );
-        assert!(fallback_contribution_count(&journey) > 0);
     }
 }
