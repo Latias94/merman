@@ -2,9 +2,9 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
-    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, Specified, ThemeColorValue,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeVariant, materialize_theme,
+    LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, Specified,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeVariant, materialize_theme,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -908,6 +908,44 @@ fn er_entity_ordinal_paint_fails_closed() {
         error.unverified_family_theme(),
         Some((merman_render::DiagramFamilyId::ER, 1))
     );
+}
+
+#[test]
+fn er_entity_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#abcdef").expect("valid ER entity palette color")
+    ])
+    .expect("non-empty ER entity palette");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Entity,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid("#123456").expect("valid ER entity fill"),
+                        ),
+                    ))
+                    .with_ordinal_palette(ThemeTarget::Entity, palette),
+            ),
+        )
+        .expect("compile ER entity fill and ordinal palette theme");
+    let rendered =
+        prepare_er_family_with_theme_and_engine("erDiagram\n  PLAIN\n", &theme, Engine::new())
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("typed ER entity fill must shadow the unsupported palette");
+
+    assert!(
+        rendered.svg().contains("fill:#123456"),
+        "{}",
+        rendered.svg()
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

@@ -7,8 +7,9 @@ use crate::diagram_theme::{
     Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -452,50 +453,24 @@ impl ErEntityThemePlan {
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Entity,
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if entity_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
+                    // Reconciled below from each entity's final fill winner.
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Entity,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if entity_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // Reconciled below from each entity's final style.
                 }
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Relation,
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if model.relationships.is_empty() {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
+                    // Reconciled below from each relation's final fill winner.
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Relation,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if model.relationships.is_empty() {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // Reconciled below from each relation's final style.
                 }
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
@@ -503,6 +478,25 @@ impl ErEntityThemePlan {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Entity,
+                    TerminalVariantDomain::uniform(entity_count, ThemeVariant::Default),
+                ),
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Relation,
+                    TerminalVariantDomain::uniform(
+                        model.relationships.len(),
+                        ThemeVariant::Default,
+                    ),
+                ),
+            ],
+            work_meter,
+        )?;
 
         let mut pending = BTreeMap::new();
         for ((rule_index, target), observation) in observations {
