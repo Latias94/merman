@@ -63,6 +63,92 @@
 #assert(direct-svg.contains("API Host Sans"), message: "host-theme should override typography")
 #assert(not direct-svg.contains("API Direct Sans"), message: "typography should not override host-theme")
 
+#let low-level-id-svg = mermaid-svg(
+  source,
+  id: "api-high-level-id",
+  diagram-id: "api-low-level-id",
+  pipeline: "readable",
+)
+#assert(
+  low-level-id-svg.contains("api-low-level-id"),
+  message: "diagram-id should override id at the same call layer",
+)
+#assert(
+  not low-level-id-svg.contains("api-high-level-id"),
+  message: "id should not override diagram-id at the same call layer",
+)
+
+#let profile-id-svg = mermaid-svg(
+  source,
+  profile: mermaid-profile(diagram-id: "api-profile-low-level-id"),
+  id: "api-direct-id",
+  pipeline: "readable",
+)
+#assert(
+  profile-id-svg.contains("api-direct-id"),
+  message: "direct id should override a profile diagram-id",
+)
+#assert(
+  not profile-id-svg.contains("api-profile-low-level-id"),
+  message: "profile diagram-id should not override direct id",
+)
+
+#let profile-both-ids-svg = mermaid-svg(
+  source,
+  profile: mermaid-profile(
+    id: "api-profile-id",
+    diagram-id: "api-profile-diagram-id",
+  ),
+  pipeline: "readable",
+)
+#assert(
+  profile-both-ids-svg.contains("api-profile-diagram-id"),
+  message: "profile diagram-id should override profile id",
+)
+#assert(
+  not profile-both-ids-svg.contains("api-profile-id"),
+  message: "profile id should not override profile diagram-id",
+)
+
+#let direct-low-level-id-svg = mermaid-svg(
+  source,
+  profile: mermaid-profile(id: "api-profile-id"),
+  diagram-id: "api-direct-low-level-id",
+  pipeline: "readable",
+)
+#assert(
+  direct-low-level-id-svg.contains("api-direct-low-level-id"),
+  message: "direct diagram-id should override profile id",
+)
+
+#let snake-profile-id-svg = mermaid-svg(
+  source,
+  profile: (diagram_id: "api-snake-profile-id"),
+  pipeline: "readable",
+)
+#assert(
+  snake-profile-id-svg.contains("api-snake-profile-id"),
+  message: "profile diagram_id should remain accepted as a binding alias",
+)
+
+#let resource-limited-result = mermaid-result(
+  source,
+  options: (
+    version: 2,
+    resources: (limits: (max_source_bytes: 1)),
+  ),
+)
+#assert(
+  not resource-limited-result.ok,
+  message: "mermaid-result should preserve structured resource failures",
+)
+#assert.eq(resource-limited-result.code_name, "MERMAN_RESOURCE_LIMIT_EXCEEDED")
+#assert.eq(
+  resource-limited-result.details.resource.limit_id,
+  "max_source_bytes",
+  message: "resource failure details should identify the exceeded limit",
+)
+
 #let options-svg = mermaid-svg(
   source,
   profile: svg-profile,

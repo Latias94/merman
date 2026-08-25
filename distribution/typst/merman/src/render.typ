@@ -23,6 +23,7 @@
     kind: envelope.kind,
     capability_id: envelope.capability_id,
     message: envelope.message,
+    details: if "details" in envelope { envelope.details } else { none },
     svg: if envelope.ok { envelope.data.svg } else { none },
   )
 }

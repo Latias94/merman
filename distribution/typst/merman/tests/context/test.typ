@@ -45,6 +45,52 @@
   333,
   message: "profile layout width should take precedence over document context width",
 )
+#let profile-shorthand-width-config = config-with-context-width(
+  render-config(profile: mermaid-profile(container-width: 333)),
+  typst-length-to-css-px(72pt),
+)
+#assert.eq(
+  profile-shorthand-width-config.binding_options.layout.container_width,
+  333,
+  message: "profile container-width should take precedence over document context width",
+)
+#let partial-typography-config = render-config(
+  profile: mermaid-profile(typography: (font: "Profile Sans", size: "16px")),
+  typography: (font: "Direct Sans"),
+)
+#assert.eq(
+  partial-typography-config.binding_options.presentation.theme.font_family,
+  "Direct Sans",
+)
+#assert.eq(
+  partial-typography-config.binding_options.presentation.theme.font_size,
+  "16px",
+  message: "partial direct typography should preserve the profile size",
+)
+#let replacement-site-config = render-config(
+  profile: mermaid-profile(site-config: (theme: "dark", fontFamily: "Profile Sans")),
+  site-config: (theme: "neutral"),
+)
+#assert.eq(
+  replacement-site-config.binding_options.site_config,
+  (theme: "neutral"),
+  message: "a direct site-config should replace the profile object",
+)
+#let theme-alias-config = render-config(
+  profile: mermaid-profile(base-theme: "dark"),
+  theme-name: "forest",
+)
+#assert.eq(
+  theme-alias-config.binding_options.site_config.theme,
+  "forest",
+  message: "theme-name should override the base-theme compatibility alias",
+)
+#let full-layout-config = render-config(
+  profile: mermaid-profile(container-width: 333, container-height: 222),
+  layout: (container_width: 444, container_height: 555),
+)
+#assert.eq(full-layout-config.binding_options.layout.container_width, 444)
+#assert.eq(full-layout-config.binding_options.layout.container_height, 555)
 #assert.eq(
   context-host-theme(
     ((name: "Inria Serif", covers: "latin-in-cjk"), "Noto Serif CJK SC"),

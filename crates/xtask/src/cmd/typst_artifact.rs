@@ -1003,9 +1003,19 @@ fn resolve_local_production_closure<'a>(
         ))
     })?;
     let expected_manifest = spec.workspace_root.join(&spec.cargo_manifest_path);
-    if root_package.name != spec.cargo_package
-        || root_package.source.is_some()
-        || root_package.manifest_path != expected_manifest
+    let manifest_matches =
+        if root_package.name == spec.cargo_package && root_package.source.is_none() {
+            canonicalize_path_for_comparison(
+                &expected_manifest,
+                "canonicalize expected Cargo manifest",
+            )? == canonicalize_path_for_comparison(
+                &root_package.manifest_path,
+                "canonicalize Cargo metadata manifest",
+            )?
+        } else {
+            false
+        };
+    if root_package.name != spec.cargo_package || root_package.source.is_some() || !manifest_matches
     {
         return Err(artifact_error(format!(
             "cargo metadata root must be local package `{}` at {}, found `{}` at {}",
@@ -1094,16 +1104,19 @@ fn ensure_local_manifest_is_in_workspace(
     workspace_root: &Path,
     package: &MetadataPackage,
 ) -> Result<(), XtaskError> {
-    package
-        .manifest_path
-        .strip_prefix(workspace_root)
-        .map_err(|_| {
-            artifact_error(format!(
-                "reachable local package `{}` is outside workspace root: {}",
-                package.name,
-                package.manifest_path.display()
-            ))
-        })?;
+    let workspace_root =
+        canonicalize_path_for_comparison(workspace_root, "canonicalize workspace root")?;
+    let manifest_path = canonicalize_path_for_comparison(
+        &package.manifest_path,
+        "canonicalize reachable Cargo manifest",
+    )?;
+    manifest_path.strip_prefix(&workspace_root).map_err(|_| {
+        artifact_error(format!(
+            "reachable local package `{}` is outside workspace root: {}",
+            package.name,
+            package.manifest_path.display()
+        ))
+    })?;
     Ok(())
 }
 
@@ -1327,7 +1340,10 @@ fn is_non_production_directory(name: &str) -> bool {
 }
 
 fn manifest_relative_path(workspace_root: &Path, path: &Path) -> Result<String, XtaskError> {
-    let relative = path.strip_prefix(workspace_root).map_err(|_| {
+    let workspace_root =
+        canonicalize_path_for_comparison(workspace_root, "canonicalize workspace root")?;
+    let path = canonicalize_path_for_comparison(path, "canonicalize artifact input")?;
+    let relative = path.strip_prefix(&workspace_root).map_err(|_| {
         artifact_error(format!(
             "artifact input {} is outside workspace root {}",
             path.display(),
@@ -1353,6 +1369,10 @@ fn manifest_relative_path(workspace_root: &Path, path: &Path) -> Result<String, 
         return Err(artifact_error("artifact input path must name a file"));
     }
     Ok(parts.join("/"))
+}
+
+fn canonicalize_path_for_comparison(path: &Path, action: &str) -> Result<PathBuf, XtaskError> {
+    fs::canonicalize(path).map_err(|source| artifact_io_error(action, path, source))
 }
 
 fn fingerprint_artifact(path: &Path, file_name: &str) -> Result<ArtifactFingerprint, XtaskError> {
@@ -1593,6 +1613,22 @@ mod tests {
         );
         assert!(validate_typst_wasm_optimizer_version("wasm-opt version 130").is_err());
         assert!(validate_typst_wasm_optimizer_version("wasm-opt version 1310").is_err());
+    }
+
+    #[test]
+    fn collects_fingerprint_with_canonical_workspace_and_metadata_paths() {
+        let fixture = Fixture::new();
+        let mut spec = fixture.spec("publish");
+        spec.workspace_root = fixture.workspace.canonicalize().unwrap();
+
+        let fingerprint = collect_input_fingerprint(&spec, &fixture.metadata()).unwrap();
+
+        assert!(
+            fingerprint
+                .packages
+                .iter()
+                .any(|package| package.manifest_path == "crates/plugin/Cargo.toml")
+        );
     }
 
     struct Fixture {

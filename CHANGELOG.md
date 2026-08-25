@@ -15,6 +15,11 @@ The next workspace release remains in development. This section records only com
   select the new `complete-svg-elk` aggregate (or the direct `layout-elk` leaf) and distribute the
   EPL-2.0 notices and source provenance. The CLI source default likewise omits ELK, while the
   published `cli-release` archive retains it with its artifact-specific legal bundle.
+- The Typst `0.2.0` candidate now resolves diagram ids by layer and alias: direct `diagram-id`,
+  direct `id`, profile `diagram-id`, then profile `id`. Direct `site-config` replaces the profile
+  object, while raw `options` remains an opaque binding-options bundle and bypasses shorthand
+  validation (the plugin still validates the binding-options schema). Consumers that supplied both
+  aliases and relied on the old cross-layer ordering should choose one explicit id before upgrading.
 - Removed Merman's parser-emitted `EditorLexeme*` API, mixed token planner, generated semantic-token
   descriptor, packed token-equivalence evidence, and Web/WASM semantic-token methods. The Web
   editor transport advances to API `5`; completion, hover, diagnostics, navigation, and safe rename

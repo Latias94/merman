@@ -22,7 +22,7 @@ const PACKAGE_MANIFEST_FILE_NAME: &str = "merman_package.manifest.json";
 const PACKAGE_MANIFEST_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_TYPST_PACKAGE_NAME: &str = "merman";
 const COMPILE_FAIL_FIXTURE_DIRECTORY: &str = "compile-fail";
-const RUNTIME_PACKAGE_EXCLUDES: [&str; 2] = ["examples/**", "tests/**"];
+const RUNTIME_PACKAGE_EXCLUDES: [&str; 1] = ["examples/**"];
 
 #[derive(Debug)]
 struct Options {
@@ -306,7 +306,7 @@ fn collect_runtime_source_snapshot(
 fn runtime_path_is_excluded(relative: &Path) -> bool {
     matches!(
         relative.components().next(),
-        Some(Component::Normal(name)) if name == "examples" || name == "tests"
+        Some(Component::Normal(name)) if name == "tests"
     )
 }
 
@@ -1542,11 +1542,13 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), XtaskErro
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::copy_file;
     use super::{
         PACKAGE_ARTIFACT_MANIFEST_FILE_NAME, PACKAGE_MANIFEST_FILE_NAME, PackageManifest,
         PluginArtifactSnapshot, RuntimePackageSourceSnapshot, collect_typst_files,
-        collect_typst_fixtures, copy_dir_recursive, copy_file, create_smoke_run_root,
-        install_staged_package, is_typst_package_version, package_manifest, parse_smoke_options,
+        collect_typst_fixtures, copy_dir_recursive, create_smoke_run_root, install_staged_package,
+        is_typst_package_version, package_manifest, parse_smoke_options,
         serialize_package_manifest, stage_and_install_package, stage_and_install_package_with_hook,
         typst_fixture_output_path, validate_staged_package, write_staged_file,
     };
@@ -1779,7 +1781,7 @@ mod tests {
     }
 
     #[test]
-    fn staged_runtime_package_excludes_source_examples_and_tests() {
+    fn staged_runtime_package_includes_examples_and_excludes_tests() {
         let temporary = tempfile::tempdir().unwrap();
         let fixture = package_fixture(&temporary);
 
@@ -1796,7 +1798,7 @@ mod tests {
         assert!(package.join("merman_typst_plugin.wasm").exists());
         assert!(package.join("merman_typst_plugin.manifest.json").exists());
         assert!(package.join(PACKAGE_MANIFEST_FILE_NAME).exists());
-        assert!(!package.join("examples").exists());
+        assert!(package.join("examples/basic.typ").exists());
         assert!(!package.join("tests").exists());
         assert!(package.join("LICENSE").exists());
         assert!(package.join("THIRD_PARTY_NOTICES.md").exists());
@@ -1828,6 +1830,7 @@ mod tests {
                 "README.md".to_string(),
                 "THIRD_PARTY_LICENSES".to_string(),
                 "THIRD_PARTY_NOTICES.md".to_string(),
+                "examples".to_string(),
                 "lib.typ".to_string(),
                 PACKAGE_MANIFEST_FILE_NAME.to_string(),
                 "merman_typst_plugin.manifest.json".to_string(),
@@ -1964,7 +1967,7 @@ mod tests {
         fs::create_dir_all(package_source.join("tests/api")).unwrap();
         fs::write(
             package_source.join("typst.toml"),
-            "[package]\nname = \"merman\"\nversion = \"0.2.0\"\nentrypoint = \"lib.typ\"\nexclude = [\"examples/**\", \"tests/**\"]\n",
+            "[package]\nname = \"merman\"\nversion = \"0.2.0\"\nentrypoint = \"lib.typ\"\nexclude = [\"examples/**\"]\n",
         )
         .unwrap();
         fs::write(package_source.join("lib.typ"), "#let render = () => none").unwrap();
