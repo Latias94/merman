@@ -621,6 +621,46 @@ fn build_node(
         flowchart_svg_root(n).is_some()
     }
 
+    fn has_class_token(n: roxmltree::Node<'_, '_>, token: &str) -> bool {
+        n.attribute("class")
+            .is_some_and(|class| class.split_whitespace().any(|value| value == token))
+    }
+
+    fn is_flowchart_semantic_element(n: roxmltree::Node<'_, '_>) -> bool {
+        if !is_flowchart_diagram(n) {
+            return false;
+        }
+        if n.attribute("data-et")
+            .is_some_and(|kind| matches!(kind, "node" | "cluster" | "edge" | "edge-label"))
+        {
+            return true;
+        }
+
+        match n.tag_name().name() {
+            "g" => {
+                has_class_token(n, "node")
+                    || has_class_token(n, "cluster")
+                    || has_class_token(n, "edgeLabel")
+            }
+            "path" => has_class_token(n, "flowchart-link"),
+            _ => false,
+        }
+    }
+
+    fn is_flowchart_edge_label_data_id(n: roxmltree::Node<'_, '_>) -> bool {
+        is_flowchart_diagram(n)
+            && n.tag_name().name() == "g"
+            && has_class_token(n, "label")
+            && n.attribute("data-id").is_some()
+            && n.ancestors().any(|ancestor| {
+                ancestor.is_element()
+                    && (ancestor
+                        .attribute("data-et")
+                        .is_some_and(|kind| kind == "edge-label")
+                        || has_class_token(ancestor, "edgeLabel"))
+            })
+    }
+
     fn flowchart_diagram_id<'a, 'input>(n: roxmltree::Node<'a, 'input>) -> Option<&'a str> {
         flowchart_svg_root(n)?.attribute("id")
     }
@@ -725,14 +765,7 @@ fn build_node(
                 }
             }
 
-            let is_semantic_element = n
-                .attribute("data-et")
-                .is_some_and(|kind| matches!(kind, "node" | "cluster" | "edge" | "edge-label"))
-                || n.attribute("class").is_some_and(|class| {
-                    class.split_whitespace().any(|token| {
-                        matches!(token, "node" | "cluster" | "edgeLabel" | "flowchart-link")
-                    })
-                });
+            let is_semantic_element = is_flowchart_semantic_element(n);
             let is_generated_definition = matches!(
                 n.tag_name().name(),
                 "marker" | "filter" | "clipPath" | "linearGradient"
@@ -1291,7 +1324,12 @@ fn build_node(
             } else if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
                 && is_identifier_like_attr(&key)
             {
-                val = normalize_mermaid_generated_id_only(&val);
+                let preserves_flowchart_identity = matches!(key.as_str(), "id" | "data-id")
+                    && (is_flowchart_semantic_element(n)
+                        || (key == "data-id" && is_flowchart_edge_label_data_id(n)));
+                if !preserves_flowchart_identity {
+                    val = normalize_mermaid_generated_id_only(&val);
+                }
             } else if mode == DomMode::Strict && is_identifier_like_attr(&key) {
                 if is_block_diagram(n) {
                     val = normalize_mermaid_generated_id_only(&val);
@@ -2055,6 +2093,69 @@ mod tests {
             dom_signature(baseline, DomMode::Parity, 3).unwrap(),
             dom_signature(&id_changed, DomMode::Parity, 3).unwrap()
         );
+    }
+
+    #[test]
+    fn flowchart_parity_preserves_semantic_edge_id_that_resembles_generated_id() {
+        let baseline = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><path class="flowchart-link" id="diagram-L_id-a-1_B_0"/></svg>"#;
+        let changed =
+            baseline.replace("id=\"diagram-L_id-a-1_B_0\"", "id=\"diagram-L_id-b-1_B_0\"");
+
+        assert_ne!(
+            dom_signature(baseline, DomMode::Parity, 3).unwrap(),
+            dom_signature(&changed, DomMode::Parity, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn flowchart_parity_preserves_semantic_edge_data_id_that_resembles_generated_id() {
+        let baseline = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><path class="flowchart-link" id="diagram-L_id-a-1_B_0" data-et="edge" data-id="L_id-a-1_B_0"/></svg>"#;
+        let changed = baseline.replace("data-id=\"L_id-a-1_B_0\"", "data-id=\"L_id-b-1_B_0\"");
+
+        assert_ne!(
+            dom_signature(baseline, DomMode::Parity, 3).unwrap(),
+            dom_signature(&changed, DomMode::Parity, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn flowchart_parity_preserves_nested_edge_label_data_id() {
+        let baseline = r#"<svg aria-roledescription="flowchart-v2"><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_id-a-1_B_0"/></g></g></svg>"#;
+        let changed = baseline.replace("L_id-a-1_B_0", "L_id-b-1_B_0");
+
+        assert_ne!(
+            dom_signature(baseline, DomMode::Parity, 3).unwrap(),
+            dom_signature(&changed, DomMode::Parity, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn parity_keeps_non_flowchart_generated_id_normalization() {
+        let svg =
+            r#"<svg aria-roledescription="block"><g class="node" id="id-abc123def456-1"/></svg>"#;
+        let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(
+            dom.children[0].attrs.get("id").map(String::as_str),
+            Some("id-<id>-1")
+        );
+    }
+
+    #[test]
+    fn flowchart_parity_normalizes_nonsemantic_generated_ids_in_both_modes() {
+        let svg = r#"<svg aria-roledescription="flowchart-v2"><g class="legend" id="id-abc123def456-1"/><rect class="node" id="id-fedcba654321-2"/></svg>"#;
+
+        for mode in [DomMode::Parity, DomMode::ParityRoot] {
+            let dom = dom_signature(svg, mode, 3).unwrap();
+            assert_eq!(
+                dom.children[0].attrs.get("id").map(String::as_str),
+                Some("id-<id>-1")
+            );
+            assert_eq!(
+                dom.children[1].attrs.get("id").map(String::as_str),
+                Some("id-<id>-2")
+            );
+        }
     }
 
     #[test]
