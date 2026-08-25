@@ -12,8 +12,9 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -215,6 +216,14 @@ impl QuadrantChartPointThemePlan {
         }
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let source_owned_fill = model
+            .points
+            .iter()
+            .zip(point_class_styles.iter().copied())
+            .map(|(point, class_styles)| {
+                config_owns_fill || super::point_source_fill(point, class_styles).is_some()
+            })
+            .collect::<Vec<_>>();
         let mut observations = BTreeMap::<usize, QuadrantChartSeriesRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -297,26 +306,13 @@ impl QuadrantChartPointThemePlan {
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::ChartSeries,
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if point_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
+                    // Reconciled below from each point's final fill winner.
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::ChartSeries,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if point_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // Reconciled below from each point's final style.
                 }
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
@@ -324,6 +320,17 @@ impl QuadrantChartPointThemePlan {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::ChartSeries,
+                TerminalVariantDomain::uniform(point_count, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&source_owned_fill)],
+            work_meter,
+        )?;
 
         let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {

@@ -5,9 +5,9 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
-    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, RadialGradient, Specified,
-    ThemeColorValue, ThemeGeometryPatch, ThemeLength, ThemePortabilityRequirement, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient,
+    Specified, ThemeColorValue, ThemeGeometryPatch, ThemeLength, ThemePortabilityRequirement,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -513,6 +513,46 @@ fn quadrantchart_point_fill_resolves_each_source_and_config_owner_before_typed_t
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn quadrantchart_typed_point_fill_shadows_unsupported_ordinal_palette() {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#abcdef").expect("valid Quadrant Chart ordinal palette color")
+    ])
+    .expect("non-empty Quadrant Chart ordinal palette");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::ChartSeries,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid("#123456")
+                                .expect("valid Quadrant Chart typed point fill"),
+                        ),
+                    ))
+                    .with_ordinal_palette(ThemeTarget::ChartSeries, palette),
+            ),
+        )
+        .expect("compile Quadrant Chart typed fill and ordinal palette theme");
+    let rendered = render_quadrantchart_with_theme_and_engine(
+        "quadrantChart\nTyped: [0.3, 0.7]\nOther: [0.7, 0.3]\n",
+        &theme,
+        Engine::new(),
+    );
+    assert!(
+        quadrantchart_point_fills(rendered.svg())
+            .iter()
+            .all(|(_, fill)| fill == "#123456")
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
