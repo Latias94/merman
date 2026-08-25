@@ -508,6 +508,7 @@ fn prepare_timeline_family(
     )?;
     let event_theme = crate::timeline::TimelineEventTheme::resolve(
         execution.resolved_theme(),
+        &meta.effective_config,
         &layout,
         execution.work_meter_ref(),
     )?;

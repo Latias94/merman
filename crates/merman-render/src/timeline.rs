@@ -12,13 +12,11 @@ use std::borrow::Cow;
 mod config;
 mod theme;
 
-pub(crate) use config::TimelineConfigView;
+pub(crate) use config::{TimelineConfigView, timeline_theme_color_limit};
 pub(crate) use theme::{TimelineEventTheme, TimelineEventThemeReceipt};
 
 pub(crate) const MERMAID_EVENT_RADIUS_PX: f64 = 5.0;
 pub(crate) const MERMAID_EVENT_RADIUS_TOKEN: &str = "5";
-
-const MAX_SECTIONS: i64 = 12;
 
 const BASE_MARGIN: f64 = 50.0;
 const NODE_PADDING: f64 = 20.0;
@@ -44,12 +42,16 @@ pub(crate) fn default_use_max_width() -> bool {
     false
 }
 
-fn section_index(full_section: i64) -> i64 {
-    (full_section % MAX_SECTIONS) - 1
+fn section_index(full_section: i64, theme_color_limit: usize) -> i64 {
+    (full_section % theme_color_limit as i64) - 1
 }
 
-fn section_class(full_section: i64) -> String {
-    format!("section-{}", section_index(full_section))
+fn section_class(full_section: i64, theme_color_limit: usize) -> String {
+    if theme_color_limit == 0 {
+        "section-NaN".to_string()
+    } else {
+        format!("section-{}", section_index(full_section, theme_color_limit))
+    }
 }
 
 fn next_char_at(text: &str, idx: usize) -> Option<char> {
@@ -226,6 +228,7 @@ struct TimelineNodeRequest<'a> {
     kind: &'a str,
     label: &'a str,
     full_section: i64,
+    theme_color_limit: usize,
     x: f64,
     y: f64,
     content_width: f64,
@@ -243,6 +246,7 @@ fn compute_node(
         kind,
         label,
         full_section,
+        theme_color_limit,
         x,
         y,
         content_width,
@@ -268,7 +272,7 @@ fn compute_node(
         height,
         content_width: content_width.max(1.0),
         padding,
-        section_class: section_class(full_section),
+        section_class: section_class(full_section, theme_color_limit),
         label: label.to_string(),
         label_lines,
         kind: kind.to_string(),
@@ -364,6 +368,7 @@ fn layout_timeline_horizontal(
     let text_style = cfg.text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
+    let theme_color_limit = cfg.theme_color_limit;
 
     let left_margin = cfg.left_margin;
     let disable_multicolor = cfg.disable_multicolor;
@@ -452,6 +457,7 @@ fn layout_timeline_horizontal(
                     kind: "section",
                     label: section_label,
                     full_section: section_number,
+                    theme_color_limit,
                     x: master_x,
                     y: section_y,
                     content_width,
@@ -475,6 +481,7 @@ fn layout_timeline_horizontal(
                         kind: "task",
                         label: &task.task,
                         full_section,
+                        theme_color_limit,
                         x: task_x,
                         y: task_y,
                         content_width: task_content_width,
@@ -504,6 +511,7 @@ fn layout_timeline_horizontal(
                             kind: "event",
                             label: ev,
                             full_section,
+                            theme_color_limit,
                             x: task_x,
                             y: event_y,
                             content_width: task_content_width,
@@ -546,6 +554,7 @@ fn layout_timeline_horizontal(
                     kind: "task",
                     label: &task.task,
                     full_section: section_color,
+                    theme_color_limit,
                     x: master_x,
                     y: master_y,
                     content_width: task_content_width,
@@ -575,6 +584,7 @@ fn layout_timeline_horizontal(
                         kind: "event",
                         label: ev,
                         full_section: section_color,
+                        theme_color_limit,
                         x: master_x,
                         y: event_y,
                         content_width: task_content_width,
@@ -726,6 +736,7 @@ fn layout_vertical_tasks<'a>(
     max_task_height: f64,
     mut section_color: i64,
     advance_section_color: bool,
+    theme_color_limit: usize,
     text_style: &TextStyle,
     layout_font_size: f64,
     measurer: &dyn TextMeasurer,
@@ -744,6 +755,7 @@ fn layout_vertical_tasks<'a>(
                 kind: "task",
                 label: &task.task,
                 full_section: section_color,
+                theme_color_limit,
                 x: task_x,
                 y: task_y,
                 content_width: VERTICAL_NODE_CONTENT_WIDTH,
@@ -765,6 +777,7 @@ fn layout_vertical_tasks<'a>(
                     kind: "event",
                     label: event,
                     full_section: section_color,
+                    theme_color_limit,
                     x: events_x,
                     y: event_y,
                     content_width: VERTICAL_EVENT_CONTENT_WIDTH,
@@ -815,6 +828,7 @@ fn layout_timeline_vertical(
     let text_style = cfg.text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
+    let theme_color_limit = cfg.theme_color_limit;
     let left_margin = cfg.left_margin;
 
     let node_total_width = VERTICAL_NODE_CONTENT_WIDTH + VERTICAL_NODE_PADDING * 2.0;
@@ -893,6 +907,7 @@ fn layout_timeline_vertical(
                     kind: "section",
                     label: section_label,
                     full_section: section_number,
+                    theme_color_limit,
                     x: timeline_x - left_width,
                     y: master_y,
                     content_width: section_content_width,
@@ -913,6 +928,7 @@ fn layout_timeline_vertical(
                 max_task_height,
                 section_number,
                 false,
+                theme_color_limit,
                 &text_style,
                 layout_font_size,
                 measurer,
@@ -943,6 +959,7 @@ fn layout_timeline_vertical(
             max_task_height,
             0,
             !cfg.disable_multicolor,
+            theme_color_limit,
             &text_style,
             layout_font_size,
             measurer,

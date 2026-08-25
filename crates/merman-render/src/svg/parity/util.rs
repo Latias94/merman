@@ -151,6 +151,10 @@ impl<'a> SvgTheme<'a> {
         crate::config::config_f64(self.effective_config, &["themeVariables", key])
     }
 
+    pub(super) fn effective_config(&self) -> &serde_json::Value {
+        self.effective_config
+    }
+
     pub(super) fn string_array(&self, key: &str) -> Vec<String> {
         crate::config::config_string_vec(self.effective_config, &["themeVariables", key])
     }

@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
+use merman_core::MermaidConfig;
+
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, Specified, ThemeCapability, ThemeTarget,
@@ -12,6 +14,8 @@ use crate::family::{
 };
 use crate::model::TimelineDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
+
+const TIMELINE_PALETTE_SLOT_COUNT: usize = crate::timeline::config::MAX_THEME_COLOR_LIMIT;
 
 #[derive(Debug, Clone)]
 struct TimelineEventRadius {
@@ -48,6 +52,35 @@ struct TimelineEventTerminalExpectation {
     opacity_rule_index: Option<usize>,
 }
 
+#[derive(Debug, Clone)]
+struct TimelinePalettePaint {
+    css: Box<str>,
+    capability: Option<ThemeCapability>,
+}
+
+impl TimelinePalettePaint {
+    fn typed(css: impl Into<Box<str>>, capability: ThemeCapability) -> Self {
+        Self {
+            css: css.into(),
+            capability: Some(capability),
+        }
+    }
+
+    fn source_owned(css: impl Into<Box<str>>) -> Self {
+        Self {
+            css: css.into(),
+            capability: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TimelinePaletteNodeExpectation {
+    slot: usize,
+    fill: TimelinePalettePaint,
+    classic_line_stroke: Option<Box<str>>,
+}
+
 impl TimelineEventTerminalExpectation {
     fn baseline() -> Self {
         Self {
@@ -63,6 +96,10 @@ impl TimelineEventTerminalExpectation {
 #[derive(Debug)]
 pub(crate) struct TimelineEventTheme {
     events: Box<[TimelineEventTerminalExpectation]>,
+    palette_slots: [Option<TimelinePalettePaint>; TIMELINE_PALETTE_SLOT_COUNT],
+    palette_line_strokes: [Option<Box<str>>; TIMELINE_PALETTE_SLOT_COUNT],
+    palette_nodes: Box<[TimelinePaletteNodeExpectation]>,
+    palette_key: Option<FamilyThemeMechanismKey>,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, TimelineEventPendingEvidence>,
     terminal_receipt: OnceLock<TimelineEventThemeReceipt>,
@@ -71,6 +108,7 @@ pub(crate) struct TimelineEventTheme {
 impl TimelineEventTheme {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
         layout: &TimelineDiagramLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -79,6 +117,89 @@ impl TimelineEventTheme {
         };
         let event_nodes = timeline_event_nodes(layout);
         let event_count = event_nodes.len();
+
+        let palette_key = FamilyThemeMechanismKey::OrdinalPalette {
+            target: ThemeTarget::TimelineEvent,
+        };
+        let palette_disposition = theme.ordinal_palette_disposition(ThemeTarget::TimelineEvent);
+        let palette_node_slots = timeline_palette_node_slots(layout);
+        let active_palette_slot_limit =
+            super::timeline_theme_color_limit(effective_config.as_value())
+                .min(TIMELINE_PALETTE_SLOT_COUNT);
+        let mut palette_slots: [Option<TimelinePalettePaint>; TIMELINE_PALETTE_SLOT_COUNT] =
+            std::array::from_fn(|_| None);
+        let mut palette_line_strokes: [Option<Box<str>>; TIMELINE_PALETTE_SLOT_COUNT] =
+            std::array::from_fn(|_| None);
+        let mut palette_nodes = Vec::new();
+        // Layout already applies Mermaid's modulo ring before it emits section classes. A valid
+        // class therefore always maps into the active limit; only malformed classes or missing
+        // colors are residuals here.
+        let mut missing_palette_slot = palette_node_slots.iter().any(Option::is_none);
+        let palette_enabled = palette_disposition == Some(FamilyThemeDisposition::TypedAdapter)
+            && !timeline_is_redux_theme(effective_config);
+        if palette_enabled {
+            let mut used_slots = BTreeSet::new();
+            for slot in palette_node_slots
+                .iter()
+                .flatten()
+                .copied()
+                .filter(|slot| *slot < active_palette_slot_limit)
+            {
+                used_slots.insert(slot);
+            }
+            for slot in used_slots {
+                let color_scale_path = format!("themeVariables.cScale{slot}");
+                let paint = if merman_core::__private::config_path_overrides_typed_default(
+                    effective_config,
+                    &color_scale_path,
+                ) {
+                    effective_config
+                        .get_str(&color_scale_path)
+                        .map(|color| TimelinePalettePaint::source_owned(color.to_owned()))
+                } else {
+                    theme
+                        .series_color(ThemeTarget::TimelineEvent, slot + 1)
+                        .map(|color| {
+                            TimelinePalettePaint::typed(
+                                color.as_css(),
+                                if color.is_transparent() {
+                                    ThemeCapability::TransparentPaint
+                                } else {
+                                    ThemeCapability::SolidPaint
+                                },
+                            )
+                        })
+                };
+                if let Some(paint) = paint {
+                    palette_slots[slot] = Some(paint);
+                } else {
+                    missing_palette_slot = true;
+                }
+            }
+
+            for slot in palette_node_slots
+                .iter()
+                .flatten()
+                .copied()
+                .filter(|slot| *slot < active_palette_slot_limit)
+            {
+                if let Some(fill) = palette_slots[slot].clone() {
+                    let line_stroke =
+                        timeline_classic_line_stroke(effective_config, slot, fill.css.as_ref());
+                    if line_stroke.is_none() {
+                        missing_palette_slot = true;
+                    }
+                    palette_line_strokes[slot] = line_stroke.clone();
+                    palette_nodes.push(TimelinePaletteNodeExpectation {
+                        slot,
+                        classic_line_stroke: line_stroke,
+                        fill,
+                    });
+                } else {
+                    missing_palette_slot = true;
+                }
+            }
+        }
 
         let mut events = vec![TimelineEventTerminalExpectation::baseline(); event_count];
         let mut winner_counts =
@@ -180,9 +301,16 @@ impl TimelineEventTheme {
                     target: ThemeTarget::TimelineEvent,
                 } => {
                     let key = theme.family_mechanism_key(route);
-                    if event_count == 0 {
+                    if palette_node_slots.is_empty() {
                         evidence.mark_not_applicable(key);
                     } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                        evidence.mark_residual(
+                            key,
+                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+                        );
+                    } else if !palette_enabled {
+                        evidence.mark_not_applicable(key);
+                    } else if missing_palette_slot {
                         evidence.mark_residual(
                             key,
                             FamilyThemeResidualReason::UnsupportedOrdinalPalette,
@@ -240,8 +368,14 @@ impl TimelineEventTheme {
             }
         }
 
+        let palette_nodes_are_nonempty = !palette_nodes.is_empty();
         Ok(Self {
             events: events.into_boxed_slice(),
+            palette_slots,
+            palette_line_strokes,
+            palette_nodes: palette_nodes.into_boxed_slice(),
+            palette_key: (palette_enabled && !missing_palette_slot && palette_nodes_are_nonempty)
+                .then_some(palette_key),
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
@@ -251,6 +385,10 @@ impl TimelineEventTheme {
     pub(crate) fn baseline() -> Self {
         Self {
             events: Box::new([]),
+            palette_slots: std::array::from_fn(|_| None),
+            palette_line_strokes: std::array::from_fn(|_| None),
+            palette_nodes: Box::new([]),
+            palette_key: None,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
@@ -270,14 +408,32 @@ impl TimelineEventTheme {
             .map(|radius| (radius.token.as_ref(), radius.value_px))
     }
 
+    pub(crate) fn palette_fill_for_slot(&self, slot: usize) -> Option<&str> {
+        self.palette_slots
+            .get(slot)
+            .and_then(|paint| paint.as_ref())
+            .map(|paint| paint.css.as_ref())
+    }
+
+    pub(crate) fn palette_line_stroke_for_slot(&self, slot: usize) -> Option<&str> {
+        self.palette_line_strokes
+            .get(slot)
+            .and_then(Option::as_deref)
+    }
+
+    pub(crate) fn palette_slot_for_section(&self, section_class: &str) -> Option<usize> {
+        timeline_section_slot(section_class)
+    }
+
     pub(crate) fn begin_terminal_receipt(
         &self,
         is_redux_theme: bool,
     ) -> Option<TimelineEventThemeReceipt> {
-        (!self.pending.is_empty()).then(|| {
-            TimelineEventThemeReceipt::from_expectations_with_baseline(
+        (!self.pending.is_empty() || self.palette_key.is_some()).then(|| {
+            TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
                 self.events.clone(),
                 (!is_redux_theme).then_some(super::MERMAID_EVENT_RADIUS_TOKEN),
+                self.palette_nodes.clone(),
             )
         })
     }
@@ -305,6 +461,16 @@ impl TimelineEventTheme {
                 );
             }
         }
+        if let Some(key) = self.palette_key.clone() {
+            if receipt.palette_capabilities.is_empty() {
+                evidence.mark_not_applicable(key);
+            } else {
+                evidence.mark_applied_with_capabilities(
+                    key,
+                    receipt.palette_capabilities.iter().copied(),
+                );
+            }
+        }
         evidence
     }
 }
@@ -316,6 +482,58 @@ fn timeline_event_nodes(layout: &TimelineDiagramLayout) -> Vec<&crate::model::Ti
         .flat_map(|section| section.tasks.iter())
         .chain(layout.orphan_tasks.iter())
         .flat_map(|task| task.events.iter())
+        .collect()
+}
+
+fn timeline_is_redux_theme(config: &MermaidConfig) -> bool {
+    config
+        .get_str("theme")
+        .is_some_and(|theme| theme.contains("redux"))
+}
+
+fn timeline_classic_line_stroke(
+    config: &MermaidConfig,
+    slot: usize,
+    fill: &str,
+) -> Option<Box<str>> {
+    if timeline_is_redux_theme(config) {
+        return None;
+    }
+    let inverse_path = format!("themeVariables.cScaleInv{slot}");
+    if merman_core::__private::config_path_overrides_typed_default(config, &inverse_path) {
+        return config
+            .get_str(&inverse_path)
+            .map(str::to_owned)
+            .map(Into::into);
+    }
+    merman_core::theme_color::invert(fill).ok().map(Into::into)
+}
+
+fn timeline_section_slot(section_class: &str) -> Option<usize> {
+    let suffix = section_class.strip_prefix("section-")?;
+    let section = suffix.parse::<i64>().ok()?;
+    let slot = section.checked_add(1)?;
+    usize::try_from(slot)
+        .ok()
+        .filter(|slot| *slot < TIMELINE_PALETTE_SLOT_COUNT)
+}
+
+fn timeline_palette_node_slots(layout: &TimelineDiagramLayout) -> Vec<Option<usize>> {
+    let mut nodes = Vec::new();
+    for section in &layout.sections {
+        nodes.push(&section.node);
+        for task in &section.tasks {
+            nodes.push(&task.node);
+            nodes.extend(task.events.iter());
+        }
+    }
+    for task in &layout.orphan_tasks {
+        nodes.push(&task.node);
+        nodes.extend(task.events.iter());
+    }
+    nodes
+        .into_iter()
+        .map(|node| timeline_section_slot(&node.section_class))
         .collect()
 }
 
@@ -387,10 +605,15 @@ struct TimelineEventPendingEvidence {
 pub(crate) struct TimelineEventThemeReceipt {
     expectations: Box<[TimelineEventTerminalExpectation]>,
     baseline_radius_token: Option<&'static str>,
+    palette_expectations: Box<[TimelinePaletteNodeExpectation]>,
     next_event_index: usize,
+    next_palette_index: usize,
+    palette_nodes_seen: usize,
     attributes_match: bool,
+    palette_values_match: bool,
     radius_rules: BTreeSet<usize>,
     opacity_rules: BTreeSet<usize>,
+    palette_capabilities: BTreeSet<ThemeCapability>,
 }
 
 impl TimelineEventThemeReceipt {
@@ -415,10 +638,35 @@ impl TimelineEventThemeReceipt {
         Self {
             expectations,
             baseline_radius_token,
+            palette_expectations: Box::new([]),
             next_event_index: 0,
+            next_palette_index: 0,
+            palette_nodes_seen: 0,
             attributes_match: true,
+            palette_values_match: true,
             radius_rules: BTreeSet::new(),
             opacity_rules: BTreeSet::new(),
+            palette_capabilities: BTreeSet::new(),
+        }
+    }
+
+    fn from_expectations_with_baseline_and_palette(
+        expectations: Box<[TimelineEventTerminalExpectation]>,
+        baseline_radius_token: Option<&'static str>,
+        palette_expectations: Box<[TimelinePaletteNodeExpectation]>,
+    ) -> TimelineEventThemeReceipt {
+        Self {
+            expectations,
+            baseline_radius_token,
+            palette_expectations,
+            next_event_index: 0,
+            next_palette_index: 0,
+            palette_nodes_seen: 0,
+            attributes_match: true,
+            palette_values_match: true,
+            radius_rules: BTreeSet::new(),
+            opacity_rules: BTreeSet::new(),
+            palette_capabilities: BTreeSet::new(),
         }
     }
 
@@ -471,6 +719,39 @@ impl TimelineEventThemeReceipt {
         self.expectations.len() == expected_event_count
             && self.next_event_index == expected_event_count
             && self.attributes_match
+            && self.next_palette_index == self.palette_expectations.len()
+            && self.palette_nodes_seen == self.palette_expectations.len()
+            && self.palette_values_match
+    }
+
+    pub(crate) fn record_palette_node(
+        &mut self,
+        slot: Option<usize>,
+        emitted_fill: Option<&str>,
+        emitted_line_stroke: Option<&str>,
+    ) {
+        if self.palette_expectations.is_empty() {
+            return;
+        }
+        self.palette_nodes_seen += 1;
+        let Some(slot) = slot else {
+            self.palette_values_match = false;
+            return;
+        };
+        let Some(expected) = self.palette_expectations.get(self.next_palette_index) else {
+            self.palette_values_match = false;
+            return;
+        };
+        self.next_palette_index += 1;
+        let fill_matches =
+            slot == expected.slot && emitted_fill == Some(expected.fill.css.as_ref());
+        let line_matches = emitted_line_stroke == expected.classic_line_stroke.as_deref();
+        self.palette_values_match &= fill_matches && line_matches;
+        if fill_matches {
+            if let Some(capability) = expected.fill.capability {
+                self.palette_capabilities.insert(capability);
+            }
+        }
     }
 
     fn proves_rule(&self, rule_index: usize, pending: &TimelineEventPendingEvidence) -> bool {
@@ -483,8 +764,9 @@ impl TimelineEventThemeReceipt {
 mod tests {
     use super::{
         TimelineEventPendingEvidence, TimelineEventRadius, TimelineEventTerminalExpectation,
-        TimelineEventThemeReceipt,
+        TimelineEventThemeReceipt, TimelinePaletteNodeExpectation, TimelinePalettePaint,
     };
+    use crate::diagram_theme::ThemeCapability;
 
     #[test]
     fn timeline_event_receipt_requires_each_terminal_event_once() {
@@ -589,5 +871,101 @@ mod tests {
         let mut malformed = TimelineEventThemeReceipt::new(1);
         malformed.record_checkpointed_event(0, None, true, None, false);
         assert!(!malformed.proves(1));
+    }
+
+    #[test]
+    fn timeline_palette_receipt_rejects_wrong_order_values_and_line_shape() {
+        let palette_expectations = vec![
+            TimelinePaletteNodeExpectation {
+                slot: 0,
+                fill: TimelinePalettePaint::typed("#123456", ThemeCapability::SolidPaint),
+                classic_line_stroke: Some("#edcba9".into()),
+            },
+            TimelinePaletteNodeExpectation {
+                slot: 1,
+                fill: TimelinePalettePaint::typed("#654321", ThemeCapability::SolidPaint),
+                classic_line_stroke: Some("#9abcde".into()),
+            },
+        ]
+        .into_boxed_slice();
+
+        let mut wrong_order =
+            TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
+                Box::new([]),
+                None,
+                palette_expectations.clone(),
+            );
+        wrong_order.record_palette_node(Some(1), Some("#654321"), Some("#9abcde"));
+        wrong_order.record_palette_node(Some(0), Some("#123456"), Some("#edcba9"));
+        assert!(!wrong_order.proves(0));
+
+        let mut wrong_value =
+            TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
+                Box::new([]),
+                None,
+                palette_expectations.clone(),
+            );
+        wrong_value.record_palette_node(Some(0), Some("#badbad"), Some("#edcba9"));
+        wrong_value.record_palette_node(Some(1), Some("#654321"), Some("#9abcde"));
+        assert!(!wrong_value.proves(0));
+
+        let mut wrong_line = TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
+            Box::new([]),
+            None,
+            palette_expectations,
+        );
+        wrong_line.record_palette_node(Some(0), Some("#123456"), None);
+        wrong_line.record_palette_node(Some(1), Some("#654321"), Some("#9abcde"));
+        assert!(!wrong_line.proves(0));
+
+        let mut complete = TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
+            Box::new([]),
+            None,
+            vec![
+                TimelinePaletteNodeExpectation {
+                    slot: 0,
+                    fill: TimelinePalettePaint::typed("#123456", ThemeCapability::SolidPaint),
+                    classic_line_stroke: Some("#edcba9".into()),
+                },
+                TimelinePaletteNodeExpectation {
+                    slot: 1,
+                    fill: TimelinePalettePaint::typed("#654321", ThemeCapability::SolidPaint),
+                    classic_line_stroke: Some("#9abcde".into()),
+                },
+            ]
+            .into_boxed_slice(),
+        );
+        complete.record_palette_node(Some(0), Some("#123456"), Some("#edcba9"));
+        complete.record_palette_node(Some(1), Some("#654321"), Some("#9abcde"));
+        assert!(complete.proves(0));
+
+        let mut missing_last =
+            TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
+                Box::new([]),
+                None,
+                complete.palette_expectations.clone(),
+            );
+        missing_last.record_palette_node(Some(0), Some("#123456"), Some("#edcba9"));
+        assert!(!missing_last.proves(0));
+
+        let mut extra = TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
+            Box::new([]),
+            None,
+            complete.palette_expectations.clone(),
+        );
+        extra.record_palette_node(Some(0), Some("#123456"), Some("#edcba9"));
+        extra.record_palette_node(Some(1), Some("#654321"), Some("#9abcde"));
+        extra.record_palette_node(Some(1), Some("#654321"), Some("#9abcde"));
+        assert!(!extra.proves(0));
+
+        let mut malformed = TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
+            Box::new([]),
+            None,
+            complete.palette_expectations,
+        );
+        malformed.record_palette_node(None, Some("#123456"), Some("#edcba9"));
+        malformed.record_palette_node(Some(0), Some("#123456"), Some("#edcba9"));
+        malformed.record_palette_node(Some(1), Some("#654321"), Some("#9abcde"));
+        assert!(!malformed.proves(0));
     }
 }

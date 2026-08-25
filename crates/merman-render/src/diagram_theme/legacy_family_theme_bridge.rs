@@ -895,11 +895,6 @@ fn compile_timeline_family(
             ("titleColor", reader.text_fill(ThemeTarget::Title)),
         ],
     );
-    contributions.add_palette(
-        "event.palette",
-        reader.palette(ThemeTarget::TimelineEvent),
-        PaletteProjection::ColorScale { limit: 12 },
-    );
     contributions.finish_into(builder);
 }
 
@@ -1120,7 +1115,6 @@ struct MarkerPaintContribution {
 
 #[derive(Debug, Clone, Copy)]
 enum PaletteProjection {
-    ColorScale { limit: usize },
     Pie { limit: usize },
 }
 
@@ -1259,11 +1253,6 @@ impl FamilyContributions {
         };
         let mut variables = Map::new();
         match projection {
-            PaletteProjection::ColorScale { limit } => {
-                for (index, color) in palette.iter().take(limit).enumerate() {
-                    variables.insert(format!("cScale{index}"), Value::String(color.clone()));
-                }
-            }
             PaletteProjection::Pie { limit } => {
                 for (index, color) in palette.iter().take(limit).enumerate() {
                     variables.insert(format!("pie{}", index + 1), Value::String(color.clone()));
@@ -3852,6 +3841,32 @@ mod tests {
             !journey
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.journey.task.palette")
+        );
+    }
+
+    #[test]
+    fn direct_timeline_event_palette_does_not_create_bridge_contributions() {
+        let palette = super::super::OrdinalPalette::new([
+            super::super::ThemeColorValue::parse("#2563eb").expect("valid palette color"),
+            super::super::ThemeColorValue::parse("#16a34a").expect("valid palette color"),
+        ])
+        .expect("non-empty palette");
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_ordinal_palette(ThemeTarget::TimelineEvent, palette)
+                .with_rule(ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(
+                        super::super::CanvasPaint::solid("#111827").expect("valid text color"),
+                    ),
+                )),
+        );
+
+        let timeline = bridge(&spec).compile_for_family(DiagramFamilyId::TIMELINE);
+        assert!(
+            !timeline
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.timeline.event.palette")
         );
     }
 }

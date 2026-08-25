@@ -797,6 +797,7 @@ fn classify_ordinal_palette(
         || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
         || (family == DiagramFamilyId::KANBAN && target == ThemeTarget::Task)
         || (family == DiagramFamilyId::JOURNEY && target == ThemeTarget::JourneyTask)
+        || (family == DiagramFamilyId::TIMELINE && target == ThemeTarget::TimelineEvent)
         || (family == DiagramFamilyId::XY_CHART && target == ThemeTarget::ChartSeries)
         || (family == DiagramFamilyId::RADAR && target == ThemeTarget::ChartSeries)
     {
@@ -2110,9 +2111,8 @@ fn legacy_paint_variants(
     }
 }
 
-fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> bool {
+fn legacy_palette_supported(family: DiagramFamilyId, _target: ThemeTarget) -> bool {
     match family {
-        DiagramFamilyId::TIMELINE => target == ThemeTarget::TimelineEvent,
         DiagramFamilyId::ERROR
         | DiagramFamilyId::STATE
         | DiagramFamilyId::SEQUENCE
@@ -3362,6 +3362,19 @@ mod tests {
         assert!(!legacy_palette_supported(
             DiagramFamilyId::JOURNEY,
             ThemeTarget::JourneyTask
+        ));
+    }
+
+    #[test]
+    fn timeline_owns_the_event_ordinal_palette() {
+        assert_eq!(
+            compile_ordinal_palette_route(DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent)
+                .disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        assert!(!legacy_palette_supported(
+            DiagramFamilyId::TIMELINE,
+            ThemeTarget::TimelineEvent
         ));
     }
 

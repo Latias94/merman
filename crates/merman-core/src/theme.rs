@@ -10,6 +10,12 @@ use std::sync::OnceLock;
 
 mod staged;
 
+pub(crate) fn theme_color_iterations(
+    raw: Option<&Value>,
+) -> Result<usize, ThemeEvaluationLimitExceeded> {
+    staged::theme_color_iteration_count_for_value(raw)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ThemeResolutionError {
     #[error(transparent)]

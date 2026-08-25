@@ -1,12 +1,13 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, MermaidThemeCompatibility,
-    OrdinalSelector, Specified, ThemeGeometryPatch, ThemePaintPatch, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    OrdinalPalette, OrdinalSelector, Specified, ThemeColorValue, ThemeGeometryPatch,
+    ThemePaintPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -81,6 +82,50 @@ fn timeline_event_radius_theme(radius: Specified<f32>) -> DiagramTheme {
         ThemeTarget::TimelineEvent,
         timeline_event_radius_style(radius),
     )])
+}
+
+fn timeline_event_palette_theme(colors: &[&str]) -> DiagramTheme {
+    let palette =
+        OrdinalPalette::new(colors.iter().map(|color| {
+            ThemeColorValue::parse(color).expect("valid Timeline event palette color")
+        }))
+        .expect("non-empty Timeline event palette");
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::TimelineEvent, palette),
+        ))
+        .expect("compile Timeline event palette theme")
+}
+
+fn try_render_timeline_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    try_render_timeline_with_theme_engine_requirement(
+        source,
+        theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn try_render_timeline_with_theme_engine_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Timeline")
+        .expect("detect themed Timeline");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Timeline session");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
 fn try_render_timeline_with_theme(
@@ -260,6 +305,424 @@ timeline
         svg.contains(r#"transform="translate(95, 13)""#),
         "redux Timeline event labels should use the Mermaid 11.15 event vertical offset: {svg}"
     );
+}
+
+#[test]
+fn timeline_event_palette_reaches_section_task_and_event_terminals() {
+    let theme = timeline_event_palette_theme(&["#123456", "#654321"]);
+    let rendered = try_render_timeline_with_theme(
+        "timeline\n    section Release\n        Plan : Build\n    section Verify\n        Ship : Done\n",
+        &theme,
+    )
+    .expect("render direct Timeline event palette");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Timeline palette SVG");
+    let path_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        path_styles,
+        [
+            "fill:#123456;",
+            "fill:#123456;",
+            "fill:#123456;",
+            "fill:#654321;",
+            "fill:#654321;",
+            "fill:#654321;",
+        ]
+    );
+    let line_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.starts_with("node-line-"))
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        line_styles,
+        [
+            "stroke:#edcba9;",
+            "stroke:#edcba9;",
+            "stroke:#edcba9;",
+            "stroke:#9abcde;",
+            "stroke:#9abcde;",
+            "stroke:#9abcde;",
+        ]
+    );
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Timeline stylesheet");
+    assert!(!stylesheet.contains("#123456") && !stylesheet.contains("#654321"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn timeline_event_palette_preserves_source_owned_color_scale_slots() {
+    let theme = timeline_event_palette_theme(&["#123456", "#654321"]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "secure": []
+    })));
+    let rendered = try_render_timeline_with_theme_and_engine(
+        r##"%%{init: {"themeVariables": {"cScale0": "#f59e0b", "cScaleInv0": "#010203"}}}%%
+timeline
+    section Release
+        Plan : Build
+    section Verify
+        Ship : Done
+"##,
+        &theme,
+        engine,
+    )
+    .expect("render mixed source-owned Timeline palette");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Timeline palette SVG");
+    let path_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        path_styles,
+        [
+            "fill:#f59e0b;",
+            "fill:#f59e0b;",
+            "fill:#f59e0b;",
+            "fill:#654321;",
+            "fill:#654321;",
+            "fill:#654321;",
+        ]
+    );
+
+    let line_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.starts_with("node-line-"))
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        line_styles,
+        [
+            "stroke:#010203;",
+            "stroke:#010203;",
+            "stroke:#010203;",
+            "stroke:#9abcde;",
+            "stroke:#9abcde;",
+            "stroke:#9abcde;",
+        ]
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn timeline_event_palette_wraps_at_a_reduced_theme_color_limit() {
+    let theme = timeline_event_palette_theme(&["#123456", "#654321", "#abcdef"]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "secure": [],
+        "themeVariables": { "THEME_COLOR_LIMIT": 2 }
+    })));
+    let rendered = try_render_timeline_with_theme_engine_requirement(
+        "timeline\n    section Release\n        Plan : Build\n    section Verify\n        Ship : Done\n    section Archive\n        Store : Done\n",
+        &theme,
+        engine,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render reduced Timeline color limit");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid limited Timeline SVG");
+    let path_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .map(|node| node.attribute("style"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        path_styles,
+        [
+            Some("fill:#123456;"),
+            Some("fill:#123456;"),
+            Some("fill:#123456;"),
+            Some("fill:#654321;"),
+            Some("fill:#654321;"),
+            Some("fill:#654321;"),
+            Some("fill:#123456;"),
+            Some("fill:#123456;"),
+            Some("fill:#123456;"),
+        ]
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn timeline_event_palette_wraps_the_default_twelve_slot_ring_for_orphan_tasks() {
+    let colors = [
+        "#100000", "#200000", "#300000", "#400000", "#500000", "#600000", "#700000", "#800000",
+        "#900000", "#a00000", "#b00000", "#c00000",
+    ];
+    let theme = timeline_event_palette_theme(&colors);
+    let mut source = String::from("timeline\n");
+    for index in 0..13 {
+        source.push_str(&format!("    Task {index} : Event {index}\n"));
+    }
+
+    let rendered = try_render_timeline_with_theme(&source, &theme)
+        .expect("render orphan Timeline palette cycle");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Timeline palette SVG");
+    let fills = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+
+    let line_strokes = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.starts_with("node-line-"))
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+
+    assert_eq!(fills.len(), 26, "one task and one event per orphan task");
+    assert_eq!(fills[0], "fill:#100000;");
+    assert_eq!(fills[22], "fill:#c00000;", "twelfth task must use slot 11");
+    assert_eq!(
+        fills[24], "fill:#100000;",
+        "thirteenth task must wrap to slot 0"
+    );
+    assert_eq!(
+        fills[25], "fill:#100000;",
+        "thirteenth event must wrap to slot 0"
+    );
+    assert_eq!(
+        line_strokes.len(),
+        26,
+        "one divider line per classic task/event"
+    );
+    assert_eq!(line_strokes[0], "stroke:#efffff;");
+    assert_eq!(
+        line_strokes[22], "stroke:#3fffff;",
+        "twelfth task must use slot 11 inverse"
+    );
+    assert_eq!(
+        line_strokes[24], "stroke:#efffff;",
+        "thirteenth task must wrap to slot 0 inverse"
+    );
+    assert_eq!(
+        line_strokes[25], "stroke:#efffff;",
+        "thirteenth event must wrap to slot 0 inverse"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn timeline_event_palette_respects_disabled_multicolor_for_orphan_tasks() {
+    let theme = timeline_event_palette_theme(&["#123456", "#654321"]);
+    let rendered = try_render_timeline_with_theme(
+        r##"%%{init: {"timeline": {"disableMulticolor": true}}}%%
+timeline
+    Task A : Event A
+    Task B : Event B
+"##,
+        &theme,
+    )
+    .expect("render disabled-multicolor Timeline palette");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Timeline palette SVG");
+    let fills = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+
+    let line_strokes = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.starts_with("node-line-"))
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+
+    assert_eq!(fills, ["fill:#123456;"; 4]);
+    assert_eq!(line_strokes, ["stroke:#edcba9;"; 4]);
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn timeline_event_palette_reaches_top_down_task_and_event_terminals() {
+    let theme = timeline_event_palette_theme(&["#123456", "#654321"]);
+    let rendered =
+        try_render_timeline_with_theme("timeline TD\n    2026 : Ship\n    2027 : Done\n", &theme)
+            .expect("render TopDown Timeline palette");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid TopDown Timeline SVG");
+    let fills = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    let line_strokes = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.starts_with("node-line-"))
+        })
+        .map(|node| node.attribute("style").unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        fills,
+        [
+            "fill:#123456;",
+            "fill:#123456;",
+            "fill:#654321;",
+            "fill:#654321;",
+        ]
+    );
+    assert_eq!(
+        line_strokes,
+        [
+            "stroke:#edcba9;",
+            "stroke:#edcba9;",
+            "stroke:#9abcde;",
+            "stroke:#9abcde;",
+        ]
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn timeline_event_transparent_palette_reaches_classic_terminals() {
+    let theme = timeline_event_palette_theme(&["transparent"]);
+    let rendered = try_render_timeline_with_theme(
+        "timeline\n    section Release\n        Plan : Build\n",
+        &theme,
+    )
+    .expect("render transparent Timeline event palette");
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid transparent Timeline SVG");
+    let path_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .map(|node| node.attribute("style"))
+        .collect::<Vec<_>>();
+    assert_eq!(path_styles, [Some("fill:#00000000;"); 3]);
+    let line_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.starts_with("node-line-"))
+        })
+        .map(|node| node.attribute("style"))
+        .collect::<Vec<_>>();
+    assert_eq!(line_styles, [Some("stroke:rgba(255, 255, 255, 0);"); 3]);
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn timeline_event_palette_is_not_applicable_to_redux_node_fill() {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#123456").expect("valid Redux Timeline palette color")
+    ])
+    .expect("non-empty Redux Timeline palette");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_mermaid_compatibility(
+                    MermaidThemeCompatibility::default()
+                        .with_theme("redux")
+                        .expect("valid Redux Mermaid theme"),
+                )
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_ordinal_palette(ThemeTarget::TimelineEvent, palette),
+                ),
+        )
+        .expect("compile Redux Timeline palette theme");
+    let rendered = try_render_timeline_with_theme_requirement(
+        "timeline\n    section Release\n        Plan : Build\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render Redux Timeline palette");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Redux Timeline SVG");
+    let path_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .map(|node| node.attribute("style"))
+        .collect::<Vec<_>>();
+    assert_eq!(path_styles, [None; 3]);
+    assert!(!document.descendants().any(|node| {
+        node.has_tag_name("line")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.starts_with("node-line-"))
+    }));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

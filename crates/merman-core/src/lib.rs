@@ -592,6 +592,15 @@ pub mod __private {
     pub fn explicit_config_owns_path(config: &MermaidConfig, dotted_path: &str) -> bool {
         config.explicit_config_owns_path(dotted_path)
     }
+
+    /// Resolves Mermaid's bounded `THEME_COLOR_LIMIT` loop count using the same coercion and
+    /// ceiling as theme materialization. A missing value is represented by `None`; callers that
+    /// model an unmaterialized config may apply the Mermaid default before calling this helper.
+    pub fn theme_color_iterations(
+        raw: Option<&serde_json::Value>,
+    ) -> Result<usize, crate::ThemeEvaluationLimitExceeded> {
+        crate::theme::theme_color_iterations(raw)
+    }
 }
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.

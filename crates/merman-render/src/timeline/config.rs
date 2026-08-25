@@ -8,6 +8,23 @@ const DEFAULT_LEFT_MARGIN: f64 = 150.0;
 const DEFAULT_VIEWBOX_PADDING: f64 = 50.0;
 const DEFAULT_USE_MAX_WIDTH: bool = false;
 const DEFAULT_FONT_SIZE: f64 = 16.0;
+pub(crate) const DEFAULT_THEME_COLOR_LIMIT: usize = 12;
+pub(crate) const MAX_THEME_COLOR_LIMIT: usize = 64;
+
+/// Resolve Mermaid's bounded Timeline color-scale count through the core theme evaluator so CSS,
+/// layout, and the typed terminal plan share JavaScript-compatible coercion and ceilings.
+pub(crate) fn timeline_theme_color_limit(effective_config: &Value) -> usize {
+    let raw = effective_config
+        .get("themeVariables")
+        .and_then(|variables| variables.get("THEME_COLOR_LIMIT"));
+    raw.map_or(DEFAULT_THEME_COLOR_LIMIT, |value| {
+        // Render paths receive core-materialized configuration, where an over-limit value has
+        // already failed admission. Keep direct adapter tests deterministic if they bypass that
+        // boundary instead of inventing a second unbounded policy.
+        merman_core::__private::theme_color_iterations(Some(value))
+            .unwrap_or(DEFAULT_THEME_COLOR_LIMIT)
+    })
+}
 
 pub(crate) struct TimelineConfigView<'a> {
     effective_config: &'a Value,
@@ -29,6 +46,7 @@ impl<'a> TimelineConfigView<'a> {
             layout_font_size: config_f64_css_px(self.effective_config, &["fontSize"])
                 .unwrap_or(text_style.font_size)
                 .max(1.0),
+            theme_color_limit: timeline_theme_color_limit(self.effective_config),
             left_margin: config_f64(self.timeline_config, &["leftMargin"])
                 .unwrap_or(DEFAULT_LEFT_MARGIN)
                 .max(0.0),
@@ -64,6 +82,7 @@ impl<'a> TimelineConfigView<'a> {
 pub(crate) struct TimelineLayoutSettings {
     pub(crate) text_style: TextStyle,
     pub(crate) layout_font_size: f64,
+    pub(crate) theme_color_limit: usize,
     pub(crate) left_margin: f64,
     pub(crate) disable_multicolor: bool,
     pub(crate) viewbox_padding: f64,
@@ -81,6 +100,7 @@ mod tests {
         let settings = TimelineConfigView::new(&cfg).layout_settings();
 
         assert_eq!(settings.left_margin, DEFAULT_LEFT_MARGIN);
+        assert_eq!(settings.theme_color_limit, DEFAULT_THEME_COLOR_LIMIT);
         assert_eq!(settings.viewbox_padding, DEFAULT_VIEWBOX_PADDING);
         assert!(!settings.disable_multicolor);
         assert!(!settings.use_max_width);
@@ -107,6 +127,7 @@ mod tests {
         let settings = TimelineConfigView::new(&cfg).layout_settings();
 
         assert_eq!(settings.left_margin, 180.0);
+        assert_eq!(settings.theme_color_limit, DEFAULT_THEME_COLOR_LIMIT);
         assert_eq!(settings.viewbox_padding, 12.0);
         assert!(settings.disable_multicolor);
         assert!(settings.use_max_width);
@@ -116,5 +137,28 @@ mod tests {
         );
         assert_eq!(settings.text_style.font_size, 20.0);
         assert_eq!(settings.layout_font_size, 18.0);
+    }
+
+    #[test]
+    fn timeline_theme_color_limit_preserves_the_css_adapter_domain() {
+        assert_eq!(timeline_theme_color_limit(&json!({})), 12);
+        assert_eq!(
+            timeline_theme_color_limit(&json!({
+                "themeVariables": { "THEME_COLOR_LIMIT": 2.9 }
+            })),
+            3
+        );
+        assert_eq!(
+            timeline_theme_color_limit(&json!({
+                "themeVariables": { "THEME_COLOR_LIMIT": 0 }
+            })),
+            0
+        );
+        assert_eq!(
+            timeline_theme_color_limit(&json!({
+                "themeVariables": { "THEME_COLOR_LIMIT": 100 }
+            })),
+            DEFAULT_THEME_COLOR_LIMIT
+        );
     }
 }

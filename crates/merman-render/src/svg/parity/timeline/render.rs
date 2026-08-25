@@ -326,6 +326,29 @@ impl<'a> TimelineEventEmissionState<'a> {
         Ok((event_index, emitted_opacity_token, emitted_opacity_matches))
     }
 
+    fn palette_slot_for_node(&self, node: &TimelineNodeLayout) -> Option<usize> {
+        self.theme.palette_slot_for_section(&node.section_class)
+    }
+
+    fn palette_fill_for_slot(&self, slot: usize) -> Option<&str> {
+        self.theme.palette_fill_for_slot(slot)
+    }
+
+    fn palette_line_stroke_for_slot(&self, slot: usize) -> Option<&str> {
+        self.theme.palette_line_stroke_for_slot(slot)
+    }
+
+    fn record_palette_node(
+        &mut self,
+        slot: Option<usize>,
+        emitted_fill: Option<&str>,
+        emitted_line_stroke: Option<&str>,
+    ) {
+        if let Some(receipt) = self.receipt.as_mut() {
+            receipt.record_palette_node(slot, emitted_fill, emitted_line_stroke);
+        }
+    }
+
     fn record_event_terminal(
         &mut self,
         event_index: usize,
@@ -413,6 +436,7 @@ fn render_timeline_diagram_svg_inner(
         is_redux_theme: bool,
         is_event: bool,
         event_radius: Option<(&str, f64)>,
+        event_emission: &mut TimelineEventEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
         let node_local_id = format!("node-{node_count}");
@@ -450,6 +474,19 @@ fn render_timeline_diagram_svg_inner(
             )
         };
 
+        let node_palette_slot = event_emission.palette_slot_for_node(n);
+        let palette_fill = node_palette_slot
+            .and_then(|slot| event_emission.palette_fill_for_slot(slot))
+            .map(str::to_owned);
+        let palette_line_stroke = node_palette_slot
+            .and_then(|slot| event_emission.palette_line_stroke_for_slot(slot))
+            .map(str::to_owned);
+        let emitted_palette_slot = palette_fill.as_ref().and(node_palette_slot);
+        let palette_style = palette_fill
+            .as_deref()
+            .map(|fill| format!(r#" style="fill:{};""#, escape_attr(fill)))
+            .unwrap_or_default();
+
         let _ = write!(
             out,
             r#"<g class="timeline-node {section_class}">"#,
@@ -460,21 +497,30 @@ fn render_timeline_diagram_svg_inner(
         out.checkpoint()?;
         let _ = write!(
             out,
-            r#"<path id="{node_id}" class="node-bkg node-undefined" d="{d}"/>"#,
+            r#"<path id="{node_id}" class="node-bkg node-undefined" d="{d}"{palette_style}/>"#,
             node_id = escape_attr_display(node_id),
-            d = escape_attr(&d)
+            d = escape_attr(&d),
+            palette_style = palette_style,
         );
         out.checkpoint()?;
-        if !is_redux_theme {
+        let emitted_line_stroke = if !is_redux_theme {
+            let line_style = palette_line_stroke
+                .as_deref()
+                .map(|stroke| format!(r#" style="stroke:{};""#, escape_attr(stroke)))
+                .unwrap_or_default();
             let _ = write!(
                 out,
-                r#"<line class="{line_class}" x1="0" y1="{y}" x2="{x2}" y2="{y}"/>"#,
+                r#"<line class="{line_class}"{line_style} x1="0" y1="{y}" x2="{x2}" y2="{y}"/>"#,
                 line_class = escape_attr(&node_line_class(&n.section_class)),
+                line_style = line_style,
                 y = fmt(h),
                 x2 = fmt(w)
             );
             out.checkpoint()?;
-        }
+            palette_line_stroke.as_deref()
+        } else {
+            None
+        };
         out.push_str("</g>");
         out.checkpoint()?;
 
@@ -509,6 +555,11 @@ fn render_timeline_diagram_svg_inner(
         }
         out.push_str("</text></g></g>");
         out.checkpoint()?;
+        event_emission.record_palette_node(
+            emitted_palette_slot,
+            palette_fill.as_deref(),
+            emitted_line_stroke,
+        );
         options.checkpoint_emit()
     }
 
@@ -519,6 +570,7 @@ fn render_timeline_diagram_svg_inner(
         event: &TimelineNodeLayout,
         is_redux_theme: bool,
         event_radius: Option<(&'a str, f64)>,
+        event_emission: &mut TimelineEventEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<(Option<&'a str>, bool)> {
         let output_start = out.len();
@@ -530,6 +582,7 @@ fn render_timeline_diagram_svg_inner(
             is_redux_theme,
             true,
             event_radius,
+            event_emission,
             options,
         )?;
         let output = out.as_str().get(output_start..).unwrap_or_default();
@@ -560,6 +613,7 @@ fn render_timeline_diagram_svg_inner(
             event,
             is_redux_theme,
             event_radius,
+            event_emission,
             options,
         )?;
         out.push_str("</g>");
@@ -600,6 +654,7 @@ fn render_timeline_diagram_svg_inner(
             is_redux_theme,
             false,
             None,
+            event_emission,
             options,
         )?;
         out.push_str("</g>");
@@ -733,6 +788,7 @@ fn render_timeline_diagram_svg_inner(
             is_redux_theme,
             false,
             None,
+            &mut event_emission,
             options,
         )?;
         out.push_str("</g>");

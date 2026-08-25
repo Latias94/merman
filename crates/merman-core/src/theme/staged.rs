@@ -341,7 +341,12 @@ fn for_theme_color_indices(
 }
 
 fn theme_color_iteration_count(stage: &ThemeState) -> Result<usize, ThemeEvaluationLimitExceeded> {
-    let raw = stage.variables.get("THEME_COLOR_LIMIT");
+    theme_color_iteration_count_for_value(stage.variables.get("THEME_COLOR_LIMIT"))
+}
+
+pub(super) fn theme_color_iteration_count_for_value(
+    raw: Option<&Value>,
+) -> Result<usize, ThemeEvaluationLimitExceeded> {
     // Mermaid declares this field as a number. Preserve the scalar coercions reached through raw
     // YAML/JSON compatibility input, but keep the seam deliberately narrower than JavaScript's
     // general ToNumber algorithm.

@@ -436,18 +436,8 @@ impl<'a> MermaidThemeAdapter<'a> {
 
     pub(crate) fn timeline(&self) -> TimelineTheme {
         let theme_name = self.common.theme_name.clone();
-        let theme_color_limit = self
-            .raw
-            .optional_f64("THEME_COLOR_LIMIT")
-            .map(|value| {
-                let value = if value.is_nan() {
-                    1.0
-                } else {
-                    value.clamp(1.0, 64.0)
-                };
-                value as usize
-            })
-            .unwrap_or(12);
+        let theme_color_limit =
+            crate::timeline::timeline_theme_color_limit(self.raw.effective_config());
         let sections = (0..theme_color_limit)
             .map(|i| {
                 let c_scale = self.raw.color(&format!("cScale{i}"), default_c_scale(i));
