@@ -2,9 +2,9 @@ use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
-    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, RadialGradient, Specified,
-    ThemeColorValue, ThemeGeometryPatch, ThemeLength, ThemePortabilityRequirement, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient,
+    Specified, ThemeColorValue, ThemeGeometryPatch, ThemeLength, ThemePortabilityRequirement,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -62,6 +62,27 @@ fn c4_cluster_paint_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramThem
             .with_stroke(stroke),
     )
     .for_family(merman_render::DiagramFamilyId::C4)])
+}
+
+fn c4_cluster_fill_with_ordinal_palette_theme(fill: CanvasPaint) -> DiagramTheme {
+    let styles = ThemeRuleSet::default()
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default().with_fill(fill),
+            )
+            .for_family(merman_render::DiagramFamilyId::C4),
+        )
+        .with_ordinal_palette(
+            ThemeTarget::Cluster,
+            OrdinalPalette::new([
+                ThemeColorValue::parse("#123456").expect("valid C4 Cluster palette color")
+            ])
+            .expect("non-empty C4 Cluster palette"),
+        );
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile C4 Cluster fill and ordinal palette theme")
 }
 
 fn try_render_c4_svg_with_theme(
@@ -266,6 +287,24 @@ UpdateElementStyle(boundary, $bgColor="#22c55e", $borderColor="#0f766e")
     assert_eq!(boundary.attribute("stroke"), Some("#0f766e"));
     assert!(!svg.contains("#ef4444"));
     assert!(!svg.contains("#2563eb"));
+}
+
+#[test]
+fn c4_cluster_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
+    let source = r#"C4Context
+Boundary(boundary, "Boundary") {
+  System(service, "Service")
+}
+"#;
+    let theme = c4_cluster_fill_with_ordinal_palette_theme(
+        CanvasPaint::solid("#ef4444").expect("valid C4 Cluster fill"),
+    );
+    let svg = render_c4_svg_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid themed C4 SVG XML");
+    assert_eq!(
+        c4_rect_labeled(&document, "Boundary").attribute("fill"),
+        Some("#ef4444")
+    );
 }
 
 #[test]

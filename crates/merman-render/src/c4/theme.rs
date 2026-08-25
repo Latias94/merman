@@ -9,8 +9,9 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -165,6 +166,10 @@ impl C4ClusterThemePlan {
         let mut source_owned_fill_rules = BTreeSet::new();
         let mut source_owned_stroke_rules = BTreeSet::new();
         let mut terminal_expectations = BTreeMap::new();
+        let source_owned_fill = explicit_boundaries
+            .iter()
+            .map(|boundary| boundary.bg_color.is_some())
+            .collect::<Vec<_>>();
 
         for (boundary_index, boundary) in explicit_boundaries.iter().enumerate() {
             let winner_rules = if has_ordinal_cluster_rules {
@@ -338,34 +343,28 @@ impl C4ClusterThemePlan {
                 }
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Cluster,
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if explicit_boundary_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
-                }
+                } => {}
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Cluster,
                     ..
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if explicit_boundary_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
-                }
+                } => {}
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Cluster,
+                TerminalVariantDomain::uniform(explicit_boundary_count, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&source_owned_fill)],
+            work_meter,
+        )?;
 
         let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {
