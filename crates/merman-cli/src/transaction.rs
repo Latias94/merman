@@ -1105,12 +1105,12 @@ impl RootContext {
     fn verify_transaction_filesystem(
         &self,
         path: &Path,
-        metadata: &std::fs::Metadata,
+        _metadata: &std::fs::Metadata,
     ) -> Result<(), TransactionError> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
-            if metadata.dev() != self.root_device {
+            if _metadata.dev() != self.root_device {
                 return Err(TransactionError::invalid_state(
                     path,
                     "transaction-owned directory crosses a nested filesystem",
@@ -2494,12 +2494,14 @@ fn verify_open_regular_identity(
 }
 
 fn create_private_directory(path: &Path) -> Result<(), TransactionError> {
-    let mut builder = std::fs::DirBuilder::new();
+    let builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
-    {
+    let builder = {
         use std::os::unix::fs::DirBuilderExt;
+        let mut builder = builder;
         builder.mode(0o700);
-    }
+        builder
+    };
     builder.create(path).map_err(|source| {
         TransactionError::operational("create transaction directory", path, source)
     })?;
@@ -3186,6 +3188,8 @@ fn set_private_create_mode(options: &mut OpenOptions) {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
+    #[cfg(not(unix))]
+    let _ = options;
 }
 
 fn verify_private_file_mode(

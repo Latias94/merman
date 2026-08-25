@@ -1436,6 +1436,7 @@ fn decode_component(encoded: &str, evidence: &Path) -> Result<OsString, Transact
     }
 }
 
+#[cfg(not(windows))]
 fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut result = String::with_capacity(bytes.len() * 2);
@@ -1446,6 +1447,7 @@ fn hex_encode(bytes: &[u8]) -> String {
     result
 }
 
+#[cfg(not(windows))]
 fn hex_decode(encoded: &str, evidence: &Path) -> Result<Vec<u8>, TransactionError> {
     if !encoded.len().is_multiple_of(2) || !encoded.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(TransactionError::invalid_state(

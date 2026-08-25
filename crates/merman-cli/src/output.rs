@@ -1085,7 +1085,9 @@ struct DirectoryIdentity {
     handle: same_file::Handle,
     #[cfg(feature = "markdown")]
     filesystem: FileSystemIdentity,
+    #[cfg_attr(all(windows, feature = "markdown"), allow(dead_code))]
     #[cfg(all(feature = "markdown", any(unix, windows)))]
+    // Keep the directory handle alive on Windows so the identity cannot be replaced mid-check.
     directory_handle: File,
 }
 
@@ -1112,13 +1114,13 @@ impl DirectoryIdentity {
             #[cfg(feature = "markdown")]
             let filesystem = windows_filesystem_identity(&guard)?;
             let handle = same_file::Handle::from_file(guard.try_clone()?)?;
-            return Ok(Self {
+            Ok(Self {
                 handle,
                 #[cfg(feature = "markdown")]
                 filesystem,
                 #[cfg(feature = "markdown")]
                 directory_handle: guard,
-            });
+            })
         }
 
         #[cfg(unix)]

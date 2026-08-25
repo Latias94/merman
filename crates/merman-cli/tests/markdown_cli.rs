@@ -74,7 +74,7 @@ fn encoded_path_component(value: &str) -> String {
     use std::fmt::Write as _;
 
     #[cfg(windows)]
-    let units = value.encode_utf16().map(|unit| u32::from(unit));
+    let units = value.encode_utf16().map(u32::from);
     #[cfg(not(windows))]
     let units = value.as_bytes().iter().copied().map(u32::from);
 
