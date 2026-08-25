@@ -462,7 +462,8 @@ fn legacy_route_selectors(
                 ThemeVariant::Default,
             ));
         }
-        (DiagramFamilyId::PIE, ThemeTarget::PieSlice) => {
+        (DiagramFamilyId::PIE, ThemeTarget::PieSlice)
+        | (DiagramFamilyId::CLASS, ThemeTarget::Node | ThemeTarget::NodeLabel) => {
             selectors.push(ThemeRouteCutoverSelector::StaticVariant(
                 ThemeVariant::Default,
             ));
@@ -1387,7 +1388,18 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::CLASS
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            (target, selector),
+            (
+                ThemeTarget::Edge,
+                FamilyThemeSelectorShape::Static { variant: None }
+            ) | (
+                ThemeTarget::Node | ThemeTarget::NodeLabel,
+                FamilyThemeSelectorShape::Static {
+                    variant: None | Some(ThemeVariant::Default)
+                }
+            )
+        )
         && matches!(
             (target, facet),
             (
@@ -2966,7 +2978,7 @@ mod tests {
     }
 
     #[test]
-    fn class_owns_static_edge_and_node_paints_and_default_qualified_stroke_width_only() {
+    fn class_owns_static_edge_and_node_paints_and_default_qualified_node_stroke_width() {
         for paint_kind in [
             FamilyThemePaintKind::Transparent,
             FamilyThemePaintKind::Solid,
@@ -3019,7 +3031,7 @@ mod tests {
                         },
                         facet,
                     ),
-                    FamilyThemeDisposition::LegacyCompatibility,
+                    FamilyThemeDisposition::TypedAdapter,
                     "qualified target={target:?} facet={facet:?}"
                 );
             }
@@ -5070,7 +5082,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 30);
+        assert_eq!(qualified.len(), 36);
         assert_eq!(
             qualified
                 .iter()
@@ -5105,6 +5117,13 @@ mod tests {
                 .filter(|route| route.family_id() == DiagramFamilyId::PIE)
                 .count(),
             4
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::CLASS)
+                .count(),
+            6
         );
 
         for route in qualified {
@@ -5153,6 +5172,18 @@ mod tests {
                     vec![ThemeRouteCutoverProjection::EdgeStroke],
                     "route={route:?}"
                 );
+            } else if route.family_id() == DiagramFamilyId::CLASS {
+                let expected = match route.facet() {
+                    ThemeRouteCutoverFacet::Fill if route.target() == ThemeTarget::Node => {
+                        ThemeRouteCutoverProjection::NodeFill
+                    }
+                    ThemeRouteCutoverFacet::Stroke => ThemeRouteCutoverProjection::NodeStroke,
+                    ThemeRouteCutoverFacet::Fill if route.target() == ThemeTarget::NodeLabel => {
+                        ThemeRouteCutoverProjection::NodeLabelFill
+                    }
+                    _ => panic!("unexpected Class qualified route: {route:?}"),
+                };
+                assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::PIE {
                 let expected = match route.facet() {
                     ThemeRouteCutoverFacet::Fill => ThemeRouteCutoverProjection::PieSliceFill,

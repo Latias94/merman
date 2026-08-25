@@ -11,7 +11,7 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 24;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 25;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
@@ -322,7 +322,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 132] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 138] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -975,6 +975,54 @@ const ACTIVE_ROUTES: [RouteAuthorization; 132] = [
     route(
         DiagramFamilyId::CLASS,
         ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         NODE_LABEL_FILL_PROJECTIONS,
@@ -1577,7 +1625,8 @@ mod tests {
     use super::{
         ACTIVE_ROUTES, ACTOR_FILL_PROJECTIONS, CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
         CutoverAuthorizationManifest, EDGE_STROKE_ONLY_PROJECTIONS,
-        GANTT_TASK_ACTIVE_FILL_PROJECTIONS, MANIFEST, PIE_SLICE_FILL_PROJECTIONS,
+        GANTT_TASK_ACTIVE_FILL_PROJECTIONS, MANIFEST, NODE_FILL_PROJECTIONS,
+        NODE_LABEL_FILL_PROJECTIONS, NODE_STROKE_PROJECTIONS, PIE_SLICE_FILL_PROJECTIONS,
         PIE_SLICE_STROKE_PROJECTIONS, PROJECTION_ACTIONS, RouteAuthorization, RouteTombstone,
         authorize_cutover_routes, reconcile_manifest, validate_projection_actions,
     };
@@ -1695,11 +1744,36 @@ mod tests {
                     ThemeRouteCutoverFacet::Stroke => PIE_SLICE_STROKE_PROJECTIONS,
                 }
         }));
+
+        let class_node_default = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::CLASS
+                    && matches!(
+                        route.id.target(),
+                        ThemeTarget::Node | ThemeTarget::NodeLabel
+                    )
+                    && route.id.selector()
+                        == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(class_node_default.len(), 6);
+        assert!(class_node_default.iter().all(|route| {
+            route.projections
+                == match (route.id.target(), route.id.facet()) {
+                    (ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => NODE_FILL_PROJECTIONS,
+                    (ThemeTarget::Node, ThemeRouteCutoverFacet::Stroke) => NODE_STROKE_PROJECTIONS,
+                    (ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
+                        NODE_LABEL_FILL_PROJECTIONS
+                    }
+                    _ => return false,
+                }
+        }));
     }
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 24);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 25);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

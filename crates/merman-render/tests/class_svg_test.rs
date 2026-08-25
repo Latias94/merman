@@ -100,6 +100,24 @@ fn class_node_surface_theme() -> DiagramTheme {
     ])
 }
 
+fn class_node_default_surface_theme() -> DiagramTheme {
+    class_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#112233").expect("valid Class node fill"))
+                .with_stroke(CanvasPaint::solid("#445566").expect("valid Class node stroke")),
+        )
+        .with_variant(ThemeVariant::Default),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#ddeeff").expect("valid Class node label fill")),
+        )
+        .with_variant(ThemeVariant::Default),
+    ])
+}
+
 fn class_node_ordinal_surface_theme() -> DiagramTheme {
     class_edge_rules_theme([
         ThemeRule::new(
@@ -1089,6 +1107,58 @@ fn class_direct_node_surfaces_reach_html_and_native_terminals() {
         })
         .unwrap_or_else(|| panic!("native Class Account label: {native_svg}"));
     assert_eq!(account_label.attribute("fill"), Some("#ddeeff"));
+}
+
+#[test]
+fn class_explicit_default_node_surfaces_are_directly_verified() {
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\n  class Account\n",
+        &class_node_default_surface_theme(),
+        Engine::new(),
+    )
+    .expect("explicit Default Class node surfaces should use the typed writer");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+    let account = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+        })
+        .expect("Class Account terminal node");
+    assert!(
+        account
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#112233")),
+        "typed Default Node.fill must reach the Class shell: {}",
+        rendered.svg(),
+    );
+    assert!(
+        account
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("stroke") == Some("#445566")),
+        "typed Default Node.stroke must reach the Class shell: {}",
+        rendered.svg(),
+    );
+    assert!(
+        account.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes.split_whitespace().any(|class| class == "nodeLabel")
+                })
+                && node.attribute("style").is_some_and(|style| {
+                    style.contains("color:#ddeeff") && style.contains("fill:#ddeeff")
+                })
+        }),
+        "typed Default NodeLabel.fill must reach the Class label shell: {}",
+        rendered.svg(),
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

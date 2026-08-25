@@ -3070,6 +3070,53 @@ mod tests {
     }
 
     #[test]
+    fn class_default_node_surfaces_retire_their_legacy_projections() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(solid("#112233"))
+                            .with_stroke(solid("#445566")),
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .for_family(DiagramFamilyId::CLASS),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default().with_fill(solid("#ddeeff")),
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .for_family(DiagramFamilyId::CLASS),
+                ),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::CLASS);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+
+        let parsed = parse(&spec, "classDiagram\nclass Alpha\n");
+        let baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nclass Alpha\n");
+        for path in [
+            "themeVariables.primaryColor",
+            "themeVariables.mainBkg",
+            "themeVariables.primaryBorderColor",
+            "themeVariables.nodeBorder",
+            "themeVariables.primaryTextColor",
+            "themeVariables.classText",
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed Class Default node surface must not mutate legacy `{path}`"
+            );
+        }
+    }
+
+    #[test]
     fn unsupported_class_marker_rule_does_not_block_legacy_edge_marker_fallback() {
         let edge = ThemeRule::new(
             ThemeTarget::Edge,
