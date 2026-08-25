@@ -10,6 +10,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -289,11 +290,6 @@ impl JourneyTaskTheme {
                     let key = theme.family_mechanism_key(route);
                     if task_count == 0 {
                         evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
                     }
                 }
                 FamilyThemeMechanism::EffectBinding {
@@ -303,8 +299,6 @@ impl JourneyTaskTheme {
                     let key = theme.family_mechanism_key(route);
                     if task_count == 0 {
                         evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
                     }
                 }
                 FamilyThemeMechanism::BaseTypography(_)
@@ -313,6 +307,19 @@ impl JourneyTaskTheme {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        // Journey task palettes remain legacy-compatible. Unsupported effect bindings, however,
+        // must be reconciled against the final per-task winner so an explicit effect rule or clear
+        // does not leave a shadowed binding as a false residual.
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::JourneyTask,
+                TerminalVariantDomain::uniform(task_count, ThemeVariant::Default),
+            )],
+            work_meter,
+        )?;
 
         let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {
@@ -601,7 +608,40 @@ impl JourneyTaskPendingEvidence {
 
 #[cfg(test)]
 mod tests {
-    use super::JourneyTaskRadiusThemeReceipt;
+    use super::{JourneyTaskRadiusThemeReceipt, JourneyTaskTheme};
+    use crate::diagram_theme::{
+        DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
+        EffectInput, EffectPrimitive, FamilyThemeMechanismKey, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget,
+    };
+    use crate::model::{JourneyMouthKind, JourneyTaskLayout};
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use merman_core::MermaidConfig;
+
+    fn one_task() -> JourneyTaskLayout {
+        JourneyTaskLayout {
+            index: 0,
+            section: "Delivery".to_string(),
+            task: "Ship safely".to_string(),
+            score: 5,
+            x: 0.0,
+            y: 0.0,
+            width: 150.0,
+            height: 50.0,
+            fill: "#ccc".to_string(),
+            num: 0,
+            people: Vec::new(),
+            actor_circles: Vec::new(),
+            line_id: "task0".to_string(),
+            line_x1: 0.0,
+            line_y1: 0.0,
+            line_x2: 0.0,
+            line_y2: 0.0,
+            face_cx: 0.0,
+            face_cy: Some(0.0),
+            mouth: JourneyMouthKind::Smile,
+        }
+    }
 
     #[test]
     fn task_radius_receipt_requires_ordered_matching_terminal_rects() {
@@ -616,5 +656,73 @@ mod tests {
         let mut mismatch = JourneyTaskRadiusThemeReceipt::new(1, "9".into());
         mismatch.record_checkpointed_task(0, "9", "3");
         assert!(!mismatch.proves(1));
+    }
+
+    #[test]
+    fn explicit_journey_effect_rule_shadows_unsupported_binding() {
+        let effects = DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    "bound",
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 1.0,
+                    }],
+                )
+                .expect("valid bound Journey effect"),
+            )
+            .expect("unique bound Journey effect")
+            .with_graph(
+                EffectGraph::new(
+                    "explicit",
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 2.0,
+                    }],
+                )
+                .expect("valid explicit Journey effect"),
+            )
+            .expect("unique explicit Journey effect")
+            .with_binding(
+                EffectBinding::new(ThemeTarget::JourneyTask, "bound")
+                    .expect("valid Journey effect binding"),
+            )
+            .expect("unique Journey effect binding");
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::JourneyTask,
+                                ThemeStylePatch::default()
+                                    .with_effect("explicit")
+                                    .expect("valid explicit Journey effect rule"),
+                            )
+                            .for_family(crate::DiagramFamilyId::JOURNEY),
+                        ),
+                    )
+                    .with_effects(effects),
+            )
+            .expect("compile Journey effect shadow fixture")
+            .resolve(crate::DiagramFamilyId::JOURNEY);
+        let task_theme = JourneyTaskTheme::resolve(
+            Some(&theme),
+            &MermaidConfig::empty_object(),
+            &[one_task()],
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .expect("resolve Journey effect shadow fixture");
+        let evidence = task_theme.finish_evidence();
+        let binding_key = FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::JourneyTask,
+            effect_id: "bound".to_string(),
+        };
+        assert_eq!(evidence.not_applicable_mechanisms(), &[binding_key]);
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            crate::family::FamilyThemeResidualReason::UnsupportedEffect
+        );
     }
 }

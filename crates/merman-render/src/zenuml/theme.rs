@@ -14,6 +14,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
@@ -126,26 +127,14 @@ impl ZenumlTitleThemePlan {
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Title,
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if title_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
+                    // Reconciled below against the final Title style winner.  A qualified or
+                    // explicit fill can suppress the fallback palette even when a title exists.
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Title,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if title_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // Reconciled below against the final Title effect winner.
                 }
                 FamilyThemeMechanism::BaseTypography(_) => {
                     let key = theme.family_mechanism_key(route);
@@ -197,6 +186,16 @@ impl ZenumlTitleThemePlan {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Title,
+                TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
+            )],
+            work_meter,
+        )?;
 
         let mut pending_fill_key = None;
         for (rule_index, observation) in observations {
