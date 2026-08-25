@@ -35,6 +35,8 @@ pub struct RasterPaintCutoverReceipt {
     transparent_source_digest: [u8; 32],
     underlay_source_digest: [u8; 32],
     geometry_digest: [u8; 32],
+    shape_digest: [u8; 32],
+    transparent_shape_digest: [u8; 32],
     target_geometry_digest: [u8; 32],
     target_path_count: usize,
     solid_control_pixels: usize,
@@ -56,6 +58,8 @@ impl RasterPaintCutoverReceipt {
             transparent_source_digest: facts.transparent_source_digest,
             underlay_source_digest: facts.underlay_source_digest,
             geometry_digest: facts.geometry_digest,
+            shape_digest: facts.shape_digest,
+            transparent_shape_digest: facts.transparent_shape_digest,
             target_geometry_digest: facts.target_geometry_digest,
             target_path_count: facts.target_path_count,
             solid_control_pixels: facts.solid_control_pixels,
@@ -81,6 +85,8 @@ impl RasterPaintCutoverReceipt {
             && self.transparent_source_digest != [0; 32]
             && self.underlay_source_digest != [0; 32]
             && self.geometry_digest != [0; 32]
+            && self.shape_digest != [0; 32]
+            && self.transparent_shape_digest == self.shape_digest
             && self.target_geometry_digest != [0; 32]
             && self.target_path_count > 0
             && self.solid_control_pixels > 0
@@ -94,13 +100,15 @@ impl RasterPaintCutoverReceipt {
 
     fn canonical_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v1");
+        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v2");
         update_len_prefixed(&mut hasher, self.facet.id());
         hasher.update(self.control_rgb);
         hasher.update(self.solid_source_digest);
         hasher.update(self.transparent_source_digest);
         hasher.update(self.underlay_source_digest);
         hasher.update(self.geometry_digest);
+        hasher.update(self.shape_digest);
+        hasher.update(self.transparent_shape_digest);
         hasher.update(self.target_geometry_digest);
         update_usize(&mut hasher, self.target_path_count);
         update_usize(&mut hasher, self.solid_control_pixels);
@@ -239,6 +247,11 @@ fn encode_pair_on_backend_stack(
     )?;
     let transparent_tree = observe_paint_tree(&transparent.tree, control_rgb)?;
     require_no_opaque_control_targets(&transparent_tree)?;
+    if transparent_tree.shape_digest != solid_tree.shape_digest {
+        return Err(ExportError::RasterPaintCutover(
+            "solid and transparent SVG geometry differs",
+        ));
+    }
     let transparent_report = transparent.report_for_output(RasterOutputKind::Png);
     let transparent_pixmap = transparent.render_pixmap(transparent.matte, control)?;
     let transparent_reference_mismatches = transparent_pixmap
@@ -275,6 +288,8 @@ fn encode_pair_on_backend_stack(
         transparent_source_digest: Sha256::digest(transparent_source.as_bytes()).into(),
         underlay_source_digest: Sha256::digest(underlay_source.as_bytes()).into(),
         geometry_digest: solid_tree.geometry_digest,
+        shape_digest: solid_tree.shape_digest,
+        transparent_shape_digest: transparent_tree.shape_digest,
         target_geometry_digest: solid_tree.target_geometry_digest,
         target_path_count: solid_tree.targets.len(),
         solid_control_pixels: solid_delta.control_pixels,
@@ -368,6 +383,7 @@ fn require_same_placement(left: RasterPlacement, right: RasterPlacement) -> Resu
 
 struct PaintTreeObservation {
     geometry_digest: [u8; 32],
+    shape_digest: [u8; 32],
     target_geometry_digest: [u8; 32],
     targets: Vec<TargetPath>,
 }
@@ -375,6 +391,7 @@ struct PaintTreeObservation {
 #[derive(Clone)]
 struct PathObservation {
     geometry_digest: [u8; 32],
+    shape_digest: [u8; 32],
     fill_region_bits: [u32; 4],
     stroke_region_bits: [u32; 4],
     fill: Option<PaintObservation>,
@@ -418,6 +435,13 @@ fn observe_paint_tree(tree: &usvg::Tree, control_rgb: [u8; 3]) -> Result<PaintTr
     }
     let geometry_digest = geometry_hasher.finalize().into();
 
+    let mut shape_hasher = Sha256::new();
+    update_len_prefixed(&mut shape_hasher, b"merman.raster-paint-tree-shape.v1");
+    update_usize(&mut shape_hasher, paths.len());
+    for path in &paths {
+        shape_hasher.update(path.shape_digest);
+    }
+
     let mut targets = Vec::new();
     let mut target_hasher = Sha256::new();
     update_len_prefixed(
@@ -448,6 +472,7 @@ fn observe_paint_tree(tree: &usvg::Tree, control_rgb: [u8; 3]) -> Result<PaintTr
 
     Ok(PaintTreeObservation {
         geometry_digest,
+        shape_digest: shape_hasher.finalize().into(),
         target_geometry_digest: target_hasher.finalize().into(),
         targets,
     })
@@ -516,6 +541,56 @@ fn observe_path(
     let mut hasher = Sha256::new();
     update_len_prefixed(&mut hasher, b"merman.raster-paint-path-geometry.v1");
     let transform = path.abs_transform();
+    let fill_bbox = map_rect(path.abs_bounding_box(), extra_transform)?;
+    let stroke_bbox = map_rect(path.abs_stroke_bounding_box(), extra_transform)?;
+    hash_path_shape(&mut hasher, transform, extra_transform, fill_bbox, path);
+    hash_rect(&mut hasher, fill_bbox);
+    hash_rect(&mut hasher, stroke_bbox);
+    if let Some(stroke) = path.stroke() {
+        hasher.update([1]);
+        hasher.update(stroke.width().get().to_bits().to_be_bytes());
+        hasher.update(stroke.dashoffset().to_bits().to_be_bytes());
+        match stroke.dasharray() {
+            Some(dasharray) => {
+                hasher.update([1]);
+                update_usize(&mut hasher, dasharray.len());
+                for value in dasharray {
+                    hasher.update(value.to_bits().to_be_bytes());
+                }
+            }
+            None => hasher.update([0]),
+        }
+    } else {
+        hasher.update([0]);
+    }
+
+    let mut shape_hasher = Sha256::new();
+    update_len_prefixed(&mut shape_hasher, b"merman.raster-paint-path-shape.v1");
+    hash_path_shape(
+        &mut shape_hasher,
+        transform,
+        extra_transform,
+        fill_bbox,
+        path,
+    );
+
+    Ok(PathObservation {
+        geometry_digest: hasher.finalize().into(),
+        shape_digest: shape_hasher.finalize().into(),
+        fill_region_bits: rect_bits(fill_bbox),
+        stroke_region_bits: rect_bits(stroke_bbox),
+        fill: path.fill().map(observe_fill),
+        stroke: path.stroke().map(observe_stroke),
+    })
+}
+
+fn hash_path_shape(
+    hasher: &mut Sha256,
+    transform: tiny_skia::Transform,
+    extra_transform: Option<tiny_skia::Transform>,
+    fill_bbox: usvg::Rect,
+    path: &usvg::Path,
+) {
     for value in [
         transform.sx,
         transform.kx,
@@ -541,60 +616,32 @@ fn observe_path(
     } else {
         hasher.update([0]);
     }
-    let fill_bbox = map_rect(path.abs_bounding_box(), extra_transform)?;
-    let stroke_bbox = map_rect(path.abs_stroke_bounding_box(), extra_transform)?;
-    hash_rect(&mut hasher, fill_bbox);
-    hash_rect(&mut hasher, stroke_bbox);
+    hash_rect(hasher, fill_bbox);
     for segment in path.data().segments() {
         use tiny_skia::PathSegment;
         match segment {
             PathSegment::MoveTo(point) => {
                 hasher.update([0]);
-                hash_point(&mut hasher, point);
+                hash_point(hasher, point);
             }
             PathSegment::LineTo(point) => {
                 hasher.update([1]);
-                hash_point(&mut hasher, point);
+                hash_point(hasher, point);
             }
             PathSegment::QuadTo(control, point) => {
                 hasher.update([2]);
-                hash_point(&mut hasher, control);
-                hash_point(&mut hasher, point);
+                hash_point(hasher, control);
+                hash_point(hasher, point);
             }
             PathSegment::CubicTo(first, second, point) => {
                 hasher.update([3]);
-                hash_point(&mut hasher, first);
-                hash_point(&mut hasher, second);
-                hash_point(&mut hasher, point);
+                hash_point(hasher, first);
+                hash_point(hasher, second);
+                hash_point(hasher, point);
             }
             PathSegment::Close => hasher.update([4]),
         }
     }
-    if let Some(stroke) = path.stroke() {
-        hasher.update([1]);
-        hasher.update(stroke.width().get().to_bits().to_be_bytes());
-        hasher.update(stroke.dashoffset().to_bits().to_be_bytes());
-        match stroke.dasharray() {
-            Some(dasharray) => {
-                hasher.update([1]);
-                update_usize(&mut hasher, dasharray.len());
-                for value in dasharray {
-                    hasher.update(value.to_bits().to_be_bytes());
-                }
-            }
-            None => hasher.update([0]),
-        }
-    } else {
-        hasher.update([0]);
-    }
-
-    Ok(PathObservation {
-        geometry_digest: hasher.finalize().into(),
-        fill_region_bits: rect_bits(fill_bbox),
-        stroke_region_bits: rect_bits(stroke_bbox),
-        fill: path.fill().map(observe_fill),
-        stroke: path.stroke().map(observe_stroke),
-    })
 }
 
 fn map_rect(rect: usvg::Rect, transform: Option<tiny_skia::Transform>) -> Result<usvg::Rect> {
@@ -850,6 +897,8 @@ struct RasterPaintCutoverFacts {
     transparent_source_digest: [u8; 32],
     underlay_source_digest: [u8; 32],
     geometry_digest: [u8; 32],
+    shape_digest: [u8; 32],
+    transparent_shape_digest: [u8; 32],
     target_geometry_digest: [u8; 32],
     target_path_count: usize,
     solid_control_pixels: usize,
@@ -970,6 +1019,19 @@ mod tests {
         assert_cutover_error(encode_pair(
             solid,
             moved,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+        ));
+    }
+
+    #[test]
+    fn invisible_geometry_drift_fails_closed_even_when_pixels_match() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="#dc2626"/></svg>"##;
+        let moved_transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="5" y="4" width="12" height="12" fill="transparent"/></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            moved_transparent,
             RasterPaintCutoverFacet::Fill,
             "#dc2626",
         ));
