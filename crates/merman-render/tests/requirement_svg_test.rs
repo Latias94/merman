@@ -1,7 +1,8 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -56,6 +57,46 @@ fn requirement_fill_and_stroke_theme(fill: CanvasPaint, stroke: CanvasPaint) -> 
             ),
         )
         .expect("compile Requirement fill and stroke theme")
+}
+
+fn requirement_fill_with_ordinal_palette_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Requirement,
+                            ThemeStylePatch::default().with_fill(fill),
+                        )
+                        .for_family(DiagramFamilyId::REQUIREMENT),
+                    )
+                    .with_ordinal_palette(
+                        ThemeTarget::Requirement,
+                        OrdinalPalette::new([
+                            ThemeColorValue::parse("#123456").expect("valid palette color")
+                        ])
+                        .expect("non-empty Requirement palette"),
+                    ),
+            ),
+        )
+        .expect("compile Requirement fill and ordinal palette theme")
+}
+
+fn requirement_ordinal_palette_theme() -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(
+                    ThemeTarget::Requirement,
+                    OrdinalPalette::new([
+                        ThemeColorValue::parse("#123456").expect("valid palette color")
+                    ])
+                    .expect("non-empty Requirement palette"),
+                ),
+            ),
+        )
+        .expect("compile Requirement ordinal palette theme")
 }
 
 fn render_requirement_with_theme(source: &str, theme: &DiagramTheme) -> family::RenderedFamilySvg {
@@ -676,6 +717,41 @@ fn requirement_fill_is_not_applicable_when_every_node_has_a_source_owner() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn requirement_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
+    let theme = requirement_fill_with_ordinal_palette_theme(
+        CanvasPaint::solid("#123456").expect("valid typed Requirement fill"),
+    );
+    let rendered = render_requirement_with_theme(requirement_source(), &theme);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn requirement_ordinal_palette_is_not_applicable_when_source_fill_wins() {
+    let source = r#"requirementDiagram
+  requirement assigned {
+    id: 1
+    text: Class owner
+    risk: medium
+    verifymethod: test
+  }
+  classDef accent fill:#00aa00
+  class assigned accent
+"#;
+    let rendered = render_requirement_with_theme(source, &requirement_ordinal_palette_theme());
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
 }
 
 #[test]

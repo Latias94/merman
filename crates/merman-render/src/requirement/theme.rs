@@ -11,7 +11,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolve_direct_static_fill,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -89,6 +90,8 @@ impl RequirementPaintThemePlan {
 
         let mermaid_owns_fill = mermaid_owns_requirement_fill(effective_config);
         let mermaid_owns_stroke = mermaid_owns_requirement_stroke(effective_config);
+        let source_owned_fill =
+            requirement_source_owned_fill_mask(model, &node_indices, mermaid_owns_fill);
         let mut expectations = expectations;
         let mut winner_properties = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
         let mut expected_capabilities =
@@ -172,34 +175,28 @@ impl RequirementPaintThemePlan {
                 }
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Requirement,
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if node_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
-                }
+                } => {}
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Requirement,
                     ..
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if node_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
-                }
+                } => {}
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Requirement,
+                TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&source_owned_fill)],
+            work_meter,
+        )?;
 
         let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {
@@ -288,6 +285,36 @@ impl RequirementPaintThemePlan {
         }
         evidence
     }
+}
+
+fn requirement_source_owned_fill_mask(
+    model: &RequirementDiagramRenderModel,
+    node_indices: &BTreeMap<String, usize>,
+    mermaid_owns_fill: bool,
+) -> Vec<bool> {
+    let mut owned = vec![mermaid_owns_fill; node_indices.len()];
+    for node in model
+        .requirements
+        .iter()
+        .map(|node| (&node.name, &node.css_styles))
+        .chain(
+            model
+                .elements
+                .iter()
+                .map(|node| (&node.name, &node.css_styles)),
+        )
+    {
+        let Some(index) = node_indices.get(node.0).copied() else {
+            continue;
+        };
+        if node.1.iter().any(|raw| {
+            crate::mermaid_style::parse_style_declaration(raw)
+                .is_some_and(|declaration| declaration.property() == "fill")
+        }) {
+            owned[index] = true;
+        }
+    }
+    owned
 }
 
 fn typed_fill_expectation(

@@ -221,6 +221,7 @@ impl TerminalStyleResolution<'_> {
 pub(crate) struct UnsupportedTerminalDomain<'a> {
     resolution: TerminalStyleResolution<'a>,
     variants: TerminalVariantDomain<'a>,
+    source_owned_fill: Option<&'a [bool]>,
     reconcile_rules: bool,
 }
 
@@ -229,6 +230,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
         Self {
             resolution: TerminalStyleResolution::Direct(target),
             variants,
+            source_owned_fill: None,
             reconcile_rules: true,
         }
     }
@@ -242,8 +244,19 @@ impl<'a> UnsupportedTerminalDomain<'a> {
         Self {
             resolution: TerminalStyleResolution::Direct(target),
             variants,
+            source_owned_fill: None,
             reconcile_rules: false,
         }
+    }
+
+    /// Marks per-occurrence fill terminals that are owned by Mermaid source/config output.
+    ///
+    /// The fallback palette is only active when the final fill remains unspecified. A family
+    /// whose writer can be overridden by source/config styles supplies this mask so fallback
+    /// evidence does not treat an already-owned fill as an active ordinal palette.
+    pub(crate) const fn with_source_owned_fill(mut self, owned: &'a [bool]) -> Self {
+        self.source_owned_fill = Some(owned);
+        self
     }
 
     pub(crate) const fn textual(
@@ -257,8 +270,16 @@ impl<'a> UnsupportedTerminalDomain<'a> {
                 owned_rule_targets,
             },
             variants,
+            source_owned_fill: None,
             reconcile_rules: true,
         }
+    }
+
+    fn source_owns_fill(self, ordinal: usize) -> bool {
+        self.source_owned_fill
+            .and_then(|owned| owned.get(ordinal.saturating_sub(1)))
+            .copied()
+            .unwrap_or(false)
     }
 }
 
@@ -426,7 +447,9 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
                 }
             }
 
-            if matches!(style.fill_resolution().specified(), Specified::Unspecified) {
+            if !domain.source_owns_fill(ordinal)
+                && matches!(style.fill_resolution().specified(), Specified::Unspecified)
+            {
                 for key in observations
                     .keys()
                     .filter(|key| matches!(key, FamilyThemeMechanismKey::OrdinalPalette { .. }))
