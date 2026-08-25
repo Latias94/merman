@@ -11,7 +11,7 @@ use std::collections::HashMap;
 mod config;
 mod theme;
 
-pub(crate) use theme::{TreeViewEdgeStrokeWidthThemeReceipt, TreeViewEdgeThemePlan};
+pub(crate) use theme::{TreeViewThemePlan, TreeViewThemeReceipt};
 
 use config::{TreeViewConfigView, TreeViewLayoutSettings};
 
@@ -32,11 +32,12 @@ pub(crate) const TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH: f64 =
 pub(crate) fn layout_tree_view_diagram_typed(
     model: &TreeViewDiagramRenderModel,
     effective_config: &Value,
-    edge_theme: &TreeViewEdgeThemePlan,
+    theme: &TreeViewThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<TreeViewDiagramLayout> {
     let mut cfg = TreeViewConfigView::new(effective_config).layout_settings();
-    cfg.line_thickness = edge_theme.line_thickness_px(cfg.line_thickness);
+    cfg.font_family = theme.font_family_css(&cfg.font_family).to_string();
+    cfg.line_thickness = theme.line_thickness_px(cfg.line_thickness);
     validate_tree_view_render_depth(&model.root)?;
     let label_style = TextStyle {
         font_family: Some(cfg.font_family.clone()),
@@ -71,7 +72,7 @@ pub(crate) fn layout_tree_view_diagram_typed(
     let total_width =
         ctx.total_width.max(1.0) + highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     let total_height = ctx.total_height.max(1.0);
-    let additional_paint_outset = edge_theme.additional_paint_outset_px();
+    let additional_paint_outset = theme.additional_paint_outset_px();
     let bounds = if additional_paint_outset > 0.0 {
         widened_tree_view_line_paint_bounds(
             &ctx.lines,
@@ -415,7 +416,7 @@ mod tests {
         let error = layout_tree_view_diagram_typed(
             &model,
             &Value::Object(Default::default()),
-            &TreeViewEdgeThemePlan::baseline(0),
+            &TreeViewThemePlan::baseline(0),
             &measurer,
         )
         .unwrap_err();

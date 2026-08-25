@@ -1221,7 +1221,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::TreeView(artifact) => tree_view::render_tree_view_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            artifact.edge_theme(),
+            artifact.theme(),
             effective_config,
             options,
         ),

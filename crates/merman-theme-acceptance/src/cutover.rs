@@ -233,6 +233,7 @@ const JOURNEY_TASK_PAINT_SOURCE: &str = r#"journey
   section Delivery
     Ship release: 5: Maintainer
 "#;
+const TREE_VIEW_PAINT_SOURCE: &str = "treeView-beta\nRoot/\n    Child\n";
 const KANBAN_TASK_STROKE_SOURCE: &str = r#"kanban
   todo[Todo]
     first[First]
@@ -439,6 +440,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::JourneyTask,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(JOURNEY_TASK_PAINT_SOURCE),
+        (
+            DiagramFamilyId::TREE_VIEW,
+            ThemeTarget::Edge | ThemeTarget::NodeLabel | ThemeTarget::Text,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(TREE_VIEW_PAINT_SOURCE),
         (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
             Ok(KANBAN_TASK_STROKE_SOURCE)
         }
@@ -1285,11 +1291,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_138_routes_and_154_artifact_witnesses() {
+    fn route_inventory_retains_146_routes_and_162_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 138);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 154);
+        assert_eq!(inventory.len(), 146);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 162);
     }
 
     #[test]

@@ -730,7 +730,25 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "treeView",
         target: "edge",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["stroke-width"],
+        facets: &["fill", "stroke-paint", "stroke-width"],
+    },
+    RuleClaim {
+        family: "treeView",
+        target: "marker",
+        kind: SupportClaimKind::LegacyPartial,
+        facets: &["fill", "stroke-paint"],
+    },
+    RuleClaim {
+        family: "treeView",
+        target: "node-label",
+        kind: SupportClaimKind::TypedPartial,
+        facets: &["fill"],
+    },
+    RuleClaim {
+        family: "treeView",
+        target: "text",
+        kind: SupportClaimKind::TypedPartial,
+        facets: &["fill"],
     },
     RuleClaim {
         family: "venn",
@@ -837,6 +855,18 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     RuleClaim {
         family: "state",
         target: "transition",
+        kind: SupportClaimKind::TypedSurface,
+        facets: &["ordinal-palette"],
+    },
+    RuleClaim {
+        family: "timeline",
+        target: "timeline-event",
+        kind: SupportClaimKind::TypedSurface,
+        facets: &["ordinal-palette"],
+    },
+    RuleClaim {
+        family: "journey",
+        target: "journey-task",
         kind: SupportClaimKind::TypedSurface,
         facets: &["ordinal-palette"],
     },
@@ -1267,30 +1297,6 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         facets: &["fill"],
     },
     RuleClaim {
-        family: "treeView",
-        target: "edge",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill", "stroke-paint"],
-    },
-    RuleClaim {
-        family: "treeView",
-        target: "marker",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill", "stroke-paint"],
-    },
-    RuleClaim {
-        family: "treeView",
-        target: "node-label",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill"],
-    },
-    RuleClaim {
-        family: "treeView",
-        target: "text",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill"],
-    },
-    RuleClaim {
         family: "venn",
         target: "text",
         kind: SupportClaimKind::LegacyPartial,
@@ -1325,18 +1331,6 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         target: "title",
         kind: SupportClaimKind::LegacyPartial,
         facets: &["fill"],
-    },
-    RuleClaim {
-        family: "journey",
-        target: "journey-task",
-        kind: SupportClaimKind::LegacySurface,
-        facets: &["ordinal-palette"],
-    },
-    RuleClaim {
-        family: "timeline",
-        target: "timeline-event",
-        kind: SupportClaimKind::LegacySurface,
-        facets: &["ordinal-palette"],
     },
 ];
 
@@ -1496,8 +1490,8 @@ const BASE_CLAIMS: &[BaseClaim] = &[
     },
     BaseClaim {
         family: "treeView",
-        kind: SupportClaimKind::LegacySurface,
-        properties: &["font-size", "font-stack"],
+        kind: SupportClaimKind::TypedSurface,
+        properties: &["font-stack"],
     },
     BaseClaim {
         family: "venn",

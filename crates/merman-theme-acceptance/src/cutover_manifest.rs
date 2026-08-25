@@ -11,7 +11,7 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 25;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 26;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
@@ -322,7 +322,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 138] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 146] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -1310,6 +1310,62 @@ const ACTIVE_ROUTES: [RouteAuthorization; 138] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         JOURNEY_TASK_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::KANBAN,
@@ -1773,7 +1829,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 25);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 26);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

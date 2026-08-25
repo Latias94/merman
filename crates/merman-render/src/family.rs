@@ -1863,7 +1863,7 @@ impl XyChartFamilyArtifact {
 #[derive(Debug)]
 pub(crate) struct TreeViewFamilyArtifact {
     pair: FamilyPair<diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>,
-    edge_theme: crate::tree_view::TreeViewEdgeThemePlan,
+    theme: crate::tree_view::TreeViewThemePlan,
 }
 
 #[derive(Debug)]
@@ -1933,8 +1933,8 @@ impl TreeViewFamilyArtifact {
         &self.pair
     }
 
-    pub(crate) const fn edge_theme(&self) -> &crate::tree_view::TreeViewEdgeThemePlan {
-        &self.edge_theme
+    pub(crate) const fn theme(&self) -> &crate::tree_view::TreeViewThemePlan {
+        &self.theme
     }
 }
 
@@ -2409,7 +2409,7 @@ impl BuiltinFamilyArtifact {
 
     fn tree_view_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::TreeView(artifact) => Some(artifact.edge_theme().finish_evidence()),
+            Self::TreeView(artifact) => Some(artifact.theme().finish_evidence()),
             _ => None,
         }
     }

@@ -11,22 +11,132 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    InheritedFontStackOutcome, InheritedFontStackPlan, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::config::DEFAULT_LINE_THICKNESS;
 
-/// Final Tree View edge width shared by layout, terminal SVG emission, and family evidence.
+/// Final Tree View theme shared by layout, terminal SVG emission, and family evidence.
 #[derive(Debug)]
-pub(crate) struct TreeViewEdgeThemePlan {
+pub(crate) struct TreeViewThemePlan {
     line_thickness_override: Option<TreeViewTerminalStrokeWidth>,
     expected_line_count: usize,
+    label_color: Option<TreeViewPaintAssignment>,
+    line_color: Option<TreeViewPaintAssignment>,
+    icon_color: Option<TreeViewPaintAssignment>,
+    icon_fallback_color: Option<Box<str>>,
+    inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
     pending_stroke_width_key: Option<FamilyThemeMechanismKey>,
-    terminal_receipt: OnceLock<()>,
+    terminal_receipt: OnceLock<TreeViewThemeReceipt>,
+}
+
+#[derive(Debug, Clone)]
+struct TreeViewPaintAssignment {
+    key: FamilyThemeMechanismKey,
+    paint: DirectStaticPaint,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TreeViewPaintProperty {
+    Fill,
+    StrokeThenFill,
+}
+
+fn resolve_tree_view_paint(
+    theme: &ResolvedDiagramTheme,
+    work_meter: &OperationWorkMeter,
+    targets: &[ThemeTarget],
+    property: TreeViewPaintProperty,
+    source_owned: bool,
+    residuals: &mut BTreeMap<FamilyThemeMechanismKey, FamilyThemeResidualReason>,
+) -> Result<Option<TreeViewPaintAssignment>, OperationWorkError> {
+    for target in targets.iter().copied() {
+        let style = if target == ThemeTarget::NodeLabel {
+            // Tree View labels inherit the generic Text target before a more specific
+            // NodeLabel rule wins. Keep that cascade in the resolved style rather than
+            // rebuilding it in this family adapter.
+            theme.text_style_with_work_meter(target, ThemeVariant::Default, None, work_meter)?
+        } else {
+            theme.style_with_work_meter(target, ThemeVariant::Default, None, work_meter)?
+        };
+        let properties: &[ResolvedStyleProperty] = match property {
+            TreeViewPaintProperty::Fill => &[ResolvedStyleProperty::Fill],
+            TreeViewPaintProperty::StrokeThenFill => {
+                &[ResolvedStyleProperty::Stroke, ResolvedStyleProperty::Fill]
+            }
+        };
+        for selected_property in properties {
+            let resolution = match selected_property {
+                ResolvedStyleProperty::Fill => style.fill_resolution(),
+                ResolvedStyleProperty::Stroke => style.stroke_resolution(),
+                _ => unreachable!("Tree View paint resolver only selects fill/stroke"),
+            };
+            let Some(origin) = resolution.winner() else {
+                continue;
+            };
+            let facet = match selected_property {
+                ResolvedStyleProperty::Fill => FamilyThemeRuleFacet::fill(resolution.specified()),
+                ResolvedStyleProperty::Stroke => {
+                    FamilyThemeRuleFacet::stroke(resolution.specified())
+                }
+                _ => None,
+            };
+            let Some(facet) = facet else {
+                residuals.insert(
+                    FamilyThemeMechanismKey::Rule {
+                        index: origin.rule_index(),
+                        target: origin.target(),
+                    },
+                    FamilyThemeResidualReason::UnsupportedPaint,
+                );
+                return Ok(None);
+            };
+            let key = FamilyThemeMechanismKey::Rule {
+                index: origin.rule_index(),
+                target: origin.target(),
+            };
+            if source_owned {
+                return Ok(None);
+            }
+            if theme.rule_facet_disposition(origin.rule_index(), facet)
+                != Some(FamilyThemeDisposition::TypedAdapter)
+            {
+                if theme.rule_facet_disposition(origin.rule_index(), facet)
+                    == Some(FamilyThemeDisposition::Unsupported)
+                {
+                    residuals.insert(key, unsupported_residual_for_facet(facet));
+                }
+                return Ok(None);
+            }
+            let paint = match selected_property {
+                ResolvedStyleProperty::Fill => resolve_direct_static_fill(
+                    theme,
+                    &style,
+                    targets,
+                    DirectStaticSelectorDomain::Default,
+                ),
+                ResolvedStyleProperty::Stroke => resolve_direct_static_stroke(
+                    theme,
+                    &style,
+                    targets,
+                    DirectStaticSelectorDomain::Default,
+                ),
+                _ => None,
+            };
+            let Some(paint) = paint else {
+                residuals.insert(key, FamilyThemeResidualReason::UnsupportedPaint);
+                return Ok(None);
+            };
+            return Ok(Some(TreeViewPaintAssignment { key, paint }));
+        }
+    }
+    Ok(None)
 }
 
 #[derive(Debug)]
@@ -35,7 +145,7 @@ struct TreeViewTerminalStrokeWidth {
     token: Box<str>,
 }
 
-impl TreeViewEdgeThemePlan {
+impl TreeViewThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
@@ -46,6 +156,12 @@ impl TreeViewEdgeThemePlan {
             return Ok(Self::baseline(0));
         };
         let (node_count, expected_line_count) = tree_view_terminal_counts(&model.root);
+        let inherited_font_stack = InheritedFontStackPlan::resolve(Some(theme), effective_config);
+        let label_color;
+        let line_color;
+        let icon_color;
+        let mut paint_residuals =
+            BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
 
         let mermaid_owns_line_thickness =
             merman_core::__private::config_path_overrides_typed_default(
@@ -112,6 +228,59 @@ impl TreeViewEdgeThemePlan {
         let line_thickness_override = terminal_winner_rule.and(static_line_thickness_candidate);
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+
+        let label_config_owned = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.treeView.labelColor",
+        );
+        let line_config_owned = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.treeView.lineColor",
+        );
+        let icon_config_owned = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.treeView.iconColor",
+        );
+
+        // Text is the broad fallback; a NodeLabel winner is the terminal-specific winner.
+        label_color = resolve_tree_view_paint(
+            theme,
+            work_meter,
+            &[ThemeTarget::NodeLabel, ThemeTarget::Text],
+            TreeViewPaintProperty::Fill,
+            label_config_owned,
+            &mut paint_residuals,
+        )?;
+        // Mermaid's line terminal is stroke-first. A fill-only Edge rule is the documented
+        // fallback for themes that do not provide a stroke assignment.
+        line_color = resolve_tree_view_paint(
+            theme,
+            work_meter,
+            &[ThemeTarget::Edge],
+            TreeViewPaintProperty::StrokeThenFill,
+            line_config_owned,
+            &mut paint_residuals,
+        )?;
+        // Marker is explicit when present; otherwise icon paint inherits the resolved Edge line.
+        icon_color = resolve_tree_view_paint(
+            theme,
+            work_meter,
+            &[ThemeTarget::Marker],
+            TreeViewPaintProperty::StrokeThenFill,
+            icon_config_owned,
+            &mut paint_residuals,
+        )?;
+        let icon_fallback_color = (!icon_config_owned)
+            .then(|| {
+                line_color
+                    .as_ref()
+                    .map(|assignment| assignment.paint.css().into())
+            })
+            .flatten();
+
+        for (key, reason) in &paint_residuals {
+            evidence.mark_residual(key.clone(), *reason);
+        }
         let mut observations = BTreeMap::<usize, TreeViewEdgeRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -202,9 +371,60 @@ impl TreeViewEdgeThemePlan {
             work_meter,
         )?;
 
+        let selected_paint_keys = [
+            label_color.as_ref(),
+            line_color.as_ref(),
+            icon_color.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(|assignment| assignment.key.clone())
+        .collect::<BTreeSet<_>>();
+        let pending_stroke_width_key = pending_stroke_width_key.clone();
+        for route in theme.family_mechanism_routes().iter().copied() {
+            let key = theme.family_mechanism_key(route);
+            match route.mechanism() {
+                FamilyThemeMechanism::BaseTypography(_) => match inherited_font_stack.outcome() {
+                    InheritedFontStackOutcome::Typed => {}
+                    InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
+                    InheritedFontStackOutcome::Unsupported => evidence
+                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
+                    InheritedFontStackOutcome::Inactive => evidence.mark_not_applicable(key),
+                },
+                FamilyThemeMechanism::RuleFacet {
+                    target:
+                        ThemeTarget::NodeLabel
+                        | ThemeTarget::Text
+                        | ThemeTarget::Edge
+                        | ThemeTarget::Marker,
+                    facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
+                    ..
+                } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
+                    if !selected_paint_keys.contains(&key) && !paint_residuals.contains_key(&key) {
+                        evidence.mark_not_applicable(key);
+                    }
+                }
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Edge,
+                    facet: FamilyThemeRuleFacet::StrokeWidth,
+                    ..
+                } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
+                    if pending_stroke_width_key.as_ref() != Some(&key) {
+                        evidence.mark_not_applicable(key);
+                    }
+                }
+                _ => {}
+            }
+        }
+
         Ok(Self {
             line_thickness_override,
             expected_line_count,
+            label_color,
+            line_color,
+            icon_color,
+            icon_fallback_color,
+            inherited_font_stack,
             evidence,
             pending_stroke_width_key,
             terminal_receipt: OnceLock::new(),
@@ -215,6 +435,14 @@ impl TreeViewEdgeThemePlan {
         Self {
             line_thickness_override: None,
             expected_line_count,
+            label_color: None,
+            line_color: None,
+            icon_color: None,
+            icon_fallback_color: None,
+            inherited_font_stack: InheritedFontStackPlan::resolve(
+                None,
+                &merman_core::MermaidConfig::default(),
+            ),
             evidence: FamilyThemeEvidence::default(),
             pending_stroke_width_key: None,
             terminal_receipt: OnceLock::new(),
@@ -240,33 +468,110 @@ impl TreeViewEdgeThemePlan {
         })
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<TreeViewEdgeStrokeWidthThemeReceipt> {
-        self.pending_stroke_width_key.as_ref().map(|_| {
-            TreeViewEdgeStrokeWidthThemeReceipt::new(
-                self.expected_line_count,
-                self.line_thickness_override
-                    .as_ref()
-                    .expect("pending Tree View stroke width has a typed terminal value")
-                    .token
-                    .clone(),
-            )
-        })
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: TreeViewEdgeStrokeWidthThemeReceipt) -> bool {
-        self.pending_stroke_width_key.is_some()
-            && receipt.proves(self.expected_line_count)
-            && self.terminal_receipt.set(()).is_ok()
+    pub(crate) fn record_terminal(&self, receipt: TreeViewThemeReceipt) -> bool {
+        receipt.proves(self) && self.terminal_receipt.set(receipt).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        if let Some(key) = self.pending_stroke_width_key.clone()
-            && self.terminal_receipt.get().is_some()
-        {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::BorderStyling]);
+        if let Some(receipt) = self.terminal_receipt.get() {
+            if let Some(key) = self.pending_stroke_width_key.clone() {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::BorderStyling]);
+            }
+            if let Some(assignment) = &self.label_color {
+                if receipt.label_color_matches(assignment.paint.css()) {
+                    evidence.mark_applied_with_capabilities(
+                        assignment.key.clone(),
+                        [assignment.paint.capability(), ThemeCapability::SolidPaint],
+                    );
+                }
+            }
+            if let Some(assignment) = &self.line_color {
+                if receipt.line_color_matches(assignment.paint.css()) {
+                    evidence.mark_applied_with_capabilities(
+                        assignment.key.clone(),
+                        [
+                            assignment.paint.capability(),
+                            ThemeCapability::BorderStyling,
+                        ],
+                    );
+                }
+            }
+            if let Some(assignment) = &self.icon_color {
+                if receipt.expected_icon_count > 0
+                    && receipt.icon_color_matches(assignment.paint.css())
+                {
+                    evidence.mark_applied_with_capabilities(
+                        assignment.key.clone(),
+                        [assignment.paint.capability(), ThemeCapability::SolidPaint],
+                    );
+                }
+            }
+            if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Typed
+                && receipt.font_family_matches(self.inherited_font_stack.font_family_css())
+            {
+                evidence.mark_applied_with_capabilities(
+                    FamilyThemeMechanismKey::Typography,
+                    [ThemeCapability::Typography],
+                );
+            }
         }
         evidence
+    }
+
+    pub(crate) fn label_color_css<'a>(&'a self, baseline: &'a str) -> &'a str {
+        self.label_color
+            .as_ref()
+            .map_or(baseline, |assignment| assignment.paint.css())
+    }
+
+    pub(crate) fn line_color_css<'a>(&'a self, baseline: &'a str) -> &'a str {
+        self.line_color
+            .as_ref()
+            .map_or(baseline, |assignment| assignment.paint.css())
+    }
+
+    pub(crate) fn icon_color_css<'a>(&'a self, baseline: &'a str) -> &'a str {
+        self.icon_color
+            .as_ref()
+            .map(|assignment| assignment.paint.css())
+            .or_else(|| self.icon_fallback_color.as_deref())
+            .unwrap_or(baseline)
+    }
+
+    pub(crate) fn font_family_css<'a>(&'a self, baseline: &'a str) -> &'a str {
+        if self.inherited_font_stack.typed_font_stack_requested() {
+            self.inherited_font_stack.font_family_css()
+        } else {
+            baseline
+        }
+    }
+
+    pub(crate) fn begin_terminal_receipt(
+        &self,
+        label_count: usize,
+        icon_count: usize,
+    ) -> TreeViewThemeReceipt {
+        TreeViewThemeReceipt::new(
+            self.label_color
+                .as_ref()
+                .map(|assignment| assignment.paint.css()),
+            self.line_color
+                .as_ref()
+                .map(|assignment| assignment.paint.css()),
+            (self
+                .icon_color
+                .as_ref()
+                .map(|assignment| assignment.paint.css()))
+            .or_else(|| self.icon_fallback_color.as_deref()),
+            self.inherited_font_stack.font_family_css(),
+            label_count,
+            icon_count,
+            self.expected_line_count,
+            self.line_thickness_override
+                .as_ref()
+                .map(|width| width.token.as_ref()),
+        )
     }
 }
 
@@ -330,43 +635,135 @@ fn tree_view_terminal_counts(root: &TreeViewNode) -> (usize, usize) {
     (node_count, line_count)
 }
 
-/// Writer-owned proof that every Tree View line emitted the resolved terminal width once.
+/// Renderer-owned proof for Tree View's final CSS and terminal occurrence streams.
 #[derive(Debug)]
-pub(crate) struct TreeViewEdgeStrokeWidthThemeReceipt {
+pub(crate) struct TreeViewThemeReceipt {
+    expected_label_color: Option<Box<str>>,
+    expected_line_color: Option<Box<str>>,
+    expected_icon_color: Option<Box<str>>,
+    expected_font_family: Box<str>,
+    expected_label_count: usize,
+    expected_icon_count: usize,
     expected_line_count: usize,
-    expected_stroke_width_token: Box<str>,
-    next_line_index: usize,
-    attributes_match: bool,
+    expected_stroke_width: Option<Box<str>>,
+    css_seen: bool,
+    css_matches: bool,
+    labels_seen: usize,
+    icons_seen: usize,
+    lines_seen: usize,
+    terminal_matches: bool,
 }
 
-impl TreeViewEdgeStrokeWidthThemeReceipt {
-    fn new(expected_line_count: usize, expected_stroke_width_token: Box<str>) -> Self {
+impl TreeViewThemeReceipt {
+    fn new(
+        expected_label_color: Option<&str>,
+        expected_line_color: Option<&str>,
+        expected_icon_color: Option<&str>,
+        expected_font_family: &str,
+        expected_label_count: usize,
+        expected_icon_count: usize,
+        expected_line_count: usize,
+        expected_stroke_width: Option<&str>,
+    ) -> Self {
         Self {
+            expected_label_color: expected_label_color.map(Into::into),
+            expected_line_color: expected_line_color.map(Into::into),
+            expected_icon_color: expected_icon_color.map(Into::into),
+            expected_font_family: expected_font_family.into(),
+            expected_label_count,
+            expected_icon_count,
             expected_line_count,
-            expected_stroke_width_token,
-            next_line_index: 0,
-            attributes_match: true,
+            expected_stroke_width: expected_stroke_width.map(Into::into),
+            css_seen: false,
+            css_matches: true,
+            labels_seen: 0,
+            icons_seen: 0,
+            lines_seen: 0,
+            terminal_matches: true,
         }
     }
 
-    pub(crate) fn record_checkpointed_line(
+    pub(crate) fn record_css(
         &mut self,
-        line_index: usize,
-        emitted_stroke_width_token: Option<&str>,
+        font_family: &str,
+        label_color: &str,
+        line_color: &str,
+        icon_color: &str,
     ) {
-        if line_index != self.next_line_index {
-            self.attributes_match = false;
+        if self.css_seen {
+            self.css_matches = false;
             return;
         }
-        self.next_line_index = self.next_line_index.saturating_add(1);
-        self.attributes_match &=
-            emitted_stroke_width_token == Some(self.expected_stroke_width_token.as_ref());
+        self.css_seen = true;
+        self.css_matches &= font_family == self.expected_font_family.as_ref();
+        if let Some(expected) = &self.expected_label_color {
+            self.css_matches &= label_color == expected.as_ref();
+        }
+        if let Some(expected) = &self.expected_line_color {
+            self.css_matches &= line_color == expected.as_ref();
+        }
+        if let Some(expected) = &self.expected_icon_color {
+            self.css_matches &= icon_color == expected.as_ref();
+        }
     }
 
-    fn proves(&self, expected_line_count: usize) -> bool {
-        self.expected_line_count == expected_line_count
-            && self.next_line_index == expected_line_count
-            && self.attributes_match
+    pub(crate) fn record_label(&mut self, emitted_color: &str) {
+        self.labels_seen = self.labels_seen.saturating_add(1);
+        if let Some(expected) = &self.expected_label_color {
+            self.terminal_matches &= emitted_color == expected.as_ref();
+        }
+    }
+
+    pub(crate) fn record_icon(&mut self, emitted_color: &str) {
+        self.icons_seen = self.icons_seen.saturating_add(1);
+        if let Some(expected) = &self.expected_icon_color {
+            self.terminal_matches &= emitted_color == expected.as_ref();
+        }
+    }
+
+    pub(crate) fn record_line(&mut self, emitted_color: &str, emitted_stroke_width: Option<&str>) {
+        self.lines_seen = self.lines_seen.saturating_add(1);
+        if let Some(expected) = &self.expected_line_color {
+            self.terminal_matches &= emitted_color == expected.as_ref();
+        }
+        if let Some(expected) = &self.expected_stroke_width {
+            self.terminal_matches &= emitted_stroke_width == Some(expected.as_ref());
+        }
+    }
+
+    fn proves(&self, plan: &TreeViewThemePlan) -> bool {
+        self.css_seen
+            && self.css_matches
+            && self.labels_seen == self.expected_label_count
+            && self.icons_seen == self.expected_icon_count
+            && self.lines_seen == self.expected_line_count
+            && self.terminal_matches
+            && plan.expected_line_count == self.expected_line_count
+    }
+
+    fn label_color_matches(&self, expected: &str) -> bool {
+        self.css_seen
+            && self.css_matches
+            && self.labels_seen == self.expected_label_count
+            && self.expected_label_color.as_deref() == Some(expected)
+    }
+
+    fn line_color_matches(&self, expected: &str) -> bool {
+        self.css_seen
+            && self.css_matches
+            && self.lines_seen == self.expected_line_count
+            && self.expected_line_color.as_deref() == Some(expected)
+    }
+
+    fn icon_color_matches(&self, expected: &str) -> bool {
+        self.css_seen
+            && self.css_matches
+            && self.icons_seen == self.expected_icon_count
+            && self.expected_icon_color.as_deref() == Some(expected)
+    }
+
+    fn font_family_matches(&self, expected: &str) -> bool {
+        self.css_seen && self.css_matches && self.expected_font_family.as_ref() == expected
     }
 }
 
@@ -407,28 +804,36 @@ mod tests {
     }
 
     #[test]
-    fn edge_width_receipt_requires_ordered_matching_terminal_lines() {
-        let mut complete = TreeViewEdgeStrokeWidthThemeReceipt::new(1, "6".into());
-        complete.record_checkpointed_line(0, Some("6"));
-        assert!(complete.proves(1));
+    fn terminal_receipt_requires_css_and_exact_terminal_occurrences() {
+        let mut complete = TreeViewThemeReceipt::new(
+            Some("#123456"),
+            Some("#654321"),
+            Some("#abcdef"),
+            "Excalifont",
+            1,
+            1,
+            1,
+            Some("6"),
+        );
+        complete.record_css("Excalifont", "#123456", "#654321", "#abcdef");
+        complete.record_label("#123456");
+        complete.record_icon("#abcdef");
+        complete.record_line("#654321", Some("6"));
+        assert!(complete.css_matches);
+        assert_eq!(complete.labels_seen, 1);
+        assert_eq!(complete.icons_seen, 1);
+        assert_eq!(complete.lines_seen, 1);
 
-        let mut incomplete = TreeViewEdgeStrokeWidthThemeReceipt::new(2, "6".into());
-        incomplete.record_checkpointed_line(0, Some("6"));
-        assert!(!incomplete.proves(2));
+        complete.record_line("#654321", Some("6"));
+        assert_eq!(complete.lines_seen, 2);
+        assert!(!complete.proves(&TreeViewThemePlan::baseline(1)));
 
-        let mut duplicate = TreeViewEdgeStrokeWidthThemeReceipt::new(1, "6".into());
-        duplicate.record_checkpointed_line(0, Some("6"));
-        duplicate.record_checkpointed_line(0, Some("6"));
-        assert!(!duplicate.proves(1));
-
-        let mut out_of_order = TreeViewEdgeStrokeWidthThemeReceipt::new(2, "6".into());
-        out_of_order.record_checkpointed_line(1, Some("6"));
-        out_of_order.record_checkpointed_line(0, Some("6"));
-        assert!(!out_of_order.proves(2));
-
-        let mut mismatch = TreeViewEdgeStrokeWidthThemeReceipt::new(1, "5.9999995".into());
-        mismatch.record_checkpointed_line(0, Some("6"));
-        assert!(!mismatch.proves(1));
+        let mut mismatch =
+            TreeViewThemeReceipt::new(None, None, None, "Excalifont", 1, 0, 1, Some("6"));
+        mismatch.record_css("Excalifont", "black", "black", "#546e7a");
+        mismatch.record_label("black");
+        mismatch.record_line("black", Some("5"));
+        assert!(!mismatch.proves(&TreeViewThemePlan::baseline(1)));
     }
 
     #[test]
@@ -436,7 +841,7 @@ mod tests {
         let theme = resolved_fill(ThemeTarget::Node);
         let model = TreeViewDiagramRenderModel::default();
 
-        let evidence = TreeViewEdgeThemePlan::resolve(
+        let evidence = TreeViewThemePlan::resolve(
             Some(&theme),
             &merman_core::MermaidConfig::default(),
             &model,
@@ -464,7 +869,7 @@ mod tests {
             ..Default::default()
         };
 
-        let evidence = TreeViewEdgeThemePlan::resolve(
+        let evidence = TreeViewThemePlan::resolve(
             Some(&theme),
             &merman_core::MermaidConfig::default(),
             &model,

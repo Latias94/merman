@@ -323,6 +323,16 @@ fn legacy_bridge_projections(
             Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_LABEL_FILL)
         }
         (
+            DiagramFamilyId::TREE_VIEW,
+            ThemeTarget::NodeLabel | ThemeTarget::Text,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_LABEL_FILL),
+        (
+            DiagramFamilyId::TREE_VIEW,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE),
+        (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
             ThemeTarget::Edge,
             ThemeRouteCutoverFacet::Stroke,
@@ -1077,6 +1087,22 @@ fn classify_base_typography(
             | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
         };
     }
+    if family == DiagramFamilyId::TREE_VIEW {
+        return match property {
+            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
+            ThemeTypographyProperty::FontSize
+            | ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
+    }
     if family == DiagramFamilyId::RAILROAD {
         return match property {
             ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
@@ -1435,6 +1461,32 @@ pub(super) fn classify_rule_facet(
             facet,
             FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::TREE_VIEW
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            (target, facet),
+            (
+                ThemeTarget::NodeLabel | ThemeTarget::Text,
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
+            ) | (
+                ThemeTarget::Edge,
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                ) | FamilyThemeRuleFacet::Stroke(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
             )
         )
     {
@@ -5040,6 +5092,62 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["cluster.stroke"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Transparent,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Solid,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Edge,
+                Fill,
+                Transparent,
+                vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Edge,
+                Fill,
+                Solid,
+                vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Edge,
+                Stroke,
+                Transparent,
+                vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Edge,
+                Stroke,
+                Solid,
+                vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["node-label.fill"],
             ),
             (
                 DiagramFamilyId::TREEMAP,

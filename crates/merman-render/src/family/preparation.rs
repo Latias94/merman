@@ -720,7 +720,7 @@ fn prepare_tree_view_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let edge_theme = crate::tree_view::TreeViewEdgeThemePlan::resolve(
+    let theme = crate::tree_view::TreeViewThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         &model,
@@ -729,13 +729,13 @@ fn prepare_tree_view_family(
     let layout = crate::tree_view::layout_tree_view_diagram_typed(
         &model,
         meta.effective_config.as_value(),
-        &edge_theme,
+        &theme,
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::TreeView(Box::new(
         TreeViewFamilyArtifact {
             pair: FamilyPair::new(model, layout),
-            edge_theme,
+            theme,
         },
     )))
 }
