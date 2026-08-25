@@ -3,8 +3,9 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -661,6 +662,46 @@ fn ishikawa_explicit_text_color_outranks_typed_text_fill() {
         assert_eq!(evidence.not_applicable_count(), 1, "{look}");
         assert_eq!(evidence.theme_residual_count(), 0, "{look}");
     }
+}
+
+#[test]
+fn ishikawa_typed_text_fill_shadows_unsupported_ordinal_palette() {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#abcdef").expect("valid Ishikawa ordinal palette color")
+    ])
+    .expect("non-empty Ishikawa ordinal palette");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#123456")
+                                    .expect("valid Ishikawa typed text fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::ISHIKAWA),
+                    )
+                    .with_ordinal_palette(ThemeTarget::Text, palette),
+            ),
+        )
+        .expect("compile Ishikawa typed fill and ordinal palette theme");
+    let rendered =
+        render_ishikawa_with_theme(&ishikawa_theme_source("classic"), &theme, Engine::new());
+    assert!(
+        rendered.svg().contains("fill:#123456 !important;"),
+        "{}",
+        rendered.svg()
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

@@ -10,8 +10,9 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::{IshikawaBranchLayout, IshikawaDiagramLayout, IshikawaTextLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -137,26 +138,13 @@ impl IshikawaTextThemePlan {
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Text,
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if text_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
+                    // Reconciled below from each visible text terminal's final fill winner.
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Text,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if text_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // Reconciled below from each visible text terminal's final style.
                 }
                 FamilyThemeMechanism::RuleFacet {
                     target: ThemeTarget::Title,
@@ -180,6 +168,16 @@ impl IshikawaTextThemePlan {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Text,
+                TerminalVariantDomain::uniform(text_count, ThemeVariant::Default),
+            )],
+            work_meter,
+        )?;
 
         let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {
