@@ -1237,6 +1237,89 @@ fn class_direct_node_surfaces_preserve_source_owned_occurrences() {
 }
 
 #[test]
+fn class_explicit_default_node_surfaces_preserve_source_owned_occurrences() {
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        r#"classDiagram
+  class SourceOwned
+  class ThemeOwned
+  style SourceOwned fill:#aa0000,stroke:#bb0000,color:#cc0000
+"#,
+        &class_node_default_surface_theme(),
+        Engine::new(),
+    )
+    .expect("source-owned Class node surfaces must coexist with typed Default occurrences");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+    let terminal_node = |semantic_id: &str| {
+        document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node.attribute("id").is_some_and(|id| {
+                        id.starts_with(format!("merman-classId-{semantic_id}-").as_str())
+                    })
+            })
+            .unwrap_or_else(|| panic!("missing Class node {semantic_id}"))
+    };
+    let source_owned = terminal_node("SourceOwned");
+    let theme_owned = terminal_node("ThemeOwned");
+
+    assert!(
+        source_owned
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#aa0000")),
+        "source Node.fill must remain the terminal winner: {}",
+        rendered.svg(),
+    );
+    assert!(
+        source_owned
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("stroke") == Some("#bb0000")),
+        "source Node.stroke must remain the terminal winner: {}",
+        rendered.svg(),
+    );
+    assert!(
+        source_owned.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("color:#cc0000"))
+        }),
+        "source label paint must remain the terminal winner: {}",
+        rendered.svg(),
+    );
+    assert!(
+        theme_owned
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#112233")),
+        "unowned Node.fill must retain the typed Default winner: {}",
+        rendered.svg(),
+    );
+    assert!(
+        theme_owned
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("stroke") == Some("#445566")),
+        "unowned Node.stroke must retain the typed Default winner: {}",
+        rendered.svg(),
+    );
+    assert!(
+        theme_owned.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node.attribute("style").is_some_and(|style| {
+                    style.contains("color:#ddeeff") && style.contains("fill:#ddeeff")
+                })
+        }),
+        "unowned NodeLabel.fill must retain the typed Default winner: {}",
+        rendered.svg(),
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
 fn class_invalid_source_css_cannot_swallow_typed_node_paint_or_forge_its_receipt() {
     let source = r#"classDiagram
   class Account

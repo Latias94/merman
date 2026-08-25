@@ -3117,6 +3117,92 @@ mod tests {
     }
 
     #[test]
+    fn class_default_node_surfaces_stay_typed_when_title_keeps_the_bridge_active() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(solid("#e2e8f0")),
+                    )
+                    .for_family(DiagramFamilyId::CLASS),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(solid("#112233"))
+                            .with_stroke(solid("#445566")),
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .for_family(DiagramFamilyId::CLASS),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default().with_fill(solid("#ddeeff")),
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .for_family(DiagramFamilyId::CLASS),
+                ),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::CLASS);
+
+        assert!(!artifact.overlay.is_empty());
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.class.title.fill")
+        );
+        for projection in [
+            ThemeRouteCutoverProjection::NodeFill,
+            ThemeRouteCutoverProjection::NodeStroke,
+            ThemeRouteCutoverProjection::NodeLabelFill,
+        ] {
+            assert!(
+                !bridge.owns_contribution_id(&format!(
+                    "{CONTRIBUTION_ID_PREFIX}class.{}",
+                    projection.contribution_id()
+                )),
+                "typed Class Default {:?} must not regain a legacy projection",
+                projection,
+            );
+        }
+
+        let parsed = parse(&spec, "classDiagram\nclass Alpha\n");
+        let baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nclass Alpha\n");
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.titleColor"),
+            Some("#e2e8f0")
+        );
+        for path in [
+            "themeVariables.primaryColor",
+            "themeVariables.mainBkg",
+            "themeVariables.primaryBorderColor",
+            "themeVariables.nodeBorder",
+            "themeVariables.primaryTextColor",
+            "themeVariables.classText",
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed Class Default node surface must not mutate legacy `{path}`"
+            );
+        }
+
+        let evidence = theme_parse_evidence(&parsed);
+        assert_eq!(evidence.fallback_contribution_count(), 1);
+        assert_eq!(
+            evidence
+                .fallback_contributions()
+                .flat_map(|contribution| contribution.surviving_assignment_paths())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["themeVariables.titleColor"])
+        );
+    }
+
+    #[test]
     fn unsupported_class_marker_rule_does_not_block_legacy_edge_marker_fallback() {
         let edge = ThemeRule::new(
             ThemeTarget::Edge,
