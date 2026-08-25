@@ -23,11 +23,13 @@ if (isMainModule()) {
     const outputRoot = valueAfter(args, "--output-root") ?? path.join(nodeRoot, "dist-packages");
     if (args.includes("--loader-only")) {
       assembleLoaderOnly(outputRoot);
+    } else if (args.includes("--wasm")) {
+      assembleWasmPackage(outputRoot);
     } else {
       const target = valueAfter(args, "--target");
       if (!target) {
         throw new Error(
-          "usage: node scripts/assemble-packages.mjs (--loader-only | --target <target-id>) [--output-root <path>]",
+          "usage: node scripts/assemble-packages.mjs (--loader-only | --wasm | --target <target-id>) [--output-root <path>]",
         );
       }
       assembleNativePackages(target, outputRoot);
@@ -79,6 +81,40 @@ export function assembleLoaderOnly(outputRoot = path.join(nodeRoot, "dist-packag
   }
 }
 
+export function assembleWasmPackage(
+  outputRoot = path.join(nodeRoot, "dist-packages"),
+  wasmOverride = null,
+  { readReceipt = readBuildReceipt } = {},
+) {
+  const wasmDescriptor = descriptor.wasm;
+  if (!wasmDescriptor) throw new Error("Node package surface does not declare a WASM package.");
+  assertAssemblyPackageManifest(wasmDescriptor);
+  const candidateRoot = wasmOverride
+    ? path.dirname(wasmOverride)
+    : path.join(nodeRoot, "artifacts", "node-wasm");
+  const wasm = wasmOverride ?? path.join(candidateRoot, wasmDescriptor.wasm_artifact);
+  const loader = path.join(candidateRoot, "merman_node.js");
+  assertFile(wasm, "Node-targeted WASM binary");
+  assertFile(loader, "Node-targeted WASM loader");
+  assertWasmBuildProvenance(wasmDescriptor, readReceipt(wasm));
+
+  const stage = `${outputRoot}.stage-${process.pid}`;
+  rmSync(stage, { recursive: true, force: true });
+  mkdirSync(stage, { recursive: true });
+  try {
+    assembleWasmPackageContents(
+      wasmDescriptor,
+      loader,
+      wasm,
+      path.join(stage, path.basename(wasmDescriptor.directory)),
+    );
+    replaceDirectory(stage, outputRoot);
+  } catch (error) {
+    rmSync(stage, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 function assembleLoaderPackage(output) {
   const source = path.join(nodeRoot, descriptor.root.directory);
   mkdirSync(path.join(output, "dist", "candidates"), { recursive: true });
@@ -120,6 +156,53 @@ function assembleLoaderPackage(output) {
   projectLegalMaterial(output);
 }
 
+function assembleWasmPackageContents(packageDescriptor, loader, wasm, output) {
+  const source = path.join(nodeRoot, packageDescriptor.directory);
+  mkdirSync(path.join(output, "dist", "candidates"), { recursive: true });
+  mkdirSync(path.join(output, "dist", "generated"), { recursive: true });
+  mkdirSync(path.join(output, packageDescriptor.artifact_directory), { recursive: true });
+  cpSync(path.join(source, "package.json"), path.join(output, "package.json"));
+  cpSync(path.join(source, "README.md"), path.join(output, "README.md"));
+  cpSync(path.join(nodeRoot, "CHANGELOG.md"), path.join(output, "CHANGELOG.md"));
+  for (const name of [
+    "engine.mjs",
+    "errors.mjs",
+    "bounded-executor.mjs",
+    "native-loader.mjs",
+    "transport-contract.mjs",
+  ]) {
+    cpSync(path.join(nodeRoot, "src", name), path.join(output, "dist", name));
+  }
+  cpSync(
+    path.join(nodeRoot, "src", "node-wasm-index.mjs"),
+    path.join(output, "dist", "index.mjs"),
+  );
+  cpSync(
+    path.join(nodeRoot, "src", "candidates", "wasm.mjs"),
+    path.join(output, "dist", "candidates", "wasm.mjs"),
+  );
+  cpSync(
+    path.join(nodeRoot, "src", "candidates", "wrap-engine.mjs"),
+    path.join(output, "dist", "candidates", "wrap-engine.mjs"),
+  );
+  cpSync(
+    path.join(nodeRoot, "src", "generated", "capability-surface.mjs"),
+    path.join(output, "dist", "generated", "capability-surface.mjs"),
+  );
+  cpSync(
+    path.join(nodeRoot, "src", "generated", "binding-contract.mjs"),
+    path.join(output, "dist", "generated", "binding-contract.mjs"),
+  );
+  cpSync(
+    path.join(nodeRoot, "src", "generated", "node-wire-contract.json"),
+    path.join(output, "dist", "generated", "node-wire-contract.json"),
+  );
+  cpSync(path.join(nodeRoot, "src", "index.d.ts"), path.join(output, "dist", "index.d.ts"));
+  cpSync(loader, path.join(output, packageDescriptor.artifact_directory, packageDescriptor.node_artifact));
+  cpSync(wasm, path.join(output, packageDescriptor.artifact_directory, packageDescriptor.wasm_artifact));
+  projectLegalMaterial(output);
+}
+
 function assemblePlatformPackage(targetDescriptor, binary, output) {
   const source = path.join(nodeRoot, targetDescriptor.directory);
   mkdirSync(output, { recursive: true });
@@ -142,6 +225,22 @@ function assertNativeBuildProvenance(targetDescriptor, receipt) {
     throw new Error(
       `Native candidate build receipt target ${JSON.stringify(receipt?.target)} does not match ${targetDescriptor.target}.`,
     );
+  }
+}
+
+function assertWasmBuildProvenance(packageDescriptor, receipt) {
+  if (receipt?.candidate !== "node-wasm") {
+    throw new Error(
+      `Node WASM candidate build receipt candidate ${JSON.stringify(receipt?.candidate)} must be node-wasm.`,
+    );
+  }
+  if (receipt.target !== null) {
+    throw new Error(
+      `Node WASM candidate build receipt target ${JSON.stringify(receipt.target)} must be null.`,
+    );
+  }
+  if (packageDescriptor.wasm_artifact !== "merman_node_bg.wasm") {
+    throw new Error("Node WASM package descriptor must use the canonical wasm-bindgen artifact.");
   }
 }
 

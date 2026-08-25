@@ -108,6 +108,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-feature-matrix");
     println!("  verify-typst-profile-constants");
     println!("  verify-playground-example-catalog");
+    println!("  verify-playground-ascii-capabilities");
     println!("  verify-mermaid-reference");
     println!("  verify-web-diagram-catalog");
     println!("  verify-resource-contract");
@@ -146,6 +147,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-text-measurement-protocol");
     println!("  verify-native-abi");
     println!("  gen-playground-example-catalog");
+    println!("  gen-playground-ascii-capabilities");
     println!("  gen-mermaid-reference");
     println!("  gen-web-diagram-catalog");
     println!();
@@ -159,7 +161,9 @@ fn print_help(topic: Option<&str>) {
     println!("Tips:");
     println!("  - `cargo run -p xtask -- verify`");
     println!("  - `cargo run -p xtask -- verify --strict`");
-    println!("  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`");
+    println!(
+        "  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3`"
+    );
     println!(
         "  - `cargo run -p xtask -- compare-all-svgs --report-root --report-root-all --dom-mode parity-root`"
     );
@@ -202,6 +206,9 @@ fn main() -> Result<(), XtaskError> {
         "gen-typst-profile-constants" => cmd::gen_typst_profile_constants(args.collect()),
         "gen-lalrpop-parsers" => cmd::gen_lalrpop_parsers(args.collect()),
         "gen-playground-example-catalog" => cmd::gen_playground_example_catalog(args.collect()),
+        "gen-playground-ascii-capabilities" => {
+            cmd::gen_playground_ascii_capabilities(args.collect())
+        }
         "gen-mermaid-reference" => cmd::gen_mermaid_reference(args.collect()),
         "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
         "gen-text-measurement-protocol" => cmd::gen_text_measurement_protocol(args.collect()),
@@ -221,6 +228,9 @@ fn main() -> Result<(), XtaskError> {
         "verify-typst-profile-constants" => cmd::verify_typst_profile_constants(args.collect()),
         "verify-playground-example-catalog" => {
             cmd::verify_playground_example_catalog(args.collect())
+        }
+        "verify-playground-ascii-capabilities" => {
+            cmd::verify_playground_ascii_capabilities(args.collect())
         }
         "verify-mermaid-reference" => cmd::verify_mermaid_reference(args.collect()),
         "verify-web-diagram-catalog" => cmd::verify_web_diagram_catalog(args.collect()),

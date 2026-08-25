@@ -16,7 +16,7 @@
         {
           "start": 17,
           "end": 31,
-          "bits": 14,
+          "bits": 15,
           "label": "multiple"
         }
       ],
@@ -24,7 +24,7 @@
         {
           "start": 32,
           "end": 63,
-          "bits": 31,
+          "bits": 32,
           "label": "multiple"
         }
       ]

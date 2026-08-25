@@ -1,4 +1,6 @@
-use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
+use super::pipeline::{
+    ScopedCssPostprocessor, SvgPipeline, SvgPostprocessExecution, SvgPostprocessMetadata,
+};
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::FamilyExecutionView;
 use crate::model::{
@@ -13,7 +15,11 @@ use crate::text::{PreparedTextLabelId, TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use base64::Engine as _;
 use indexmap::IndexMap;
+use merman_core::OperationPhase;
 use std::fmt::Write as _;
+
+pub(crate) const C4_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
+pub(crate) const C4_EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
 
 #[cfg(feature = "layout-cytoscape")]
 mod architecture;
@@ -67,9 +73,9 @@ mod xychart;
 mod zenuml;
 use css::{
     er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_font_family,
-    info_css_parts_with_theme_font_size_only, info_css_with_config, pie_css,
-    pie_css_with_stroke_overrides, push_xychart_css, requirement_css, sankey_css,
-    write_info_css_with_font_family, write_mermaid_default_base_css_prefix,
+    info_css_parts_with_theme_font_size_only, info_css_with_config, pie_css_with_stroke_overrides,
+    push_xychart_css, requirement_css, sankey_css, write_info_css_with_font_family,
+    write_mermaid_default_base_css_prefix,
 };
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
@@ -89,12 +95,15 @@ use util::{
     css_rgba_fade, decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display,
     escape_attr_into, escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into,
     fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
-    json_stringify_points_into, normalize_css_font_family, scoped_svg_id, scoped_svg_url,
-    theme_token,
+    json_stringify_points_into, normalize_css_font_family, scoped_drop_shadow, scoped_svg_id,
+    scoped_svg_url, theme_token,
 };
 
-/// Converts arbitrary host input into the single conservative SVG id grammar used by every
+/// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
 /// family renderer.
+///
+/// The result is safe to interpolate directly after `#` in generated stylesheets without CSS
+/// escaping changing its selector meaning.
 pub fn sanitize_svg_id(raw: &str) -> String {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -107,7 +116,7 @@ pub fn sanitize_svg_id(raw: &str) -> String {
     };
 
     let sanitize_char = |ch: char| {
-        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':' | '.') {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
             ch
         } else {
             '-'
@@ -174,12 +183,318 @@ impl Default for SvgRenderOptions {
     }
 }
 
-impl SvgRenderOptions {
-    pub(crate) fn normalized(&self) -> Self {
-        Self {
-            viewbox_padding: self.viewbox_padding,
-            diagram_id: self.diagram_id.as_deref().map(sanitize_svg_id),
+const SVG_DIAGRAM_ID_SCAN_CHECKPOINT_BYTES: usize = 4 * 1024;
+
+#[derive(Clone, Copy)]
+struct SvgDiagramIdSanitizationPlan<'a> {
+    trimmed: &'a str,
+    output_bytes: usize,
+    uses_fallback: bool,
+}
+
+fn checkpoint_svg_diagram_id_scan(
+    session: &RenderSession,
+    next_checkpoint: &mut usize,
+    scanned_bytes: usize,
+) -> Result<()> {
+    if scanned_bytes < *next_checkpoint {
+        return Ok(());
+    }
+    session.checkpoint(OperationPhase::Emit)?;
+    *next_checkpoint = scanned_bytes
+        .checked_add(SVG_DIAGRAM_ID_SCAN_CHECKPOINT_BYTES)
+        .ok_or_else(|| {
+            Error::from(session.work_meter().terminate_svg_byte_count_overflow(
+                crate::resources::ResourceLimitPhase::SvgOutput,
+                OperationPhase::Emit,
+            ))
+        })?;
+    Ok(())
+}
+
+fn controlled_trim_svg_diagram_id<'a>(raw: &'a str, session: &RenderSession) -> Result<&'a str> {
+    let mut first = None;
+    let mut end = 0usize;
+    let mut next_checkpoint = 0usize;
+    for (offset, ch) in raw.char_indices() {
+        checkpoint_svg_diagram_id_scan(session, &mut next_checkpoint, offset)?;
+        if !ch.is_whitespace() {
+            first.get_or_insert(offset);
+            end = offset + ch.len_utf8();
         }
+    }
+    session.checkpoint(OperationPhase::Emit)?;
+    Ok(first.map_or("", |first| &raw[first..end]))
+}
+
+fn plan_svg_diagram_id_sanitization<'a>(
+    raw: &'a str,
+    session: &RenderSession,
+) -> Result<SvgDiagramIdSanitizationPlan<'a>> {
+    let trimmed = controlled_trim_svg_diagram_id(raw, session)?;
+    if trimmed.is_empty() {
+        return Ok(SvgDiagramIdSanitizationPlan {
+            trimmed,
+            output_bytes: "m-untitled".len(),
+            uses_fallback: true,
+        });
+    }
+
+    let sanitize_char = |ch: char| {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+            ch
+        } else {
+            '-'
+        }
+    };
+    let mut chars = trimmed.char_indices();
+    let (_, first_raw) = chars.next().expect("non-empty trimmed diagram id");
+    let first = sanitize_char(first_raw);
+    let mut output_bytes = 0usize;
+    let mut first_output = None;
+    let mut previous_was_dash = false;
+    let mut append = |ch: char| -> Result<()> {
+        if ch == '-' && previous_was_dash {
+            return Ok(());
+        }
+        previous_was_dash = ch == '-';
+        first_output.get_or_insert(ch);
+        output_bytes = output_bytes.checked_add(1).ok_or_else(|| {
+            Error::from(session.work_meter().terminate_svg_byte_count_overflow(
+                crate::resources::ResourceLimitPhase::SvgOutput,
+                OperationPhase::Emit,
+            ))
+        })?;
+        Ok(())
+    };
+
+    if !first.is_ascii_alphabetic() {
+        append('m')?;
+        if first != '-' {
+            append('-')?;
+        }
+    }
+    append(first)?;
+
+    let mut next_checkpoint = SVG_DIAGRAM_ID_SCAN_CHECKPOINT_BYTES;
+    for (offset, ch) in chars {
+        checkpoint_svg_diagram_id_scan(session, &mut next_checkpoint, offset)?;
+        append(sanitize_char(ch))?;
+    }
+    if previous_was_dash {
+        output_bytes -= 1;
+    }
+    let uses_fallback = output_bytes == 0 || (output_bytes == 1 && first_output == Some('m'));
+    if uses_fallback {
+        output_bytes = "m-untitled".len();
+    }
+    session.checkpoint(OperationPhase::Emit)?;
+    Ok(SvgDiagramIdSanitizationPlan {
+        trimmed,
+        output_bytes,
+        uses_fallback,
+    })
+}
+
+fn materialize_svg_diagram_id(
+    plan: SvgDiagramIdSanitizationPlan<'_>,
+    session: &RenderSession,
+) -> Result<String> {
+    if session
+        .resource_policy()
+        .value(crate::resources::ResourceLimitId::MaxSvgBytes)
+        .is_some()
+    {
+        session.work_meter().preflight_svg_byte_count(
+            plan.output_bytes,
+            crate::resources::ResourceLimitPhase::SvgOutput,
+            OperationPhase::Emit,
+        )?;
+    }
+    let mut output = String::new();
+    output
+        .try_reserve_exact(plan.output_bytes)
+        .map_err(|error| Error::InvalidModel {
+            message: format!("failed to allocate normalized SVG diagram id: {error}"),
+        })?;
+    if plan.uses_fallback {
+        output.push_str("m-untitled");
+        return Ok(output);
+    }
+
+    let sanitize_char = |ch: char| {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+            ch
+        } else {
+            '-'
+        }
+    };
+    let mut chars = plan.trimmed.char_indices();
+    let (_, first_raw) = chars.next().expect("non-fallback diagram id is non-empty");
+    let first = sanitize_char(first_raw);
+    let mut previous_was_dash = false;
+    let push = |ch: char, output: &mut String, previous_was_dash: &mut bool| {
+        if ch == '-' && *previous_was_dash {
+            return;
+        }
+        *previous_was_dash = ch == '-';
+        output.push(ch);
+    };
+
+    if !first.is_ascii_alphabetic() {
+        output.push('m');
+        if first != '-' {
+            output.push('-');
+            previous_was_dash = true;
+        }
+    }
+    push(first, &mut output, &mut previous_was_dash);
+    let mut next_checkpoint = SVG_DIAGRAM_ID_SCAN_CHECKPOINT_BYTES;
+    for (offset, ch) in chars {
+        checkpoint_svg_diagram_id_scan(session, &mut next_checkpoint, offset)?;
+        push(sanitize_char(ch), &mut output, &mut previous_was_dash);
+    }
+    while output.ends_with('-') {
+        output.pop();
+    }
+    session.checkpoint(OperationPhase::Emit)?;
+    if output.len() != plan.output_bytes {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "SVG diagram id byte projection drifted: projected {} bytes but materialized {}",
+                plan.output_bytes,
+                output.len()
+            ),
+        });
+    }
+    Ok(output)
+}
+
+pub(crate) fn normalize_svg_render_options(
+    request: &SvgRenderOptions,
+    session: &RenderSession,
+) -> Result<SvgRenderOptions> {
+    let diagram_id = request
+        .diagram_id
+        .as_deref()
+        .map(|raw| plan_svg_diagram_id_sanitization(raw, session))
+        .transpose()?
+        .map(|plan| materialize_svg_diagram_id(plan, session))
+        .transpose()?;
+    Ok(SvgRenderOptions {
+        viewbox_padding: request.viewbox_padding,
+        diagram_id,
+    })
+}
+
+struct SvgDiagramIdProjection<'a> {
+    work_meter: &'a crate::resources::OperationWorkMeter,
+    projected_bytes: std::cell::Cell<usize>,
+    error: std::cell::RefCell<Option<Error>>,
+}
+
+impl SvgDiagramIdProjection<'_> {
+    fn write(&self, value: &str, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.error.borrow().is_some() {
+            return Ok(());
+        }
+        let Some(projected_bytes) = self.projected_bytes.get().checked_add(value.len()) else {
+            self.error.replace(Some(
+                self.work_meter
+                    .terminate_svg_byte_count_overflow(
+                        crate::resources::ResourceLimitPhase::SvgOutput,
+                        OperationPhase::Emit,
+                    )
+                    .into(),
+            ));
+            return Ok(());
+        };
+        match self.work_meter.preflight_svg_byte_count(
+            projected_bytes,
+            crate::resources::ResourceLimitPhase::SvgOutput,
+            OperationPhase::Emit,
+        ) {
+            Ok(()) => {
+                self.projected_bytes.set(projected_bytes);
+                formatter.write_str(value)
+            }
+            Err(error) => {
+                self.error.replace(Some(error.into()));
+                Ok(())
+            }
+        }
+    }
+
+    fn finish(&self) -> Result<()> {
+        match self.error.borrow_mut().take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+}
+
+/// A normalized diagram identifier whose output occurrences are admitted before they are written.
+///
+/// The raw string is available only for semantic inputs such as deterministic seeds and ownership
+/// checks. SVG, CSS, URL, ARIA, and marker output must format this value so the operation observes
+/// the cumulative identifier contribution before caller-controlled fanout can grow the document.
+#[derive(Clone, Copy)]
+pub(super) struct SvgDiagramId<'a> {
+    value: &'a str,
+    projection: &'a SvgDiagramIdProjection<'a>,
+}
+
+impl<'a> SvgDiagramId<'a> {
+    pub(super) fn semantic_str(self) -> &'a str {
+        self.value
+    }
+}
+
+impl std::fmt::Debug for SvgDiagramId<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("SvgDiagramId")
+            .field(&self.value)
+            .finish()
+    }
+}
+
+impl std::fmt::Display for SvgDiagramId<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.projection.write(self.value, formatter)
+    }
+}
+
+pub(super) trait SvgDiagramIdValue: Copy + std::fmt::Display {
+    fn semantic_value(&self) -> &str;
+}
+
+impl SvgDiagramIdValue for SvgDiagramId<'_> {
+    fn semantic_value(&self) -> &str {
+        self.value
+    }
+}
+
+impl SvgDiagramIdValue for &str {
+    fn semantic_value(&self) -> &str {
+        self
+    }
+}
+
+#[derive(Default)]
+struct SvgComponentByteCounter {
+    bytes: usize,
+    overflowed: bool,
+}
+
+impl std::fmt::Write for SvgComponentByteCounter {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        let Some(bytes) = self.bytes.checked_add(value.len()) else {
+            self.overflowed = true;
+            return Err(std::fmt::Error);
+        };
+        self.bytes = bytes;
+        Ok(())
     }
 }
 
@@ -315,6 +630,7 @@ pub(crate) struct SvgExecution<'a> {
     request: &'a SvgRenderOptions,
     family: FamilyExecutionView<'a>,
     text_measurer: RoutedTextMeasurer<'a>,
+    diagram_id_projection: SvgDiagramIdProjection<'a>,
     timing: timing::RenderTiming,
     pub(crate) debug: &'a SvgDebugOptions,
 }
@@ -374,7 +690,13 @@ impl<'a> SvgExecution<'a> {
         let execution = Self {
             request,
             family,
-            text_measurer: session.text_measurer(TextMeasurementPhase::SvgBBox),
+            text_measurer: session
+                .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit),
+            diagram_id_projection: SvgDiagramIdProjection {
+                work_meter: session.work_meter().as_ref(),
+                projected_bytes: std::cell::Cell::new(0),
+                error: std::cell::RefCell::new(None),
+            },
             timing,
             debug,
         };
@@ -395,6 +717,24 @@ impl<'a> SvgExecution<'a> {
         )
     }
 
+    pub(super) fn diagram_id_or<'execution>(
+        &'execution self,
+        fallback: &'static str,
+    ) -> SvgDiagramId<'execution> {
+        SvgDiagramId {
+            value: self.request.diagram_id.as_deref().unwrap_or(fallback),
+            projection: &self.diagram_id_projection,
+        }
+    }
+
+    pub(super) fn has_explicit_diagram_id(&self) -> bool {
+        self.request.diagram_id.is_some()
+    }
+
+    fn finish_diagram_id_projection(&self) -> Result<()> {
+        self.diagram_id_projection.finish()
+    }
+
     pub(crate) fn text_measurer(&self) -> &dyn TextMeasurer {
         &self.text_measurer
     }
@@ -412,7 +752,9 @@ impl<'a> SvgExecution<'a> {
     }
 
     pub(crate) fn text_measurer_for(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {
-        self.family.session().text_measurer(phase)
+        self.family
+            .session()
+            .controlled_text_measurer(phase, OperationPhase::Emit)
     }
 
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
@@ -463,6 +805,85 @@ impl<'a> SvgExecution<'a> {
     pub(crate) fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
         self.family.session().resource_policy()
     }
+
+    /// Replays a terminal observed while an SVG ID was being projected.
+    ///
+    /// Family emitters call this at bounded loop boundaries so an early SVG-byte rejection or
+    /// cancellation stops the tail of a high-fanout render instead of waiting for finalization.
+    pub(crate) fn checkpoint_emit(&self) -> Result<()> {
+        self.work_meter()
+            .checkpoint(OperationPhase::Emit)
+            .map_err(Into::into)
+    }
+
+    /// Counts a retained SVG component through its production writer, admits the exact byte count,
+    /// and only then allocates and materializes it.
+    ///
+    /// The counting pass owns no output buffer, so authored/config-sized content is not cloned just
+    /// to establish the bound. The final whole-document check remains the authoritative
+    /// `MaxSvgBytes` admission; this earlier absolute preflight prevents one amplified component
+    /// from allocating beyond the same ceiling and is not accumulated a second time.
+    fn materialize_counted_svg_component(
+        &self,
+        component_name: &'static str,
+        count_component: impl Fn(&mut dyn std::fmt::Write) -> std::fmt::Result,
+        write_component: impl Fn(&mut dyn std::fmt::Write) -> std::fmt::Result,
+    ) -> Result<String> {
+        if self
+            .work_meter()
+            .policy()
+            .value(crate::resources::ResourceLimitId::MaxSvgBytes)
+            .is_none()
+        {
+            let mut output = String::new();
+            write_component(&mut output).map_err(|_| Error::InvalidModel {
+                message: format!("failed to materialize {component_name}"),
+            })?;
+            return Ok(output);
+        }
+
+        let mut counter = SvgComponentByteCounter::default();
+        let projection = count_component(&mut counter);
+        if counter.overflowed {
+            return Err(self
+                .work_meter()
+                .terminate_svg_byte_count_overflow(
+                    crate::resources::ResourceLimitPhase::SvgOutput,
+                    OperationPhase::Emit,
+                )
+                .into());
+        }
+        projection.map_err(|_| Error::InvalidModel {
+            message: format!("failed to count {component_name}"),
+        })?;
+        let projected_bytes = counter.bytes;
+        self.work_meter()
+            .preflight_svg_byte_count(
+                projected_bytes,
+                crate::resources::ResourceLimitPhase::SvgOutput,
+                OperationPhase::Emit,
+            )
+            .map_err(Error::from)?;
+
+        let mut output = String::new();
+        output
+            .try_reserve_exact(projected_bytes)
+            .map_err(|error| Error::InvalidModel {
+                message: format!("failed to allocate {component_name}: {error}"),
+            })?;
+        write_component(&mut output).map_err(|_| Error::InvalidModel {
+            message: format!("failed to materialize {component_name}"),
+        })?;
+        if output.len() != projected_bytes {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "{component_name} byte projection drifted: projected {projected_bytes} bytes but materialized {}",
+                    output.len()
+                ),
+            });
+        }
+        Ok(output)
+    }
 }
 
 impl std::ops::Deref for SvgExecution<'_> {
@@ -496,7 +917,9 @@ pub(crate) fn render_builtin_family_artifact(
     debug: &SvgDebugOptions,
 ) -> Result<RootThemeAppliedSvg> {
     let execution = SvgExecution::new(options, debug, family_execution)?;
-    let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution)?;
+    let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution);
+    execution.finish_diagram_id_projection()?;
+    let rooted_svg = rooted_svg?;
     let (rooted_svg, root_theme) =
         rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
@@ -535,7 +958,9 @@ pub(crate) fn render_architecture_family_artifact(
         effective_config,
         artifact.group_theme(),
         &execution,
-    )?;
+    );
+    execution.finish_diagram_id_projection()?;
+    let rooted_svg = rooted_svg?;
     let (rooted_svg, root_theme) =
         rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
@@ -846,7 +1271,10 @@ fn apply_theme_css(
     };
 
     session.use_trusted_theme_lane(crate::diagram_theme::TrustedThemeLane::RawThemeCss)?;
-    let metadata = SvgPostprocessMetadata::from_svg(&svg);
+    let metadata = SvgPostprocessMetadata::from_svg_with_execution(
+        &svg,
+        SvgPostprocessExecution::new(session),
+    )?;
     let pipeline = SvgPipeline::parity()
         .with_postprocessor(ScopedCssPostprocessor::new(theme_css).with_existing_style_merge());
     pipeline
@@ -961,5 +1389,213 @@ mod operation_time_tests {
                 .math_random()
                 .initial_seed()
         );
+    }
+}
+
+#[cfg(test)]
+mod diagram_id_projection_tests {
+    use super::*;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+
+    fn bounded_execution(maximum: usize) -> (RenderSession, SvgDebugOptions) {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
+            .expect("valid SVG byte ceiling");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+        let debug = SvgDebugOptions::default();
+        (session, debug)
+    }
+
+    #[test]
+    fn controlled_diagram_id_normalization_matches_the_public_sanitizer() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin render session");
+        for raw in [
+            "",
+            "   ",
+            "diagram",
+            "1diagram",
+            "--",
+            "a.b:c",
+            "éclair",
+            "  a---b  ",
+            "m",
+            "\u{2003}a:b\u{2003}",
+        ] {
+            let request = SvgRenderOptions {
+                diagram_id: Some(raw.to_string()),
+                ..SvgRenderOptions::default()
+            };
+            let normalized = normalize_svg_render_options(&request, &session)
+                .expect("controlled normalization succeeds");
+            assert_eq!(
+                normalized.diagram_id.as_deref(),
+                Some(sanitize_svg_id(raw).as_str()),
+                "raw diagram id {raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn controlled_diagram_id_session_rejects_preexisting_cancellation() {
+        let control = merman_core::OperationControl::new();
+        control.cancel();
+        let error = match crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(control)
+        {
+            Err(error) => error,
+            Ok(_) => panic!("pre-cancelled render session must fail closed"),
+        };
+        assert!(matches!(
+            error,
+            crate::environment::RenderEnvironmentError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+        ));
+    }
+
+    #[test]
+    fn diagram_id_occurrences_enforce_exact_n_and_n_minus_one() {
+        let request = SvgRenderOptions {
+            diagram_id: Some("abc".to_string()),
+            ..SvgRenderOptions::default()
+        };
+
+        let (session, debug) = bounded_execution(6);
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
+        let diagram_id = execution.diagram_id_or("fallback");
+        assert_eq!(format!("{diagram_id}{diagram_id}"), "abcabc");
+        execution
+            .finish_diagram_id_projection()
+            .expect("exact diagram-id contribution is admitted");
+
+        let (session, debug) = bounded_execution(5);
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
+        let diagram_id = execution.diagram_id_or("fallback");
+        assert_eq!(format!("{diagram_id}"), "abc");
+        assert_eq!(format!("{diagram_id}"), "");
+        let error = execution
+            .finish_diagram_id_projection()
+            .expect_err("N-1 must reject the second occurrence");
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte resource rejection");
+        };
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.actual, 6);
+        assert_eq!(details.max, 5);
+        assert_eq!(
+            details.phase,
+            crate::resources::ResourceLimitPhase::SvgOutput
+        );
+    }
+
+    #[test]
+    fn diagram_id_projection_terminal_is_replayed_at_emit_boundaries() {
+        let request = SvgRenderOptions {
+            diagram_id: Some("abc".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let (session, debug) = bounded_execution(2);
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
+        let diagram_id = execution.diagram_id_or("fallback");
+        assert_eq!(format!("{diagram_id}"), "");
+
+        let error = execution
+            .checkpoint_emit()
+            .expect_err("a failed ID projection must stop the next emit boundary");
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte resource rejection");
+        };
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.actual, 3);
+        assert_eq!(details.max, 2);
+        assert_eq!(
+            details.phase,
+            crate::resources::ResourceLimitPhase::SvgOutput
+        );
+    }
+
+    #[test]
+    fn reusable_scoped_id_adapter_projects_each_output_occurrence() {
+        let request = SvgRenderOptions {
+            diagram_id: Some("abc".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let (session, debug) = bounded_execution(5);
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
+        let marker_url = scoped_svg_url(execution.diagram_id_or("fallback"), "arrowhead");
+
+        assert_eq!(format!("{marker_url}"), "url(#abc-arrowhead)");
+        assert_eq!(format!("{marker_url}"), "url(#-arrowhead)");
+        let error = execution
+            .finish_diagram_id_projection()
+            .expect_err("reusing a derived ID must charge the diagram ID again");
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte resource rejection");
+        };
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.actual, 6);
+        assert_eq!(details.max, 5);
+    }
+
+    #[test]
+    fn repeated_drop_shadow_references_project_each_diagram_id_occurrence() {
+        let request = SvgRenderOptions {
+            diagram_id: Some("abc".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let (session, debug) = bounded_execution(5);
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
+        let drop_shadow = scoped_drop_shadow(
+            execution.diagram_id_or("fallback"),
+            "url(#drop-shadow) url(#drop-shadow)",
+        );
+
+        assert_eq!(
+            format!("{drop_shadow}"),
+            "url(#abc-drop-shadow) url(#-drop-shadow)"
+        );
+        let error = execution
+            .finish_diagram_id_projection()
+            .expect_err("N-1 must reject the repeated themed URL reference");
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte resource rejection");
+        };
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.actual, 6);
+        assert_eq!(details.max, 5);
     }
 }

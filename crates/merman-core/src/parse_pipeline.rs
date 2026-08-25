@@ -129,8 +129,6 @@ impl<'a> EditorParseSourceMap<'a> {
             remapped_symbols.push(symbol);
         }
         facts.symbols = remapped_symbols;
-        let dropped_lexemes =
-            facts.remap_lexemes_controlled(|span| self.try_remap_source_span(span), control)?;
 
         let mut dropped_diagnostic_spans = 0usize;
         for (index, diagnostic) in facts.diagnostics.iter_mut().enumerate() {
@@ -160,8 +158,7 @@ impl<'a> EditorParseSourceMap<'a> {
 
         let dropped_symbols = original_symbol_count - facts.symbols.len();
         let dropped_expected = original_expected_count - facts.expected_syntax.len();
-        let dropped_spans =
-            dropped_symbols + dropped_lexemes + dropped_expected + dropped_diagnostic_spans;
+        let dropped_spans = dropped_symbols + dropped_expected + dropped_diagnostic_spans;
         if dropped_spans > 0 {
             facts.mark_recovered_with_diagnostic(
                 format!(
@@ -603,8 +600,10 @@ impl<'a> ParsePipeline<'a> {
                 source_map.parser_input(),
                 &meta,
                 &control,
-            )?;
+            );
             let parse = parse_start.map(runtime::OperationTimer::elapsed);
+            operation.checkpoint_at(OperationPhase::Semantic)?;
+            let parsed = parsed?;
             let mut output = match parsed {
                 Ok(output) => output,
                 Err(error) => {
@@ -617,7 +616,6 @@ impl<'a> ParsePipeline<'a> {
                     ))));
                 }
             };
-            operation.checkpoint_at(OperationPhase::Semantic)?;
             let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
             output
                 .model_mut()
@@ -652,11 +650,8 @@ impl<'a> ParsePipeline<'a> {
     ) -> OperationControlResult<EditorSemanticFacts> {
         let family_directive_prefixes = std::mem::take(&mut facts.directive_prefixes);
         source_map.remap_facts(&mut facts, control)?;
-        let family = family::diagram_type_family_id(&meta.diagram_type)
-            .expect("built-in combined semantic facts belong to a catalog family");
         facts.family_semantics = family::diagram_type_editor_semantics(&meta.diagram_type)
             .expect("built-in combined semantic facts have typed editor family semantics");
-        facts.finalize_lexemes_controlled(family, source_map.source.global_lexemes(), control)?;
         for expected in source_map.source.global_expected_syntax().chunks(128) {
             control.checkpoint()?;
             facts.expected_syntax.extend_from_slice(expected);
@@ -895,7 +890,9 @@ impl<'a> ParsePipeline<'a> {
             .resolve(&meta.diagram_type);
 
         if let Some(ResolvedRenderParser::Custom(parser)) = render {
-            return Ok(parser(code, meta, control)?
+            let parsed = parser(code, meta, control);
+            control.checkpoint()?;
+            return Ok(parsed?
                 .map(RenderSemanticModel::CustomJson)
                 .map(RenderSemanticParseOutput::new));
         }
@@ -918,7 +915,9 @@ impl<'a> ParsePipeline<'a> {
         }
 
         if let Some(ResolvedRenderParser::BuiltIn(parser)) = render {
-            return parser(code, meta, control);
+            let parsed = parser(code, meta, control);
+            control.checkpoint()?;
+            return parsed;
         }
 
         if let Some(ResolvedSemanticParser::BuiltIn(_)) = semantic {
@@ -1427,12 +1426,15 @@ fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Opt
 #[cfg(test)]
 mod editor_parse_source_map_tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    use std::time::Duration;
 
-    use super::{EditorParseSourceMap, ParsePipeline, PreprocessPath};
+    use super::{CustomJsonRenderModel, EditorParseSourceMap, ParsePipeline, PreprocessPath};
     use crate::{
-        DetectorRegistry, DiagramSnapshotCapture, EditorExpectedSyntax, EditorExpectedSyntaxKind,
-        EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Engine, Error,
-        MermaidConfig, OperationCancelled, OperationControl, ParseOptions, SourceSpan,
+        CancelReason, DetectorRegistry, DiagramSnapshotCapture, EditorExpectedSyntax,
+        EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol,
+        Engine, Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult,
+        OperationPhase, ParseMetadata, ParseOptions, Result, SourceSpan,
     };
 
     fn panicking_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
@@ -1446,6 +1448,34 @@ mod editor_parse_source_map_tests {
         panic!("frontmatter probe detector must not run")
     }
 
+    fn cancelling_render_parser(
+        _code: &str,
+        meta: &ParseMetadata,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
+        control.cancel();
+        Ok(Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "custom parser failed after requesting cancellation",
+        )))
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    fn expiring_render_parser(
+        _code: &str,
+        meta: &ParseMetadata,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
+        assert!(
+            control.set_deadline(Duration::ZERO),
+            "deadline fixture must install a fresh deadline"
+        );
+        Ok(Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "custom parser failed after expiring its deadline",
+        )))
+    }
+
     #[test]
     fn controlled_snapshot_stops_before_a_cancelled_operation() {
         let control = OperationControl::new();
@@ -1455,6 +1485,49 @@ mod editor_parse_source_map_tests {
             Engine::new().parse_diagram_snapshot_controlled_sync("flowchart TD\nA-->B\n", &control);
 
         assert!(matches!(result, Err(OperationCancelled { .. })));
+    }
+
+    #[test]
+    fn custom_render_parse_error_cannot_mask_callback_cancellation() {
+        let mut engine = Engine::new();
+        engine
+            .render_diagram_registry_mut()
+            .insert("flowchart-v2", cancelling_render_parser);
+        let control = OperationControl::new();
+
+        let error = engine
+            .parse_diagram_for_render_model_with_type_controlled_sync(
+                "flowchart-v2",
+                "flowchart TD\nA -->\n",
+                ParseOptions::lenient(),
+                &control,
+            )
+            .expect_err("callback cancellation must win over a suppressible parse error");
+
+        assert_eq!(error.phase, OperationPhase::Parse);
+        assert_eq!(error.reason, CancelReason::Requested);
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[test]
+    fn custom_render_parse_error_cannot_mask_callback_deadline() {
+        let mut engine = Engine::new();
+        engine
+            .render_diagram_registry_mut()
+            .insert("flowchart-v2", expiring_render_parser);
+        let control = OperationControl::new();
+
+        let error = engine
+            .parse_diagram_for_render_model_with_type_controlled_sync(
+                "flowchart-v2",
+                "flowchart TD\nA -->\n",
+                ParseOptions::lenient(),
+                &control,
+            )
+            .expect_err("callback deadline must win over a suppressible parse error");
+
+        assert_eq!(error.phase, OperationPhase::Parse);
+        assert_eq!(error.reason, CancelReason::DeadlineExceeded);
     }
 
     #[test]

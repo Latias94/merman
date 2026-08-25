@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:532cdf1f02060f29eeff2d988fdc1bd7eda0c6e0eddea3ba8e6588b21ce0c548"
+    "digest": "sha256:05636a35bffb668c46ff20910cfc4044874d9d4b94372cac69074ac7fb3b2e08"
   },
   "profiles": [
     {
@@ -145,7 +145,7 @@
         "features": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
           "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
-          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
         "target": {
@@ -166,13 +166,13 @@
         "capabilities": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
           "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
-          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
         "runtime_ids": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
           "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
-          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]

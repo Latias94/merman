@@ -40,7 +40,7 @@ fn write_packet_css(
         title_role.css_selector(),
         title_fill,
         style.title_font_size,
-        id,
+        diagram_id,
         style.block_stroke_color,
         style.block_stroke_width,
         style.block_fill_color
@@ -69,8 +69,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("merman");
     let title_from_semantic = model
         .title
         .as_deref()
@@ -150,7 +149,7 @@ pub(crate) fn render_packet_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(t)
         );
         out.checkpoint()?;
@@ -159,7 +158,7 @@ pub(crate) fn render_packet_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(d)
         );
         out.checkpoint()?;
@@ -168,7 +167,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     out.push_str("<style>");
     write_packet_css(
         &mut out,
-        diagram_id,
+        diagram_id.semantic_str(),
         effective_config,
         typography_theme,
         &mut surface_receipt,

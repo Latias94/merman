@@ -102,7 +102,11 @@ function claimDirectoryLock(lockDirectory, { processId }) {
       { flag: "wx" },
     );
   } catch (error) {
-    rmSync(lockDirectory, { recursive: true, force: true });
+    try {
+      retireLockDirectory(lockDirectory);
+    } catch {
+      // Preserve the claim failure; the canonical path has already been retired when rename won.
+    }
     throw error;
   }
 
@@ -131,14 +135,7 @@ function recoverStaleLock(lockDirectory, { now, processAlive }) {
     return false;
   }
 
-  const quarantine = `${lockDirectory}.quarantine-${randomUUID()}`;
-  try {
-    renameSync(lockDirectory, quarantine);
-  } catch (error) {
-    if (isMissing(error)) return true;
-    throw error;
-  }
-  rmSync(quarantine, { recursive: true });
+  retireLockDirectory(lockDirectory);
   return true;
 }
 
@@ -147,11 +144,25 @@ function releaseDirectoryLock(lockDirectory, token) {
   if (!owner || owner.token !== token) throw ownershipChanged(lockDirectory);
 
   try {
-    rmSync(lockDirectory, { recursive: true });
+    if (!retireLockDirectory(lockDirectory)) throw ownershipChanged(lockDirectory);
   } catch (error) {
     if (isMissing(error)) throw ownershipChanged(lockDirectory);
     throw error;
   }
+}
+
+function retireLockDirectory(lockDirectory) {
+  // Keep recursive deletion away from the canonical lock path. Windows can otherwise expose the
+  // directory after owner.json is gone but before the directory itself finishes deleting.
+  const quarantine = `${lockDirectory}.quarantine-${randomUUID()}`;
+  try {
+    renameSync(lockDirectory, quarantine);
+  } catch (error) {
+    if (isMissing(error)) return false;
+    throw error;
+  }
+  rmSync(quarantine, { recursive: true });
+  return true;
 }
 
 function readLockOwner(lockDirectory) {

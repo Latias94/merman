@@ -1,0 +1,197 @@
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  CUSTOMER ||--o{ ADDRESS : uses
+  CUSTOMER ||--o{ PAYMENT_METHOD : owns
+  CUSTOMER ||--o{ SUPPORT_TICKET : opens
+  CUSTOMER ||--o{ REVIEW : writes
+  CUSTOMER ||--o{ CUSTOMER : refers
+
+  ORDER ||--|{ ORDER_ITEM : contains
+  ORDER ||--o{ PAYMENT : requests
+  ORDER ||--o{ SHIPMENT : fulfills
+  ORDER ||--o| INVOICE : bills
+  ORDER ||--o{ ORDER_EVENT : records
+  ORDER }o--o| COUPON : applies
+
+  ORDER_ITEM }o--|| PRODUCT : references
+  ORDER_ITEM }o--o| WAREHOUSE : allocated_from
+  PRODUCT }o--|| CATEGORY : classified_as
+  PRODUCT }o--o{ SUPPLIER : supplied_by
+  PRODUCT ||--o{ INVENTORY_ITEM : stocked_as
+  PRODUCT ||--o{ REVIEW : receives
+
+  INVENTORY_ITEM }o--|| WAREHOUSE : stored_in
+  INVENTORY_ITEM ||--o{ RESERVATION : holds
+  RESERVATION }o--|| ORDER_ITEM : reserves
+
+  PAYMENT }o--|| PAYMENT_METHOD : uses
+  PAYMENT ||--o{ REFUND : reverses
+  PAYMENT ||--o{ PAYMENT_EVENT : records
+  INVOICE ||--|{ INVOICE_LINE : contains
+  INVOICE_LINE }o--|| ORDER_ITEM : charges_for
+
+  SHIPMENT ||--|{ PACKAGE : contains
+  SHIPMENT }o--|| ADDRESS : delivered_to
+  SHIPMENT }o--|| CARRIER : handled_by
+  SHIPMENT ||--o{ TRACKING_EVENT : emits
+  WAREHOUSE ||--o{ SHIPMENT : dispatches
+
+  SUPPORT_TICKET ||--o{ TICKET_MESSAGE : contains
+  SUPPORT_TICKET }o--o| ORDER : concerns
+  TICKET_MESSAGE }o--|| CUSTOMER : authored_by
+
+  CUSTOMER {
+    string id PK
+    string email UK
+    string display_name
+    datetime created_at
+  }
+  ADDRESS {
+    string id PK
+    string line1
+    string city
+    string country_code
+  }
+  PAYMENT_METHOD {
+    string id PK
+    string provider
+    string token UK
+    datetime expires_at
+  }
+  ORDER {
+    string id PK
+    string customer_id FK
+    string status
+    datetime ordered_at
+  }
+  ORDER_ITEM {
+    string id PK
+    string order_id FK
+    string product_sku FK
+    int quantity
+    decimal unit_price
+  }
+  ORDER_EVENT {
+    string id PK
+    string order_id FK
+    string event_type
+    datetime occurred_at
+  }
+  COUPON {
+    string code PK
+    decimal discount
+    datetime valid_until
+    bool active
+  }
+  PRODUCT {
+    string sku PK
+    string category_id FK
+    string name
+    decimal price
+  }
+  CATEGORY {
+    string id PK
+    string parent_id FK
+    string label
+    int sort_order
+  }
+  SUPPLIER {
+    string id PK
+    string name
+    string region
+    string contact_email
+  }
+  INVENTORY_ITEM {
+    string id PK
+    string product_sku FK
+    string warehouse_id FK
+    int available
+    int reserved
+  }
+  RESERVATION {
+    string id PK
+    string inventory_item_id FK
+    string order_item_id FK
+    int quantity
+  }
+  WAREHOUSE {
+    string id PK
+    string code UK
+    string region
+    int capacity
+  }
+  PAYMENT {
+    string id PK
+    string order_id FK
+    string status
+    decimal amount
+    datetime captured_at
+  }
+  PAYMENT_EVENT {
+    string id PK
+    string payment_id FK
+    string event_type
+    datetime occurred_at
+  }
+  REFUND {
+    string id PK
+    string payment_id FK
+    decimal amount
+    string reason
+  }
+  INVOICE {
+    string id PK
+    string order_id FK
+    string number UK
+    decimal total
+  }
+  INVOICE_LINE {
+    string id PK
+    string invoice_id FK
+    string order_item_id FK
+    decimal amount
+  }
+  SHIPMENT {
+    string id PK
+    string order_id FK
+    string carrier_id FK
+    string status
+  }
+  PACKAGE {
+    string id PK
+    string shipment_id FK
+    decimal weight
+    string dimensions
+  }
+  CARRIER {
+    string id PK
+    string code UK
+    string name
+    string service_level
+  }
+  TRACKING_EVENT {
+    string id PK
+    string shipment_id FK
+    string status
+    datetime occurred_at
+  }
+  SUPPORT_TICKET {
+    string id PK
+    string customer_id FK
+    string order_id FK
+    string status
+  }
+  TICKET_MESSAGE {
+    string id PK
+    string ticket_id FK
+    string author_id FK
+    string body
+    datetime created_at
+  }
+  REVIEW {
+    string id PK
+    string customer_id FK
+    string product_sku FK
+    int rating
+    string body
+  }

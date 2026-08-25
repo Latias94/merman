@@ -244,12 +244,8 @@ fn mindmap_data_look_attr(look: &str) -> String {
     }
 }
 
-fn mindmap_dom_id(diagram_id: &str, raw_id: &str) -> String {
-    if diagram_id.is_empty() {
-        raw_id.to_string()
-    } else {
-        format!("{diagram_id}-{raw_id}")
-    }
+fn mindmap_dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
+    format!("{diagram_id}-{raw_id}")
 }
 
 fn mindmap_wrap_section_index(index: i64) -> i64 {
@@ -303,7 +299,7 @@ fn mindmap_gradient_defs(
 
     format!(
         r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
-        escape_xml(diagram_id),
+        diagram_id,
         escape_xml(&gradient_start),
         escape_xml(&gradient_stop)
     )
@@ -320,14 +316,10 @@ fn push_mindmap_shadow_defs(
         .filter(|theme| theme.contains("dark"))
         .map(|_| "#FFFFFF")
         .unwrap_or("#000000");
-    let diagram_id = escape_xml(diagram_id);
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id.as_str(),
-        flood_color,
-        diagram_id.as_str(),
-        flood_color
+        diagram_id, flood_color, diagram_id, flood_color
     );
     out.checkpoint()
 }
@@ -349,7 +341,7 @@ fn mindmap_css(
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
 
-    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
 
     // Mermaid default theme resolves `cScale0..11` into this palette for mindmap/kanban/timeline.
     // The first generated section is `section--1` (i=0).
@@ -442,53 +434,63 @@ fn mindmap_css(
         let _ = write!(
             &mut out,
             r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} polygon,#{} .section-{} path{{fill:{};}}"#,
-            id, section, id, section, id, section, id, section, id, section, c_scale
+            diagram_id,
+            section,
+            diagram_id,
+            section,
+            diagram_id,
+            section,
+            diagram_id,
+            section,
+            diagram_id,
+            section,
+            c_scale
         );
         let _ = write!(
             &mut out,
             r#"#{} .section-{} text{{fill:{};}}"#,
-            id, section, c_scale_label
+            diagram_id, section, c_scale_label
         );
         let _ = write!(
             &mut out,
             r#"#{} .section-{} span{{color:{};}}"#,
-            id, section, c_scale_label
+            diagram_id, section, c_scale_label
         );
         let _ = write!(
             &mut out,
             r#"#{} .node-icon-{}{{font-size:40px;color:{};}}"#,
-            id, section, c_scale_label
+            diagram_id, section, c_scale_label
         );
         let _ = write!(
             &mut out,
             r#"#{} .section-edge-{}{{stroke:{};}}"#,
-            id, section, c_scale
+            diagram_id, section, c_scale
         );
         let _ = write!(
             &mut out,
             r#"#{} .edge-depth-{}{{stroke-width:{};}}"#,
-            id, section, sw
+            diagram_id, section, sw
         );
         let _ = write!(
             &mut out,
             r#"#{} .section-{} line{{stroke:{};stroke-width:3;}}"#,
-            id, section, c_scale_inv
+            diagram_id, section, c_scale_inv
         );
         let _ = write!(
             &mut out,
             r#"#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:lightgray;}}#{} .disabled text{{fill:#efefef;}}"#,
-            id, id, id, id
+            diagram_id, diagram_id, diagram_id, diagram_id
         );
         let _ = write!(
             &mut out,
             r#"#{} [data-look="neo"].mindmap-node.section-{} rect,#{} [data-look="neo"].mindmap-node.section-{} path,#{} [data-look="neo"].mindmap-node.section-{} circle,#{} [data-look="neo"].mindmap-node.section-{} polygon{{fill:{};stroke:{};stroke-width:{}px;}}"#,
-            id,
+            diagram_id,
             section,
-            id,
+            diagram_id,
             section,
-            id,
+            diagram_id,
             section,
-            id,
+            diagram_id,
             section,
             neo_node_fill,
             neo_node_stroke,
@@ -497,12 +499,12 @@ fn mindmap_css(
         let _ = write!(
             &mut out,
             r#"#{} [data-look="neo"].section-edge-{}{{stroke:{};}}"#,
-            id, section, neo_edge_stroke
+            diagram_id, section, neo_edge_stroke
         );
         let _ = write!(
             &mut out,
             r#"#{} [data-look="neo"].mindmap-node.section-{} text{{fill:{};}}"#,
-            id, section, neo_text_label
+            diagram_id, section, neo_text_label
         );
     }
 
@@ -515,33 +517,33 @@ fn mindmap_css(
     let _ = write!(
         &mut out,
         r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle,#{} .section-root polygon{{fill:{};}}"#,
-        id, id, id, id, root_fill
+        diagram_id, diagram_id, diagram_id, diagram_id, root_fill
     );
     let _ = write!(
         &mut out,
         r#"#{} .section-root text{{fill:{};}}"#,
-        id, root_label
+        diagram_id, root_label
     );
     let _ = write!(
         &mut out,
         r#"#{} .section-root span{{color:{};}}"#,
-        id, root_span
+        diagram_id, root_span
     );
     let _ = write!(
         &mut out,
         r#"#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}"#,
-        id
+        diagram_id
     );
-    let _ = write!(&mut out, r#"#{} .edge{{fill:none;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .edge{{fill:none;}}"#, diagram_id);
     let _ = write!(
         &mut out,
         r#"#{} .mindmap-node-label{{dy:1em;alignment-baseline:middle;text-anchor:middle;dominant-baseline:middle;text-align:center;}}"#,
-        id
+        diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} [data-look="neo"].mindmap-node{{filter:{scoped_drop_shadow};}}"#,
-        id
+        diagram_id
     );
     let neo_root_fill = if theme.contains("redux") {
         main_bkg.as_str()
@@ -561,12 +563,12 @@ fn mindmap_css(
     let _ = write!(
         &mut out,
         r#"#{} [data-look="neo"].mindmap-node.section-root rect,#{} [data-look="neo"].mindmap-node.section-root path,#{} [data-look="neo"].mindmap-node.section-root circle,#{} [data-look="neo"].mindmap-node.section-root polygon{{fill:{};}}"#,
-        id, id, id, id, neo_root_fill
+        diagram_id, diagram_id, diagram_id, diagram_id, neo_root_fill
     );
     let _ = write!(
         &mut out,
         r#"#{} [data-look="neo"].mindmap-node.section-root .text-inner-tspan{{fill:{};}}"#,
-        id, neo_root_text
+        diagram_id, neo_root_text
     );
     if use_gradient {
         for i in 0..theme_color_limit {
@@ -579,7 +581,7 @@ fn mindmap_css(
             let _ = write!(
                 &mut out,
                 r#"#{} .section-{} line{{stroke-width:0;}}"#,
-                id, section
+                diagram_id, section
             );
         }
     }
@@ -748,8 +750,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("mindmap");
     let math_renderer = options.math_renderer();
 
     let mut node_by_id: std::collections::BTreeMap<String, &crate::model::LayoutNode> =
@@ -827,7 +828,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         }
     };
     let css = mindmap_css(
-        diagram_id,
+        diagram_id.semantic_str(),
         config,
         node_palette,
         theme_color_limit,
@@ -836,7 +837,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let _ = write!(&mut out, "<style>{}</style>", css);
     drop(css);
     out.push_str(&mindmap_gradient_defs(
-        diagram_id,
+        diagram_id.semantic_str(),
         config.as_value(),
         use_gradient,
     ));
@@ -846,22 +847,22 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let _ = write!(
         &mut out,
         r#"<marker id="{id}_mindmap-pointEnd" class="marker mindmap" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        id = diagram_id_esc
+        id = diagram_id
     );
     let _ = write!(
         &mut out,
         r#"<marker id="{id}_mindmap-pointStart" class="marker mindmap" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        id = diagram_id_esc
+        id = diagram_id
     );
     let _ = write!(
         &mut out,
         r#"<marker id="{id}_mindmap-pointEnd-margin" class="marker mindmap" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
-        id = diagram_id_esc
+        id = diagram_id
     );
     let _ = write!(
         &mut out,
         r#"<marker id="{id}_mindmap-pointStart-margin" class="marker mindmap" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
-        id = diagram_id_esc
+        id = diagram_id
     );
     out.checkpoint()?;
 
@@ -1065,9 +1066,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 let _ = write!(
                     &mut out,
                     r#"<path id="{id}" class="node-bkg node-0" style="" d="{d}"/>"#,
-                    id = escape_xml(&node_dom_id),
+                    id = escape_xml(&mindmap_dom_id(diagram_id, &n.dom_id)),
                     d = escape_attr(&rect_path),
                 );
+                options.checkpoint_emit()?;
                 let _ = write!(
                     &mut out,
                     r#"<line class="node-line-" x1="{x1}" y1="{y}" x2="{x2}" y2="{y}"/>"#,
@@ -1312,7 +1314,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     out.push_str("</g>");
 
     out.push_str("</g>");
-    push_mindmap_shadow_defs(&mut out, diagram_id, config.as_value())?;
+    push_mindmap_shadow_defs(&mut out, diagram_id.semantic_str(), config.as_value())?;
     out.push_str("</svg>\n");
     out.checkpoint()?;
 

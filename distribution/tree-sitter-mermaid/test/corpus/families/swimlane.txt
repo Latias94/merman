@@ -1,0 +1,266 @@
+==================
+swimlane lanes chained edges and label modes
+==================
+
+swimlane-beta LR
+subgraph sales["Sales lane"]
+  lead["HTML <b>lead</b>"] --> quote["`Markdown **quote**`"]
+end
+subgraph delivery["Delivery lane"]
+  pack -->|ships| done((Done))
+end
+lead --> quote --> pack
+
+---
+
+(source_file
+  (swimlane_diagram
+    (swimlane_header
+      (diagram_keyword)
+      (direction))
+    (swimlane_body
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_subgraph
+            (swimlane_statement_keyword)
+            (swimlane_node_id)
+            (swimlane_square_label
+              (swimlane_shape_delimiter)
+              (swimlane_quoted_label)
+              (swimlane_shape_delimiter))
+            (swimlane_line_item
+              (swimlane_statement
+                (swimlane_edge_statement
+                  (swimlane_node
+                    (swimlane_vertex
+                      (swimlane_node_id)
+                      (swimlane_shape
+                        (swimlane_square_label
+                          (swimlane_shape_delimiter)
+                          (swimlane_quoted_label)
+                          (swimlane_shape_delimiter)))))
+                  (swimlane_edge
+                    (swimlane_arrow))
+                  (swimlane_node
+                    (swimlane_vertex
+                      (swimlane_node_id)
+                      (swimlane_shape
+                        (swimlane_square_label
+                          (swimlane_shape_delimiter)
+                          (swimlane_markdown_label)
+                          (swimlane_shape_delimiter))))))))
+            (swimlane_subgraph_end))))
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_subgraph
+            (swimlane_statement_keyword)
+            (swimlane_node_id)
+            (swimlane_square_label
+              (swimlane_shape_delimiter)
+              (swimlane_quoted_label)
+              (swimlane_shape_delimiter))
+            (swimlane_line_item
+              (swimlane_statement
+                (swimlane_edge_statement
+                  (swimlane_node
+                    (swimlane_vertex
+                      (swimlane_node_id)))
+                  (swimlane_edge
+                    (swimlane_arrow)
+                    (swimlane_edge_label
+                      (swimlane_edge_label_text)))
+                  (swimlane_node
+                    (swimlane_vertex
+                      (swimlane_node_id)
+                      (swimlane_shape
+                        (swimlane_circle_label
+                          (swimlane_shape_delimiter)
+                          (swimlane_round_label_text)
+                          (swimlane_shape_delimiter))))))))
+            (swimlane_subgraph_end))))
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_edge_statement
+            (swimlane_node
+              (swimlane_vertex
+                (swimlane_node_id)))
+            (swimlane_edge
+              (swimlane_arrow))
+            (swimlane_node
+              (swimlane_vertex
+                (swimlane_node_id)))
+            (swimlane_edge
+              (swimlane_arrow))
+            (swimlane_node
+              (swimlane_vertex
+                (swimlane_node_id)))))))))
+
+==================
+nested lanes styles classes and clicks
+==================
+
+swimlane-beta TB
+subgraph outer[Outer]
+  direction LR
+  subgraph inner[Inner]
+    A --> B
+  end
+end
+classDef active fill:#f96,stroke:#333,font-size:50%
+class A,B active
+style B fill:#fff
+click A callback "Open"
+
+---
+
+(source_file
+  (swimlane_diagram
+    (swimlane_header
+      (diagram_keyword)
+      (direction))
+    (swimlane_body
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_subgraph
+            (swimlane_statement_keyword)
+            (swimlane_node_id)
+            (swimlane_square_label
+              (swimlane_shape_delimiter)
+              (swimlane_square_label_text)
+              (swimlane_shape_delimiter))
+            (swimlane_line_item
+              (swimlane_statement
+                (swimlane_direction_statement
+                  (swimlane_statement_keyword)
+                  (swimlane_direction))))
+            (swimlane_line_item
+              (swimlane_statement
+                (swimlane_subgraph
+                  (swimlane_statement_keyword)
+                  (swimlane_node_id)
+                  (swimlane_square_label
+                    (swimlane_shape_delimiter)
+                    (swimlane_square_label_text)
+                    (swimlane_shape_delimiter))
+                  (swimlane_line_item
+                    (swimlane_statement
+                      (swimlane_edge_statement
+                        (swimlane_node
+                          (swimlane_vertex
+                            (swimlane_node_id)))
+                        (swimlane_edge
+                          (swimlane_arrow))
+                        (swimlane_node
+                          (swimlane_vertex
+                            (swimlane_node_id))))))
+                  (swimlane_subgraph_end))))
+            (swimlane_subgraph_end))))
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_class_definition_statement
+            (swimlane_statement_keyword)
+            (swimlane_identifier_list
+              (swimlane_reference))
+            (swimlane_style_list
+              (swimlane_style_item
+                (swimlane_style_declaration
+                  (swimlane_style_property)
+                  (swimlane_style_value)))
+              (swimlane_style_item
+                (swimlane_style_declaration
+                  (swimlane_style_property)
+                  (swimlane_style_value)))
+              (swimlane_style_item
+                (swimlane_style_declaration
+                  (swimlane_style_property)
+                  (swimlane_style_value)))))))
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_class_assignment_statement
+            (swimlane_statement_keyword)
+            (swimlane_identifier_list
+              (swimlane_reference)
+              (swimlane_reference))
+            (swimlane_class_name))))
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_style_statement
+            (swimlane_statement_keyword)
+            (swimlane_node_id)
+            (swimlane_style_list
+              (swimlane_style_item
+                (swimlane_style_declaration
+                  (swimlane_style_property)
+                  (swimlane_style_value)))))))
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_click_statement
+            (swimlane_statement_keyword)
+            (swimlane_node_id)
+            (swimlane_callback_action
+              (swimlane_callback_name))
+            (swimlane_quoted_label)))))))
+
+==================
+multiline continuation and malformed edge recovery
+==================
+
+swimlane-beta
+  start
+    --> finish
+  broken -->
+  left -. dotted .-> right
+
+---
+
+(source_file
+  (swimlane_diagram
+    (swimlane_header
+      (diagram_keyword))
+    (swimlane_body
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_edge_statement
+            (swimlane_node
+              (swimlane_vertex
+                (swimlane_node_id)))
+            (swimlane_edge
+              (swimlane_continued_arrow))
+            (swimlane_node
+              (swimlane_vertex
+                (swimlane_node_id))))))
+      (swimlane_line_item
+        (swimlane_incomplete_edge_statement
+          (swimlane_node
+            (swimlane_vertex
+              (swimlane_node_id)))
+          (swimlane_edge
+            (swimlane_arrow))))
+      (swimlane_line_item
+        (swimlane_statement
+          (swimlane_edge_statement
+            (swimlane_node
+              (swimlane_vertex
+                (swimlane_node_id)))
+            (swimlane_edge
+              (swimlane_arrow_start)
+              (swimlane_middle_edge_label
+                (swimlane_middle_edge_label_text
+                  (swimlane_middle_edge_label_fragment)))
+              (swimlane_arrow))
+            (swimlane_node
+              (swimlane_vertex
+                (swimlane_node_id)))))))))
+
+==================
+swimlane header at eof
+==================
+
+swimlane-beta
+
+---
+
+(source_file
+  (swimlane_diagram
+    (swimlane_header
+      (diagram_keyword))))

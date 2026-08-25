@@ -30,8 +30,9 @@ evidence, but they are not browser-visible evidence. Browser-visible claims requ
 Typical choices:
 
 - Use a default `SvgRequest` when the caller wants the closest Mermaid-compatible SVG string.
-- Set `SvgRequest.pipeline = Some(SvgPipeline::readable())` for browser previews that can keep
-  `<foreignObject>` but should also expose SVG text fallbacks.
+- Set `SvgRequest.pipeline = Some(SvgPipeline::readable())` only when the output deliberately needs
+  both native `<foreignObject>` labels and SVG text fallbacks. A browser host must select or hide
+  one representation or both may be visible.
 - Set `SvgRequest.pipeline = Some(SvgPipeline::resvg_safe())`, select a typed PNG/JPEG/PDF target,
   or use `SvgPipeline::process_resvg_compatible()` before calling low-level encoders.
 - Use `merman-cli render --svg-pipeline resvg-safe` when you want the CLI to write export-safe SVG
@@ -54,8 +55,23 @@ Typical choices:
 | Preset | Behavior |
 | --- | --- |
 | `SvgPipeline::parity()` | No post-processing. This preserves the exact SVG string produced by the parity renderer. |
-| `SvgPipeline::readable()` | Adds best-effort SVG `<text>` overlays for labels emitted via `<foreignObject>`. |
+| `SvgPipeline::readable()` | Adds best-effort SVG `<text>` overlays while retaining `<foreignObject>` labels. Consumers that render both representations may display duplicate text. |
 | `SvgPipeline::resvg_safe()` | Adds readable fallbacks, strips the original `<foreignObject>` elements, and removes common `usvg` / `resvg` hazards. Structural references are limited to same-document fragments; ordinary image resources require an approved inline PNG/JPEG/GIF/WebP data URL whose encoding is syntactically decodable; `feImage` accepts either form. `<a>` navigation links remain metadata outside the raster-resource contract. |
+
+### Fallback typography boundary
+
+The fallback stage resolves supported typography against the original SVG and XHTML source context
+before it removes `foreignObject`. It does not flatten stylesheet class tokens: selector ancestry,
+element type, attributes, cascade priority, and inheritance are retained for the admitted subset.
+The resolved font size, family, weight, style, fill, and line height are shared by text measurement,
+wrapping, placement, and generated `<text>` styling. This keeps a ClassDiagram label measured at
+16px from becoming a synthetic 10px label merely because an SVG-only `text` selector exists.
+
+This is a bounded consumer adapter, not a browser CSS engine. Rich-text runs, browser font shaping,
+and CSS features outside the admitted subset remain residuals. Hosts that need metric-affecting
+styles must inject them before the fallback stage (through the same `SvgPipeline`); styling added
+after generated text exists may change paint, but cannot make Merman remeasure wrapping or geometry.
+Stable `data-merman-foreignobject` markers and fallback classes remain available to host consumers.
 
 For Mermaid 11.16 Quadrant, parity output intentionally retains upstream's invalid
 `hsl(..., NaN%)` point presentation attributes. A browser ignores them and uses the SVG initial
@@ -231,11 +247,15 @@ let RenderOutput::Svg(Some(svg)) = output else {
 `ScopedCssPostprocessor` injects a `<style>` element under the root `<svg>` tag and prefixes normal
 selectors with the root SVG id. When the SVG already has style elements, the injected style is placed
 after them so host rules follow Mermaid defaults in cascade order. `CssOverridePolicy::StripExistingImportant`
-is opt-in because it changes cascade semantics. Generated `<foreignObject>` fallback text keeps useful
-classes and inline font/fill hints so host CSS can target readable fallback output. When the same pipeline
-feeds raster export, keep injected CSS in the `usvg` / `resvg` supported subset; browser-only features
-such as CSS custom properties are better reserved for inline-only SVG pipelines or resolved by the host
-before rasterizing.
+is opt-in because it changes cascade semantics. Generated `<foreignObject>` fallback output keeps stable
+live marker classes (`merman-foreignobject-fallback` and `merman-foreignobject-fallback-text`) plus
+inline font/fill hints so hosts can target readable fallback output without re-running Mermaid's source
+selectors against the generated SVG. Source-context classes are preserved only as escaped,
+inert `data-merman-source-classes` metadata for diagnostics. Hosts that previously selected `.node`,
+`.edgeLabel`, `.label`, or similar source classes on generated fallback nodes must migrate to the stable
+marker classes. When the same pipeline feeds raster export, keep injected CSS in the `usvg` / `resvg`
+supported subset; browser-only features such as CSS custom properties are better reserved for inline-only
+SVG pipelines or resolved by the host before rasterizing.
 
 Product-specific rules still belong in host code. For example, Zed-style accent token assignment,
 theme color selection, and diagram-family-specific color semantics should be implemented as custom

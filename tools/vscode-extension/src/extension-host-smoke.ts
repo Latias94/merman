@@ -1,41 +1,10 @@
 import * as assert from "node:assert/strict";
-import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
-import {
-  SEMANTIC_TOKEN_DESCRIPTOR,
-  SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
-  SEMANTIC_TOKEN_RECORD_WIDTH,
-} from "./generated/token-descriptor.js";
-import { assertSemanticTokenLegendProjection } from "./semantic-token-contract.js";
-
 const EXTENSION_ID = "latias94.merman-vscode";
 const PROVIDER_TIMEOUT_MS = 15_000;
-
-interface TokenEquivalenceCase {
-  readonly id: string;
-  readonly family: string;
-  readonly source: string;
-  readonly packed_words: number[];
-  readonly vscode_packed_words: number[];
-}
-
-interface TokenEquivalenceEvidence {
-  readonly schema_version: number;
-  readonly descriptor_digest: string;
-  readonly packed_encoding: string;
-  readonly words_per_token: number;
-  readonly family_cases: TokenEquivalenceCase[];
-  readonly recovery_cases: TokenEquivalenceCase[];
-}
-
-const tokenEquivalenceEvidence = JSON.parse(
-  fs.readFileSync(
-    path.resolve(__dirname, "../../../contracts/editor-language", "token-equivalence-v1.json"),
-    "utf8",
-  ),
-) as TokenEquivalenceEvidence;
+const LSP_SEMANTIC_TOKEN_WORDS = 5;
 
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension(EXTENSION_ID);
@@ -100,13 +69,6 @@ export async function run(): Promise<void> {
     content: source,
   });
   await vscode.window.showTextDocument(editorDocument);
-  assert.equal(
-    vscode.workspace
-      .getConfiguration("editor", editorDocument)
-      .get("semanticHighlighting.enabled"),
-    true,
-    "expected the generated Mermaid semantic-highlighting default",
-  );
   const version = editorDocument.version;
   const legend = await eventually(
     () =>
@@ -115,23 +77,23 @@ export async function run(): Promise<void> {
         editorDocument.uri,
       ),
     (value): value is vscode.SemanticTokensLegend => value !== undefined,
-    "expected the generated Merman semantic-token legend",
+    "expected the Merman semantic-token legend",
   );
-  assertSemanticTokenLegendProjection(legend);
+  assert.ok(legend.tokenTypes.length > 0, "expected at least one standard token type");
 
   const semanticTokens = await semanticTokensFor(editorDocument);
-  assert.ok(semanticTokens.data.length > 0, "expected parser-backed semantic tokens from Merman");
+  assert.ok(semanticTokens.data.length > 0, "expected Tree-sitter syntax tokens from Merman");
   assertPackedTokens(semanticTokens.data, legend);
   const symbols = await vscode.commands.executeCommand<
     Array<vscode.DocumentSymbol | vscode.SymbolInformation> | undefined
   >("vscode.executeDocumentSymbolProvider", editorDocument.uri);
-  assert.ok(symbols && symbols.length > 0, "expected symbols from the semantic-token snapshot");
+  assert.ok(symbols && symbols.length > 0, "expected parser-backed document symbols");
   const hovers = await vscode.commands.executeCommand<vscode.Hover[] | undefined>(
     "vscode.executeHoverProvider",
     editorDocument.uri,
     new vscode.Position(2, 1),
   );
-  assert.ok(hovers && hovers.length > 0, "expected hover from the semantic-token snapshot");
+  assert.ok(hovers && hovers.length > 0, "expected parser-backed hover");
 
   const definitions = await vscode.commands.executeCommand<
     Array<vscode.Location | vscode.LocationLink> | undefined
@@ -142,7 +104,7 @@ export async function run(): Promise<void> {
   );
   assert.ok(
     definitions && definitions.length > 0,
-    "expected definition from the semantic-token snapshot",
+    "expected parser-backed definition",
   );
   const references = await vscode.commands.executeCommand<vscode.Location[] | undefined>(
     "vscode.executeReferenceProvider",
@@ -151,7 +113,7 @@ export async function run(): Promise<void> {
   );
   assert.ok(
     references && references.length > 0,
-    "expected references from the semantic-token snapshot",
+    "expected parser-backed references",
   );
   const rename = await vscode.commands.executeCommand<vscode.WorkspaceEdit | undefined>(
     "vscode.executeDocumentRenameProvider",
@@ -159,7 +121,7 @@ export async function run(): Promise<void> {
     new vscode.Position(2, 1),
     "Renamed",
   );
-  assert.ok(rename, "expected rename support from the semantic-token snapshot");
+  assert.ok(rename, "expected parser-backed rename support");
   const renameEdits = rename.entries().flatMap(([, edits]) => edits);
   assert.ok(renameEdits.length >= 2, "expected declaration and reference rename edits");
   assert.ok(renameEdits.every((edit) => edit.newText === "Renamed"));
@@ -193,42 +155,14 @@ export async function run(): Promise<void> {
   );
   assert.equal(editorDocument.version, version, "language queries must not mutate the document");
 
-  assert.equal(tokenEquivalenceEvidence.schema_version, SEMANTIC_TOKEN_DESCRIPTOR.schemaVersion);
-  assert.equal(tokenEquivalenceEvidence.descriptor_digest, SEMANTIC_TOKEN_DESCRIPTOR_DIGEST);
-  assert.equal(
-    tokenEquivalenceEvidence.packed_encoding,
-    SEMANTIC_TOKEN_DESCRIPTOR.packed.encoding,
-  );
-  assert.equal(tokenEquivalenceEvidence.words_per_token, SEMANTIC_TOKEN_RECORD_WIDTH);
-  assert.equal(tokenEquivalenceEvidence.family_cases.length, 35);
-  assert.equal(tokenEquivalenceEvidence.recovery_cases.length, 1);
-  for (const tokenCase of tokenEquivalenceEvidence.family_cases) {
-    const familyDocument = await vscode.workspace.openTextDocument({
-      language: "mermaid",
-      content: tokenCase.source,
-    });
-    const actual = await semanticTokensFor(familyDocument);
-    assertPackedTokens(actual.data, legend);
-    assert.deepEqual(
-      Array.from(actual.data),
-      tokenCase.vscode_packed_words,
-      `${tokenCase.id} (${tokenCase.family}) VS Code semantic-token projection`,
-    );
-  }
-
-  const recovery = tokenEquivalenceEvidence.recovery_cases[0]!;
   const recoveryDocument = await vscode.workspace.openTextDocument({
     language: "mermaid",
-    content: recovery.source,
+    content: "flowchart TD\n  Before -->\n",
   });
   await vscode.window.showTextDocument(recoveryDocument);
   const recoveryTokens = await semanticTokensFor(recoveryDocument);
   assertPackedTokens(recoveryTokens.data, legend);
-  assert.deepEqual(
-    Array.from(recoveryTokens.data),
-    recovery.vscode_packed_words,
-    "recoverable Flowchart VS Code packed token sequence",
-  );
+  assert.ok(recoveryTokens.data.length > 0, "expected syntax tokens for incomplete Flowchart");
   const recoveryDiagnostics = await eventually(
     () => Promise.resolve(vscode.languages.getDiagnostics(recoveryDocument.uri)),
     (value) => value.some((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error),
@@ -249,17 +183,17 @@ async function semanticTokensFor(document: vscode.TextDocument): Promise<vscode.
         document.uri,
       ),
     (value): value is vscode.SemanticTokens => value !== undefined,
-    "expected a semantic-token response from Merman",
+    "expected a semantic-token response from the Merman LSP adapter",
   );
 }
 
 function assertPackedTokens(words: Uint32Array, legend: vscode.SemanticTokensLegend): void {
-  assert.equal(words.length % SEMANTIC_TOKEN_RECORD_WIDTH, 0);
+  assert.equal(words.length % LSP_SEMANTIC_TOKEN_WORDS, 0);
   const validModifierMask = legend.tokenModifiers.reduce(
     (mask, _modifier, index) => mask | (1 << index),
     0,
   );
-  for (let offset = 0; offset < words.length; offset += SEMANTIC_TOKEN_RECORD_WIDTH) {
+  for (let offset = 0; offset < words.length; offset += LSP_SEMANTIC_TOKEN_WORDS) {
     assert.ok(words[offset + 2]! > 0);
     assert.ok(words[offset + 3]! < legend.tokenTypes.length);
     assert.equal(words[offset + 4]! & ~validModifierMask, 0);

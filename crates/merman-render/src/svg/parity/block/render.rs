@@ -118,16 +118,16 @@ pub(crate) fn render_block_diagram_svg_model(
     let node_paint_source_ownership = BlockNodePaintSourceOwnership::new(&model.class_defs);
     let mut node_paint_receipt = node_paint_theme.begin_terminal_receipt();
 
-    fn marker_id(diagram_id: &str, marker: &str) -> String {
+    fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
     }
 
-    fn marker_url(diagram_id: &str, marker: &str) -> String {
+    fn marker_url(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
         format!("url(#{})", marker_id(diagram_id, marker))
     }
 
-    fn dom_id(diagram_id: &str, raw_id: &str) -> String {
-        if diagram_id.is_empty() {
+    fn dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
+        if diagram_id.semantic_str().is_empty() {
             raw_id.to_string()
         } else {
             format!("{diagram_id}-{raw_id}")
@@ -266,18 +266,19 @@ pub(crate) fn render_block_diagram_svg_model(
 
     fn write_block_class_css(
         out: &mut impl SvgOutput,
-        diagram_id: &str,
+        diagram_id: SvgDiagramId<'_>,
         class_defs: &indexmap::IndexMap<
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
+        options: &SvgExecution<'_>,
     ) -> Result<()> {
-        let id = crate::svg::escape_css_identifier(diagram_id);
         for class_def in class_defs.values() {
+            options.checkpoint_emit()?;
             let class = escape_xml(&class_def.id);
             let mut shape_declarations = important_declarations(&class_def.styles);
             if let Some((key, value)) = shape_declarations.next() {
-                let _ = write!(out, r#"#{} .{}&gt;*{{"#, id.as_str(), class.as_str(),);
+                let _ = write!(out, r#"#{diagram_id} .{}&gt;*{{"#, class.as_str());
                 out.checkpoint()?;
 
                 let mut parsed_shape_declarations = vec![(key, value)];
@@ -287,7 +288,7 @@ pub(crate) fn render_block_diagram_svg_model(
                     parsed_shape_declarations.push((key, value));
                 }
 
-                let _ = write!(out, r#"}}#{} .{} span{{"#, id.as_str(), class.as_str(),);
+                let _ = write!(out, r#"}}#{diagram_id} .{} span{{"#, class.as_str());
                 out.checkpoint()?;
                 write_important_declarations(out, parsed_shape_declarations)?;
                 out.push('}');
@@ -296,27 +297,28 @@ pub(crate) fn render_block_diagram_svg_model(
 
             let mut text_declarations = important_declarations(&class_def.text_styles);
             if let Some((key, value)) = text_declarations.next() {
-                let _ = write!(out, r#"#{} .{} tspan{{"#, id.as_str(), class.as_str(),);
+                let _ = write!(out, r#"#{diagram_id} .{} tspan{{"#, class.as_str());
                 out.checkpoint()?;
                 write_important_declaration(out, key, value)?;
                 write_important_declarations(out, text_declarations)?;
                 out.push('}');
                 out.checkpoint()?;
             }
+            options.checkpoint_emit()?;
         }
         Ok(())
     }
 
     fn write_block_css(
         out: &mut impl SvgOutput,
-        diagram_id: &str,
+        diagram_id: SvgDiagramId<'_>,
         effective_config: &serde_json::Value,
         class_defs: &indexmap::IndexMap<
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
+        options: &SvgExecution<'_>,
     ) -> Result<()> {
-        let id = crate::svg::escape_css_identifier(diagram_id);
         let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
         let font_family = theme.common.font_family_css.as_str();
         let font_size = theme.common.font_size_px;
@@ -337,7 +339,7 @@ pub(crate) fn render_block_diagram_svg_model(
         let _ = write!(
             out,
             r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-            id.as_str(),
+            diagram_id,
             font_family,
             fmt(font_size),
             node_text_color
@@ -346,25 +348,19 @@ pub(crate) fn render_block_diagram_svg_model(
         let _ = write!(
             out,
             r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-            id.as_str(),
-            stroke_width,
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str()
+            diagram_id, stroke_width, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
         );
         out.checkpoint()?;
         let _ = write!(
             out,
             r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
-            id.as_str(),
+            diagram_id,
             font_family,
             node_text_color,
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
             node_text_color,
             node_text_color
         );
@@ -372,75 +368,71 @@ pub(crate) fn render_block_diagram_svg_model(
         let _ = write!(
             out,
             r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span,#{} .cluster-label p{{color:{};}}"#,
-            id.as_str(),
-            title_color,
-            id.as_str(),
-            id.as_str(),
-            title_color
+            diagram_id, title_color, diagram_id, diagram_id, title_color
         );
         out.checkpoint()?;
         let _ = write!(
             out,
             r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}#{} .flowchart-label text{{text-anchor:middle;}}#{} .node .label{{text-align:center;}}#{} .node.clickable{{cursor:pointer;}}"#,
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
             main_bkg,
             node_border,
-            id.as_str(),
-            id.as_str(),
-            id.as_str()
+            diagram_id,
+            diagram_id,
+            diagram_id
         );
         out.checkpoint()?;
         let _ = write!(
             out,
             r#"#{} .arrowheadPath,#{} .arrowMarkerPath{{fill:{};stroke:{};}}#{} .edgePath .path{{stroke:{};stroke-width:2.0px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
             arrowhead_color,
             line_color,
-            id.as_str(),
+            diagram_id,
             line_color,
-            id.as_str(),
+            diagram_id,
             line_color
         );
         out.checkpoint()?;
         let _ = write!(
             out,
             r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{margin:0;padding:0;display:inline;}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{}}}"#,
-            id.as_str(),
+            diagram_id,
             edge_label_background,
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
             edge_label_background,
             edge_label_background,
-            id.as_str(),
+            diagram_id,
             edge_label_background
         );
         out.checkpoint()?;
         let _ = write!(
             out,
             r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
-            id.as_str(),
+            diagram_id,
             cluster_bkg,
             cluster_border,
-            id.as_str(),
+            diagram_id,
             title_color,
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
             title_color,
-            id.as_str(),
+            diagram_id,
             text_color,
-            id.as_str(),
+            diagram_id,
             font_family
         );
         out.checkpoint()?;
-        write_block_class_css(out, diagram_id, class_defs)
+        write_block_class_css(out, diagram_id, class_defs, options)
     }
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -469,9 +461,16 @@ pub(crate) fn render_block_diagram_svg_model(
         diagram_id,
     )
     .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
     out.push_str("<style>");
     out.checkpoint()?;
-    write_block_css(&mut out, diagram_id, effective_config, &model.class_defs)?;
+    write_block_css(
+        &mut out,
+        diagram_id,
+        effective_config,
+        &model.class_defs,
+        options,
+    )?;
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
@@ -560,6 +559,7 @@ pub(crate) fn render_block_diagram_svg_model(
                     message: format!("missing Block shape geometry for node `{}`", n.id),
                 })?;
         let id_attr = format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, &n.id)));
+        options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
             r#"<g class="node default {}"{} transform="translate({}, {})">"#,
@@ -802,6 +802,7 @@ pub(crate) fn render_block_diagram_svg_model(
                 escape_attr(&marker_url(diagram_id, m))
             );
         }
+        options.checkpoint_emit()?;
         out.push_str("/>");
         out.checkpoint()?;
     }
@@ -829,6 +830,7 @@ pub(crate) fn render_block_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     let rooted = root_document.complete(out.finish()?)?;
     if !node_paint_theme.record_terminal(node_paint_receipt) {
         return Err(Error::InvalidModel {

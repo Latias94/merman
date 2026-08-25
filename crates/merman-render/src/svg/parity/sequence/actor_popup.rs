@@ -1,24 +1,32 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
 use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
 use rustc_hash::FxHashMap;
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct SequenceActorPopupOptions {
+    pub(super) force_menus: bool,
+    pub(super) mirror_actors: bool,
+    pub(super) actor_height: f64,
+}
 
 pub(super) fn render_sequence_actor_popup_menus(
     out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     sanitize_config: &merman_core::MermaidConfig,
-    force_menus: bool,
-    mirror_actors: bool,
-    actor_height: f64,
+    options: SequenceActorPopupOptions,
     actor_popup_widths: &std::collections::HashMap<String, f64>,
     actor_typography: &crate::sequence::SequenceResolvedTypography,
     typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
-) {
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<()> {
     // Mermaid emits actor popup menus (links/link directives) as root-level
     // `<g class="actorPopupMenu">` groups after messages.
     for (actor_cnt, actor_id) in model.actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(actor_cnt)?;
         let Some(actor) = model.actors.get(actor_id) else {
             continue;
         };
@@ -31,7 +39,7 @@ pub(super) fn render_sequence_actor_popup_menus(
             .and_then(|v| v.as_str())
             .map(|s| s.trim())
             .filter(|s| !s.is_empty());
-        let popup_display = if force_menus {
+        let popup_display = if options.force_menus {
             "block !important"
         } else {
             "none"
@@ -41,7 +49,7 @@ pub(super) fn render_sequence_actor_popup_menus(
         } else {
             "#eaeaea"
         };
-        let popup_actor_pos_class = if mirror_actors {
+        let popup_actor_pos_class = if options.mirror_actors {
             "actor-bottom"
         } else {
             "actor-top"
@@ -71,13 +79,14 @@ pub(super) fn render_sequence_actor_popup_menus(
             r##"<rect class="{class}" x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3"/>"##,
             class = escape_attr(&popup_panel_class),
             x = fmt(x),
-            y = fmt(actor_height),
+            y = fmt(options.actor_height),
             w = fmt(panel_width),
             h = fmt(panel_height),
             fill = escape_xml_display(popup_fill),
         );
 
-        for (label, url) in &actor.links {
+        for (link_index, (label, url)) in actor.links.iter().enumerate() {
+            checkpoints.checkpoint_loop(link_index)?;
             let Some(href) = url.as_str() else {
                 continue;
             };
@@ -93,7 +102,7 @@ pub(super) fn render_sequence_actor_popup_menus(
                 ""
             };
             let text_x = x + 10.0;
-            let text_y = actor_height + link_y + 10.0;
+            let text_y = options.actor_height + link_y + 10.0;
             let style = actor_typography.terminal_style(
                 "text-anchor: start",
                 "text-anchor: start; font-size: 16px; font-weight: 400;".to_string(),
@@ -126,4 +135,5 @@ pub(super) fn render_sequence_actor_popup_menus(
 
         out.push_str("</g>");
     }
+    checkpoints.checkpoint()
 }

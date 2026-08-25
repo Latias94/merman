@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::math_label::{
     record_sequence_katex_terminal_emission, sequence_katex_label,
@@ -8,7 +9,7 @@ use crate::sequence::{
     SequenceMathHeightMode, SequenceStaticRectThemeReceipt, sequence_note_final_wrapped_lines,
     sequence_text_line_step_px,
 };
-use merman_core::diagrams::sequence::SequenceMessage;
+use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessageKind};
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceNoteRenderContext<'a> {
@@ -20,6 +21,7 @@ pub(super) struct SequenceNoteRenderContext<'a> {
     pub(super) note_typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 pub(super) fn render_sequence_note(
@@ -28,16 +30,17 @@ pub(super) fn render_sequence_note(
     msg: &SequenceMessage,
     ctx: &SequenceNoteRenderContext<'_>,
     theme_receipt: &mut SequenceStaticRectThemeReceipt,
-) {
-    if msg.message_type != 2 {
-        return;
+) -> Result<()> {
+    if msg.semantic_kind() != SequenceMessageKind::Note {
+        return Ok(());
     }
+    ctx.checkpoints.checkpoint()?;
 
     let id = &msg.id;
     let raw = msg.message_text();
     let node_id = format!("note-{id}");
     let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
-        return;
+        return Ok(());
     };
     let (x, y) = node_left_top(n);
     let cx = x + (n.width / 2.0);
@@ -86,7 +89,8 @@ pub(super) fn render_sequence_note(
             2.0 * ctx.wrap_padding,
             ctx.measurer,
             ctx.note_text_style,
-        );
+            ctx.checkpoints.text(),
+        )?;
         render_sequence_note_lines(
             out,
             lines.iter().map(String::as_str),
@@ -96,7 +100,8 @@ pub(super) fn render_sequence_note(
             ctx.legacy_label_font_size,
             Some(ctx.note_typography),
             Some(ctx.typography_receipt),
-        );
+            ctx.checkpoints,
+        )?;
     } else {
         render_sequence_note_lines(
             out,
@@ -107,9 +112,11 @@ pub(super) fn render_sequence_note(
             ctx.legacy_label_font_size,
             Some(ctx.note_typography),
             Some(ctx.typography_receipt),
-        );
+            ctx.checkpoints,
+        )?;
     }
     out.push_str("</g>");
+    ctx.checkpoints.checkpoint()
 }
 
 fn render_sequence_note_lines<'a>(
@@ -121,8 +128,10 @@ fn render_sequence_note_lines<'a>(
     legacy_label_font_size: f64,
     typography: Option<&crate::sequence::SequenceResolvedTypography>,
     typography_receipt: Option<&crate::sequence::SequenceTypographyThemeReceipt>,
-) {
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<()> {
     for (i, line) in lines.into_iter().enumerate() {
+        checkpoints.checkpoint_loop(i)?;
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
         let text = if decoded.as_ref().is_empty() {
             "\u{200B}"
@@ -149,13 +158,17 @@ fn render_sequence_note_lines<'a>(
             receipt.record_terminal_text(crate::sequence::SequenceTextSurface::NoteLabel);
         }
     }
+    checkpoints.checkpoint()
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+
     #[test]
     fn empty_note_rows_render_the_upstream_zero_width_space() {
         let mut out = String::new();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         super::render_sequence_note_lines(
             &mut out,
             ["first", "", "last"],
@@ -165,7 +178,9 @@ mod tests {
             16.0,
             None,
             None,
-        );
+            super::SequenceEmitCheckpoints::for_emit(&meter),
+        )
+        .unwrap();
 
         assert!(out.contains("<tspan x=\"50\">\u{200b}</tspan>"), "{out}");
     }

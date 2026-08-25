@@ -464,16 +464,14 @@ pub enum RenderSemanticModel {
 #[doc(hidden)]
 #[derive(Debug, Clone, Default)]
 pub struct RenderSemanticContext {
-    flowchart_label_sources: Option<crate::diagrams::flowchart::FlowchartRenderLabelSources>,
+    flowchart: Option<crate::diagrams::flowchart::FlowchartRenderContext>,
     class_style_precedence_facts: Option<crate::models::class_diagram::ClassStylePrecedenceFacts>,
 }
 
 impl RenderSemanticContext {
-    fn for_flowchart(
-        label_sources: crate::diagrams::flowchart::FlowchartRenderLabelSources,
-    ) -> Self {
+    fn for_flowchart(context: crate::diagrams::flowchart::FlowchartRenderContext) -> Self {
         Self {
-            flowchart_label_sources: Some(label_sources),
+            flowchart: Some(context),
             class_style_precedence_facts: None,
         }
     }
@@ -482,25 +480,25 @@ impl RenderSemanticContext {
         style_precedence_facts: crate::models::class_diagram::ClassStylePrecedenceFacts,
     ) -> Self {
         Self {
-            flowchart_label_sources: None,
+            flowchart: None,
             class_style_precedence_facts: Some(style_precedence_facts),
         }
     }
 
-    /// Consumes the context and returns Flowchart's parser-owned render label sources.
+    /// Consumes the context and returns Flowchart's parser-owned render facts.
     #[doc(hidden)]
-    pub fn into_flowchart_label_sources(
+    pub fn into_flowchart_render_context(
         self,
-    ) -> crate::diagrams::flowchart::FlowchartRenderLabelSources {
-        self.flowchart_label_sources.unwrap_or_default()
+    ) -> crate::diagrams::flowchart::FlowchartRenderContext {
+        self.flowchart.unwrap_or_default()
     }
 
-    /// Borrows Flowchart's parser-owned render label sources when this context owns them.
+    /// Borrows Flowchart's complete parser-owned render context.
     #[doc(hidden)]
-    pub fn flowchart_label_sources(
+    pub fn flowchart_render_context(
         &self,
-    ) -> Option<&crate::diagrams::flowchart::FlowchartRenderLabelSources> {
-        self.flowchart_label_sources.as_ref()
+    ) -> Option<&crate::diagrams::flowchart::FlowchartRenderContext> {
+        self.flowchart.as_ref()
     }
 
     /// Borrows ClassDiagram encounter-order style evidence owned by this parse operation.
@@ -512,9 +510,9 @@ impl RenderSemanticContext {
     }
 
     pub(crate) fn retained_text_bytes(&self) -> usize {
-        self.flowchart_label_sources
+        self.flowchart
             .as_ref()
-            .map_or(0, |sources| sources.retained_bytes())
+            .map_or(0, |context| context.retained_bytes())
             .saturating_add(
                 self.class_style_precedence_facts
                     .as_ref()
@@ -539,11 +537,11 @@ impl RenderSemanticParseOutput {
 
     pub(crate) fn flowchart(
         model: crate::diagrams::flowchart::FlowchartModel,
-        label_sources: crate::diagrams::flowchart::FlowchartRenderLabelSources,
+        context: crate::diagrams::flowchart::FlowchartRenderContext,
     ) -> Self {
         Self {
             model: RenderSemanticModel::Flowchart(model),
-            context: RenderSemanticContext::for_flowchart(label_sources),
+            context: RenderSemanticContext::for_flowchart(context),
         }
     }
 
@@ -1125,12 +1123,12 @@ impl ParsedDiagramRender {
         self.context.retained_text_bytes()
     }
 
-    /// Borrows parser-owned Flowchart render label sources without consuming the parsed model.
+    /// Borrows all parser-owned Flowchart render facts without exposing them in the typed model.
     #[doc(hidden)]
-    pub fn flowchart_render_label_sources(
+    pub fn flowchart_render_context(
         &self,
-    ) -> Option<&crate::diagrams::flowchart::FlowchartRenderLabelSources> {
-        self.context.flowchart_label_sources()
+    ) -> Option<&crate::diagrams::flowchart::FlowchartRenderContext> {
+        self.context.flowchart_render_context()
     }
 
     /// Borrows parser-owned ClassDiagram encounter-order style evidence.

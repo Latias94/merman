@@ -57,15 +57,47 @@ enum ErrorCategory {
     Operational,
 }
 
+#[cfg(feature = "ascii")]
+#[derive(Debug)]
+pub(crate) struct AsciiResourceError {
+    details: merman::render::ResourceLimitExceeded,
+    profile: merman::resources::ResourceProfile,
+}
+
+#[cfg(feature = "ascii")]
+impl std::fmt::Display for AsciiResourceError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "ASCII resource limit `{}` exceeded during `{}`: actual {}, maximum {} (profile `{}`)",
+            self.details.id,
+            self.details.phase,
+            self.details.actual,
+            self.details.maximum,
+            self.profile.id(),
+        )?;
+        if self.details.cause == merman::render::ResourceLimitCause::ArithmeticOverflow {
+            write!(formatter, " (cause `{}`)", self.details.cause)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CliError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
-    Mermaid(#[from] merman::Error),
+    Diagnostic(merman::TerminalDiagnostic),
     #[cfg(any(feature = "svg", feature = "ascii"))]
     #[error("{0}")]
-    Render(#[from] merman::RenderError),
+    Render(merman::RenderError),
+    #[cfg(feature = "ascii")]
+    #[error("{0}")]
+    Ascii(merman::ascii::AsciiDiagnostic),
+    #[cfg(feature = "ascii")]
+    #[error("{0}")]
+    AsciiResource(AsciiResourceError),
     #[cfg(feature = "network-icons")]
     #[error("{0}")]
     Network(#[from] crate::network::NetworkError),
@@ -107,8 +139,40 @@ pub(crate) enum CliError {
     MissingInput { command: &'static str },
     #[error("{0}")]
     InvalidInput(String),
+    #[cfg(any(feature = "icons", feature = "rustdoc"))]
     #[error("internal error: {0}")]
     Internal(String),
+    #[cfg(feature = "rustdoc")]
+    #[error("invalid Rustdoc configuration {path:?} at {location}: {source}")]
+    RustdocConfig {
+        path: PathBuf,
+        location: String,
+        #[source]
+        source: Box<CliError>,
+    },
+    #[cfg(feature = "rustdoc")]
+    #[error("Rustdoc source {path:?} at line {line}, column {column}: {message}")]
+    RustdocContent {
+        path: PathBuf,
+        line: usize,
+        column: usize,
+        message: String,
+    },
+    #[cfg(feature = "rustdoc")]
+    #[error("Rustdoc source {path:?} at line {line}, column {column}: {source}")]
+    RustdocInput {
+        path: PathBuf,
+        line: usize,
+        column: usize,
+        #[source]
+        source: Box<CliError>,
+    },
+    #[cfg(feature = "rustdoc")]
+    #[error("invalid Rustdoc receipt {path:?}: {reason}")]
+    RustdocReceipt { path: PathBuf, reason: String },
+    #[cfg(feature = "rustdoc")]
+    #[error("Rustdoc output is stale at {path:?}: {reason}")]
+    RustdocStale { path: PathBuf, reason: String },
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     InvalidOutput(String),
@@ -129,7 +193,31 @@ pub(crate) enum CliError {
     },
 }
 
+impl From<merman::Error> for CliError {
+    fn from(error: merman::Error) -> Self {
+        Self::Diagnostic(merman::TerminalDiagnostic::from(error))
+    }
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+impl From<merman::RenderError> for CliError {
+    fn from(error: merman::RenderError) -> Self {
+        match error {
+            merman::RenderError::Parse(error) => Self::Diagnostic(error),
+            other => Self::Render(other),
+        }
+    }
+}
+
 impl CliError {
+    #[cfg(feature = "ascii")]
+    pub(crate) fn ascii_resource(
+        details: merman::render::ResourceLimitExceeded,
+        profile: merman::resources::ResourceProfile,
+    ) -> Self {
+        Self::AsciiResource(AsciiResourceError { details, profile })
+    }
+
     pub(crate) fn primary_input(error: InputReadError) -> Self {
         Self::Input {
             role: InputRole::Primary,
@@ -173,6 +261,65 @@ impl CliError {
         }
     }
 
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_config(
+        path: impl AsRef<Path>,
+        location: impl Into<String>,
+        source: CliError,
+    ) -> Self {
+        Self::RustdocConfig {
+            path: path.as_ref().to_path_buf(),
+            location: location.into(),
+            source: Box::new(source),
+        }
+    }
+
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_content(
+        path: impl AsRef<Path>,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::RustdocContent {
+            path: path.as_ref().to_path_buf(),
+            line,
+            column,
+            message: message.into(),
+        }
+    }
+
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_input(
+        path: impl AsRef<Path>,
+        line: usize,
+        column: usize,
+        source: CliError,
+    ) -> Self {
+        Self::RustdocInput {
+            path: path.as_ref().to_path_buf(),
+            line,
+            column,
+            source: Box::new(source),
+        }
+    }
+
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_receipt(path: impl AsRef<Path>, reason: impl Into<String>) -> Self {
+        Self::RustdocReceipt {
+            path: path.as_ref().to_path_buf(),
+            reason: reason.into(),
+        }
+    }
+
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_stale(path: impl AsRef<Path>, reason: impl Into<String>) -> Self {
+        Self::RustdocStale {
+            path: path.as_ref().to_path_buf(),
+            reason: reason.into(),
+        }
+    }
+
     #[cfg(feature = "markdown")]
     pub(crate) fn markdown_chart(
         index: u64,
@@ -203,9 +350,19 @@ impl CliError {
             }
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
             Self::InvalidOutput(_) => ErrorCategory::Usage,
-            Self::Io(_) | Self::JsonOutput(_) | Self::Stream { .. } | Self::Internal(_) => {
-                ErrorCategory::Operational
-            }
+            Self::Io(_) | Self::JsonOutput(_) | Self::Stream { .. } => ErrorCategory::Operational,
+            #[cfg(any(feature = "icons", feature = "rustdoc"))]
+            Self::Internal(_) => ErrorCategory::Operational,
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocConfig { source, .. } => source.category(),
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocContent { .. } => ErrorCategory::Content,
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocInput { source, .. } => source.category(),
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocReceipt { .. } => ErrorCategory::Operational,
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocStale { .. } => ErrorCategory::Content,
             #[cfg(feature = "markdown")]
             Self::Transaction(_) => ErrorCategory::Operational,
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -227,7 +384,9 @@ impl CliError {
             #[cfg(feature = "network-icons")]
             Self::Network(_) => ErrorCategory::Usage,
             Self::BrokenStdoutPipe => ErrorCategory::Success,
-            Self::Mermaid(_) | Self::NoDiagram => ErrorCategory::Content,
+            Self::Diagnostic(_) | Self::NoDiagram => ErrorCategory::Content,
+            #[cfg(feature = "ascii")]
+            Self::Ascii(_) | Self::AsciiResource(_) => ErrorCategory::Content,
             #[cfg(any(test, feature = "svg", feature = "ascii"))]
             Self::Resource(_) => ErrorCategory::Content,
             #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -262,5 +421,24 @@ mod tests {
         assert!(!rendered.contains('\u{1b}'));
         assert!(rendered.contains("\\n"));
         assert!(rendered.contains("\\u{1b}"));
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    #[test]
+    fn parser_and_render_errors_use_terminal_safe_diagnostics() {
+        let parser_error = merman::Error::diagram_parse_fallback("flow\u{1b}", "bad\u{7}input");
+        let direct = CliError::from(parser_error);
+        let rendered = CliError::from(merman::RenderError::from(
+            merman::Error::diagram_parse_fallback("state\u{1b}", "bad\u{7}input"),
+        ));
+
+        for error in [direct, rendered] {
+            let message = error.to_string();
+            assert!(!message.contains('\u{1b}'));
+            assert!(!message.contains('\u{7}'));
+            assert!(message.contains("\\u{1B}"));
+            assert!(message.contains("\\u{7}"));
+            assert_eq!(error.category(), ErrorCategory::Content);
+        }
     }
 }

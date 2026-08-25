@@ -190,49 +190,61 @@ pub fn split_html_br_lines(text: &str) -> Vec<&str> {
     parts
 }
 
-/// Wraps a label using Mermaid's `wrapLabel(...)` logic, producing wrapped *lines*.
-///
-/// This is used by Sequence diagrams (Mermaid@11.x) when `wrap: true` is enabled and when actor
-/// descriptions are marked `wrap: true` by the DB layer.
-pub fn wrap_label_like_mermaid_lines(
+fn try_wrap_label_like_mermaid_lines<E>(
     label: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_width_px: f64,
-) -> Vec<String> {
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Vec<String>, E> {
+    checkpoint()?;
     if label.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     if !max_width_px.is_finite() || max_width_px <= 0.0 {
-        return vec![label.to_string()];
+        return Ok(vec![label.to_string()]);
     }
 
     // Mermaid short-circuits wrapping if the label already contains `<br>` breaks.
-    if split_html_br_lines(label).len() > 1 {
-        return split_html_br_lines(label)
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
+    let explicit_lines = split_html_br_lines(label);
+    if explicit_lines.len() > 1 {
+        let mut lines = Vec::with_capacity(explicit_lines.len());
+        for line in explicit_lines {
+            checkpoint()?;
+            lines.push(line.to_string());
+        }
+        checkpoint()?;
+        return Ok(lines);
     }
-    fn w_px(measurer: &dyn TextMeasurer, style: &TextStyle, s: &str) -> f64 {
+    fn w_px<E>(
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        s: &str,
+        checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<f64, E> {
         // Upstream uses `calculateTextWidth(...)` which rounds the SVG bbox width.
-        measurer
+        checkpoint()?;
+        let width = measurer
             .measure_svg_simple_text_bbox_width_for_wrap_px(s, style)
-            .round()
+            .round();
+        checkpoint()?;
+        Ok(width)
     }
 
-    fn break_string_like_mermaid(
+    fn break_string_like_mermaid<E>(
         word: &str,
         max_width_px: f64,
         measurer: &dyn TextMeasurer,
         style: &TextStyle,
-    ) -> (Vec<String>, String) {
+        checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<(Vec<String>, String), E> {
         let chars: Vec<char> = word.chars().collect();
         let mut lines: Vec<String> = Vec::new();
         let mut current = String::new();
         for (idx, ch) in chars.iter().enumerate() {
+            checkpoint()?;
             let next_line = format!("{current}{ch}");
-            let line_w = w_px(measurer, style, &next_line);
+            let line_w = w_px(measurer, style, &next_line, checkpoint)?;
             if line_w >= max_width_px {
                 let is_last = idx + 1 == chars.len();
                 if is_last {
@@ -245,23 +257,24 @@ pub fn wrap_label_like_mermaid_lines(
                 current = next_line;
             }
         }
-        (lines, current)
+        Ok((lines, current))
     }
 
     // Mermaid splits on ASCII spaces and drops empty chunks (collapsing multiple spaces).
     let words: Vec<&str> = label.split(' ').filter(|w| !w.is_empty()).collect();
     if words.is_empty() {
-        return vec![label.to_string()];
+        return Ok(vec![label.to_string()]);
     }
 
     let mut completed: Vec<String> = Vec::new();
     let mut next_line = String::new();
     for (idx, word) in words.iter().enumerate() {
-        let word_len = w_px(measurer, style, &format!("{word} "));
-        let next_len = w_px(measurer, style, &next_line);
+        checkpoint()?;
+        let word_len = w_px(measurer, style, &format!("{word} "), checkpoint)?;
+        let next_len = w_px(measurer, style, &next_line, checkpoint)?;
         if word_len > max_width_px {
             let (hyphenated, remaining) =
-                break_string_like_mermaid(word, max_width_px, measurer, style);
+                break_string_like_mermaid(word, max_width_px, measurer, style, checkpoint)?;
             completed.push(next_line.clone());
             completed.extend(hyphenated);
             next_line = remaining;
@@ -281,5 +294,33 @@ pub fn wrap_label_like_mermaid_lines(
         }
     }
 
-    completed.into_iter().filter(|l| !l.is_empty()).collect()
+    checkpoint()?;
+    Ok(completed.into_iter().filter(|l| !l.is_empty()).collect())
+}
+
+/// Wraps a label using Mermaid's `wrapLabel(...)` logic, producing wrapped *lines*.
+///
+/// This is used by Sequence diagrams (Mermaid@11.x) when `wrap: true` is enabled and when actor
+/// descriptions are marked `wrap: true` by the DB layer.
+pub fn wrap_label_like_mermaid_lines(
+    label: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_width_px: f64,
+) -> Vec<String> {
+    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+    match try_wrap_label_like_mermaid_lines(label, measurer, style, max_width_px, &mut checkpoint) {
+        Ok(lines) => lines,
+        Err(error) => match error {},
+    }
+}
+
+pub(crate) fn wrap_label_like_mermaid_lines_with_checkpoint(
+    label: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_width_px: f64,
+    mut checkpoint: impl FnMut() -> crate::Result<()>,
+) -> crate::Result<Vec<String>> {
+    try_wrap_label_like_mermaid_lines(label, measurer, style, max_width_px, &mut checkpoint)
 }

@@ -4,11 +4,16 @@ use crate::runtime::SharedWriter;
 use serde::Serialize;
 
 const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
-const CLI_CONTRACT_VERSION: u32 = 3;
+const CLI_CONTRACT_VERSION: u32 = 4;
 
 #[allow(dead_code)]
 mod descriptor {
     include!("generated/capability_surface.rs");
+}
+
+#[cfg(feature = "rustdoc")]
+pub(crate) const fn capability_descriptor_digest() -> &'static str {
+    descriptor::CAPABILITY_DESCRIPTOR_DIGEST
 }
 
 #[derive(Serialize)]
@@ -223,6 +228,7 @@ fn compiled_capability_ids() -> Vec<&'static str> {
     include_capability!("parallel-markdown", "parallel-markdown");
     include_capability!("pdf", "pdf");
     include_capability!("png", "png");
+    include_capability!("rustdoc", "rustdoc");
     include_capability!("shell-completions", "shell-completions");
     include_capability!("svg", "svg");
     include_capability!("system-clock", "system-clock");
@@ -252,6 +258,10 @@ mod tests {
     fn compiled_command_ids_are_sorted_and_unique() {
         let commands = compiled_command_ids();
         assert!(commands.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(
+            commands.iter().any(|id| id == "rustdoc"),
+            cfg!(feature = "rustdoc")
+        );
     }
 
     #[test]
@@ -260,6 +270,7 @@ mod tests {
 
         assert_eq!(ids.contains(&"icons"), cfg!(feature = "icons"));
         assert_eq!(ids.contains(&"markdown"), cfg!(feature = "markdown"));
+        assert_eq!(ids.contains(&"rustdoc"), cfg!(feature = "rustdoc"));
         assert_eq!(
             ids.contains(&"network-icons"),
             cfg!(feature = "network-icons")

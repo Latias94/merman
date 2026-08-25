@@ -126,14 +126,14 @@
           "merman.languageIntelligence.enabled": {
             "type": "boolean",
             "default": true,
-            "markdownDescription": "Start the local `merman-lsp` language server for completion, hover, symbols, references, rename, semantic tokens, diagnostics, and quick fixes. Disable this when using the extension only for preview and export.",
+            "markdownDescription": "Start the local `merman-lsp` language server for Tree-sitter syntax highlighting, completion, hover, symbols, references, rename, diagnostics, and quick fixes. Disable this when using the extension only for preview and export.",
             "scope": "window",
             "order": 10
           },
           "merman.diagnostics.enabled": {
             "type": "boolean",
             "default": true,
-            "markdownDescription": "Publish Merman diagnostics to VS Code Problems. Disable this when another Mermaid or Markdown linter owns diagnostics; Merman completion, hover, symbols, references, rename, semantic tokens, preview, and export remain available.",
+            "markdownDescription": "Publish Merman diagnostics to VS Code Problems. Disable this when another Mermaid or Markdown linter owns diagnostics; Merman syntax highlighting, completion, hover, symbols, references, rename, preview, and export remain available.",
             "scope": "window",
             "order": 20
           },
@@ -604,128 +604,6 @@
           "when": "(resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx) && merman.pngClipboardAvailable"
         }
       ]
-    },
-    "semanticTokenTypes": [
-      {
-        "id": "mermanDelimiter",
-        "superType": "operator",
-        "description": "Punctuation that delimits Mermaid syntax."
-      },
-      {
-        "id": "mermanIdentifier",
-        "superType": "variable",
-        "description": "A parser-backed Mermaid identifier."
-      },
-      {
-        "id": "mermanDate",
-        "superType": "number",
-        "description": "A Mermaid date literal."
-      },
-      {
-        "id": "mermanDuration",
-        "superType": "number",
-        "description": "A Mermaid duration literal."
-      },
-      {
-        "id": "mermanBoolean",
-        "superType": "keyword",
-        "description": "A Mermaid boolean literal."
-      },
-      {
-        "id": "mermanStyle",
-        "superType": "string",
-        "description": "A Mermaid style expression."
-      },
-      {
-        "id": "mermanColor",
-        "superType": "string",
-        "description": "A Mermaid color literal."
-      },
-      {
-        "id": "mermanLiteral",
-        "superType": "string",
-        "description": "An unquoted Mermaid literal."
-      },
-      {
-        "id": "mermanFrontmatter",
-        "superType": "string",
-        "description": "A Mermaid YAML frontmatter block."
-      },
-      {
-        "id": "mermanDirective",
-        "superType": "keyword",
-        "description": "A Mermaid initialization directive."
-      }
-    ],
-    "semanticTokenModifiers": [
-      {
-        "id": "mermanReference",
-        "description": "Marks a parser-backed reference to a Mermaid entity."
-      },
-      {
-        "id": "mermanEntity",
-        "description": "Marks a parser-backed Mermaid semantic entity."
-      },
-      {
-        "id": "mermanOutline",
-        "description": "Marks parser-backed Mermaid outline structure."
-      },
-      {
-        "id": "mermanPayload",
-        "description": "Marks parser-backed Mermaid payload data."
-      }
-    ],
-    "semanticTokenScopes": [
-      {
-        "language": "mermaid",
-        "scopes": {
-          "mermanDelimiter": [
-            "punctuation.definition.mermaid",
-            "punctuation.separator.mermaid"
-          ],
-          "mermanIdentifier": [
-            "variable.other.readwrite.mermaid",
-            "entity.name.variable.mermaid"
-          ],
-          "mermanDate": [
-            "constant.numeric.date.mermaid",
-            "constant.numeric"
-          ],
-          "mermanDuration": [
-            "constant.numeric.duration.mermaid",
-            "constant.numeric"
-          ],
-          "mermanBoolean": [
-            "constant.language.boolean.mermaid",
-            "constant.language.boolean"
-          ],
-          "mermanStyle": [
-            "meta.embedded.inline.css.mermaid",
-            "string.unquoted.mermaid"
-          ],
-          "mermanColor": [
-            "constant.other.color.mermaid",
-            "constant.other.color"
-          ],
-          "mermanLiteral": [
-            "string.unquoted.mermaid",
-            "string.unquoted"
-          ],
-          "mermanFrontmatter": [
-            "meta.embedded.block.frontmatter.mermaid",
-            "string.unquoted.mermaid"
-          ],
-          "mermanDirective": [
-            "meta.preprocessor.mermaid",
-            "keyword.control.directive.mermaid"
-          ]
-        }
-      }
-    ],
-    "configurationDefaults": {
-      "[mermaid]": {
-        "editor.semanticHighlighting.enabled": true
-      }
     }
   },
   "scripts": {

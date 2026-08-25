@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:532cdf1f02060f29eeff2d988fdc1bd7eda0c6e0eddea3ba8e6588b21ce0c548";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:05636a35bffb668c46ff20910cfc4044874d9d4b94372cac69074ac7fb3b2e08";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -24,6 +24,7 @@ pub const CAPABILITY_IDS: &[&str] = &[
     "parallel-markdown",
     "pdf",
     "png",
+    "rustdoc",
     "shell-completions",
     "svg",
     "system-clock",
@@ -112,6 +113,7 @@ pub enum CapabilityKey {
     ParallelMarkdown,
     Pdf,
     Png,
+    Rustdoc,
     ShellCompletions,
     Svg,
     SystemClock,
@@ -135,6 +137,7 @@ impl CapabilityKey {
         Self::ParallelMarkdown,
         Self::Pdf,
         Self::Png,
+        Self::Rustdoc,
         Self::ShellCompletions,
         Self::Svg,
         Self::SystemClock,
@@ -158,6 +161,7 @@ impl CapabilityKey {
             "parallel-markdown" => Some(Self::ParallelMarkdown),
             "pdf" => Some(Self::Pdf),
             "png" => Some(Self::Png),
+            "rustdoc" => Some(Self::Rustdoc),
             "shell-completions" => Some(Self::ShellCompletions),
             "svg" => Some(Self::Svg),
             "system-clock" => Some(Self::SystemClock),
@@ -187,12 +191,13 @@ impl CapabilityKey {
             Self::ParallelMarkdown => &CAPABILITIES[10],
             Self::Pdf => &CAPABILITIES[11],
             Self::Png => &CAPABILITIES[12],
-            Self::ShellCompletions => &CAPABILITIES[13],
-            Self::Svg => &CAPABILITIES[14],
-            Self::SystemClock => &CAPABILITIES[15],
-            Self::SystemRandom => &CAPABILITIES[16],
-            Self::SystemTimezone => &CAPABILITIES[17],
-            Self::SystemTiming => &CAPABILITIES[18],
+            Self::Rustdoc => &CAPABILITIES[13],
+            Self::ShellCompletions => &CAPABILITIES[14],
+            Self::Svg => &CAPABILITIES[15],
+            Self::SystemClock => &CAPABILITIES[16],
+            Self::SystemRandom => &CAPABILITIES[17],
+            Self::SystemTimezone => &CAPABILITIES[18],
+            Self::SystemTiming => &CAPABILITIES[19],
         }
     }
 }
@@ -687,6 +692,14 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         description: "Export rendered diagrams as PNG.",
         targets: &[TargetKey::Native, ],
         implications: &[],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::Rustdoc,
+        id: "rustdoc",
+        kind: "tool",
+        description: "Compile checked static Mermaid fragment generation for Rustdoc.",
+        targets: &[TargetKey::Native, ],
+        implications: &[CapabilityKey::LayoutCytoscape, CapabilityKey::LayoutElk, CapabilityKey::Markdown, CapabilityKey::Math, ],
     },
     CapabilityDescriptor {
         key: CapabilityKey::ShellCompletions,

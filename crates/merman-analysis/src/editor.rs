@@ -190,8 +190,6 @@ fn populate_subtree_max_ends<T>(entries: &mut [PointIntervalEntry<T>]) -> Option
 pub(super) struct FenceTextIndexData {
     pub(super) directive_prefixes: BTreeSet<String>,
     pub(super) semantic_items: Vec<EditorSemanticSymbol>,
-    pub(super) lexemes: Vec<merman_core::EditorLexeme>,
-    pub(super) lexeme_failure: Option<merman_core::EditorLexemeFailure>,
     pub(super) expected_syntax: Vec<EditorExpectedSyntax>,
     pub(super) family_semantics: merman_core::EditorFamilySemantics,
     pub(super) source: FenceTextIndexSource,
@@ -249,7 +247,6 @@ impl FenceTextIndexData {
             weight.add_string(&item.name);
             weight.add_optional_string(&item.detail);
         }
-        weight.add_array::<merman_core::EditorLexeme>(self.lexemes.capacity());
         weight.add_array::<EditorExpectedSyntax>(self.expected_syntax.capacity());
         weight.add_array::<PointIntervalEntry<usize>>(self.semantic_point_index.entries.capacity());
         weight.add_array::<PointIntervalEntry<ReferenceIntervalId>>(
@@ -402,14 +399,6 @@ impl FenceTextIndex {
 
     pub fn semantic_items(&self) -> &[EditorSemanticSymbol] {
         &self.data.semantic_items
-    }
-
-    pub fn lexemes(&self) -> &[merman_core::EditorLexeme] {
-        &self.data.lexemes
-    }
-
-    pub fn lexeme_failure(&self) -> Option<merman_core::EditorLexemeFailure> {
-        self.data.lexeme_failure
     }
 
     pub fn expected_syntax(&self) -> &[EditorExpectedSyntax] {

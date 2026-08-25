@@ -1,0 +1,244 @@
+==================
+W3C and ISO forms expose choices sequences grouping and repetition
+==================
+
+railroad-ebnf-beta
+title Expression grammar
+expression = term , ( "+" term | "-" term )* ;
+term ::= [ sign ] , { digit | "_" } ;
+digit = "0" | "1" | "2" ;
+special = ? Unicode 描述 ? ;
+except = letter+ - "x" ;
+
+---
+
+(source_file
+  (railroad_ebnf_diagram
+    (railroad_ebnf_header
+      (diagram_keyword))
+    (railroad_ebnf_body
+      (railroad_title_statement
+        (railroad_statement_keyword)
+        (railroad_line_text))
+      (railroad_ebnf_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator)
+        (railroad_ebnf_choice
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_reference
+                  (railroad_ebnf_identifier))))
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_group
+                  (railroad_ebnf_choice
+                    (railroad_ebnf_sequence
+                      (railroad_ebnf_term
+                        (railroad_ebnf_primary
+                          (railroad_ebnf_terminal
+                            (railroad_ebnf_string))))
+                      (railroad_ebnf_term
+                        (railroad_ebnf_primary
+                          (railroad_ebnf_reference
+                            (railroad_ebnf_identifier)))))
+                    (railroad_ebnf_choice_operator)
+                    (railroad_ebnf_sequence
+                      (railroad_ebnf_term
+                        (railroad_ebnf_primary
+                          (railroad_ebnf_terminal
+                            (railroad_ebnf_string))))
+                      (railroad_ebnf_term
+                        (railroad_ebnf_primary
+                          (railroad_ebnf_reference
+                            (railroad_ebnf_identifier))))))))
+              (railroad_ebnf_postfix
+                (railroad_ebnf_quantifier))))))
+      (railroad_ebnf_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator)
+        (railroad_ebnf_choice
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_optional_group
+                  (railroad_ebnf_choice
+                    (railroad_ebnf_sequence
+                      (railroad_ebnf_term
+                        (railroad_ebnf_primary
+                          (railroad_ebnf_reference
+                            (railroad_ebnf_identifier)))))))))
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_repetition_group
+                  (railroad_ebnf_choice
+                    (railroad_ebnf_sequence
+                      (railroad_ebnf_term
+                        (railroad_ebnf_primary
+                          (railroad_ebnf_reference
+                            (railroad_ebnf_identifier)))))
+                    (railroad_ebnf_choice_operator)
+                    (railroad_ebnf_sequence
+                      (railroad_ebnf_term
+                        (railroad_ebnf_primary
+                          (railroad_ebnf_terminal
+                            (railroad_ebnf_string))))))))))))
+      (railroad_ebnf_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator)
+        (railroad_ebnf_choice
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_terminal
+                  (railroad_ebnf_string)))))
+          (railroad_ebnf_choice_operator)
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_terminal
+                  (railroad_ebnf_string)))))
+          (railroad_ebnf_choice_operator)
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_terminal
+                  (railroad_ebnf_string)))))))
+      (railroad_ebnf_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator)
+        (railroad_ebnf_choice
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_special_sequence
+                  (railroad_ebnf_special_text)))))))
+      (railroad_ebnf_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator)
+        (railroad_ebnf_choice
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_reference
+                  (railroad_ebnf_identifier)))
+              (railroad_ebnf_postfix
+                (railroad_ebnf_quantifier))
+              (railroad_ebnf_postfix
+                (railroad_ebnf_exception
+                  (railroad_ebnf_exception_operator)
+                  (railroad_ebnf_primary
+                    (railroad_ebnf_terminal
+                      (railroad_ebnf_string))))))))))))
+
+==================
+comments remain named around structured terms
+==================
+
+railroad-ebnf-beta
+(* ISO comment *)
+rule = "a" | [ other ] , { ? special ? } ;
+/* block comment */
+other = "b" ;
+
+---
+
+(source_file
+  (railroad_ebnf_diagram
+    (railroad_ebnf_header
+      (diagram_keyword))
+    (railroad_ebnf_body
+      (railroad_ebnf_iso_comment)
+      (railroad_ebnf_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator)
+        (railroad_ebnf_choice
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_terminal
+                  (railroad_ebnf_string)))))
+          (railroad_ebnf_choice_operator)
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_optional_group
+                  (railroad_ebnf_choice
+                    (railroad_ebnf_sequence
+                      (railroad_ebnf_term
+                        (railroad_ebnf_primary
+                          (railroad_ebnf_reference
+                            (railroad_ebnf_identifier)))))))))
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_repetition_group
+                  (railroad_ebnf_choice
+                    (railroad_ebnf_sequence
+                      (railroad_ebnf_term
+                        (railroad_ebnf_primary
+                          (railroad_ebnf_special_sequence
+                            (railroad_ebnf_special_text))))))))))))
+      (railroad_ebnf_block_comment)
+      (railroad_ebnf_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator)
+        (railroad_ebnf_choice
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_terminal
+                  (railroad_ebnf_string))))))))))
+
+==================
+missing definition preserves later sibling
+==================
+
+railroad-ebnf-beta
+before = "a" ;
+broken ::= ;
+after = other? ;
+
+---
+
+(source_file
+  (railroad_ebnf_diagram
+    (railroad_ebnf_header
+      (diagram_keyword))
+    (railroad_ebnf_body
+      (railroad_ebnf_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator)
+        (railroad_ebnf_choice
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_terminal
+                  (railroad_ebnf_string)))))))
+      (railroad_ebnf_incomplete_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator))
+      (railroad_ebnf_rule
+        (railroad_ebnf_identifier)
+        (railroad_ebnf_assignment_operator)
+        (railroad_ebnf_choice
+          (railroad_ebnf_sequence
+            (railroad_ebnf_term
+              (railroad_ebnf_primary
+                (railroad_ebnf_reference
+                  (railroad_ebnf_identifier)))
+              (railroad_ebnf_postfix
+                (railroad_ebnf_quantifier)))))))))
+
+==================
+header only remains structured
+==================
+
+railroad-ebnf-beta
+
+---
+
+(source_file
+  (railroad_ebnf_diagram
+    (railroad_ebnf_header
+      (diagram_keyword))
+    (railroad_ebnf_body)))

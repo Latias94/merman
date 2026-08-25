@@ -29,6 +29,7 @@ jobs:
       cli: ${{ steps.plan.outputs.cli }}
       core: ${{ steps.plan.outputs.core }}
       fuzz: ${{ steps.plan.outputs.fuzz }}
+      grammar: ${{ steps.plan.outputs.grammar }}
       hygiene: ${{ steps.plan.outputs.hygiene }}
       node: ${{ steps.plan.outputs.node }}
       npm: ${{ steps.plan.outputs.npm }}
@@ -36,6 +37,7 @@ jobs:
       platform: ${{ steps.plan.outputs.platform }}
       python: ${{ steps.plan.outputs.python }}
       security: ${{ steps.plan.outputs.security }}
+      svg_parity: ${{ steps.plan.outputs.svg_parity }}
       typst: ${{ steps.plan.outputs.typst }}
       vscode: ${{ steps.plan.outputs.vscode }}
       web: ${{ steps.plan.outputs.web }}
@@ -78,7 +80,7 @@ jobs:
             schedule|workflow_dispatch)
               base="$PUSH_HEAD_SHA"
               head="$PUSH_HEAD_SHA"
-              extra=(--select-owner core --reason "scheduled or manual full host safety net")
+              extra=(--select-owner core --select-svg-parity --reason "scheduled or manual full host safety net")
               ;;
             *)
               echo "unsupported CI event: $EVENT_NAME" >&2
@@ -223,7 +225,7 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: nextest
 
@@ -261,7 +263,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.21.9
+        uses: DeterminateSystems/determinate-nix-action@v3.22.2
 
       - name: Build reusable Nix derivation
         run: |
@@ -397,7 +399,7 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: nextest
 
@@ -467,6 +469,12 @@ jobs:
           cargo nextest run --locked -p merman-ffi \
             --test header_smoke --test c_consumer_smoke --cargo-quiet
           cargo nextest run --locked -p merman-cli --test markdown_cli --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features rustdoc \
+            --test rustdoc_cli --cargo-quiet
+
+      - name: Check committed Rustdoc fragments before documentation
+        if: matrix.parity
+        run: cargo run --locked -p merman-cli -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
 
       - name: Test architecture compile-fail contracts
         if: matrix.parity
@@ -520,11 +528,38 @@ jobs:
 
       - name: Build and probe the Node-WASM candidate
         if: matrix.parity && github.event_name == 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate node-wasm
+        run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
 
       - name: Build and probe the Node N-API candidate
         if: matrix.parity && github.event_name == 'push'
-        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --file platforms/node/Dockerfile.gnu \
+            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg RUST_IMAGE=rust:1.95-bullseye \
+            --tag merman-node-gnu:ci \
+            platforms/node
+          docker run --rm \
+            --platform linux/amd64 \
+            -e CARGO_INCREMENTAL=0 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            merman-node-gnu:ci \
+            sh -c '
+              set -eu
+              git config --global --add safe.directory /work
+              npm ci --prefix platforms/node
+              node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
+            '
+          # The container runs as root while the workspace belongs to the runner user.
+          # Restore ownership of only the mounted build outputs before host-side checks.
+          for path in "$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/platforms/node/artifacts"; do
+            if [ -e "$path" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$path"
+            fi
+          done
 
       - name: Verify committed upstream alignment manifests
         if: matrix.parity
@@ -544,34 +579,50 @@ jobs:
           cargo nextest run --locked -p merman-ffi --no-default-features \
             --features "$features" --cargo-quiet
 
-      - name: Check UniFFI no-render feature sets
+      - name: Check public ASCII feature closure
         if: matrix.parity
         run: |
           cargo check -p merman-uniffi --no-default-features
-          cargo check -p merman-uniffi --no-default-features --features ascii
+          cargo check --locked --no-default-features --lib \
+            -p merman -p merman-bindings-core -p merman-uniffi -p merman-wasm \
+            --features merman/ascii,merman-bindings-core/ascii,merman-uniffi/ascii,merman-wasm/ascii
+          cargo check --locked -p merman-cli --no-default-features --features ascii
+          cargo check --locked -p merman-wasm --target wasm32-unknown-unknown \
+            --no-default-features --features ascii
 
-      - name: SVG DOM structure
+      - name: Test representative ASCII public contracts
         if: matrix.parity
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3
+        run: |
+          cargo nextest run --locked -p merman --no-default-features --features ascii \
+            --test ascii_api -E 'test(renderer_renders_ascii_flowchart_from_mermaid_text)' \
+            --cargo-quiet
+          cargo nextest run --locked -p merman-bindings-core --no-default-features \
+            --features ascii --lib \
+            -E 'test(every_ascii_resource_limit_round_trips_exact_public_boundaries) | test(ascii_request_propagates_caller_control_into_the_canonical_renderer)' \
+            --cargo-quiet
+          cargo nextest run --locked -p merman-uniffi --no-default-features \
+            --features ascii --lib \
+            -E 'test(uniffi_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
+            --cargo-quiet
+          cargo nextest run --locked -p merman-wasm --no-default-features \
+            --features ascii --lib \
+            -E 'test(wasm_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
+            --cargo-quiet
 
-      - name: SVG DOM parity
-        if: matrix.parity
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3
-
-      - name: SVG DOM parity (parity-root)
-        if: matrix.parity
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
+      - name: SVG DOM comparison suite
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
+        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
 
       - name: Install root viewport oracle dependencies
-        if: matrix.parity
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: npm ci --prefix playground/tests
 
       - name: Install Chromium for root viewport oracle
-        if: matrix.parity
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: npm run install:browser:chromium --prefix playground/tests
 
       - name: Audit rendered SVG root viewports in Chromium
-        if: matrix.parity
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: |
           npm run oracle:root-viewport --prefix playground/tests -- \
             --local ../../target/compare \
@@ -579,7 +630,7 @@ jobs:
             --output ../../target/root-viewport-diagnostic.json
 
       - name: Upload root viewport oracle report
-        if: matrix.parity && always()
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true' && always()
         uses: actions/upload-artifact@v7.0.1
         with:
           name: root-viewport-oracle-${{ github.run_attempt }}
@@ -613,6 +664,71 @@ jobs:
       - name: Verify Node candidate contracts and nested lock freshness
         run: npm test --prefix platforms/node
 
+      - name: Install Rust toolchain for real Node candidates
+        if: github.event_name != 'push'
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache for real Node candidates
+        if: github.event_name != 'push'
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          cache-targets: false
+
+      - name: Install pinned wasm-pack for real Node candidates
+        if: github.event_name != 'push'
+        run: cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Build and probe the real Node-WASM candidate on PRs
+        if: github.event_name != 'push'
+        run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
+
+      - name: Assemble and install-smoke the Node-WASM npm package on PRs
+        if: github.event_name != 'push'
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/node-wasm-package"
+          artifact_dir="$RUNNER_TEMP/node-wasm-smoke-artifact"
+          smoke_root="$RUNNER_TEMP/node-wasm-install-smoke"
+          version="$(node -p "JSON.parse(require('fs').readFileSync('platforms/node/package-surfaces.json', 'utf8')).version")"
+          node platforms/node/scripts/assemble-packages.mjs --wasm --output-root "$package_root"
+          node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
+          mkdir -p "$artifact_dir" "$smoke_root"
+          npm pack "$package_root/node-wasm" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-wasm-pack.json"
+          test "$(find "$artifact_dir" -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
+          cd "$smoke_root"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund "$artifact_dir"/*.tgz >/dev/null
+          node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" \
+            --project "$smoke_root" \
+            --version "$version" \
+            --target node-wasm
+
+      - name: Build and probe the real Node N-API candidate on PRs
+        if: github.event_name != 'push'
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --file platforms/node/Dockerfile.gnu \
+            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg RUST_IMAGE=rust:1.95-bullseye \
+            --tag merman-node-gnu:ci \
+            platforms/node
+          docker run --rm \
+            --platform linux/amd64 \
+            -e CARGO_INCREMENTAL=0 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            merman-node-gnu:ci \
+            sh -c '
+              set -eu
+              git config --global --add safe.directory /work
+              npm ci --prefix platforms/node
+              node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
+            '
+
   typst-package:
     name: typst-package
     needs: ci-plan
@@ -638,7 +754,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: wasm-tools
 
@@ -719,7 +835,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: wasm-tools
 
@@ -1055,6 +1171,12 @@ jobs:
     if: ${{ needs.ci-plan.outputs.fuzz == 'true' }}
     uses: ./.github/workflows/fuzz.yml
 
+  grammar-owner:
+    name: grammar-owner
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.grammar == 'true' }}
+    uses: ./.github/workflows/tree-sitter-mermaid.yml
+
   web-owner:
     name: web-owner
     needs: ci-plan
@@ -1123,6 +1245,7 @@ jobs:
       - npm-owner
       - security-owner
       - fuzz-owner
+      - grammar-owner
       - web-owner
       - vscode-owner
       - performance-contracts
@@ -1155,6 +1278,7 @@ jobs:
             "npm-owner":{"owner":"npm","required":true,"result":"${{ needs.npm-owner.result }}"},
             "security-owner":{"owner":"security","required":true,"result":"${{ needs.security-owner.result }}"},
             "fuzz-owner":{"owner":"fuzz","required":true,"result":"${{ needs.fuzz-owner.result }}"},
+            "grammar-owner":{"owner":"grammar","required":true,"result":"${{ needs.grammar-owner.result }}"},
             "web-owner":{"owner":"web","required":true,"result":"${{ needs.web-owner.result }}"},
             "vscode-owner":{"owner":"vscode","required":true,"result":"${{ needs.vscode-owner.result }}"},
             "performance-contracts":{"owner":"performance","required":true,"result":"${{ needs.performance-contracts.result }}"}}

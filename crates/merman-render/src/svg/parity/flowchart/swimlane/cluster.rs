@@ -148,9 +148,15 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     origin_x: f64,
     origin_y: f64,
 ) -> crate::Result<()> {
+    ctx.checkpoint_emit()?;
     let subgraph = ctx.subgraphs_by_id.get(cluster.id.as_str()).copied();
-    let class_names = subgraph.map_or(&[][..], |subgraph| subgraph.classes.as_slice());
-    let styles = subgraph.map_or(&[][..], |subgraph| subgraph.styles.as_slice());
+    let subgraph_index = ctx.subgraph_indices_by_id.get(cluster.id.as_str()).copied();
+    let (class_names, styles) = subgraph
+        .zip(subgraph_index)
+        .map(|(subgraph, subgraph_index)| {
+            ctx.model.effective_subgraph_css(subgraph_index, subgraph)
+        })
+        .unwrap_or_default();
     let compiled = flowchart_compile_styles(ctx.class_defs, class_names, styles, &[]);
     let fill_precedence = FlowchartFacetPrecedence::new(
         compiled.source_fill_status(),
@@ -163,15 +169,13 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let mut node_style = compiled.node_style.trim().to_string();
     cluster_theme.append_inline_style(&mut node_style, fill_precedence, stroke_precedence);
     let label_style = compiled.label_style.trim();
-    let render_title = subgraph
-        .and_then(|subgraph| {
-            let subgraph_index = ctx.subgraph_index_by_id.get(cluster.id.as_str()).copied()?;
-            Some(
+    let render_title =
+        subgraph
+            .zip(subgraph_index)
+            .map_or(lane.title.as_str(), |(subgraph, subgraph_index)| {
                 ctx.model
-                    .subgraph_title_for_render(subgraph_index, subgraph),
-            )
-        })
-        .unwrap_or(lane.title.as_str());
+                    .subgraph_title_for_render(subgraph_index, subgraph)
+            });
     let direction = ctx
         .swimlane_direction
         .ok_or_else(|| crate::Error::InvalidModel {

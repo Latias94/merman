@@ -27,7 +27,7 @@ mod config;
 mod theme;
 
 use config::VennConfigView;
-pub(crate) use theme::{VennTitleThemePlan, VennTitleThemeReceipt};
+pub(crate) use theme::VennTitleThemePlan;
 
 pub(crate) const VENN_TITLE_CLASS: &str = "venn-title";
 

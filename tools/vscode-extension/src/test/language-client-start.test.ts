@@ -145,7 +145,7 @@ describe("language client startup cleanup", () => {
     ]);
   });
 
-  it("stops before configuration when the initialized editor contract is incompatible", async () => {
+  it("stops before configuration when initialized capability validation fails", async () => {
     const client = new FakeLanguageClient();
     let pushCalls = 0;
     const errors: string[] = [];
@@ -160,7 +160,7 @@ describe("language client startup cleanup", () => {
           isCurrentGeneration: () => true,
           wireClient: () => {},
           validateClient: () => {
-            throw new Error("stale editor descriptor");
+            throw new Error("incompatible analysis contract");
           },
           updateStatus: () => {},
           pushConfiguration: async () => {
@@ -170,14 +170,14 @@ describe("language client startup cleanup", () => {
           clearClientIfCurrent: () => {},
           showStartError: (message) => errors.push(message),
         }),
-      /stale editor descriptor/,
+      /incompatible analysis contract/,
     );
 
     assert.equal(client.startCalls, 1);
     assert.equal(client.stopCalls, 1);
     assert.equal(pushCalls, 0);
     assert.deepEqual(errors, [
-      "Merman language server failed to start: stale editor descriptor",
+      "Merman language server failed to start: incompatible analysis contract",
     ]);
   });
 

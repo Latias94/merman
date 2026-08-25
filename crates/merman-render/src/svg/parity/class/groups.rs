@@ -1,11 +1,12 @@
 use super::super::SvgOutput;
 use super::super::timing::RenderTiming;
 use super::ClassSvgRelation;
-use super::context::ClassRenderDetails;
+use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::edge::{
     ClassEdgeGroupsRenderContext, ClassEdgeGroupsRenderState, render_class_edge_groups,
 };
 use crate::model::{Bounds, LayoutEdge};
+use crate::svg::parity::SvgDiagramId;
 use crate::text::{TextMeasurer, TextStyle};
 use rustc_hash::FxHashMap;
 
@@ -19,8 +20,8 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) edges: &'a [LayoutEdge],
     pub(super) relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
     pub(super) relation_index_by_id: &'a FxHashMap<&'a str, usize>,
-    pub(super) marker_url_prefix: &'a str,
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_marker_class: &'a str,
+    pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) edge_use_html_labels: bool,
@@ -33,6 +34,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) timing: RenderTiming,
     pub(super) edge_paths_class: &'static str,
     pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
+    pub(super) emit: ClassEmitCheckpoint<'a>,
 }
 
 pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
@@ -59,7 +61,7 @@ pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
             edges: ctx.edges,
             relations_by_id: ctx.relations_by_id,
             relation_index_by_id: ctx.relation_index_by_id,
-            marker_url_prefix: ctx.marker_url_prefix,
+            diagram_marker_class: ctx.diagram_marker_class,
             diagram_id: ctx.diagram_id,
             content_tx: ctx.content_tx,
             content_ty: ctx.content_ty,
@@ -75,6 +77,7 @@ pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
             timing: ctx.timing,
             edge_paths_class: ctx.edge_paths_class,
             relation_theme: ctx.relation_theme,
+            emit: ctx.emit,
         },
     )
 }

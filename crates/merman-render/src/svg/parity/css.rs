@@ -5,6 +5,46 @@ use super::*;
 // Keep Mermaid@11.16.0 ordering quirks to preserve DOM parity.
 
 #[derive(Clone, Copy)]
+struct CssSelectorDiagramId<I>(I);
+
+impl<I> std::fmt::Display for CssSelectorDiagramId<I>
+where
+    I: SvgDiagramIdValue,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if is_normalized_svg_diagram_id(self.0.semantic_value()) {
+            return std::fmt::Display::fmt(&self.0, formatter);
+        }
+        formatter.write_str(&crate::svg::escape_css_identifier(self.0.semantic_value()))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct FragmentDiagramId<I>(I);
+
+impl<I> std::fmt::Display for FragmentDiagramId<I>
+where
+    I: SvgDiagramIdValue,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if is_normalized_svg_diagram_id(self.0.semantic_value()) {
+            return std::fmt::Display::fmt(&self.0, formatter);
+        }
+        formatter.write_str(&escape_xml(self.0.semantic_value()))
+    }
+}
+
+fn is_normalized_svg_diagram_id(value: &str) -> bool {
+    value
+        .as_bytes()
+        .first()
+        .is_some_and(u8::is_ascii_alphabetic)
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+#[derive(Clone, Copy)]
 struct MermaidBaseCss<'a> {
     font_family: &'a str,
     font_size_css: &'a str,
@@ -15,11 +55,14 @@ struct MermaidBaseCss<'a> {
     error_text: &'a str,
 }
 
-fn write_mermaid_base_css_prefix(
+fn write_mermaid_base_css_prefix<I>(
     out: &mut impl SvgOutput,
-    id: &str,
+    id: I,
     css: MermaidBaseCss<'_>,
-) -> Result<()> {
+) -> Result<()>
+where
+    I: Copy + std::fmt::Display,
+{
     let _ = write!(
         out,
         r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
@@ -62,11 +105,14 @@ fn write_mermaid_base_css_prefix(
     out.checkpoint()
 }
 
-pub(super) fn write_mermaid_default_base_css_prefix(
+pub(super) fn write_mermaid_default_base_css_prefix<I>(
     out: &mut impl SvgOutput,
-    id: &str,
+    id: I,
     font_family: &str,
-) -> Result<()> {
+) -> Result<()>
+where
+    I: Copy + std::fmt::Display,
+{
     write_mermaid_base_css_prefix(
         out,
         id,
@@ -96,95 +142,154 @@ fn mermaid_stroke_width_px(effective_config: &serde_json::Value) -> String {
     }
 }
 
-fn write_mermaid_common_neo_css(
-    out: &mut String,
-    selector_id: &str,
-    fragment_id: &str,
-    effective_config: &serde_json::Value,
-) {
-    let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
-    let use_gradient =
-        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
-    let neo_stroke = if use_gradient {
-        format!("url(#{fragment_id}-gradient)")
-    } else {
-        node_border.clone()
-    };
-    let drop_shadow = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "dropShadow"],
-    )
-    .unwrap_or_else(|| "none".to_string())
-    .replace(
-        "url(#drop-shadow)",
-        &format!("url(#{fragment_id}-drop-shadow)"),
-    );
-    let stroke_width = mermaid_stroke_width_px(effective_config);
+struct MermaidCommonNeoCss {
+    node_border: String,
+    use_gradient: bool,
+    drop_shadow: String,
+    stroke_width: String,
+}
+
+impl MermaidCommonNeoCss {
+    fn new(effective_config: &serde_json::Value) -> Self {
+        Self {
+            node_border: theme_token(effective_config, "nodeBorder", "#9370DB"),
+            use_gradient: config_bool(effective_config, &["themeVariables", "useGradient"])
+                .unwrap_or(false),
+            drop_shadow: crate::config::config_css_number_or_string(
+                effective_config,
+                &["themeVariables", "dropShadow"],
+            )
+            .unwrap_or_else(|| "none".to_string()),
+            stroke_width: mermaid_stroke_width_px(effective_config),
+        }
+    }
+}
+
+struct NeoStroke<'a, I> {
+    fragment_id: I,
+    css: &'a MermaidCommonNeoCss,
+}
+
+impl<I> std::fmt::Display for NeoStroke<'_, I>
+where
+    I: Copy + std::fmt::Display,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.css.use_gradient {
+            write!(formatter, "url(#{}-gradient)", self.fragment_id)
+        } else {
+            formatter.write_str(&self.css.node_border)
+        }
+    }
+}
+
+fn write_mermaid_common_neo_css<SelectorId, FragmentId>(
+    out: &mut impl SvgOutput,
+    selector_id: SelectorId,
+    fragment_id: FragmentId,
+    css: &MermaidCommonNeoCss,
+) -> Result<()>
+where
+    SelectorId: Copy + std::fmt::Display,
+    FragmentId: Copy + std::fmt::Display,
+{
+    let neo_stroke = NeoStroke { fragment_id, css };
+    let drop_shadow = scoped_drop_shadow(fragment_id, &css.drop_shadow);
 
     let _ = write!(
         out,
         r#"#{} .node .neo-node{{stroke:{};}}"#,
-        selector_id, node_border
+        selector_id, css.node_border
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node rect,#{} [data-look="neo"].cluster rect,#{} [data-look="neo"].node polygon{{stroke:{};filter:{};}}"#,
         selector_id, selector_id, selector_id, neo_stroke, drop_shadow
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].swimlane.cluster rect{{filter:none;}}"#,
         selector_id
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
-        selector_id, neo_stroke, stroke_width
+        selector_id, neo_stroke, css.stroke_width
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node .outer-path{{filter:{};}}"#,
         selector_id, drop_shadow
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node .neo-line path{{stroke:{};filter:none;}}"#,
-        selector_id, node_border
+        selector_id, css.node_border
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node circle{{stroke:{};filter:{};}}"#,
         selector_id, neo_stroke, drop_shadow
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r##"#{} [data-look="neo"].node circle .state-start{{fill:#000000;}}"##,
         selector_id
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].icon-shape .icon{{fill:{};filter:{};}}"#,
         selector_id, neo_stroke, drop_shadow
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].icon-shape .icon-neo path{{stroke:{};filter:{};}}"#,
         selector_id, neo_stroke, drop_shadow
     );
+    out.checkpoint()
 }
 
-fn mermaid_base_css_root_rule(id: &str, font_family: &str) -> String {
-    format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font_family)
+fn write_mermaid_base_css_root_rule<I>(
+    out: &mut impl SvgOutput,
+    id: I,
+    font_family: &str,
+) -> Result<()>
+where
+    I: Copy + std::fmt::Display,
+{
+    let _ = write!(
+        out,
+        r#"#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font_family
+    );
+    out.checkpoint()
 }
 
-pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
-    let id = crate::svg::escape_css_identifier(diagram_id);
-    let fragment_id = escape_xml(diagram_id);
-    let font = crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS;
-    write_mermaid_default_base_css_prefix(out, &id, font)
+pub(super) fn info_css_into<I>(out: &mut String, diagram_id: I)
+where
+    I: SvgDiagramIdValue,
+{
+    let values = InfoCssValues::new(
+        &serde_json::Value::Null,
+        InfoCssFontSizeSource::ThemeThenTopLevel,
+        Some(crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS),
+    );
+    values
+        .write_all(
+            out,
+            CssSelectorDiagramId(diagram_id),
+            FragmentDiagramId(diagram_id),
+        )
         .expect("String-backed Mermaid base CSS emission cannot fail");
-    write_mermaid_common_neo_css(out, &id, &fragment_id, &serde_json::Value::Null);
-    out.push_str(&mermaid_base_css_root_rule(&id, font));
 }
 
 pub(super) struct InfoCssParts {
@@ -202,10 +307,110 @@ enum InfoCssFontSizeSource {
     RawTheme,
 }
 
-pub(super) fn info_css_parts_with_config(
-    diagram_id: &str,
+struct InfoCssValues {
+    font_family: String,
+    font_size_css: String,
+    normal_edge_stroke_width_css: String,
+    text_color: String,
+    line_color: String,
+    error_bkg: String,
+    error_text: String,
+    neo: MermaidCommonNeoCss,
+}
+
+impl InfoCssValues {
+    fn new(
+        effective_config: &serde_json::Value,
+        font_size_source: InfoCssFontSizeSource,
+        resolved_font_family: Option<&str>,
+    ) -> Self {
+        let font_family = resolved_font_family.map_or_else(
+            || crate::config::config_font_family_css(effective_config),
+            str::to_owned,
+        );
+        let font_size_css = match font_size_source {
+            InfoCssFontSizeSource::ThemeThenTopLevel => {
+                crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
+                    .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
+            }
+            InfoCssFontSizeSource::ThemeOnly => {
+                config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+                    .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
+            }
+            InfoCssFontSizeSource::RawTheme => crate::config::config_css_number_or_string(
+                effective_config,
+                &["themeVariables", "fontSize"],
+            ),
+        }
+        .unwrap_or_else(|| "16px".to_string());
+
+        Self {
+            font_family,
+            font_size_css,
+            normal_edge_stroke_width_css: mermaid_stroke_width_px(effective_config),
+            text_color: theme_token(effective_config, "textColor", "#333"),
+            line_color: theme_token(effective_config, "lineColor", "#333333"),
+            error_bkg: theme_token(effective_config, "errorBkgColor", "#552222"),
+            error_text: theme_token(effective_config, "errorTextColor", "#552222"),
+            neo: MermaidCommonNeoCss::new(effective_config),
+        }
+    }
+
+    fn write_prefix<I>(&self, out: &mut impl SvgOutput, selector_id: I) -> Result<()>
+    where
+        I: Copy + std::fmt::Display,
+    {
+        write_mermaid_base_css_prefix(
+            out,
+            selector_id,
+            MermaidBaseCss {
+                font_family: &self.font_family,
+                font_size_css: &self.font_size_css,
+                normal_edge_stroke_width_css: &self.normal_edge_stroke_width_css,
+                text_color: &self.text_color,
+                line_color: &self.line_color,
+                error_bkg: &self.error_bkg,
+                error_text: &self.error_text,
+            },
+        )
+    }
+
+    fn write_root<SelectorId, FragmentId>(
+        &self,
+        out: &mut impl SvgOutput,
+        selector_id: SelectorId,
+        fragment_id: FragmentId,
+    ) -> Result<()>
+    where
+        SelectorId: Copy + std::fmt::Display,
+        FragmentId: Copy + std::fmt::Display,
+    {
+        write_mermaid_common_neo_css(out, selector_id, fragment_id, &self.neo)?;
+        write_mermaid_base_css_root_rule(out, selector_id, &self.font_family)
+    }
+
+    fn write_all<SelectorId, FragmentId>(
+        &self,
+        out: &mut impl SvgOutput,
+        selector_id: SelectorId,
+        fragment_id: FragmentId,
+    ) -> Result<()>
+    where
+        SelectorId: Copy + std::fmt::Display,
+        FragmentId: Copy + std::fmt::Display,
+    {
+        self.write_prefix(out, selector_id)?;
+        self.write_root(out, selector_id, fragment_id)
+    }
+}
+
+pub(super) fn info_css_parts_with_config<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
-) -> InfoCssParts {
+) -> InfoCssParts
+where
+    I: Copy + std::fmt::Display,
+{
     info_css_parts_with_font_size_source(
         diagram_id,
         effective_config,
@@ -214,11 +419,14 @@ pub(super) fn info_css_parts_with_config(
     )
 }
 
-pub(super) fn info_css_parts_with_font_family(
-    diagram_id: &str,
+pub(super) fn info_css_parts_with_font_family<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
     font_family: &str,
-) -> InfoCssParts {
+) -> InfoCssParts
+where
+    I: Copy + std::fmt::Display,
+{
     info_css_parts_with_font_size_source(
         diagram_id,
         effective_config,
@@ -227,10 +435,13 @@ pub(super) fn info_css_parts_with_font_family(
     )
 }
 
-pub(super) fn info_css_parts_with_theme_font_size_only(
-    diagram_id: &str,
+pub(super) fn info_css_parts_with_theme_font_size_only<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
-) -> InfoCssParts {
+) -> InfoCssParts
+where
+    I: Copy + std::fmt::Display,
+{
     info_css_parts_with_font_size_source(
         diagram_id,
         effective_config,
@@ -239,10 +450,13 @@ pub(super) fn info_css_parts_with_theme_font_size_only(
     )
 }
 
-pub(super) fn info_css_parts_with_raw_theme_font_size(
-    diagram_id: &str,
+pub(super) fn info_css_parts_with_raw_theme_font_size<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
-) -> InfoCssParts {
+) -> InfoCssParts
+where
+    I: Copy + std::fmt::Display,
+{
     info_css_parts_with_font_size_source(
         diagram_id,
         effective_config,
@@ -251,77 +465,52 @@ pub(super) fn info_css_parts_with_raw_theme_font_size(
     )
 }
 
-fn info_css_parts_with_font_size_source(
-    diagram_id: &str,
+fn info_css_parts_with_font_size_source<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
     font_size_source: InfoCssFontSizeSource,
     resolved_font_family: Option<&str>,
-) -> InfoCssParts {
-    let id = crate::svg::escape_css_identifier(diagram_id);
-    let fragment_id = escape_xml(diagram_id);
-
-    let font_family = resolved_font_family.map_or_else(
-        || crate::config::config_font_family_css(effective_config),
-        str::to_owned,
-    );
-    let font_size_css = match font_size_source {
-        InfoCssFontSizeSource::ThemeThenTopLevel => {
-            crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
-                .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
-        }
-        InfoCssFontSizeSource::ThemeOnly => {
-            config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-                .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
-        }
-        InfoCssFontSizeSource::RawTheme => crate::config::config_css_number_or_string(
-            effective_config,
-            &["themeVariables", "fontSize"],
-        ),
-    }
-    .unwrap_or_else(|| "16px".to_string());
-    let normal_edge_stroke_width_css = mermaid_stroke_width_px(effective_config);
-
-    let text_color = theme_token(effective_config, "textColor", "#333");
-    let line_color = theme_token(effective_config, "lineColor", "#333333");
-    let error_bkg = theme_token(effective_config, "errorBkgColor", "#552222");
-    let error_text = theme_token(effective_config, "errorTextColor", "#552222");
-
+) -> InfoCssParts
+where
+    I: Copy + std::fmt::Display,
+{
+    let values = InfoCssValues::new(effective_config, font_size_source, resolved_font_family);
     let mut out = String::new();
-    write_mermaid_base_css_prefix(
-        &mut out,
-        &id,
-        MermaidBaseCss {
-            font_family: &font_family,
-            font_size_css: &font_size_css,
-            normal_edge_stroke_width_css: &normal_edge_stroke_width_css,
-            text_color: &text_color,
-            line_color: &line_color,
-            error_bkg: &error_bkg,
-            error_text: &error_text,
-        },
-    )
-    .expect("String-backed Mermaid base CSS emission cannot fail");
+    values
+        .write_prefix(&mut out, diagram_id)
+        .expect("String-backed Mermaid base CSS emission cannot fail");
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
     let mut root_rule = String::new();
-    write_mermaid_common_neo_css(&mut root_rule, &id, &fragment_id, effective_config);
-    root_rule.push_str(&mermaid_base_css_root_rule(&id, &font_family));
+    values
+        .write_root(&mut root_rule, diagram_id, diagram_id)
+        .expect("String-backed Mermaid root CSS emission cannot fail");
 
     InfoCssParts {
         css_prefix: out,
         root_rule,
-        font_family,
-        text_color,
-        line_color,
+        font_family: values.font_family,
+        text_color: values.text_color,
+        line_color: values.line_color,
     }
 }
 
-pub(super) fn info_css_with_config(
-    diagram_id: &str,
-    effective_config: &serde_json::Value,
-) -> String {
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let mut out = parts.css_prefix;
-    out.push_str(&parts.root_rule);
+pub(super) fn info_css_with_config<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+where
+    I: SvgDiagramIdValue,
+{
+    let values = InfoCssValues::new(
+        effective_config,
+        InfoCssFontSizeSource::ThemeThenTopLevel,
+        None,
+    );
+    let mut out = String::new();
+    values
+        .write_all(
+            &mut out,
+            CssSelectorDiagramId(diagram_id),
+            FragmentDiagramId(diagram_id),
+        )
+        .expect("String-backed Mermaid CSS emission cannot fail");
     out
 }
 
@@ -351,26 +540,28 @@ impl InheritedFontStackCssWrite {
 ///
 /// The receipt values come from successful output writes. They deliberately do not inspect or
 /// reparse the emitted stylesheet.
-pub(super) fn write_info_css_with_font_family(
+pub(super) fn write_info_css_with_font_family<I>(
     out: &mut impl SvgOutput,
-    diagram_id: &str,
+    diagram_id: I,
     effective_config: &serde_json::Value,
     font_family: &str,
-) -> Result<InheritedFontStackCssWrite> {
-    let parts = info_css_parts_with_font_size_source(
-        diagram_id,
+) -> Result<InheritedFontStackCssWrite>
+where
+    I: SvgDiagramIdValue,
+{
+    let values = InfoCssValues::new(
         effective_config,
         InfoCssFontSizeSource::ThemeThenTopLevel,
         Some(font_family),
     );
-    out.push_str(&parts.css_prefix);
-    out.checkpoint()?;
-    let root_font_family_css = parts.font_family.clone().into_boxed_str();
-    let inherited_font_family_css = parts.font_family.clone().into_boxed_str();
+    let selector_id = CssSelectorDiagramId(diagram_id);
+    let fragment_id = FragmentDiagramId(diagram_id);
+    values.write_prefix(out, selector_id)?;
+    let root_font_family_css = values.font_family.clone().into_boxed_str();
+    let inherited_font_family_css = values.font_family.clone().into_boxed_str();
 
-    out.push_str(&parts.root_rule);
-    out.checkpoint()?;
-    let root_variable_font_family_css = parts.font_family.into_boxed_str();
+    values.write_root(out, selector_id, fragment_id)?;
+    let root_variable_font_family_css = values.font_family.into_boxed_str();
 
     Ok(InheritedFontStackCssWrite {
         root_font_family_css,
@@ -387,14 +578,17 @@ pub(super) struct ArchitectureCssParts {
 }
 
 #[cfg(feature = "layout-cytoscape")]
-pub(super) fn architecture_css_parts_with_config(
-    diagram_id: &str,
+pub(super) fn architecture_css_parts_with_config<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
-) -> ArchitectureCssParts {
+) -> ArchitectureCssParts
+where
+    I: Copy + std::fmt::Display,
+{
     // Architecture uses the same "info-like" base stylesheet as Mermaid, but should honor
     // user-configured `fontFamily` / `fontSize` and theme variable colors.
-    let id = crate::svg::escape_css_identifier(diagram_id);
-    let fragment_id = escape_xml(diagram_id);
+    let id = diagram_id;
+    let fragment_id = diagram_id;
 
     let font_family = SvgTheme::new(effective_config).font_family_css();
     let font_size =
@@ -431,7 +625,7 @@ pub(super) fn architecture_css_parts_with_config(
     let mut out = String::new();
     write_mermaid_base_css_prefix(
         &mut out,
-        &id,
+        id,
         MermaidBaseCss {
             font_family: &font_family,
             font_size_css: &font_size_css,
@@ -469,9 +663,16 @@ pub(super) fn architecture_css_parts_with_config(
         id
     );
 
-    write_mermaid_common_neo_css(&mut out, &id, &fragment_id, effective_config);
+    write_mermaid_common_neo_css(
+        &mut out,
+        id,
+        fragment_id,
+        &MermaidCommonNeoCss::new(effective_config),
+    )
+    .expect("String-backed Architecture neo CSS emission cannot fail");
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
-    out.push_str(&mermaid_base_css_root_rule(&id, &font_family));
+    write_mermaid_base_css_root_rule(&mut out, id, &font_family)
+        .expect("String-backed Architecture root CSS emission cannot fail");
     ArchitectureCssParts {
         css: out,
         font_family,
@@ -481,17 +682,23 @@ pub(super) fn architecture_css_parts_with_config(
 
 #[cfg(feature = "layout-cytoscape")]
 #[cfg_attr(not(test), allow(dead_code))]
-pub(super) fn architecture_css_with_config(
-    diagram_id: &str,
+pub(super) fn architecture_css_with_config<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
-) -> String {
+) -> String
+where
+    I: Copy + std::fmt::Display,
+{
     architecture_css_parts_with_config(diagram_id, effective_config).css
 }
 
-pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+pub(super) fn requirement_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+where
+    I: SvgDiagramIdValue,
+{
     // Mirrors Mermaid 11.15 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last to match upstream fixtures.
-    let id = crate::svg::escape_css_identifier(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let font = parts.font_family;
@@ -582,12 +789,15 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
     out
 }
 
-pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
+pub(super) fn er_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> Result<String>
+where
+    I: SvgDiagramIdValue,
+{
     // Mirrors pinned Mermaid ER unified renderer stylesheet ordering (see `diagrams/er/styles.ts`
     // and shared base stylesheet).
     // Keep `:root` last (matches upstream fixtures).
-    let id = crate::svg::escape_css_identifier(diagram_id);
-    let fragment_id = escape_xml(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
+    let fragment_id = FragmentDiagramId(diagram_id);
     let theme = SvgTheme::new(effective_config);
     let font = theme.font_family_css();
     let font_size = crate::config::config_theme_or_root_font_size_px_opt(effective_config)
@@ -625,7 +835,7 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     let mut out = String::new();
     write_mermaid_base_css_prefix(
         &mut out,
-        &id,
+        id,
         MermaidBaseCss {
             font_family: &font,
             font_size_css: &font_size_css,
@@ -689,8 +899,15 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
         r#"#{} .marker{{fill:none!important;stroke:{}!important;stroke-width:1;}}"#,
         id, line_color
     );
-    write_mermaid_common_neo_css(&mut out, &id, &fragment_id, effective_config);
-    out.push_str(&mermaid_base_css_root_rule(&id, &font));
+    write_mermaid_common_neo_css(
+        &mut out,
+        id,
+        fragment_id,
+        &MermaidCommonNeoCss::new(effective_config),
+    )
+    .expect("String-backed ER neo CSS emission cannot fail");
+    write_mermaid_base_css_root_rule(&mut out, id, &font)
+        .expect("String-backed ER root CSS emission cannot fail");
     Ok(out)
 }
 
@@ -702,72 +919,139 @@ fn pie_theme_option(
     SvgTheme::new(effective_config).css_value(key, default_value)
 }
 
-pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+pub(super) struct PieCss {
+    info: InfoCssValues,
+    pie_stroke_color: String,
+    pie_stroke_width: String,
+    pie_opacity: String,
+    pie_outer_stroke_color: String,
+    pie_outer_stroke_width: String,
+    pie_title_text_size: String,
+    pie_title_text_color: String,
+    pie_section_text_size: String,
+    pie_section_text_color: String,
+    pie_legend_text_size: String,
+    pie_legend_text_color: String,
+}
+
+impl PieCss {
+    pub(super) fn new(effective_config: &serde_json::Value) -> Self {
+        Self::with_stroke_overrides(effective_config, None, None)
+    }
+
+    fn with_stroke_overrides(
+        effective_config: &serde_json::Value,
+        slice_stroke: Option<&str>,
+        outer_stroke: Option<&str>,
+    ) -> Self {
+        let info = InfoCssValues::new(
+            effective_config,
+            InfoCssFontSizeSource::ThemeThenTopLevel,
+            None,
+        );
+        let theme = SvgTheme::new(effective_config);
+        let task_text_dark_color = theme.color("taskTextDarkColor", "black");
+        let pie_title_text_color = theme.color("pieTitleTextColor", task_text_dark_color.as_str());
+        let pie_section_text_color = theme.color("pieSectionTextColor", info.text_color.as_str());
+        let pie_legend_text_color =
+            theme.color("pieLegendTextColor", task_text_dark_color.as_str());
+
+        Self {
+            info,
+            pie_stroke_color: slice_stroke
+                .map(str::to_owned)
+                .unwrap_or_else(|| pie_theme_option(effective_config, "pieStrokeColor", "black")),
+            pie_stroke_width: pie_theme_option(effective_config, "pieStrokeWidth", "2px"),
+            pie_opacity: pie_theme_option(effective_config, "pieOpacity", "0.7"),
+            pie_outer_stroke_color: outer_stroke.map(str::to_owned).unwrap_or_else(|| {
+                pie_theme_option(effective_config, "pieOuterStrokeColor", "black")
+            }),
+            pie_outer_stroke_width: pie_theme_option(
+                effective_config,
+                "pieOuterStrokeWidth",
+                "2px",
+            ),
+            pie_title_text_size: pie_theme_option(effective_config, "pieTitleTextSize", "25px"),
+            pie_title_text_color,
+            pie_section_text_size: pie_theme_option(effective_config, "pieSectionTextSize", "17px"),
+            pie_section_text_color,
+            pie_legend_text_size: pie_theme_option(effective_config, "pieLegendTextSize", "17px"),
+            pie_legend_text_color,
+        }
+    }
+
+    pub(super) fn write_for_normalized_id<I>(
+        &self,
+        out: &mut impl SvgOutput,
+        diagram_id: I,
+    ) -> Result<()>
+    where
+        I: SvgDiagramIdValue,
+    {
+        let selector_id = CssSelectorDiagramId(diagram_id);
+        let fragment_id = FragmentDiagramId(diagram_id);
+        self.info.write_prefix(out, selector_id)?;
+        let id = selector_id;
+        let _ = write!(
+            out,
+            r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
+            id,
+            self.pie_stroke_color,
+            self.pie_stroke_width,
+            self.pie_opacity,
+            id,
+            id,
+            id,
+            self.pie_outer_stroke_color,
+            self.pie_outer_stroke_width,
+            id,
+            self.pie_title_text_size,
+            self.pie_title_text_color,
+            self.info.font_family,
+            id,
+            self.info.font_family,
+            self.pie_section_text_color,
+            self.pie_section_text_size,
+            id,
+            self.pie_legend_text_color,
+            self.info.font_family,
+            self.pie_legend_text_size
+        );
+        out.checkpoint()?;
+        self.info.write_root(out, selector_id, fragment_id)
+    }
+}
+
+pub(super) fn pie_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+where
+    I: SvgDiagramIdValue,
+{
     pie_css_with_stroke_overrides(diagram_id, effective_config, None, None)
 }
 
-pub(super) fn pie_css_with_stroke_overrides(
-    diagram_id: &str,
+pub(super) fn pie_css_with_stroke_overrides<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
     slice_stroke: Option<&str>,
     outer_stroke: Option<&str>,
-) -> String {
-    // Mirrors Mermaid@11.16.0 `diagrams/pie/pieStyles.ts`. Keep `:root` last to match the
-    // config-aware CSS emitters used by the other diagram families.
-    let id = crate::svg::escape_css_identifier(diagram_id);
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let mut out = parts.css_prefix;
-    let font = parts.font_family;
-    let theme = SvgTheme::new(effective_config);
-    let task_text_dark_color = theme.color("taskTextDarkColor", "black");
-    let pie_stroke_color = slice_stroke
-        .map(str::to_owned)
-        .unwrap_or_else(|| pie_theme_option(effective_config, "pieStrokeColor", "black"));
-    let pie_stroke_width = pie_theme_option(effective_config, "pieStrokeWidth", "2px");
-    let pie_opacity = pie_theme_option(effective_config, "pieOpacity", "0.7");
-    let pie_outer_stroke_color = outer_stroke
-        .map(str::to_owned)
-        .unwrap_or_else(|| pie_theme_option(effective_config, "pieOuterStrokeColor", "black"));
-    let pie_outer_stroke_width = pie_theme_option(effective_config, "pieOuterStrokeWidth", "2px");
-    let pie_title_text_size = pie_theme_option(effective_config, "pieTitleTextSize", "25px");
-    let pie_title_text_color = theme.color("pieTitleTextColor", task_text_dark_color.as_str());
-    let pie_section_text_size = pie_theme_option(effective_config, "pieSectionTextSize", "17px");
-    let pie_section_text_color = theme.color("pieSectionTextColor", parts.text_color.as_str());
-    let pie_legend_text_size = pie_theme_option(effective_config, "pieLegendTextSize", "17px");
-    let pie_legend_text_color = theme.color("pieLegendTextColor", task_text_dark_color.as_str());
-    let _ = write!(
-        &mut out,
-        r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
-        id,
-        pie_stroke_color,
-        pie_stroke_width,
-        pie_opacity,
-        id,
-        id,
-        id,
-        pie_outer_stroke_color,
-        pie_outer_stroke_width,
-        id,
-        pie_title_text_size,
-        pie_title_text_color,
-        font,
-        id,
-        font,
-        pie_section_text_color,
-        pie_section_text_size,
-        id,
-        pie_legend_text_color,
-        font,
-        pie_legend_text_size
-    );
-    out.push_str(&parts.root_rule);
+) -> String
+where
+    I: SvgDiagramIdValue,
+{
+    let plan = PieCss::with_stroke_overrides(effective_config, slice_stroke, outer_stroke);
+    let mut out = String::new();
+    plan.write_for_normalized_id(&mut out, diagram_id)
+        .expect("String-backed Pie CSS emission cannot fail");
     out
 }
 
-pub(super) fn sankey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+pub(super) fn sankey_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+where
+    I: SvgDiagramIdValue,
+{
     // Mermaid's sankey diagram uses the same base CSS as "info-like" diagrams, then appends
     // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
-    let id = crate::svg::escape_css_identifier(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let label_background = config_string(effective_config, &["themeVariables", "mainBkg"])
@@ -792,10 +1076,10 @@ pub(super) fn sankey_css(diagram_id: &str, effective_config: &serde_json::Value)
 }
 
 #[cfg(test)]
-pub(super) fn treemap_css(
-    diagram_id: &str,
-    effective_config: &serde_json::Value,
-) -> Result<String> {
+pub(super) fn treemap_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> Result<String>
+where
+    I: SvgDiagramIdValue,
+{
     treemap_css_inner(diagram_id, effective_config, None).map(|(css, _)| css)
 }
 
@@ -814,22 +1098,28 @@ impl TreemapTitleCssEmission {
     }
 }
 
-pub(super) fn treemap_css_with_title_fill(
-    diagram_id: &str,
+pub(super) fn treemap_css_with_title_fill<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
     title_fill: Option<&str>,
-) -> Result<(String, TreemapTitleCssEmission)> {
+) -> Result<(String, TreemapTitleCssEmission)>
+where
+    I: SvgDiagramIdValue,
+{
     treemap_css_inner(diagram_id, effective_config, title_fill)
 }
 
-fn treemap_css_inner(
-    diagram_id: &str,
+fn treemap_css_inner<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
     title_fill: Option<&str>,
-) -> Result<(String, TreemapTitleCssEmission)> {
+) -> Result<(String, TreemapTitleCssEmission)>
+where
+    I: SvgDiagramIdValue,
+{
     // Mermaid's treemap styles merge `treemap.*` options with theme title/text colors. Keep
     // `:root` last to match upstream SVG baselines.
-    let id = crate::svg::escape_css_identifier(diagram_id);
+    let id = CssSelectorDiagramId(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let theme = MermaidThemeAdapter::new(effective_config).treemap()?;
     let mut out = parts.css_prefix;
@@ -867,15 +1157,21 @@ fn treemap_css_inner(
     Ok((out, title_emission))
 }
 
-pub(super) fn push_xychart_css(out: &mut String, diagram_id: &str) {
+pub(super) fn push_xychart_css<I>(out: &mut String, diagram_id: I)
+where
+    I: SvgDiagramIdValue,
+{
     // Mermaid does not ship dedicated XYChart styles at 11.12.2 (it relies on theme variables and
     // inline attributes). Keep the shared base stylesheet for consistency with upstream SVG
     // baselines. The compare tooling ignores `<style>` content in parity mode.
     info_css_into(out, diagram_id);
 }
 
-pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    let id = crate::svg::escape_css_identifier(diagram_id);
+pub(super) fn gantt_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+where
+    I: SvgDiagramIdValue,
+{
+    let id = CssSelectorDiagramId(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let theme = MermaidThemeAdapter::new(effective_config).gantt();
     let mut out = parts.css_prefix;
@@ -903,7 +1199,10 @@ pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) 
     let vert_line_color = &theme.vert_line_color;
     let title_text_color = &theme.title_text_color;
 
-    fn push_outside_done_text_rules(out: &mut String, id: &str, class_prefix: &str, color: &str) {
+    fn push_outside_done_text_rules<I>(out: &mut String, id: I, class_prefix: &str, color: &str)
+    where
+        I: Copy + std::fmt::Display,
+    {
         let mut first = true;
         for i in 0..4 {
             for side in ["Left", "Right"] {
@@ -1020,7 +1319,7 @@ pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) 
         r#"#{} .doneText0,#{} .doneText1,#{} .doneText2,#{} .doneText3{{fill:{}!important;}}"#,
         id, id, id, id, task_text_dark_color
     );
-    push_outside_done_text_rules(&mut out, &id, "doneText", task_text_outside_color);
+    push_outside_done_text_rules(&mut out, id, "doneText", task_text_outside_color);
     let _ = write!(
         &mut out,
         r#"#{} .crit0,#{} .crit1,#{} .crit2,#{} .crit3{{stroke:{};fill:{};stroke-width:2;}}"#,
@@ -1046,7 +1345,7 @@ pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) 
         r#"#{} .doneCritText0,#{} .doneCritText1,#{} .doneCritText2,#{} .doneCritText3{{fill:{}!important;}}"#,
         id, id, id, id, task_text_dark_color
     );
-    push_outside_done_text_rules(&mut out, &id, "doneCritText", task_text_outside_color);
+    push_outside_done_text_rules(&mut out, id, "doneCritText", task_text_outside_color);
     let _ = write!(
         &mut out,
         r#"#{} .vert{{stroke:{};}}#{} .vertText{{font-size:15px;text-anchor:middle;fill:{}!important;}}"#,

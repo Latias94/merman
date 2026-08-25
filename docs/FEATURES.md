@@ -36,7 +36,7 @@ The public capability leaves are:
 | `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | None; compiled separately and selected explicitly at runtime |
-| `icons`, `markdown`, `network-icons`, `parallel-markdown`, `shell-completions` | Compiled CLI tool commands | None; the CLI Cargo manifest owns their workflow forwarding |
+| `icons`, `markdown`, `network-icons`, `parallel-markdown`, `rustdoc`, `shell-completions` | Compiled CLI tool commands | None or descriptor-declared workflow implications; the CLI Cargo manifest owns their forwarding |
 
 This column describes only the repository-wide semantic contract recorded in the canonical
 descriptor. A Cargo package or product surface may forward additional features to assemble an
@@ -73,6 +73,8 @@ select their own direct leaf set instead.
 | Standalone LSP server | `merman-lsp` | `--no-default-features --features stdio` |
 | Complete CLI | `merman-cli` | Its default direct leaf set, or the exact `cli-release` recipe |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features analysis` |
+| Checked Rustdoc fragments | `merman-cli rustdoc` | CLI `rustdoc`; documented crates consume committed files through native `include_str!` |
+| One-step Rustdoc attributes | `merman-rustdoc` | Default `complete-svg`, or an explicit smaller renderer closure |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
 | C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; source builds use `native-runtime` when native runtime policy is required |
@@ -209,7 +211,8 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 
 `merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes SVG,
 analysis, ASCII, PNG, JPEG, PDF, both optional layout engines, math, local Iconify loading,
-Markdown conversion, native adapters, network icons, parallel Markdown, and shell completions.
+Markdown conversion, checked Rustdoc fragment generation, native adapters, network icons, parallel
+Markdown, and shell completions.
 Compiled native adapters never change the default runtime policy:
 
 ```sh
@@ -243,6 +246,34 @@ Likewise, `markdown` enables serial document conversion without analysis command
 numbering, source order, diagnostics ordering, resource admission, or transaction semantics.
 Use `--no-default-features --features markdown` for the smallest sequential Markdown CLI and
 `--no-default-features --features parallel-markdown` when measured throughput justifies Rayon.
+
+## Rustdoc
+
+Rustdoc has two independently distributed static-SVG workflows. The CLI `rustdoc` tool leaf
+enables complete deterministic rendering for an explicit `build/check` authoring workflow; it does
+not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are committed,
+packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
+`#![doc = include_str!(...)]`. This gives the documented crate zero attributable Merman packages
+in its normal/build Cargo graph, supports crate-level docs, and makes diagram updates reviewable.
+
+The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
+`complete-svg` feature intentionally compiles SVG, Cytoscape, ELK, and math into the proc-macro
+host. Optional dependency gating can keep that closure out of ordinary builds, but selecting the
+documentation feature, `--all-features`, or docs.rs metadata still compiles it.
+
+| Concern | Checked CLI generation | Attribute macro |
+| --- | --- | --- |
+| Cargo cost for documented crate | No renderer or proc-macro dependency | Selected native renderer closure |
+| Trigger | `merman-cli rustdoc build/check` before `cargo doc` | `cargo doc` macro expansion |
+| Owned files | Committed Markdown fragments and `receipt.json` | Annotated Rust source; generated HTML only |
+| docs.rs | Reads files already present in the uploaded crate | Builds the enabled optional macro dependency |
+| Rollback | Git restores or regenerates the managed bundle | Git restores source/feature selection |
+
+Neither path invokes or falls back to the other. Include a generated fragment at most once on one
+Rustdoc page because its static SVG IDs are deterministic within that fragment. See the
+[`merman-cli` guide](../crates/merman-cli/README.md#rustdoc-fragments) and
+[`merman-rustdoc` guide](../crates/merman-rustdoc/README.md) for runnable configuration, Rust, CI,
+and package examples.
 
 ## Browser, Typst, and native packages
 

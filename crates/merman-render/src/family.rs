@@ -29,12 +29,13 @@ use crate::math::PreparedMathEvidenceLease;
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
-    ResvgCompatibleSvg, StandaloneSvgArtifact, SvgDebugOptions, SvgPipeline, SvgPipelinePreset,
-    SvgPostprocessMetadata, SvgRenderOptions,
+    FlowchartEdgeTraceCollector, ResvgCompatibleSvg, StandaloneSvgArtifact, SvgDebugOptions,
+    SvgPipeline, SvgPipelinePreset, SvgPostprocessExecution, SvgPostprocessMetadata,
+    SvgRenderOptions,
 };
 use crate::text::PreparedTextEvidenceLease;
 use crate::wardley::WardleyDiagramLayout;
-use crate::{Error, LayoutExecution, LayoutOptions, Result};
+use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
 use merman_core::OperationPhase;
 use merman_core::diagrams;
 use merman_core::models::class_diagram::ClassDiagram;
@@ -415,11 +416,6 @@ impl FamilyStyleReport {
         &self.residuals
     }
 
-    /// Returns every family-scoped typed mechanism selected by the recipe.
-    pub fn theme_required_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
-        &self.theme_required
-    }
-
     /// Returns typed mechanisms the family adapter explicitly emitted or consumed.
     pub fn theme_applied_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
         &self.theme_applied
@@ -452,12 +448,6 @@ impl FamilyStyleReport {
     /// Returns temporary family-local Mermaid compatibility contributions used by this operation.
     pub const fn compatibility_residual_count(&self) -> usize {
         self.compatibility_residual_count
-    }
-
-    /// Returns explicit Mermaid compatibility fields that survived the final config cascade.
-    #[doc(hidden)]
-    pub const fn mermaid_compatibility_residual_count(&self) -> usize {
-        self.mermaid_compatibility_residual_count
     }
 
     pub fn theme_coverage_complete(&self) -> bool {
@@ -1411,7 +1401,7 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 #[derive(Debug)]
 pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
-    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    render_context: diagrams::flowchart::FlowchartRenderContext,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
     edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
@@ -1423,8 +1413,8 @@ impl<L> FlowchartFamilyArtifact<L> {
         &self.pair
     }
 
-    pub(crate) fn label_sources(&self) -> &diagrams::flowchart::FlowchartRenderLabelSources {
-        &self.label_sources
+    pub(crate) fn render_context(&self) -> &diagrams::flowchart::FlowchartRenderContext {
+        &self.render_context
     }
 
     pub(crate) const fn edge_style_plan(&self) -> &crate::svg::FlowchartEdgeStylePlan {
@@ -2575,6 +2565,7 @@ pub struct FamilyRenderArtifact {
     metadata: ParseMetadata,
     compatibility_projection: OnceLock<std::result::Result<serde_json::Value, String>>,
     family: BuiltinFamilyArtifact,
+    required_capabilities: Vec<RenderCapability>,
     context: FamilyRenderContext,
 }
 
@@ -2704,6 +2695,7 @@ pub struct RenderedFamilySvg {
     root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
     metadata: ParseMetadata,
+    required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
 }
 
@@ -2753,6 +2745,11 @@ impl RenderedFamilySvg {
         self.style_report.family_id()
     }
 
+    /// Returns the optional capabilities admitted during this artifact's preparation.
+    pub fn required_capabilities(&self) -> &[RenderCapability] {
+        &self.required_capabilities
+    }
+
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
         &self.style_report
     }
@@ -2772,7 +2769,7 @@ impl RenderedFamilySvg {
         enforce_portability: bool,
     ) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
-        let output_metadata = self.output_metadata();
+        let output_metadata = self.output_metadata()?;
         let preserves_prepared_text =
             self.prepared_text_evidence_valid && pipeline.preserves_prepared_text_evidence();
         let preserves_prepared_math =
@@ -2797,6 +2794,7 @@ impl RenderedFamilySvg {
             let (public_svg, prepared_text_svg) = crate::svg::partition_prepared_text_label_ids(
                 processed_svg,
                 self.prepared_text_ledger.entries(),
+                SvgPostprocessExecution::new(&self.session),
             )?;
             self.svg = public_svg;
             self.prepared_text_svg = prepared_text_svg;
@@ -2806,9 +2804,11 @@ impl RenderedFamilySvg {
         if !preserves_prepared_math {
             self.prepared_math_evidence_valid = false;
         }
-        self.session
-            .resource_policy()
-            .check_svg_bytes(&self.svg, ResourceLimitPhase::SvgPostprocess)?;
+        self.session.work_meter().preflight_svg_byte_count(
+            self.svg.len(),
+            ResourceLimitPhase::SvgPostprocess,
+            OperationPhase::Postprocess,
+        )?;
         if !pipeline.preserves_typed_theme_evidence() {
             self.root_theme = self.root_theme.invalidate_for_output_mutation();
             self.style_report = self.style_report.invalidate_for_output_mutation();
@@ -2845,7 +2845,7 @@ impl RenderedFamilySvg {
             .session
             .theme_portability_requirement()
             .unwrap_or(ThemePortabilityRequirement::BestEffort);
-        let output_metadata = self.output_metadata();
+        let output_metadata = self.output_metadata()?;
         let prepared_text_evidence_valid =
             self.prepared_text_evidence_valid && pipeline.preserves_prepared_text_evidence();
         let source_svg = if prepared_text_evidence_valid {
@@ -2881,12 +2881,14 @@ impl RenderedFamilySvg {
             .attach_prepared_text_evidence(
                 prepared_text_ledger,
                 prepared_text_evidence_valid,
-                self.session.resource_policy(),
+                SvgPostprocessExecution::new(&self.session),
             )?
             .attach_prepared_math_evidence(prepared_math_evidence, prepared_math_evidence_valid)?;
-        self.session
-            .resource_policy()
-            .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
+        self.session.work_meter().preflight_svg_byte_count(
+            svg.as_str().len(),
+            ResourceLimitPhase::SvgPostprocess,
+            OperationPhase::Export,
+        )?;
         let preserves_typed_theme_evidence = pipeline.preserves_typed_theme_evidence();
         let root_theme = if preserves_typed_theme_evidence {
             self.root_theme
@@ -2971,11 +2973,15 @@ impl RenderedFamilySvg {
         })
     }
 
-    fn output_metadata(&self) -> SvgPostprocessMetadata {
-        SvgPostprocessMetadata::from_svg(&self.svg)
+    fn output_metadata(&self) -> Result<SvgPostprocessMetadata> {
+        let metadata = SvgPostprocessMetadata::from_svg_with_execution(
+            &self.svg,
+            SvgPostprocessExecution::new(&self.session),
+        )?;
+        Ok(metadata
             .with_family_id(self.family_id())
             .with_diagram_type(self.metadata.diagram_type.clone())
-            .with_optional_diagram_title(self.metadata.title.clone())
+            .with_optional_diagram_title(self.metadata.title.clone()))
     }
 
     pub fn into_completion(self) -> FamilyRenderCompletion<String> {
@@ -2990,6 +2996,7 @@ impl RenderedFamilySvg {
             style_report,
             session,
             metadata: _,
+            required_capabilities: _,
         } = self;
         FamilyRenderCompletion {
             output: svg,
@@ -3085,6 +3092,7 @@ impl FamilyRenderArtifact {
             metadata,
             compatibility_projection: OnceLock::new(),
             family,
+            required_capabilities: Vec::new(),
             context,
         })
     }
@@ -3164,11 +3172,18 @@ impl FamilyRenderArtifact {
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
         self.context.session().checkpoint(OperationPhase::Emit)?;
-        let rendered = render_family_artifact_svg(&self, options, debug)?;
-        self.context
-            .session()
-            .resource_policy()
-            .check_svg_bytes(rendered.as_str(), ResourceLimitPhase::SvgOutput)?;
+        let trace_stage = debug.flowchart_edge_trace().map(|(edge_id, destination)| {
+            let staging = FlowchartEdgeTraceCollector::default();
+            let staged_debug = debug
+                .clone()
+                .with_flowchart_edge_trace(edge_id.to_owned(), staging.clone());
+            (destination.clone(), staging, staged_debug)
+        });
+        let render_debug = trace_stage
+            .as_ref()
+            .map_or(debug, |(_, _, staged_debug)| staged_debug);
+        let rendered = render_family_artifact_svg(&self, options, render_debug)?;
+        admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let flowchart_theme_evidence = self
             .family
@@ -3236,6 +3251,7 @@ impl FamilyRenderArtifact {
             metadata,
             compatibility_projection: _,
             family: _,
+            required_capabilities,
             mut context,
         } = self;
         if let Some((evidence, source_style_residuals)) = flowchart_theme_evidence {
@@ -3356,6 +3372,7 @@ impl FamilyRenderArtifact {
         let (svg, prepared_text_svg) = crate::svg::partition_prepared_text_label_ids(
             tokenized_svg,
             prepared_text_ledger.entries(),
+            SvgPostprocessExecution::new(context.session()),
         )?;
         let (session, style_report) = context.into_session_and_style_report();
         ensure_root_theme_portable(
@@ -3365,6 +3382,12 @@ impl FamilyRenderArtifact {
                 .unwrap_or(ThemePortabilityRequirement::BestEffort),
         )?;
         session.checkpoint(OperationPhase::Emit)?;
+
+        if let Some((destination, staging, _)) = trace_stage {
+            for trace in staging.drain() {
+                destination.record(trace);
+            }
+        }
 
         Ok(RenderedFamilySvg {
             svg,
@@ -3376,9 +3399,21 @@ impl FamilyRenderArtifact {
             root_theme,
             style_report,
             metadata,
+            required_capabilities,
             session,
         })
     }
+}
+
+fn admit_rendered_svg_output(session: &RenderSession, svg: &str) -> Result<()> {
+    // Termination wins over the final output ceiling when both become observable during emit.
+    session.checkpoint(OperationPhase::Emit)?;
+    session.work_meter().preflight_svg_byte_count(
+        svg.len(),
+        ResourceLimitPhase::SvgOutput,
+        OperationPhase::Emit,
+    )?;
+    Ok(())
 }
 
 #[inline(never)]
@@ -3387,7 +3422,7 @@ fn render_family_artifact_svg(
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<crate::svg::RootThemeAppliedSvg> {
-    let options = request.normalized();
+    let options = crate::svg::normalize_svg_render_options(request, artifact.context.session())?;
     let execution = artifact.context.execution();
     #[cfg(feature = "layout-cytoscape")]
     if let BuiltinFamilyArtifact::Architecture(architecture) = &artifact.family {
@@ -3457,15 +3492,17 @@ pub fn prepare(
     }
     let plan = plan_render(&parsed, &session)?;
     plan.ensure_available()?;
+    let required_capabilities = plan.required_capabilities().to_vec();
     let expected_family = plan.family_id();
     let context = FamilyRenderContext::resolve(session, expected_family);
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
-    let artifact = if expected_family == DiagramFamilyId::CLASS {
+    let mut artifact = if expected_family == DiagramFamilyId::CLASS {
         preparation::prepare_class_render(parsed, options, context)
     } else {
         preparation::prepare_non_class_render(parsed, options, context)
     }?;
+    artifact.required_capabilities = required_capabilities;
     artifact
         .context
         .session()

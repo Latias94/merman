@@ -609,20 +609,6 @@ State1 --> State2"#;
         .unwrap()
         .expect("state editor facts");
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    let embedded_marker = text.find("end note as part").unwrap();
-    assert!(facts.lexemes().iter().any(|lexeme| {
-        let span = lexeme.span();
-        lexeme.kind() == EditorLexemeKind::String
-            && span.start <= embedded_marker
-            && span.end >= embedded_marker + "end note".len()
-    }));
-    let closing_marker = text.rfind("end note").unwrap();
-    assert!(facts.lexemes().iter().any(|lexeme| {
-        let span = lexeme.span();
-        lexeme.kind() == EditorLexemeKind::Keyword
-            && span.start == closing_marker
-            && &text[span.start..span.end] == "end"
-    }));
 }
 
 #[test]
@@ -724,6 +710,44 @@ note right of A : note text"#,
     assert_eq!(note_group["padding"], json!(16));
     assert_eq!(note_node["padding"], json!(15));
     assert_eq!(note_node["parentId"], json!("A----parent"));
+}
+
+#[test]
+fn parse_diagram_state_v2_keeps_multiple_note_groups_distinct() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_diagram(
+        r#"stateDiagram-v2
+A
+note left of A : left text
+note right of A : right text"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    let nodes = res.model["nodes"].as_array().unwrap();
+    let groups: Vec<_> = nodes
+        .iter()
+        .filter(|node| node["shape"] == json!("noteGroup"))
+        .collect();
+    assert_eq!(groups.len(), 2, "each note needs its own group node");
+    assert_ne!(groups[0]["id"], groups[1]["id"]);
+    assert!(nodes.iter().any(|node| node["label"] == json!("left text")));
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node["label"] == json!("right text"))
+    );
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node["position"] == json!("left of"))
+    );
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node["position"] == json!("right of"))
+    );
 }
 
 fn deep_state_composite_chain(depth: usize) -> String {
@@ -841,12 +865,9 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
         ),
     )
     .expect("combined State parse succeeds");
-    let family = crate::family::diagram_type_family_id(&standalone.meta.diagram_type)
-        .expect("State belongs to a catalog family");
     combined_editor.family_semantics =
         crate::family::diagram_type_editor_semantics(&standalone.meta.diagram_type)
             .expect("State has typed editor family semantics");
-    combined_editor.finalize_lexemes(family, &[]);
 
     assert_eq!(
         crate::diagrams::state::state_syntax_construction_count(),

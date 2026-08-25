@@ -15,7 +15,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let mut timings = super::timing::RenderTimings::default();
     let total_timer = timing.start();
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
     let style_plan = options
         .state_style_plan()
         .ok_or_else(|| Error::InvalidModel {
@@ -58,16 +58,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         state_render_settings.hand_drawn_seed,
         "render.state.roughjs",
     );
-    #[cfg(test)]
-    let rough_lifecycle_probe = StateRoughLifecycleOperationProbe::new(
-        state_render_settings.hand_drawn_seed,
-        hand_drawn_seed.seed().number(),
-        !hand_drawn_seed.seed().may_use_math_random(),
-    );
-    #[cfg(test)]
-    let rough_cache =
-        StateRoughCache::with_release_tracker(rough_lifecycle_probe.release_tracker());
-    #[cfg(not(test))]
     let rough_cache = StateRoughCache::default();
 
     let has_acc_title = model
@@ -117,7 +107,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
     let mut ctx = StateRenderCtx {
-        diagram_id: diagram_id.to_string(),
+        diagram_id,
         diagram_look: state_render_settings.diagram_look,
         hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
@@ -146,8 +136,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             options.debug.include_edges,
         )),
         rough_cache,
-        #[cfg(test)]
-        rough_lifecycle_probe,
     };
 
     fn compute_state_nested_roots(ctx: &StateRenderCtx<'_>) -> std::collections::BTreeSet<String> {
@@ -312,12 +300,13 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         root_svg::DeferredRootSpec::responsive(),
         root_chrome,
     )?;
+    options.checkpoint_emit()?;
 
     if has_acc_title {
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{}">{}"#,
-            escape_xml_display(diagram_id),
+            diagram_id,
             escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
@@ -326,7 +315,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml_display(diagram_id),
+            diagram_id,
             escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");
@@ -355,8 +344,8 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         &mut out,
         &ctx,
         None,
-        origin_x,
-        origin_y,
+        (origin_x, origin_y),
+        options,
         timing,
         &mut detail,
         &mut effect_outsets,
@@ -493,14 +482,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             detail.self_loop_placeholders,
         );
     }
-    #[cfg(test)]
-    {
-        let completed = root_document.complete(out)?;
-        state_rough_lifecycle_after_root(&completed)?;
-        ctx.rough_lifecycle_probe.mark_success();
-        Ok(completed)
-    }
-    #[cfg(not(test))]
     root_document.complete(out)
 }
 
@@ -508,13 +489,15 @@ fn render_state_root(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     root: Option<&str>,
-    parent_origin_x: f64,
-    parent_origin_y: f64,
+    parent_origin: (f64, f64),
+    options: &SvgExecution<'_>,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
     effect_outsets: &mut crate::state::StateEffectOutsets,
 ) -> Result<()> {
     details.root_calls += 1;
+    options.checkpoint_emit()?;
+    let (parent_origin_x, parent_origin_y) = parent_origin;
 
     // Mermaid's dagre-wrapper uses a fixed graph margin (`marginx/marginy=8`). For nested state
     // roots (extracted cluster graphs), Mermaid keeps the root cluster frame at x/y=8 in the
@@ -601,7 +584,7 @@ fn render_state_root(
         if node.shape != "noteGroup" {
             continue;
         }
-        let note_owner = cluster_id.strip_suffix("----parent").unwrap_or(cluster_id);
+        let note_owner = state_note_owner_id(cluster_id);
         if ctx.hidden_prefixes.iter().any(|p| p == note_owner) {
             continue;
         }
@@ -628,7 +611,7 @@ fn render_state_root(
         let _ = write!(
             out,
             r#"<g id="{}" class="note-cluster"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
-            escape_xml_display(&dom_id),
+            dom_id.attr(),
             fmt_display(x),
             fmt_display(y),
             fmt_display(cluster.width.max(1.0)),
@@ -744,8 +727,8 @@ fn render_state_root(
             out,
             ctx,
             Some(child_root),
-            origin_x,
-            origin_y,
+            (origin_x, origin_y),
+            options,
             timing,
             details,
             effect_outsets,
@@ -954,12 +937,12 @@ fn render_state_cluster(
             let fill = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Fill,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let stroke = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Stroke,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let stroke_width = compatibility.terminal_stroke_width_value(surface);
             let (fill_d, stroke_d) = state_hand_drawn_rect_paths(
@@ -978,7 +961,7 @@ fn render_state_cluster(
                 out,
                 r#"<g class="{}" id="{}" data-look="{}"><g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="5" style="{}"/></g></g>"#,
                 escape_attr(class),
-                escape_attr(&dom_id),
+                dom_id.attr(),
                 escape_attr(data_look),
                 escape_attr(&fill_d),
                 escape_attr(&fill),
@@ -999,7 +982,7 @@ fn render_state_cluster(
             out,
             r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
             escape_attr(class),
-            escape_attr(&dom_id),
+            dom_id.attr(),
             escape_attr(data_look),
             escape_attr(body_style),
             radius_attrs,
@@ -1041,23 +1024,23 @@ fn render_state_cluster(
         let body_fill = compatibility.terminal_paint_css(
             body_surface,
             crate::state::StateTerminalPaintProperty::Fill,
-            &ctx.diagram_id,
+            ctx.diagram_id,
         );
         let body_stroke = compatibility.terminal_paint_css(
             body_surface,
             crate::state::StateTerminalPaintProperty::Stroke,
-            &ctx.diagram_id,
+            ctx.diagram_id,
         );
         let body_stroke_width = compatibility.terminal_stroke_width_value(body_surface);
         let header_fill = compatibility.terminal_paint_css(
             header_surface,
             crate::state::StateTerminalPaintProperty::Fill,
-            &ctx.diagram_id,
+            ctx.diagram_id,
         );
         let header_stroke = compatibility.terminal_paint_css(
             header_surface,
             crate::state::StateTerminalPaintProperty::Stroke,
-            &ctx.diagram_id,
+            ctx.diagram_id,
         );
         let header_stroke_width = compatibility.terminal_stroke_width_value(header_surface);
         let (outer_fill_d, outer_stroke_d) = state_hand_drawn_rect_paths(
@@ -1142,7 +1125,7 @@ fn render_state_cluster(
             out,
             r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g>{}</g>"#,
             escape_attr(class),
-            escape_attr(&dom_id),
+            dom_id.attr(),
             escape_attr(cluster_id),
             escape_attr(data_look),
             outer_shape,
@@ -1168,7 +1151,7 @@ fn render_state_cluster(
             out,
             r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})">{}</g>{}</g>"#,
             escape_attr(class),
-            escape_attr(&dom_id),
+            dom_id.attr(),
             escape_attr(cluster_id),
             escape_attr(data_look),
             outer_shape,

@@ -4,7 +4,7 @@ use super::grid::{
 use super::left_right::{
     plan_left_right_down_route, plan_left_right_down_then_right_route,
     plan_left_right_reverse_over_self_loop_route, plan_left_right_right_then_up_route,
-    plan_left_right_self_loop_route,
+    plan_left_right_self_loop_route, plan_left_right_self_loop_route_with_resources,
 };
 use super::same_rank::{plan_same_rank_bottom_lane_route, plan_same_rank_direct_route};
 use super::top_down::{
@@ -18,8 +18,8 @@ use crate::graph::charset::GraphCharset;
 use crate::graph::label::GraphLabel;
 use crate::graph::layout::{GraphLayout, GridCoord, NodeLayout, layout_graph};
 use crate::graph::model::{
-    AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeStroke, GraphEdgeStyle,
-    GraphNodeShape, GraphNodeStyle,
+    AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeMarker, GraphEdgeStroke,
+    GraphEdgeStyle, GraphNodeShape, GraphNodeStyle,
 };
 use crate::graph::routing::label::RoutedLabelPlacement;
 use crate::graph::routing::label::RoutedLabelText;
@@ -28,17 +28,278 @@ use crate::graph::routing::plan::PlannedRouteSegment;
 use crate::graph::routing::plan::select::{
     EdgeBoundaryContext, UnsupportedEdgeRouteReason, edge_boundary_context,
 };
+use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+use merman_core::resources::ResourceProfile;
+use std::cell::Cell;
+
+#[test]
+fn planned_route_cells_debit_before_materializing_exact_and_max_minus_one() {
+    let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    let exact_policy = unbounded
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+        .expect("exact route-cell work limit should be valid");
+    let mut exact_resources = crate::resource::ResourceContext::new(exact_policy);
+    let mut exact_cells = PlannedRouteCells::new();
+    exact_cells
+        .try_push(&mut exact_resources, || route_cell(0, 0, '-'))
+        .expect("first exact-budget route cell should materialize");
+    exact_cells
+        .try_push(&mut exact_resources, || route_cell(1, 0, '-'))
+        .expect("second exact-budget route cell should materialize");
+    assert_eq!(exact_cells.into_vec().len(), 2);
+
+    let below_policy = unbounded
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+        .expect("max-minus-one route-cell work limit should be valid");
+    let mut below_resources = crate::resource::ResourceContext::new(below_policy);
+    let mut below_cells = PlannedRouteCells::new();
+    below_cells
+        .try_push(&mut below_resources, || route_cell(0, 0, '-'))
+        .expect("first max-minus-one route cell should materialize");
+    let second_materialized = Cell::new(false);
+    let error = below_cells
+        .try_push(&mut below_resources, || {
+            second_materialized.set(true);
+            route_cell(1, 0, '-')
+        })
+        .expect_err("second max-minus-one route cell should fail before materialization");
+    assert!(!second_materialized.get());
+    let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+        panic!("expected a layout-work resource error, got {error:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+    assert_eq!(details.actual, 2);
+    assert_eq!(details.max, 1);
+}
+
+#[test]
+fn marker_candidates_carry_the_contiguous_route_local_terminal_tail() {
+    let plan = RoutePlan::new(
+        (0..4)
+            .map(|x| cell(x, 0, '-', PlannedRouteCellKind::RouteCell))
+            .collect(),
+        Vec::new(),
+        MarkerAnchors::new(
+            MarkerAnchor::new(PlannedCellId::new(0), StepDirection::Left),
+            MarkerAnchor::new(PlannedCellId::new(3), StepDirection::Right),
+        ),
+    )
+    .with_marker_requests(GraphEdgeMarker::Open, GraphEdgeMarker::Point, "flowchart")
+    .unwrap();
+    let mut resources = unbounded_route_resources();
+
+    let candidates = plan
+        .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
+        .unwrap();
+
+    assert_eq!(candidates.len(), 3);
+    assert!(candidates[0].terminal_tail().is_empty());
+    assert_eq!(candidates[1].terminal_tail(), &[PlannedCellId::new(3)]);
+    assert_eq!(
+        candidates[2].terminal_tail(),
+        &[PlannedCellId::new(3), PlannedCellId::new(2)]
+    );
+    assert!(candidates[1].follows_terminal_predecessor(candidates[0]));
+    assert!(candidates[2].follows_terminal_predecessor(candidates[1]));
+}
+
+#[test]
+fn self_loop_marker_candidates_stop_before_the_terminal_corner() {
+    let from = node("a", 0, 0, 3, 3);
+    let layouts = vec![from.clone()];
+    let edge = edge_between("a", "a", None, GraphEdgeArrow::Point);
+    let edges = vec![edge.clone()];
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+    let plan = plan_left_right_self_loop_route(&layouts, &edges, &from, &edge, &charset).unwrap();
+    let mut resources = unbounded_route_resources();
+
+    let candidates = plan
+        .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
+        .unwrap();
+
+    assert_eq!(candidates.len(), 1);
+    assert!(candidates[0].is_primary());
+    assert!(candidates[0].terminal_tail().is_empty());
+}
 
 #[test]
 fn edge_route_selects_left_right_parallel_bottom_lane() {
     let options = AsciiRenderOptions::ascii();
-    let layout = left_right_layout(&[("a", "b"), ("a", "b")], &options);
+    let layout = left_right_layout(&[("a", "b"), ("a", "b"), ("a", "b")], &options);
     let from = layout_node(&layout, "a");
     let to = layout_node(&layout, "b");
     let edges = vec![
         edge(Some("parallel"), GraphEdgeArrow::Point),
         edge(Some("parallel"), GraphEdgeArrow::Point),
+        edge(Some("parallel"), GraphEdgeArrow::Point),
     ];
+    let charset = GraphCharset::for_options(&options);
+
+    let second = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::LeftRight),
+        graph_layout: &layout,
+        edges: &edges,
+        from,
+        to,
+        edge_index: 1,
+        edge: &edges[1],
+        charset: &charset,
+    })
+    .unwrap();
+    let third = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::LeftRight),
+        graph_layout: &layout,
+        edges: &edges,
+        from,
+        to,
+        edge_index: 2,
+        edge: &edges[2],
+        charset: &charset,
+    })
+    .unwrap();
+    let expected = plan_same_rank_bottom_lane_route(from, to, &edges[1], &charset).unwrap();
+
+    assert_eq!(second, expected);
+    let second_lane_y = second
+        .cells
+        .iter()
+        .map(|cell| cell.coord.y)
+        .max()
+        .expect("second edge should have route cells");
+    let third_lane_y = third
+        .cells
+        .iter()
+        .map(|cell| cell.coord.y)
+        .max()
+        .expect("third edge should have route cells");
+    assert_eq!(third_lane_y, second_lane_y + 2);
+    let second_marker = second
+        .cells
+        .iter()
+        .find(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
+        .expect("second edge should retain its marker");
+    let third_marker = third
+        .cells
+        .iter()
+        .find(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
+        .expect("third edge should retain its marker");
+    assert_ne!(second_marker.coord, third_marker.coord);
+    assert_ne!(
+        second.labels[0].placement.y(),
+        third.labels[0].placement.y()
+    );
+}
+
+#[test]
+fn edge_route_assigns_parallel_self_loops_distinct_lanes_and_marker_berths() {
+    let options = AsciiRenderOptions::ascii();
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("a", "A");
+    let layout = layout_graph(&graph, &options);
+    let from = layout_node(&layout, "a");
+    let edges = vec![
+        edge_between("a", "a", Some("alpha"), GraphEdgeArrow::Point),
+        edge_between("a", "a", Some("beta"), GraphEdgeArrow::Circle),
+        edge_between("a", "a", Some("gamma"), GraphEdgeArrow::Cross),
+    ];
+    let charset = GraphCharset::for_options(&options);
+
+    let plans = edges
+        .iter()
+        .enumerate()
+        .map(|(edge_index, edge)| {
+            plan_edge_route(EdgeRouteRequest {
+                graph: &graph,
+                graph_layout: &layout,
+                edges: &edges,
+                from,
+                to: from,
+                edge_index,
+                edge,
+                charset: &charset,
+            })
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+
+    let lane_bounds = plans
+        .iter()
+        .map(|plan| {
+            (
+                plan.cells.iter().map(|cell| cell.coord.x).max().unwrap(),
+                plan.cells.iter().map(|cell| cell.coord.y).max().unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(lane_bounds[1], (lane_bounds[0].0 + 2, lane_bounds[0].1 + 2));
+    assert_eq!(lane_bounds[2], (lane_bounds[1].0 + 2, lane_bounds[1].1 + 2));
+
+    let markers = plans
+        .iter()
+        .map(|plan| {
+            plan.cells
+                .iter()
+                .find(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
+                .expect("each self-loop should retain one target marker")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        markers.iter().map(|cell| cell.ch).collect::<Vec<_>>(),
+        vec!['^', 'o', 'x']
+    );
+    assert_eq!(markers[1].coord.y, markers[0].coord.y);
+    assert_eq!(markers[2].coord.y, markers[1].coord.y);
+    assert_eq!(markers[1].coord.x, markers[0].coord.x + 1);
+    assert_eq!(markers[2].coord.x, markers[1].coord.x + 1);
+
+    let label_rows = plans
+        .iter()
+        .map(|plan| plan.labels[0].placement.y())
+        .collect::<Vec<_>>();
+    assert_ne!(label_rows[0], label_rows[1]);
+    assert_ne!(label_rows[1], label_rows[2]);
+    assert_ne!(label_rows[0], label_rows[2]);
+}
+
+#[test]
+fn parallel_self_loop_lane_index_reports_checked_grid_overflow() {
+    let from = node("a", 0, 0, 3, 3);
+    let layouts = vec![from.clone()];
+    let edge = edge_between("a", "a", None, GraphEdgeArrow::Point);
+    let edges = vec![edge.clone()];
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+    let mut resources = crate::resource::ResourceContext::new(AsciiResourcePolicy::for_profile(
+        ResourceProfile::UnboundedForTrustedInput,
+    ));
+
+    let error = plan_left_right_self_loop_route_with_resources(
+        &layouts,
+        &edges,
+        &from,
+        &edge,
+        usize::MAX,
+        None,
+        &charset,
+        &mut resources,
+    )
+    .expect_err("parallel self-loop lane multiplication should remain checked");
+
+    let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+        panic!("expected a grid resource error, got {error:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+}
+
+#[test]
+fn invisible_edge_does_not_consume_a_visible_parallel_lane() {
+    let options = AsciiRenderOptions::ascii();
+    let layout = left_right_layout(&[("a", "b")], &options);
+    let from = layout_node(&layout, "a");
+    let to = layout_node(&layout, "b");
+    let mut invisible = edge(None, GraphEdgeArrow::Point);
+    invisible.stroke = GraphEdgeStroke::Invisible;
+    let visible = edge(None, GraphEdgeArrow::Point);
+    let edges = vec![invisible, visible];
     let charset = GraphCharset::for_options(&options);
 
     let selected = plan_edge_route(EdgeRouteRequest {
@@ -52,7 +313,8 @@ fn edge_route_selects_left_right_parallel_bottom_lane() {
         charset: &charset,
     })
     .unwrap();
-    let expected = plan_same_rank_bottom_lane_route(from, to, &edges[1], &charset).unwrap();
+    let expected =
+        plan_same_rank_direct_route(&layout.nodes, from, to, &edges[1], &charset).unwrap();
 
     assert_eq!(selected, expected);
 }
@@ -80,6 +342,81 @@ fn edge_route_selects_top_down_back_route() {
     let expected = plan_top_down_back_route(&from, &to, &edge, &charset).unwrap();
 
     assert_eq!(selected, expected);
+}
+
+#[test]
+fn top_down_skip_edge_uses_side_bypass_before_direct_route() {
+    let options = AsciiRenderOptions::ascii();
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    for id in ["a", "b", "c"] {
+        graph.add_node(id, id.to_ascii_uppercase());
+    }
+    graph.add_edge("a", "c");
+    graph.add_edge("a", "b");
+    graph.add_edge("b", "c");
+    let layout = layout_graph(&graph, &options);
+    let edge_index = graph
+        .edges
+        .iter()
+        .position(|edge| edge.from == "a" && edge.to == "c")
+        .expect("skip edge should be present");
+    let edge = &graph.edges[edge_index];
+    let from = layout_node(&layout, "a");
+    let to = layout_node(&layout, "c");
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from,
+        to,
+        edge_index,
+        edge,
+        charset: &charset,
+    })
+    .expect("top-down skip edge should route around the occupied rank");
+    let direct = plan_top_down_direct_route(from, to, edge, &charset)
+        .expect("the direct route should be geometrically constructible for comparison");
+
+    assert_ne!(selected, direct);
+    assert!(
+        selected
+            .cells
+            .iter()
+            .any(|cell| cell.coord.x != from.center_x()),
+        "skip edge should leave the source centerline before reaching the target:\n{selected:?}"
+    );
+}
+
+#[test]
+fn adjacent_top_down_edge_remains_direct() {
+    let options = AsciiRenderOptions::ascii();
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    let layout = layout_graph(&graph, &options);
+    let edge = &graph.edges[0];
+    let from = layout_node(&layout, "a");
+    let to = layout_node(&layout, "b");
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from,
+        to,
+        edge_index: 0,
+        edge,
+        charset: &charset,
+    })
+    .expect("adjacent top-down edge should route");
+    let direct = plan_top_down_direct_route(from, to, edge, &charset)
+        .expect("adjacent top-down edge should have a direct route");
+
+    assert_eq!(selected, direct);
 }
 
 #[test]
@@ -640,6 +977,37 @@ fn same_rank_direct_route_plans_unicode_right_connector() {
 }
 
 #[test]
+fn stroke_projection_preserves_edge_line_connector_style() {
+    let ascii_options = AsciiRenderOptions::ascii();
+    let ascii_charset = GraphCharset::for_options(&ascii_options);
+    let ascii_plan = RoutePlan::new_without_markers_for_test(
+        vec![cell(0, 0, '|', PlannedRouteCellKind::EdgeLine)],
+        Vec::new(),
+    )
+    .try_with_stroke(GraphEdgeStroke::Thick, &ascii_charset, "flowchart")
+    .expect("ASCII edge-line stroke should be representable");
+    let ascii_cell = &ascii_plan.cells[0];
+    assert_eq!(ascii_cell.ch, '|');
+    assert_eq!(ascii_cell.stroke, GraphEdgeStroke::Thick);
+    assert!(!ascii_cell.unicode);
+    assert_ne!(ascii_cell.directions, 0);
+
+    let unicode_options = AsciiRenderOptions::unicode();
+    let unicode_charset = GraphCharset::for_options(&unicode_options);
+    let unicode_plan = RoutePlan::new_without_markers_for_test(
+        vec![cell(0, 0, '├', PlannedRouteCellKind::EdgeLine)],
+        Vec::new(),
+    )
+    .try_with_stroke(GraphEdgeStroke::Thick, &unicode_charset, "flowchart")
+    .expect("Unicode edge-line stroke should be representable");
+    let unicode_cell = &unicode_plan.cells[0];
+    assert_eq!(unicode_cell.ch, '┝');
+    assert_eq!(unicode_cell.stroke, GraphEdgeStroke::Thick);
+    assert!(unicode_cell.unicode);
+    assert_ne!(unicode_cell.directions, 0);
+}
+
+#[test]
 fn same_rank_direct_route_plans_unicode_left_connector_arrow_and_label() {
     let from = node("a", 10, 0, 5, 3);
     let to = node("b", 0, 0, 5, 3);
@@ -715,9 +1083,8 @@ fn left_right_grid_path_route_plans_unicode_connector_arrow_and_label() {
             cell(6, 2, '─', PlannedRouteCellKind::RouteCell),
             cell(7, 2, '─', PlannedRouteCellKind::RouteCell),
             cell(8, 2, '─', PlannedRouteCellKind::RouteCell),
-            cell(9, 2, '─', PlannedRouteCellKind::RouteCell),
-            cell(4, 2, '├', PlannedRouteCellKind::EdgeLine),
             cell(9, 2, '►', PlannedRouteCellKind::EdgeArrow),
+            cell(4, 2, '├', PlannedRouteCellKind::EdgeLine),
         ]
     );
     assert_eq!(
@@ -755,12 +1122,7 @@ fn left_right_grid_path_route_plans_bent_path_cells_and_corner() {
             .iter()
             .any(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
     );
-    assert_eq!(
-        plan.labels
-            .first()
-            .and_then(|label| label.text.lines().first().map(String::as_str)),
-        Some("down")
-    );
+    assert_eq!(plan.labels.first().map(PlannedRouteLabel::width), Some(4));
 }
 
 #[test]
@@ -894,6 +1256,33 @@ fn left_right_down_then_right_route_plans_crossing_lane() {
 }
 
 #[test]
+fn invisible_crossing_edge_does_not_displace_a_visible_route() {
+    let from = node("a", 0, 0, 3, 3);
+    let lower_source = node("b", 0, 8, 3, 3);
+    let upper_target = node("c", 10, 0, 3, 3);
+    let to = node("d", 10, 8, 3, 3);
+    let layouts = vec![from.clone(), lower_source, upper_target, to.clone()];
+    let edge = edge_between("a", "d", None, GraphEdgeArrow::Point);
+    let mut crossing_edge = edge_between("b", "c", None, GraphEdgeArrow::Point);
+    crossing_edge.stroke = GraphEdgeStroke::Invisible;
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+    let with_invisible = plan_left_right_down_then_right_route(
+        &layouts,
+        &[crossing_edge],
+        &from,
+        &to,
+        &edge,
+        &charset,
+    )
+    .unwrap();
+    let without_crossing =
+        plan_left_right_down_then_right_route(&layouts, &[], &from, &to, &edge, &charset).unwrap();
+
+    assert_eq!(with_invisible, without_crossing);
+}
+
+#[test]
 fn same_rank_bottom_lane_route_plans_reverse_lane_and_label() {
     let from = node("a", 10, 0, 3, 3);
     let to = node("b", 0, 0, 3, 3);
@@ -967,7 +1356,7 @@ fn left_right_reverse_over_self_loop_route_plans_target_side_lane() {
 fn left_right_self_loop_route_plans_loop_and_arrow() {
     let from = node("a", 0, 0, 3, 3);
     let layouts = vec![from.clone()];
-    let edge = edge_between("a", "a", None, GraphEdgeArrow::Point);
+    let edge = edge_between("a", "a", Some("loop"), GraphEdgeArrow::Point);
     let edges = vec![edge.clone()];
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
 
@@ -988,7 +1377,13 @@ fn left_right_self_loop_route_plans_loop_and_arrow() {
             cell(1, 3, '^', PlannedRouteCellKind::EdgeArrow),
         ]
     );
-    assert!(plan.labels.is_empty());
+    assert_eq!(
+        plan.labels,
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("loop").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(0, 4, 4),
+        )]
+    );
 }
 
 #[test]
@@ -1248,12 +1643,49 @@ fn top_down_side_entry_route_plans_unicode_connector_and_label() {
     );
 }
 
+#[test]
+fn reverse_ascii_side_entry_uses_explicit_source_anchor_for_double_markers() {
+    let from = node("a", 8, 0, 3, 3);
+    let to = node("group", 0, 0, 3, 3);
+    let edge = edge_between_with_markers(
+        "a",
+        "group",
+        None,
+        GraphEdgeArrow::Circle,
+        GraphEdgeArrow::Cross,
+    );
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+    let plan = plan_top_down_side_entry_route(&from, &to, &edge, &charset)
+        .unwrap()
+        .with_markers(edge.start_marker, edge.end_marker, &charset, "flowchart")
+        .unwrap();
+
+    assert_eq!(
+        plan.cells
+            .iter()
+            .find(|cell| cell.coord == CanvasCoord { x: 3, y: 1 })
+            .map(|cell| (cell.ch, cell.kind)),
+        Some(('x', PlannedRouteCellKind::EdgeArrow))
+    );
+    assert_eq!(
+        plan.cells
+            .iter()
+            .find(|cell| cell.coord == CanvasCoord { x: 7, y: 1 })
+            .map(|cell| (cell.ch, cell.kind)),
+        Some(('o', PlannedRouteCellKind::EdgeArrow))
+    );
+}
+
 fn cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
         ch,
         kind,
         segment: PlannedRouteSegment::Direct,
+        stroke: GraphEdgeStroke::Normal,
+        directions: 0,
+        unicode: false,
         paint: PlannedRoutePaint::role(match kind {
             PlannedRouteCellKind::EdgeArrow => AsciiColorRole::EdgeArrow,
             PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => {
@@ -1273,12 +1705,25 @@ fn edge_between(
     label: Option<&str>,
     arrow: GraphEdgeArrow,
 ) -> AsciiGraphEdge {
+    edge_between_with_markers(from, to, label, GraphEdgeArrow::Open, arrow)
+}
+
+fn edge_between_with_markers(
+    from: &str,
+    to: &str,
+    label: Option<&str>,
+    start_marker: GraphEdgeArrow,
+    end_marker: GraphEdgeArrow,
+) -> AsciiGraphEdge {
     AsciiGraphEdge {
+        id: None,
+        is_user_defined_id: false,
         from: from.to_string(),
         to: to.to_string(),
         label: label.map(ToOwned::to_owned),
         stroke: GraphEdgeStroke::Normal,
-        arrow,
+        start_marker,
+        end_marker,
         length: 1,
         style: GraphEdgeStyle::default(),
     }

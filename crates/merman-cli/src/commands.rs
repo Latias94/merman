@@ -3,6 +3,8 @@ use crate::config::{engine_for, parse_options};
 use crate::error::CliError;
 use crate::input::InputLimit;
 use crate::invocation::{ResolvedDetect, ResolvedInput, ResolvedInvocation, ResolvedParse};
+#[cfg(feature = "svg")]
+use crate::io::read_input_controlled;
 #[cfg(any(feature = "analysis", feature = "shell-completions"))]
 use crate::io::write_stdout;
 use crate::io::{read_input, write_stdout_line};
@@ -37,7 +39,7 @@ use std::path::Path;
 #[cfg(feature = "shell-completions")]
 use crate::cli::CompletionArgs;
 #[cfg(feature = "svg")]
-use crate::config::renderer_for;
+use crate::config::renderer_for_resolved;
 #[cfg(feature = "svg")]
 use crate::invocation::ResolvedLayout;
 #[cfg(feature = "analysis")]
@@ -65,9 +67,12 @@ struct ParseOut<'a> {
 
 pub(crate) fn run(
     preflight: LocalPreflight,
+    #[cfg(any(feature = "svg", feature = "ascii"))] operation_control: &merman::OperationControl,
     context: &mut ExecutionContext,
 ) -> Result<i32, CliError> {
     let (invocation, publications) = preflight.into_parts();
+    #[cfg(feature = "rustdoc")]
+    let mut publications = publications;
     #[cfg(not(any(feature = "analysis", feature = "svg", feature = "ascii")))]
     let _ = &publications;
     let exit_code = match invocation {
@@ -85,7 +90,7 @@ pub(crate) fn run(
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Layout(args) => {
-            run_layout(args, context)?;
+            run_layout(args, operation_control, context)?;
             0
         }
         #[cfg(feature = "analysis")]
@@ -102,6 +107,7 @@ pub(crate) fn run(
             let prepared = prepare_render_for_native(
                 args,
                 publications,
+                operation_control.clone(),
                 context.stdin.as_mut(),
                 &context.stderr,
                 #[cfg(feature = "network-icons")]
@@ -115,6 +121,7 @@ pub(crate) fn run(
             let prepared = prepare_render_for_batch(
                 args,
                 publications,
+                operation_control.clone(),
                 context.stdin.as_mut(),
                 &context.stderr,
             )?;
@@ -126,6 +133,7 @@ pub(crate) fn run(
             let prepared = prepare_render_for_mmdc(
                 args,
                 publications,
+                operation_control.clone(),
                 context.stdin.as_mut(),
                 &context.stderr,
                 #[cfg(feature = "network-icons")]
@@ -133,6 +141,36 @@ pub(crate) fn run(
             )?;
             execute_render(prepared, context)?;
             0
+        }
+        #[cfg(feature = "rustdoc")]
+        ResolvedInvocation::Rustdoc(args) => {
+            let action = args.action;
+            let quiet = args.quiet;
+            let resources = args.resources;
+            let config = args.into_config()?;
+            match action {
+                crate::invocation::RustdocAction::Check => {
+                    crate::rustdoc::check(
+                        &config,
+                        &resources,
+                        operation_control,
+                        &context.stderr,
+                        quiet,
+                    )?;
+                    0
+                }
+                crate::invocation::RustdocAction::Build => {
+                    crate::rustdoc::build(
+                        &config,
+                        &resources,
+                        operation_control,
+                        &mut publications,
+                        context,
+                        quiet,
+                    )?;
+                    0
+                }
+            }
         }
         #[cfg(feature = "shell-completions")]
         ResolvedInvocation::Completion(args) => {
@@ -190,28 +228,39 @@ fn run_parse(args: ResolvedParse, context: &mut ExecutionContext) -> Result<(), 
 }
 
 #[cfg(feature = "svg")]
-fn run_layout(args: ResolvedLayout, context: &mut ExecutionContext) -> Result<(), CliError> {
-    let text = read_resolved_input(
+fn run_layout(
+    args: ResolvedLayout,
+    operation_control: &merman::OperationControl,
+    context: &mut ExecutionContext,
+) -> Result<(), CliError> {
+    let text = read_resolved_input_controlled(
         &args.input,
         source_limit(&args.resources),
         context.stdin.as_mut(),
         &context.stderr,
+        operation_control,
     )?;
-    let configured = renderer_for(
+    let configured = renderer_for_resolved(
         &args.parse,
-        &args.render.into_render_args(),
+        &args.render,
         None,
         &args.resources,
+        operation_control,
     )?;
     let output = configured.renderer.render(configured.request(
         &text,
         merman::RenderTarget::LayoutJson(configured.svg.clone()),
-        merman::OperationControl::new(),
+        operation_control.clone(),
     ))?;
     let merman::RenderOutput::LayoutJson(Some(layout_json)) = output else {
         return Err(CliError::NoDiagram);
     };
-    print_json(layout_json.layout(), args.pretty, &context.stdout)
+    crate::diagnostics::write_json_stdout_controlled(
+        layout_json.layout(),
+        args.pretty,
+        &context.stdout,
+        operation_control,
+    )
 }
 
 #[cfg(feature = "analysis")]
@@ -516,6 +565,24 @@ fn read_resolved_input(
         source_input_limit(max_source_bytes),
         stdin,
         stderr,
+    )
+}
+
+#[cfg(feature = "svg")]
+fn read_resolved_input_controlled(
+    input: &ResolvedInput,
+    max_source_bytes: Option<usize>,
+    stdin: &mut dyn std::io::Read,
+    stderr: &SharedWriter,
+    control: &merman::OperationControl,
+) -> Result<String, CliError> {
+    read_input_controlled(
+        Some(resolved_input_path(input)),
+        true,
+        source_input_limit(max_source_bytes),
+        stdin,
+        stderr,
+        control,
     )
 }
 

@@ -1,4 +1,4 @@
-use merman_core::diagrams::sequence::SequenceMessage;
+use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessageKind};
 use std::collections::BTreeMap;
 
 pub(crate) fn sequence_activation_start_x(center_x: f64, stacked_size: usize, width: f64) -> f64 {
@@ -42,9 +42,8 @@ impl SequenceActivationState {
         actor_index: &std::collections::HashMap<&str, usize>,
         actor_centers_x: &[f64],
     ) -> bool {
-        match msg.message_type {
-            // ACTIVE_START
-            17 => {
+        match msg.semantic_kind() {
+            SequenceMessageKind::ActivationStart => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     return true;
                 };
@@ -58,8 +57,7 @@ impl SequenceActivationState {
                 *depth = depth.saturating_add(1);
                 true
             }
-            // ACTIVE_END
-            18 => {
+            SequenceMessageKind::ActivationEnd => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     return true;
                 };

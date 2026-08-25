@@ -9,15 +9,16 @@ sets and release evidence differ.
 
 | Lane | Status | Contract boundary | Evidence |
 | --- | --- | --- | --- |
-| `public-native` | green | C ABI 3, Android JNI transport API 1, UniFFI API 4, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
+| `public-native` | green | C ABI 3, Android JNI transport API 2, UniFFI API 5, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
 | `public-typst` | alpha scaffold; C7a blocked | Typst plugin ABI 3 with SVG, canonical analysis, three explicitly Alpha theme-authoring operations, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix; no C7a contract-candidate claim |
-| `public-node-alpha` | green, experimental | deterministic static SVG plus metadata/layout operations with both layout backends and no specialist math/export closure | public six-package contract, generated wire contract, target install/render smokes, and verified npm package-group workflow |
+| `public-node-alpha` | green, experimental | deterministic static SVG plus metadata/layout operations with both layout backends and no specialist math/export closure | public seven-package contract, generated wire contract, glibc-baseline native builds, target install/render smokes, and verified npm package-group workflow |
 
 The public-native lane does not claim that Android uses C ABI 3: Android consumes its direct JNI
-transport API 1. C ABI 3 retains size-tagged discovery and its current wire layout, but historical
-partial-table consumers are no longer a supported SDK target. UniFFI is API 4 and includes
-the post-alpha.5 family-capability contraction plus operation-scoped cancellation/deadline
-controls with structured terminal details. Source SDK breaks do not retain compatibility aliases.
+transport API 2. C ABI 3 retains size-tagged discovery and its current wire layout, but historical
+partial-table consumers are no longer a supported SDK target. UniFFI is API 5 and includes
+the post-alpha.5 family-capability contraction plus operation-scoped cancellation/deadline controls
+with structured terminal details. API 5 replaces the API 4 version-probe symbol so stale generated
+bindings fail before decoding revised records. Source SDK breaks do not retain compatibility aliases.
 
 ## Dependency boundary
 

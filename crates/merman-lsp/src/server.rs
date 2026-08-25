@@ -9,8 +9,8 @@ use crate::protocol::{
 };
 use crate::refresh_transport::{MermanClientSocket, RefreshClient};
 use crate::semantic_tokens::{
-    semantic_token_plan_for_snapshot_range_with_profile,
-    semantic_token_plan_for_snapshot_with_profile, semantic_tokens_delta_result,
+    SemanticTokenError, semantic_token_plan_for_document_range_with_profile,
+    semantic_token_plan_for_document_with_profile, semantic_tokens_delta_result,
     semantic_tokens_from_packed, semantic_tokens_options_with_profile, semantic_tokens_result_id,
 };
 use crate::session::{ClientEffects, LanguageSession, MermanLspService, commit_active_mutation};
@@ -18,7 +18,6 @@ use crate::session::{
     DocumentDiagnosticState, SemanticTokensState, analysis_options_with_lsp_resource_defaults,
     default_lsp_analysis_options,
 };
-use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
     document_symbols_with_hierarchy_support as structure_document_symbols_with_hierarchy_support,
     folding_ranges as structure_folding_ranges, goto_definition as structure_goto_definition,
@@ -29,7 +28,7 @@ use crate::structure::{
 };
 use merman_analysis::options_json::analysis_options_from_json_value;
 use merman_editor_core::COMPLETION_TRIGGER_CHARACTERS;
-use merman_editor_core::{DocumentKind, TokenPlanError};
+use merman_editor_core::DocumentKind;
 use std::sync::{Arc, OnceLock};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
@@ -432,21 +431,25 @@ impl LanguageServer for MermanLanguageServer {
             return Ok(None);
         };
         let supports_delta = projection.supports_delta();
+        let error_uri = uri.clone();
         self.session
-            .query_semantic_tokens(&uri, None, |snapshot, _| {
-                let Some(plan) = semantic_token_plan_for_snapshot_with_profile(snapshot, profile)
-                    .map_err(|error| semantic_token_planning_error(snapshot, error))?
+            .query_semantic_tokens(&uri, None, |document, _, cancellation| {
+                let Some(plan) =
+                    semantic_token_plan_for_document_with_profile(document, cancellation, profile)
+                        .map_err(|error| {
+                            semantic_token_planning_error(&error_uri, document.version(), error)
+                        })?
                 else {
                     return Ok(None);
                 };
                 let result_id =
-                    supports_delta.then(|| semantic_tokens_result_id(snapshot, plan.packed()));
+                    supports_delta.then(|| semantic_tokens_result_id(document, plan.packed()));
                 let tokens = SemanticTokens {
                     result_id: result_id.clone(),
                     data: semantic_tokens_from_packed(plan.packed()),
                 };
                 let state = result_id
-                    .map(|result_id| SemanticTokensState::new(result_id, plan.packed().to_vec()));
+                    .map(|result_id| SemanticTokensState::new(result_id, plan.into_packed()));
                 Ok(Some((SemanticTokensResult::Tokens(tokens), state)))
             })
             .await
@@ -465,19 +468,25 @@ impl LanguageServer for MermanLanguageServer {
         {
             return Ok(None);
         }
+        let error_uri = uri.clone();
         self.session
             .query_semantic_tokens(
                 &uri,
                 Some(params.previous_result_id.as_str()),
-                |snapshot, previous| {
-                    let Some(current_plan) =
-                        semantic_token_plan_for_snapshot_with_profile(snapshot, profile)
-                            .map_err(|error| semantic_token_planning_error(snapshot, error))?
+                |document, previous, cancellation| {
+                    let Some(current_plan) = semantic_token_plan_for_document_with_profile(
+                        document,
+                        cancellation,
+                        profile,
+                    )
+                    .map_err(|error| {
+                        semantic_token_planning_error(&error_uri, document.version(), error)
+                    })?
                     else {
                         return Ok(None);
                     };
                     let current_result_id =
-                        semantic_tokens_result_id(snapshot, current_plan.packed());
+                        semantic_tokens_result_id(document, current_plan.packed());
                     let delta = match previous {
                         Some(previous) => semantic_tokens_delta_result(
                             &previous.packed,
@@ -490,7 +499,7 @@ impl LanguageServer for MermanLanguageServer {
                         }),
                     };
                     let state =
-                        SemanticTokensState::new(current_result_id, current_plan.packed().to_vec());
+                        SemanticTokensState::new(current_result_id, current_plan.into_packed());
                     Ok(Some((delta, Some(state))))
                 },
             )
@@ -510,14 +519,18 @@ impl LanguageServer for MermanLanguageServer {
         {
             return Ok(None);
         }
+        let error_uri = uri.clone();
         self.session
-            .query_semantic_tokens(&uri, None, |snapshot, _| {
-                let Some(plan) = semantic_token_plan_for_snapshot_range_with_profile(
-                    snapshot,
+            .query_semantic_tokens(&uri, None, |document, _, cancellation| {
+                let Some(plan) = semantic_token_plan_for_document_range_with_profile(
+                    document,
                     params.range,
+                    cancellation,
                     profile,
                 )
-                .map_err(|error| semantic_token_planning_error(snapshot, error))?
+                .map_err(|error| {
+                    semantic_token_planning_error(&error_uri, document.version(), error)
+                })?
                 else {
                     return Ok(None);
                 };
@@ -645,16 +658,22 @@ impl LanguageServer for MermanLanguageServer {
 }
 
 fn semantic_token_planning_error(
-    snapshot: &DocumentSnapshot,
-    error: TokenPlanError,
+    uri: &tower_lsp_server::ls_types::Uri,
+    version: i32,
+    error: SemanticTokenError,
 ) -> tower_lsp_server::jsonrpc::Error {
     if error.is_invalid_range() {
         return tower_lsp_server::jsonrpc::Error::invalid_params(error.to_string());
     }
+    if error.is_cancelled() {
+        let mut response = tower_lsp_server::jsonrpc::Error::content_modified();
+        response.message = "semantic token syntax work was cancelled".into();
+        return response;
+    }
 
     tracing::error!(
-        uri = snapshot.uri().as_str(),
-        version = snapshot.version(),
+        uri = uri.as_str(),
+        version,
         %error,
         "semantic token planning failed"
     );

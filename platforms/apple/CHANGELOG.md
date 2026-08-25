@@ -9,11 +9,19 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 ### Breaking changes
 
 - Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. Cancellation is a distinct generated error detail with its observed reason and phase; it is not a resource-limit failure.
-- Advanced the direct UniFFI binding API to `4` after adding required lint-rule `tags`, replacing the alpha.5 diagram-family capability fields `logicalFamilyKind` and `renderModelKind` with the core-owned `familyId`, and replacing `bindingApiVersion()` with `transportApiVersion()`. The old native method symbol is removed so API 3 generated Swift rejects the new library before decoding changed records; regenerate Swift and replace the XCFramework together.
+- Advanced the direct UniFFI binding API to `5` after adding required lint-rule `tags`, replacing
+  the alpha.5 diagram-family taxonomy fields with the core-owned `familyId`, and revising
+  `MermanAsciiCapability` plus `MermanError.Binding` wire layouts. API 5
+  replaces `transportApiVersion()` with `bindingApiVersionV5()` and removes the API 4 probe symbol,
+  so stale generated Swift rejects the new library before decoding either record. Regenerate Swift
+  and replace the XCFramework together.
 - The default XCFramework now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. Generated helpers remain available for custom artifacts; the bundled library reports typed capability absence instead of carrying every optional backend.
 - Moved compiled visual styling to the closed `theme` preset-or-spec union and removed the prerelease presentation-profile surface. Decode `themeCatalogJson()` for artifact-aware compiled-theme discovery.
 - Advanced Options JSON to schema `3`; regenerate Swift and use `theme`, `raster.matte`, and `pdf.page_paint`. Published schema `2` requests are rejected rather than partially translated.
 - Analysis facts now use schema `2` and no longer include the Flowchart-only rich graph. Regenerate facts consumers for schema `2`; diagnostics remain on schema `1`.
+- ASCII capability records now expose independent semantic coverage and primary projection fields,
+  and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and
+  diagnostic payloads follow the expanded six-phase renderer contract.
 
 ### Changed
 

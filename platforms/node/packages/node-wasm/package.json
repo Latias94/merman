@@ -1,0 +1,44 @@
+{
+  "name": "@mermanjs/node-wasm",
+  "version": "0.8.0-alpha.6",
+  "description": "Explicit Node-targeted WebAssembly rendering package for Merman.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Latias94/merman.git"
+  },
+  "homepage": "https://github.com/Latias94/merman/tree/main/platforms/node#readme",
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "svg",
+    "node",
+    "wasm",
+    "webassembly"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "CHANGELOG.md",
+    "artifact",
+    "dist",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "README.md",
+    "THIRD_PARTY_LICENSES",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "license": "MIT OR Apache-2.0"
+}

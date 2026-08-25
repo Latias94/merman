@@ -35,7 +35,6 @@ type SequenceGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError
 
 struct SequenceSyntax {
     events: Vec<SequenceLexicalEvent>,
-    lexemes: crate::editor::EditorLexemeBatchResult,
 }
 
 impl SequenceSyntax {
@@ -58,10 +57,8 @@ impl SequenceSyntax {
             }
             last_position = current_position;
         }
-        let lexemes = lexer.finish_lexemes();
-
         control.checkpoint()?;
-        Ok(Self { events, lexemes })
+        Ok(Self { events })
     }
 
     fn into_editor_facts_and_actions(
@@ -72,9 +69,8 @@ impl SequenceSyntax {
         EditorSemanticFacts,
         std::result::Result<Vec<super::Action>, SequenceGrammarError>,
     )> {
-        let Self { events, lexemes } = self;
-        let editor_facts =
-            collect_sequence_editor_facts_from_events(&events, code, lexemes, control)?;
+        let Self { events } = self;
+        let editor_facts = collect_sequence_editor_facts_from_events(&events, code, control)?;
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = events.into_iter().take_while(|_| {
@@ -266,11 +262,9 @@ fn sequence_wrap_enabled(meta: &ParseMetadata) -> Option<bool> {
 fn collect_sequence_editor_facts_from_events(
     events: &[SequenceLexicalEvent],
     code: &str,
-    lexemes: crate::editor::EditorLexemeBatchResult,
     control: &OperationControl,
 ) -> OperationControlResult<EditorSemanticFacts> {
     let mut facts = EditorSemanticFacts::new();
-    facts.replace_family_lexemes(lexemes);
     let mut collector = SequenceEditorFactCollector::default();
 
     for (index, event) in events.iter().enumerate() {

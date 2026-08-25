@@ -1,8 +1,6 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use merman_core::MermaidConfig;
-
 use super::admission::{FontCatalogKind, TextLayoutCapability, ThemeCapability};
 use super::application::root_theme_requirements;
 use super::assets::{FontCatalog, FontCatalogError};
@@ -69,7 +67,7 @@ impl DiagramThemeCompiler {
             .with_required_capabilities(inferred_capabilities)
             .with_required_text_capabilities(inferred_text_capabilities);
         let spec = Arc::new(spec);
-        let mermaid_config = compile_mermaid_config(&spec);
+        let mermaid_config = super::mermaid_compatibility::compile(&spec);
         let family_programs = Arc::new(super::family_program::FamilyThemeProgramCache::new(
             Arc::clone(&spec),
         ));
@@ -204,10 +202,6 @@ pub enum ThemeCompileError {
     FontCatalog(#[from] FontCatalogError),
     #[error(transparent)]
     ResourceLimit(#[from] ThemeResourceLimitExceeded),
-}
-
-fn compile_mermaid_config(spec: &DiagramThemeSpec) -> MermaidConfig {
-    super::mermaid_compatibility::compile(spec)
 }
 
 #[cfg(test)]

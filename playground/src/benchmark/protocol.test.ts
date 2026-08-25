@@ -423,6 +423,7 @@ function baseSampleRequest() {
       theme: "default",
       diagramFont: "trebuchet" as const,
       externalRequirements: { externalDiagrams: [], layoutModules: [] },
+      screenAvailableWidth: 1512,
       viewport: { width: 800, height: 600 }
     }
   };

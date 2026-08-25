@@ -144,7 +144,7 @@ fn render_zed_with_pipeline(name: &str, source: &str, pipeline: &SvgPipeline) ->
 
 fn assert_zed_safe_svg(name: &str, svg: &str) {
     assert!(svg.starts_with("<svg"), "{name}: expected SVG output");
-    roxmltree::Document::parse(svg)
+    let document = roxmltree::Document::parse(svg)
         .unwrap_or_else(|err| panic!("{name}: output should be XML-parseable: {err}"));
     assert!(
         svg.contains(&format!(r#"id="{name}""#)),
@@ -160,8 +160,6 @@ fn assert_zed_safe_svg(name: &str, svg: &str) {
         "animation:",
         "animation-name:",
         "!important",
-        "NaN",
-        "Infinity",
         r#"fill="undefined""#,
         r#"stroke="undefined""#,
         r#"width="undefined""#,
@@ -187,6 +185,68 @@ fn assert_zed_safe_svg(name: &str, svg: &str) {
             "{name}: leaked unsafe SVG token {bad:?}"
         );
     }
+
+    for node in document.descendants() {
+        for attribute in node.attributes() {
+            let is_visual_attribute = matches!(
+                attribute.name(),
+                "d" | "fill"
+                    | "height"
+                    | "opacity"
+                    | "stroke"
+                    | "stroke-width"
+                    | "transform"
+                    | "width"
+                    | "x"
+                    | "x1"
+                    | "x2"
+                    | "y"
+                    | "y1"
+                    | "y2"
+                    | "style"
+            );
+            if !is_visual_attribute {
+                continue;
+            }
+            let lower = attribute.value().to_ascii_lowercase();
+            assert!(
+                !lower.contains("nan") && !lower.contains("infinity"),
+                "{name}: non-finite visual attribute {}={:?}",
+                attribute.name(),
+                attribute.value()
+            );
+        }
+    }
+}
+
+fn inject_css_after_merman(svg: &str, css: &str) -> String {
+    let closing_tag = "</svg>";
+    let insertion = svg
+        .rfind(closing_tag)
+        .unwrap_or_else(|| panic!("expected an SVG closing tag: {svg}"));
+    let mut composed = String::with_capacity(svg.len() + css.len() + 64);
+    composed.push_str(&svg[..insertion]);
+    composed.push_str(r#"<style data-zed-postprocess="inject-css">"#);
+    composed.push_str(css);
+    composed.push_str("</style>");
+    composed.push_str(&svg[insertion..]);
+    composed
+}
+
+fn fallback_text_style(svg: &str, label: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Zed SVG XML");
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.ancestors().any(|ancestor| {
+                    ancestor.attribute("data-merman-foreignobject") == Some("fallback")
+                })
+                && node.text().is_some_and(|text| text.trim() == label)
+        })
+        .and_then(|node| node.attribute("style"))
+        .map(str::to_owned)
+        .unwrap_or_else(|| panic!("expected fallback text {label:?}: {svg}"))
 }
 
 #[test]
@@ -294,6 +354,76 @@ flowchart TD
     assert!(
         !svg.contains("@keyframes"),
         "resvg-safe output should remove animation rules: {svg}"
+    );
+}
+
+#[test]
+fn zed_like_pipeline_separates_pre_injection_metrics_from_host_hooks() {
+    let source = r#"classDiagram
+    class User {
+        +String name
+    }"#;
+    let merman_svg = render_zed_safe("zed-issue-89-pre-injection", source);
+    let merman_style = fallback_text_style(&merman_svg, "User");
+    assert!(
+        merman_style.contains("font-size:16px") || merman_style.contains("font-size: 16px"),
+        "Merman must resolve issue #89 before Zed injects product CSS: {merman_style}"
+    );
+    assert!(
+        !merman_style.contains("font-size:10px") && !merman_style.contains("font-size: 10px"),
+        "the SVG-only class text selector must not leak into the source XHTML label: {merman_style}"
+    );
+
+    let composed = render_zed_with_host_css(
+        "zed-issue-89-host-hooks",
+        source,
+        ".merman-foreignobject-fallback-text { font-size: 18px; }",
+    );
+    assert_zed_safe_svg("zed-issue-89-host-hooks", &composed);
+    assert!(
+        composed.contains("data-merman-foreignobject=\"fallback\""),
+        "stable fallback marker must remain available to Zed postprocessing: {composed}"
+    );
+    assert!(
+        composed.contains("font-size: 18px"),
+        "the scoped host stylesheet should remain discoverable after Merman's terminal pass: {composed}"
+    );
+    let composed_style = fallback_text_style(&composed, "User");
+    assert!(
+        composed_style.contains("font-size:16px") || composed_style.contains("font-size: 16px"),
+        "Merman's inline metric remains the measurement/emission contract; post-fallback host metric changes are a documented limitation: {composed_style}"
+    );
+}
+
+#[test]
+fn zed_like_after_render_css_is_a_paint_only_host_composition() {
+    let source = r#"classDiagram
+    class User {
+        +String name
+    }"#;
+    let sealed = render_zed_safe("zed-issue-89-after-render", source);
+    let composed = inject_css_after_merman(
+        &sealed,
+        ".merman-foreignobject-fallback-text { font-size: 18px !important; }",
+    );
+
+    assert_zed_safe_svg("zed-issue-89-after-render", &sealed);
+    let document = roxmltree::Document::parse(&composed).expect("postprocessed SVG should be XML");
+    let injected_css = document
+        .descendants()
+        .find(|node| node.attribute("data-zed-postprocess") == Some("inject-css"))
+        .and_then(|node| node.text())
+        .expect("Zed-style CSS should be injected after Merman returns");
+    assert!(injected_css.contains("font-size: 18px !important"));
+    assert!(
+        composed.contains("data-merman-foreignobject=\"fallback\""),
+        "the generated fallback marker must survive host composition: {composed}"
+    );
+
+    let inline_style = fallback_text_style(&composed, "User");
+    assert!(
+        inline_style.contains("font-size:16px") || inline_style.contains("font-size: 16px"),
+        "post-return CSS must not rewrite Merman's sealed inline metric or imply remeasurement: {inline_style}"
     );
 }
 

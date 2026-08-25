@@ -9,7 +9,10 @@ import {
   inspectPackageManifests,
   verifyPackedFileOwnership,
 } from "../scripts/package-contract.mjs";
-import { assembleNativePackages } from "../scripts/assemble-packages.mjs";
+import {
+  assembleNativePackages,
+  assembleWasmPackage,
+} from "../scripts/assemble-packages.mjs";
 import {
   assertSuccessfulNpmSpawn,
   spawnNpmSync,
@@ -32,6 +35,14 @@ test("public alpha manifests preserve the intended napi package shape", async ()
   assert.equal(inspected.root.hasLifecycleDownload, false);
   assert.equal(inspected.root.hasBrowserFallback, false);
   assert.equal(inspected.root.manifest.engines.node, descriptor.node_engine);
+  assert.equal(inspected.wasm.manifest.name, "@mermanjs/node-wasm");
+  assert.equal(inspected.wasm.manifest.publishConfig.access, "public");
+  assert.equal(inspected.wasm.manifest.main, "./dist/index.mjs");
+  assert.equal(inspected.wasm.manifest.types, "./dist/index.d.ts");
+  assert.equal(inspected.wasm.hasBrowserFallback, false);
+  assert.equal(inspected.wasm.manifest.dependencies, undefined);
+  assert.equal(inspected.wasm.manifest.optionalDependencies, undefined);
+  assert.equal(inspected.wasm.manifest.version, descriptor.version);
 
   const expectedTargets = [
     "darwin-arm64",
@@ -69,6 +80,25 @@ test("packed ownership allows no native binary in root and exactly one in a targ
         { path: "package/package.json" },
       ],
     }),
+  );
+  assert.doesNotThrow(() =>
+    verifyPackedFileOwnership({
+      packageName: "@mermanjs/node-wasm",
+      role: "wasm",
+      files: [
+        { path: "package/artifact/merman_node.cjs" },
+        { path: "package/artifact/merman_node_bg.wasm" },
+      ],
+    }),
+  );
+  assert.throws(
+    () =>
+      verifyPackedFileOwnership({
+        packageName: "@mermanjs/node-wasm",
+        role: "wasm",
+        files: [{ path: "package/artifact/merman_node_bg.wasm" }],
+      }),
+    /exactly.*merman_node\.cjs/i,
   );
   assert.doesNotThrow(() =>
     verifyPackedFileOwnership({
@@ -201,6 +231,40 @@ test("assembled native packages pass real npm pack ownership inspection", async 
       `${pathToFileURL(path.join(output, "node", "dist", "native-loader.mjs")).href}?assembled`
     );
     assert.equal(assembledLoader.nodeLoaderPackageVersion(), descriptor.version);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("assembled Node WASM package owns only its explicit Node artifacts", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "merman-node-wasm-pack-test-"));
+  try {
+    const wasm = path.join(temporaryRoot, "merman_node_bg.wasm");
+    const loader = path.join(temporaryRoot, "merman_node.js");
+    const output = path.join(temporaryRoot, "packages");
+    await writeFile(wasm, "synthetic wasm candidate");
+    await writeFile(loader, "module.exports = {};\n");
+    assembleWasmPackage(output, wasm, {
+      readReceipt(artifact) {
+        assert.equal(artifact, wasm);
+        return { candidate: "node-wasm", target: null };
+      },
+    });
+
+    const pack = npmPackDryRun(path.join(output, "node-wasm"));
+    verifyPackedFileOwnership({
+      packageName: "@mermanjs/node-wasm",
+      role: "wasm",
+      files: pack.files,
+    });
+    assert.equal(
+      pack.files.some((item) => item.path === "artifact/merman_node.cjs"),
+      true,
+    );
+    assert.equal(
+      pack.files.some((item) => item.path === "build-receipt.json"),
+      false,
+    );
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

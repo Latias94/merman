@@ -165,11 +165,7 @@
         ],
         "title": "Group",
         "classes": [],
-        "styles": [
-          "fill:#f7f7f7",
-          "stroke:#333",
-          "stroke-width:1px"
-        ],
+        "styles": [],
         "dir": "LR",
         "hasExplicitDir": true,
         "labelType": "string"

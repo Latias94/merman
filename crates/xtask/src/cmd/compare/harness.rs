@@ -49,6 +49,7 @@ pub(crate) enum RenderProfile {
     Standard,
     HandDrawnSeed,
     GitGraphSeed,
+    SequenceMath,
     Specialist,
 }
 
@@ -115,6 +116,10 @@ pub(crate) struct DiagramVerificationFact {
 }
 
 impl DiagramVerificationFact {
+    pub(crate) const fn render_path(self) -> merman::OperationExecutionPath {
+        merman::OperationExecutionPath::Renderer
+    }
+
     pub(crate) const fn supports_root_report(self) -> bool {
         matches!(self.diagnostics, DiagnosticsPolicy::RootDelta)
     }
@@ -126,6 +131,7 @@ pub(crate) struct CompareRequest {
     pub(crate) filter: Option<String>,
     pub(crate) check_dom: bool,
     pub(crate) dom_mode: Option<String>,
+    pub(crate) dom_modes: Vec<svgdom::DomMode>,
     pub(crate) dom_decimals: Option<u32>,
     pub(crate) report_root: bool,
     pub(crate) root_report_limit: Option<super::RootDeltaReportLimit>,
@@ -140,6 +146,7 @@ impl Default for CompareRequest {
             filter: None,
             check_dom: false,
             dom_mode: None,
+            dom_modes: Vec::new(),
             dom_decimals: None,
             report_root: false,
             root_report_limit: None,
@@ -147,6 +154,59 @@ impl Default for CompareRequest {
             accepted_residual_policy: AcceptedResidualPolicy::None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DomComparisonPlan {
+    modes: Vec<svgdom::DomMode>,
+}
+
+impl DomComparisonPlan {
+    pub(crate) fn from_request(
+        request: &CompareRequest,
+        default_mode: &str,
+    ) -> Result<Self, XtaskError> {
+        if request.dom_modes.is_empty() {
+            let mode = request
+                .dom_mode
+                .as_deref()
+                .unwrap_or(default_mode)
+                .parse::<svgdom::DomMode>()
+                .map_err(|_| XtaskError::Usage)?;
+            Ok(Self::single(mode))
+        } else {
+            Ok(Self::new(request.dom_modes.clone()))
+        }
+    }
+
+    pub(crate) fn new(modes: Vec<svgdom::DomMode>) -> Self {
+        debug_assert!(!modes.is_empty());
+        Self { modes }
+    }
+
+    pub(crate) fn single(mode: svgdom::DomMode) -> Self {
+        Self { modes: vec![mode] }
+    }
+
+    pub(crate) fn modes(&self) -> &[svgdom::DomMode] {
+        &self.modes
+    }
+
+    pub(crate) fn contains(&self, mode: svgdom::DomMode) -> bool {
+        self.modes.contains(&mode)
+    }
+
+    pub(crate) fn label(&self) -> String {
+        self.modes
+            .iter()
+            .map(|mode| dom_mode_label(*mode))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+pub(crate) const fn dom_mode_label(mode: svgdom::DomMode) -> &'static str {
+    mode.as_str()
 }
 
 impl CompareRequest {
@@ -172,11 +232,12 @@ impl CompareRequest {
                 "--check-dom" => request.check_dom = true,
                 "--dom-mode" => {
                     i += 1;
-                    request.dom_mode = Some(
-                        args.get(i)
-                            .map(|value| value.trim().to_string())
-                            .unwrap_or_else(|| fact.default_dom_mode.to_string()),
-                    );
+                    let mode = args
+                        .get(i)
+                        .ok_or(XtaskError::Usage)?
+                        .parse::<svgdom::DomMode>()
+                        .map_err(|_| XtaskError::Usage)?;
+                    request.dom_mode = Some(mode.to_string());
                 }
                 "--dom-decimals" => {
                     i += 1;
@@ -209,18 +270,21 @@ impl CompareRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RenderOperationContract {
+    render_path: merman::OperationExecutionPath,
     measurement_routes: [merman::svg::TextMeasurementRoute; 4],
 }
 
 impl RenderOperationContract {
     pub(crate) fn from_environment(environment: &merman::SvgEnvironment) -> Self {
         Self {
+            render_path: merman::OperationExecutionPath::Renderer,
             measurement_routes: environment.text_measurement_routes(),
         }
     }
 
     fn from_evidence(evidence: &merman::RenderEvidence) -> Self {
         Self {
+            render_path: evidence.execution_path(),
             measurement_routes: evidence.measurement_routes().clone(),
         }
     }
@@ -230,6 +294,26 @@ impl RenderOperationContract {
 pub(crate) struct ObservedRenderOperations {
     expected: RenderOperationContract,
     observed: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct ObservedRenderEvidence {
+    execution_path: merman::OperationExecutionPath,
+    measurement_routes: usize,
+}
+
+impl ObservedRenderEvidence {
+    const fn render_count(&self) -> usize {
+        1
+    }
+
+    #[cfg(test)]
+    const fn test_only() -> Self {
+        Self {
+            execution_path: merman::OperationExecutionPath::Renderer,
+            measurement_routes: 4,
+        }
+    }
 }
 
 impl ObservedRenderOperations {
@@ -244,7 +328,7 @@ impl ObservedRenderOperations {
         &mut self,
         fixture: &str,
         evidence: &merman::RenderEvidence,
-    ) -> Result<usize, String> {
+    ) -> Result<ObservedRenderEvidence, String> {
         let observed = RenderOperationContract::from_evidence(evidence);
         validate_measurement_provenance(fixture, evidence)?;
         if observed != self.expected {
@@ -254,7 +338,10 @@ impl ObservedRenderOperations {
             ));
         }
         self.observed = true;
-        Ok(observed.measurement_routes.len())
+        Ok(ObservedRenderEvidence {
+            execution_path: observed.render_path,
+            measurement_routes: observed.measurement_routes.len(),
+        })
     }
 
     pub(crate) fn write_report(&self, report: &mut String) {
@@ -264,7 +351,11 @@ impl ObservedRenderOperations {
         }
         let operation = &self.expected;
 
-        let _ = writeln!(report, "- Render operation: `renderer` (observed)");
+        let _ = writeln!(
+            report,
+            "- Render operation: `{}` (observed)",
+            operation.render_path.as_str()
+        );
         let _ = writeln!(
             report,
             "- Text measurement routes: `{}` (observed)",
@@ -420,7 +511,7 @@ pub(crate) struct CompareRunOptions<'a> {
     pub(crate) out_path: Option<PathBuf>,
     pub(crate) filter: Option<&'a str>,
     pub(crate) check_dom: bool,
-    pub(crate) dom_mode: &'a str,
+    pub(crate) dom_plan: DomComparisonPlan,
     pub(crate) dom_decimals: u32,
 }
 
@@ -553,16 +644,22 @@ impl CompareEvidence {
         );
     }
 
-    fn record_render(&mut self, measurement_route_count: usize) {
-        self.rendered_fixtures += 1;
+    fn record_render(&mut self, evidence: ObservedRenderEvidence) {
+        debug_assert_eq!(
+            evidence.execution_path,
+            merman::OperationExecutionPath::Renderer
+        );
+        self.rendered_fixtures += evidence.render_count();
         self.observed_operation_reports += 1;
-        self.observed_measurement_routes += measurement_route_count;
+        self.observed_measurement_routes += evidence.measurement_routes;
     }
 
     fn record_comparison(&mut self, comparison: FixtureComparisonEvidence) {
         match comparison.raw_source {
             RawSourceComparison::None => {}
-            RawSourceComparison::SvgDom => self.raw_source_svg_dom_comparisons += 1,
+            RawSourceComparison::SvgDom(count) => {
+                self.raw_source_svg_dom_comparisons += count;
+            }
             RawSourceComparison::SvgBytes => self.raw_source_svg_byte_comparisons += 1,
         }
         if let Some(labels) = comparison.semantic_labels {
@@ -659,18 +756,17 @@ pub(crate) enum CompareFixtureResult {
         reason: String,
     },
     Rendered {
-        measurement_route_count: usize,
+        render_evidence: ObservedRenderEvidence,
         local_svg: String,
         compare_dom: bool,
         issues: Vec<String>,
         notes: Vec<String>,
     },
     RenderedWithPolicy {
-        measurement_route_count: usize,
+        render_evidence: ObservedRenderEvidence,
         local_svg: String,
         compare_dom: bool,
         compare_svg_when_dom_disabled: bool,
-        dom_mode_override: Option<svgdom::DomMode>,
         issues: Vec<String>,
         notes: Vec<String>,
     },
@@ -699,8 +795,10 @@ pub(crate) fn run_canonical_svg_compare(
     fact: DiagramVerificationFact,
     request: CompareRequest,
 ) -> CompareRunResult {
+    debug_assert_eq!(fact.render_path(), merman::OperationExecutionPath::Renderer);
+
     let engine = match fact.render_profile {
-        RenderProfile::Standard => super::svg_compare_engine(),
+        RenderProfile::Standard | RenderProfile::SequenceMath => super::svg_compare_engine(),
         RenderProfile::HandDrawnSeed => {
             super::svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }))
         }
@@ -724,11 +822,12 @@ pub(crate) fn run_canonical_svg_compare(
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options());
 
-    let dom_mode = request.dom_mode.as_deref().unwrap_or(fact.default_dom_mode);
-    let requested_dom_mode = svgdom::DomMode::parse(dom_mode);
+    let dom_plan = DomComparisonPlan::from_request(&request, fact.default_dom_mode)
+        .map_err(CompareRunFailure::without_evidence)?;
+    let parity_root_requested = request.check_dom && dom_plan.contains(svgdom::DomMode::ParityRoot);
     let dom_decimals = request.dom_decimals.unwrap_or(3);
     let should_report_root = fact.diagnostics == DiagnosticsPolicy::RootDelta
-        && (request.report_root || matches!(dom_mode.trim(), "parity-root" | "parity_root"));
+        && (request.report_root || parity_root_requested);
     let root_report_limit = request
         .root_report_limit
         .unwrap_or(super::DEFAULT_ROOT_DELTA_REPORT_LIMIT);
@@ -738,13 +837,13 @@ pub(crate) fn run_canonical_svg_compare(
         observed_operations,
     };
 
-    run_svg_compare(
+    run_svg_compare_with_parsed_dom(
         CompareHarnessOptions::new(CompareRunOptions {
             diagram: fact.diagram,
             out_path: request.out_path.clone(),
             filter: request.filter.as_deref(),
             check_dom: request.check_dom,
-            dom_mode,
+            dom_plan: dom_plan.clone(),
             dom_decimals,
         }),
         &mut state,
@@ -756,13 +855,13 @@ pub(crate) fn run_canonical_svg_compare(
                 paths.upstream_dir.join("*.svg").display()
             );
             let _ = writeln!(report, "- Command: `{}`", fact.command);
-            let _ = writeln!(report, "- Mode: `{}`", options.dom_mode);
+            let _ = writeln!(report, "- Modes: `{}`", options.dom_plan.label());
             let _ = writeln!(report, "- Decimals: `{}`", options.dom_decimals);
             write_verification_policy_metadata(
                 report,
                 &request,
                 fact,
-                options.dom_mode,
+                &options.dom_plan,
                 should_report_root,
             );
             if fact.specialist == SpecialistHook::SequenceMath {
@@ -844,32 +943,31 @@ pub(crate) fn run_canonical_svg_compare(
                     input.fixture_path.display()
                 )
             })?;
-            let measurement_route_count = state
+            let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
             let local_svg = rendered.svg().to_owned();
 
             let mut issues = Vec::new();
-            let parity_root_coverage =
-                request.check_dom && requested_dom_mode == svgdom::DomMode::ParityRoot;
-            if let Err(error) = super::record_fixture_root_evidence(
-                &mut state.root_coverage,
-                &mut state.root_deltas,
-                input.stem,
-                input.upstream_svg,
-                &local_svg,
-                super::RootEvidencePolicy {
-                    parity_root_requested: parity_root_coverage,
-                    browser_math_dimensions_are_diagnostic: false,
-                    report_delta: should_report_root,
-                },
-            ) {
-                issues.push(error);
+            if !request.check_dom
+                && let Err(error) = super::record_fixture_root_evidence(
+                    &mut state.root_coverage,
+                    &mut state.root_deltas,
+                    input.stem,
+                    input.upstream_svg,
+                    &local_svg,
+                    super::RootEvidencePolicy {
+                        parity_root_requested,
+                        report_delta: should_report_root,
+                    },
+                )
+            {
+                issues.push(format!("[root-report] {error}"));
             }
 
             Ok(match fact.compare_policy {
                 FixtureComparePolicy::Dom => CompareFixtureResult::Rendered {
-                    measurement_route_count,
+                    render_evidence,
                     local_svg,
                     compare_dom: true,
                     issues,
@@ -877,11 +975,10 @@ pub(crate) fn run_canonical_svg_compare(
                 },
                 FixtureComparePolicy::DomAndRawSvgFallback => {
                     CompareFixtureResult::RenderedWithPolicy {
-                        measurement_route_count,
+                        render_evidence,
                         local_svg,
                         compare_dom: true,
                         compare_svg_when_dom_disabled: true,
-                        dom_mode_override: None,
                         issues,
                         notes: Vec::new(),
                     }
@@ -894,6 +991,27 @@ pub(crate) fn run_canonical_svg_compare(
                 }
             })
         },
+        |state, stem, upstream_document, local_document| {
+            super::record_fixture_root_evidence_from_dom(
+                &mut state.root_coverage,
+                &mut state.root_deltas,
+                stem,
+                upstream_document,
+                local_document,
+                super::RootEvidencePolicy {
+                    parity_root_requested,
+                    report_delta: should_report_root,
+                },
+            )
+            .err()
+            .map(|error| {
+                if parity_root_requested {
+                    format!("[parity-root] {error}")
+                } else {
+                    format!("[root-report] {error}")
+                }
+            })
+        },
         |_, report, fixture| {
             if fact.report_policy == FixtureReportPolicy::StatusLines {
                 write_fixture_status_line(report, fixture);
@@ -901,7 +1019,7 @@ pub(crate) fn run_canonical_svg_compare(
         },
         |state, report, paths, options, failures, notes| {
             state.observed_operations.write_report(report);
-            if request.check_dom && requested_dom_mode == svgdom::DomMode::ParityRoot {
+            if parity_root_requested {
                 state.root_coverage.write_report(report);
             }
             if should_report_root {
@@ -924,10 +1042,37 @@ pub(crate) fn write_verification_policy_metadata(
     report: &mut String,
     request: &CompareRequest,
     fact: DiagramVerificationFact,
-    dom_mode: &str,
+    dom_plan: &DomComparisonPlan,
     root_diagnostics_reported: bool,
 ) {
-    let effective_dom_mode = svgdom::DomMode::parse(dom_mode);
+    let qualify_mode = dom_plan.modes().len() > 1;
+    for mode in dom_plan.modes() {
+        write_dom_mode_policy_metadata(report, request, fact, *mode, qualify_mode);
+    }
+    let root_diagnostics = if root_diagnostics_reported {
+        debug_assert!(fact.supports_root_report());
+        "reported"
+    } else if fact.supports_root_report() {
+        "available-not-requested"
+    } else {
+        "not-supported"
+    };
+
+    let _ = writeln!(
+        report,
+        "- Accepted residual policy: `{}`",
+        request.accepted_residual_policy.label()
+    );
+    let _ = writeln!(report, "- Root-delta diagnostics: `{root_diagnostics}`");
+}
+
+fn write_dom_mode_policy_metadata(
+    report: &mut String,
+    request: &CompareRequest,
+    fact: DiagramVerificationFact,
+    effective_dom_mode: svgdom::DomMode,
+    qualify_mode: bool,
+) {
     let normalization = if request.check_dom {
         match effective_dom_mode {
             svgdom::DomMode::Strict => "svgdom/strict",
@@ -948,23 +1093,18 @@ pub(crate) fn write_verification_policy_metadata(
             "not-checked (selected DOM mode omits root viewport)"
         }
     };
-    let root_diagnostics = if root_diagnostics_reported {
-        debug_assert!(fact.supports_root_report());
-        "reported"
-    } else if fact.supports_root_report() {
-        "available-not-requested"
-    } else {
-        "not-supported"
-    };
+    let mode = dom_mode_label(effective_dom_mode);
 
-    let _ = writeln!(report, "- Normalization policy: `{normalization}`");
-    let _ = writeln!(
-        report,
-        "- Accepted residual policy: `{}`",
-        request.accepted_residual_policy.label()
-    );
-    let _ = writeln!(report, "- Root coverage: `{root_coverage}`");
-    let _ = writeln!(report, "- Root-delta diagnostics: `{root_diagnostics}`");
+    if qualify_mode {
+        let _ = writeln!(
+            report,
+            "- Normalization policy (`{mode}`): `{normalization}`"
+        );
+        let _ = writeln!(report, "- Root coverage (`{mode}`): `{root_coverage}`");
+    } else {
+        let _ = writeln!(report, "- Normalization policy: `{normalization}`");
+        let _ = writeln!(report, "- Root coverage: `{root_coverage}`");
+    }
 }
 
 fn write_fixture_status_line(report: &mut String, fixture: &CompareFixtureReportInput<'_>) {
@@ -983,9 +1123,57 @@ fn write_fixture_status_line(report: &mut String, fixture: &CompareFixtureReport
 pub(crate) fn run_svg_compare<S, Header, Skip, Render, FixtureReport, Report>(
     harness: CompareHarnessOptions<'_>,
     state: &mut S,
+    write_header: Header,
+    skip_fixture: Skip,
+    render_fixture: Render,
+    write_fixture_report: FixtureReport,
+    write_report: Report,
+) -> CompareRunResult
+where
+    Header: FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>),
+    Skip: FnMut(&mut S, &str, &CompareRunPaths) -> Option<String>,
+    Render: FnMut(&mut S, &CompareFixtureInput<'_>) -> Result<CompareFixtureResult, String>,
+    FixtureReport: FnMut(&mut S, &mut String, &CompareFixtureReportInput<'_>),
+    Report:
+        FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>, &[String], &[String]),
+{
+    run_svg_compare_with_parsed_dom(
+        harness,
+        state,
+        write_header,
+        skip_fixture,
+        render_fixture,
+        ignore_parsed_dom::<S>,
+        write_fixture_report,
+        write_report,
+    )
+}
+
+fn ignore_parsed_dom<S>(
+    _state: &mut S,
+    _stem: &str,
+    _upstream_document: &svgdom::ParsedSvgDom<'_>,
+    _local_document: &svgdom::ParsedSvgDom<'_>,
+) -> Option<String> {
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn run_svg_compare_with_parsed_dom<
+    S,
+    Header,
+    Skip,
+    Render,
+    InspectDom,
+    FixtureReport,
+    Report,
+>(
+    harness: CompareHarnessOptions<'_>,
+    state: &mut S,
     mut write_header: Header,
     mut skip_fixture: Skip,
     mut render_fixture: Render,
+    mut inspect_dom: InspectDom,
     mut write_fixture_report: FixtureReport,
     mut write_report: Report,
 ) -> CompareRunResult
@@ -993,6 +1181,12 @@ where
     Header: FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>),
     Skip: FnMut(&mut S, &str, &CompareRunPaths) -> Option<String>,
     Render: FnMut(&mut S, &CompareFixtureInput<'_>) -> Result<CompareFixtureResult, String>,
+    InspectDom: for<'upstream, 'local> FnMut(
+        &mut S,
+        &str,
+        &svgdom::ParsedSvgDom<'upstream>,
+        &svgdom::ParsedSvgDom<'local>,
+    ) -> Option<String>,
     FixtureReport: FnMut(&mut S, &mut String, &CompareFixtureReportInput<'_>),
     Report:
         FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>, &[String], &[String]),
@@ -1059,7 +1253,6 @@ where
         })
         .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
 
-    let mode = svgdom::DomMode::parse(run.dom_mode);
     let mut report = String::new();
     write_header(state, &mut report, &compare_paths, &run);
 
@@ -1140,14 +1333,14 @@ where
                 continue;
             }
             CompareFixtureResult::Rendered {
-                measurement_route_count,
+                render_evidence,
                 local_svg,
                 compare_dom,
                 issues,
                 notes: fixture_notes,
             } => {
-                evidence.record_render(measurement_route_count);
-                let comparison = write_rendered_fixture(
+                evidence.record_render(render_evidence);
+                let comparison = write_rendered_fixture_with_parsed_dom(
                     &local_out_path,
                     &local_svg,
                     &text,
@@ -1162,23 +1355,25 @@ where
                     stem,
                     &upstream_svg,
                     &upstream_path,
-                    mode,
+                    &run.dom_plan,
                     run.dom_decimals,
+                    |upstream_document, local_document| {
+                        inspect_dom(state, stem, upstream_document, local_document)
+                    },
                 )
                 .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
                 evidence.record_comparison(comparison);
             }
             CompareFixtureResult::RenderedWithPolicy {
-                measurement_route_count,
+                render_evidence,
                 local_svg,
                 compare_dom,
                 compare_svg_when_dom_disabled,
-                dom_mode_override,
                 issues,
                 notes: fixture_notes,
             } => {
-                evidence.record_render(measurement_route_count);
-                let comparison = write_rendered_fixture(
+                evidence.record_render(render_evidence);
+                let comparison = write_rendered_fixture_with_parsed_dom(
                     &local_out_path,
                     &local_svg,
                     &text,
@@ -1193,8 +1388,11 @@ where
                     stem,
                     &upstream_svg,
                     &upstream_path,
-                    dom_mode_override.unwrap_or(mode),
+                    &run.dom_plan,
                     run.dom_decimals,
+                    |upstream_document, local_document| {
+                        inspect_dom(state, stem, upstream_document, local_document)
+                    },
                 )
                 .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
                 evidence.record_comparison(comparison);
@@ -1249,7 +1447,7 @@ where
 /// those lanes require their own execution environments and gates.
 enum RawSourceComparison {
     None,
-    SvgDom,
+    SvgDom(usize),
     SvgBytes,
 }
 
@@ -1260,7 +1458,7 @@ struct FixtureComparisonEvidence {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn write_rendered_fixture(
+fn write_rendered_fixture_with_parsed_dom<InspectDom>(
     local_out_path: &Path,
     local_svg: &str,
     input_text: &str,
@@ -1275,9 +1473,16 @@ fn write_rendered_fixture(
     stem: &str,
     upstream_svg: &str,
     upstream_path: &Path,
-    mode: svgdom::DomMode,
+    dom_plan: &DomComparisonPlan,
     dom_decimals: u32,
-) -> Result<FixtureComparisonEvidence, XtaskError> {
+    mut inspect_dom: InspectDom,
+) -> Result<FixtureComparisonEvidence, XtaskError>
+where
+    InspectDom: for<'upstream, 'local> FnMut(
+        &svgdom::ParsedSvgDom<'upstream>,
+        &svgdom::ParsedSvgDom<'local>,
+    ) -> Option<String>,
+{
     fs::write(local_out_path, local_svg).map_err(|source| XtaskError::WriteFile {
         path: local_out_path.display().to_string(),
         source,
@@ -1307,38 +1512,101 @@ fn write_rendered_fixture(
     };
 
     if check_dom && compare_dom {
-        let (profile, residual_note) = fixture_dom_profile(diagram, stem, mode);
-        if let Some(reason) = residual_note {
-            notes.push(format!(
-                "DOM evidence for {diagram}/{stem}: accepted residual profile applied ({reason})"
-            ));
+        let evaluations = dom_plan
+            .modes()
+            .iter()
+            .map(|requested_mode| {
+                let (profile, residual_note) = fixture_dom_profile(diagram, stem, *requested_mode);
+                (*requested_mode, profile, residual_note)
+            })
+            .collect::<Vec<_>>();
+        for (requested_mode, _, residual_note) in &evaluations {
+            if let Some(reason) = residual_note {
+                notes.push(format!(
+                    "DOM evidence [{}] for {diagram}/{stem}: accepted residual profile applied ({reason})",
+                    dom_mode_label(*requested_mode)
+                ));
+            }
         }
-        if profile.validates_root_contract()
-            && let Err(error) = super::validate_root_viewport_contract(
-                diagram,
-                stem,
-                input_text,
-                upstream_svg,
-                local_svg,
-            )
-        {
-            failures.push(error);
-        }
-        if let Err(err) = compare_dom_signatures(
-            stem,
-            upstream_svg,
-            local_svg,
-            upstream_path,
-            local_out_path,
-            profile,
-            dom_decimals,
-        ) {
-            failures.push(err);
+
+        let upstream_normalized = svgdom::normalize_xml_entities(upstream_svg);
+        let local_normalized = svgdom::normalize_xml_entities(local_svg);
+        let upstream_document =
+            svgdom::ParsedSvgDom::parse_normalized(upstream_normalized.as_ref());
+        let local_document = svgdom::ParsedSvgDom::parse_normalized(local_normalized.as_ref());
+        let parse_failure = upstream_document
+            .as_ref()
+            .err()
+            .map(|error| format!("upstream dom parse failed for {stem}: {error}"))
+            .or_else(|| {
+                local_document
+                    .as_ref()
+                    .err()
+                    .map(|error| format!("local dom parse failed for {stem}: {error}"))
+            });
+
+        if let Some(parse_failure) = parse_failure {
+            for (requested_mode, _, _) in &evaluations {
+                failures.push(format!(
+                    "[{}] {parse_failure}",
+                    dom_mode_label(*requested_mode)
+                ));
+            }
+        } else {
+            let mut upstream_document = upstream_document.expect("checked upstream DOM parse");
+            let mut local_document = local_document.expect("checked local DOM parse");
+            if let Some(issue) = inspect_dom(&upstream_document, &local_document) {
+                issues.push(issue);
+            }
+            let mut descendant_comparisons: Vec<((svgdom::DomMode, bool, bool), Option<String>)> =
+                Vec::new();
+            for (requested_mode, profile, _) in evaluations {
+                let mode_label = dom_mode_label(requested_mode);
+                if profile.validates_root_contract()
+                    && let Err(error) = super::validate_root_viewport_contract(
+                        diagram,
+                        stem,
+                        input_text,
+                        upstream_svg,
+                        &upstream_document,
+                        &local_document,
+                    )
+                {
+                    failures.push(format!("[{mode_label}] {error}"));
+                }
+                let comparison_key = (
+                    profile.descendants(),
+                    profile.normalizes_browser_text_wrapping(),
+                    profile.normalizes_browser_text_length(),
+                );
+                let comparison_error = if let Some((_, error)) = descendant_comparisons
+                    .iter()
+                    .find(|(key, _)| *key == comparison_key)
+                {
+                    error.clone()
+                } else {
+                    let error = compare_cached_dom_signatures(
+                        stem,
+                        &mut upstream_document,
+                        &mut local_document,
+                        upstream_path,
+                        local_out_path,
+                        profile,
+                        dom_decimals,
+                    )
+                    .err();
+                    descendant_comparisons.push((comparison_key, error.clone()));
+                    error
+                };
+                if let Some(error) = comparison_error {
+                    failures.push(format!("[{mode_label}] {error}"));
+                }
+            }
         }
         failures.extend(issues);
         notes.extend(fixture_notes);
         return Ok(FixtureComparisonEvidence {
-            raw_source: RawSourceComparison::SvgDom,
+            raw_source: RawSourceComparison::SvgDom(dom_plan.modes().len()),
             semantic_labels,
         });
     } else if !check_dom && compare_svg_when_dom_disabled && upstream_svg != local_svg {
@@ -1419,22 +1687,20 @@ pub(crate) fn sanitize_svg_id(raw: &str) -> String {
     }
 }
 
-fn compare_dom_signatures(
+fn compare_cached_dom_signatures(
     stem: &str,
-    upstream_svg: &str,
-    local_svg: &str,
+    upstream_document: &mut svgdom::ParsedSvgDom<'_>,
+    local_document: &mut svgdom::ParsedSvgDom<'_>,
     upstream_path: &Path,
     local_out_path: &Path,
     profile: svgdom::DomComparisonProfile,
     dom_decimals: u32,
 ) -> Result<(), String> {
-    let upstream = svgdom::dom_signature_for_comparison(upstream_svg, profile, dom_decimals)
-        .map_err(|err| format!("upstream dom parse failed for {stem}: {err}"))?;
-    let local = svgdom::dom_signature_for_comparison(local_svg, profile, dom_decimals)
-        .map_err(|err| format!("local dom parse failed for {stem}: {err}"))?;
+    let upstream = upstream_document.signature_for_comparison(profile, dom_decimals);
+    let local = local_document.signature_for_comparison(profile, dom_decimals);
 
     if upstream != local {
-        let detail = svgdom::format_dom_diffs(&svgdom::dom_diffs(&upstream, &local))
+        let detail = svgdom::format_dom_diffs(&svgdom::dom_diffs(upstream, local))
             .map(|d| format!(" ({d})"))
             .unwrap_or_default();
         return Err(format!(
@@ -1446,6 +1712,34 @@ fn compare_dom_signatures(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+fn compare_dom_signatures_from_svg(
+    stem: &str,
+    upstream_svg: &str,
+    local_svg: &str,
+    upstream_path: &Path,
+    local_out_path: &Path,
+    profile: svgdom::DomComparisonProfile,
+    dom_decimals: u32,
+) -> Result<(), String> {
+    let upstream_normalized = svgdom::normalize_xml_entities(upstream_svg);
+    let local_normalized = svgdom::normalize_xml_entities(local_svg);
+    let mut upstream_document =
+        svgdom::ParsedSvgDom::parse_normalized(upstream_normalized.as_ref())
+            .map_err(|error| format!("upstream dom parse failed for {stem}: {error}"))?;
+    let mut local_document = svgdom::ParsedSvgDom::parse_normalized(local_normalized.as_ref())
+        .map_err(|error| format!("local dom parse failed for {stem}: {error}"))?;
+    compare_cached_dom_signatures(
+        stem,
+        &mut upstream_document,
+        &mut local_document,
+        upstream_path,
+        local_out_path,
+        profile,
+        dom_decimals,
+    )
 }
 
 pub(crate) fn write_compare_result_section(
@@ -1550,7 +1844,13 @@ mod tests {
         };
         let mut report = String::new();
 
-        write_verification_policy_metadata(&mut report, &request, fact, "parity-root", true);
+        write_verification_policy_metadata(
+            &mut report,
+            &request,
+            fact,
+            &DomComparisonPlan::single(svgdom::DomMode::ParityRoot),
+            true,
+        );
 
         assert!(report.contains(
             "Normalization policy: `svgdom/parity descendants plus the root viewport contract`"
@@ -1588,13 +1888,51 @@ mod tests {
             };
             let mut report = String::new();
 
-            write_verification_policy_metadata(&mut report, &request, fact, "structure", false);
+            write_verification_policy_metadata(
+                &mut report,
+                &request,
+                fact,
+                &DomComparisonPlan::single(svgdom::DomMode::Structure),
+                false,
+            );
 
             assert!(
                 report.contains(expected),
                 "diagram={diagram}; report={report}"
             );
         }
+    }
+
+    #[test]
+    fn verification_metadata_attributes_each_dom_suite_policy() {
+        let fact = super::super::diagram_verification_fact("info")
+            .copied()
+            .expect("Info verification fact");
+        let request = CompareRequest {
+            check_dom: true,
+            ..CompareRequest::default()
+        };
+        let plan = DomComparisonPlan::new(vec![
+            svgdom::DomMode::Structure,
+            svgdom::DomMode::Parity,
+            svgdom::DomMode::ParityRoot,
+        ]);
+        let mut report = String::new();
+
+        write_verification_policy_metadata(&mut report, &request, fact, &plan, false);
+
+        for mode in ["structure", "parity", "parity-root"] {
+            assert!(
+                report.contains(&format!("Normalization policy (`{mode}`)")),
+                "{report}"
+            );
+            assert!(
+                report.contains(&format!("Root coverage (`{mode}`)")),
+                "{report}"
+            );
+        }
+        assert_eq!(report.matches("Accepted residual policy:").count(), 1);
+        assert_eq!(report.matches("Root-delta diagnostics:").count(), 1);
     }
 
     #[test]
@@ -1708,7 +2046,13 @@ mod tests {
         };
         let mut report = String::new();
 
-        write_verification_policy_metadata(&mut report, &request, fact, "parity", true);
+        write_verification_policy_metadata(
+            &mut report,
+            &request,
+            fact,
+            &DomComparisonPlan::single(svgdom::DomMode::Parity),
+            true,
+        );
 
         assert!(
             report.contains("Root coverage: `not-checked (selected DOM mode omits root viewport)`")
@@ -1721,7 +2065,7 @@ mod tests {
         let upstream = r#"<svg width="100%" viewBox="0 0 100 100" style="max-width: 100px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
         let local = r#"<svg width="100%" viewBox="0 0 120 100" style="max-width: 120px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
 
-        compare_dom_signatures(
+        compare_dom_signatures_from_svg(
             "root-only",
             upstream,
             local,
@@ -1738,7 +2082,7 @@ mod tests {
         let upstream = r#"<svg width="100%" viewBox="0 0 100 100" style="max-width: 100px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
         let local = r#"<svg width="100%" viewBox="0 0 120 100" style="max-width: 120px; background-color: white;"><g transform="scale(10,20)"/></svg>"#;
 
-        let failure = compare_dom_signatures(
+        let failure = compare_dom_signatures_from_svg(
             "root-and-subtree",
             upstream,
             local,
@@ -1759,7 +2103,7 @@ mod tests {
         let upstream = r#"<svg data-root="upstream"><g data-node="upstream">upstream</g></svg>"#;
         let local = r#"<svg data-root="local"><g data-node="local">local</g></svg>"#;
 
-        let failure = compare_dom_signatures(
+        let failure = compare_dom_signatures_from_svg(
             "multiple-differences",
             upstream,
             local,
@@ -1816,7 +2160,7 @@ mod tests {
         };
 
         evidence.record_comparison(FixtureComparisonEvidence {
-            raw_source: RawSourceComparison::SvgDom,
+            raw_source: RawSourceComparison::SvgDom(1),
             semantic_labels: Some(super::super::SemanticLabelGateEvidence {
                 compared_samples: 5,
                 accepted_residuals: 5,
@@ -1874,7 +2218,7 @@ mod tests {
                         out_path: Some(out_path),
                         filter,
                         check_dom: true,
-                        dom_mode: "structure",
+                        dom_plan: DomComparisonPlan::single(svgdom::DomMode::Structure),
                         dom_decimals: 3,
                     },
                     fixtures_root: Some(fixtures_root.clone()),
@@ -1885,7 +2229,7 @@ mod tests {
                 |_, _, _| None,
                 |_, input| {
                     Ok(CompareFixtureResult::Rendered {
-                        measurement_route_count: merman::svg::TextMeasurementPhase::ALL.len(),
+                        render_evidence: ObservedRenderEvidence::test_only(),
                         local_svg: input.upstream_svg.to_string(),
                         compare_dom: true,
                         issues: Vec::new(),
@@ -1935,7 +2279,7 @@ mod tests {
         let mut failures = Vec::new();
         let mut notes = Vec::new();
 
-        let comparison = write_rendered_fixture(
+        let comparison = write_rendered_fixture_with_parsed_dom(
             &local_path,
             &local,
             &source,
@@ -1950,8 +2294,9 @@ mod tests {
             FIXTURE,
             &upstream,
             &upstream_path,
-            svgdom::DomMode::Structure,
+            &DomComparisonPlan::single(svgdom::DomMode::Structure),
             3,
+            |_, _| None,
         )
         .expect("writing the local SVG should succeed");
 
@@ -1966,6 +2311,82 @@ mod tests {
         assert!(failures.iter().any(|failure| {
             failure.contains("label or associated edge geometry differs without an exact residual")
         }));
+    }
+
+    #[test]
+    fn dom_suite_reuses_parsed_dom_for_root_evidence() {
+        let root = unique_test_root("dom-suite-mode-attribution");
+        fs::create_dir_all(&root).expect("test output root should be created");
+        let upstream_path = root.join("upstream.svg");
+        let local_path = root.join("local.svg");
+        let upstream = r#"<svg width="100%" viewBox="0 0 100 50" style="max-width: 100px;"><g><rect width="10" height="10"/></g></svg>"#;
+        let local = r#"<svg width="100%" viewBox="0 0 120 60" style="max-width: 120px; background-color: black;"><g><rect width="10" height="10"/></g></svg>"#;
+        fs::write(&upstream_path, upstream).expect("upstream SVG should be written");
+        let mut failures = Vec::new();
+        let mut notes = Vec::new();
+        let mut root_coverage = super::super::RootCoverageSummary::default();
+        let mut root_deltas = Vec::new();
+        svgdom::reset_dom_comparator_work_counts();
+
+        let comparison = write_rendered_fixture_with_parsed_dom(
+            &local_path,
+            local,
+            "info",
+            &mut failures,
+            &mut notes,
+            Vec::new(),
+            Vec::new(),
+            false,
+            true,
+            true,
+            "info",
+            "root-only",
+            upstream,
+            &upstream_path,
+            &DomComparisonPlan::new(vec![
+                svgdom::DomMode::Structure,
+                svgdom::DomMode::Parity,
+                svgdom::DomMode::ParityRoot,
+            ]),
+            3,
+            |upstream_document, local_document| {
+                super::super::record_fixture_root_evidence_from_dom(
+                    &mut root_coverage,
+                    &mut root_deltas,
+                    "root-only",
+                    upstream_document,
+                    local_document,
+                    super::super::RootEvidencePolicy {
+                        parity_root_requested: true,
+                        report_delta: true,
+                    },
+                )
+                .err()
+                .map(|error| format!("[parity-root] {error}"))
+            },
+        )
+        .expect("one rendered SVG should support every DOM evaluation mode");
+
+        assert_eq!(comparison.raw_source, RawSourceComparison::SvgDom(3));
+        assert_eq!(
+            svgdom::dom_comparator_work_counts(),
+            svgdom::DomComparatorWorkCounts {
+                parses: 2,
+                signature_builds: 4,
+            },
+            "the multi-policy comparator should parse each SVG side once and reuse parity descendants"
+        );
+        assert_eq!(root_deltas.len(), 1);
+        let mut root_report = String::new();
+        root_coverage.write_report(&mut root_report);
+        assert!(root_report.contains("Exact root-gated rendered fixtures: `1`"));
+        assert!(!failures.is_empty());
+        assert!(
+            failures
+                .iter()
+                .all(|failure| failure.starts_with("[parity-root]")),
+            "{failures:?}"
+        );
     }
 
     #[test]
@@ -1995,7 +2416,11 @@ mod tests {
                     out_path: Some(out_path.clone()),
                     filter: None,
                     check_dom: true,
-                    dom_mode: "parity",
+                    dom_plan: DomComparisonPlan::new(vec![
+                        svgdom::DomMode::Structure,
+                        svgdom::DomMode::Parity,
+                        svgdom::DomMode::ParityRoot,
+                    ]),
                     dom_decimals: 3,
                 },
                 fixtures_root: Some(fixtures_root),
@@ -2014,7 +2439,7 @@ mod tests {
                     });
                 }
                 Ok(CompareFixtureResult::Rendered {
-                    measurement_route_count: merman::svg::TextMeasurementPhase::ALL.len(),
+                    render_evidence: ObservedRenderEvidence::test_only(),
                     local_svg: input.upstream_svg.to_string(),
                     compare_dom: true,
                     issues: Vec::new(),
@@ -2043,7 +2468,7 @@ mod tests {
                 skipped_fixtures: 1,
                 observed_operation_reports: 1,
                 observed_measurement_routes: 4,
-                raw_source_svg_dom_comparisons: 1,
+                raw_source_svg_dom_comparisons: 3,
                 raw_source_svg_byte_comparisons: 0,
                 semantic_label_expected_fixture_comparisons: 0,
                 semantic_label_fixture_comparisons: 0,
@@ -2054,7 +2479,7 @@ mod tests {
         let report = fs::read_to_string(&out_path).expect("report should be written");
         assert!(report.contains("All fixtures matched."));
         assert!(report.contains(
-            "Evidence counts: selected=`2` rendered=`1` skipped=`1` operation-reports=`1` measurement-routes=`4` raw/source-SVG-DOM=`1` raw/source-SVG-bytes=`0`"
+            "Evidence counts: selected=`2` rendered=`1` skipped=`1` operation-reports=`1` measurement-routes=`4` raw/source-SVG-DOM=`3` raw/source-SVG-bytes=`0`"
         ));
         assert!(report.contains(
             "Artifact evidence contract: this command may collect only `raw/source parity` (see counts); browser-visible=`not collected (requires browser computed-style/geometry evidence)`; resvg-safe=`not collected (requires output-pipeline and usvg/resvg evidence)`"
@@ -2096,7 +2521,7 @@ mod tests {
                     out_path: Some(out_path),
                     filter: None,
                     check_dom: true,
-                    dom_mode: "parity",
+                    dom_plan: DomComparisonPlan::single(svgdom::DomMode::Parity),
                     dom_decimals: 3,
                 },
                 fixtures_root: Some(fixtures_root),
@@ -2107,9 +2532,9 @@ mod tests {
             |_, _, _| None,
             |observed, input| {
                 let rendered = render_info_for_evidence(input.stem);
-                let measurement_route_count = observed.observe(input.stem, rendered.evidence())?;
+                let render_evidence = observed.observe(input.stem, rendered.evidence())?;
                 Ok(CompareFixtureResult::Rendered {
-                    measurement_route_count,
+                    render_evidence,
                     local_svg: rendered.svg().to_owned(),
                     compare_dom: true,
                     issues: Vec::new(),
@@ -2167,7 +2592,7 @@ mod tests {
                     out_path: Some(out_path),
                     filter: None,
                     check_dom: true,
-                    dom_mode: "parity",
+                    dom_plan: DomComparisonPlan::single(svgdom::DomMode::Parity),
                     dom_decimals: 3,
                 },
                 fixtures_root: Some(fixtures_root),
@@ -2178,9 +2603,9 @@ mod tests {
             |_, _, _| None,
             |observed, input| {
                 let rendered = render_info_for_evidence(input.stem);
-                let measurement_route_count = observed.observe(input.stem, rendered.evidence())?;
+                let render_evidence = observed.observe(input.stem, rendered.evidence())?;
                 Ok(CompareFixtureResult::Rendered {
-                    measurement_route_count,
+                    render_evidence,
                     local_svg: rendered.svg().to_owned(),
                     compare_dom: true,
                     issues: Vec::new(),
@@ -2234,7 +2659,7 @@ mod tests {
                     out_path: Some(root.join("report.md")),
                     filter: None,
                     check_dom: false,
-                    dom_mode: "structure",
+                    dom_plan: DomComparisonPlan::single(svgdom::DomMode::Structure),
                     dom_decimals: 3,
                 },
                 fixtures_root: Some(fixtures_root),

@@ -1,0 +1,439 @@
+==================
+declarations messages notes activation and accessibility
+==================
+
+SeQuEnCeDiAgRaM
+title: Checkout flow
+accTitle: Checkout accessibility
+accDescr {
+  用户 checks out
+}
+actor U as 用户
+participant API as Checkout API
+U->>+API: start
+activate API
+Note over U,API: processing
+API-->>-U: complete
+deactivate API
+
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (sequence_title_statement
+        (sequence_statement_keyword)
+        (sequence_line_text))
+      (sequence_accessibility_title_statement
+        (sequence_statement_keyword)
+        (sequence_line_text))
+      (sequence_accessibility_description_block
+        (sequence_statement_keyword)
+        (sequence_accessibility_block_text))
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name)
+        (sequence_statement_keyword)
+        (sequence_line_text))
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name)
+        (sequence_statement_keyword)
+        (sequence_line_text))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_inline_activation)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_activation_statement
+        (sequence_statement_keyword)
+        (sequence_endpoint
+          (sequence_actor_reference)))
+      (sequence_note_statement
+        (sequence_statement_keyword)
+        (sequence_note_placement)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_note_text))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_inline_activation)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_activation_statement
+        (sequence_statement_keyword)
+        (sequence_endpoint
+          (sequence_actor_reference))))))
+
+==================
+nested alt loop par and critical blocks
+==================
+
+sequenceDiagram
+participant U as User
+participant API
+alt accepted
+  API-->>U: ok
+else rejected
+  loop retry
+    U->>API: retry
+  end
+end
+par audit
+  API->>Log: write
+and notify
+  API->>Mail: send
+end
+critical commit
+  API->>DB: commit
+option rollback
+  API->>DB: rollback
+end
+
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name)
+        (sequence_statement_keyword)
+        (sequence_line_text))
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name))
+      (sequence_alt_block
+        (sequence_block_keyword)
+        (sequence_block_label)
+        (sequence_message_statement
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_operator)
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_text))
+        (sequence_else_branch
+          (sequence_block_keyword)
+          (sequence_block_label)
+          (sequence_loop_block
+            (sequence_block_keyword)
+            (sequence_block_label)
+            (sequence_message_statement
+              (sequence_endpoint
+                (sequence_actor_reference))
+              (sequence_message_operator)
+              (sequence_endpoint
+                (sequence_actor_reference))
+              (sequence_message_text))
+            (sequence_block_end)))
+        (sequence_block_end))
+      (sequence_par_block
+        (sequence_block_keyword)
+        (sequence_block_label)
+        (sequence_message_statement
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_operator)
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_text))
+        (sequence_and_branch
+          (sequence_block_keyword)
+          (sequence_block_label)
+          (sequence_message_statement
+            (sequence_endpoint
+              (sequence_actor_reference))
+            (sequence_message_operator)
+            (sequence_endpoint
+              (sequence_actor_reference))
+            (sequence_message_text)))
+        (sequence_block_end))
+      (sequence_critical_block
+        (sequence_block_keyword)
+        (sequence_block_label)
+        (sequence_message_statement
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_operator)
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_text))
+        (sequence_option_branch
+          (sequence_block_keyword)
+          (sequence_block_label)
+          (sequence_message_statement
+            (sequence_endpoint
+              (sequence_actor_reference))
+            (sequence_message_operator)
+            (sequence_endpoint
+              (sequence_actor_reference))
+            (sequence_message_text)))
+        (sequence_block_end)))))
+
+==================
+incomplete message and malformed line recover locally
+==================
+
+sequenceDiagram
+participant Before
+Before->>
+unsupported editor fragment
+participant After
+After-->>Before: still parsed
+
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name))
+      (sequence_incomplete_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator))
+      (sequence_malformed_statement
+        (sequence_unknown_statement_head)
+        (sequence_recovery_text))
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text)))))
+
+==================
+semicolon boundaries and eof statement
+==================
+
+sequenceDiagram;participant A;participant B;A->>B: hello;Note right of B: seen
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name))
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_note_statement
+        (sequence_statement_keyword)
+        (sequence_note_placement)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_note_text)))))
+
+==================
+create destroy autonumber config and box
+==================
+
+sequenceDiagram
+autonumber 10 5
+box rgb(240,240,240) Services
+  participant API@{ "type": "boundary" } as API
+  actor Worker
+end
+create participant Queue
+API->>Queue: enqueue
+destroy Queue
+
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (sequence_autonumber_statement
+        (sequence_statement_keyword)
+        (sequence_number)
+        (sequence_number))
+      (sequence_box_block
+        (sequence_block_keyword)
+        (sequence_block_label)
+        (sequence_participant_declaration
+          (sequence_statement_keyword)
+          (sequence_participant_name)
+          (sequence_participant_config)
+          (sequence_statement_keyword)
+          (sequence_line_text))
+        (sequence_participant_declaration
+          (sequence_statement_keyword)
+          (sequence_participant_name))
+        (sequence_block_end))
+      (sequence_create_participant_statement
+        (sequence_statement_keyword)
+        (sequence_participant_declaration
+          (sequence_statement_keyword)
+          (sequence_participant_name)))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_destroy_participant_statement
+        (sequence_statement_keyword)
+        (sequence_endpoint
+          (sequence_actor_reference))))))
+
+==================
+cross arrows keyword prefixes comments and parenthesized ids
+==================
+
+sequenceDiagram
+participant A
+participant B
+participant (end) as end
+A-xB: solid cross
+A--xB: dotted cross
+Parser->>B: keyword prefix
+opt # comment
+  A->>(end): start
+end
+alt
+  (end)-->>A: done
+else # comment
+  A->>(end): retry
+end
+
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name))
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name))
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name)
+        (sequence_statement_keyword)
+        (sequence_line_text))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_opt_block
+        (sequence_block_keyword)
+        (sequence_hash_comment)
+        (sequence_message_statement
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_operator)
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_text))
+        (sequence_block_end))
+      (sequence_alt_block
+        (sequence_block_keyword)
+        (sequence_message_statement
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_operator)
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_text))
+        (sequence_else_branch
+          (sequence_block_keyword)
+          (sequence_hash_comment)
+          (sequence_message_statement
+            (sequence_endpoint
+              (sequence_actor_reference))
+            (sequence_message_operator)
+            (sequence_endpoint
+              (sequence_actor_reference))
+            (sequence_message_text)))
+        (sequence_block_end)))))
+
+==================
+header at eof
+==================
+
+sequenceDiagram
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))))
+
+==================
+body directives do not consume following messages
+==================
+
+%%{init: { 'logLevel': 0}}%%
+sequenceDiagram
+%%{wrap}%%
+Alice->Bob: Hello Bob
+
+---
+
+(source_file
+  (directive)
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (directive)
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text)))))

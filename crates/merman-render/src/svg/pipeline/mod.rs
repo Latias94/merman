@@ -7,16 +7,24 @@ mod prepared_text;
 mod preset;
 mod resource_closure;
 mod standalone;
+mod static_validation;
 
-pub(crate) use builtin::GitGraphBranchLabelBaselinePostprocessor;
 pub(crate) use builtin::set_root_background_color;
+pub(crate) use builtin::util::{
+    SvgTagScanner, checkpoint_loop, end_tag_name, escape_xml_attr_with_checkpoints,
+    escape_xml_text_with_checkpoints, extract_exact_double_quoted_attr_with_checkpoints,
+    find_tag_end_with_checkpoints, find_with_checkpoints, rfind_with_checkpoints, start_tag_name,
+    trim_with_checkpoints,
+};
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
     RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
     ScopedCssPostprocessor, StripForeignObjectPostprocessor,
 };
+pub(crate) use builtin::{GitGraphBranchLabelBaselinePostprocessor, RebaseSvgIdsPostprocessor};
+pub(crate) use context::SvgPostprocessExecution;
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
-pub(crate) use final_validation::validate_well_formed_svg;
+pub(crate) use final_validation::{SvgStructureMetrics, validate_well_formed_svg_with_controls};
 pub(crate) use font_embedding::SvgFontSeal;
 pub use policy::SvgOutputPolicy;
 pub(crate) use prepared_text::partition_prepared_text_label_ids;
@@ -24,12 +32,72 @@ pub use preset::SvgPipelinePreset;
 pub use resource_closure::{SvgResourceClosure, SvgResourceFingerprint};
 pub use standalone::{StandaloneSvgArtifact, StandaloneSvgTerminalStatus};
 
+pub(crate) fn is_css_value_attribute(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "style"
+            | "background"
+            | "background-image"
+            | "fill"
+            | "stroke"
+            | "filter"
+            | "clip-path"
+            | "mask"
+            | "marker"
+            | "marker-start"
+            | "marker-mid"
+            | "marker-end"
+            | "cursor"
+            | "color-profile"
+    )
+}
+
+pub(crate) fn is_svg_idref_attribute(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "aria-activedescendant"
+            | "aria-controls"
+            | "aria-describedby"
+            | "aria-details"
+            | "aria-errormessage"
+            | "aria-flowto"
+            | "aria-labelledby"
+            | "aria-owns"
+    )
+}
+
+/// Internal cross-crate adapter for rebasing ids in Merman-produced SVG.
+#[doc(hidden)]
+pub fn rebase_svg_ids(
+    svg: &str,
+    prefix: impl Into<String>,
+    session: &RenderSession,
+) -> Result<String> {
+    SvgPipeline::parity()
+        .with_postprocessor(RebaseSvgIdsPostprocessor::new(prefix))
+        .process_to_string(svg, session)
+}
+
+/// Validates sanitized SVG for Merman's known-host static-inline embedding policy.
+///
+/// This policy permits ordinary navigation links and same-document fragment references. It is not
+/// a general DOM-mount admission contract: the host must not inject or inherit a `<base>` URL that
+/// changes how fragment-only references resolve.
+#[doc(hidden)]
+pub fn validate_static_inline_svg(svg: &str, session: &RenderSession) -> Result<()> {
+    static_validation::validate_rustdoc_static_svg(svg, SvgPostprocessExecution::new(session))
+}
+
+/// Validates renderer output before static-inline fallback and compatibility transformations.
+#[doc(hidden)]
+pub fn validate_static_inline_svg_admission(svg: &str, session: &RenderSession) -> Result<()> {
+    static_validation::validate_rustdoc_admission_svg(svg, SvgPostprocessExecution::new(session))
+}
+
 use crate::environment::RenderSession;
 use crate::math::{PreparedMathEvidenceLease, PreparedMathTerminalReceipt};
-use crate::resources::ResourceLimitPhase;
 use crate::text::{PreparedTextEvidenceLease, PreparedTextTerminalReceipt};
 use crate::{Error, Result};
-use merman_core::OperationPhase;
 use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
@@ -220,7 +288,7 @@ impl ResvgCompatibleSvg {
         mut self,
         evidence: PreparedTextEvidenceLease,
         evidence_valid: bool,
-        resource_policy: crate::resources::RenderResourcePolicy,
+        execution: SvgPostprocessExecution<'_>,
     ) -> Result<Self> {
         self.prepared_text_evidence_valid = evidence_valid;
         self.prepared_text_evidence = if evidence_valid {
@@ -233,10 +301,10 @@ impl ResvgCompatibleSvg {
             self.prepared_text_evidence.entries(),
             &self.svg,
         ) {
-            let embedded = plan.inject(&self.svg, resource_policy)?;
+            let embedded = plan.inject(&self.svg, execution)?;
             let terminal = final_validation::validate_resvg_compatible_svg_with_font_plan(
                 &embedded,
-                resource_policy,
+                execution.resource_policy(),
                 &plan,
             )?;
             self.reference_plan = terminal.reference_plan.clone();
@@ -251,6 +319,7 @@ impl ResvgCompatibleSvg {
             let (public_svg, tokenized_svg) = partition_prepared_text_label_ids(
                 std::mem::take(&mut self.svg),
                 self.prepared_text_evidence.entries(),
+                execution,
             )?;
             self.svg = public_svg;
             self.prepared_text_svg = tokenized_svg.map(Arc::from);
@@ -444,6 +513,8 @@ pub struct SvgPipeline {
     postprocessors: Vec<Arc<dyn SvgPostprocessor>>,
     drop_native_duplicate_fallbacks: bool,
     prepared_math_evidence_preserved: bool,
+    static_inline_admission: bool,
+    static_inline_validation: bool,
 }
 
 impl fmt::Debug for SvgPipeline {
@@ -465,6 +536,8 @@ impl fmt::Debug for SvgPipeline {
                 "prepared_math_evidence_preserved",
                 &self.prepared_math_evidence_preserved,
             )
+            .field("static_inline_admission", &self.static_inline_admission)
+            .field("static_inline_validation", &self.static_inline_validation)
             .finish()
     }
 }
@@ -494,6 +567,8 @@ impl SvgPipeline {
             postprocessors: Vec::new(),
             drop_native_duplicate_fallbacks: false,
             prepared_math_evidence_preserved: true,
+            static_inline_admission: false,
+            static_inline_validation: false,
         }
     }
 
@@ -536,6 +611,26 @@ impl SvgPipeline {
         self
     }
 
+    /// Adds Merman's static-inline publication contract to this pipeline.
+    ///
+    /// Admission runs before any lossy compatibility transform. Final validation runs after all
+    /// configured transforms and XML 1.0 character cleanup, while the renderer-owned session is
+    /// still available for cancellation and cumulative resource accounting.
+    #[doc(hidden)]
+    pub fn with_static_inline_contract(mut self, id_prefix: impl Into<String>) -> Self {
+        self.static_inline_admission = true;
+        self.static_inline_validation = true;
+        self.prepared_math_evidence_preserved = false;
+        self.postprocessors
+            .push(Arc::new(ForeignObjectFallbackPostprocessor));
+        self.postprocessors.push(Arc::new(SanitizeCssPostprocessor));
+        self.postprocessors
+            .push(Arc::new(SanitizeSvgAttributesPostprocessor));
+        self.postprocessors
+            .push(Arc::new(RebaseSvgIdsPostprocessor::new(id_prefix)));
+        self
+    }
+
     pub fn with_postprocessor<P>(mut self, postprocessor: P) -> Self
     where
         P: SvgPostprocessor + 'static,
@@ -570,7 +665,8 @@ impl SvgPipeline {
     }
 
     pub fn process<'a>(&self, svg: &'a str, session: &RenderSession) -> Result<Cow<'a, str>> {
-        let metadata = SvgPostprocessMetadata::from_svg(svg);
+        let execution = SvgPostprocessExecution::new(session);
+        let metadata = SvgPostprocessMetadata::from_svg_with_execution(svg, execution)?;
         self.process_with_metadata(svg, &metadata, session)
     }
 
@@ -614,14 +710,47 @@ impl SvgPipeline {
         Cow<'a, str>,
         Option<final_validation::TerminalSvgValidation>,
     )> {
-        session.checkpoint(OperationPhase::Postprocess)?;
-        let mut current = svg;
-        session
-            .resource_policy()
-            .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
+        let execution = SvgPostprocessExecution::new(session);
+        execution.checkpoint()?;
+        execution.preflight_svg_byte_count(svg.len())?;
+        let mut current =
+            crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(svg, || {
+                execution.checkpoint()
+            })?;
+        execution.preflight_svg_byte_count(current.len())?;
+        let mut structure = match final_validation::validate_well_formed_svg_with_execution(
+            current.as_ref(),
+            execution,
+        ) {
+            Ok(structure) => structure,
+            Err(initial_error) if self.preset == SvgPipelinePreset::ResvgSafe => {
+                // Browser-facing SVG may contain HTML named entities in serialized attribute
+                // values (for example `&colon;`). They are not XML entities, so run the same
+                // resource-aware attribute sanitizer once before retrying structural validation.
+                // Text/entity errors remain rejected because this pass never rewrites text nodes.
+                let sanitized =
+                    builtin::attr_sanitize::sanitize_element_attributes_cow_with_checkpoints(
+                        current.clone(),
+                        &mut || execution.checkpoint(),
+                    )?;
+                execution.preflight_svg_byte_count(sanitized.len())?;
+                if sanitized.as_ref() == current.as_ref() {
+                    return Err(initial_error);
+                }
+                current = sanitized;
+                final_validation::validate_well_formed_svg_with_execution(
+                    current.as_ref(),
+                    execution,
+                )?
+            }
+            Err(error) => return Err(error),
+        };
+        if self.static_inline_admission {
+            static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
+        }
 
         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
-            session.checkpoint(OperationPhase::Postprocess)?;
+            execution.checkpoint()?;
             let ctx = SvgPostprocessContext::new(
                 self.preset,
                 index,
@@ -629,41 +758,47 @@ impl SvgPipeline {
                 metadata,
                 session,
             );
-            current = match postprocessor.process(current, &ctx) {
+            let result = postprocessor.process(current, &ctx);
+            execution.checkpoint()?;
+            current = match result {
                 Ok(current) => current,
-                Err(error @ (Error::Cancelled(_) | Error::ResourceLimitExceeded(_))) => {
-                    return Err(error);
+                Err(Error::Cancelled(error)) => return Err(Error::Cancelled(error)),
+                Err(Error::ResourceLimitExceeded(error)) => {
+                    return Err(execution.terminate_resource_error(error));
                 }
                 Err(error) => {
-                    session.checkpoint(OperationPhase::Postprocess)?;
                     return Err(Error::svg_postprocess(
                         postprocessor.name(),
                         error.to_string(),
                     ));
                 }
             };
-            session.checkpoint(OperationPhase::Postprocess)?;
-            session
-                .resource_policy()
-                .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
+            execution.preflight_svg_byte_count(current.len())?;
+            structure = final_validation::validate_well_formed_svg_with_execution(
+                current.as_ref(),
+                execution,
+            )?;
         }
 
-        session.checkpoint(OperationPhase::Postprocess)?;
+        execution.checkpoint()?;
         let finalized = preset::apply_preset_cow(
             self.preset,
             current,
             metadata,
-            session,
+            execution,
+            structure,
             self.drop_native_duplicate_fallbacks,
             prepared_math_evidence,
         )?;
-        let finalized = crate::xml::strip_forbidden_xml_1_0_chars_cow(finalized);
-        session.checkpoint(OperationPhase::Postprocess)?;
-        session
-            .resource_policy()
-            .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
+        let finalized =
+            crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(finalized, || {
+                execution.checkpoint()
+            })?;
+        execution.preflight_svg_byte_count(finalized.len())?;
+        if self.static_inline_validation {
+            static_validation::validate_rustdoc_static_svg(finalized.as_ref(), execution)?;
+        }
         let terminal = if self.preset == SvgPipelinePreset::ResvgSafe {
-            session.checkpoint(OperationPhase::Postprocess)?;
             if let Some(evidence) = prepared_math_evidence.filter(|evidence| !evidence.is_empty()) {
                 PreparedMathTerminalReceipt::from_terminal_svg(finalized.as_ref(), evidence)
                     .map_err(|message| {
@@ -676,19 +811,20 @@ impl SvgPipeline {
                         )
                     })?;
             }
-            Some(final_validation::validate_resvg_compatible_svg(
-                finalized.as_ref(),
-                session.resource_policy(),
-            )?)
+            Some(
+                final_validation::validate_resvg_compatible_svg_with_execution(
+                    finalized.as_ref(),
+                    execution,
+                )?,
+            )
         } else {
-            session.checkpoint(OperationPhase::Postprocess)?;
-            final_validation::validate_well_formed_svg(
+            final_validation::validate_well_formed_svg_with_execution(
                 finalized.as_ref(),
-                session.resource_policy(),
+                execution,
             )?;
             None
         };
-        session.checkpoint(OperationPhase::Postprocess)?;
+        execution.checkpoint()?;
         Ok((finalized, terminal))
     }
 
@@ -697,7 +833,8 @@ impl SvgPipeline {
     }
 
     pub fn process_owned_to_string(&self, svg: String, session: &RenderSession) -> Result<String> {
-        let metadata = SvgPostprocessMetadata::from_svg(&svg);
+        let execution = SvgPostprocessExecution::new(session);
+        let metadata = SvgPostprocessMetadata::from_svg_with_execution(&svg, execution)?;
         self.process_owned_to_string_with_metadata(svg, &metadata, session)
     }
 
@@ -745,7 +882,8 @@ impl SvgPipeline {
         svg: &str,
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
-        let metadata = SvgPostprocessMetadata::from_svg(svg);
+        let execution = SvgPostprocessExecution::new(session);
+        let metadata = SvgPostprocessMetadata::from_svg_with_execution(svg, execution)?;
         self.process_resvg_compatible_with_metadata(svg, &metadata, session)
     }
 
@@ -1275,6 +1413,98 @@ mod tests {
             .unwrap_err();
 
         assert!(error.to_string().contains("max_svg_bytes"), "{error}");
+    }
+
+    #[test]
+    fn provided_metadata_admits_raw_svg_bytes_before_xml_cleanup() {
+        let svg = "<svg>\u{0}</svg>";
+        let maximum = svg.len() - 1;
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, maximum)
+                    .unwrap(),
+            )
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let metadata = SvgPostprocessMetadata::new();
+
+        let error = SvgPipeline::parity()
+            .process_with_metadata(svg, &metadata, &session)
+            .expect_err("raw SVG bytes must be admitted before XML cleanup allocates");
+        let Error::ResourceLimitExceeded(first) = error else {
+            panic!("expected a resource rejection");
+        };
+        assert_eq!(first.limit, "max_svg_bytes");
+        assert_eq!(first.actual, svg.len());
+        assert_eq!(first.max, maximum);
+
+        control.cancel();
+        let replayed = SvgPipeline::parity()
+            .process_with_metadata("<svg/>", &metadata, &session)
+            .expect_err("the first resource terminal must remain sticky");
+        let Error::ResourceLimitExceeded(replayed) = replayed else {
+            panic!("expected the resource rejection to replay");
+        };
+        assert_eq!(replayed, first);
+    }
+
+    #[test]
+    fn structure_limit_rejects_before_custom_postprocessors_run() {
+        struct MustNotRun;
+
+        impl SvgPostprocessor for MustNotRun {
+            fn name(&self) -> &'static str {
+                "must-not-run"
+            }
+
+            fn process<'a>(
+                &self,
+                _svg: Cow<'a, str>,
+                _ctx: &SvgPostprocessContext<'_>,
+            ) -> Result<Cow<'a, str>> {
+                panic!("structure admission must precede custom postprocessing")
+            }
+        }
+
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxSvgElements, 1)
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+        let error = SvgPipeline::parity()
+            .with_postprocessor(MustNotRun)
+            .process_to_string("<svg><g/></svg>", &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
+    }
+
+    #[test]
+    fn fallback_generated_elements_are_rejected_before_the_overlay_is_completed() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxSvgElements, 4)
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+        let svg = concat!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+            r#"<foreignObject width="10" height="10">"#,
+            r#"<div xmlns="http://www.w3.org/1999/xhtml">Hello</div>"#,
+            "</foreignObject></svg>",
+        );
+        let error = SvgPipeline::readable()
+            .process_to_string(svg, &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
     }
 
     #[test]

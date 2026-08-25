@@ -180,7 +180,7 @@ fn write_area_label(
 
 fn root_open(
     out: &mut impl SvgOutput,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     layout: &VennDiagramLayout,
     aria_labelledby: Option<&str>,
     aria_describedby: Option<&str>,
@@ -243,8 +243,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("venn");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("venn");
     let title = model
         .title
         .as_deref()
@@ -280,7 +279,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(model.acc_title.as_deref().unwrap_or_default())
         );
         out.checkpoint()?;
@@ -289,7 +288,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.checkpoint()?;
@@ -298,7 +297,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     let theme = MermaidThemeAdapter::new(effective_config).venn()?;
     let title_fill = title_theme.fill_css().unwrap_or(theme.title_color.as_str());
     let mut title_theme_receipt = title_theme.begin_terminal_receipt();
-    let css = venn_css(diagram_id, &theme, title_fill);
+    let css = venn_css(diagram_id.semantic_str(), &theme, title_fill);
     if let Some(receipt) = title_theme_receipt.as_mut() {
         receipt.record_stylesheet(crate::venn::VENN_TITLE_CLASS, title_fill);
     }

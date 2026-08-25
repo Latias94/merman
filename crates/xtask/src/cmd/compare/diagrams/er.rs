@@ -43,11 +43,12 @@ pub(super) fn compare_er_args(
             }
             "--dom-mode" => {
                 i += 1;
-                request.dom_mode = Some(
-                    args.get(i)
-                        .map(|s| s.trim().to_string())
-                        .unwrap_or_else(|| fact.default_dom_mode.to_string()),
-                );
+                let mode = args
+                    .get(i)
+                    .ok_or(XtaskError::Usage)?
+                    .parse::<crate::svgdom::DomMode>()
+                    .map_err(|_| XtaskError::Usage)?;
+                request.dom_mode = Some(mode.to_string());
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -85,11 +86,9 @@ struct ErCompareRequest {
 }
 
 fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> CompareRunResult {
-    let dom_mode = request
-        .common
-        .dom_mode
-        .as_deref()
-        .unwrap_or(fact.default_dom_mode);
+    let dom_plan =
+        super::super::DomComparisonPlan::from_request(&request.common, fact.default_dom_mode)
+            .map_err(CompareRunFailure::without_evidence)?;
     let dom_decimals = request.common.dom_decimals.unwrap_or(3);
 
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
@@ -112,7 +111,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
             out_path: request.common.out_path.clone(),
             filter: request.common.filter.as_deref(),
             check_dom: request.common.check_dom,
-            dom_mode,
+            dom_plan: dom_plan.clone(),
             dom_decimals,
         }),
         &mut state,
@@ -124,13 +123,13 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                 "- Upstream: `fixtures/upstream-svgs/er/*.svg` (pinned Mermaid baseline via Mermaid CLI)"
             );
             let _ = writeln!(report, "- Command: `{}`", fact.command);
-            let _ = writeln!(report, "- Mode: `{}`", options.dom_mode);
+            let _ = writeln!(report, "- Modes: `{}`", options.dom_plan.label());
             let _ = writeln!(report, "- Decimals: `{}`", options.dom_decimals);
             write_verification_policy_metadata(
                 report,
                 &request.common,
                 fact,
-                options.dom_mode,
+                &options.dom_plan,
                 false,
             );
             let _ = writeln!(report);
@@ -217,7 +216,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                     ));
                 }
             };
-            let measurement_route_count = state
+            let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
             let local_svg = rendered.svg().to_owned();
@@ -265,7 +264,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
             });
 
             Ok(CompareFixtureResult::Rendered {
-                measurement_route_count,
+                render_evidence,
                 local_svg,
                 compare_dom: true,
                 issues,

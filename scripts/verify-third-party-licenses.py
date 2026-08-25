@@ -229,6 +229,18 @@ def validate_lock(
         require_exact_keys(lock, {"type", "evidence"}, set(), context)
         require_string(lock["evidence"], f"{context}.evidence")
         return
+    if lock_type == "pinned-file":
+        require_exact_keys(lock, {"type", "path", "sha256"}, set(), context)
+        relative = require_repo_path(lock["path"], f"{context}.path")
+        expected = require_string(lock["sha256"], f"{context}.sha256")
+        if not HEX_64.fullmatch(expected):
+            raise ContractError(f"{context}.sha256 must be a lowercase SHA-256")
+        observed = sha256(require_regular_file(root, relative, context))
+        if observed != expected:
+            raise ContractError(
+                f"{context} digest drifted for {relative}: expected {expected}, got {observed}"
+            )
+        return
     raise ContractError(f"{context}.type is unsupported: {lock_type}")
 
 

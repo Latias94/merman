@@ -72,12 +72,16 @@ pub fn bounded_renderer() -> BoundedRenderer {
         )
         .with_parse_options(ParseOptions::strict())
         .with_resource_policy(input_policy);
-    let mut request = SvgRequest::default();
-    request.environment = SvgEnvironment::deterministic()
-        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-        .with_resource_policy(limits);
-    request.options.diagram_id = Some("fuzz".to_string());
-    request.pipeline = Some(SvgPipeline::resvg_safe());
+    let mut options = SvgRequest::default().options;
+    options.diagram_id = Some("fuzz".to_string());
+    let request = SvgRequest {
+        environment: SvgEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+            .with_resource_policy(limits),
+        options,
+        pipeline: Some(SvgPipeline::resvg_safe()),
+        ..SvgRequest::default()
+    };
 
     BoundedRenderer { renderer, request }
 }

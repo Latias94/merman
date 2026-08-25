@@ -1,13 +1,14 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-08-11
+Last updated: 2026-08-18
 
 ## Version Decision
 
 Published workspace prerelease baseline: `0.8.0-alpha.5`.
 
-The next workspace release remains in development and has no selected version yet. The browser and
+The prepared workspace candidate is `0.8.0-alpha.6`. This local source state does not authorize a
+tag, workflow dispatch, registry publication, or GitHub Release mutation. The browser and
 Node package groups were published as an authorized alpha-channel test at `0.8.0-alpha.5` from
 reviewed commit `d4365ca4860b6b4d51c421e775daab92a815c667`, newer than the workspace
 `v0.8.0-alpha.5` tag. Their verified package-group manifests and workflow artifacts identify that
@@ -24,11 +25,15 @@ Rationale:
   integrations test one coherent version graph. The unpublished VS Code extension follows its own
   `0.1.x` version track and records the bundled workspace runtime separately.
 
-Workspace-coupled manifests remain aligned to `0.8.0-alpha.5`. Python package metadata uses the
-PEP 440 spelling `0.8.0a5`, but manifest alignment does not prove that a surface reached its
+Workspace-coupled manifests are aligned to the prepared `0.8.0-alpha.6` candidate. Python package
+metadata uses the PEP 440 spelling `0.8.0a6`, but manifest alignment does not prove that a surface reached its
 registry or that separately published alpha.5 channels share one source snapshot. The
 independently versioned VS Code extension, Typst wrapper, and `roughr-merman` remain on their own
-release axes.
+release axes. The `tree-sitter-mermaid` language distribution also has an independent version axis.
+Version `0.1.0` is published on crates.io and npm from tag `tree-sitter-mermaid-v0.1.0`, commit
+`34ddaccbfb8b4a7a502e67122b2cd709b4989e19`. Its standalone GitHub Release is intentionally
+deferred so it can be announced alongside the next Merman product release; the two releases retain
+their own tags and version identities.
 
 ## Publish Order
 
@@ -45,8 +50,32 @@ Only crates within the same independent batch use lexical ordering. The local pu
 release preflight, and release workflow consume this same projection; Markdown is not parsed as a
 release-order database.
 
-`roughr-merman` is versioned separately as `0.12.2`. The workflow reads each crate's own package
+`roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
+
+`tree-sitter-mermaid` `0.1.0` is a separately packaged language distribution. Its Cargo package is
+`tree-sitter-mermaid`; its npm package is `@mermanjs/tree-sitter-mermaid`. Use
+`release-tree-sitter-mermaid.yml`, not the generic independent-crate workflow. It builds native Node
+prebuilds, verifies the root language WASM, installs the exact npm/Cargo/C candidate, stages a
+grammar-subdirectory source archive and checksums, and publishes registry packages only when the
+matching immutable `tree-sitter-mermaid-vX.Y.Z` tag passes the protected crates.io and npm
+environments. GitHub Release publication is a separate explicit workflow input.
+Because `merman-lsp` now consumes this crate for syntax highlighting, the exact Cargo version must
+exist on crates.io before publishing a dependent workspace release. The scoped npm package is
+independent of the workspace crates and supplies browser consumers with the same grammar WASM and
+queries.
+
+The initial npm package was bootstrapped manually from attested run `32114670734` with the
+maintainer's 2FA-protected credential. Its registry tarball SHA-256 is
+`a4e54b9caee7940cfbcffbe2b97d6edf04d8979b3eafe75fc0bba7804d04b23b`; it does not carry npm
+provenance. Trusted Publishing is configured for later versions through
+`release-tree-sitter-mermaid.yml` and the `npm` environment. The crates.io package was accepted by
+run `32117231294` and has checksum
+`34921c596d2732a74eb6489f1148df732163f0c4fd20737547396f40a588b559`. That run reported a false
+failure because crates.io rejected curl's default User-Agent during post-publish download; direct
+registry verification confirmed the published bytes. Do not rerun it to create a GitHub Release:
+the independent native prebuild outputs differ across runs, so the later run's npm candidate is not
+byte-identical to the bootstrapped artifact.
 
 ## Binding Release Chain
 
@@ -55,6 +84,8 @@ The binding-specific chain is:
 ```text
 merman-analysis
   -> merman-editor-core
+  -> merman-lsp
+tree-sitter-mermaid
   -> merman-lsp
 
 merman-render
@@ -86,22 +117,28 @@ publish only the missing exact tarballs directly under the requested final tag w
 2FA-protected npm credential, configure Trusted Publishing for those package names, then rerun the
 workflow with publication enabled. Do not keep the bootstrap credential in GitHub Actions.
 
-## Node Native Package Group
+## Node npm Package Group
 
-The experimental Node package is also a lockstep npm group, but it is native rather than browser
-WASM: `@mermanjs/node`, `@mermanjs/node-darwin-arm64`, `@mermanjs/node-darwin-x64`,
+The experimental Node packages are one lockstep npm group: the native loader and five platform
+packages (`@mermanjs/node`, `@mermanjs/node-darwin-arm64`, `@mermanjs/node-darwin-x64`,
 `@mermanjs/node-linux-x64-gnu`, `@mermanjs/node-linux-x64-musl`, and
-`@mermanjs/node-win32-x64-msvc`. Run `release-node.yml` against a reviewed immutable source commit
-after the matching preflight succeeds. It builds and installs every native target, preflights
-existing registry integrity and tags, then publishes missing exact versions directly under the
-requested final tag in platform-first order, with the root loader last.
+`@mermanjs/node-win32-x64-msvc`) plus the explicit Node-targeted WASM package
+`@mermanjs/node-wasm`. Run `release-node.yml` against a reviewed immutable source commit after
+the matching preflight succeeds. It builds and installs every native target and the WASM target,
+preflights existing registry integrity and tags, then publishes missing exact versions directly
+under the requested final tag in platform-first order, with the WASM package before the root
+loader.
 
 The first version of each npm package cannot use npm Trusted Publishing before the package exists.
-For that one bootstrap, download the verified group artifact from a non-publishing run, publish the
-five platform tarballs and then the loader directly under the requested final tag with a
-maintainer's 2FA-protected npm credential, configure Trusted Publishing for all six package names,
-and rerun `release-node.yml` with publishing enabled. Thereafter the workflow owns idempotent
-publishing and provenance; do not keep an npm token in GitHub Actions.
+For that one bootstrap, dispatch `release-node.yml` with `publish_to_npm=false` against the reviewed
+immutable source and record its workflow run id. Download the verified
+`merman-node-npm-package-group` artifact from that exact run, publish the five platform tarballs, the
+WASM tarball, and then the loader directly under the requested final tag with a maintainer's
+2FA-protected npm credential, and configure Trusted Publishing for all seven package names. Then
+dispatch `release-node.yml` with the same `release_tag` and `source_ref`,
+`publish_to_npm=true`, and `recovery_run_id=<bootstrap-run-id>`. The recovery run reuses and verifies
+the original tarballs; it must not accept a separately rebuilt candidate. Thereafter the workflow
+owns idempotent publishing and provenance; do not keep an npm token in GitHub Actions.
 
 The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
 changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a
@@ -114,10 +151,15 @@ Before publishing, run focused checks:
 
 ```bash
 python3 tools/publish.py --list-crates-io-packages
+cargo semver-checks check-release -p roughr-merman --color always
 cargo check -p merman-ffi
 cargo check -p merman-uniffi
 cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
 ```
+
+The `roughr-merman` check uses the latest published compatible registry version as its baseline.
+For later `0.12.x` patches, `0.12.3` is the established compatibility floor; the release workflows
+pin `cargo-semver-checks` so the result does not depend on a maintainer's local tool version.
 
 For crates.io packaging, prefer publish dry-runs once registry dependencies are available. The
 release workflow packages every member of a topological batch first and records the exact `.crate`

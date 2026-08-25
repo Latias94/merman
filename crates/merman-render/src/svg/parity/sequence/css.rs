@@ -105,10 +105,11 @@ pub(super) fn sequence_css_with_theme_adapter(
     effective_config: &serde_json::Value,
     typed: SequenceThemeCssAdapter<'_>,
 ) -> String {
+    let diagram_id = crate::svg::escape_css_identifier(diagram_id);
     let mut out = String::new();
     let _ = write_sequence_css_with_theme_adapter(
         &mut out,
-        diagram_id,
+        diagram_id.as_str(),
         font_size_px,
         effective_config,
         typed,
@@ -118,14 +119,14 @@ pub(super) fn sequence_css_with_theme_adapter(
 
 pub(super) fn write_sequence_css_with_theme_adapter(
     mut out: &mut impl std::fmt::Write,
-    diagram_id: &str,
+    diagram_id: impl Copy + std::fmt::Display,
     font_size_px: f64,
     effective_config: &serde_json::Value,
     typed: SequenceThemeCssAdapter<'_>,
 ) -> SequenceThemeCssEmission {
     // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
-    let id = crate::svg::escape_css_identifier(diagram_id);
+    let id = diagram_id;
     let theme = MermaidThemeAdapter::new(effective_config).sequence_diagram();
     let font = typed
         .base_font_family
@@ -508,6 +509,19 @@ mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use serde_json::json;
+    use std::cell::Cell;
+
+    #[derive(Clone, Copy)]
+    struct TrackedDiagramId<'a> {
+        writes: &'a Cell<usize>,
+    }
+
+    impl std::fmt::Display for TrackedDiagramId<'_> {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            self.writes.set(self.writes.get() + 1);
+            formatter.write_str("seq")
+        }
+    }
 
     #[test]
     fn sequence_css_streams_with_exact_svg_budget_and_rejects_one_byte_short() {
@@ -706,7 +720,7 @@ mod tests {
         let mut css = String::new();
         let emission = write_sequence_css_with_theme_adapter(
             &mut css,
-            "seq:prod",
+            crate::svg::escape_css_identifier("seq:prod").as_str(),
             16.0,
             &json!({"themeVariables": {"sequenceNumberColor": "#fedcba"}}),
             SequenceThemeCssAdapter {

@@ -1,10 +1,10 @@
+use crate::syntax_highlighting::SyntaxTokenKind;
 use crate::workspace_edit::WorkspaceEditEncoding;
-use merman_editor_core::SemanticTokenSupport;
 use std::sync::OnceLock;
 use tower_lsp_server::ls_types::{
-    ClientCapabilities, CodeActionKind, DiagnosticTag, MarkupKind, SemanticTokenModifier,
-    SemanticTokenType, SemanticTokensClientCapabilities, SemanticTokensFullOptions,
-    SemanticTokensLegend, SemanticTokensOptions, TokenFormat,
+    ClientCapabilities, CodeActionKind, DiagnosticTag, MarkupKind, SemanticTokenType,
+    SemanticTokensClientCapabilities, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, TokenFormat,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +46,7 @@ pub(crate) struct CodeActionProjection {
 #[derive(Debug, Clone)]
 pub(crate) struct SemanticTokenProjection {
     legend: SemanticTokensLegend,
-    support: SemanticTokenSupport,
+    token_types: [Option<u32>; SyntaxTokenKind::COUNT],
     range: bool,
     full: Option<SemanticTokensFullOptions>,
 }
@@ -70,52 +70,52 @@ impl SemanticTokenProjection {
             }
             _ => None,
         };
-        let support = SemanticTokenSupport::from_support(
+        Self::from_supported_types(
             |kind| {
                 capabilities
                     .token_types
                     .contains(&SemanticTokenType::new(kind.lsp_name()))
             },
-            |modifier| {
-                capabilities
-                    .token_modifiers
-                    .contains(&SemanticTokenModifier::new(modifier.lsp_name()))
-            },
-        );
-        Self::from_support(support, range, full)
+            range,
+            full,
+        )
     }
 
     fn all() -> Self {
-        Self::from_support(
-            SemanticTokenSupport::all(),
+        Self::from_supported_types(
+            |_| true,
             true,
             Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
         )
-        .expect("the generated descriptor always contains semantic token kinds")
+        .expect("the standard Tree-sitter projection always contains token kinds")
     }
 
-    fn from_support(
-        support: SemanticTokenSupport,
+    fn from_supported_types(
+        supports: impl Fn(SyntaxTokenKind) -> bool,
         range: bool,
         full: Option<SemanticTokensFullOptions>,
     ) -> Option<Self> {
         if !range && full.is_none() {
             return None;
         }
-        support.supported_kinds().next()?;
+        let mut token_types = [None; SyntaxTokenKind::COUNT];
+        let mut legend_types = Vec::new();
+        for kind in SyntaxTokenKind::ALL {
+            if supports(kind) {
+                token_types[kind.index()] = u32::try_from(legend_types.len()).ok();
+                legend_types.push(SemanticTokenType::new(kind.lsp_name()));
+            }
+        }
+        if legend_types.is_empty() {
+            return None;
+        }
 
         Some(Self {
             legend: SemanticTokensLegend {
-                token_types: support
-                    .supported_kinds()
-                    .map(|kind| SemanticTokenType::new(kind.lsp_name()))
-                    .collect(),
-                token_modifiers: support
-                    .supported_modifiers()
-                    .map(|modifier| SemanticTokenModifier::new(modifier.lsp_name()))
-                    .collect(),
+                token_types: legend_types,
+                token_modifiers: Vec::new(),
             },
-            support,
+            token_types,
             range,
             full,
         })
@@ -130,8 +130,8 @@ impl SemanticTokenProjection {
         }
     }
 
-    pub(crate) const fn support(&self) -> SemanticTokenSupport {
-        self.support
+    pub(crate) const fn token_type(&self, kind: SyntaxTokenKind) -> Option<u32> {
+        self.token_types[kind.index()]
     }
 
     pub(crate) const fn supports_range(&self) -> bool {
@@ -298,7 +298,6 @@ impl ClientProtocolProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_editor_core::{PlannedTokenKind, PlannedTokenModifier, semantic_token_descriptor};
 
     #[test]
     fn markup_negotiation_respects_client_preference_order() {
@@ -336,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn semantic_token_projection_uses_descriptor_order_and_reindexes_supported_entries() {
+    fn semantic_token_projection_uses_adapter_order_and_reindexes_supported_entries() {
         let capabilities: ClientCapabilities = serde_json::from_value(serde_json::json!({
             "textDocument": {
                 "semanticTokens": {
@@ -361,51 +360,32 @@ mod tests {
         assert_eq!(
             projection.legend().token_types,
             vec![
-                SemanticTokenType::new("keyword"),
                 SemanticTokenType::new("string"),
+                SemanticTokenType::new("keyword"),
                 SemanticTokenType::new("variable"),
             ]
         );
-        assert_eq!(
-            projection.legend().token_modifiers,
-            vec![
-                SemanticTokenModifier::new("declaration"),
-                SemanticTokenModifier::new("defaultLibrary"),
-            ]
-        );
-        let support = projection.support();
-        assert!(support.supports_kind(PlannedTokenKind::Keyword));
-        assert!(support.supports_kind(PlannedTokenKind::String));
-        assert!(support.supports_kind(PlannedTokenKind::Variable));
-        assert!(!support.supports_kind(PlannedTokenKind::Comment));
-        assert!(support.supports_modifier(PlannedTokenModifier::Declaration));
-        assert!(support.supports_modifier(PlannedTokenModifier::DefaultLibrary));
-        assert!(!support.supports_modifier(PlannedTokenModifier::Entity));
+        assert!(projection.legend().token_modifiers.is_empty());
+        assert!(projection.token_type(SyntaxTokenKind::Keyword).is_some());
+        assert!(projection.token_type(SyntaxTokenKind::String).is_some());
+        assert!(projection.token_type(SyntaxTokenKind::Variable).is_some());
+        assert!(projection.token_type(SyntaxTokenKind::Comment).is_none());
     }
 
     #[test]
-    fn permissive_semantic_token_projection_is_the_full_generated_descriptor() {
-        let descriptor = semantic_token_descriptor();
+    fn permissive_semantic_token_projection_uses_the_full_standard_adapter_legend() {
         let projection = ClientProtocolProfile::permissive()
             .semantic_tokens
             .expect("permissive profile enables semantic tokens");
 
         assert_eq!(
             projection.legend().token_types,
-            descriptor
-                .token_kinds
-                .iter()
-                .map(|kind| SemanticTokenType::new(kind.lsp_name))
+            SyntaxTokenKind::ALL
+                .into_iter()
+                .map(|kind| SemanticTokenType::new(kind.lsp_name()))
                 .collect::<Vec<_>>()
         );
-        assert_eq!(
-            projection.legend().token_modifiers,
-            descriptor
-                .modifiers
-                .iter()
-                .map(|modifier| SemanticTokenModifier::new(modifier.lsp_name))
-                .collect::<Vec<_>>()
-        );
+        assert!(projection.legend().token_modifiers.is_empty());
     }
 
     #[test]

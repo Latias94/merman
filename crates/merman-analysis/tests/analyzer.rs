@@ -6,7 +6,7 @@ use merman_analysis::{
     document::{analyze_document, analyze_document_generation},
     source_descriptor_for_markdown_path,
 };
-use merman_core::{EditorExpectedSyntaxKind, EditorLexemeProducerKind};
+use merman_core::EditorExpectedSyntaxKind;
 
 fn analyze(source: &str) -> merman_analysis::AnalysisPayload {
     Analyzer::new().analyze(source)
@@ -355,43 +355,6 @@ fn analysis_generation_exposes_complete_parser_syntax_facts() {
         FenceTextIndexSource::ParserComplete
     );
     assert!(diagram.syntax().text_index.node_ids().any(|id| id == "A"));
-}
-
-#[test]
-fn analysis_index_preserves_core_lexeme_provenance() {
-    let analyzer = Analyzer::new();
-    let complete = analyzer
-        .analyze_generation("%% global comment\nflowchart TD\nA-->B\n")
-        .into_ready()
-        .expect("source is within the analysis limit");
-    let complete_lexemes = complete.diagrams()[0].syntax().text_index.lexemes();
-
-    assert!(complete_lexemes.iter().any(|lexeme| {
-        lexeme.producer().kind() == EditorLexemeProducerKind::GlobalPreprocess
-            && lexeme.producer().family().is_none()
-    }));
-    assert!(complete_lexemes.iter().any(|lexeme| {
-        matches!(
-            lexeme.producer().kind(),
-            EditorLexemeProducerKind::FamilyLexer | EditorLexemeProducerKind::FamilyParser
-        ) && lexeme.producer().family().map(|family| family.as_str()) == Some("flowchart")
-    }));
-
-    let recovered = analyzer
-        .analyze_generation("flowchart TD\nA-->")
-        .into_ready()
-        .expect("source is within the analysis limit");
-    assert!(
-        recovered.diagrams()[0]
-            .syntax()
-            .text_index
-            .lexemes()
-            .iter()
-            .any(|lexeme| {
-                lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
-                    && lexeme.producer().family().map(|family| family.as_str()) == Some("flowchart")
-            })
-    );
 }
 
 #[test]

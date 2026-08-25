@@ -110,7 +110,6 @@ describe("browser package assembly", () => {
     assert.doesNotMatch(source, /from "\.\.\/runtime-render\.js"/);
     assert.doesNotMatch(source, /from "\.\.\/runtime-editor\.js"/);
     assert.doesNotMatch(source, /from "\.\.\/svg-safety\.js"/);
-    assert.doesNotMatch(source, /from "\.\.\/generated\/token-descriptor\.js"/);
     assert.doesNotMatch(
       source,
       /export \{[\s\S]*?\} from "\.\.\/index\.js"/,
@@ -134,7 +133,7 @@ describe("browser package assembly", () => {
       async default(input) {
         receivedInput = input;
       },
-      transportApiVersion: () => 4,
+      transportApiVersion: () => 5,
     };
     const runtime = bindSurfaceRuntime(
       async () => {

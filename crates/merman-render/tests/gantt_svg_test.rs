@@ -496,7 +496,7 @@ fn gantt_task_stroke_stays_bound_to_semantic_state_after_date_sorting() {
 }
 
 #[test]
-fn gantt_axis_tick_lines_inherit_the_grid_stroke_owner() {
+fn gantt_axis_tick_lines_retain_current_color_fallback() {
     let svg = render_gantt_svg_from_text_with_theme(
         GANTT_TASK_FILL_SOURCE,
         &gantt_task_fill_theme(CanvasPaint::Transparent),
@@ -518,8 +518,17 @@ fn gantt_axis_tick_lines_inherit_the_grid_stroke_owner() {
     assert!(
         tick_lines
             .iter()
-            .all(|line| line.attribute("stroke").is_none()),
-        "axis tick lines must inherit the .grid .tick stroke declaration"
+            .all(|line| line.attribute("stroke") == Some("currentColor")),
+        "axis tick lines must retain Mermaid's currentColor fallback"
+    );
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("the themed Gantt SVG must include its scoped stylesheet");
+    assert!(
+        stylesheet.contains(".grid .tick{stroke:"),
+        "the scoped stylesheet must remain the Gantt grid stroke owner"
     );
 }
 

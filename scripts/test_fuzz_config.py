@@ -14,7 +14,14 @@ FUZZ_CARGO = ROOT / "fuzz" / "Cargo.toml"
 FUZZ_WORKFLOW = ROOT / ".github" / "workflows" / "fuzz.yml"
 FUZZING_DOC = ROOT / "docs" / "security" / "FUZZING.md"
 FRAMED_FFI_OPTIONS_SEED = ROOT / "fuzz" / "seeds" / "ffi" / "04_framed_render_options.txt"
-
+TREE_SITTER_FAMILY_SEEDS = (
+    ROOT
+    / "distribution"
+    / "tree-sitter-mermaid"
+    / "fuzz"
+    / "corpus"
+    / "all-families"
+)
 def fuzz_bins() -> dict[str, str]:
     text = FUZZ_CARGO.read_text(encoding="utf-8")
     bins: dict[str, str] = {}
@@ -135,7 +142,10 @@ class FuzzConfigTests(unittest.TestCase):
         self.assertNotIn("github.event.inputs", run)
         self.assertIn('case "$DISPATCH_TARGET" in', run)
         self.assertIn(
-            "all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api|theme_font_asset|theme_text_layout)",
+            "all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api|"
+            "theme_font_asset|theme_text_layout|"
+            "tree_sitter_mermaid_parse|tree_sitter_mermaid_edits|"
+            "tree_sitter_mermaid_scanner)",
             run,
         )
         self.assertIn('case "$DISPATCH_PRESET" in', run)
@@ -160,6 +170,20 @@ class FuzzConfigTests(unittest.TestCase):
     def test_workflow_matrix_matches_fuzz_bins(self) -> None:
         self.assertEqual(set(workflow_fuzz_targets()), set(fuzz_bins()))
 
+    def test_tree_sitter_parse_lane_uses_all_family_seeds(self) -> None:
+        targets = workflow_fuzz_targets()
+        parse_entry = targets["tree_sitter_mermaid_parse"]
+
+        self.assertEqual(
+            parse_entry["seed"],
+            "distribution/tree-sitter-mermaid/fuzz/corpus/all-families",
+        )
+
+    def test_tree_sitter_family_fuzz_corpus_covers_every_public_family(self) -> None:
+        seeds = list(TREE_SITTER_FAMILY_SEEDS.glob("*.mmd"))
+        self.assertEqual(len(seeds), 35)
+        self.assertTrue(all(seed.stat().st_size > 0 for seed in seeds))
+
     def test_framed_ffi_seed_combines_valid_options_and_source(self) -> None:
         data = FRAMED_FFI_OPTIONS_SEED.read_bytes()
         selector, options_len = data[:2]
@@ -167,7 +191,7 @@ class FuzzConfigTests(unittest.TestCase):
         options = data[2:options_end]
         source = data[options_end:]
 
-        self.assertEqual(selector % 18, 4, "seed must select the ABI 3 SVG operation")
+        self.assertEqual(selector % 19, 4, "seed must select the ABI 3 SVG operation")
         self.assertIsInstance(json.loads(options), dict)
         self.assertTrue(source.startswith(b"flowchart TD\n"))
 

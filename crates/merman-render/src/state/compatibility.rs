@@ -150,7 +150,7 @@ impl StateTerminalPaintSelection {
         }
     }
 
-    fn css_value(&self, diagram_id: &str) -> String {
+    fn css_value<I: std::fmt::Display>(&self, diagram_id: I) -> String {
         match &self.value {
             StateTerminalPaintValue::Css(value) => value.clone(),
             StateTerminalPaintValue::ScopedGradient => {
@@ -1036,11 +1036,11 @@ impl StateCompatibilityPlan {
         matches!(&self.look, StateCompatibilityLook::Neo)
     }
 
-    pub(crate) fn terminal_paint_css(
+    pub(crate) fn terminal_paint_css<I: std::fmt::Display>(
         &self,
         surface: StateTerminalSurface,
         property: StateTerminalPaintProperty,
-        diagram_id: &str,
+        diagram_id: I,
     ) -> String {
         self.terminal_paints
             .get(&(surface, property))

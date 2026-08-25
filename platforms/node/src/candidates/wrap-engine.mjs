@@ -1,6 +1,10 @@
 import { MermanDisposedError, MermanInvalidTransportError } from "../errors.mjs";
 
-export function wrapCandidateEngine(engine, label) {
+export function wrapCandidateEngine(
+  engine,
+  label,
+  { forwardsAbortSignal = false } = {},
+) {
   if (
     typeof engine?.execute !== "function" ||
     typeof engine?.executeSync !== "function" ||
@@ -15,8 +19,12 @@ export function wrapCandidateEngine(engine, label) {
     return ownedEngine;
   };
   return {
-    execute: (requestJson) => currentEngine().execute(requestJson),
-    executeSync: (requestJson) => currentEngine().executeSync(requestJson),
+    execute: (requestJson, signal, timeoutMs) =>
+      forwardsAbortSignal
+        ? currentEngine().execute(requestJson, signal, timeoutMs)
+        : currentEngine().execute(requestJson, timeoutMs),
+    executeSync: (requestJson, timeoutMs) =>
+      currentEngine().executeSync(requestJson, timeoutMs),
     runtimeCatalogJson: () => currentEngine().runtimeCatalogJson(),
     metadataJson: (id) => currentEngine().metadataJson(id),
     dispose: () => {

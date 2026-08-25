@@ -5,8 +5,8 @@
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.1",
     "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "414c8bd85a6ebbfbeae9b6bc350ea38475466c2355d33da6c5dee9d62d5f8377",
-    "package_lock_sha256": "a9f67c4957d149375e0380ba38f0f3e7ca7c2fbd330b1a76e835ad1a28a3332c",
+    "package_json_sha256": "9298a915a40b6057827e8add6044309143f836b8dbca73c34ffba5b21a762ac5",
+    "package_lock_sha256": "0ee640d994c7986b67919b663a0fec2fc6baa51becf106d5e0161678294e9b7b",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -26,7 +26,7 @@
       "operating_system": {
         "platform": "darwin",
         "arch": "arm64",
-        "release": "25.6.0"
+        "release": "25.5.0"
       },
       "mermaid_runtime": {
         "esm_version": "11.16.1",

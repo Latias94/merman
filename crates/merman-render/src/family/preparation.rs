@@ -11,7 +11,7 @@ fn prepare_pair<S, L>(
 
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
-    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    render_context: diagrams::flowchart::FlowchartRenderContext,
     prepared_text_layout: Option<&crate::text::PreparedTextLayout>,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     math_backend: Option<&crate::math::ConfiguredMathBackend>,
@@ -21,7 +21,7 @@ fn prepare_flowchart_artifact<L>(
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
-        &diagrams::flowchart::FlowchartRenderLabelSources,
+        &diagrams::flowchart::FlowchartRenderContext,
         &crate::flowchart::FlowchartSvgLabelSidecarBuilder,
         &crate::svg::FlowchartEdgeStylePlan,
     ) -> Result<L>,
@@ -41,7 +41,7 @@ fn prepare_flowchart_artifact<L>(
     .with_edge_label_padding(edge_theme.edge_label_padding());
     let layout = layout(
         &semantic,
-        &label_sources,
+        &render_context,
         &svg_label_sidecar,
         &edge_style_plan,
     )?;
@@ -57,7 +57,7 @@ fn prepare_flowchart_artifact<L>(
     }
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
-        label_sources,
+        render_context,
         edge_style_plan,
         edge_theme,
         svg_label_sidecar,
@@ -301,7 +301,7 @@ fn prepare_state_family(
 #[inline(never)]
 fn prepare_flowchart_family(
     model: diagrams::flowchart::FlowchartModel,
-    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    render_context: diagrams::flowchart::FlowchartRenderContext,
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
@@ -315,7 +315,7 @@ fn prepare_flowchart_family(
             )?;
             Ok(BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
                 model,
-                label_sources,
+                render_context,
                 execution.prepared_text_layout(),
                 execution.resolved_theme(),
                 execution.math_backend(),
@@ -323,10 +323,10 @@ fn prepare_flowchart_family(
                 crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
                 execution.work_meter(),
                 edge_style_plan,
-                |model, label_sources, svg_label_sidecar, edge_style_plan| {
+                |model, render_context, svg_label_sidecar, edge_style_plan| {
                     crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                         model,
-                        label_sources,
+                        render_context,
                         &meta.effective_config,
                         execution.text_measurer(),
                         execution.math_renderer(),
@@ -347,7 +347,7 @@ fn prepare_flowchart_family(
             Ok(BuiltinFamilyArtifact::Flowchart(
                 prepare_flowchart_artifact(
                     model,
-                    label_sources,
+                    render_context,
                     execution.prepared_text_layout(),
                     execution.resolved_theme(),
                     execution.math_backend(),
@@ -355,11 +355,11 @@ fn prepare_flowchart_family(
                     crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
                     execution.work_meter(),
                     edge_style_plan,
-                    |model, label_sources, svg_label_sidecar, edge_style_plan| {
+                    |model, render_context, svg_label_sidecar, edge_style_plan| {
                         crate::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
                             meta.diagram_type.as_str(),
                             model,
-                            label_sources,
+                            render_context,
                             &meta.effective_config,
                             execution,
                             Some(svg_label_sidecar),
@@ -978,7 +978,7 @@ pub(super) fn prepare_non_class_render(
     mut context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model, render_context) = parsed.into_render_parts();
-    let flowchart_label_sources = render_context.into_flowchart_label_sources();
+    let flowchart_render_context = render_context.into_flowchart_render_context();
     let diagram_type = meta.diagram_type.as_str();
     let title = meta.title.as_deref();
     context.observe_compatibility(&meta);
@@ -1007,7 +1007,7 @@ pub(super) fn prepare_non_class_render(
         }
         RenderSemanticModel::Zenuml(model) => prepare_zenuml_family(model, &meta, &execution)?,
         RenderSemanticModel::Flowchart(model) => {
-            prepare_flowchart_family(model, flowchart_label_sources, &meta, &execution)?
+            prepare_flowchart_family(model, flowchart_render_context, &meta, &execution)?
         }
         #[cfg(feature = "layout-cytoscape")]
         RenderSemanticModel::Architecture(model) => {

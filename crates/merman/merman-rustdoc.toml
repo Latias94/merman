@@ -1,0 +1,10 @@
+schema = 1
+
+[[fragments]]
+id = "crate-overview"
+source = "docs/rustdoc-src/crate-overview.md"
+
+[[fragments]]
+id = "render-module"
+source = "docs/rustdoc-src/render-module.md"
+source_display = "details"

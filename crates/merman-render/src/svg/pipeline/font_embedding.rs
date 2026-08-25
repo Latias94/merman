@@ -12,7 +12,8 @@ use crate::diagram_theme::{
     FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontContainer,
     FontEmbeddingRequirement, FontSource, FontStyle,
 };
-use crate::resources::{RenderResourcePolicy, ResourceLimitPhase};
+#[cfg(test)]
+use crate::resources::ResourceLimitPhase;
 use crate::text::{
     PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
     parse_css_font_stack,
@@ -20,6 +21,7 @@ use crate::text::{
 use crate::{Error, Result};
 
 use super::builtin::util::{SvgTagScanner, start_tag_name};
+use super::context::SvgPostprocessExecution;
 
 pub(super) const TYPED_FONT_STYLE_ATTRIBUTE: &str = "data-merman-typed-fonts";
 pub(super) const TYPED_FONT_STYLE_VERSION: &str = "v1";
@@ -476,10 +478,12 @@ impl SvgFontEmbeddingPlan {
     pub(super) fn inject(
         &mut self,
         svg: &str,
-        resource_policy: RenderResourcePolicy,
+        execution: SvgPostprocessExecution<'_>,
     ) -> Result<String> {
+        execution.checkpoint()?;
         let mut scanner = SvgTagScanner::new(svg);
-        while let Some(tag) = scanner.next() {
+        let mut checkpoint = || execution.checkpoint();
+        while let Some(tag) = scanner.next_with_checkpoints(&mut checkpoint)? {
             if start_tag_name(tag.raw()) != Some("svg") {
                 continue;
             }
@@ -491,9 +495,10 @@ impl SvgFontEmbeddingPlan {
             let insertion = scanner.cursor();
             let css_bytes = self.projected_css_bytes()?;
             let projected_svg_bytes = projected_svg_with_typed_style_bytes(svg.len(), css_bytes)?;
-            resource_policy
-                .check_svg_byte_count(projected_svg_bytes, ResourceLimitPhase::SvgPostprocess)?;
+            execution.preflight_svg_byte_count(projected_svg_bytes)?;
+            execution.checkpoint()?;
             let css = self.materialize_css(css_bytes)?;
+            execution.checkpoint()?;
             let mut out = String::new();
             out.try_reserve_exact(projected_svg_bytes).map_err(|_| {
                 font_embedding_error(format!(
@@ -514,11 +519,26 @@ impl SvgFontEmbeddingPlan {
                     out.len()
                 )));
             }
+            execution.checkpoint()?;
             return Ok(out);
         }
         Err(font_embedding_error(
             "typed fonts require a terminal SVG root element",
         ))
+    }
+
+    #[cfg(test)]
+    fn inject_with_policy(
+        &mut self,
+        svg: &str,
+        resource_policy: crate::resources::RenderResourcePolicy,
+    ) -> Result<String> {
+        let environment = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(resource_policy);
+        let session = environment
+            .begin_session()
+            .map_err(|error| Error::svg_postprocess("font-test-session", error.to_string()))?;
+        self.inject(svg, SvgPostprocessExecution::new(&session))
     }
 
     fn projected_css_bytes(&self) -> Result<usize> {
@@ -1072,7 +1092,7 @@ fn font_embedding_error(message: impl Into<String>) -> Error {
 mod tests {
     use super::*;
     use crate::diagram_theme::{FontAssetSpec, FontCatalogSpec, ThemeResourcePolicy};
-    use crate::resources::ResourceLimitId;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use crate::text::PreparedTextLabelFamily;
 
     const EXCALIFONT_WOFF2: &[u8] = include_bytes!(concat!(
@@ -1119,7 +1139,7 @@ mod tests {
             SvgFontEmbeddingPlan::from_used_faces(&catalog, 1, 1, [first_used_face(&catalog)])
                 .expect("full embedded face should produce a plan");
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text></svg>"#;
-        plan.inject(svg, RenderResourcePolicy::unbounded_for_trusted_input())
+        plan.inject_with_policy(svg, RenderResourcePolicy::unbounded_for_trusted_input())
             .expect("full embedded face should materialize after admission");
         let css = plan
             .materialized_css()
@@ -1154,7 +1174,7 @@ mod tests {
             .with_limit(ResourceLimitId::MaxSvgBytes, projected)
             .expect("exact SVG limit should be valid");
         let embedded = admitted
-            .inject(svg, exact_policy)
+            .inject_with_policy(svg, exact_policy)
             .expect("the exact projected byte limit should pass");
         assert_eq!(embedded.len(), projected);
         assert!(admitted.materialized_css().is_some());
@@ -1166,7 +1186,7 @@ mod tests {
             .with_limit(ResourceLimitId::MaxSvgBytes, projected - 1)
             .expect("B-1 SVG limit should be valid");
         let error = rejected
-            .inject(svg, rejecting_policy)
+            .inject_with_policy(svg, rejecting_policy)
             .expect_err("one byte below the projected output must fail closed");
         let Error::ResourceLimitExceeded(error) = error else {
             panic!("expected a structured SVG resource error");
@@ -1218,7 +1238,7 @@ mod tests {
         let mut plan =
             SvgFontEmbeddingPlan::from_used_faces(&catalog, 1, 1, [first_used_face(&catalog)])
                 .expect("full embedded face should produce a plan");
-        plan.inject(
+        plan.inject_with_policy(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text></svg>"#,
             RenderResourcePolicy::unbounded_for_trusted_input(),
         )
@@ -1465,7 +1485,7 @@ mod tests {
                 .expect("full embedded face should produce a plan");
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text><text/><text><tspan/></text></svg>"#;
         let embedded = plan
-            .inject(svg, RenderResourcePolicy::unbounded_for_trusted_input())
+            .inject_with_policy(svg, RenderResourcePolicy::unbounded_for_trusted_input())
             .expect("typed style should attach to SVG root");
         let limits = RenderResourcePolicy::unbounded_for_trusted_input();
 

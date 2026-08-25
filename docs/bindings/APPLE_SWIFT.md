@@ -47,7 +47,7 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.transportApiVersion() == 4 else {
+guard merman.bindingApiVersionV5() == 5 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
@@ -107,7 +107,9 @@ remain valid for custom current-contract libraries; the default artifact returns
 `.missingCapability` with the required descriptor ID.
 
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
-optional `MermanResourceErrorDetails`, and optional `MermanCancelledDetails`. `.unknownOperation` has no capability ID;
+and optional `resource`, `diagnostic`, `iconRegistry`, and `cancellation` details. The corresponding
+typed records are `MermanResourceErrorDetails`, `MermanDiagnosticErrorDetails`,
+`MermanIconRegistryErrorDetails`, and `MermanCancelledDetails`. `.unknownOperation` has no capability ID;
 `.missingCapability` preserves the exact descriptor capability required by the valid request.
 Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase,
 actual value, effective maximum, and selected profile. Do not distinguish these cases by matching
@@ -163,8 +165,11 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
-- Move API 3 generated source and native libraries together to API 4. Add `control: nil` to generic
-  request construction until the host adopts `MermanOperationControl`.
+- Move API 4 generated source and native libraries together to API 5. `MermanOperationRequestV4`
+  remains the current request record; add `control: nil` to generic request construction until the
+  host adopts `MermanOperationControl`. Handle the optional `diagnostic`
+  `MermanDiagnosticErrorDetails` payload on `MermanError.Binding` instead of inferring parser or
+  ASCII failures from display text.
 - Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
   required; byte-returning methods remain available. Switch on `outputPlan.kind`, inspect the
   optional `raster` or `pdfFilterImages` payload, and retain `rawJson` for future kinds.

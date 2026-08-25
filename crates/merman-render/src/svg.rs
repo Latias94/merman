@@ -26,6 +26,7 @@ pub(crate) use parity::theme as render_theme;
 #[cfg(test)]
 pub(crate) use parity::write_flowchart_svg_label_plan_for_test;
 pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
+pub(crate) use pipeline::SvgPostprocessExecution;
 pub(crate) use pipeline::partition_prepared_text_label_ids;
 
 pub use fallback::foreign_object_label_fallback_svg_text;
@@ -42,5 +43,6 @@ pub use pipeline::{
     StandaloneSvgTerminalStatus, StripForeignObjectPostprocessor, SvgFinalizationReport,
     SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
     SvgPostprocessor, SvgReferencePlan, SvgResourceClosure, SvgResourceFingerprint,
-    finalize_resvg_svg,
+    finalize_resvg_svg, rebase_svg_ids, validate_static_inline_svg,
+    validate_static_inline_svg_admission,
 };

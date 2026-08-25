@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::math_label::{
     record_sequence_katex_terminal_emission, sequence_katex_label,
     write_sequence_katex_foreign_object,
@@ -13,6 +14,7 @@ pub(super) struct LoopTextRenderContext<'a> {
     typography: &'a crate::sequence::SequenceResolvedTypography,
     typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 pub(super) struct LoopTextPlacement {
@@ -30,6 +32,7 @@ impl<'a> LoopTextRenderContext<'a> {
         typography: &'a crate::sequence::SequenceResolvedTypography,
         typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
         math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+        checkpoints: SequenceEmitCheckpoints<'a>,
     ) -> Self {
         Self {
             measurer,
@@ -37,6 +40,7 @@ impl<'a> LoopTextRenderContext<'a> {
             typography,
             typography_receipt,
             math_sidecar,
+            checkpoints,
         }
     }
 
@@ -71,22 +75,29 @@ pub(super) fn wrap_svg_text_lines(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_width: Option<f64>,
-) -> Vec<String> {
-    let lines = max_width.map_or_else(
-        || {
-            crate::text::split_html_br_lines(text)
-                .into_iter()
-                .map(str::to_string)
-                .collect()
-        },
-        |width| {
-            crate::sequence::wrap_sequence_label_like_mermaid_lines(text, measurer, style, width)
-        },
-    );
-    if lines.is_empty() {
-        vec!["".to_string()]
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<Vec<String>> {
+    let lines = if let Some(width) = max_width {
+        crate::sequence::wrap_sequence_label_like_mermaid_lines(
+            text,
+            measurer,
+            style,
+            width,
+            checkpoints.text(),
+        )?
     } else {
+        let split_lines = crate::text::split_html_br_lines(text);
+        let mut lines = Vec::with_capacity(split_lines.len());
+        for line in split_lines {
+            checkpoints.checkpoint()?;
+            lines.push(line.to_string());
+        }
         lines
+    };
+    if lines.is_empty() {
+        Ok(vec!["".to_string()])
+    } else {
+        Ok(lines)
     }
 }
 
@@ -96,7 +107,8 @@ pub(super) fn write_loop_text_lines(
     placement: LoopTextPlacement,
     occurrence_id: &str,
     text: &str,
-) {
+) -> Result<()> {
+    ctx.checkpoints.checkpoint()?;
     if let Some(katex) = ctx.katex_label(occurrence_id) {
         let x = (placement.x - katex.width / 2.0).round();
         write_sequence_katex_foreign_object(out, &katex, x, placement.block_start_y.round());
@@ -105,12 +117,19 @@ pub(super) fn write_loop_text_lines(
             crate::sequence::SequenceTextSurface::ControlPrimaryTitle,
             &katex,
         );
-        return;
+        return ctx.checkpoints.checkpoint();
     }
 
     let line_step = sequence_text_line_step_px(ctx.style.font_size);
-    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, placement.max_width);
+    let lines = wrap_svg_text_lines(
+        text,
+        ctx.measurer,
+        ctx.style,
+        placement.max_width,
+        ctx.checkpoints,
+    )?;
     for (i, line) in lines.into_iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         let y = placement.y0 + (i as f64) * line_step;
         let legacy_style = format!(
             "font-size: {}px; font-weight: 400;",
@@ -139,6 +158,7 @@ pub(super) fn write_loop_text_lines(
         ctx.typography_receipt
             .record_terminal_text(crate::sequence::SequenceTextSurface::ControlPrimaryTitle);
     }
+    ctx.checkpoints.checkpoint()
 }
 
 pub(super) fn write_section_title_lines(
@@ -150,7 +170,8 @@ pub(super) fn write_section_title_lines(
     max_width: Option<f64>,
     occurrence_id: &str,
     text: &str,
-) {
+) -> Result<()> {
+    ctx.checkpoints.checkpoint()?;
     if let Some(katex) = ctx.katex_label(occurrence_id) {
         let x = (x - katex.width / 2.0).round();
         let y = (section_start_y - katex.height).round();
@@ -160,12 +181,13 @@ pub(super) fn write_section_title_lines(
             crate::sequence::SequenceTextSurface::ControlSectionTitle,
             &katex,
         );
-        return;
+        return ctx.checkpoints.checkpoint();
     }
 
     let line_step = sequence_text_line_step_px(ctx.style.font_size);
-    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width);
+    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width, ctx.checkpoints)?;
     for (i, line) in lines.into_iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         let y = y0 + (i as f64) * line_step;
         let legacy_style = format!(
             "font-size: {}px; font-weight: 400;",
@@ -183,4 +205,5 @@ pub(super) fn write_section_title_lines(
         ctx.typography_receipt
             .record_terminal_text(crate::sequence::SequenceTextSurface::ControlSectionTitle);
     }
+    ctx.checkpoints.checkpoint()
 }

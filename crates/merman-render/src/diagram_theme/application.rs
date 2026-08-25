@@ -120,14 +120,6 @@ impl RootThemeResidual {
         &self.key
     }
 
-    pub fn capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.capabilities.iter().copied()
-    }
-
-    pub fn requires_capability(&self, capability: ThemeCapability) -> bool {
-        self.capabilities.contains(&capability)
-    }
-
     pub const fn reason(&self) -> RootThemeResidualReason {
         self.reason
     }
@@ -171,10 +163,6 @@ impl RootThemeMechanismEvidence {
 
     pub fn residual_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
         self.residual_capabilities.iter().copied()
-    }
-
-    pub const fn residual_reason(&self) -> Option<RootThemeResidualReason> {
-        self.residual_reason
     }
 
     fn coverage_complete(&self) -> bool {

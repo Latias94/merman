@@ -63,7 +63,7 @@ fn flowchart_cluster_order_key<'a>(
         .unwrap_or((0.0, 0.0));
     FlowchartClusterOrderKey {
         id,
-        subgraph_index: ctx.subgraph_index_by_id.get(id).copied(),
+        subgraph_index: ctx.subgraph_indices_by_id.get(id).copied(),
         left,
         top,
     }
@@ -423,7 +423,7 @@ impl<'a> FlowchartRenderedClusterOrderKey<'a> {
     fn prepare(ctx: &FlowchartRenderCtx<'_>, cluster: &'a LayoutCluster) -> Self {
         Self {
             cluster,
-            subgraph_index: ctx.subgraph_index_by_id.get(cluster.id.as_str()).copied(),
+            subgraph_index: ctx.subgraph_indices_by_id.get(cluster.id.as_str()).copied(),
             top_y: cluster.y - cluster.height / 2.0,
             top_x: cluster.x - cluster.width / 2.0,
         }

@@ -103,7 +103,7 @@ impl WorkspaceWasmBuildLock {
         })();
 
         if result.is_err() {
-            let _ = fs::remove_dir_all(&directory);
+            let _ = retire_lock_directory(&directory);
         }
         result
     }
@@ -116,7 +116,7 @@ impl Drop for WorkspaceWasmBuildLock {
             .ok()
             .and_then(|bytes| serde_json::from_slice::<LockOwner>(&bytes).ok());
         if owner.as_ref().map(|owner| owner.token.as_str()) == Some(self.token.as_str()) {
-            let _ = fs::remove_dir_all(&self.directory);
+            let _ = retire_lock_directory(&self.directory);
         }
     }
 }
@@ -126,7 +126,7 @@ fn remove_stale_lock(directory: &Path) -> Result<bool, XtaskError> {
     match fs::read(&owner_path) {
         Ok(bytes) => match serde_json::from_slice::<LockOwner>(&bytes) {
             Ok(owner) if process_is_alive(owner.pid) => Ok(false),
-            Ok(_) => quarantine_stale_lock(directory),
+            Ok(_) => retire_lock_directory(directory),
             Err(_) => recover_incomplete_lock(directory),
         },
         Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
@@ -142,12 +142,14 @@ fn remove_stale_lock(directory: &Path) -> Result<bool, XtaskError> {
 fn recover_incomplete_lock(directory: &Path) -> Result<bool, XtaskError> {
     match lock_age(directory)? {
         Some(age) if age < INCOMPLETE_OWNER_GRACE => Ok(false),
-        Some(_) => quarantine_stale_lock(directory),
+        Some(_) => retire_lock_directory(directory),
         None => Ok(true),
     }
 }
 
-fn quarantine_stale_lock(directory: &Path) -> Result<bool, XtaskError> {
+fn retire_lock_directory(directory: &Path) -> Result<bool, XtaskError> {
+    // Keep recursive deletion away from the canonical lock path. On Windows, deleting the owner
+    // file before the directory can expose a transient access-denied state to another contender.
     let mut quarantine = directory.as_os_str().to_os_string();
     quarantine.push(".quarantine-");
     quarantine.push(lock_token());

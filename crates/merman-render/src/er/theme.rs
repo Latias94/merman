@@ -64,7 +64,7 @@ impl ErEntitySourceStyle {
 
 pub(crate) fn compile_er_entity_source_style(
     entity: &merman_core::diagrams::er::ErEntityRenderModel,
-    classes: &BTreeMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
+    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
 ) -> ErEntitySourceStyle {
     let mut seen_classes = BTreeSet::<&str>::new();
     let class_defs = entity

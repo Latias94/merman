@@ -1,9 +1,7 @@
-use super::attr::{parse_attr_str, parse_class_tokens};
-use super::css::{
-    extract_css_root_style_property, extract_css_root_text_fill,
-    extract_css_style_property_for_class, extract_css_text_fill_for_class, extract_style_property,
+use crate::svg::pipeline::{
+    checkpoint_loop, escape_xml_attr_with_checkpoints,
+    extract_exact_double_quoted_attr_with_checkpoints, find_with_checkpoints,
 };
-use super::xml::escape_xml_attr;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct Translate {
@@ -15,167 +13,159 @@ pub(super) struct Translate {
 pub(super) struct GFrame {
     translate: Translate,
     class_tokens: Vec<String>,
-    inline_fill: Option<String>,
-    presentation_fill: Option<String>,
-    font_size: Option<String>,
-    font_family: Option<String>,
-    font_weight: Option<String>,
-    font_style: Option<String>,
 }
 
 impl GFrame {
-    pub(super) fn from_g_tag(tag: &str) -> Self {
-        let style = parse_attr_str(tag, "style");
-        Self {
-            translate: parse_attr_str(tag, "transform")
-                .map(parse_translate)
-                .unwrap_or_default(),
-            class_tokens: parse_class_tokens(tag),
-            inline_fill: style.and_then(|style| extract_style_property(style, "fill")),
-            presentation_fill: parse_attr_str(tag, "fill").map(ToOwned::to_owned),
-            font_size: style.and_then(|style| extract_style_property(style, "font-size")),
-            font_family: style.and_then(|style| extract_style_property(style, "font-family")),
-            font_weight: style.and_then(|style| extract_style_property(style, "font-weight")),
-            font_style: style.and_then(|style| extract_style_property(style, "font-style")),
-        }
+    pub(super) fn from_g_tag<E>(
+        tag: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, E> {
+        let translate = match extract_exact_double_quoted_attr_with_checkpoints(
+            tag,
+            "transform",
+            checkpoint,
+        )? {
+            Some(transform) => parse_translate(transform, checkpoint)?,
+            None => Translate::default(),
+        };
+        Ok(Self {
+            translate,
+            class_tokens: parse_class_tokens(tag, checkpoint)?,
+        })
     }
 }
 
-fn parse_translate(transform: &str) -> Translate {
-    let lower = transform.to_ascii_lowercase();
-    let Some(i) = lower.find("translate(") else {
-        return Translate::default();
+fn find_ascii_case_insensitive_with_checkpoints<E>(
+    haystack: &str,
+    needle: &[u8],
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<usize>, E> {
+    for (iteration, offset) in (0..haystack.len()).enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        let Some(candidate) = haystack
+            .as_bytes()
+            .get(offset..offset.saturating_add(needle.len()))
+        else {
+            break;
+        };
+        if candidate.eq_ignore_ascii_case(needle) {
+            return Ok(Some(offset));
+        }
+    }
+    checkpoint()?;
+    Ok(None)
+}
+
+fn parse_translate<E>(
+    transform: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Translate, E> {
+    let Some(i) =
+        find_ascii_case_insensitive_with_checkpoints(transform, b"translate(", checkpoint)?
+    else {
+        return Ok(Translate::default());
     };
     let after = &transform[i + "translate(".len()..];
-    let Some(end) = after.find(')') else {
-        return Translate::default();
+    let Some(end) = find_with_checkpoints(after, ")", checkpoint)? else {
+        return Ok(Translate::default());
     };
     let args = &after[..end];
-
-    let mut nums = Vec::<f64>::with_capacity(2);
+    let mut nums = [0.0f64; 2];
+    let mut nums_len = 0usize;
     let mut cur = String::new();
-    for ch in args.chars() {
+    for (iteration, ch) in args.chars().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
         if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E' {
             cur.push(ch);
         } else if !cur.is_empty() {
-            if let Ok(v) = cur.parse::<f64>() {
-                nums.push(v);
+            if nums_len < nums.len()
+                && let Ok(value) = cur.parse::<f64>()
+            {
+                nums[nums_len] = value;
+                nums_len += 1;
             }
             cur.clear();
         }
     }
     if !cur.is_empty()
-        && let Ok(v) = cur.parse::<f64>()
+        && nums_len < nums.len()
+        && let Ok(value) = cur.parse::<f64>()
     {
-        nums.push(v);
+        nums[nums_len] = value;
+        nums_len += 1;
     }
-
-    Translate {
-        x: *nums.first().unwrap_or(&0.0),
-        y: *nums.get(1).unwrap_or(&0.0),
-    }
-}
-
-pub(super) fn sum_translate(stack: &[GFrame]) -> Translate {
-    let mut acc = Translate::default();
-    for t in stack {
-        acc.x += t.translate.x;
-        acc.y += t.translate.y;
-    }
-    acc
-}
-
-pub(super) fn extract_svg_text_fill_from_ancestors(
-    svg: &str,
-    g_stack: &[GFrame],
-) -> Option<String> {
-    // Prefer the closest ancestor's classes (more specific) by scanning frames from inner -> outer.
-    for frame in g_stack.iter().rev() {
-        if let Some(fill) = &frame.inline_fill {
-            return Some(fill.clone());
-        }
-        for token in frame.class_tokens.iter().rev() {
-            if let Some(fill) = extract_css_text_fill_for_class(svg, token) {
-                return Some(fill);
-            }
-        }
-        if let Some(fill) = &frame.presentation_fill {
-            return Some(fill.clone());
-        }
-    }
-    extract_css_root_text_fill(svg)
-}
-
-fn extract_svg_font_style_from_ancestors(g_stack: &[GFrame], property: &str) -> Option<String> {
-    for frame in g_stack.iter().rev() {
-        let value = match property {
-            "font-size" => &frame.font_size,
-            "font-family" => &frame.font_family,
-            "font-weight" => &frame.font_weight,
-            "font-style" => &frame.font_style,
-            _ => return None,
-        };
-        if let Some(value) = value {
-            return Some(value.clone());
-        }
-    }
-    None
-}
-
-pub(super) fn extract_svg_font_style_from_context(
-    svg: &str,
-    g_stack: &[GFrame],
-    property: &str,
-) -> Option<String> {
-    extract_svg_font_style_from_ancestors(g_stack, property).or_else(|| {
-        for frame in g_stack.iter().rev() {
-            for token in frame.class_tokens.iter().rev() {
-                if let Some(value) = extract_css_style_property_for_class(svg, token, property) {
-                    return Some(value);
-                }
-            }
-        }
-        extract_css_root_style_property(svg, &[property])
+    checkpoint()?;
+    Ok(Translate {
+        x: nums
+            .first()
+            .copied()
+            .filter(|_| nums_len > 0)
+            .unwrap_or(0.0),
+        y: nums.get(1).copied().filter(|_| nums_len > 1).unwrap_or(0.0),
     })
 }
 
-pub(super) fn class_attr_tokens(g_stack: &[GFrame], inner: &str, base_class: &str) -> String {
-    let mut tokens = vec![base_class.to_string()];
-    for frame in g_stack {
-        for token in &frame.class_tokens {
-            if !tokens.iter().any(|existing| existing == token) {
-                tokens.push(token.clone());
-            }
-        }
+pub(super) fn sum_translate<E>(
+    stack: &[GFrame],
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Translate, E> {
+    let mut acc = Translate::default();
+    for (iteration, frame) in stack.iter().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        acc.x += frame.translate.x;
+        acc.y += frame.translate.y;
     }
-    for token in parse_class_tokens(inner) {
-        if !tokens.iter().any(|existing| existing == &token) {
-            tokens.push(token);
-        }
-    }
-    escape_xml_attr(&tokens.join(" "))
+    checkpoint()?;
+    Ok(acc)
 }
 
-pub(super) fn fallback_text_class_attr_tokens(g_stack: &[GFrame], inner: &str) -> String {
-    let mut tokens = vec!["merman-foreignobject-fallback-text".to_string()];
-    for frame in g_stack {
-        for token in &frame.class_tokens {
-            if is_fallback_text_safe_class(token)
-                && !tokens.iter().any(|existing| existing == token)
-            {
-                tokens.push(token.clone());
-            }
-        }
-    }
-    for token in parse_class_tokens(inner) {
-        if is_fallback_text_safe_class(&token) && !tokens.iter().any(|existing| existing == &token)
-        {
-            tokens.push(token);
-        }
-    }
-    escape_xml_attr(&tokens.join(" "))
+fn parse_class_tokens<E>(
+    tag: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Vec<String>, E> {
+    let Some(value) = extract_exact_double_quoted_attr_with_checkpoints(tag, "class", checkpoint)?
+    else {
+        return Ok(Vec::new());
+    };
+    checkpoint()?;
+    Ok(value.split_whitespace().map(str::to_owned).collect())
 }
 
-fn is_fallback_text_safe_class(class_name: &str) -> bool {
-    !matches!(class_name, "label")
+fn push_unique_token<E>(
+    tokens: &mut Vec<String>,
+    token: &str,
+    iteration: &mut usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<(), E> {
+    for existing in tokens.iter() {
+        checkpoint_loop(*iteration, checkpoint)?;
+        *iteration = iteration.saturating_add(1);
+        if existing == token {
+            return Ok(());
+        }
+    }
+    tokens.push(token.to_string());
+    Ok(())
+}
+
+pub(super) fn source_class_attr_tokens<E>(
+    g_stack: &[GFrame],
+    inner: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<String>, E> {
+    let mut tokens = Vec::new();
+    let mut iteration = 0usize;
+    for frame in g_stack {
+        for token in &frame.class_tokens {
+            push_unique_token(&mut tokens, token, &mut iteration, checkpoint)?;
+        }
+    }
+    for token in parse_class_tokens(inner, checkpoint)? {
+        push_unique_token(&mut tokens, &token, &mut iteration, checkpoint)?;
+    }
+    checkpoint()?;
+    if tokens.is_empty() {
+        return Ok(None);
+    }
+    escape_xml_attr_with_checkpoints(&tokens.join(" "), checkpoint).map(Some)
 }

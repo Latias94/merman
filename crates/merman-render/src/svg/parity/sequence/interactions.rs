@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::activation::{SequenceActivationPlan, render_sequence_activation_group};
 use super::blocks::{
     SequenceBlockRenderContext, SimpleSequenceBlock, render_critical_sequence_block,
@@ -25,6 +26,7 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) block_label_box_metrics: crate::sequence::SequenceBlockLabelBoxMetrics,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
+    pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 pub(super) fn render_sequence_interaction_overlays(
@@ -34,14 +36,17 @@ pub(super) fn render_sequence_interaction_overlays(
     loop_theme_receipt: &SequenceLoopThemeReceipt,
     note_theme_receipt: &mut SequenceStaticRectThemeReceipt,
     activation_theme_receipt: &mut SequenceStaticRectThemeReceipt,
-) {
-    let Some((frame_x1, frame_x2)) = frame_x_from_actors(ctx.model, ctx.nodes_by_id) else {
-        return;
+) -> Result<()> {
+    let Some((frame_x1, frame_x2)) =
+        frame_x_from_actors(ctx.model, ctx.nodes_by_id, ctx.checkpoints)?
+    else {
+        return Ok(());
     };
 
     let mut actor_nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(ctx.model.actors.len(), Default::default());
-    for actor_id in &ctx.model.actor_order {
+    for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(actor_index)?;
         let node_id = format!("actor-top-{actor_id}");
         let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
             continue;
@@ -55,7 +60,9 @@ pub(super) fn render_sequence_interaction_overlays(
         ctx.edges_by_id,
         ctx.nodes_by_id,
         ctx.block_layouts_by_id,
-    );
+        ctx.checkpoints,
+    )?;
+    ctx.checkpoints.checkpoint()?;
 
     let block_ctx = SequenceBlockRenderContext {
         default_frame_x1: frame_x1,
@@ -71,6 +78,7 @@ pub(super) fn render_sequence_interaction_overlays(
         typography_receipt: ctx.typography_receipt,
         loop_theme_receipt,
         math_sidecar: ctx.math_sidecar,
+        checkpoints: ctx.checkpoints,
     };
     let note_ctx = SequenceNoteRenderContext {
         nodes_by_id: ctx.nodes_by_id,
@@ -81,11 +89,13 @@ pub(super) fn render_sequence_interaction_overlays(
         note_typography: ctx.typography.note(),
         typography_receipt: ctx.typography_receipt,
         math_sidecar: ctx.math_sidecar,
+        checkpoints: ctx.checkpoints,
     };
 
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(message_index)?;
         render_sequence_activation_group(out, activation_plan, &msg.id, activation_theme_receipt);
-        render_sequence_note(out, message_index, msg, &note_ctx, note_theme_receipt);
+        render_sequence_note(out, message_index, msg, &note_ctx, note_theme_receipt)?;
 
         let Some(block_index) = blocks_by_end_index.get(message_index).copied().flatten() else {
             continue;
@@ -101,7 +111,7 @@ pub(super) fn render_sequence_interaction_overlays(
             } => {
                 render_sectioned_sequence_block(
                     out, control_id, "alt", sections, *layout, &block_ctx,
-                );
+                )?;
             }
             SequenceBlock::Par {
                 control_id,
@@ -110,7 +120,7 @@ pub(super) fn render_sequence_interaction_overlays(
             } => {
                 render_sectioned_sequence_block(
                     out, control_id, "par", sections, *layout, &block_ctx,
-                );
+                )?;
             }
             SequenceBlock::Loop {
                 control_id,
@@ -130,7 +140,7 @@ pub(super) fn render_sequence_interaction_overlays(
                         layout: *layout,
                     },
                     &block_ctx,
-                );
+                )?;
             }
             SequenceBlock::Opt {
                 control_id,
@@ -150,7 +160,7 @@ pub(super) fn render_sequence_interaction_overlays(
                         layout: *layout,
                     },
                     &block_ctx,
-                );
+                )?;
             }
             SequenceBlock::Break {
                 control_id,
@@ -170,15 +180,16 @@ pub(super) fn render_sequence_interaction_overlays(
                         layout: *layout,
                     },
                     &block_ctx,
-                );
+                )?;
             }
             SequenceBlock::Critical {
                 control_id,
                 sections,
                 layout,
             } => {
-                render_critical_sequence_block(out, control_id, sections, *layout, &block_ctx);
+                render_critical_sequence_block(out, control_id, sections, *layout, &block_ctx)?;
             }
         }
     }
+    ctx.checkpoints.checkpoint()
 }

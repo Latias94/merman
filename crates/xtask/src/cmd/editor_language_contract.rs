@@ -5,10 +5,7 @@ use crate::cmd::editor_analysis_config::{
     EDITOR_LANGUAGE_CONTRACT_COMMAND, VSCODE_ANALYSIS_CONFIG_BASELINE_PATH, VSCODE_MANIFEST_PATH,
     baseline_artifact, baseline_drift, project_vscode_analysis_settings,
 };
-use crate::cmd::editor_token_descriptor::{
-    DESCRIPTOR_PATH, TokenDescriptor, apply_vscode_token_projection, read_descriptor,
-    token_artifact_drift, token_artifacts,
-};
+use crate::cmd::editor_rename_policy::{rename_policy_artifact_drift, rename_policy_artifacts};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,7 +31,7 @@ fn write_generated_artifact(path: &Path, contents: &str) -> Result<(), XtaskErro
     })
 }
 
-fn manifest_projection(root: &Path, descriptor: &TokenDescriptor) -> Result<String, XtaskError> {
+fn manifest_projection(root: &Path) -> Result<String, XtaskError> {
     let path = root.join(VSCODE_MANIFEST_PATH);
     let text = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
         path: path.display().to_string(),
@@ -52,7 +49,7 @@ fn manifest_projection(root: &Path, descriptor: &TokenDescriptor) -> Result<Stri
         .and_then(Value::as_object_mut)
         .ok_or_else(|| language_contract_error("VS Code manifest contributes must be an object"))?;
 
-    apply_vscode_token_projection(contributes, descriptor)?;
+    remove_obsolete_semantic_token_projection(contributes)?;
     project_vscode_analysis_settings(
         contributes,
         &crate::cmd::editor_analysis_config::client_projection(),
@@ -63,8 +60,49 @@ fn manifest_projection(root: &Path, descriptor: &TokenDescriptor) -> Result<Stri
     Ok(output)
 }
 
-fn manifest_drift(root: &Path, descriptor: &TokenDescriptor) -> Result<bool, XtaskError> {
-    let expected = manifest_projection(root, descriptor)?;
+fn remove_obsolete_semantic_token_projection(
+    contributes: &mut serde_json::Map<String, Value>,
+) -> Result<(), XtaskError> {
+    for key in [
+        "semanticTokenTypes",
+        "semanticTokenModifiers",
+        "semanticTokenScopes",
+    ] {
+        contributes.remove(key);
+    }
+
+    let remove_configuration_defaults = match contributes.get_mut("configurationDefaults") {
+        Some(value) => {
+            let defaults = value.as_object_mut().ok_or_else(|| {
+                language_contract_error("VS Code manifest configurationDefaults must be an object")
+            })?;
+            let remove_mermaid_defaults = match defaults.get_mut("[mermaid]") {
+                Some(value) => {
+                    let mermaid = value.as_object_mut().ok_or_else(|| {
+                        language_contract_error(
+                            "VS Code manifest [mermaid] configuration defaults must be an object",
+                        )
+                    })?;
+                    mermaid.remove("editor.semanticHighlighting.enabled");
+                    mermaid.is_empty()
+                }
+                None => false,
+            };
+            if remove_mermaid_defaults {
+                defaults.remove("[mermaid]");
+            }
+            defaults.is_empty()
+        }
+        None => false,
+    };
+    if remove_configuration_defaults {
+        contributes.remove("configurationDefaults");
+    }
+    Ok(())
+}
+
+fn manifest_drift(root: &Path) -> Result<bool, XtaskError> {
+    let expected = manifest_projection(root)?;
     let path = root.join(VSCODE_MANIFEST_PATH);
     let actual = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
         path: path.display().to_string(),
@@ -78,15 +116,14 @@ pub(crate) fn gen_editor_language_contract(args: Vec<String>) -> Result<(), Xtas
         return Err(XtaskError::Usage);
     }
     let root = crate::cmd::workspace_root();
-    let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
-    let mut artifacts = token_artifacts(&root, &descriptor)?;
+    let mut artifacts = rename_policy_artifacts(&root)?;
     artifacts.push((
         PathBuf::from(VSCODE_ANALYSIS_CONFIG_BASELINE_PATH),
         baseline_artifact()?,
     ));
     artifacts.push((
         PathBuf::from(VSCODE_MANIFEST_PATH),
-        manifest_projection(&root, &descriptor)?,
+        manifest_projection(&root)?,
     ));
     for (relative_path, contents) in artifacts {
         write_generated_artifact(&root.join(relative_path), &contents)?;
@@ -96,12 +133,11 @@ pub(crate) fn gen_editor_language_contract(args: Vec<String>) -> Result<(), Xtas
 
 pub(crate) fn verify_editor_language_contract_artifacts() -> Result<Option<String>, XtaskError> {
     let root = crate::cmd::workspace_root();
-    let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
-    let mut drift = token_artifact_drift(&root, &descriptor)?;
+    let mut drift = rename_policy_artifact_drift(&root)?;
     if baseline_drift(&root)? {
         drift.push(PathBuf::from(VSCODE_ANALYSIS_CONFIG_BASELINE_PATH));
     }
-    if manifest_drift(&root, &descriptor)? {
+    if manifest_drift(&root)? {
         drift.push(PathBuf::from(VSCODE_MANIFEST_PATH));
     }
     if drift.is_empty() {

@@ -1,3 +1,4 @@
+use super::SequenceLayoutCheckpoints;
 use super::constants::{
     sequence_actor_lifeline_start_y, sequence_actor_prepared_math_layout_height,
     sequence_actor_visual_height, sequence_text_dimensions_height_px,
@@ -36,6 +37,7 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 pub(super) struct SequenceActorLayoutPlan<'a> {
@@ -55,22 +57,18 @@ pub(super) struct SequenceActorLayoutPlan<'a> {
 }
 
 pub(super) struct SequenceActorLifecycleContext<'a> {
+    pub(super) model: &'a SequenceDiagramRenderModel,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_base_heights: &'a [f64],
-    pub(super) created_actors: &'a BTreeMap<String, usize>,
-    pub(super) destroyed_actors: &'a BTreeMap<String, usize>,
     pub(super) actor_height: f64,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 pub(super) fn plan_sequence_actors<'a>(
     ctx: SequenceActorLayoutPlanContext<'a>,
 ) -> Result<SequenceActorLayoutPlan<'a>> {
     let has_boxes = !ctx.model.boxes.is_empty();
-    let has_box_titles = ctx
-        .model
-        .boxes
-        .iter()
-        .any(|b| b.name.as_deref().is_some_and(|s| !s.trim().is_empty()));
+    let has_box_titles = has_box_titles(&ctx)?;
 
     if ctx.model.actor_order.is_empty() {
         return Err(Error::InvalidModel {
@@ -78,35 +76,32 @@ pub(super) fn plan_sequence_actors<'a>(
         });
     }
 
-    let max_box_title_height = max_box_title_height(&ctx, has_box_titles);
+    let max_box_title_height = max_box_title_height(&ctx, has_box_titles)?;
     let (actor_widths, actor_base_heights, actor_has_prepared_math) = measure_actor_boxes(&ctx)?;
-    let actor_index = actor_index(ctx.model);
-    let actor_popup_widths = actor_popup_widths(&ctx, &actor_index, &actor_widths);
-    let (actor_to_message_width, message_metrics) = actor_message_widths(&ctx, &actor_index);
-    let actor_margins = actor_margins(&actor_widths, &actor_to_message_width, ctx.actor_margin);
+    let actor_index = actor_index(&ctx)?;
+    let actor_popup_widths = actor_popup_widths(&ctx, &actor_index, &actor_widths)?;
+    let (actor_to_message_width, message_metrics) = actor_message_widths(&ctx, &actor_index)?;
+    let actor_margins = actor_margins(&ctx, &actor_widths, &actor_to_message_width)?;
     let box_margins = box_margins(
         &ctx,
         &actor_index,
         &actor_widths,
         &actor_margins,
         &actor_to_message_width,
-    );
+    )?;
     let actor_top_offset_y =
         actor_top_offset_y(&ctx, has_boxes, has_box_titles, max_box_title_height);
-    let actor_box = actor_box(ctx.model, &actor_index);
+    let actor_box = actor_box(&ctx, &actor_index)?;
     let actor_left_x = actor_left_x(
         &ctx,
         &actor_widths,
         &actor_margins,
         &actor_box,
         &box_margins,
-    );
-    let actor_centers_x = actor_centers_x(&actor_left_x, &actor_widths);
-    let max_actor_layout_height = actor_base_heights
-        .iter()
-        .copied()
-        .fold(0.0_f64, f64::max)
-        .max(1.0);
+    )?;
+    let actor_centers_x = actor_centers_x(&ctx, &actor_left_x, &actor_widths)?;
+    let max_actor_layout_height = max_actor_layout_height(&ctx, &actor_base_heights)?;
+    ctx.checkpoints.checkpoint()?;
 
     Ok(SequenceActorLayoutPlan {
         actor_index,
@@ -129,37 +124,58 @@ fn actor_popup_widths(
     ctx: &SequenceActorLayoutPlanContext<'_>,
     actor_index: &HashMap<&str, usize>,
     actor_widths: &[f64],
-) -> HashMap<String, f64> {
+) -> Result<HashMap<String, f64>> {
     let horizontal_padding = 2.0 * ctx.wrap_padding + 2.0 * ctx.box_margin;
-    ctx.model
-        .actor_order
-        .iter()
-        .filter_map(|actor_id| {
-            let actor = ctx.model.actors.get(actor_id)?;
-            if actor.links.is_empty() {
-                return None;
-            }
-            let actor_width = actor_index
-                .get(actor_id.as_str())
-                .and_then(|index| actor_widths.get(*index))
-                .copied()
-                .unwrap_or(ctx.actor_width_min);
-            let required_width = actor
-                .links
-                .keys()
-                .map(|label| {
-                    measure_svg_like_with_html_br(ctx.measurer, label, ctx.actor_text_style).0
-                        + horizontal_padding
-                })
-                .fold(0.0_f64, f64::max);
-            Some((actor_id.clone(), actor_width.max(required_width)))
-        })
-        .collect()
+    let mut popup_widths = HashMap::new();
+    for (actor_position, actor_id) in ctx.model.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(actor_position)?;
+        let Some(actor) = ctx.model.actors.get(actor_id) else {
+            continue;
+        };
+        if actor.links.is_empty() {
+            continue;
+        }
+        let actor_width = actor_index
+            .get(actor_id.as_str())
+            .and_then(|index| actor_widths.get(*index))
+            .copied()
+            .unwrap_or(ctx.actor_width_min);
+        let mut required_width = 0.0_f64;
+        for (link_index, label) in actor.links.keys().enumerate() {
+            ctx.checkpoints.checkpoint_loop(link_index)?;
+            let (width, _) = measure_svg_like_with_html_br(
+                ctx.measurer,
+                label,
+                ctx.actor_text_style,
+                ctx.checkpoints.text(),
+            )?;
+            required_width = required_width.max(width + horizontal_padding);
+        }
+        popup_widths.insert(actor_id.clone(), actor_width.max(required_width));
+    }
+    Ok(popup_widths)
 }
 
-fn max_box_title_height(ctx: &SequenceActorLayoutPlanContext<'_>, has_box_titles: bool) -> f64 {
+fn has_box_titles(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<bool> {
+    for (box_index, sequence_box) in ctx.model.boxes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(box_index)?;
+        if sequence_box
+            .name
+            .as_deref()
+            .is_some_and(|name| !name.trim().is_empty())
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn max_box_title_height(
+    ctx: &SequenceActorLayoutPlanContext<'_>,
+    has_box_titles: bool,
+) -> Result<f64> {
     if !has_box_titles {
-        return 0.0;
+        return Ok(0.0);
     }
 
     // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles and stores the max
@@ -169,12 +185,14 @@ fn max_box_title_height(ctx: &SequenceActorLayoutPlanContext<'_>, has_box_titles
     // `getBBox()` height used elsewhere). Sequence maps box titles to ActorLabel, so the same
     // resolved actor size must drive both this layout offset and the terminal `class="text"` row.
     let line_h = sequence_text_dimensions_height_px(ctx.actor_font_size);
-    ctx.model
-        .boxes
-        .iter()
-        .filter_map(|b| b.name.as_deref())
-        .map(|s| split_html_br_lines(s).len().max(1) as f64 * line_h)
-        .fold(0.0, f64::max)
+    let mut max_height = 0.0_f64;
+    for (box_index, sequence_box) in ctx.model.boxes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(box_index)?;
+        if let Some(name) = sequence_box.name.as_deref() {
+            max_height = max_height.max(split_html_br_lines(name).len().max(1) as f64 * line_h);
+        }
+    }
+    Ok(max_height)
 }
 
 fn measure_actor_boxes(
@@ -185,6 +203,7 @@ fn measure_actor_boxes(
     let mut actor_base_heights: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
     let mut actor_has_prepared_math: Vec<bool> = Vec::with_capacity(ctx.model.actor_order.len());
     for (actor_index, id) in ctx.model.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(actor_index)?;
         let a = ctx
             .model
             .actors
@@ -201,7 +220,8 @@ fn measure_actor_boxes(
                 ctx.measurer,
                 ctx.actor_text_style,
                 wrap_w,
-            );
+                ctx.checkpoints.text(),
+            )?;
             let wrapped_label = wrapped_lines.join("<br>");
             let prepared_math = ctx.math_sidecar.prepare_or_get(
                 super::SequenceMathOccurrence::Actor(actor_index),
@@ -213,7 +233,8 @@ fn measure_actor_boxes(
                 prepared_math.as_deref(),
                 ctx.actor_text_style,
                 SequenceMathHeightMode::Actor,
-            )
+                ctx.checkpoints.text(),
+            )?
             .map_or_else(
                 || {
                     let line_count = wrapped_lines.len().max(1) as f64;
@@ -252,7 +273,8 @@ fn measure_actor_boxes(
                 ctx.math_config,
                 None,
                 SequenceMathHeightMode::Actor,
-            );
+                ctx.checkpoints.text(),
+            )?;
             let w = (w0 + 2.0 * ctx.wrap_padding).max(ctx.actor_width_min);
             let has_prepared_math = prepared_math.is_some();
             let height = if has_prepared_math {
@@ -274,22 +296,24 @@ fn measure_actor_boxes(
     Ok((actor_widths, actor_base_heights, actor_has_prepared_math))
 }
 
-fn actor_index(model: &SequenceDiagramRenderModel) -> HashMap<&str, usize> {
+fn actor_index<'a>(ctx: &SequenceActorLayoutPlanContext<'a>) -> Result<HashMap<&'a str, usize>> {
     let mut actor_index: HashMap<&str, usize> = HashMap::new();
-    for (i, id) in model.actor_order.iter().enumerate() {
+    for (i, id) in ctx.model.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         actor_index.insert(id.as_str(), i);
     }
-    actor_index
+    Ok(actor_index)
 }
 
 fn actor_message_widths(
     ctx: &SequenceActorLayoutPlanContext<'_>,
     actor_index: &HashMap<&str, usize>,
-) -> (Vec<f64>, SequenceMessageMetricSidecar) {
+) -> Result<(Vec<f64>, SequenceMessageMetricSidecar)> {
     let mut actor_to_message_width: Vec<f64> = vec![0.0; ctx.model.actor_order.len()];
     let mut message_metrics =
         SequenceMessageMetricSidecar::new(ctx.model, ctx.msg_text_style, ctx.measurer);
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(message_index)?;
         let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
             continue;
         };
@@ -338,22 +362,33 @@ fn actor_message_widths(
                 ctx.math_config,
                 None,
                 SequenceMathHeightMode::Bound,
-            )
+                ctx.checkpoints.text(),
+            )?
         } else if is_math {
             // Wrapped notes bind prepared math only after their final effective source is known.
-            measure_svg_like_with_html_br(ctx.measurer, text, style)
+            measure_svg_like_with_html_br(ctx.measurer, text, style, ctx.checkpoints.text())?
         } else {
             let measured_text = if msg.wrap {
                 // Upstream uses `wrapLabel(message, conf.width - 2*wrapPadding, ...)` when
                 // computing max per-actor message widths for spacing.
                 let wrap_w = (ctx.actor_width_min - 2.0 * ctx.wrap_padding).max(1.0);
-                let lines =
-                    wrap_sequence_label_like_mermaid_lines(text, ctx.measurer, style, wrap_w);
+                let lines = wrap_sequence_label_like_mermaid_lines(
+                    text,
+                    ctx.measurer,
+                    style,
+                    wrap_w,
+                    ctx.checkpoints.text(),
+                )?;
                 lines.join("<br>")
             } else {
                 text.to_string()
             };
-            measure_svg_like_with_html_br(ctx.measurer, &measured_text, style)
+            measure_svg_like_with_html_br(
+                ctx.measurer,
+                &measured_text,
+                style,
+                ctx.checkpoints.text(),
+            )?
         };
         if is_message && !msg.wrap && !is_math {
             // Final direct `<text>` drawing is a distinct DOM probe and deliberately does not use
@@ -399,16 +434,17 @@ fn actor_message_widths(
             }
         }
     }
-    (actor_to_message_width, message_metrics)
+    Ok((actor_to_message_width, message_metrics))
 }
 
 fn actor_margins(
+    ctx: &SequenceActorLayoutPlanContext<'_>,
     actor_widths: &[f64],
     actor_to_message_width: &[f64],
-    actor_margin: f64,
-) -> Vec<f64> {
-    let mut actor_margins: Vec<f64> = vec![actor_margin; actor_to_message_width.len()];
+) -> Result<Vec<f64>> {
+    let mut actor_margins: Vec<f64> = vec![ctx.actor_margin; actor_to_message_width.len()];
     for i in 0..actor_to_message_width.len() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         let msg_w = actor_to_message_width[i];
         if msg_w <= 0.0 {
             continue;
@@ -416,13 +452,13 @@ fn actor_margins(
         let w0 = actor_widths[i];
         let actor_w = if i + 1 < actor_to_message_width.len() {
             let w1 = actor_widths[i + 1];
-            msg_w + actor_margin - (w0 / 2.0) - (w1 / 2.0)
+            msg_w + ctx.actor_margin - (w0 / 2.0) - (w1 / 2.0)
         } else {
-            msg_w + actor_margin - (w0 / 2.0)
+            msg_w + ctx.actor_margin - (w0 / 2.0)
         };
-        actor_margins[i] = actor_w.max(actor_margin);
+        actor_margins[i] = actor_w.max(ctx.actor_margin);
     }
-    actor_margins
+    Ok(actor_margins)
 }
 
 fn box_margins(
@@ -431,14 +467,18 @@ fn box_margins(
     actor_widths: &[f64],
     actor_margins: &[f64],
     actor_to_message_width: &[f64],
-) -> Vec<f64> {
+) -> Result<Vec<f64>> {
     // Mermaid's `calculateActorMargins(...)` computes per-box `box.margin` based on total actor
     // widths/margins and the box title width. For totalWidth, Mermaid only counts `actor.margin`
     // if it was set (actors without messages have `margin === undefined` until render-time).
     let mut box_margins: Vec<f64> = vec![ctx.box_text_margin; ctx.model.boxes.len()];
+    let mut membership_index = 0usize;
     for (box_idx, b) in ctx.model.boxes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(box_idx)?;
         let mut total_width = 0.0;
         for actor_key in &b.actor_keys {
+            ctx.checkpoints.checkpoint_loop(membership_index)?;
+            membership_index = membership_index.saturating_add(1);
             let Some(&i) = actor_index.get(actor_key.as_str()) else {
                 continue;
             };
@@ -464,13 +504,14 @@ fn box_margins(
             ctx.math_config,
             None,
             SequenceMathHeightMode::Bound,
-        );
+            ctx.checkpoints.text(),
+        )?;
         let min_width = total_width.max(text_w + 2.0 * ctx.wrap_padding);
         if total_width < min_width {
             box_margins[box_idx] += (min_width - total_width) / 2.0;
         }
     }
-    box_margins
+    Ok(box_margins)
 }
 
 fn actor_top_offset_y(
@@ -491,20 +532,24 @@ fn actor_top_offset_y(
 }
 
 fn actor_box(
-    model: &SequenceDiagramRenderModel,
+    ctx: &SequenceActorLayoutPlanContext<'_>,
     actor_index: &HashMap<&str, usize>,
-) -> Vec<Option<usize>> {
+) -> Result<Vec<Option<usize>>> {
     // Assign each actor to at most one box (Mermaid's db assigns a single `actor.box` reference).
-    let mut actor_box: Vec<Option<usize>> = vec![None; model.actor_order.len()];
-    for (box_idx, b) in model.boxes.iter().enumerate() {
+    let mut actor_box: Vec<Option<usize>> = vec![None; ctx.model.actor_order.len()];
+    let mut membership_index = 0usize;
+    for (box_idx, b) in ctx.model.boxes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(box_idx)?;
         for actor_key in &b.actor_keys {
+            ctx.checkpoints.checkpoint_loop(membership_index)?;
+            membership_index = membership_index.saturating_add(1);
             let Some(&i) = actor_index.get(actor_key.as_str()) else {
                 continue;
             };
             actor_box[i] = Some(box_idx);
         }
     }
-    actor_box
+    Ok(actor_box)
 }
 
 fn actor_left_x(
@@ -513,12 +558,13 @@ fn actor_left_x(
     actor_margins: &[f64],
     actor_box: &[Option<usize>],
     box_margins: &[f64],
-) -> Vec<f64> {
+) -> Result<Vec<f64>> {
     let mut actor_left_x: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
     let mut prev_width = 0.0;
     let mut prev_margin = 0.0;
     let mut prev_box: Option<usize> = None;
     for i in 0..ctx.model.actor_order.len() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         let w = actor_widths[i];
         let cur_box = actor_box[i];
 
@@ -539,11 +585,7 @@ fn actor_left_x(
         }
 
         // Mermaid widens the margin before a created actor by `actor.width / 2`.
-        if ctx
-            .model
-            .created_actors
-            .contains_key(&ctx.model.actor_order[i])
-        {
+        if ctx.model.created_actor_message_index_at(i).is_some() {
             prev_margin += w / 2.0;
         }
         let x = prev_width + prev_margin;
@@ -552,15 +594,32 @@ fn actor_left_x(
         prev_margin = actor_margins[i];
         prev_box = cur_box;
     }
-    actor_left_x
+    Ok(actor_left_x)
 }
 
-fn actor_centers_x(actor_left_x: &[f64], actor_widths: &[f64]) -> Vec<f64> {
+fn actor_centers_x(
+    ctx: &SequenceActorLayoutPlanContext<'_>,
+    actor_left_x: &[f64],
+    actor_widths: &[f64],
+) -> Result<Vec<f64>> {
     let mut actor_centers_x: Vec<f64> = Vec::with_capacity(actor_left_x.len());
     for i in 0..actor_left_x.len() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         actor_centers_x.push(actor_left_x[i] + actor_widths[i] / 2.0);
     }
-    actor_centers_x
+    Ok(actor_centers_x)
+}
+
+fn max_actor_layout_height(
+    ctx: &SequenceActorLayoutPlanContext<'_>,
+    actor_base_heights: &[f64],
+) -> Result<f64> {
+    let mut max_height = 0.0_f64;
+    for (actor_position, height) in actor_base_heights.iter().copied().enumerate() {
+        ctx.checkpoints.checkpoint_loop(actor_position)?;
+        max_height = max_height.max(height);
+    }
+    Ok(max_height.max(1.0))
 }
 
 pub(super) struct SequenceActorLifecycle<'a> {
@@ -582,6 +641,7 @@ pub(super) struct SequenceFooterActorContext<'a, 'b> {
     pub(super) mirror_actors: bool,
     pub(super) label_box_height: f64,
     pub(super) box_text_margin: f64,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 pub(super) struct SequenceTopActorContext<'a> {
@@ -593,6 +653,7 @@ pub(super) struct SequenceTopActorContext<'a> {
     pub(super) actor_has_prepared_math: &'a [bool],
     pub(super) actor_top_offset_y: f64,
     pub(super) label_box_height: f64,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 impl<'a> SequenceActorLifecycle<'a> {
@@ -605,11 +666,13 @@ impl<'a> SequenceActorLifecycle<'a> {
     }
 
     pub(super) fn created_actor_index(&self, actor_id: &str) -> Option<usize> {
-        self.ctx.created_actors.get(actor_id).copied()
+        let actor_index = self.ctx.actor_index.get(actor_id).copied()?;
+        self.ctx.model.created_actor_message_index_at(actor_index)
     }
 
     pub(super) fn destroyed_actor_index(&self, actor_id: &str) -> Option<usize> {
-        self.ctx.destroyed_actors.get(actor_id).copied()
+        let actor_index = self.ctx.actor_index.get(actor_id).copied()?;
+        self.ctx.model.destroyed_actor_message_index_at(actor_index)
     }
 
     pub(super) fn created_top_center_y(&self, actor_id: &str) -> Option<f64> {
@@ -650,11 +713,12 @@ impl<'a> SequenceActorLifecycle<'a> {
         }
     }
 
-    pub(super) fn apply_created_top_actor_positions(&self, nodes: &mut [LayoutNode]) {
+    pub(super) fn apply_created_top_actor_positions(&self, nodes: &mut [LayoutNode]) -> Result<()> {
         // Created actors render from `lineStartY - actor.height / 2` in Mermaid's
         // `adjustCreatedDestroyedData(...)`. Type-specific drawing can use a taller visual node,
         // but that visual height does not move the creation anchor.
-        for node in nodes {
+        for (node_index, node) in nodes.iter_mut().enumerate() {
+            self.ctx.checkpoints.checkpoint_loop(node_index)?;
             let Some(actor_id) = node.id.strip_prefix("actor-top-") else {
                 continue;
             };
@@ -663,6 +727,7 @@ impl<'a> SequenceActorLifecycle<'a> {
                 node.y = y - h / 2.0 + node.height / 2.0;
             }
         }
+        Ok(())
     }
 
     fn actor_lifecycle_height(&self, actor_id: &str) -> f64 {
@@ -696,8 +761,9 @@ pub(super) fn sequence_actor_is_type_width_limited(
 pub(super) fn append_sequence_top_actors(
     nodes: &mut Vec<LayoutNode>,
     ctx: SequenceTopActorContext<'_>,
-) {
+) -> Result<()> {
     for (idx, id) in ctx.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(idx)?;
         let w = ctx.actor_widths[idx];
         let cx = ctx.actor_centers_x[idx];
         let base_h = ctx.actor_base_heights[idx];
@@ -726,14 +792,16 @@ pub(super) fn append_sequence_top_actors(
             label_height: None,
         });
     }
+    Ok(())
 }
 
 pub(super) fn append_sequence_footer_actors(
     nodes: &mut Vec<LayoutNode>,
     edges: &mut Vec<LayoutEdge>,
     ctx: SequenceFooterActorContext<'_, '_>,
-) {
+) -> Result<()> {
     for (idx, id) in ctx.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(idx)?;
         let w = ctx.actor_widths[idx];
         let cx = ctx.actor_centers_x[idx];
         let base_h = ctx.actor_base_heights[idx];
@@ -800,4 +868,5 @@ pub(super) fn append_sequence_footer_actors(
             stroke_dasharray: None,
         });
     }
+    Ok(())
 }

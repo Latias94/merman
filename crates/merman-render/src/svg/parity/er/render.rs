@@ -310,7 +310,7 @@ pub(crate) fn render_er_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let effective_config = effective_config.as_value();
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
@@ -520,12 +520,13 @@ pub(crate) fn render_er_diagram_svg_model(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     let root_document = root_viewport.write_plan(&mut out, &root_plan, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if has_acc_title {
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{}">{}"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(model.acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
@@ -534,7 +535,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");
@@ -543,7 +544,7 @@ pub(crate) fn render_er_diagram_svg_model(
 
     write_er_style(
         &mut out,
-        diagram_id,
+        diagram_id.semantic_str(),
         data_look,
         effective_config,
         &redux_border_colors,
@@ -717,6 +718,7 @@ pub(crate) fn render_er_diagram_svg_model(
             }
             let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
             let edge_svg_id = format!("{diagram_id}-{edge_dom_id}");
+            options.checkpoint_emit()?;
             let is_dashed = e.stroke_dasharray.as_deref() == Some("8,8");
             let pattern_class = if is_dashed {
                 "edge-pattern-dashed"
@@ -779,6 +781,7 @@ pub(crate) fn render_er_diagram_svg_model(
             if let Some(marker) = &end_marker_id {
                 let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_attr(marker));
             }
+            options.checkpoint_emit()?;
             out.push_str(" />");
             out.checkpoint()?;
             entity_theme_receipt.record_checkpointed_relation_path(
@@ -1085,7 +1088,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<g id="{}-{}" class="{}" data-look="{}"{} transform="translate({}, {})">"#,
-            escape_xml(diagram_id),
+            diagram_id,
             escape_xml(&entity.id),
             escape_xml(&group_class),
             escape_xml(data_look),
@@ -1778,7 +1781,7 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    push_er_gradient(&mut out, diagram_id, effective_config)?;
+    push_er_gradient(&mut out, diagram_id.semantic_str(), effective_config)?;
 
     if let Some(title) = diagram_title {
         // Mermaid `utils.insertTitle(...)` appends the title after rendering the graph content.
@@ -1800,7 +1803,7 @@ pub(crate) fn render_er_diagram_svg_model(
         out.checkpoint()?;
     }
 
-    push_er_shadow_defs(&mut out, diagram_id, effective_config)?;
+    push_er_shadow_defs(&mut out, diagram_id.semantic_str(), effective_config)?;
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
@@ -1823,14 +1826,10 @@ fn push_er_shadow_defs(
         .filter(|theme| theme.contains("dark"))
         .map(|_| "#FFFFFF")
         .unwrap_or("#000000");
-    let diagram_id = escape_xml(diagram_id);
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id.as_str(),
-        flood_color,
-        diagram_id.as_str(),
-        flood_color
+        diagram_id, flood_color, diagram_id, flood_color
     );
     out.checkpoint()
 }
@@ -1862,20 +1861,23 @@ fn push_er_gradient(
         })
         .unwrap_or_else(|| gradient_start.clone());
 
-    let diagram_id = escape_xml(diagram_id);
     let gradient_start = escape_xml(&gradient_start);
     let gradient_stop = escape_xml(&gradient_stop);
     let _ = write!(
         out,
         r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-        diagram_id.as_str(),
+        diagram_id,
         gradient_start.as_str(),
         gradient_stop.as_str()
     );
     out.checkpoint()
 }
 
-fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &str) -> String {
+fn er_unified_marker_id(
+    diagram_id: SvgDiagramId<'_>,
+    diagram_type: &str,
+    upstream_marker: &str,
+) -> String {
     let upstream_marker = upstream_marker.trim();
     let (base, suffix) = if let Some(v) = upstream_marker.strip_suffix("_START") {
         (v, "Start")
@@ -1902,10 +1904,10 @@ mod tests {
     use crate::DiagramFamilyId;
     use crate::model::{Bounds, ErDiagramLayout, LayoutNode};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    use indexmap::IndexMap;
     use merman_core::MermaidConfig;
     use merman_core::diagrams::er::{ErDiagramRenderModel, ErEntityRenderModel};
     use serde_json::json;
-    use std::collections::BTreeMap;
     use std::fmt;
     use std::ops::Range;
 
@@ -1977,7 +1979,7 @@ mod tests {
             ],
             ..ErEntityRenderModel::default()
         };
-        let source_style = crate::er::compile_er_entity_source_style(&entity, &BTreeMap::new());
+        let source_style = crate::er::compile_er_entity_source_style(&entity, &IndexMap::new());
         let rect_decls = source_style.rect_declarations();
         let css = super::style_decls_with_important(rect_decls);
 
@@ -2099,7 +2101,7 @@ mod tests {
         };
         let model = ErDiagramRenderModel {
             direction: "TB".to_string(),
-            entities: BTreeMap::from([
+            entities: IndexMap::from([
                 ("ALPHA".to_string(), alpha.clone()),
                 ("ZETA".to_string(), zeta.clone()),
             ]),

@@ -15,6 +15,7 @@ const INPUT = {
   theme: "default",
   diagramFont: "trebuchet" as const,
   externalRequirements: { externalDiagrams: [], layoutModules: [] },
+  screenAvailableWidth: 1512,
   viewport: { width: 800, height: 600 },
 };
 
@@ -103,6 +104,7 @@ test("snapshots and freezes a queued render input before the realm can observe i
       externalDiagrams: ["zenuml"],
       layoutModules: ["elk"],
     },
+    screenAvailableWidth: 1512,
     viewport: { width: 640, height: 480 },
   };
 
@@ -126,6 +128,7 @@ test("snapshots and freezes a queued render input before the realm can observe i
   assert.equal(snapshot.configJson, "{}");
   assert.deepEqual(snapshot.externalRequirements.externalDiagrams, ["zenuml"]);
   assert.deepEqual(snapshot.externalRequirements.layoutModules, ["elk"]);
+  assert.equal(snapshot.screenAvailableWidth, 1512);
   assert.deepEqual(snapshot.viewport, { width: 640, height: 480 });
   assert.equal(Object.isFrozen(snapshot), true);
   assert.equal(Object.isFrozen(snapshot.externalRequirements), true);

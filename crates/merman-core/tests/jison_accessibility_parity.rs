@@ -1,6 +1,5 @@
 use merman_core::{
-    DiagramParseOutcome, EditorLexemeKind, EditorSemanticCompleteness, EditorSemanticFacts, Engine,
-    ParsedEditorFacts,
+    DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticFacts, Engine, ParsedEditorFacts,
 };
 use serde_json::{Value, json};
 
@@ -17,46 +16,6 @@ fn available_facts(snapshot: &merman_core::DiagramParseSnapshot) -> &EditorSeman
         panic!("Jison-backed family must retain editor facts");
     };
     facts
-}
-
-fn assert_source_lexeme(
-    family: &str,
-    facts: &EditorSemanticFacts,
-    source: &str,
-    kind: EditorLexemeKind,
-    expected: &str,
-) {
-    assert!(
-        facts.lexemes().iter().any(|lexeme| {
-            let span = lexeme.span();
-            lexeme.kind() == kind && source.get(span.start..span.end) == Some(expected)
-        }),
-        "{family}: missing {kind:?} lexeme for {expected:?}; failure={:?}, lexemes={:?}",
-        facts.lexeme_failure(),
-        facts
-            .lexemes()
-            .iter()
-            .map(|lexeme| {
-                let span = lexeme.span();
-                (lexeme.kind(), span, source.get(span.start..span.end))
-            })
-            .collect::<Vec<_>>()
-    );
-}
-
-fn assert_valid_lexeme_spans(facts: &EditorSemanticFacts, source: &str) {
-    for lexeme in facts.lexemes() {
-        let span = lexeme.span();
-        assert!(span.start <= span.end && span.end <= source.len());
-        assert!(source.is_char_boundary(span.start));
-        assert!(source.is_char_boundary(span.end));
-    }
-    assert!(
-        facts
-            .lexemes()
-            .windows(2)
-            .all(|pair| pair[0].span().end <= pair[1].span().start)
-    );
 }
 
 fn assert_tail_semantics(family: &str, model: &Value) {
@@ -191,7 +150,6 @@ fn pinned_jison_closing_brace_resumes_same_line_lexing() {
             .unwrap_or_else(|error| panic!("{} operation failed: {error}", case.family))
             .unwrap_or_else(|| panic!("{} snapshot missing", case.family));
         let facts = available_facts(&snapshot);
-        assert_valid_lexeme_spans(facts, case.source);
 
         match snapshot.outcome() {
             DiagramParseOutcome::Parsed { model, .. } if case.accepted => {
@@ -204,14 +162,6 @@ fn pinned_jison_closing_brace_resumes_same_line_lexing() {
                 );
                 assert_tail_semantics(case.family, model);
                 assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-                for (kind, text) in [
-                    (EditorLexemeKind::Keyword, "accDescr"),
-                    (EditorLexemeKind::Delimiter, "{"),
-                    (EditorLexemeKind::String, "desc"),
-                    (EditorLexemeKind::Delimiter, "}"),
-                ] {
-                    assert_source_lexeme(case.family, facts, case.source, kind, text);
-                }
             }
             DiagramParseOutcome::Failed(_) if !case.accepted => {
                 assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
@@ -326,7 +276,6 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
             .unwrap_or_else(|error| panic!("{} operation failed: {error}", case.family))
             .unwrap_or_else(|| panic!("{} snapshot missing", case.family));
         let facts = available_facts(&snapshot);
-        assert_valid_lexeme_spans(facts, case.source);
 
         match snapshot.outcome() {
             DiagramParseOutcome::Parsed { model, .. } if case.accepted => {
@@ -353,31 +302,6 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
                 "{} diverged from {}: accepted={}, outcome={outcome:?}",
                 case.family, case.oracle, case.accepted
             ),
-        }
-
-        if case.family != "block" {
-            assert_source_lexeme(
-                case.family,
-                facts,
-                case.source,
-                EditorLexemeKind::Keyword,
-                "accDescr",
-            );
-            assert_source_lexeme(
-                case.family,
-                facts,
-                case.source,
-                EditorLexemeKind::Delimiter,
-                "{",
-            );
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                let span = lexeme.span();
-                lexeme.kind() == EditorLexemeKind::String
-                    && case
-                        .source
-                        .get(span.start..span.end)
-                        .is_some_and(|text| text.contains("partial"))
-            }));
         }
     }
 }

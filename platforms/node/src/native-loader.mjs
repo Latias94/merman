@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import {
   MermanInvalidTransportError,
   MermanMissingPlatformPackageError,
+  MermanNativeLoadError,
   MermanUnsupportedTargetError,
   parseRuntimeCatalogJsonText,
 } from "./errors.mjs";
@@ -79,6 +80,9 @@ export function loadNativeBinding({
     if (isMissingModule(cause)) {
       throw new MermanMissingPlatformPackageError({ packageName, target, cause });
     }
+    if (isNativeLoadFailure(cause)) {
+      throw new MermanNativeLoadError({ packageName, target, cause });
+    }
     throw cause;
   }
 }
@@ -109,4 +113,13 @@ function isMissingModule(error) {
       typeof error === "object" &&
       (error.code === "MODULE_NOT_FOUND" || error.code === "ERR_MODULE_NOT_FOUND"),
   );
+}
+
+function isNativeLoadFailure(error) {
+  if (!error || typeof error !== "object") return false;
+  if (error.code === "ERR_DLOPEN_FAILED") return true;
+  return typeof error.message === "string" &&
+    /(?:GLIBC(?:XX)?_|CXXABI_|invalid ELF|wrong ELF|shared object file|not a valid Win32|mach-?o)/i.test(
+      error.message,
+    );
 }

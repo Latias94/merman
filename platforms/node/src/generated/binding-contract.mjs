@@ -69,6 +69,15 @@ export const CAPABILITY_SPECS = [
     "implication_ids": []
   },
   {
+    "id": "rustdoc",
+    "implication_ids": [
+      "layout-cytoscape",
+      "layout-elk",
+      "markdown",
+      "math"
+    ]
+  },
+  {
     "id": "shell-completions",
     "implication_ids": []
   },

@@ -5,7 +5,7 @@ pub(crate) fn render_info_diagram_svg(
     typography_theme: &crate::info::InfoTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
     let mut surface_receipt = typography_theme.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
@@ -32,7 +32,7 @@ pub(crate) fn render_info_diagram_svg(
     out.push_str("<style>");
     let css_write = write_info_css_with_font_family(
         &mut out,
-        diagram_id,
+        diagram_id.semantic_str(),
         effective_config,
         typography_theme.font_family_css(),
     )?;

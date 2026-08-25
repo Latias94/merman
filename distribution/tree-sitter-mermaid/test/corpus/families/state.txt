@@ -1,0 +1,333 @@
+==================
+state v2 composite pseudostates and descriptions
+==================
+
+stateDiagram-v2
+  [*] --> Active
+  state Active {
+    [*] --> Fork
+    state Fork <<fork>>
+    Fork --> Choice
+    state Choice <<choice>>
+    Choice --> Done: test({ foo#colon; 'far' })
+    state Done <<join>>
+    Done --> [*]
+  }
+  Active --> [*]
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))
+    (state_body
+      (state_transition_statement
+        (state_endpoint
+          (state_marker))
+        (state_transition_operator)
+        (state_endpoint
+          (state_reference)))
+      (state_composite_declaration
+        (state_statement_keyword)
+        (state_name)
+        (state_transition_statement
+          (state_endpoint
+            (state_marker))
+          (state_transition_operator)
+          (state_endpoint
+            (state_reference)))
+        (state_pseudostate_declaration
+          (state_statement_keyword)
+          (state_name)
+          (state_pseudostate_kind))
+        (state_transition_statement
+          (state_endpoint
+            (state_reference))
+          (state_transition_operator)
+          (state_endpoint
+            (state_reference)))
+        (state_pseudostate_declaration
+          (state_statement_keyword)
+          (state_name)
+          (state_pseudostate_kind))
+        (state_transition_statement
+          (state_endpoint
+            (state_reference))
+          (state_transition_operator)
+          (state_endpoint
+            (state_reference))
+          (state_description_text
+            (state_description_fragment)
+            (state_encoded_colon)
+            (state_description_fragment)))
+        (state_pseudostate_declaration
+          (state_statement_keyword)
+          (state_name)
+          (state_pseudostate_kind))
+        (state_transition_statement
+          (state_endpoint
+            (state_reference))
+          (state_transition_operator)
+          (state_endpoint
+            (state_marker))))
+      (state_transition_statement
+        (state_endpoint
+          (state_reference))
+        (state_transition_operator)
+        (state_endpoint
+          (state_marker))))))
+
+==================
+aliases notes classes styles and accessibility
+==================
+
+stateDiagram-V2
+  state "Long lived" as long: extra description
+  note right of long: Inline note
+  note left of long
+    Multiline note
+    with <b>HTML</b>
+  end note
+  note "Floating note" as floating
+  long --> target:::hot: transition label
+  classDef hot fill:#f00,color:white
+  class long,target hot
+  style target fill:#fff,stroke:#333
+  direction LR
+  hide empty description
+  scale 640 width
+  accTitle: State overview
+  accDescr {Structured state diagram}
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))
+    (state_body
+      (state_alias_declaration
+        (state_statement_keyword)
+        (state_alias_clause
+          (state_quoted_text)
+          (state_statement_keyword)
+          (state_name))
+        (state_description_text
+          (state_description_fragment)))
+      (state_note_statement
+        (state_inline_note
+          (state_statement_keyword)
+          (state_note_position)
+          (state_endpoint
+            (state_reference))
+          (state_note_text)))
+      (state_note_statement
+        (state_multiline_note
+          (state_statement_keyword)
+          (state_note_position)
+          (state_endpoint
+            (state_reference))
+          (state_note_line)
+          (state_note_line)
+          (state_note_end)))
+      (state_floating_note_statement
+        (state_statement_keyword)
+        (state_quoted_text)
+        (state_statement_keyword)
+        (state_name))
+      (state_transition_statement
+        (state_endpoint
+          (state_reference))
+        (state_transition_operator)
+        (state_endpoint
+          (state_reference)
+          (state_class_annotation
+            (state_class_name)))
+        (state_description_text
+          (state_description_fragment)))
+      (state_class_definition_statement
+        (state_statement_keyword)
+        (state_class_name)
+        (state_style_list
+          (state_style_declaration
+            (state_style_property)
+            (state_style_value))
+          (state_style_declaration
+            (state_style_property)
+            (state_style_value))))
+      (state_class_assignment_statement
+        (state_statement_keyword)
+        (state_identifier_list
+          (state_reference)
+          (state_reference))
+        (state_class_name))
+      (state_style_statement
+        (state_statement_keyword)
+        (state_identifier_list
+          (state_reference))
+        (state_style_list
+          (state_style_declaration
+            (state_style_property)
+            (state_style_value))
+          (state_style_declaration
+            (state_style_property)
+            (state_style_value))))
+      (state_direction_statement
+        (state_statement_keyword)
+        (state_direction))
+      (state_hide_empty_description_statement
+        (state_statement_keyword))
+      (state_scale_statement
+        (state_statement_keyword)
+        (state_scale_width)
+        (state_statement_keyword))
+      (state_accessibility_title_statement
+        (state_statement_keyword)
+        (state_accessibility_text))
+      (state_accessibility_description_statement
+        (state_statement_keyword)
+        (state_accessibility_description_block
+          (state_accessibility_block_text))))))
+
+==================
+brace on following line and concurrent regions
+==================
+
+stateDiagram
+  state Parent
+  {
+    [*] --> Left
+    --
+    Right --> [*]
+  }
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))
+    (state_body
+      (state_composite_declaration
+        (state_statement_keyword)
+        (state_name)
+        (state_transition_statement
+          (state_endpoint
+            (state_marker))
+          (state_transition_operator)
+          (state_endpoint
+            (state_reference)))
+        (state_concurrent_divider)
+        (state_transition_statement
+          (state_endpoint
+            (state_reference))
+          (state_transition_operator)
+          (state_endpoint
+            (state_marker)))))))
+
+==================
+descriptions allow whitespace before the colon
+==================
+
+stateDiagram-v2
+  Root : root description
+  state Parent {
+    Child : nested description with colon: detail
+  }
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))
+    (state_body
+      (state_description_statement
+        (state_endpoint
+          (state_reference))
+        (state_description_text
+          (state_description_fragment)))
+      (state_composite_declaration
+        (state_statement_keyword)
+        (state_name)
+        (state_description_statement
+          (state_endpoint
+            (state_reference))
+          (state_description_text
+            (state_description_fragment)))))))
+
+==================
+malformed transition stays local
+==================
+
+stateDiagram-v2
+  Before --> After
+  Broken -->
+  Last --> [*]
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))
+    (state_body
+      (state_transition_statement
+        (state_endpoint
+          (state_reference))
+        (state_transition_operator)
+        (state_endpoint
+          (state_reference)))
+      (state_incomplete_transition_statement
+        (state_endpoint
+          (state_reference))
+        (state_transition_operator))
+      (state_transition_statement
+        (state_endpoint
+          (state_reference))
+        (state_transition_operator)
+        (state_endpoint
+          (state_marker))))))
+
+==================
+legacy header at eof
+==================
+
+stateDiagram
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))))
+
+==================
+Jison same-line splitting compatibility stays explicit
+==================
+
+stateDiagram-v2
+Decide -->|ok| Join
+N1 .. A
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))
+    (state_body
+      (state_jison_split_transition_statement
+        (state_endpoint
+          (state_reference))
+        (state_transition_operator)
+        (state_jison_pipe_target)
+        (state_endpoint
+          (state_reference)))
+      (state_jison_split_reference_statement
+        (state_endpoint
+          (state_reference))
+        (state_jison_split_operator)
+        (state_endpoint
+          (state_reference))))))

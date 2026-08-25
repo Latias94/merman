@@ -720,6 +720,9 @@ fn extended_dark_primary_color_derived_background_outranks_typed_fill() {
                 "theme": "neo-dark",
                 "themeVariables": { "primaryColor": "#fedcba" }
             }))),
+            "#fedcba",
+            0,
+            1,
         ),
         (
             "source-owned redux-dark",
@@ -728,16 +731,19 @@ fn extended_dark_primary_color_derived_background_outranks_typed_fill() {
                 "theme": "redux-dark",
                 "secure": []
             }))),
+            "#123456",
+            1,
+            0,
         ),
     ];
 
-    for (owner, source, engine) in cases {
+    for (owner, source, engine, expected_fill, applied_count, not_applicable_count) in cases {
         let rendered = render_requirement_with_theme_and_engine(&source, &theme, engine);
         let document = roxmltree::Document::parse(rendered.svg())
             .unwrap_or_else(|error| panic!("valid {owner} Requirement SVG: {error}"));
         assert_eq!(
             terminal_fill_for(&document, "requirement-theme-req1"),
-            "#fedcba",
+            expected_fill,
             "{owner} primaryColor must retain the terminal fill"
         );
 
@@ -745,8 +751,12 @@ fn extended_dark_primary_color_derived_background_outranks_typed_fill() {
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert_eq!(evidence.required_count(), 1, "{owner}");
-        assert_eq!(evidence.applied_count(), 0, "{owner}");
-        assert_eq!(evidence.not_applicable_count(), 1, "{owner}");
+        assert_eq!(evidence.applied_count(), applied_count, "{owner}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            not_applicable_count,
+            "{owner}"
+        );
         assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
     }
 }

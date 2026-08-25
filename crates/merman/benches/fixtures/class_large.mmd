@@ -1,0 +1,229 @@
+classDiagram
+direction LR
+
+namespace Domain {
+  class Customer {
+    +String id
+    +String name
+    +placeOrder()
+  }
+  class Address {
+    +String line1
+    +String city
+    +validate()
+  }
+  class ContactMethod {
+    +String kind
+    +String value
+    +verify()
+  }
+  class CustomerProfile {
+    +String locale
+    +String timezone
+    +update()
+  }
+  class Account {
+    +String status
+    +String tier
+    +suspend()
+  }
+  class Preference {
+    +String key
+    +String value
+    +apply()
+  }
+}
+
+namespace Orders {
+  class Order {
+    +String id
+    +String status
+    +submit()
+  }
+  class OrderLine {
+    +int quantity
+    +decimal unitPrice
+    +subtotal()
+  }
+  class Cart {
+    +String id
+    +decimal total
+    +checkout()
+  }
+  class CartItem {
+    +int quantity
+    +decimal price
+    +updateQuantity()
+  }
+  class Coupon {
+    +String code
+    +decimal discount
+    +validate()
+  }
+  class OrderPolicy {
+    +decimal minimum
+    +decimal maximum
+    +evaluate()
+  }
+  class OrderHistory {
+    +String event
+    +String timestamp
+    +append()
+  }
+}
+
+namespace Inventory {
+  class Product {
+    +String sku
+    +String name
+    +changePrice()
+  }
+  class Category {
+    +String id
+    +String label
+    +rename()
+  }
+  class StockItem {
+    +int available
+    +int reserved
+    +adjust()
+  }
+  class Warehouse {
+    +String code
+    +String region
+    +allocate()
+  }
+  class Reservation {
+    +String id
+    +int quantity
+    +release()
+  }
+  class Supplier {
+    +String id
+    +String name
+    +replenish()
+  }
+  class ReorderPolicy {
+    +int threshold
+    +int batchSize
+    +shouldReorder()
+  }
+}
+
+namespace Payments {
+  class Payment {
+    +String id
+    +String status
+    +capture()
+  }
+  class PaymentAttempt {
+    +int sequence
+    +String result
+    +retry()
+  }
+  class Invoice {
+    +String number
+    +decimal balance
+    +issue()
+  }
+  class Refund {
+    +String id
+    +decimal amount
+    +approve()
+  }
+  class Money {
+    +decimal amount
+    +String currency
+    +convert()
+  }
+  class TaxPolicy {
+    +String jurisdiction
+    +decimal rate
+    +calculate()
+  }
+}
+
+namespace Delivery {
+  class Shipment {
+    +String id
+    +String status
+    +dispatch()
+  }
+  class Package {
+    +String id
+    +decimal weight
+    +seal()
+  }
+  class Carrier {
+    +String code
+    +String name
+    +accept()
+  }
+  class TrackingEvent {
+    +String code
+    +String timestamp
+    +record()
+  }
+  class DeliveryWindow {
+    +String start
+    +String end
+    +contains()
+  }
+  class RoutePlan {
+    +String id
+    +int stopCount
+    +optimize()
+  }
+}
+
+Customer "1" *-- "1" CustomerProfile : owns
+Customer "1" o-- "*" Address : uses
+Customer "1" o-- "*" ContactMethod : reaches
+Customer "1" *-- "1" Account : authenticates
+CustomerProfile "1" *-- "*" Preference : stores
+Account --> Account : delegates
+
+Customer "1" --> "*" Cart : opens
+Customer "1" --> "*" Order : places
+Cart "1" *-- "*" CartItem : contains
+CartItem "*" --> "1" Product : selects
+Cart --> Coupon : applies
+Cart ..> OrderPolicy : evaluates
+Order "1" *-- "*" OrderLine : contains
+OrderLine "*" --> "1" Product : references
+Order --> Coupon : redeems
+Order ..> OrderPolicy : validates
+Order "1" *-- "*" OrderHistory : records
+Order --> Order : supersedes
+
+Product "*" --> "1" Category : classified-as
+Product "1" *-- "*" StockItem : stocked-as
+StockItem "*" --> "1" Warehouse : stored-in
+StockItem "1" o-- "*" Reservation : holds
+Reservation "*" --> "1" OrderLine : reserves-for
+Supplier "*" --> "*" Product : supplies
+ReorderPolicy --> StockItem : monitors
+ReorderPolicy ..> Supplier : requests
+Warehouse --> Warehouse : transfers
+
+Order "1" --> "1" Invoice : bills
+Invoice "1" *-- "1" Money : totals
+Invoice ..> TaxPolicy : calculates
+Order "1" --> "*" Payment : requests
+Order "1" ..> "*" Payment : retries
+Payment "1" *-- "*" PaymentAttempt : records
+Payment "1" *-- "1" Money : captures
+Payment --> Refund : reverses
+Refund "1" *-- "1" Money : returns
+PaymentAttempt --> PaymentAttempt : follows
+
+Order "1" --> "*" Shipment : fulfills
+Shipment "1" *-- "*" Package : contains
+Shipment "*" --> "1" Address : destination
+Shipment "*" --> "1" Carrier : handled-by
+Shipment "1" *-- "*" TrackingEvent : emits
+Shipment "1" --> "1" DeliveryWindow : promises
+Shipment "1" --> "1" RoutePlan : follows
+RoutePlan "1" --> "*" Warehouse : visits
+RoutePlan ..> Carrier : coordinates
+TrackingEvent --> TrackingEvent : succeeds

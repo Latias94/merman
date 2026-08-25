@@ -94,16 +94,13 @@ fn construct_semantic_source(
     control.checkpoint()?;
     let tokens = lexer::lex_controlled(code, control)?;
     let parsed = parser::parse_controlled(code, &tokens, control)?;
-    let lexemes =
-        lexer::editor_lexemes_controlled(code, &tokens, !parsed.diagnostics.is_empty(), control)?;
     control.checkpoint()?;
     let semantic::SemanticBuild {
         model,
-        mut editor_facts,
+        editor_facts,
         diagnostics,
     } = semantic::build_controlled(parsed, control)?;
     control.checkpoint()?;
-    editor_facts.replace_family_lexemes(lexemes);
     Ok(ZenumlSemanticSource {
         model,
         editor_facts,

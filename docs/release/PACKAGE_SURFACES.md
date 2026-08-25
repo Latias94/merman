@@ -13,7 +13,9 @@ installation command.
 | Complete Rust rendering facade | `merman` | crates.io |
 | A command-line renderer, linter, and exporter | `merman-cli` | GitHub Release archive or crates.io |
 | A ready-to-run language server | `merman-lsp` | GitHub Release archive or crates.io |
-| Rustdoc Mermaid fences | `merman-rustdoc` | crates.io |
+| Raw Mermaid CST, incremental parsing, and syntax queries | `tree-sitter-mermaid` on crates.io or `@mermanjs/tree-sitter-mermaid` on npm | Independent grammar release |
+| Checked Rustdoc fragments with no consumer renderer dependency | `merman-cli rustdoc` | GitHub Release archive or crates.io authoring tool |
+| One-step Rustdoc Mermaid attributes | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
 | Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group (alpha) |
 | Python host integration | `merman` | PyPI and release wheels |
@@ -33,6 +35,28 @@ builds but are not bundled in the default packages. The C ABI crate has no defau
 custom embedders can select semantic-only, SVG-only, export-capable, or complete builds. LSP
 remains a separate executable product and is not linked into any native binding artifact.
 
+## Rustdoc Documentation
+
+Rustdoc support is intentionally two product surfaces, not one package with hidden backend
+selection. `merman-cli rustdoc build/check` owns checked, committed Markdown fragments and a
+portable receipt; consuming crates use native `include_str!`, and docs.rs only reads files already
+inside the uploaded crate. `merman-rustdoc` owns item-level attribute expansion and compiles its
+native renderer while `cargo doc` runs. The CLI never depends on or invokes the macro package, and
+the macro never discovers or invokes the CLI.
+
+| Distribution property | `merman-cli rustdoc` | `merman-rustdoc` |
+| --- | --- | --- |
+| Consumer Cargo graph | No attributable Merman renderer, layout, math, or proc-macro package | Selected proc-macro and renderer closure |
+| Release recipe | `cli-release` includes the `rustdoc` tool leaf | Independent `rustdoc-static-svg` artifact profile |
+| Published inputs | Config, source, generated fragments, and `receipt.json` | Annotated Rust source and optional included `.mmd` files |
+| Hosted documentation | Packaged fragments work offline without executing the CLI | docs.rs must enable the optional documentation feature |
+| Freshness/rollback | CI runs `rustdoc check`; Git owns successful-state rollback | `cargo doc` fails during expansion; Git owns source rollback |
+
+Generated fragments must be included at most once on a rendered page to avoid duplicate static DOM
+IDs. Package preflight must prove every referenced fragment and the receipt are present. The
+[`merman-cli` Rustdoc guide](../../crates/merman-cli/README.md#rustdoc-fragments) and
+[`merman-rustdoc` guide](../../crates/merman-rustdoc/README.md) contain the runnable workflows.
+
 ## Release Delivery
 
 The repository-owned delivery routes are:
@@ -45,12 +69,14 @@ The repository-owned delivery routes are:
 6. GitHub Release AAR for Android.
 7. lockstep npm publishing for the admitted `@mermanjs/web` browser package group through
    `release-web.yml` after Trusted Publishing setup.
-8. lockstep npm publishing for `@mermanjs/node` and its five native platform packages through
-   `release-node.yml`. Node is an experimental alpha surface; it requires first-publish bootstrap
-   before npm Trusted Publishing can take over.
+8. lockstep npm publishing for `@mermanjs/node`, its five native platform packages, and the
+   explicit `@mermanjs/node-wasm` package through `release-node.yml`. Node is an experimental alpha
+   surface; it requires first-publish bootstrap before npm Trusted Publishing can take over.
 9. Platform VSIX artifacts for the independently versioned VS Code extension through
    `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
    before it is enabled.
+10. Independent Cargo, scoped npm, and GitHub publication for `tree-sitter-mermaid` through
+    `release-tree-sitter-mermaid.yml` after both registry identities are bootstrapped.
 
 ## CI Gates
 
@@ -58,10 +84,9 @@ Merman CI keeps publication separate from validation:
 
 - `cargo run -p xtask -- verify-mermaid-reference` checks that the selected Mermaid and companion
   behavior graph, package locks, generated runtime labels, and provenance agree.
-- `cargo run -p xtask -- verify-editor-language-contract` checks the combined editor-language
-  contract, its Rust/Web/VS Code projections, the generated VS Code token/theme contributions,
-  analysis settings, and the exact 35-family plus recovery packed-token evidence before LSP or
-  browser packages build.
+- `cargo run -p xtask -- verify-editor-language-contract` checks parser-owned rename-policy and
+  analysis-setting projections. Tree-sitter highlighting uses its ordinary grammar/query tests and
+  adapter tests; it has no generated packed-token evidence contract.
 - `cargo run -p xtask -- verify-web-diagram-catalog` and
   `verify-playground-example-catalog` keep the published full/editor family set and source-backed
   examples aligned.
@@ -72,9 +97,9 @@ Merman CI keeps publication separate from validation:
 - `web-npm-dry-run` builds each admitted TypeScript/WASM package, verifies its package projection,
   then packs and verifies the complete lockstep npm group without publishing it.
 - `release-node.yml` builds, packs, installs, and renders the public Node loader through its real
-  macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native package. Its publisher receives
-  verified tarballs only and publishes platform packages before the root loader under the requested
-  final dist-tag.
+  macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native packages, plus the explicit
+  Node-targeted WASM package. Its publisher receives a verified seven-package group only and
+  publishes platform packages, WASM, and then the root loader under the requested final dist-tag.
 - `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
   VSIX, and verify package contents, target platform, stable manifest version, and pre-release
   marker.
@@ -178,7 +203,7 @@ library-size evidence.
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
 | Browser/Typst size evidence | The owner-specific Web and Typst size commands share one budget catalog and together cover every admitted artifact exactly once. |
 | Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 3, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `lol_html`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
-| Node npm alpha package group | The selected N-API recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, build receipts, packed tarballs, and five real-target install/render smokes agree. |
+| Node npm alpha package group | The selected N-API recipe, explicit Node-targeted WASM recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, glibc-baseline build receipts, packed tarballs, five native install/render smokes, and one WASM install/render smoke agree. |
 
 ## WASM Size Matrix
 

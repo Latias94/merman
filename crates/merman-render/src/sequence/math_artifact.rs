@@ -524,7 +524,9 @@ mod tests {
                 Some(layout.as_ref()),
                 &style,
                 crate::sequence::SequenceMathHeightMode::Draw,
+                crate::sequence::SequenceOperationCheckpoints::for_layout(meter.as_ref()).text(),
             )
+            .expect("prepared multiline math dimensions")
             .expect("prepared multiline math dimensions")
             .1,
             53.0,

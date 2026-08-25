@@ -855,10 +855,13 @@ pub(crate) fn network_simplex_controlled(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<(), RankError> {
-    let mut simplified = build_simplified_graph(g, work_control)?;
+    // These graph and tree owners are deliberately boxed. In debug builds their aggregate return
+    // places otherwise remain live together across the whole network-simplex coordinator, which
+    // can exhaust small worker stacks even though every topology traversal is iterative.
+    let mut simplified = build_simplified_graph_boxed(g, work_control)?;
     util::longest_path_controlled(&mut simplified, work_control)?;
-    let t = feasible_tree::feasible_tree_controlled(&mut simplified, work_control)?;
-    let mut t_state = build_tree_state_controlled(&t, &simplified, None, work_control)?;
+    let t = build_feasible_tree_boxed_controlled(&mut simplified, work_control)?;
+    let mut t_state = build_tree_state_boxed_controlled(&t, &simplified, None, work_control)?;
     drop(t);
 
     work_control.charge(simplified.node_slot_count())?;
@@ -915,13 +918,31 @@ fn simplify_work_units(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<us
     )
 }
 
+#[cfg(test)]
 fn build_simplified_graph(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>, WorkError> {
+    Ok(*build_simplified_graph_boxed(g, work_control)?)
+}
+
+fn build_simplified_graph_boxed(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>, WorkError> {
     work_control.charge(simplify_work_units(g)?)?;
     crate::rank::validate_rank_arithmetic(g)?;
-    Ok(crate::util::simplify(g))
+    Ok(Box::new(crate::util::simplify(g)))
+}
+
+fn build_feasible_tree_boxed_controlled(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<Box<Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>>, RankError> {
+    Ok(Box::new(feasible_tree::feasible_tree_controlled(
+        g,
+        work_control,
+    )?))
 }
 
 fn tree_state_new_work_units(
@@ -953,6 +974,20 @@ fn build_tree_state_controlled(
     )?)?;
     state.rebuild(g, root)?;
     Ok(state)
+}
+
+fn build_tree_state_boxed_controlled(
+    tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    root: Option<&str>,
+    work_control: &mut dyn WorkControl,
+) -> Result<Box<TreeState>, RankError> {
+    Ok(Box::new(build_tree_state_controlled(
+        tree,
+        g,
+        root,
+        work_control,
+    )?))
 }
 
 fn dense_tree_state_rebuild_work_units(

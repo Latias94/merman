@@ -19,7 +19,7 @@ import {
 export { utf8ByteLength } from "../../lib/utf8.ts";
 export type { RealmEngineArtifactId } from "./generated/opaque-realm-plan.generated.ts";
 
-export const REALM_PROTOCOL_VERSION = 2 as const;
+export const REALM_PROTOCOL_VERSION = 3 as const;
 
 export const REALM_BUDGETS = Object.freeze({
   // Engine artifacts are generated, hash-bound program inputs. They are kept
@@ -38,6 +38,7 @@ export const REALM_BUDGETS = Object.freeze({
   runTimeoutMs: 10 * 60_000,
   maxViewportDimension: 4096,
   maxViewportPixels: 4096 * 4096,
+  maxScreenAvailableWidth: 16_384,
 });
 
 export const BENCHMARK_BUDGETS = Object.freeze({
@@ -61,6 +62,39 @@ export interface RealmEngineArtifactIdentity {
 export interface RealmEngineArtifact extends RealmEngineArtifactIdentity {
   readonly resourceUrl: string | null;
   readonly source: string;
+}
+
+const REALM_ENGINE_SOURCE_ENCODER = new TextEncoder();
+const REALM_ENGINE_SOURCE_BYTES = new WeakMap<
+  RealmEngineArtifact,
+  Uint8Array
+>();
+
+export function realmEngineArtifactSourceBytes(
+  artifact: RealmEngineArtifact,
+): Uint8Array {
+  const cached = REALM_ENGINE_SOURCE_BYTES.get(artifact);
+  if (cached) return cached;
+  if (
+    !Number.isSafeInteger(artifact.bytes) ||
+    artifact.bytes <= 0 ||
+    artifact.bytes > REALM_BUDGETS.engineArtifactBytes
+  ) {
+    throw new RealmProtocolError("Realm engine artifact byte length is invalid.");
+  }
+  const bytes = new Uint8Array(artifact.bytes);
+  const encoded = REALM_ENGINE_SOURCE_ENCODER.encodeInto(
+    artifact.source,
+    bytes,
+  );
+  if (
+    encoded.read !== artifact.source.length ||
+    encoded.written !== artifact.bytes
+  ) {
+    throw new RealmProtocolError("Realm engine artifact byte length is invalid.");
+  }
+  REALM_ENGINE_SOURCE_BYTES.set(artifact, bytes);
+  return bytes;
 }
 
 export interface RealmIdentity {
@@ -110,6 +144,7 @@ export interface CompareRenderPayload {
   readonly diagramFont: DiagramFont;
   readonly externalRequirements: MermaidExternalRequirements;
   readonly source: string;
+  readonly screenAvailableWidth: number;
   readonly theme: string;
   readonly viewport: RealmViewport;
 }
@@ -364,9 +399,6 @@ export function validateRealmEngineArtifact(
     throw new RealmProtocolError("Realm engine artifact identity is invalid.");
   }
   const source = expectString(artifact.source, "engine artifact source");
-  if (utf8ByteLength(source) !== artifact.bytes) {
-    throw new RealmProtocolError("Realm engine artifact byte length is invalid.");
-  }
   const resourceUrl = artifact.resourceUrl;
   if (
     resourceUrl !== null &&
@@ -385,7 +417,7 @@ export function validateRealmEngineArtifact(
       "Realm engine resource URL does not match its generated policy."
     );
   }
-  return Object.freeze({
+  const validated = Object.freeze({
     schemaVersion: 1,
     id: artifact.id as RealmEngineArtifactId,
     bytes: artifact.bytes,
@@ -393,6 +425,8 @@ export function validateRealmEngineArtifact(
     resourceUrl: resourceUrl as string | null,
     source,
   });
+  realmEngineArtifactSourceBytes(validated);
+  return validated;
 }
 
 export function validateRealmReady(
@@ -489,6 +523,7 @@ export function validateCompareRenderPayload(
     "theme",
     "diagramFont",
     "externalRequirements",
+    "screenAvailableWidth",
     "viewport",
   ]);
 
@@ -539,6 +574,9 @@ export function validateCompareRenderPayload(
     theme,
     diagramFont: diagramFont as DiagramFont,
     externalRequirements: normalizedRequirements,
+    screenAvailableWidth: validateScreenAvailableWidth(
+      payload.screenAvailableWidth,
+    ),
     viewport: validateRealmViewport(payload.viewport),
   };
 }
@@ -714,6 +752,19 @@ export function validateRealmViewport(value: unknown): RealmViewport {
     throw new RealmProtocolError("Realm viewport exceeds its layout budget.");
   }
   return { width, height };
+}
+
+export function validateScreenAvailableWidth(value: unknown): number {
+  const width = expectPositiveFinite(value, "screen available width");
+  if (
+    !Number.isSafeInteger(width) ||
+    width > REALM_BUDGETS.maxScreenAvailableWidth
+  ) {
+    throw new RealmProtocolError(
+      "Realm screen available width exceeds its layout budget.",
+    );
+  }
+  return width;
 }
 
 function assertEnvelope(

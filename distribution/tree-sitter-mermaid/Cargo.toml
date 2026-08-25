@@ -1,0 +1,45 @@
+[package]
+name = "tree-sitter-mermaid"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license = "MIT"
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Tolerant Tree-sitter grammar and editor queries for Mermaid"
+keywords = ["incremental", "mermaid", "parser", "tree-sitter"]
+categories = ["parsing", "text-editors"]
+build = "bindings/rust/build.rs"
+include = [
+    "/bindings/rust/**",
+    "/metadata/derivations.json",
+    "/metadata/provenance.json",
+    "/queries/portable/**",
+    "/src/**",
+    "/Cargo.toml",
+    "/LICENSE",
+    "/README.md",
+    "/THIRD_PARTY_LICENSES/**",
+    "/THIRD_PARTY_NOTICES.md",
+    "/tree-sitter.json",
+]
+
+[lib]
+path = "bindings/rust/lib.rs"
+
+[dependencies]
+tree-sitter-language = "=0.1.7"
+
+[build-dependencies]
+cc = "1.2"
+
+[dev-dependencies]
+merman-core = { path = "../../crates/merman-core", features = ["system-clock", "system-timezone"] }
+merman-fixture-render-context = { path = "../../crates/merman-fixture-render-context" }
+serde.workspace = true
+serde_json.workspace = true
+tree-sitter = "=0.26.12"
+
+[package.metadata.merman-legal]
+third-party-bundle = true

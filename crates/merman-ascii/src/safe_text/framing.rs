@@ -1,0 +1,235 @@
+use super::normalization::{needs_control_escape, visible_escape};
+use super::{BudgetedTextDocument, BudgetedTextLine, BudgetedWrappedText};
+use crate::Result;
+use crate::resource::ResourceContext;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
+
+/// Visits one injective, terminal-safe quoted field value without allocating an escaped copy.
+pub(crate) fn visit_quoted_terminal_text(
+    value: &str,
+    resources: &ResourceContext,
+    mut visit: impl FnMut(&str) -> Result<()>,
+) -> Result<()> {
+    visit_quoted_terminal_text_with(value, |event| match event {
+        QuotedTerminalTextEvent::SourceGrapheme(grapheme) => {
+            resources.charge_layout_work(1)?;
+            resources.check_grapheme_bytes(grapheme.len())
+        }
+        QuotedTerminalTextEvent::OutputFragment(fragment) => visit(fragment),
+    })
+}
+
+pub(super) enum QuotedTerminalTextEvent<'a> {
+    SourceGrapheme(&'a str),
+    OutputFragment(&'a str),
+}
+
+pub(super) fn visit_quoted_terminal_text_with(
+    value: &str,
+    mut visit: impl for<'a> FnMut(QuotedTerminalTextEvent<'a>) -> Result<()>,
+) -> Result<()> {
+    // Validate every authored grapheme before exposing any renderer-owned framing. This keeps the
+    // visitor callback atomic when a later grapheme exceeds the configured source limit.
+    for grapheme in value.graphemes(true) {
+        visit(QuotedTerminalTextEvent::SourceGrapheme(grapheme))?;
+    }
+
+    visit(QuotedTerminalTextEvent::OutputFragment("\""))?;
+    for grapheme in value.graphemes(true) {
+        let escape_zero_width = UnicodeWidthStr::width(grapheme) == 0;
+        if !escape_zero_width
+            && !grapheme.chars().any(|ch| {
+                ch == '\\'
+                    || ch == '"'
+                    || (ch != ' ' && ch.is_whitespace())
+                    || needs_control_escape(ch)
+            })
+        {
+            visit(QuotedTerminalTextEvent::OutputFragment(grapheme))?;
+            continue;
+        }
+
+        for ch in grapheme.chars() {
+            match ch {
+                '\\' => visit(QuotedTerminalTextEvent::OutputFragment("\\\\"))?,
+                '"' => visit(QuotedTerminalTextEvent::OutputFragment("\\\""))?,
+                ' ' => visit(QuotedTerminalTextEvent::OutputFragment(" "))?,
+                '\t' => visit(QuotedTerminalTextEvent::OutputFragment("\\t"))?,
+                '\n' => visit(QuotedTerminalTextEvent::OutputFragment("\\n"))?,
+                '\r' => visit(QuotedTerminalTextEvent::OutputFragment("\\r"))?,
+                ch if ch.is_whitespace() || needs_control_escape(ch) || escape_zero_width => {
+                    let mut buffer = [0u8; 10];
+                    visit(QuotedTerminalTextEvent::OutputFragment(visible_escape(
+                        ch,
+                        &mut buffer,
+                    )))?;
+                }
+                ch => {
+                    let mut buffer = [0u8; 4];
+                    visit(QuotedTerminalTextEvent::OutputFragment(
+                        ch.encode_utf8(&mut buffer),
+                    ))?;
+                }
+            }
+        }
+    }
+    visit(QuotedTerminalTextEvent::OutputFragment("\""))
+}
+
+/// Writes one length-framed authored field to a non-wrapping StructuredText row.
+pub(crate) fn push_line_field(
+    line: &mut BudgetedTextLine<'_>,
+    separator: &str,
+    key: &str,
+    value: &str,
+) -> Result<()> {
+    line.write_fmt(format_args!("{separator}{key}(bytes={})=", value.len()))?;
+    line.push_quoted_text(value)
+}
+
+/// Writes one length-framed authored list to a non-wrapping StructuredText row.
+pub(crate) fn push_line_list<'a>(
+    line: &mut BudgetedTextLine<'_>,
+    separator: &str,
+    key: &str,
+    values: impl IntoIterator<Item = &'a str>,
+) -> Result<()> {
+    line.write_fmt(format_args!("{separator}{key}=["))?;
+    for (index, value) in values.into_iter().enumerate() {
+        if index > 0 {
+            line.push_str(", ")?;
+        }
+        line.write_fmt(format_args!("bytes={} ", value.len()))?;
+        line.push_quoted_text(value)?;
+    }
+    line.push_str("]")
+}
+
+/// Writes one length-framed authored field to a wrapping StructuredText row.
+pub(crate) fn push_wrapped_field(
+    line: &mut BudgetedWrappedText<'_>,
+    separator: &str,
+    key: &str,
+    value: &str,
+) -> Result<()> {
+    line.write_fmt(format_args!("{separator}{key}(bytes={})=", value.len()))?;
+    line.push_quoted_text(value)
+}
+
+/// Writes one length-framed authored list to a wrapping StructuredText row.
+pub(crate) fn push_wrapped_list<'a>(
+    line: &mut BudgetedWrappedText<'_>,
+    separator: &str,
+    key: &str,
+    values: impl IntoIterator<Item = &'a str>,
+) -> Result<()> {
+    line.write_fmt(format_args!("{separator}{key}=["))?;
+    for (index, value) in values.into_iter().enumerate() {
+        if index > 0 {
+            line.push_str(", ")?;
+        }
+        line.write_fmt(format_args!("bytes={} ", value.len()))?;
+        line.push_quoted_text(value)?;
+    }
+    line.push_str("]")
+}
+
+pub(crate) fn push_document_field(
+    document: &mut BudgetedTextDocument,
+    key: &str,
+    value: &str,
+) -> Result<()> {
+    document.push_line_with(|line| push_line_field(line, "", key, value))
+}
+
+pub(crate) fn push_optional_document_field(
+    document: &mut BudgetedTextDocument,
+    key: &str,
+    value: Option<&str>,
+) -> Result<()> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    push_document_field(document, key, value)
+}
+
+pub(crate) fn push_document_list<'a>(
+    document: &mut BudgetedTextDocument,
+    key: &str,
+    values: impl IntoIterator<Item = &'a str>,
+) -> Result<()> {
+    document.push_line_with(|line| push_line_list(line, "", key, values))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::AsciiError;
+
+    #[test]
+    fn quoted_visitor_validates_all_source_graphemes_before_emitting_output() {
+        let mut source_graphemes = Vec::new();
+        let mut output = String::new();
+
+        let error = visit_quoted_terminal_text_with("a👩‍💻", |event| match event {
+            QuotedTerminalTextEvent::SourceGrapheme(grapheme) => {
+                source_graphemes.push(grapheme.to_string());
+                if grapheme == "👩‍💻" {
+                    Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "test",
+                        feature: "oversized source grapheme",
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+            QuotedTerminalTextEvent::OutputFragment(fragment) => {
+                output.push_str(fragment);
+                Ok(())
+            }
+        })
+        .expect_err("a later source-grapheme failure should abort before framing output");
+
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "test",
+                feature: "oversized source grapheme"
+            }
+        ));
+        assert_eq!(source_graphemes, ["a", "👩‍💻"]);
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn quoted_visitor_distinguishes_equal_length_control_swaps() {
+        let render = |value: &str| {
+            let mut output = String::new();
+            visit_quoted_terminal_text_with(value, |event| {
+                if let QuotedTerminalTextEvent::OutputFragment(fragment) = event {
+                    output.push_str(fragment);
+                }
+                Ok(())
+            })
+            .expect("quoted text should render");
+            output
+        };
+
+        let controls_first = render("\u{1b}\\u{7F}");
+        let controls_last = render("\\u{1B}\u{7f}");
+        assert_eq!(controls_first, r#""\u{1B}\\u{7F}""#);
+        assert_eq!(controls_last, r#""\\u{1B}\u{7F}""#);
+        assert_ne!(controls_first, controls_last);
+        assert!(
+            !controls_first
+                .chars()
+                .any(|ch| matches!(ch, '\u{1b}' | '\u{7f}'))
+        );
+        assert!(
+            !controls_last
+                .chars()
+                .any(|ch| matches!(ch, '\u{1b}' | '\u{7f}'))
+        );
+    }
+}

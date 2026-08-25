@@ -8,10 +8,10 @@ use crate::cmd::compare::{
     LabelMetricDelta, ObservedRenderOperations, RootCoverageSummary, RootDelta,
     RootDeltaReportLimit, RootEvidencePolicy, collect_label_metric_deltas,
     parse_label_delta_report_limit, parse_root_delta_report_limit, record_fixture_root_evidence,
-    render_semantic_svg, run_svg_compare, sanitize_svg_id, source_requires_math,
-    svg_compare_engine_with_site_config, svg_request, write_compare_result_section,
-    write_label_deltas_report, write_notes_section, write_root_deltas_report,
-    write_verification_policy_metadata,
+    record_fixture_root_evidence_from_dom, render_semantic_svg, run_svg_compare_with_parsed_dom,
+    sanitize_svg_id, source_requires_math, svg_compare_engine_with_site_config, svg_request,
+    write_compare_result_section, write_label_deltas_report, write_notes_section,
+    write_root_deltas_report, write_verification_policy_metadata,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
@@ -128,8 +128,10 @@ pub(super) fn compare_flowchart_args(
                 i += 1;
                 dom_mode = args
                     .get(i)
-                    .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| fact.default_dom_mode.to_string());
+                    .ok_or(XtaskError::Usage)?
+                    .parse::<crate::svgdom::DomMode>()
+                    .map_err(|_| XtaskError::Usage)?
+                    .to_string();
             }
             "--text-measurer" => {
                 i += 1;
@@ -216,18 +218,15 @@ fn run_flowchart_compare(
         .root_report_limit
         .unwrap_or(DEFAULT_ROOT_DELTA_REPORT_LIMIT);
     let dom_decimals = common.dom_decimals.unwrap_or(3);
-    let dom_mode = common
-        .dom_mode
-        .clone()
-        .unwrap_or_else(|| fact.default_dom_mode.to_string());
-    let requested_dom_mode = crate::svgdom::DomMode::parse(&dom_mode);
+    let dom_plan = super::super::DomComparisonPlan::from_request(&common, fact.default_dom_mode)
+        .map_err(CompareRunFailure::without_evidence)?;
+    let parity_root_requested = check_dom && dom_plan.contains(crate::svgdom::DomMode::ParityRoot);
     let text_measurer = common
         .flowchart_text_measurer
         .clone()
         .unwrap_or_else(|| "vendored".to_string());
 
-    let should_report_root =
-        report_root || matches!(dom_mode.trim(), "parity-root" | "parity_root");
+    let should_report_root = report_root || parity_root_requested;
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = merman_render::LayoutOptions::default();
     let text_measurement = match text_measurer.as_str() {
@@ -253,14 +252,14 @@ fn run_flowchart_compare(
         observed_operations,
     };
 
-    run_svg_compare(
+    run_svg_compare_with_parsed_dom(
         CompareHarnessOptions {
             run: CompareRunOptions {
                 diagram: fact.diagram,
                 out_path,
                 filter: filter.as_deref(),
                 check_dom,
-                dom_mode: &dom_mode,
+                dom_plan: dom_plan.clone(),
                 dom_decimals,
             },
             fixtures_root: fixtures_root_arg,
@@ -272,9 +271,9 @@ fn run_flowchart_compare(
             write_flowchart_upstream_metadata(report, &paths.upstream_dir, options.filter);
             let _ = writeln!(
                 report,
-                "- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- External math host parity: `disabled`\n- Forced ELK fixtures: `{}`\n",
+                "- Command: `{}`\n- Modes: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- External math host parity: `disabled`\n- Forced ELK fixtures: `{}`\n",
                 fact.command,
-                options.dom_mode,
+                options.dom_plan.label(),
                 options.dom_decimals,
                 text_measurer,
                 if force_elk_fixture {
@@ -287,7 +286,7 @@ fn run_flowchart_compare(
                 report,
                 &common,
                 fact,
-                options.dom_mode,
+                &options.dom_plan,
                 should_report_root,
             );
             report.push('\n');
@@ -345,6 +344,15 @@ fn run_flowchart_compare(
                     reason: reason.to_string(),
                 });
             }
+
+            if semantic.family_id() != Some(merman_core::DiagramFamilyId::FLOWCHART) {
+                return Err(format!(
+                    "unexpected render family for {}: {}",
+                    input.fixture_path.display(),
+                    semantic.diagram_type()
+                ));
+            }
+
             let requires_math = source_requires_math(
                 input.fixture_path,
                 &renderer,
@@ -355,22 +363,6 @@ fn run_flowchart_compare(
                 return Err(format!(
                     "cannot compare math fixture {}: external host math backend injection is disabled; use the browser qualification lane",
                     input.stem
-                ));
-            }
-
-            let family_id = merman_core::diagram_type_family_id(semantic.diagram_type())
-                .ok_or_else(|| {
-                    format!(
-                        "unknown render family for {}: {}",
-                        input.fixture_path.display(),
-                        semantic.diagram_type()
-                    )
-                })?;
-            if family_id != merman_core::DiagramFamilyId::FLOWCHART {
-                return Err(format!(
-                    "unexpected render family for {}: {}",
-                    input.fixture_path.display(),
-                    family_id
                 ));
             }
 
@@ -386,7 +378,7 @@ fn run_flowchart_compare(
                     ));
                 }
             };
-            let measurement_route_count = state
+            let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
             let local_svg = rendered.svg().to_owned();
@@ -401,29 +393,49 @@ fn run_flowchart_compare(
                 }
             }
 
-            let parity_root_coverage =
-                check_dom && requested_dom_mode == crate::svgdom::DomMode::ParityRoot;
-            if let Err(error) = record_fixture_root_evidence(
-                &mut state.root_coverage,
-                &mut state.root_deltas,
-                input.stem,
-                input.upstream_svg,
-                &local_svg,
-                RootEvidencePolicy {
-                    parity_root_requested: parity_root_coverage,
-                    browser_math_dimensions_are_diagnostic: false,
-                    report_delta: should_report_root,
-                },
-            ) {
-                issues.push(error);
+            if !check_dom
+                && let Err(error) = record_fixture_root_evidence(
+                    &mut state.root_coverage,
+                    &mut state.root_deltas,
+                    input.stem,
+                    input.upstream_svg,
+                    &local_svg,
+                    RootEvidencePolicy {
+                        parity_root_requested,
+                        report_delta: should_report_root,
+                    },
+                )
+            {
+                issues.push(format!("[root-report] {error}"));
             }
 
             Ok(CompareFixtureResult::Rendered {
-                measurement_route_count,
+                render_evidence,
                 local_svg,
                 compare_dom: true,
                 issues,
                 notes: Vec::new(),
+            })
+        },
+        |state, stem, upstream_document, local_document| {
+            record_fixture_root_evidence_from_dom(
+                &mut state.root_coverage,
+                &mut state.root_deltas,
+                stem,
+                upstream_document,
+                local_document,
+                RootEvidencePolicy {
+                    parity_root_requested,
+                    report_delta: should_report_root,
+                },
+            )
+            .err()
+            .map(|error| {
+                if parity_root_requested {
+                    format!("[parity-root] {error}")
+                } else {
+                    format!("[root-report] {error}")
+                }
             })
         },
         |_, _, _| {},
@@ -431,7 +443,7 @@ fn run_flowchart_compare(
             state.observed_operations.write_report(report);
             write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
             write_notes_section(report, notes);
-            if check_dom && requested_dom_mode == crate::svgdom::DomMode::ParityRoot {
+            if parity_root_requested {
                 state.root_coverage.write_report(report);
             }
             if should_report_root {
@@ -1136,6 +1148,21 @@ mod tests {
         assert_eq!(evidence.comparisons(), 0);
         assert!(message.contains("cannot compare math fixture math_only"));
         assert!(message.contains("external host math backend injection is disabled"));
+    }
+
+    #[test]
+    fn wrong_family_math_fixture_reports_the_family_error_first() {
+        let temp = tempfile::tempdir().expect("temporary compare root");
+        let fact = flowchart_fact();
+        let source = "sequenceDiagram\n  Alice->>Bob: $$x + y$$\n";
+        write_flowchart_compare_fixture(temp.path(), "wrong_family_math", source, "<svg/>");
+
+        let failure = run_flowchart_compare(fact, flowchart_compare_request(temp.path()))
+            .expect_err("a non-Flowchart fixture must fail family validation");
+        let message = failure.to_string();
+
+        assert!(message.contains("unexpected render family"));
+        assert!(!message.contains("cannot compare math fixture"));
     }
 
     #[test]

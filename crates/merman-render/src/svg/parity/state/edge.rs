@@ -507,7 +507,7 @@ fn write_state_edge_path(
         out,
         r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
         geometry.rendered_d,
-        escape_xml_display(&state_scoped_dom_id(ctx, edge_id)),
+        state_scoped_dom_id(ctx, edge_id).attr(),
         escape_xml_display(classes),
         escape_xml_display(&style),
         escape_xml_display(edge_id),
@@ -547,12 +547,7 @@ pub(super) fn render_state_edge_path(
             .edge(edge.id.as_str())
             .filter(|style| !style.marker_style_attr().is_empty())
             .and_then(crate::state::StateEdgeStylePlan::marker_ordinal)
-            .map(|ordinal| {
-                format!(
-                    "url(#{})",
-                    state_transition_marker_id(ctx.diagram_id.as_str(), ordinal)
-                )
-            })
+            .map(|ordinal| format!("url(#{}_stateDiagram-barbEnd-{ordinal})", ctx.diagram_id))
             .or_else(|| Some(format!("url(#{}_stateDiagram-barbEnd)", ctx.diagram_id))),
         _ => None,
     };

@@ -19,7 +19,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
     title_theme: &ZenumlTitleThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("zenuml");
+    let diagram_id = options.diagram_id_or("zenuml");
     let title = resolve_zenuml_title(model, diagram_title);
     let mut title_theme_receipt = title_theme.begin_terminal_receipt();
     let content_left = 1.0 + CONTENT_PADDING + layout.frame_border_left;
@@ -39,6 +39,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::ZENUML, diagram_id)
             .write_open(&mut out, root_spec, chrome)?;
+    options.checkpoint_emit()?;
 
     out.push_str("<defs><style>");
     write_zenuml_css(

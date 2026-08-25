@@ -1,0 +1,15 @@
+flowchart TD
+  Client["browser / agent"]
+  DNS["*.docs.mysampleapp.net (Route53 subzone, delegated to mysampleapps account)"]
+  CF["CloudFront distribution: wildcard cert, Host-to-prefix CF Function, WAF VPN allowlist, OAC to S3"]
+  APP["upload app (Lambda, Python): GET / form, POST /upload, POST /api/deploy (IAM), boto3"]
+  S3["S3 bucket mysampleapp: sites/subdomain/..."]
+  DDB["DynamoDB reservations"]
+
+  Client --> DNS
+  DNS --> CF
+  DNS --> APP
+  CF -->|reads| S3
+  APP -->|writes| S3
+  APP -->|reserve / check owner| DDB
+  APP -.->|CreateInvalidation| CF

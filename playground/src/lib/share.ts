@@ -1,3 +1,4 @@
+import { Unzlib, zlibSync } from "fflate";
 import { isThemeName } from "@mermanjs/web";
 
 import { isDiagramFont } from "./diagram-font.ts";
@@ -12,42 +13,218 @@ const SHARE_SOURCE_BYTES = 2 * 1024 * 1024;
 const SHARE_CONFIG_BYTES = 1024 * 1024;
 const SHARE_JSON_OVERHEAD_BYTES = 16 * 1024;
 const SHARE_THEME_PRESET_ID_BYTES = 16 * 1024;
+const SHARE_V2_ENCODED_BYTES = 512 * 1024;
+const SHARE_DECOMPRESSION_CHUNK_BYTES = 512;
+
 export const SHARE_LIMITS = Object.freeze({
+  encodedBytes: SHARE_V2_ENCODED_BYTES,
   jsonBytes:
     SHARE_SOURCE_BYTES + SHARE_CONFIG_BYTES + SHARE_JSON_OVERHEAD_BYTES,
   sourceBytes: SHARE_SOURCE_BYTES,
   configBytes: SHARE_CONFIG_BYTES,
   idBytes: SHARE_THEME_PRESET_ID_BYTES,
 });
-const MAX_ENCODED_HASH_CHARS = SHARE_LIMITS.jsonBytes * 4 + 4;
+
+export const SHARE_V2_PREFIX = "#s2:" as const;
+
+// This is the complete default snapshot owned by the s2 wire format. Keep it
+// independent from application defaults so future UI changes cannot reinterpret
+// fields omitted by an already-shared URL.
+export const WORKSPACE_V2_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze({
+  code: `flowchart TD
+    A[Start] --> B{Condition?}
+    B -->|Yes| C[Execute]
+    B -->|No| D[End]
+    C --> D`,
+  mermaidConfig: "{\n}\n",
+  diagramTheme: "default",
+  themePresetId: null,
+  svgPipeline: "parity",
+  textMeasurementMode: "browser",
+  diagramFont: "trebuchet",
+});
+
+const MAX_LEGACY_ENCODED_HASH_CHARS = SHARE_LIMITS.jsonBytes * 4 + 4;
+// Decoder-only compatibility for Host-bearing links created on the open branch.
+const LEGACY_RENDER_VIEWPORT_KEY = "renderViewportMode";
+const WORKSPACE_V2_KEYS = new Set([
+  "code",
+  "theme",
+  "config",
+  "themePresetId",
+  LEGACY_RENDER_VIEWPORT_KEY,
+  "svgPipeline",
+  "textMeasurementMode",
+  "diagramFont",
+]);
+const utf8Encoder = new TextEncoder();
+const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 export function encodeShareHash(data: WorkspaceSnapshot): string {
   if (!isValidShareSnapshot(data)) {
     throw new RangeError("Workspace exceeds the share URL contract.");
   }
-  const payload = {
-    code: data.code,
-    theme: data.diagramTheme,
-    config: data.mermaidConfig,
-    themePresetId: data.themePresetId,
-    svgPipeline: data.svgPipeline,
-    textMeasurementMode: data.textMeasurementMode,
-    diagramFont: data.diagramFont,
-  };
-  const json = JSON.stringify(payload);
+
+  const json = JSON.stringify(encodeWorkspaceV2Payload(data));
   if (utf8ByteLength(json) > SHARE_LIMITS.jsonBytes) {
     throw new RangeError("Workspace exceeds the share URL contract.");
   }
-  return btoa(encodeURIComponent(json));
+
+  const encoded = encodeBase64Url(zlibSync(utf8Encoder.encode(json)));
+  if (SHARE_V2_PREFIX.length + encoded.length > SHARE_LIMITS.encodedBytes) {
+    throw new RangeError("Workspace exceeds the share URL contract.");
+  }
+  return `${SHARE_V2_PREFIX}${encoded}`;
 }
 
 export function decodeShareHash(
   hash: string,
-  defaults: Readonly<WorkspaceSnapshot> = DEFAULT_WORKSPACE_SNAPSHOT,
+  legacyDefaults: Readonly<WorkspaceSnapshot> = DEFAULT_WORKSPACE_SNAPSHOT
+): WorkspaceSnapshot | null {
+  const fragment = hash.startsWith("#") ? hash : `#${hash}`;
+  if (fragment.startsWith(SHARE_V2_PREFIX)) {
+    return decodeWorkspaceV2(fragment.slice(SHARE_V2_PREFIX.length));
+  }
+  return decodeLegacyWorkspaceHash(hash, legacyDefaults);
+}
+
+export interface ShareLocation {
+  readonly origin: string;
+  readonly pathname: string;
+}
+
+export interface ShareCommandEnvironment extends ShareLocation {
+  writeClipboardText(value: string): Promise<void>;
+}
+
+export function createWorkspaceShareUrl(
+  data: WorkspaceSnapshot,
+  location: ShareLocation = window.location
+): string {
+  return `${location.origin}${location.pathname}${encodeShareHash(data)}`;
+}
+
+export const createShareUrl = createWorkspaceShareUrl;
+
+export async function copyWorkspaceShareUrl(
+  data: WorkspaceSnapshot,
+  environment: ShareCommandEnvironment = browserShareEnvironment()
+): Promise<void> {
+  await environment.writeClipboardText(createWorkspaceShareUrl(data, environment));
+}
+
+export const copyShareUrl = copyWorkspaceShareUrl;
+
+function encodeWorkspaceV2Payload(
+  data: WorkspaceSnapshot
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  if (data.code !== WORKSPACE_V2_DEFAULTS.code) payload.code = data.code;
+  if (data.diagramTheme !== WORKSPACE_V2_DEFAULTS.diagramTheme) {
+    payload.theme = data.diagramTheme;
+  }
+  if (data.mermaidConfig !== WORKSPACE_V2_DEFAULTS.mermaidConfig) {
+    payload.config = data.mermaidConfig;
+  }
+  if (data.themePresetId !== WORKSPACE_V2_DEFAULTS.themePresetId) {
+    payload.themePresetId = data.themePresetId;
+  }
+  if (data.svgPipeline !== WORKSPACE_V2_DEFAULTS.svgPipeline) {
+    payload.svgPipeline = data.svgPipeline;
+  }
+  if (
+    data.textMeasurementMode !== WORKSPACE_V2_DEFAULTS.textMeasurementMode
+  ) {
+    payload.textMeasurementMode = data.textMeasurementMode;
+  }
+  if (data.diagramFont !== WORKSPACE_V2_DEFAULTS.diagramFont) {
+    payload.diagramFont = data.diagramFont;
+  }
+  return payload;
+}
+
+function decodeWorkspaceV2(encoded: string): WorkspaceSnapshot | null {
+  try {
+    if (
+      encoded.length === 0 ||
+      SHARE_V2_PREFIX.length + encoded.length > SHARE_LIMITS.encodedBytes ||
+      !/^[A-Za-z0-9_-]+$/u.test(encoded)
+    ) {
+      return null;
+    }
+    const compressed = decodeBase64Url(encoded);
+    const jsonBytes = decompressWithinBudget(compressed);
+    const value: unknown = JSON.parse(utf8Decoder.decode(jsonBytes));
+    if (!isRecord(value) || !hasOnlyKeys(value, WORKSPACE_V2_KEYS)) return null;
+    return decodeWorkspaceV2Record(value);
+  } catch {
+    return null;
+  }
+}
+
+function decodeWorkspaceV2Record(
+  value: Record<string, unknown>
+): WorkspaceSnapshot | null {
+  const code = optionalBoundedString(
+    value,
+    "code",
+    WORKSPACE_V2_DEFAULTS.code,
+    SHARE_LIMITS.sourceBytes
+  );
+  const diagramTheme = optionalEnum(
+    value,
+    "theme",
+    WORKSPACE_V2_DEFAULTS.diagramTheme,
+    isThemeNameValue
+  );
+  const mermaidConfig = optionalBoundedString(
+    value,
+    "config",
+    WORKSPACE_V2_DEFAULTS.mermaidConfig,
+    SHARE_LIMITS.configBytes
+  );
+  const textMeasurementMode = optionalEnum(
+    value,
+    "textMeasurementMode",
+    WORKSPACE_V2_DEFAULTS.textMeasurementMode,
+    isTextMeasurementMode
+  );
+  const diagramFont = optionalEnum(
+    value,
+    "diagramFont",
+    WORKSPACE_V2_DEFAULTS.diagramFont,
+    isDiagramFontValue
+  );
+  const renderOptions = decodeCurrentRenderOptions(value, WORKSPACE_V2_DEFAULTS);
+  if (
+    code === null ||
+    diagramTheme === null ||
+    mermaidConfig === null ||
+    textMeasurementMode === null ||
+    diagramFont === null ||
+    !hasValidLegacyRenderViewportMode(value) ||
+    renderOptions === null
+  ) {
+    return null;
+  }
+
+  return {
+    code,
+    diagramTheme,
+    mermaidConfig,
+    ...renderOptions,
+    textMeasurementMode,
+    diagramFont,
+  };
+}
+
+function decodeLegacyWorkspaceHash(
+  hash: string,
+  defaults: Readonly<WorkspaceSnapshot>
 ): WorkspaceSnapshot | null {
   try {
     const base64 = hash.startsWith("#") ? hash.slice(1) : hash;
-    if (!base64 || base64.length > MAX_ENCODED_HASH_CHARS) return null;
+    if (!base64 || base64.length > MAX_LEGACY_ENCODED_HASH_CHARS) return null;
     const json = decodeURIComponent(atob(base64));
     if (utf8ByteLength(json) > SHARE_LIMITS.jsonBytes) return null;
     const value: unknown = JSON.parse(json);
@@ -64,31 +241,32 @@ export function decodeShareHash(
       value,
       "config",
       defaults.mermaidConfig,
-      SHARE_LIMITS.configBytes,
+      SHARE_LIMITS.configBytes
     );
     const textMeasurementMode = optionalEnum(
       value,
       "textMeasurementMode",
       defaults.textMeasurementMode,
-      isTextMeasurementMode,
+      isTextMeasurementMode
     );
     const diagramFont = optionalEnum(
       value,
       "diagramFont",
       defaults.diagramFont,
-      isDiagramFontValue,
+      isDiagramFontValue
     );
     if (
       config === null ||
       textMeasurementMode === null ||
       diagramFont === null ||
+      !hasValidLegacyRenderViewportMode(value) ||
       Object.hasOwn(value, "hostThemePreset")
     ) {
       return null;
     }
 
     const renderOptions = ["themePresetId", "svgPipeline"].some((key) =>
-      Object.hasOwn(value, key),
+      Object.hasOwn(value, key)
     )
       ? decodeCurrentRenderOptions(value, defaults)
       : selectDefaultRenderOptions(defaults);
@@ -107,44 +285,76 @@ export function decodeShareHash(
   }
 }
 
-export interface ShareCommandEnvironment {
-  readonly origin: string;
-  readonly pathname: string;
-  writeClipboardText(value: string): Promise<void>;
-  replaceUrl(value: string): void;
+function decompressWithinBudget(compressed: Uint8Array): Uint8Array {
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  let complete = false;
+  const decompressor = new Unzlib((chunk, final) => {
+    if (totalBytes + chunk.byteLength > SHARE_LIMITS.jsonBytes) {
+      throw new RangeError("Workspace exceeds the share URL contract.");
+    }
+    chunks.push(chunk);
+    totalBytes += chunk.byteLength;
+    complete = final;
+  });
+  for (
+    let offset = 0;
+    offset < compressed.byteLength;
+    offset += SHARE_DECOMPRESSION_CHUNK_BYTES
+  ) {
+    const end = Math.min(
+      offset + SHARE_DECOMPRESSION_CHUNK_BYTES,
+      compressed.byteLength
+    );
+    decompressor.push(compressed.subarray(offset, end), end === compressed.byteLength);
+  }
+  if (!complete) throw new Error("Workspace share envelope is incomplete.");
+
+  const result = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
 }
 
-export function createShareUrl(
-  data: WorkspaceSnapshot,
-  location: Pick<Location, "origin" | "pathname"> = window.location,
-): string {
-  return `${location.origin}${location.pathname}#${encodeShareHash(data)}`;
+function encodeBase64Url(value: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 32 * 1024;
+  for (let offset = 0; offset < value.length; offset += chunkSize) {
+    binary += String.fromCharCode(...value.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
 }
 
-export async function copyShareUrl(
-  data: WorkspaceSnapshot,
-  environment: ShareCommandEnvironment = browserShareEnvironment(),
-): Promise<void> {
-  const url = createShareUrl(data, environment);
-  await environment.writeClipboardText(url);
-  environment.replaceUrl(url);
+function decodeBase64Url(value: string): Uint8Array {
+  if (value.length % 4 === 1) {
+    throw new Error("Workspace share envelope is malformed.");
+  }
+  const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 function decodeCurrentRenderOptions(
   value: Record<string, unknown>,
-  defaults: Readonly<WorkspaceSnapshot>,
+  defaults: Readonly<WorkspaceSnapshot>
 ): Pick<WorkspaceSnapshot, "themePresetId" | "svgPipeline"> | null {
   const themePresetId = optionalNullableString(
     value,
     "themePresetId",
     defaults.themePresetId,
-    SHARE_LIMITS.idBytes,
+    SHARE_LIMITS.idBytes
   );
   const svgPipeline = optionalEnum(
     value,
     "svgPipeline",
     defaults.svgPipeline,
-    isMermanSvgPipeline,
+    isMermanSvgPipeline
   );
   if (themePresetId === undefined || svgPipeline === null) {
     return null;
@@ -156,7 +366,7 @@ function decodeCurrentRenderOptions(
 }
 
 function selectDefaultRenderOptions(
-  defaults: Readonly<WorkspaceSnapshot>,
+  defaults: Readonly<WorkspaceSnapshot>
 ): Pick<WorkspaceSnapshot, "themePresetId" | "svgPipeline"> {
   return {
     themePresetId: defaults.themePresetId,
@@ -168,7 +378,7 @@ function optionalBoundedString(
   record: Record<string, unknown>,
   key: string,
   fallback: string,
-  maxBytes: number,
+  maxBytes: number
 ): string | null {
   if (!Object.hasOwn(record, key)) return fallback;
   return isBoundedString(record[key], maxBytes) ? record[key] : null;
@@ -178,14 +388,12 @@ function optionalNullableString(
   record: Record<string, unknown>,
   key: string,
   fallback: string | null,
-  maxBytes: number,
+  maxBytes: number
 ): string | null | undefined {
   if (!Object.hasOwn(record, key)) return fallback;
   const value = record[key];
   return value === null ||
-    (typeof value === "string" &&
-      value.length > 0 &&
-      isBoundedString(value, maxBytes))
+    (typeof value === "string" && value.length > 0 && isBoundedString(value, maxBytes))
     ? value
     : undefined;
 }
@@ -215,35 +423,55 @@ function optionalEnum<T extends string>(
   record: Record<string, unknown>,
   key: string,
   fallback: T,
-  guard: (value: unknown) => value is T,
+  guard: (value: unknown) => value is T
 ): T | null {
   if (!Object.hasOwn(record, key)) return fallback;
   return guard(record[key]) ? record[key] : null;
 }
 
 function isTextMeasurementMode(
-  value: unknown,
+  value: unknown
 ): value is WorkspaceSnapshot["textMeasurementMode"] {
   return value === "browser" || value === "headless";
 }
 
+function isThemeNameValue(
+  value: unknown
+): value is WorkspaceSnapshot["diagramTheme"] {
+  return typeof value === "string" && isThemeName(value);
+}
+
 function isDiagramFontValue(
-  value: unknown,
+  value: unknown
 ): value is WorkspaceSnapshot["diagramFont"] {
   return typeof value === "string" && isDiagramFont(value);
+}
+
+function hasValidLegacyRenderViewportMode(
+  value: Record<string, unknown>,
+): boolean {
+  if (!Object.hasOwn(value, LEGACY_RENDER_VIEWPORT_KEY)) return true;
+  const mode = value[LEGACY_RENDER_VIEWPORT_KEY];
+  return mode === "canonical" || mode === "host";
 }
 
 function isBoundedString(value: unknown, maxBytes: number): value is string {
   return typeof value === "string" && !exceedsUtf8ByteBudget(value, maxBytes);
 }
 
-function browserShareEnvironment(): ShareCommandEnvironment {
+export function browserShareEnvironment(): ShareCommandEnvironment {
   return {
     origin: window.location.origin,
     pathname: window.location.pathname,
     writeClipboardText: (value) => navigator.clipboard.writeText(value),
-    replaceUrl: (value) => window.history.replaceState(null, "", value),
   };
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>
+): boolean {
+  return Object.keys(value).every((key) => allowed.has(key));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

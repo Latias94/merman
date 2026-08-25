@@ -219,8 +219,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -277,7 +276,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(t)
         );
     }
@@ -285,7 +284,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(d)
         );
     }
@@ -301,8 +300,12 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     let outer_stroke = (!layout.slices.is_empty())
         .then(|| paint_plan.outer_stroke_css())
         .flatten();
-    let css =
-        pie_css_with_stroke_overrides(diagram_id, effective_config, slice_stroke, outer_stroke);
+    let css = pie_css_with_stroke_overrides(
+        diagram_id.semantic_str(),
+        effective_config,
+        slice_stroke,
+        outer_stroke,
+    );
     let css_start = out.len();
     out.push_str(&css);
     out.checkpoint()?;
@@ -311,8 +314,9 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         .and_then(|css_end| out.as_str().get(css_start..css_end))
         .filter(|emitted| *emitted == css);
     if let Some(stroke) = slice_stroke {
-        let emitted = emitted_css
-            .is_some_and(|css| pie_stroke_rule_matches(css, diagram_id, "pieCircle", stroke));
+        let emitted = emitted_css.is_some_and(|css| {
+            pie_stroke_rule_matches(css, diagram_id.semantic_str(), "pieCircle", stroke)
+        });
         if let Some(receipt) = paint_receipt.as_mut() {
             receipt.record_slice_stroke_stylesheet(
                 paint_plan,
@@ -322,8 +326,9 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         }
     }
     if let Some(stroke) = outer_stroke {
-        let emitted = emitted_css
-            .is_some_and(|css| pie_stroke_rule_matches(css, diagram_id, "pieOuterCircle", stroke));
+        let emitted = emitted_css.is_some_and(|css| {
+            pie_stroke_rule_matches(css, diagram_id.semantic_str(), "pieOuterCircle", stroke)
+        });
         if let Some(receipt) = paint_receipt.as_mut() {
             receipt.record_outer_stroke_stylesheet(
                 paint_plan,
@@ -396,6 +401,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     )?;
 
     for slice in &layout.slices {
+        options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
             r#"<text transform="translate({x},{y})" class="slice" style="text-anchor: middle;">{text}</text>"#,
@@ -410,6 +416,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
 
     match layout.title.as_deref() {
         Some(t) => {
+            options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
                 r#"<text x="0" y="{y}" class="pieTitleText">{text}</text>"#,
@@ -418,6 +425,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
             );
         }
         None => {
+            options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
                 r#"<text x="0" y="{y}" class="pieTitleText"/>"#,

@@ -1,42 +1,44 @@
 use super::*;
 
-fn state_shadow_defs(
+fn state_shadow_defs<I>(
     out: &mut impl SvgOutput,
-    diagram_id: &str,
+    diagram_id: I,
     compatibility: &crate::state::StateCompatibilityPlan,
-) {
+) where
+    I: SvgDiagramIdValue,
+{
     let flood_color = if compatibility.dark_mode {
         "#FFFFFF"
     } else {
         "#000000"
     };
-    let diagram_id = escape_xml(diagram_id);
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id.as_str(),
+        escape_attr_display(diagram_id),
         flood_color,
-        diagram_id.as_str(),
+        escape_attr_display(diagram_id),
         flood_color
     );
 }
 
-fn state_gradient_defs(
+fn state_gradient_defs<I>(
     out: &mut impl SvgOutput,
-    diagram_id: &str,
+    diagram_id: I,
     compatibility: &crate::state::StateCompatibilityPlan,
-) {
+) where
+    I: SvgDiagramIdValue,
+{
     if !compatibility.use_gradient {
         return;
     }
 
-    let diagram_id = escape_xml(diagram_id);
     let gradient_start = escape_xml(&compatibility.gradient_start);
     let gradient_stop = escape_xml(&compatibility.gradient_stop);
     let _ = write!(
         out,
         r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
-        diagram_id.as_str(),
+        escape_attr_display(diagram_id),
         gradient_start.as_str(),
         gradient_stop.as_str()
     );
@@ -69,10 +71,12 @@ pub(super) fn write_state_theme_effect_application(
     format!("url(#{scoped_filter_id})")
 }
 
-pub(super) fn state_markers(out: &mut impl SvgOutput, diagram_id: &str, ctx: &StateRenderCtx<'_>) {
+pub(super) fn state_markers<I>(out: &mut impl SvgOutput, diagram_id: I, ctx: &StateRenderCtx<'_>)
+where
+    I: SvgDiagramIdValue,
+{
     let style_plan = ctx.style_plan;
     let compatibility = style_plan.compatibility();
-    let diagram_id = escape_xml(diagram_id);
     let transition_color = compatibility.transition_color.as_str();
     let marker_style_attr = if style_plan.transition_marker_style_attr().is_empty() {
         String::new()
@@ -86,13 +90,16 @@ pub(super) fn state_markers(out: &mut impl SvgOutput, diagram_id: &str, ctx: &St
     if compatibility.is_neo() {
         let _ = write!(
             out,
-            r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"{marker_style_attr}/></marker></defs><defs><marker id="{diagram_id}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"{marker_style_attr}/></marker></defs>"#,
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"{marker_style_attr}/></marker></defs><defs><marker id="{}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"{marker_style_attr}/></marker></defs>"#,
+            escape_attr_display(diagram_id),
+            escape_attr_display(diagram_id),
             escape_xml(transition_color)
         );
     } else {
         let _ = write!(
             out,
-            r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"{marker_style_attr}/></marker></defs>"#
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"{marker_style_attr}/></marker></defs>"#,
+            escape_attr_display(diagram_id)
         );
     }
 
@@ -107,7 +114,7 @@ pub(super) fn state_markers(out: &mut impl SvgOutput, diagram_id: &str, ctx: &St
         if style.is_empty() {
             continue;
         }
-        let marker_id = escape_attr(&state_transition_marker_id(diagram_id.as_str(), ordinal));
+        let marker_local_id = format!("stateDiagram-barbEnd-{ordinal}");
         let style = escape_attr(style);
         let transition_color = escape_attr(transition_color);
         let terminal_start = out.len();
@@ -115,13 +122,19 @@ pub(super) fn state_markers(out: &mut impl SvgOutput, diagram_id: &str, ctx: &St
             let _ = write!(
                 out,
                 r#"<defs><marker id="{}" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
-                marker_id, transition_color, transition_color, style
+                escape_attr_display(scoped_svg_id(diagram_id, &marker_local_id)),
+                transition_color,
+                transition_color,
+                style
             );
         } else {
             let _ = write!(
                 out,
                 r#"<defs><marker id="{}" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
-                marker_id, transition_color, transition_color, style
+                escape_attr_display(scoped_svg_id(diagram_id, &marker_local_id)),
+                transition_color,
+                transition_color,
+                style
             );
         }
         style_plan.record_edge_marker_terminal_emission(
@@ -132,11 +145,13 @@ pub(super) fn state_markers(out: &mut impl SvgOutput, diagram_id: &str, ctx: &St
     }
 }
 
-pub(super) fn state_root_defs(
+pub(super) fn state_root_defs<I>(
     out: &mut impl SvgOutput,
-    diagram_id: &str,
+    diagram_id: I,
     style_plan: &crate::state::StateStylePlan,
-) {
+) where
+    I: SvgDiagramIdValue,
+{
     state_shadow_defs(out, diagram_id, style_plan.compatibility());
     state_gradient_defs(out, diagram_id, style_plan.compatibility());
 }
@@ -175,7 +190,7 @@ fn write_state_class_declarations(
 
 fn write_state_class_rule(
     out: &mut impl SvgOutput,
-    id: &str,
+    id: impl std::fmt::Display,
     class_id: &str,
     selector: std::fmt::Arguments<'_>,
     styles: &[(
@@ -191,11 +206,14 @@ fn write_state_class_rule(
     out.checkpoint()
 }
 
-pub(super) fn write_state_css(
+pub(super) fn write_state_css<I>(
     out: &mut impl SvgOutput,
-    diagram_id: &str,
+    diagram_id: I,
     style_plan: &crate::state::StateStylePlan,
-) -> crate::Result<()> {
+) -> crate::Result<()>
+where
+    I: SvgDiagramIdValue,
+{
     out.checkpoint()?;
 
     let theme = style_plan.compatibility();
@@ -229,8 +247,7 @@ pub(super) fn write_state_css(
     } else {
         String::new()
     };
-    let id = crate::svg::escape_css_identifier(diagram_id);
-    let fragment_id = escape_xml(diagram_id);
+    let id = super::super::util::css_selector_diagram_id(diagram_id);
     let text_color = theme.text_color.as_str();
     let error_bkg = theme.error_bkg.as_str();
     let error_text = theme.error_text.as_str();
@@ -260,30 +277,27 @@ pub(super) fn write_state_css(
     let hand_drawn_state_fill = theme.terminal_paint_css(
         crate::state::StateTerminalSurface::StateHandDrawn,
         crate::state::StateTerminalPaintProperty::Fill,
-        fragment_id.as_str(),
+        diagram_id,
     );
     let hand_drawn_state_stroke = theme.terminal_paint_css(
         crate::state::StateTerminalSurface::StateHandDrawn,
         crate::state::StateTerminalPaintProperty::Stroke,
-        fragment_id.as_str(),
+        diagram_id,
     );
     let hand_drawn_state_stroke_width =
         theme.terminal_stroke_width_value(crate::state::StateTerminalSurface::StateHandDrawn);
     let neo_node_stroke = theme.terminal_paint_css(
         crate::state::StateTerminalSurface::StateNeo,
         crate::state::StateTerminalPaintProperty::Stroke,
-        fragment_id.as_str(),
+        diagram_id,
     );
     let neo_cluster_stroke = theme.terminal_paint_css(
         crate::state::StateTerminalSurface::CompositeBodyNeo,
         crate::state::StateTerminalPaintProperty::Stroke,
-        fragment_id.as_str(),
+        diagram_id,
     );
     let neo_radius = theme.neo_radius;
-    let neo_drop_shadow = theme.drop_shadow.replace(
-        "url(#drop-shadow)",
-        &format!("url(#{fragment_id}-drop-shadow)"),
-    );
+    let neo_drop_shadow = scoped_drop_shadow(diagram_id, &theme.drop_shadow);
 
     // Mirrors Mermaid 11.15 `diagrams/state/styles.js` + shared base stylesheet ordering.
     let mut css = out;
@@ -688,14 +702,14 @@ pub(super) fn write_state_css(
                 if html_labels {
                     write_state_class_rule(
                         &mut *css,
-                        id.as_str(),
+                        id,
                         sc.id(),
                         format_args!("&gt;*"),
                         sc.styles(),
                     )?;
                     write_state_class_rule(
                         &mut *css,
-                        id.as_str(),
+                        id,
                         sc.id(),
                         format_args!(" span"),
                         sc.styles(),
@@ -704,7 +718,7 @@ pub(super) fn write_state_css(
                     for element in ["rect", "polygon", "ellipse", "circle", "path"] {
                         write_state_class_rule(
                             &mut *css,
-                            id.as_str(),
+                            id,
                             sc.id(),
                             format_args!(" {element}"),
                             sc.styles(),
@@ -716,7 +730,7 @@ pub(super) fn write_state_css(
             if !sc.text_styles().is_empty() {
                 write_state_class_rule(
                     &mut *css,
-                    id.as_str(),
+                    id,
                     sc.id(),
                     format_args!(" tspan"),
                     sc.text_styles(),

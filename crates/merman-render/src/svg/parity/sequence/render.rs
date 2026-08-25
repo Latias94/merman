@@ -1,7 +1,8 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::activation::build_sequence_activation_plan;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
-use super::actor_popup::render_sequence_actor_popup_menus;
+use super::actor_popup::{SequenceActorPopupOptions, render_sequence_actor_popup_menus};
 use super::actor_shapes::{
     ActorFillCoverage, ActorStrokeCoverage, actor_fill_coverage, actor_stroke_coverage,
 };
@@ -9,7 +10,7 @@ use super::actors::{
     SequenceActorRenderContext, render_sequence_bottom_actors,
     render_sequence_top_actors_and_lifelines,
 };
-use super::frames::render_sequence_box_frames_and_rect_blocks;
+use super::frames::{SequenceFrameRenderOptions, render_sequence_box_frames_and_rect_blocks};
 use super::interactions::{SequenceInteractionRenderContext, render_sequence_interaction_overlays};
 use super::messages::{
     SequenceMessageRenderContext, has_sequence_message_line_candidates, render_sequence_messages,
@@ -41,7 +42,7 @@ const SEQUENCE_SCOPED_DEF_IDS: [(&str, &str); 11] = [
 fn write_scoped_sequence_defs_fragment(
     out: &mut impl SvgOutput,
     fragment: &str,
-    diagram_id: &str,
+    diagram_id: impl Copy + std::fmt::Display,
 ) -> Result<()> {
     let mut cursor = 0usize;
     while cursor < fragment.len() {
@@ -70,7 +71,10 @@ fn write_scoped_sequence_defs_fragment(
     Ok(())
 }
 
-fn write_scoped_sequence_base_defs(out: &mut impl SvgOutput, diagram_id: &str) -> Result<()> {
+fn write_scoped_sequence_base_defs(
+    out: &mut impl SvgOutput,
+    diagram_id: impl Copy + std::fmt::Display,
+) -> Result<()> {
     write_scoped_sequence_defs_fragment(out, PINNED_MERMAID_SEQUENCE_BASE_DEFS, diagram_id)?;
     write_scoped_sequence_defs_fragment(out, MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED, diagram_id)
 }
@@ -100,6 +104,8 @@ fn render_sequence_diagram_svg_inner(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let checkpoints = SequenceEmitCheckpoints::for_emit(options.work_meter());
+    checkpoints.checkpoint()?;
     let layout = prepared.layout();
 
     let mut settings = SequenceRenderSettings::from_effective_config(effective_config);
@@ -170,7 +176,9 @@ fn render_sequence_diagram_svg_inner(
     let note_count = model
         .messages
         .iter()
-        .filter(|message| message.message_type == 2)
+        .filter(|message| {
+            message.semantic_kind() == merman_core::diagrams::sequence::SequenceMessageKind::Note
+        })
         .count();
     let mut note_theme = resolve_sequence_static_rect_theme(
         options,
@@ -180,27 +188,36 @@ fn render_sequence_diagram_svg_inner(
         note_stroke_overridden,
     )?;
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_document = write_sequence_svg_root_open(&mut out, layout, model, diagram_id)?;
+    let root_document = write_sequence_svg_root_open(
+        &mut out,
+        layout,
+        model,
+        diagram_id,
+        options.resource_policy(),
+    )?;
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
-    for n in &layout.nodes {
-        nodes_by_id.insert(n.id.as_str(), n);
+    for (node_index, node) in layout.nodes.iter().enumerate() {
+        checkpoints.checkpoint_loop(node_index)?;
+        nodes_by_id.insert(node.id.as_str(), node);
     }
 
     let mut edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
         FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
-    for e in &layout.edges {
-        edges_by_id.insert(e.id.as_str(), e);
+    for (edge_index, edge) in layout.edges.iter().enumerate() {
+        checkpoints.checkpoint_loop(edge_index)?;
+        edges_by_id.insert(edge.id.as_str(), edge);
     }
     let activation_plan = build_sequence_activation_plan(
         model,
         &nodes_by_id,
         &edges_by_id,
         settings.activation_width,
-    );
+        checkpoints,
+    )?;
     let activation_count = activation_plan.rect_count();
     let mut activation_theme = resolve_sequence_static_rect_theme(
         options,
@@ -214,13 +231,16 @@ fn render_sequence_diagram_svg_inner(
         &mut out,
         model,
         &nodes_by_id,
-        &settings.actor_text_style,
+        SequenceFrameRenderOptions {
+            actor_label_font_size: settings.actor_label_font_size,
+            box_margin: settings.box_margin,
+            box_text_margin: settings.box_text_margin,
+            rect_default_fill: &settings.rect_default_fill,
+        },
         prepared.typography().actor(),
         &typography_receipt,
-        settings.box_margin,
-        settings.box_text_margin,
-        &settings.rect_default_fill,
-    );
+        checkpoints,
+    )?;
     out.checkpoint()?;
 
     let actor_ctx = SequenceActorRenderContext {
@@ -235,10 +255,11 @@ fn render_sequence_diagram_svg_inner(
         actor_text_style: &settings.actor_text_style,
         actor_typography: prepared.typography().actor(),
         typography_receipt: &typography_receipt,
+        checkpoints,
     };
 
     if settings.mirror_actors {
-        render_sequence_bottom_actors(&mut out, &actor_ctx);
+        render_sequence_bottom_actors(&mut out, &actor_ctx)?;
         out.checkpoint()?;
     }
 
@@ -303,6 +324,7 @@ fn render_sequence_diagram_svg_inner(
     let mut actor_stroke_emitted = false;
     let mut actor_stroke_unhandled = false;
     for (actor_index, actor_id) in model.actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(actor_index)?;
         let Some(actor) = model.actors.get(actor_id) else {
             continue;
         };
@@ -345,15 +367,18 @@ fn render_sequence_diagram_svg_inner(
         prepared.math_sidecar(),
         prepared.typography().actor(),
         &typography_receipt,
-    );
+        checkpoints,
+    )?;
     out.checkpoint()?;
 
     let block_widths_by_id = crate::sequence::sequence_block_widths_for_render(
         model,
         prepared,
+        &nodes_by_id,
         sanitize_config,
         measurer,
-    );
+        options.work_meter(),
+    )?;
 
     let interaction_ctx = SequenceInteractionRenderContext {
         model,
@@ -367,6 +392,7 @@ fn render_sequence_diagram_svg_inner(
         block_label_box_metrics: prepared.block_label_box_metrics(),
         measurer,
         typography_receipt: &typography_receipt,
+        checkpoints,
     };
     render_sequence_interaction_overlays(
         &mut out,
@@ -375,7 +401,7 @@ fn render_sequence_diagram_svg_inner(
         &loop_theme.receipt,
         &mut note_theme.receipt,
         &mut activation_theme.receipt,
-    );
+    )?;
     out.checkpoint()?;
     prepared.theme_evidence().record_loop_emission(
         crate::sequence::SequenceLoopThemeEmission::from_terminal_writer(
@@ -424,6 +450,7 @@ fn render_sequence_diagram_svg_inner(
         message_text_style: &settings.message_text_style,
         message_typography: prepared.typography().message(),
         typography_receipt: &typography_receipt,
+        checkpoints,
     };
     render_sequence_messages(
         &mut out,
@@ -452,13 +479,16 @@ fn render_sequence_diagram_svg_inner(
         model,
         &nodes_by_id,
         sanitize_config,
-        settings.force_menus,
-        settings.mirror_actors,
-        settings.actor_height,
+        SequenceActorPopupOptions {
+            force_menus: settings.force_menus,
+            mirror_actors: settings.mirror_actors,
+            actor_height: settings.actor_height,
+        },
         prepared.actor_popup_widths(),
         prepared.typography().actor(),
         &typography_receipt,
-    );
+        checkpoints,
+    )?;
     out.checkpoint()?;
 
     if settings.mirror_actors {
@@ -473,7 +503,8 @@ fn render_sequence_diagram_svg_inner(
             prepared.math_sidecar(),
             prepared.typography().actor(),
             &typography_receipt,
-        );
+            checkpoints,
+        )?;
         out.checkpoint()?;
     }
 
@@ -488,9 +519,14 @@ fn render_sequence_diagram_svg_inner(
         out.checkpoint()?;
     }
 
+    checkpoints.checkpoint()?;
     out.push_str("</svg>\n");
     let svg = prepared.text_sidecar().bind_terminal_svg(out.finish()?)?;
-    typography_receipt.record_terminal_svg(&svg, diagram_id, options.work_meter())?;
+    typography_receipt.record_terminal_svg(
+        &svg,
+        diagram_id.semantic_str(),
+        options.work_meter(),
+    )?;
     prepared
         .theme_evidence()
         .record_typography_emission(typography_receipt);
@@ -1039,7 +1075,7 @@ mod tests {
             let bare = format!(r#"id="{local_id}""#);
             let scoped = format!(
                 r#"id="{}""#,
-                escape_attr(&scoped_svg_id(diagram_id, local_id))
+                escape_attr_display(scoped_svg_id(diagram_id, local_id))
             );
             defs = defs.replace(&bare, &scoped);
         }

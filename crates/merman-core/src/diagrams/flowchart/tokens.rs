@@ -1,6 +1,6 @@
 use super::{
-    ClassAssignStmt, ClassDefStmt, ClickStmt, FlowchartLexemeComponent, LabeledText, LinkStyleStmt,
-    LinkToken, StyleStmt, SubgraphHeader,
+    ClassAssignStmt, ClassDefStmt, ClickStmt, LabeledText, LinkStyleStmt, LinkToken, StyleStmt,
+    SubgraphHeader,
 };
 use crate::{SourceSpan, error::ParseErrorSourceSpan};
 
@@ -38,7 +38,6 @@ pub(crate) enum Tok {
 #[derive(Debug, Clone)]
 pub(crate) struct ArrowToken {
     pub link: LinkToken,
-    pub lexeme_components: Vec<FlowchartLexemeComponent>,
     pub recovery_error: Option<LexError>,
 }
 
@@ -47,7 +46,6 @@ pub(crate) struct NodeLabelToken {
     pub shape: String,
     pub text: LabeledText,
     pub trigger_span: Option<SourceSpan>,
-    pub lexeme_components: Vec<FlowchartLexemeComponent>,
     /// Strict parser error represented by this editor-recovery token.
     ///
     /// The combined semantic path lexes once. An incomplete label therefore carries both the
@@ -59,7 +57,6 @@ pub(crate) struct NodeLabelToken {
 pub(crate) struct DirectionStatementToken {
     pub direction: String,
     pub selection: SourceSpan,
-    pub lexeme_components: Vec<FlowchartLexemeComponent>,
     pub recovery_error: Option<LexError>,
 }
 

@@ -5,6 +5,11 @@ import {
   projectNavigableInlineSvg,
   type NavigableInlineSvg,
 } from "../runtime/render-artifact.ts";
+import type {
+  RasterExportPlan,
+  RasterExportSource,
+  RasterSourceBackground,
+} from "./raster-export-plan.ts";
 
 export interface SvgDimensions {
   width: number;
@@ -13,6 +18,7 @@ export interface SvgDimensions {
 
 interface PreparedSvgPreview {
   readonly dimensions: SvgDimensions | null;
+  readonly rootSizing: "responsive" | "intrinsic" | "unknown";
   takeNode(): Element;
 }
 
@@ -26,12 +32,29 @@ interface ViewBox {
 }
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const FALLBACK_RASTER_WIDTH = 300;
+const FALLBACK_RASTER_HEIGHT = 150;
 
-export function parseSvgDimensions(svg: string): SvgDimensions | null {
-  const parsed = parseSvgRoot(svg);
-  if (!parsed) return null;
-
-  return resolveSvgDimensions(parsed.root);
+export function inspectSvgForRasterExport(
+  artifact: NavigableInlineSvg,
+): Readonly<RasterExportSource> {
+  assertNavigableInlineSvgArtifact(artifact);
+  const parsed = parseSvgRoot(artifact.svg);
+  if (!parsed) {
+    return Object.freeze({
+      width: FALLBACK_RASTER_WIDTH,
+      height: FALLBACK_RASTER_HEIGHT,
+      originalBackground: null,
+    });
+  }
+  const dimensions = resolveSvgDimensions(parsed.root) ?? {
+    width: FALLBACK_RASTER_WIDTH,
+    height: FALLBACK_RASTER_HEIGHT,
+  };
+  return Object.freeze({
+    ...dimensions,
+    originalBackground: inspectRootBackground(parsed.root),
+  });
 }
 
 export function prepareSvgForResponsivePreview(
@@ -45,14 +68,27 @@ export function prepareSvgForResponsivePreview(
   if (!parsed) return null;
   const root = ownerDocument.importNode(parsed.root, true) as Element;
 
+  removeDefaultPreviewBackground(root);
   const dimensions = resolveSvgDimensions(root);
-  if (dimensions) {
-    ensureViewBox(root, dimensions);
+  const hasViewBox = parseViewBox(root.getAttribute("viewBox")) !== null;
+  let rootSizing: PreparedSvgPreview["rootSizing"] = "unknown";
+  if (dimensions && hasViewBox) {
+    rootSizing = "responsive";
     root.setAttribute("width", "100%");
     root.setAttribute("height", "100%");
     appendRootStyle(
       root,
       "display:block;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important"
+    );
+  } else if (dimensions) {
+    rootSizing = "intrinsic";
+    const width = formatSvgNumber(dimensions.width);
+    const height = formatSvgNumber(dimensions.height);
+    root.setAttribute("width", width);
+    root.setAttribute("height", height);
+    appendRootStyle(
+      root,
+      `display:block;width:${width}px!important;height:${height}px!important;max-width:none!important;max-height:none!important`
     );
   }
 
@@ -60,6 +96,7 @@ export function prepareSvgForResponsivePreview(
   template.remove();
   return Object.freeze({
     dimensions: dimensions ? Object.freeze({ ...dimensions }) : null,
+    rootSizing,
     takeNode(): Element {
       const node = template.parentNode
         ? (template.cloneNode(true) as Element)
@@ -74,34 +111,35 @@ export function prepareSvgForResponsivePreview(
   });
 }
 
-export function sizeSvgForRasterization(
+export function prepareSvgForRasterExport(
   artifact: NavigableInlineSvg,
-  renderedDimensions: SvgDimensions
+  plan: Readonly<RasterExportPlan>,
 ): NavigableInlineSvg | null {
   assertNavigableInlineSvgArtifact(artifact);
-  if (
-    !isPositiveFinite(renderedDimensions.width) ||
-    !isPositiveFinite(renderedDimensions.height)
-  ) {
-    return null;
-  }
-
   const parsed = parseSvgRoot(artifact.svg);
   if (!parsed) return null;
-  const intrinsicDimensions = resolveSvgDimensions(parsed.root);
-  if (!intrinsicDimensions) return null;
+  const intrinsicDimensions = resolveSvgDimensions(parsed.root) ?? {
+    width: FALLBACK_RASTER_WIDTH,
+    height: FALLBACK_RASTER_HEIGHT,
+  };
 
   ensureViewBox(parsed.root, intrinsicDimensions);
-  const width = formatSvgNumber(renderedDimensions.width);
-  const height = formatSvgNumber(renderedDimensions.height);
+  const width = formatSvgNumber(plan.outputWidth);
+  const height = formatSvgNumber(plan.outputHeight);
   parsed.root.setAttribute("width", width);
   parsed.root.setAttribute("height", height);
   appendRootStyle(
     parsed.root,
-    `display:block;width:${width}px!important;height:${height}px!important;max-width:none!important;max-height:none!important`
+    `display:block;width:${width}px!important;height:${height}px!important;max-width:none!important;max-height:none!important`,
   );
+  if (plan.background.mode !== "original") {
+    setRootBackground(
+      parsed.root,
+      plan.background.color ?? "transparent",
+    );
+  }
   return projectNavigableInlineSvg(
-    new XMLSerializer().serializeToString(parsed.root)
+    new XMLSerializer().serializeToString(parsed.root),
   );
 }
 
@@ -158,6 +196,43 @@ function appendRootStyle(root: Element, declarations: string): void {
   const existing = root.getAttribute("style")?.trim();
   const prefix = existing ? `${existing.replace(/;+$/u, "")};` : "";
   root.setAttribute("style", `${prefix}${declarations}`);
+}
+
+function removeDefaultPreviewBackground(root: Element): void {
+  const style = (root as SVGElement).style;
+  if (style?.backgroundColor.trim().toLowerCase() === "white") {
+    style.removeProperty("background-color");
+  }
+}
+
+function setRootBackground(root: Element, color: string): void {
+  const style = (root as SVGElement).style;
+  if (style?.setProperty) {
+    style.removeProperty("background");
+    style.setProperty("background-color", color, "important");
+    style.setProperty("background-image", "none", "important");
+    return;
+  }
+  appendRootStyle(
+    root,
+    `background-color:${color}!important;background-image:none!important`,
+  );
+}
+
+function inspectRootBackground(root: Element): RasterSourceBackground | null {
+  const color = (root as SVGElement).style?.backgroundColor.trim();
+  if (!color) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+  if (typeof CSS !== "undefined" && !CSS.supports("color", color)) return null;
+  context.clearRect(0, 0, 1, 1);
+  context.fillStyle = color;
+  context.fillRect(0, 0, 1, 1);
+  const alpha = context.getImageData(0, 0, 1, 1).data[3] ?? 0;
+  return Object.freeze({ color, opaque: alpha === 255 });
 }
 
 function resolveSvgDimensions(root: Element): SvgDimensions | null {

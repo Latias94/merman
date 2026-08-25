@@ -122,9 +122,11 @@ struct ThemeAcceptanceEvidenceSnapshot {
 /// identity without gaining access to SVG session services or family layout internals.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderEvidence {
+    execution_path: super::OperationExecutionPath,
     session: merman_render::environment::RenderSessionReport,
     family_id: merman_core::DiagramFamilyId,
     theme_evidence: ThemeEvidenceSummary,
+    required_capabilities: Box<[merman_render::RenderCapability]>,
     root_applied_capabilities: Box<[merman_render::diagram_theme::ThemeCapability]>,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
@@ -135,7 +137,10 @@ pub struct RenderEvidence {
 }
 
 impl RenderEvidence {
-    pub(super) fn from_family(family: merman_render::family::FamilyRenderReport) -> Self {
+    pub(super) fn from_family(
+        family: merman_render::family::FamilyRenderReport,
+        required_capabilities: Vec<merman_render::RenderCapability>,
+    ) -> Self {
         let session = family.session_report().clone();
         let family_id = family.family_id();
         let (root, family_scope, family_evidence) = theme_evidence_scopes(&family);
@@ -157,9 +162,11 @@ impl RenderEvidence {
         let architecture_text_cutover_receipt =
             merman_render::__private::architecture_text_cutover_receipt(&family).cloned();
         Self {
+            execution_path: super::OperationExecutionPath::Renderer,
             session,
             family_id,
             theme_evidence,
+            required_capabilities: required_capabilities.into_boxed_slice(),
             root_applied_capabilities,
             native_filter_receipt,
             #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
@@ -173,6 +180,10 @@ impl RenderEvidence {
                 mermaid_compatibility_residual_count,
             },
         }
+    }
+
+    pub const fn execution_path(&self) -> super::OperationExecutionPath {
+        self.execution_path
     }
 
     pub(super) const fn session(&self) -> &merman_render::environment::RenderSessionReport {
@@ -258,6 +269,14 @@ impl RenderEvidence {
 
     pub const fn theme_evidence(&self) -> ThemeEvidenceSummary {
         self.theme_evidence
+    }
+
+    /// Returns the optional render capabilities selected during family preparation.
+    ///
+    /// The production renderer freezes this projection during layout/render preparation. Hosts
+    /// and acceptance code consume it without re-deriving family requirements.
+    pub fn required_capabilities(&self) -> &[merman_render::RenderCapability] {
+        &self.required_capabilities
     }
 
     pub(crate) fn root_applied_capabilities(

@@ -22,6 +22,20 @@ test("startup, render, Compare, focus, system theme, and BFCache cleanup", async
   await expect.poll(() => previewSvgText(page)).toContain("Start");
   await expect(page.locator("footer")).toContainText("Flowchart");
 
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Export image…" }).click();
+  const exportDialog = page.getByRole("dialog", { name: "Export image" });
+  await exportDialog.getByRole("button", { name: "JPEG", exact: true }).click();
+  await expect(exportDialog.getByRole("status")).toHaveText("Ready");
+  const jpegDownload = page.waitForEvent("download");
+  await exportDialog
+    .getByRole("button", { name: "Download", exact: true })
+    .click();
+  const jpeg = await jpegDownload;
+  expect(jpeg.suggestedFilename()).toBe("merman-diagram.jpg");
+  expect(await downloadPrefix(jpeg, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+  await exportDialog.getByRole("button", { name: "Close export" }).click();
+
   const examplesTrigger = page.getByRole("button", {
     name: "Examples",
     exact: true,
@@ -65,4 +79,17 @@ async function compareSvgTexts(page: import("@playwright/test").Page): Promise<s
         (host) => host.shadowRoot?.querySelector("svg")?.textContent ?? "",
       ),
     );
+}
+
+async function downloadPrefix(
+  download: import("@playwright/test").Download,
+  length: number,
+): Promise<Buffer> {
+  const stream = await download.createReadStream();
+  if (!stream) throw new Error("Download stream is unavailable");
+  for await (const chunk of stream) {
+    stream.destroy();
+    return Buffer.from(chunk).subarray(0, length);
+  }
+  throw new Error("Downloaded artifact is empty");
 }

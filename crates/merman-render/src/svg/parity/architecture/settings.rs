@@ -1,6 +1,6 @@
 use crate::text::TextStyle;
 
-use super::super::config_f64;
+use super::super::{SvgDiagramId, config_f64};
 
 #[derive(Clone)]
 pub(super) struct ArchitectureRenderSettings {
@@ -15,7 +15,17 @@ pub(super) struct ArchitectureRenderSettings {
 }
 
 impl ArchitectureRenderSettings {
-    pub(super) fn from_config(diagram_id: &str, effective_config: &serde_json::Value) -> Self {
+    pub(super) fn from_config(
+        diagram_id: SvgDiagramId<'_>,
+        effective_config: &serde_json::Value,
+    ) -> Self {
+        Self::from_config_for_id(diagram_id, effective_config)
+    }
+
+    fn from_config_for_id(
+        diagram_id: impl std::fmt::Display + Copy,
+        effective_config: &serde_json::Value,
+    ) -> Self {
         let css_parts =
             super::super::css::architecture_css_parts_with_config(diagram_id, effective_config);
 
@@ -81,7 +91,7 @@ mod tests {
             }
         });
 
-        let settings = ArchitectureRenderSettings::from_config("arch", &cfg);
+        let settings = ArchitectureRenderSettings::from_config_for_id("arch", &cfg);
 
         assert_eq!(
             settings.text_style.font_family.as_deref(),

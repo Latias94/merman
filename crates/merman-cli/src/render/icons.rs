@@ -1,17 +1,25 @@
 use crate::error::CliError;
 use crate::input::InputLimit;
 use crate::invocation::ResolvedIconSources;
-use crate::io::read_named_bytes_file;
+use crate::io::read_named_bytes_file_controlled;
 #[cfg(feature = "network-icons")]
 use crate::network::{NetworkAcquirer, NetworkAuthorization, NetworkPolicy, SanitizedEndpoint};
 use crate::resources::{ByteLedgerKind, CheckedBytes, CountLedgerKind, ResolvedResourcePolicy};
 use merman::svg::{IconPack, IconRegistry, IconRegistryBuilder, IconRegistryResourceLimitId};
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Copy)]
+struct IconPackBodyLimits {
+    local: InputLimit,
+    #[cfg(feature = "network-icons")]
+    remote: InputLimit,
+}
+
 pub(super) fn load_icon_registry(
     icon_sources: &ResolvedIconSources,
     resources: &ResolvedResourcePolicy,
     cwd: &Path,
+    control: &merman::OperationControl,
     #[cfg(feature = "network-icons")] network: &mut dyn NetworkAcquirer,
 ) -> Result<Option<IconRegistry>, CliError> {
     if icon_sources.packages.is_empty() && icon_sources.named_sources.is_empty() {
@@ -29,23 +37,27 @@ pub(super) fn load_icon_registry(
     let mut renderer_input_bytes = 0usize;
 
     for icon_pack in icon_packs {
+        crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
         let renderer_input_remaining =
             renderer_icon_limit(IconRegistryResourceLimitId::MaxInputBytes)
                 .checked_sub(renderer_input_bytes)
                 .expect("source count and prior reads stay within the renderer input ceiling");
         let json = read_icon_pack_source(
             &icon_pack.source,
-            acquisition_body_limit(
-                limits.local_body_bytes,
-                crate::resources::CliResourceLimitId::MaxLocalIconBodyBytes.as_str(),
-            ),
-            #[cfg(feature = "network-icons")]
-            acquisition_body_limit(
-                limits.remote_body_bytes,
-                crate::resources::CliResourceLimitId::MaxRemoteIconBodyBytes.as_str(),
-            ),
+            IconPackBodyLimits {
+                local: acquisition_body_limit(
+                    limits.local_body_bytes,
+                    crate::resources::CliResourceLimitId::MaxLocalIconBodyBytes.as_str(),
+                ),
+                #[cfg(feature = "network-icons")]
+                remote: acquisition_body_limit(
+                    limits.remote_body_bytes,
+                    crate::resources::CliResourceLimitId::MaxRemoteIconBodyBytes.as_str(),
+                ),
+            },
             &mut aggregate_bytes,
             renderer_input_remaining,
+            control,
             #[cfg(feature = "network-icons")]
             NetworkPolicy {
                 authorization: network_authorization(
@@ -349,18 +361,20 @@ fn path_exists(path: &Path) -> Result<bool, CliError> {
 
 fn read_icon_pack_source(
     source: &IconPackSource,
-    local_body_limit: InputLimit,
-    #[cfg(feature = "network-icons")] remote_body_limit: InputLimit,
+    body_limits: IconPackBodyLimits,
     aggregate_bytes: &mut CheckedBytes,
     renderer_input_remaining: usize,
+    control: &merman::OperationControl,
     #[cfg(feature = "network-icons")] network_policy: NetworkPolicy,
     #[cfg(feature = "network-icons")] network: &mut dyn NetworkAcquirer,
 ) -> Result<Vec<u8>, CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
     let remaining = aggregate_bytes.remaining();
     let bytes = match source {
         IconPackSource::LocalPath(path) => {
-            let limit = effective_body_limit(local_body_limit, remaining, renderer_input_remaining);
-            read_named_bytes_file(path, "icon pack", limit)?
+            let limit =
+                effective_body_limit(body_limits.local, remaining, renderer_input_remaining);
+            read_named_bytes_file_controlled(path, "icon pack", limit, control)?
         }
         #[cfg(feature = "network-icons")]
         IconPackSource::RemoteUrl { url, .. }
@@ -368,7 +382,7 @@ fn read_icon_pack_source(
         {
             let mut policy = network_policy;
             let limit =
-                effective_body_limit(remote_body_limit, remaining, renderer_input_remaining);
+                effective_body_limit(body_limits.remote, remaining, renderer_input_remaining);
             policy.max_body_bytes = limit.max_bytes;
             policy.max_body_limit_id = limit.stable_id;
             network.fetch(url, policy)?
@@ -381,6 +395,7 @@ fn read_icon_pack_source(
             ));
         }
     };
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
     aggregate_bytes
         .try_add(bytes.len() as u64)
         .map_err(resource_input_error)?;

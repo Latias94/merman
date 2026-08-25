@@ -1,7 +1,9 @@
 use crate::model::Bounds;
+use crate::svg::icon_registry::{IconIdScope, IconIdScopePrefix};
 use crate::text::TextMeasurer;
 
-use super::super::{SvgOutput, escape_attr_into, escape_xml_into, fmt};
+use super::super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt};
+use super::ArchitectureEmitCheckpoints;
 use super::foreign_object::{
     escape_xml_ampersands_preserving_xml_entities, normalize_xhtml_fragment_for_foreign_object,
 };
@@ -18,7 +20,7 @@ use super::settings::ArchitectureRenderSettings;
 
 pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess, O: SvgOutput> {
     pub(super) out: &'a mut O,
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
@@ -26,19 +28,54 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess, 
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(super) icon_scope_root: Option<IconIdScopePrefix>,
+    pub(super) service_icon_scope_prefix: Option<IconIdScopePrefix>,
+    pub(super) group_icon_scope_prefix: Option<IconIdScopePrefix>,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) surface_theme_receipt:
         Option<&'a mut crate::architecture::ArchitectureSurfaceThemeReceipt>,
+    pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
-fn write_diagram_service_id(out: &mut impl SvgOutput, diagram_id: &str, service_id: &str) {
-    escape_xml_into(out, diagram_id);
+fn architecture_icon_scope(
+    root: &mut Option<IconIdScopePrefix>,
+    branch: &mut Option<IconIdScopePrefix>,
+    diagram_id: SvgDiagramId<'_>,
+    branch_name: &'static str,
+    local_id: &str,
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> crate::Result<IconIdScope> {
+    let root_prefix = match *root {
+        Some(prefix) => prefix,
+        None => {
+            let prefix = IconIdScopePrefix::from_parts(&[diagram_id.semantic_str()], work_meter)?;
+            *root = Some(prefix);
+            prefix
+        }
+    };
+    let branch_prefix = match *branch {
+        Some(prefix) => prefix,
+        None => {
+            let prefix = root_prefix.extend_parts(&[branch_name], work_meter)?;
+            *branch = Some(prefix);
+            prefix
+        }
+    };
+    branch_prefix.scope_parts(&[local_id, "-icon"], work_meter)
+}
+
+fn write_diagram_service_id(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    service_id: &str,
+) {
+    let _ = write!(out, "{diagram_id}");
     out.push_str("-service-");
     escape_xml_into(out, service_id);
 }
 
-fn write_diagram_node_id(out: &mut impl SvgOutput, diagram_id: &str, node_id: &str) {
-    escape_xml_into(out, diagram_id);
+fn write_diagram_node_id(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>, node_id: &str) {
+    let _ = write!(out, "{diagram_id}");
     out.push_str("-node-");
     escape_xml_into(out, node_id);
 }
@@ -46,6 +83,8 @@ fn write_diagram_node_id(out: &mut impl SvgOutput, diagram_id: &str, node_id: &s
 pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAccess, O: SvgOutput>(
     ctx: &mut ArchitectureNodeRenderContext<'_, M, O>,
 ) -> crate::Result<()> {
+    let checkpoints = ctx.checkpoints;
+    checkpoints.checkpoint()?;
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let model = ctx.model;
@@ -54,6 +93,10 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     let text_measurer = ctx.text_measurer;
     let sanitize_config = ctx.sanitize_config;
     let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
+    let icon_registry = ctx.icon_registry;
+    let work_meter = ctx.work_meter;
+    let icon_scope_root = &mut ctx.icon_scope_root;
+    let service_icon_scope_prefix = &mut ctx.service_icon_scope_prefix;
     let service_count = model.services().count();
     let junction_count = model.junctions().count();
 
@@ -62,10 +105,12 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     } else {
         out.push_str(r#"<g class="architecture-services">"#);
         for (service_index, svc) in model.services().enumerate() {
+            checkpoints.checkpoint()?;
             let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
 
             out.push_str(r#"<g id=""#);
             write_diagram_service_id(out, diagram_id, svc.id);
+            checkpoints.checkpoint()?;
             let _ = write!(
                 out,
                 r#"" class="architecture-service" transform="translate({x},{y})">"#,
@@ -111,25 +156,32 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
             match (svc.icon, svc.icon_text) {
                 (Some(icon), _) => {
                     out.push_str("<g>");
-                    if arch_icon_needs_id_scope(icon, ctx.icon_registry.is_some()) {
-                        let id_scope = format!("{diagram_id}-service-{}-icon", svc.id);
+                    if arch_icon_needs_id_scope(icon, icon_registry.is_some()) {
+                        let id_scope = architecture_icon_scope(
+                            icon_scope_root,
+                            service_icon_scope_prefix,
+                            diagram_id,
+                            "-service-",
+                            svc.id,
+                            work_meter,
+                        )?;
                         write_arch_icon_svg_with_registry(
                             out,
                             icon,
                             settings.icon_size_px,
-                            ctx.icon_registry,
-                            &id_scope,
+                            icon_registry,
+                            id_scope,
                             sanitize_config,
-                            ctx.work_meter,
+                            work_meter,
                         )?;
                     } else {
-                        write_arch_icon_svg(out, icon, settings.icon_size_px, "")?;
+                        write_arch_icon_svg(out, icon, settings.icon_size_px, None)?;
                     }
                     out.push_str("</g>");
                 }
                 (None, Some(icon_text)) => {
                     out.push_str("<g>");
-                    write_arch_icon_svg(out, "blank", settings.icon_size_px, "")?;
+                    write_arch_icon_svg(out, "blank", settings.icon_size_px, None)?;
                     out.push_str("</g>");
 
                     // Mermaid computes `iconText` clamp from the DOM `font-size` applied to the
@@ -156,6 +208,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 (None, None) => {
                     out.push_str(r#"<path class="node-bkg" id=""#);
                     write_diagram_node_id(out, diagram_id, svc.id);
+                    checkpoints.checkpoint()?;
                     out.push('"');
                     if let Some(style) = service_background_style.as_deref() {
                         out.push_str(r#" style=""#);
@@ -208,6 +261,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
         }
 
         for junction in model.junctions() {
+            checkpoints.checkpoint()?;
             let (x, y) = node_xy.get(junction.id).copied().unwrap_or((0.0, 0.0));
 
             let _ = write!(
@@ -217,6 +271,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 y = fmt(y),
             );
             write_diagram_node_id(out, diagram_id, junction.id);
+            checkpoints.checkpoint()?;
             let _ = write!(
                 out,
                 r#"" fill-opacity="0" width="{s}" height="{s}"/></g></g>"#,
@@ -237,11 +292,17 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
     group_inline_style: Option<&str>,
     mut terminal_receipt: Option<&mut crate::architecture::ArchitectureGroupThemeReceipt>,
 ) -> crate::Result<()> {
+    let checkpoints = ctx.checkpoints;
+    checkpoints.checkpoint()?;
     let out = &mut *ctx.out;
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
     let content_bounds = &mut *ctx.content_bounds;
     let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
+    let icon_registry = ctx.icon_registry;
+    let work_meter = ctx.work_meter;
+    let icon_scope_root = &mut ctx.icon_scope_root;
+    let group_icon_scope_prefix = &mut ctx.group_icon_scope_prefix;
 
     if ctx.model.groups_len() == 0 {
         out.push_str(r#"<g class="architecture-groups"/>"#);
@@ -249,6 +310,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
         out.push_str(r#"<g class="architecture-groups">"#);
 
         for (group_index, grp) in group_rects.iter().enumerate() {
+            checkpoints.checkpoint()?;
             let x = grp.x;
             let y = grp.y;
             let w = grp.w;
@@ -258,9 +320,10 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
             let y1 = y - settings.half_icon;
 
             out.push_str(r#"<rect id=""#);
-            escape_xml_into(out, ctx.diagram_id);
+            let _ = write!(out, "{}", ctx.diagram_id);
             out.push_str("-group-");
             escape_xml_into(out, grp.id);
+            checkpoints.checkpoint()?;
             let _ = write!(
                 out,
                 r#"" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg""#,
@@ -290,19 +353,26 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                     x = fmt(shifted_x1 + settings.half_icon + 1.0),
                     y = fmt(shifted_y1 + settings.half_icon + 1.0)
                 );
-                if arch_icon_needs_id_scope(icon, ctx.icon_registry.is_some()) {
-                    let id_scope = format!("{}-group-{}-icon", ctx.diagram_id, grp.id);
+                if arch_icon_needs_id_scope(icon, icon_registry.is_some()) {
+                    let id_scope = architecture_icon_scope(
+                        icon_scope_root,
+                        group_icon_scope_prefix,
+                        ctx.diagram_id,
+                        "-group-",
+                        grp.id,
+                        work_meter,
+                    )?;
                     write_arch_icon_svg_with_registry(
                         out,
                         icon,
                         group_icon_size_px,
-                        ctx.icon_registry,
-                        &id_scope,
+                        icon_registry,
+                        id_scope,
                         ctx.sanitize_config,
-                        ctx.work_meter,
+                        work_meter,
                     )?;
                 } else {
-                    write_arch_icon_svg(out, icon, group_icon_size_px, "")?;
+                    write_arch_icon_svg(out, icon, group_icon_size_px, None)?;
                 }
                 out.push_str("</g></g>");
                 shifted_x1 += group_icon_size_px;

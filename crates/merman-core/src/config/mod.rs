@@ -498,6 +498,7 @@ impl MermaidConfig {
     }
 
     /// Returns explicit Mermaid compatibility fields still owned by the parsed theme.
+    #[cfg(test)]
     pub(crate) fn mermaid_compatibility_residual_count(&self) -> usize {
         match self.theme_compatibility.as_ref() {
             Some(ThemeCompatibilityState::Frozen { fields, .. }) => fields.len(),

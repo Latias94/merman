@@ -14,6 +14,14 @@ const STRICT_PLAYGROUND_SCRIPTS: [&str; 8] = [
     "test:browser:chromium:desktop:built",
 ];
 
+fn verification_dom_modes(include_root: bool) -> &'static str {
+    if include_root {
+        "structure,parity,parity-root"
+    } else {
+        "structure,parity"
+    }
+}
+
 #[derive(Debug, Default)]
 struct VerifyOptions {
     clippy: bool,
@@ -63,8 +71,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("  cargo nextest run --workspace");
         println!("  cargo test -p merman-render --doc");
         println!("  cargo test -p merman --doc --features svg");
-        println!("  compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3");
-        println!("  compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3");
+        println!("  compare-all-svgs --check-dom --dom-modes structure,parity --dom-decimals 3");
         println!();
         println!("Optional gates:");
         println!("  --clippy        run cargo clippy --workspace --all-targets -- -D warnings");
@@ -74,7 +81,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!(
             "                  validate public Cargo capability closures and build critical combinations"
         );
-        println!("  --root-parity   run full SVG root parity after normal DOM parity");
+        println!("  --root-parity   add parity-root to the single SVG DOM comparison suite");
         println!("  --strict        run every optional gate plus materialized release, generated,");
         println!("                  Web, Playground browser, and VS Code evidence");
         println!("                  and cargo test --workspace --doc");
@@ -253,34 +260,14 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         run_checked("cargo test --workspace --doc", &mut workspace_doctest_cmd)?;
     }
 
-    println!("\n== svg dom structure ==");
+    println!("\n== svg dom comparison suite ==");
     cmd::compare_all_svgs(vec![
         "--check-dom".to_string(),
-        "--dom-mode".to_string(),
-        "structure".to_string(),
+        "--dom-modes".to_string(),
+        verification_dom_modes(options.root_parity).to_string(),
         "--dom-decimals".to_string(),
         "3".to_string(),
     ])?;
-
-    println!("\n== svg dom parity ==");
-    cmd::compare_all_svgs(vec![
-        "--check-dom".to_string(),
-        "--dom-mode".to_string(),
-        "parity".to_string(),
-        "--dom-decimals".to_string(),
-        "3".to_string(),
-    ])?;
-
-    if options.root_parity {
-        println!("\n== svg root parity ==");
-        cmd::compare_all_svgs(vec![
-            "--check-dom".to_string(),
-            "--dom-mode".to_string(),
-            "parity-root".to_string(),
-            "--dom-decimals".to_string(),
-            "3".to_string(),
-        ])?;
-    }
 
     if options.strict {
         println!("\n== Web package ==");
@@ -332,6 +319,12 @@ mod tests {
     #[test]
     fn strict_playground_scripts_exist_in_workspace_manifest() {
         assert_manifest_scripts("playground/package.json", &STRICT_PLAYGROUND_SCRIPTS);
+    }
+
+    #[test]
+    fn root_verification_extends_the_single_dom_suite() {
+        assert_eq!(verification_dom_modes(false), "structure,parity");
+        assert_eq!(verification_dom_modes(true), "structure,parity,parity-root");
     }
 
     fn assert_manifest_scripts(manifest: &str, expected: &[&str]) {

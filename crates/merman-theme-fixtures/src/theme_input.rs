@@ -204,11 +204,7 @@ pub(crate) fn parse_fixture_source(
     );
     let family = match parsed.model() {
         RenderSemanticModel::Flowchart(model) => {
-            collect_flowchart_visible_text(
-                model,
-                parsed.flowchart_render_label_sources(),
-                &mut visible,
-            );
+            collect_flowchart_visible_text(model, parsed.flowchart_render_context(), &mut visible);
             collect_flowchart_style_evidence(
                 model,
                 parsed.metadata().config.as_value(),
@@ -639,7 +635,7 @@ fn valid_class_style_witness(
 
 fn collect_flowchart_visible_text(
     model: &merman_core::diagrams::flowchart::FlowchartModel,
-    sources: Option<&merman_core::diagrams::flowchart::FlowchartRenderLabelSources>,
+    sources: Option<&merman_core::diagrams::flowchart::FlowchartRenderContext>,
     visible: &mut BTreeSet<String>,
 ) {
     for node in &model.nodes {
@@ -714,11 +710,15 @@ fn collect_class_visible_text(
     }
     for relation in &model.relations {
         insert_class_visible_text(visible, &relation.title);
-        if relation.relation_title_1 != "none" {
-            insert_class_visible_text(visible, &relation.relation_title_1);
+        if relation.relation_title_1.as_deref() != Some("none") {
+            if let Some(title) = relation.relation_title_1.as_deref() {
+                insert_class_visible_text(visible, title);
+            }
         }
-        if relation.relation_title_2 != "none" {
-            insert_class_visible_text(visible, &relation.relation_title_2);
+        if relation.relation_title_2.as_deref() != Some("none") {
+            if let Some(title) = relation.relation_title_2.as_deref() {
+                insert_class_visible_text(visible, title);
+            }
         }
     }
     for note in &model.notes {

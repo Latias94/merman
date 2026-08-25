@@ -20,6 +20,7 @@ import {
   MermanDisposedError,
   MermanInvalidTransportError,
   MermanMissingPlatformPackageError,
+  MermanNativeLoadError,
   MermanOperationError,
   MermanUnsupportedTargetError,
   NODE_TRANSPORT_LIMITS,
@@ -134,6 +135,34 @@ test("the loader resolves one target-specific package and no browser package", (
   assert.equal(loaded, binding);
   assert.deepEqual(requested, ["@mermanjs/node-darwin-arm64"]);
   assert.equal(nativePackageName("linux-x64-musl"), "@mermanjs/node-linux-x64-musl");
+});
+
+test("the native loader diagnoses installed packages that fail dynamic loading", () => {
+  const loaderFailure = Object.assign(
+    new Error("/lib64/libm.so.6: version `GLIBC_2.35' not found"),
+    { code: "ERR_DLOPEN_FAILED" },
+  );
+  assert.throws(
+    () =>
+      loadNativeBinding({
+        platform: "linux",
+        arch: "x64",
+        report: glibcReport,
+        loadPackage: () => {
+          throw loaderFailure;
+        },
+      }),
+    (error) => {
+      assert.ok(error instanceof MermanNativeLoadError);
+      assert.equal(error.code, "MERMAN_NATIVE_LOAD_ERROR");
+      assert.equal(error.packageName, "@mermanjs/node-linux-x64-gnu");
+      assert.equal(error.target, "linux-x64-gnu");
+      assert.equal(error.cause, loaderFailure);
+      assert.match(error.message, /ABI|shared-library/i);
+      assert.match(error.message, /node-wasm/);
+      return true;
+    },
+  );
 });
 
 test("the native loader reads its expected version from its own package manifest", () => {
@@ -440,11 +469,17 @@ test("the explicit Node WASM artifact keeps its CommonJS boundary inside the ESM
 test("candidate wrappers dispose owned engines once and fail closed afterward", async () => {
   for (const transportKind of ["napi", "wasm"]) {
     let disposeCalls = 0;
+    let executeArgs = null;
+    let executeSyncArgs = null;
     class CandidateEngine {
-      execute(value) {
+      execute(...args) {
+        executeArgs = args;
+        const [value] = args;
         return value;
       }
-      executeSync(value) {
+      executeSync(...args) {
+        executeSyncArgs = args;
+        const [value] = args;
         return value;
       }
       metadataJson(id) {
@@ -472,7 +507,14 @@ test("candidate wrappers dispose owned engines once and fail closed afterward", 
         }),
       });
 
-    assert.equal(await transport.execute("request"), "request");
+    const signal = new AbortController().signal;
+    assert.equal(await transport.execute("request", signal, 25), "request");
+    assert.deepEqual(
+      executeArgs,
+      transportKind === "napi" ? ["request", signal, 25] : ["request", 25],
+    );
+    assert.equal(transport.executeSync("sync-request", 12), "sync-request");
+    assert.deepEqual(executeSyncArgs, ["sync-request", 12]);
     await transport.dispose();
     await transport.dispose();
     assert.equal(disposeCalls, 1);

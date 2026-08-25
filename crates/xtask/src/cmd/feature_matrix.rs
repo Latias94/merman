@@ -37,7 +37,6 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
     "merman-typst-plugin",
     "merman-uniffi",
     "merman-wasm",
-    "roughr-merman",
 ];
 struct FeatureInventory {
     package: &'static str,
@@ -135,7 +134,7 @@ const FEATURE_INVENTORY: &[FeatureInventory] = &[
     },
     FeatureInventory {
         package: "roughr-merman",
-        public_extras: &[],
+        public_extras: &["host-random", "legacy-compat"],
         internal_extras: &[],
     },
 ];
@@ -288,43 +287,68 @@ struct DependencyFeatureContract {
     package: &'static str,
     dependency: &'static str,
     expected_features: &'static [&'static str],
+    expected_uses_default_features: Option<bool>,
 }
+
+#[derive(Debug, Clone, Copy)]
+struct PublishedDefaultContract {
+    package: &'static str,
+    expected_defaults: &'static [&'static str],
+}
+
+const PUBLISHED_DEFAULT_CONTRACTS: &[PublishedDefaultContract] = &[PublishedDefaultContract {
+    package: "roughr-merman",
+    expected_defaults: &["legacy-compat"],
+}];
 
 const DEPENDENCY_FEATURE_CONTRACTS: &[DependencyFeatureContract] = &[
     DependencyFeatureContract {
         package: "dugong",
         dependency: "serde_json",
         expected_features: &[],
+        expected_uses_default_features: None,
     },
     DependencyFeatureContract {
         package: "dugong-graphlib",
         dependency: "serde_json",
         expected_features: &[],
+        expected_uses_default_features: None,
     },
     DependencyFeatureContract {
         package: "manatee",
         dependency: "indexmap",
         expected_features: &[],
+        expected_uses_default_features: None,
     },
     DependencyFeatureContract {
         package: "merman-core",
         dependency: "indexmap",
         expected_features: &["serde"],
+        expected_uses_default_features: None,
     },
     DependencyFeatureContract {
         package: "merman-core",
         dependency: "serde_json",
         expected_features: &["preserve_order"],
+        expected_uses_default_features: None,
     },
     DependencyFeatureContract {
         package: "merman-render",
         dependency: "indexmap",
         expected_features: &["serde"],
+        expected_uses_default_features: None,
     },
     DependencyFeatureContract {
         package: "merman-render",
         dependency: "serde_json",
         expected_features: &[],
+        expected_uses_default_features: None,
+    },
+    DependencyFeatureContract {
+        package: "merman-render",
+        dependency: "roughr-merman",
+        expected_features: &[],
+        expected_uses_default_features: Some(false),
     },
 ];
 
@@ -356,6 +380,7 @@ struct CargoPackage {
 struct CargoDependency {
     name: String,
     kind: Option<String>,
+    uses_default_features: bool,
     #[serde(default)]
     features: Vec<String>,
 }
@@ -396,10 +421,11 @@ pub(crate) fn verify_feature_matrix(args: Vec<String>) -> Result<(), XtaskError>
     let graph = FeatureGraph::load()?;
     let report = graph.validate()?;
     println!(
-        "feature-matrix structure packages={} capability_leaves={} empty_defaults={} feature_allowlists={} forwarding_edges={} dependency_feature_boundaries={} transport_engines={} product_contracts={}",
+        "feature-matrix structure packages={} capability_leaves={} empty_defaults={} published_defaults={} feature_allowlists={} forwarding_edges={} dependency_feature_boundaries={} transport_engines={} product_contracts={}",
         report.capability_bearing_packages,
         report.capability_leaves,
         report.empty_defaults,
+        report.published_defaults,
         report.feature_allowlists,
         report.forwarding_edges,
         report.dependency_feature_boundaries,
@@ -529,6 +555,8 @@ impl FeatureGraph {
             self.validate_capability_implications(package)?;
         }
         report.empty_defaults = self.validate_empty_default_contracts(EMPTY_DEFAULT_PACKAGES)?;
+        report.published_defaults =
+            self.validate_published_default_contracts(PUBLISHED_DEFAULT_CONTRACTS)?;
         report.feature_allowlists = self.validate_feature_allowlists()?;
         report.forwarding_edges = self.validate_feature_forwarding(FEATURE_FORWARDING_CONTRACTS)?
             + self.validate_native_runtime_feature_contract()?;
@@ -570,6 +598,30 @@ impl FeatureGraph {
             checked += 1;
         }
         Ok(checked)
+    }
+
+    fn validate_published_default_contracts(
+        &self,
+        contracts: &[PublishedDefaultContract],
+    ) -> Result<usize, XtaskError> {
+        for contract in contracts {
+            let package = self.package(contract.package)?;
+            let actual_defaults = direct_feature_members(package, "default")?;
+            let expected_defaults = contract
+                .expected_defaults
+                .iter()
+                .map(|feature| (*feature).to_string())
+                .collect::<BTreeSet<_>>();
+            if actual_defaults != expected_defaults {
+                return Err(matrix_error(format!(
+                    "{}: published defaults expected {}, found {}",
+                    package.manifest_path.display(),
+                    display_feature_set(&expected_defaults),
+                    display_feature_set(&actual_defaults)
+                )));
+            }
+        }
+        Ok(contracts.len())
     }
 
     fn validate_feature_allowlist(
@@ -715,7 +767,7 @@ impl FeatureGraph {
                 )));
             }
             let actual = matching
-                .into_iter()
+                .iter()
                 .flat_map(|dependency| dependency.features.iter().cloned())
                 .collect::<BTreeSet<_>>();
             let expected = contract
@@ -731,6 +783,20 @@ impl FeatureGraph {
                     display_feature_set(&expected),
                     display_feature_set(&actual)
                 )));
+            }
+            if let Some(expected_uses_default_features) = contract.expected_uses_default_features {
+                let actual = matching
+                    .iter()
+                    .map(|dependency| dependency.uses_default_features)
+                    .collect::<BTreeSet<_>>();
+                let expected = BTreeSet::from([expected_uses_default_features]);
+                if actual != expected {
+                    return Err(matrix_error(format!(
+                        "{}: direct dependency `{}` default-feature boundary expected {expected:?}, found {actual:?}",
+                        package.manifest_path.display(),
+                        contract.dependency
+                    )));
+                }
             }
         }
         Ok(contracts.len())
@@ -1111,6 +1177,7 @@ struct ValidationReport {
     capability_bearing_packages: usize,
     capability_leaves: usize,
     empty_defaults: usize,
+    published_defaults: usize,
     feature_allowlists: usize,
     forwarding_edges: usize,
     dependency_feature_boundaries: usize,
@@ -1253,6 +1320,7 @@ mod tests {
         "parallel-markdown",
         "pdf",
         "png",
+        "rustdoc",
         "shell-completions",
         "svg",
         "system-clock",
@@ -1298,6 +1366,7 @@ mod tests {
             .map(|(dependency, features)| CargoDependency {
                 name: (*dependency).to_string(),
                 kind: None,
+                uses_default_features: false,
                 features: features
                     .iter()
                     .map(|feature| (*feature).to_string())
@@ -1531,6 +1600,64 @@ mod tests {
     }
 
     #[test]
+    fn published_default_contract_requires_legacy_compat() {
+        let mut roughr = package(
+            "roughr-merman",
+            &[
+                ("default", &["legacy-compat"]),
+                ("legacy-compat", &["host-random", "dep:svgtypes_0_11"]),
+                ("host-random", &["dep:rand"]),
+            ],
+        );
+        let contract = PublishedDefaultContract {
+            package: "roughr-merman",
+            expected_defaults: &["legacy-compat"],
+        };
+        assert_eq!(
+            graph(vec![roughr.clone()])
+                .validate_published_default_contracts(&[contract])
+                .unwrap(),
+            1
+        );
+
+        roughr.features.insert("default".to_string(), Vec::new());
+        let error = graph(vec![roughr])
+            .validate_published_default_contracts(&[contract])
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("published defaults expected"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn dependency_feature_boundary_rejects_default_feature_leakage() {
+        let mut renderer =
+            package_with_dependency_features("merman-render", &[("roughr-merman", &[])]);
+        let contract = DependencyFeatureContract {
+            package: "merman-render",
+            dependency: "roughr-merman",
+            expected_features: &[],
+            expected_uses_default_features: Some(false),
+        };
+        assert_eq!(
+            graph(vec![renderer.clone()])
+                .validate_dependency_feature_contracts(&[contract])
+                .unwrap(),
+            1
+        );
+
+        renderer.dependencies[0].uses_default_features = true;
+        let error = graph(vec![renderer])
+            .validate_dependency_feature_contracts(&[contract])
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("default-feature boundary"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn dependency_feature_boundary_rejects_workspace_feature_leakage() {
         let graph = graph(vec![package_with_dependency_features(
             "manatee",
@@ -1540,6 +1667,7 @@ mod tests {
             package: "manatee",
             dependency: "indexmap",
             expected_features: &[],
+            expected_uses_default_features: None,
         };
 
         let error = graph

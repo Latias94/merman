@@ -1,10 +1,11 @@
+use super::super::SvgDiagramId;
 use super::super::root_svg;
 use super::super::util::escape_xml_into;
 use super::document_ids::FlowchartDocumentIds;
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub family_id: crate::DiagramFamilyId,
-    pub diagram_id: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartModel,
     pub document_ids: &'a FlowchartDocumentIds<'a>,
@@ -17,7 +18,7 @@ pub(super) struct FlowchartSvgDocumentRequest<'a> {
 }
 
 pub(super) struct FlowchartSvgDocument<'a> {
-    diagram_id: &'a str,
+    diagram_id: SvgDiagramId<'a>,
     diagram_type: &'a str,
     use_max_width: bool,
     root_viewport: root_svg::RootViewportContext<'a>,

@@ -25,16 +25,15 @@ claim.
 
 `H' -> C'` is an evidence-only synthetic adjacent pair, not a historical release range. Both
 sides are clean, have one parent, and use identical fixture schedules, controls, contract files,
-Python driver bytes, and Rust probe bytes. `C'` names `H'` as its first parent.
+Python driver bytes, and Rust probe bytes. `C'` names `H'` as its first parent. The candidate-only
+driver, contract, and probe were retired on 2026-08-21; their last complete source snapshot is
+recoverable at commit `8f3f8effe5a234da8d293350e197da75a2bc87cb`.
 
-Harness identities:
+Retired harness identities:
 
-- `tools/bench/run_state_rough_lifecycle.py`: SHA-256
-  `ba1f33462170c27833e9cffd7fd56199373bc14ac1b00a5bd070af1942a99f38`.
-- `rough_lifecycle_probe.rs`: SHA-256
-  `ea6d8183277cbd272554b7555f6eaa396c0c91974162e6340900200973a99c56`.
-- `state-rough-lifecycle-v2` contract: SHA-256
-  `73795e3bbb6755d4bbced354dda97bc01aeb2909eec61070034c86bf5afa754f`.
+- `tools/bench/run_state_rough_lifecycle.py`: `ba1f33462170c27833e9cffd7fd56199373bc14ac1b00a5bd070af1942a99f38`.
+- `crates/merman-render/src/svg/parity/state/rough_lifecycle_probe.rs`: `ea6d8183277cbd272554b7555f6eaa396c0c91974162e6340900200973a99c56`.
+- `docs/performance/contracts/state-rough-lifecycle-v2.json`: `73795e3bbb6755d4bbced354dda97bc01aeb2909eec61070034c86bf5afa754f`.
 
 ## Bound and lifecycle result
 

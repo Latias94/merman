@@ -95,8 +95,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
                 .to_string(),
         });
     }
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("quadrantchart");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("quadrantchart");
     let acc_title = model
         .acc_title
         .as_deref()
@@ -136,7 +135,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml(title)
         );
         out.checkpoint()?;
@@ -144,7 +143,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     if let Some(description) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml(description)
         );
         out.checkpoint()?;
@@ -152,7 +151,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    let css = info_css_with_config(diagram_id, effective_config);
+    let css = info_css_with_config(diagram_id.semantic_str(), effective_config);
     out.push_str(&css);
     drop(css);
     out.checkpoint()?;

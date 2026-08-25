@@ -3,17 +3,16 @@ use serde_json::Value;
 use std::cell::Cell;
 
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
     family::CombinedSemanticFailure,
 };
 
 use super::db::{MindmapDb, MindmapParseConfig};
 use super::render_model::MindmapDiagramRenderModel;
 use super::utils::{
-    NodeSpec, NodeSpecContinuation, NodeSpecError, NodeSpecTrace, parse_node_spec,
-    starts_node_spec, strip_inline_comment,
+    NodeSpec, NodeSpecContinuation, NodeSpecError, parse_node_spec, starts_node_spec,
+    strip_inline_comment,
 };
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
 
@@ -131,14 +130,12 @@ fn construct_mindmap_semantic_source_controlled(
     #[cfg(test)]
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let mut lexemes = EditorLexemeJournal::family_parser(code);
     let MindmapParseOutcome {
         parsed,
         first_error,
-    } = parse_mindmap_lines(code, meta, &mut lexemes, control)?;
+    } = parse_mindmap_lines(code, meta, control)?;
     control.checkpoint()?;
-    let mut editor_facts = mindmap_editor_facts_from_parsed(&parsed, control)?;
-    editor_facts.replace_family_lexemes(lexemes.finish_controlled(control)?);
+    let editor_facts = mindmap_editor_facts_from_parsed(&parsed, control)?;
 
     if let Some(error) = first_error {
         return Ok(Err(CombinedSemanticFailure::parser_recovery(
@@ -326,66 +323,8 @@ fn mindmap_editor_facts_from_parsed(
     Ok(facts)
 }
 
-fn push_mindmap_lexeme(
-    lexemes: &mut EditorLexemeJournal<'_>,
-    kind: EditorLexemeKind,
-    span: SourceSpan,
-) {
-    push_mindmap_lexeme_with_modifiers(lexemes, kind, EditorLexemeModifiers::NONE, span);
-}
-
-fn push_mindmap_lexeme_with_modifiers(
-    lexemes: &mut EditorLexemeJournal<'_>,
-    kind: EditorLexemeKind,
-    modifiers: EditorLexemeModifiers,
-    span: SourceSpan,
-) {
-    if span.start < span.end {
-        lexemes.push(kind, modifiers, span);
-    }
-}
-
 fn absolute_mindmap_span(base: usize, span: SourceSpan) -> SourceSpan {
     SourceSpan::new(base + span.start, base + span.end)
-}
-
-fn record_mindmap_node_trace(
-    trace: &NodeSpecTrace,
-    base: usize,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) {
-    for delimiter in [
-        trace.shape_opening,
-        trace.text_opening,
-        trace.text_closing,
-        trace.shape_closing,
-    ]
-    .into_iter()
-    .flatten()
-    {
-        push_mindmap_lexeme(
-            lexemes,
-            EditorLexemeKind::Delimiter,
-            absolute_mindmap_span(base, delimiter),
-        );
-    }
-    if let Some(id) = trace.id_span {
-        push_mindmap_lexeme_with_modifiers(
-            lexemes,
-            EditorLexemeKind::Identifier,
-            EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Definition),
-            absolute_mindmap_span(base, id),
-        );
-    }
-    if trace.explicit_id
-        && let Some(description) = trace.description_span
-    {
-        push_mindmap_lexeme(
-            lexemes,
-            EditorLexemeKind::String,
-            absolute_mindmap_span(base, description),
-        );
-    }
 }
 
 fn mindmap_payload_tokens(raw: &str, raw_start: usize) -> Vec<MindmapParsedPayloadToken> {
@@ -437,7 +376,6 @@ struct MindmapContinuationState {
 
 struct MindmapPendingSyntax {
     state: MindmapContinuationState,
-    statement_start: usize,
     statement_span: SourceSpan,
     error: Box<NodeSpecError>,
 }
@@ -458,7 +396,6 @@ fn handle_mindmap_line(
     line_start: usize,
     parsed: &mut MindmapParsedLines,
     first_error: &mut Option<Error>,
-    lexemes: &mut EditorLexemeJournal<'_>,
     meta: &ParseMetadata,
 ) -> MindmapLineOutcome {
     if line.trim().is_empty() {
@@ -475,10 +412,6 @@ fn handle_mindmap_line(
     let statement_span = SourceSpan::new(statement_start, statement_start + rest.len());
 
     if starts_with_case_insensitive(rest, "::icon(") {
-        let keyword = SourceSpan::new(statement_start, statement_start + "::icon".len());
-        let opening = SourceSpan::new(keyword.end, keyword.end + 1);
-        push_mindmap_lexeme(lexemes, EditorLexemeKind::Keyword, keyword);
-        push_mindmap_lexeme(lexemes, EditorLexemeKind::Delimiter, opening);
         let after = &rest["::icon(".len()..];
         let Some(end) = after.find(')') else {
             record_mindmap_error(
@@ -491,12 +424,6 @@ fn handle_mindmap_line(
         };
         let icon_raw = &after[..end];
         let icon = icon_raw.trim();
-        let closing_start = statement_start + "::icon(".len() + end;
-        push_mindmap_lexeme(
-            lexemes,
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(closing_start, closing_start + 1),
-        );
         if icon.is_empty() {
             record_mindmap_error(first_error, meta, "mindmap icon is empty", statement_span);
             return MindmapLineOutcome::Done;
@@ -507,12 +434,6 @@ fn handle_mindmap_line(
             value: icon.to_string(),
             selection: SourceSpan::new(selection_start, selection_start + icon.len()),
         };
-        push_mindmap_lexeme_with_modifiers(
-            lexemes,
-            EditorLexemeKind::Identifier,
-            EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Reference),
-            token.selection,
-        );
         parsed.directive_prefixes.push("::icon".to_string());
         parsed
             .events
@@ -525,11 +446,6 @@ fn handle_mindmap_line(
     }
 
     if let Some(after) = rest.strip_prefix(":::") {
-        push_mindmap_lexeme(
-            lexemes,
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(statement_start, statement_start + ":::".len()),
-        );
         let class = after.trim();
         if class.is_empty() {
             record_mindmap_error(first_error, meta, "mindmap class is empty", statement_span);
@@ -538,14 +454,6 @@ fn handle_mindmap_line(
         let class_leading = after.len() - after.trim_start().len();
         let class_start = statement_start + ":::".len() + class_leading;
         let tokens = mindmap_payload_tokens(class, class_start);
-        for token in &tokens {
-            push_mindmap_lexeme_with_modifiers(
-                lexemes,
-                EditorLexemeKind::Identifier,
-                EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Reference),
-                token.selection,
-            );
-        }
         parsed.directive_prefixes.push(":::".to_string());
         parsed
             .events
@@ -570,7 +478,6 @@ fn handle_mindmap_line(
             descr_is_markdown,
             trace,
         }) => {
-            record_mindmap_node_trace(&trace, statement_start, lexemes);
             let selection = trace
                 .id_span
                 .map(|span| absolute_mindmap_span(statement_start, span))
@@ -601,13 +508,11 @@ fn handle_mindmap_line(
                     syntax: continuation,
                     original_indent: indent,
                 },
-                statement_start,
                 statement_span,
                 error,
             })
         }
         Err(error) => {
-            record_mindmap_node_trace(&error.trace, statement_start, lexemes);
             record_mindmap_error(first_error, meta, error.message, statement_span);
             MindmapLineOutcome::Done
         }
@@ -617,17 +522,14 @@ fn handle_mindmap_line(
 fn finish_pending_mindmap_line(
     pending: PendingMindmapLine,
     first_error: &mut Option<Error>,
-    lexemes: &mut EditorLexemeJournal<'_>,
     meta: &ParseMetadata,
 ) {
     let MindmapPendingSyntax {
-        statement_start,
         statement_span,
         error,
         ..
     } = pending.syntax;
-    let NodeSpecError { message, trace, .. } = *error;
-    record_mindmap_node_trace(&trace, statement_start, lexemes);
+    let NodeSpecError { message, .. } = *error;
     record_mindmap_error(first_error, meta, message, statement_span);
 }
 
@@ -670,7 +572,6 @@ fn process_mindmap_physical_line(
     pending: &mut Option<PendingMindmapLine>,
     parsed: &mut MindmapParsedLines,
     first_error: &mut Option<Error>,
-    lexemes: &mut EditorLexemeJournal<'_>,
     meta: &ParseMetadata,
 ) {
     if pending
@@ -678,20 +579,13 @@ fn process_mindmap_physical_line(
         .is_some_and(|current| pending_mindmap_line_should_synchronize(current, physical_line))
     {
         let current = pending.take().expect("checked pending mindmap line");
-        finish_pending_mindmap_line(current, first_error, lexemes, meta);
+        finish_pending_mindmap_line(current, first_error, meta);
     }
 
     if let Some(mut current) = pending.take() {
         current.text.push('\n');
         current.text.push_str(physical_line);
-        match handle_mindmap_line(
-            &current.text,
-            current.start,
-            parsed,
-            first_error,
-            lexemes,
-            meta,
-        ) {
+        match handle_mindmap_line(&current.text, current.start, parsed, first_error, meta) {
             MindmapLineOutcome::Done => {}
             MindmapLineOutcome::NeedMoreInput(syntax) => {
                 current.syntax = syntax;
@@ -701,14 +595,9 @@ fn process_mindmap_physical_line(
         return;
     }
 
-    if let MindmapLineOutcome::NeedMoreInput(syntax) = handle_mindmap_line(
-        physical_line,
-        line_start,
-        parsed,
-        first_error,
-        lexemes,
-        meta,
-    ) {
+    if let MindmapLineOutcome::NeedMoreInput(syntax) =
+        handle_mindmap_line(physical_line, line_start, parsed, first_error, meta)
+    {
         *pending = Some(PendingMindmapLine {
             text: physical_line.to_string(),
             start: line_start,
@@ -720,7 +609,6 @@ fn process_mindmap_physical_line(
 fn parse_mindmap_lines(
     code: &str,
     meta: &ParseMetadata,
-    lexemes: &mut EditorLexemeJournal<'_>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<MindmapParseOutcome> {
     control.checkpoint()?;
@@ -752,11 +640,6 @@ fn parse_mindmap_lines(
                 .is_some_and(char::is_whitespace);
         if is_header || has_tail {
             found_header = true;
-            push_mindmap_lexeme(
-                lexemes,
-                EditorLexemeKind::Keyword,
-                SourceSpan::new(keyword_start, keyword_start + "mindmap".len()),
-            );
             if has_tail {
                 let tail_start = leading + "mindmap".len();
                 header_tail = Some((&line[tail_start..], line_start + tail_start));
@@ -794,7 +677,6 @@ fn parse_mindmap_lines(
             &mut pending,
             &mut parsed,
             &mut first_error,
-            lexemes,
             meta,
         );
     }
@@ -809,12 +691,11 @@ fn parse_mindmap_lines(
             &mut pending,
             &mut parsed,
             &mut first_error,
-            lexemes,
             meta,
         );
     }
     if let Some(pending) = pending {
-        finish_pending_mindmap_line(pending, &mut first_error, lexemes, meta);
+        finish_pending_mindmap_line(pending, &mut first_error, meta);
     }
 
     control.checkpoint()?;

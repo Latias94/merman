@@ -10,7 +10,7 @@ import {
   replaceMermaidConfig,
   waitForPreviewSvg,
 } from "./helpers/playground";
-import { PLAYGROUND_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
+import { CANONICAL_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
 
 test("loads the production WASM and renders a safe SVG", async ({ page }, testInfo) => {
   const errors = monitorBrowserErrors(page);
@@ -134,6 +134,22 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
     1,
   );
 
+  await page.getByRole("tab", { name: "SVG", exact: true }).click();
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(
+    0,
+  );
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(
+    1,
+  );
+  await expect
+    .poll(() => compareSvgTexts(page))
+    .toEqual([
+      expect.stringContaining("Latest batch"),
+      expect.stringContaining("Latest batch"),
+    ]);
+  expect(opaqueArtifactRequests).toHaveLength(1);
+
   await page.evaluate(() => {
     window.dispatchEvent(
       new PageTransitionEvent("pagehide", { persisted: true }),
@@ -220,16 +236,23 @@ async function compareSvgTexts(
 async function compareRealmUsesCanonicalViewport(
   page: import("@playwright/test").Page,
 ): Promise<boolean> {
-  return page.evaluate((viewport) => {
+  return compareRealmUsesViewport(page, CANONICAL_RENDER_VIEWPORT);
+}
+
+async function compareRealmUsesViewport(
+  page: import("@playwright/test").Page,
+  viewport: Readonly<{ width: number; height: number }>,
+): Promise<boolean> {
+  return page.evaluate((expected) => {
     const realm = document.querySelector('iframe[data-merman-realm="compare"]');
     if (!(realm instanceof HTMLIFrameElement)) {
       return false;
     }
     return (
-      realm.clientWidth === viewport.width &&
-      realm.clientHeight === viewport.height
+      realm.clientWidth === expected.width &&
+      realm.clientHeight === expected.height
     );
-  }, PLAYGROUND_RENDER_VIEWPORT);
+  }, viewport);
 }
 
 async function mermaidCompareViewBoxWidth(

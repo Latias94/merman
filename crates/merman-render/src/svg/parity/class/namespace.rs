@@ -2,14 +2,17 @@ use crate::model::{Bounds, LayoutCluster};
 use crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
 use std::collections::HashMap;
 
+use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
 use super::super::{SvgOutput, escape_attr_display, escape_xml_display, fmt};
 use super::bounds::include_xywh;
+use super::context::ClassEmitCheckpoint;
 use super::label::class_math_html_label;
+use crate::Result;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(super) struct ClassNamespaceClusterGroupContext<'a> {
-    pub diagram_id: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub content_tx: f64,
     pub content_ty: f64,
     pub bounds_dx: f64,
@@ -18,6 +21,7 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
+    pub emit: ClassEmitCheckpoint<'a>,
 }
 
 pub(super) fn render_class_namespace_cluster_group(
@@ -30,7 +34,7 @@ pub(super) fn render_class_namespace_cluster_group(
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;
     for c in clusters {
-        render_class_namespace_cluster(out, content_bounds, c, ctx);
+        render_class_namespace_cluster(out, content_bounds, c, ctx)?;
         out.checkpoint()?;
     }
     out.push_str("</g>");
@@ -51,7 +55,7 @@ pub(super) fn render_class_elk_subgraphs(
     out.checkpoint()?;
     for cluster in clusters {
         out.push_str(r#"<g class="subgraph">"#);
-        render_class_namespace_cluster(out, content_bounds, cluster, ctx);
+        render_class_namespace_cluster(out, content_bounds, cluster, ctx)?;
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -67,7 +71,7 @@ fn render_class_namespace_cluster(
     content_bounds: &mut Option<Bounds>,
     cluster: &LayoutCluster,
     ctx: ClassNamespaceClusterGroupContext<'_>,
-) {
+) -> Result<()> {
     let w = cluster.width.max(1.0);
     let h = cluster.height.max(1.0);
     let left = cluster.x - w / 2.0 + ctx.content_tx;
@@ -93,10 +97,12 @@ fn render_class_namespace_cluster(
     );
 
     let title_html = class_namespace_title_html(&cluster.title, ctx);
+    out.push_str(r#"<g class="cluster undefined" id=""#);
+    let _ = write!(out, "{}", ctx.diagram_id);
+    ctx.emit.checkpoint()?;
     let _ = write!(
         out,
-        r#"<g class="cluster undefined" id="{}-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
-        escape_attr_display(ctx.diagram_id),
+        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
         escape_attr_display(&cluster.id),
         escape_attr_display(ctx.look),
         fmt(left),
@@ -109,6 +115,7 @@ fn render_class_namespace_cluster(
         MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
         title_html
     );
+    Ok(())
 }
 
 fn class_namespace_title_html(title: &str, ctx: ClassNamespaceClusterGroupContext<'_>) -> String {
@@ -172,10 +179,12 @@ pub(super) fn render_class_namespace_clusters_in_root(
         );
 
         let title_html = class_namespace_title_html(&c.title, ctx);
+        out.push_str(r#"<g class="cluster undefined" id=""#);
+        let _ = write!(out, "{}", ctx.diagram_id);
+        ctx.emit.checkpoint()?;
         let _ = write!(
             out,
-            r#"<g class="cluster undefined" id="{}-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
-            escape_attr_display(ctx.diagram_id),
+            r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
             escape_attr_display(&c.id),
             escape_attr_display(ctx.look),
             fmt(left),

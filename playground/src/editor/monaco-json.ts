@@ -1,11 +1,15 @@
 import "monaco-editor/esm/vs/language/json/monaco.contribution.js";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 
-import { registerLocalMonacoJsonWorker } from "./monaco";
+import {
+  ensureLocalMonacoConfigured,
+  registerLocalMonacoJsonWorker,
+} from "./monaco";
 
 let registration: ReturnType<typeof registerLocalMonacoJsonWorker> | null = null;
 
 export function activateLocalMonacoJson(): void {
+  ensureLocalMonacoConfigured();
   registration ??= registerLocalMonacoJsonWorker(
     () => new JsonWorker({ name: "monaco-json" }),
   );

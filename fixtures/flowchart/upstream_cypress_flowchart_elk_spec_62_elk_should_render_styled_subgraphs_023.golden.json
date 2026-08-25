@@ -416,12 +416,7 @@
         ],
         "title": "Foo SubGraph",
         "classes": [],
-        "styles": [
-          "fill:#F99",
-          "stroke-width:2px",
-          "stroke:#F0F",
-          "color:darkred"
-        ],
+        "styles": [],
         "dir": null,
         "hasExplicitDir": false,
         "labelType": "text"
@@ -434,12 +429,7 @@
         ],
         "title": "Bar SubGraph",
         "classes": [],
-        "styles": [
-          "fill:#999",
-          "stroke-width:10px",
-          "stroke:#0F0",
-          "color:blue"
-        ],
+        "styles": [],
         "dir": null,
         "hasExplicitDir": false,
         "labelType": "text"

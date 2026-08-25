@@ -5,8 +5,8 @@
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.1",
     "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "414c8bd85a6ebbfbeae9b6bc350ea38475466c2355d33da6c5dee9d62d5f8377",
-    "package_lock_sha256": "a9f67c4957d149375e0380ba38f0f3e7ca7c2fbd330b1a76e835ad1a28a3332c",
+    "package_json_sha256": "9298a915a40b6057827e8add6044309143f836b8dbca73c34ffba5b21a762ac5",
+    "package_lock_sha256": "0ee640d994c7986b67919b663a0fec2fc6baa51becf106d5e0161678294e9b7b",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -26,7 +26,7 @@
       "operating_system": {
         "platform": "darwin",
         "arch": "arm64",
-        "release": "25.6.0"
+        "release": "25.5.0"
       },
       "mermaid_runtime": {
         "esm_version": "11.16.1",
@@ -74,7 +74,7 @@
     },
     "upstream_block_arrows_2": {
       "input_sha256": "d18f31d9b1150abec18d0fdefe86eb8c20cdfede5ea6cd6307a39d268092017f",
-      "svg_sha256": "0606735f14659d065c8a6df20b4b5d451f9ff0cb69a07eaf7ed2754e2acc1e37",
+      "svg_sha256": "39c36a320a446041649b8ffa33173358f555be9772338dfc0d3bde66ecd78cbd",
       "renderer_profile": "mmdc-default"
     },
     "upstream_columns_and_layout": {
@@ -104,12 +104,12 @@
     },
     "upstream_composites": {
       "input_sha256": "23bd1112adeff625409491c02d0d520ace9a4fc1e10988bdca47587aa11497dd",
-      "svg_sha256": "8a5f54b6b53bc729c4f9956fa3e6bc7e02b1f493e10eca9cd342441fc1eaa28b",
+      "svg_sha256": "16228f72b2077bd949bb12867d193c1e0860237f1e1560885d00932cd72b55a0",
       "renderer_profile": "mmdc-default"
     },
     "upstream_composites_2": {
       "input_sha256": "ba2944fc213ae7ce76064b995b0298582efab26b3196d9339392b4f62fd816ee",
-      "svg_sha256": "91aa02dad87ebd6b931d93a2a16f8ebe3e0958b12ec761aac7d03520e266da34",
+      "svg_sha256": "03624bd6fa031ce9bac4d0382b660522990623972b47eef711de1d9c989fa1e3",
       "renderer_profile": "mmdc-default"
     },
     "upstream_composites_3": {
@@ -119,17 +119,17 @@
     },
     "upstream_composites_4": {
       "input_sha256": "ce8fe59dc70e2515cb9fba2d15a54c1b9b9ba85b5fd63e0305f1f1cfd1001540",
-      "svg_sha256": "55b83147cd6b46afee82bb50ba72dd8e930aed0bfdaaf3dddbbed6c65b394c27",
+      "svg_sha256": "90d0880674d00f7054c32dbf8331e586a833de7b63e4af9085fd5591912fcfd9",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl10_should_handle_edges_from_composite_blocks_010": {
       "input_sha256": "900c42c59728bcbaed81be143264b0ff6ab8d8601d8e9c3e77a129f0e68cac38",
-      "svg_sha256": "5388e837764e1d234d512b9cc0a4330e2be931b4dbd8a3589fb0992d580c10ef",
+      "svg_sha256": "e1f33f899fc27f0c2c919ac5d668e328a01dd48bdc2b94cf384f3d3daeda2927",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl11_should_handle_edges_to_composite_blocks_011": {
       "input_sha256": "ecfb893294389977df5124291fa5330b8b6e0daa57f1c4d94ce63c4bca9909d7",
-      "svg_sha256": "80288096a6d427230263021743dfc543cba88ddc53b18e74a141a07b12f4fa97",
+      "svg_sha256": "f75b3e40c18b7d6f03e6d52c8d12fb2985a62c3b2e77391b896c7e8949b98019",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl12_edges_should_handle_labels_012": {
@@ -149,12 +149,12 @@
     },
     "upstream_cypress_block_spec_bl15_width_alignment_d_and_e_should_share_available_space_015": {
       "input_sha256": "3e9d474b33bf0bb0b521cd947e95b9ee60e04ef399889a1722e8275029ee6bef",
-      "svg_sha256": "2a0dfc602593e722132fe58bfbc34a4cf98a5b4681e51a370c1271b71e37c3a0",
+      "svg_sha256": "6dbabcad8114388819b885a4f1630134f76f213127a63d5d544f2ab891bae635",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl16_width_alignment_c_should_be_as_wide_as_the_composite_block_016": {
       "input_sha256": "25d4abebcb8d680f65f50c73a15d2151d3a31d94745ce7c6931e28a60bb104d0",
-      "svg_sha256": "067ba07193c0dbe8fe4c8afd3b606a7665607b37c6ade4c2e2082886a20f50b6",
+      "svg_sha256": "3567d5aee14878badf16fc99fb1573dd8a12fc84893e4b78b523f93fab799a09",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl17_width_alignment_blocks_should_be_equal_in_width_017": {
@@ -174,7 +174,7 @@
     },
     "upstream_cypress_block_spec_bl1_should_calculate_the_block_widths_001": {
       "input_sha256": "8ea37e19aadf79fe3af571dd4d15aa80fe8641c1b96c90f5f22623f3d45e9cff",
-      "svg_sha256": "2d7e424447d8ea19ad8823788204bff7f41d3984f8c680e54154303e91280c90",
+      "svg_sha256": "8bf1b4573c757cfa738a936153dc2c4fd4e99349371a709a5f85524424d9263d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl20_block_types_3_stadium_020": {
@@ -219,7 +219,7 @@
     },
     "upstream_cypress_block_spec_bl2_should_handle_columns_statement_in_sub_blocks_002": {
       "input_sha256": "25668a6cdc1feabc5e572402487e5f0359df68de17e05a002e2c69195ce91089",
-      "svg_sha256": "e749bdbf3777212bce874b00cb90fb8624d3454be90ee7ee0ccd223232b16e6a",
+      "svg_sha256": "ecb605699fbee7b903e4a4ccc3be0b523381f0047fdd9fa084ab44792d4b2eff",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl30_block_should_overflow_if_too_wide_for_columns_030": {
@@ -234,17 +234,17 @@
     },
     "upstream_cypress_block_spec_bl3_should_align_block_widths_and_handle_columns_statement_in_su_003": {
       "input_sha256": "d74ef19a9b329d75476244ccfe29d15a43efc7231fdd8c2b90a46bba152c8b21",
-      "svg_sha256": "4b8ff052bd8305123f81e9e20a2d8cf614fe984b5ec849c42a202ec1129894e8",
+      "svg_sha256": "e58b9aaa55bbc1e354f1d70ea3a916badf21064f77d5b7f5e96ffee6058ecdc7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl4_should_align_block_widths_and_handle_columns_statements_in_d_004": {
       "input_sha256": "ccbeaa3a26030aa77d9c4fb447744112cb4a337213ffa003508faaa5902d34f3",
-      "svg_sha256": "1ad93fe38a905de6e19e139c9e7b01770399b6c0226b2cb165724856d6de6375",
+      "svg_sha256": "e8114608cda86951573092ebbf7d88b6d1fa431906abe95c8623bb8ee1cba89d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl5_should_align_block_widths_and_handle_columns_statements_in_d_005": {
       "input_sha256": "7a7a503b200c188850dc41632ba9593e33a448763ce28e835037c3e2202e8d42",
-      "svg_sha256": "4c13aae1e12670b5060611b7ee9b3bb342626af1f22137d9621d2ac3b368835c",
+      "svg_sha256": "df84adc3a1d176a7994310c9a2ee9ebd354c86a29816bf54ef5dcc9597c2bdbc",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl6_should_handle_block_arrows_and_spece_statements_006": {
@@ -259,12 +259,12 @@
     },
     "upstream_cypress_block_spec_bl8_should_handle_sub_blocks_without_columns_statements_008": {
       "input_sha256": "33fd04287320931ab2d62b8d58d6ead01ec55b4add70210e651043c6923b66a9",
-      "svg_sha256": "eb8ce481309a8ffaad13a4fd4834d86441a73765f774a6fa0436189acc6b2f94",
+      "svg_sha256": "c57ccaba4e45c0cc38832c6396c694712ff833a38a473cc49e2d96d79caebe48",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_block_spec_bl9_should_handle_edges_from_blocks_in_sub_blocks_to_other_block_009": {
       "input_sha256": "a9054421311ac045275476cf74bac95f75007a876d05075de59adfcf7716590b",
-      "svg_sha256": "8838d4db9e6feebe59b6bc32091ee1686bf24bef535a899dbd1a436e9e966586",
+      "svg_sha256": "bdc623ce41ac782e3770bad5ba6cbc600b434213dded584a280f2acea82ca65a",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_block_adjusting_widths_011": {
@@ -274,7 +274,7 @@
     },
     "upstream_docs_block_adjusting_widths_013": {
       "input_sha256": "8c1f8d5387a4888cee478e46f20f8f004f886e49efaab1b25cad980056e0aa0a",
-      "svg_sha256": "29df6ad7d5491b3a97c7c31468882f13ced24b18e09deb09d43cd005d2433b30",
+      "svg_sha256": "99ffd417ddafb409a1b1eb9d8bfbeedd33b205baad6dbdb07d41c1f4178e946e",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_block_basic_linking_and_arrow_types_021": {
@@ -404,7 +404,7 @@
     },
     "upstream_docs_block_nested_blocks_009": {
       "input_sha256": "bd54fe8aea77a0c8cac4f1c6390ea744f26b3e7eab1142d5c8cb238ead92a7d4",
-      "svg_sha256": "5963b33d45313a26d233d5a7c7a5ddaab63f3cd90c03fc4ef75ec5de3af12adf",
+      "svg_sha256": "5fa2473154f231d3f894730b2ac4b6a85571404c8c97142ca8db703fd1dafa83",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_block_spanning_multiple_columns_007": {
@@ -549,12 +549,12 @@
     },
     "upstream_pkgtests_block_spec_013": {
       "input_sha256": "51f0b471f773d3cce2bbeaca66d40f2bf1a403e3b1455d1ebf3156500f02b1f8",
-      "svg_sha256": "7c2301c3d12e9adba70650f3d2789c5b186c2b5ece668a38d2b5be6d40a6a30f",
+      "svg_sha256": "5ee30ea2ebdab7974f8d2d26bd57a82b2c5ecaa74e6536eb6d11730a00180f45",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_block_spec_014": {
       "input_sha256": "60db2c95fdf469943bbd9185d44c9b61fd54adfc88f4fbe4ad5ea0f88715ab29",
-      "svg_sha256": "748782e4379f1d71ca91699060605f1d81ace4094d7733b4a05cdef2503d0943",
+      "svg_sha256": "cd02a8ae22695cb8d6c047c7b79090fbfdbb1a63c9ea8b7c0fa0ecec11938ee6",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_block_spec_015": {
@@ -564,7 +564,7 @@
     },
     "upstream_pkgtests_block_spec_016": {
       "input_sha256": "eedbf989d18839cb49ab2e40124263cceba7f1d330189ebd209ce01b5e59ecad",
-      "svg_sha256": "1ebe1facb8ec5809555ac6bf743bab4f921f72a3ade9245ad38abec4824183ea",
+      "svg_sha256": "7060129d1a8ac4c10e491dd2f8fb6dd41bff56386ae89c69a180d6ed89786364",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_block_spec_017": {
@@ -574,7 +574,7 @@
     },
     "upstream_pkgtests_block_spec_018": {
       "input_sha256": "17e83ff1a998fe922a519648587b69442ae72bc59657302475631b6d0a98b517",
-      "svg_sha256": "b2b2e60631b8d3f64f1008492b335e9dfc082a77b263e98042f8fae9a9cf605d",
+      "svg_sha256": "20c5d54b5fd9a8c8276a9b9e32c478eeb3834444884c69c8f77af02887e6463e",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_block_spec_019": {

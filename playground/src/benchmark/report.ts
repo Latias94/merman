@@ -589,6 +589,7 @@ function projectFrozenInput(input: BenchmarkFrozenInput): BenchmarkFrozenInput {
       ]),
       layoutModules: Object.freeze([...input.externalRequirements.layoutModules]),
     }),
+    screenAvailableWidth: input.screenAvailableWidth,
     viewport: Object.freeze({ ...input.viewport }),
     detection: Object.freeze({ ...input.detection }),
   });

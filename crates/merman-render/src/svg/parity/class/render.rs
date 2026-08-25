@@ -1,4 +1,5 @@
 use super::super::timing::RenderTimings;
+use super::context::ClassEmitCheckpoint;
 use super::groups::ClassSplitEdgeGroupsRenderContext;
 use super::nodes::{
     ClassNodesRenderContext, ClassNodesRenderState, render_class_elk_adapter_dom,
@@ -49,7 +50,9 @@ fn render_class_diagram_svg_model_inner(
     let mut timings = RenderTimings::default();
 
     let mut detail = ClassRenderDetails::default();
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
+    let checkpoint_emit = || options.checkpoint_emit();
+    let emit = ClassEmitCheckpoint::new(&checkpoint_emit);
     let aria_roledescription = model.diagram_type.as_str();
     let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
 
@@ -120,12 +123,13 @@ fn render_class_diagram_svg_model_inner(
         aria_roledescription,
         &root_context,
     )?;
+    emit.checkpoint()?;
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style>");
     write_class_css(
         &mut out,
-        diagram_id,
+        diagram_id.semantic_str(),
         effective_config,
         settings
             .text_style
@@ -136,6 +140,7 @@ fn render_class_diagram_svg_model_inner(
     )?;
     out.push_str("</style>");
     out.checkpoint()?;
+    emit.checkpoint()?;
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -149,10 +154,12 @@ fn render_class_diagram_svg_model_inner(
         relation_theme,
         &mut relation_theme_receipt,
     )?;
+    emit.checkpoint()?;
     if layout.uses_elk_adapter_dom {
         out.push_str("</g>");
         push_class_shadow_defs(&mut out, diagram_id, effective_config)?;
         push_class_gradient(&mut out, diagram_id, effective_config)?;
+        emit.checkpoint()?;
     }
     out.checkpoint()?;
 
@@ -166,15 +173,6 @@ fn render_class_diagram_svg_model_inner(
 
     drop(build_ctx_guard);
 
-    let marker_url_prefix = {
-        let mut out = String::new();
-        let _ = write!(&mut out, "{}", escape_attr_display(diagram_id));
-        out.push('_');
-        let _ = write!(&mut out, "{}", escape_attr_display(aria_roledescription));
-        out.push('-');
-        out
-    };
-
     let terminal_text_style = TextStyle {
         font_family: settings.text_style.font_family.clone(),
         font_size: 11.0,
@@ -185,7 +183,7 @@ fn render_class_diagram_svg_model_inner(
         edges: &layout.edges,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
-        marker_url_prefix: &marker_url_prefix,
+        diagram_marker_class: aria_roledescription,
         diagram_id,
         content_tx,
         content_ty,
@@ -203,6 +201,7 @@ fn render_class_diagram_svg_model_inner(
             "edgePaths"
         },
         relation_theme,
+        emit,
     };
 
     // The layout-owned render tree preserves the exact recursive Dagre graph that produced these
@@ -225,6 +224,7 @@ fn render_class_diagram_svg_model_inner(
         content_tx,
         content_ty,
         timing,
+        emit,
     };
     if layout.uses_elk_adapter_dom {
         render_class_elk_adapter_dom(
@@ -267,6 +267,7 @@ fn render_class_diagram_svg_model_inner(
     if !layout.uses_elk_adapter_dom {
         push_class_shadow_defs(&mut out, diagram_id, effective_config)?;
         push_class_gradient(&mut out, diagram_id, effective_config)?;
+        emit.checkpoint()?;
     }
 
     drop(render_guard);

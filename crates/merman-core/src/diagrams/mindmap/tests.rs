@@ -1,7 +1,6 @@
 use super::*;
 use crate::{
-    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeProducerKind,
-    EditorSemanticCompleteness, EditorSemanticFacts, EditorSemanticRole, Engine, ParseOptions,
+    EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, ParseOptions,
     RenderSemanticModel, SourceSpan,
 };
 use futures::executor::block_on;
@@ -344,37 +343,8 @@ fn mindmap_editor_facts_preserve_parser_node_spans() {
     assert!(facts.directive_prefixes.iter().any(|p| p == "::icon"));
 }
 
-fn assert_mindmap_lexeme(
-    facts: &EditorSemanticFacts,
-    source: &str,
-    kind: EditorLexemeKind,
-    text: &str,
-) {
-    assert!(
-        facts.lexemes().iter().any(|lexeme| {
-            let span = lexeme.span();
-            lexeme.kind() == kind && &source[span.start..span.end] == text
-        }),
-        "missing {kind:?} mindmap token {text:?}: {:?}",
-        facts.lexemes()
-    );
-}
-
-fn assert_mindmap_lexemes_are_exact(source: &str, facts: &EditorSemanticFacts) {
-    assert_eq!(facts.lexeme_failure(), None);
-    for lexeme in facts.lexemes() {
-        let span = lexeme.span();
-        assert!(span.start < span.end && span.end <= source.len());
-        assert!(source.is_char_boundary(span.start));
-        assert!(source.is_char_boundary(span.end));
-    }
-    for pair in facts.lexemes().windows(2) {
-        assert!(pair[0].span().end <= pair[1].span().start, "{pair:?}");
-    }
-}
-
 #[test]
-fn mindmap_parser_emits_exact_crlf_unicode_multiline_lexemes() {
+fn mindmap_parser_preserves_crlf_unicode_multiline_semantic_spans() {
     let source = concat!(
         "mindmap root[\"`根节点 🌳\r\n",
         "第二行`\"]\r\n",
@@ -391,63 +361,6 @@ fn mindmap_parser_emits_exact_crlf_unicode_multiline_lexemes() {
         .expect("mindmap editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    for (kind, text) in [
-        (EditorLexemeKind::Keyword, "mindmap"),
-        (EditorLexemeKind::Identifier, "root"),
-        (EditorLexemeKind::Delimiter, "["),
-        (EditorLexemeKind::Delimiter, "\"`"),
-        (EditorLexemeKind::String, "根节点 🌳\r\n第二行"),
-        (EditorLexemeKind::Delimiter, "`\""),
-        (EditorLexemeKind::Delimiter, "]"),
-        (EditorLexemeKind::Identifier, "bare节点"),
-        (EditorLexemeKind::Identifier, "重复"),
-        (EditorLexemeKind::String, "重复"),
-        (EditorLexemeKind::Identifier, "无 ID"),
-        (EditorLexemeKind::Delimiter, ":::"),
-        (EditorLexemeKind::Identifier, "hot"),
-        (EditorLexemeKind::Identifier, "warm"),
-        (EditorLexemeKind::Keyword, "::icon"),
-        (EditorLexemeKind::Identifier, "lucide:home"),
-    ] {
-        assert_mindmap_lexeme(&facts, source, kind, text);
-    }
-
-    for name in ["root", "bare节点", "重复", "无 ID"] {
-        assert!(facts.lexemes().iter().any(|lexeme| {
-            let span = lexeme.span();
-            lexeme.kind() == EditorLexemeKind::Identifier
-                && &source[span.start..span.end] == name
-                && lexeme
-                    .modifiers()
-                    .contains(EditorLexemeModifier::Definition)
-        }));
-    }
-    for name in ["hot", "warm", "lucide:home"] {
-        assert!(facts.lexemes().iter().any(|lexeme| {
-            let span = lexeme.span();
-            lexeme.kind() == EditorLexemeKind::Identifier
-                && &source[span.start..span.end] == name
-                && lexeme.modifiers().contains(EditorLexemeModifier::Reference)
-        }));
-    }
-
-    let comments = facts
-        .lexemes()
-        .iter()
-        .filter(|lexeme| lexeme.kind() == EditorLexemeKind::Comment)
-        .collect::<Vec<_>>();
-    assert_eq!(comments.len(), 1, "global comment must not be duplicated");
-    assert_eq!(
-        comments[0].producer().kind(),
-        EditorLexemeProducerKind::GlobalPreprocess,
-    );
-    assert!(facts.lexemes().iter().all(|lexeme| {
-        lexeme.producer().kind() == EditorLexemeProducerKind::GlobalPreprocess
-            || (lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
-                && lexeme.producer().family().map(|family| family.as_str()) == Some("mindmap"))
-    }));
-    assert_mindmap_lexemes_are_exact(source, &facts);
-
     let repeated = "重复[\"重复\"]";
     let repeated_start = source.find(repeated).expect("repeated node source");
     let id = facts
@@ -513,15 +426,6 @@ fn mindmap_unquoted_multiline_nodes_continue_until_the_shape_delimiter() {
         panic!("mindmap editor facts");
     };
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    assert_mindmap_lexeme(facts, source, EditorLexemeKind::Delimiter, "[");
-    assert_mindmap_lexeme(facts, source, EditorLexemeKind::Delimiter, "]");
-    assert_mindmap_lexeme(
-        facts,
-        source,
-        EditorLexemeKind::String,
-        "\n    Multi-line root\n    with Unicode 🤓\n  ",
-    );
-    assert_mindmap_lexemes_are_exact(source, facts);
 }
 
 #[test]
@@ -562,13 +466,6 @@ fn mindmap_bare_markdown_continuation_stays_open_across_same_indent_content() {
         panic!("mindmap editor facts");
     };
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    assert_mindmap_lexeme(
-        facts,
-        source,
-        EditorLexemeKind::String,
-        "`**Start** with\n    a same-indent second line`",
-    );
-    assert_mindmap_lexemes_are_exact(source, facts);
 }
 
 #[test]
@@ -597,18 +494,10 @@ fn mindmap_unmatched_bare_backtick_does_not_hide_the_shape_closing_delimiter() {
         panic!("mindmap editor facts");
     };
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    assert_mindmap_lexeme(facts, source, EditorLexemeKind::Delimiter, "]");
-    assert_mindmap_lexeme(
-        facts,
-        source,
-        EditorLexemeKind::String,
-        "Use ` unmatched marker",
-    );
-    assert_mindmap_lexemes_are_exact(source, facts);
 }
 
 #[test]
-fn mindmap_recovery_keeps_failed_prefix_and_later_node_lexemes() {
+fn mindmap_recovery_keeps_failed_prefix_and_later_node_semantics() {
     let source = concat!(
         "mindmap\n",
         " root\n",
@@ -630,23 +519,6 @@ fn mindmap_recovery_keeps_failed_prefix_and_later_node_lexemes() {
         .expect("mindmap recovery facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-    for (kind, text) in [
-        (EditorLexemeKind::Identifier, "root"),
-        (EditorLexemeKind::Identifier, "broken"),
-        (EditorLexemeKind::Delimiter, "["),
-        (EditorLexemeKind::Keyword, "::icon"),
-        (EditorLexemeKind::Identifier, "lucide:home"),
-        (EditorLexemeKind::Identifier, "后续"),
-        (EditorLexemeKind::String, "After"),
-        (EditorLexemeKind::Identifier, "another"),
-        (EditorLexemeKind::Identifier, "hot"),
-    ] {
-        assert_mindmap_lexeme(&facts, source, kind, text);
-    }
-    assert!(facts.lexemes().iter().all(|lexeme| {
-        lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
-            && lexeme.producer().family().map(|family| family.as_str()) == Some("mindmap")
-    }));
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "后续"));
     assert!(
         facts
@@ -654,7 +526,6 @@ fn mindmap_recovery_keeps_failed_prefix_and_later_node_lexemes() {
             .iter()
             .any(|diagnostic| diagnostic.message.contains("unterminated node delimiter"))
     );
-    assert_mindmap_lexemes_are_exact(source, &facts);
 }
 
 #[test]

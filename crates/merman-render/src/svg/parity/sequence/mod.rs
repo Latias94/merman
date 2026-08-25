@@ -18,4 +18,6 @@ mod render;
 mod root;
 mod settings;
 
+pub(super) use crate::sequence::SequenceOperationCheckpoints as SequenceEmitCheckpoints;
+
 pub(super) use render::render_sequence_diagram_svg_model_with_config;

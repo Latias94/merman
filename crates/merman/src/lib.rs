@@ -78,19 +78,31 @@
 //! target adapters never create a replacement operation or silently replace the caller's
 //! cancellation handle.
 
+#![doc = include_str!(
+    "../docs/generated/merman-rustdoc/crate-overview.md"
+)]
+
 pub use merman_core::*;
 
+pub mod diagnostic;
 #[path = "operation.rs"]
 mod operation_runner;
+#[doc = include_str!(
+    "../docs/generated/merman-rustdoc/render-module.md"
+)]
 pub mod render;
+pub use diagnostic::{
+    TerminalDiagnostic, TerminalDiagnosticDetails, TerminalRuntimePolicyError,
+    normalize_terminal_diagnostic, normalize_terminal_text,
+};
 #[cfg(feature = "ascii")]
 pub use render::AsciiRequest;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub use render::RasterOutput;
 #[cfg(feature = "svg")]
 pub use render::{
-    DocumentPortabilityReport, RenderArtifactKind, RenderEvidence, RenderedDocument,
-    SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest, TargetAdmissionError,
+    DocumentPortabilityReport, OperationExecutionPath, RenderArtifactKind, RenderEvidence,
+    RenderedDocument, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest, TargetAdmissionError,
     TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus, TargetFontSource,
     ThemeEvidenceStatus, ThemeEvidenceSummary,
 };

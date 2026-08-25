@@ -507,7 +507,7 @@ fn block_explicit_main_background_outranks_typed_node_fill() {
 }
 
 #[test]
-fn block_explicit_default_fill_remains_compatibility_owned() {
+fn block_explicit_default_fill_uses_the_typed_writer() {
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
@@ -529,25 +529,20 @@ fn block_explicit_default_fill_remains_compatibility_owned() {
         "block\n  A[\"Alpha\"]\n",
         &theme,
         Engine::new(),
-        ThemePortabilityRequirement::BestEffort,
+        ThemePortabilityRequirement::RequirePortable,
     );
     let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
 
     assert!(
         shells
             .iter()
-            .all(|(_, style)| terminal_fill(style) != Some("#654321")),
-        "explicit Default must not use the unqualified typed writer: {shells:?}"
-    );
-    assert!(
-        rendered.svg().contains("fill:#654321;stroke:"),
-        "explicit Default must retain the legacy Block fill projection: {}",
-        rendered.svg()
+            .any(|(_, style)| terminal_fill(style) == Some("#654321")),
+        "explicit Default must use the typed writer: {shells:?}"
     );
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

@@ -1,6 +1,7 @@
 # ADR 0076: Capability-Driven Feature And Package Surfaces
 
-- Status: accepted; native prebuilt SKU policy superseded by ADR-0079
+- Status: accepted; native prebuilt SKU policy superseded by ADR-0079; Rustdoc integration
+  ownership amended by ADR-0082
 - Date: 2026-07-22
 - Descriptor: `capabilities/feature-surface-v1.json`, schema `1`
 - Artifact profiles: `capabilities/artifact-profiles-v1.json`, schema `1`
@@ -97,6 +98,11 @@ A new public leaf is accepted only when all of these are present:
 Negative profiles, one-feature-per-diagram designs, and incidental dependency names are invalid.
 Named reusable layout engines are valid because users select their Mermaid behavior directly;
 `math` deliberately hides the current RaTeX implementation.
+
+ADR-0082 supersedes only the assumption that the `merman-rustdoc` integration crate is the sole
+Rustdoc product boundary. It adds independently owned checked generation through the CLI. This
+ADR's capability vocabulary, positive-feature rules, artifact-profile authority, and the macro
+crate's `complete-svg` aggregate remain in force for their respective packages.
 
 ## Consequences
 

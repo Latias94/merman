@@ -6,7 +6,7 @@ use crate::{
 use crate::{
     common_db::LangiumCommonDbFields,
     diagrams::langium_common::{
-        LangiumCommonFacts, LangiumLexemeTrace, parse_langium_common, parse_langium_string,
+        LangiumCommonFacts, parse_langium_common, parse_langium_string,
         push_langium_common_editor_fact, push_langium_common_recovery,
         strip_langium_inline_comment,
     },
@@ -83,7 +83,6 @@ enum CynefinLinePart {
 
 struct CynefinParsedLine {
     parts: Vec<CynefinLinePart>,
-    lexemes: LangiumLexemeTrace,
     error: Option<Error>,
 }
 
@@ -206,7 +205,6 @@ fn construct_cynefin_parse_outcome_controlled(
     let mut current_domain: Option<usize> = None;
     let mut offset = 0usize;
     let mut common = LangiumCommonFacts::default();
-    let mut lexemes = LangiumLexemeTrace::default();
     let mut first_error = None;
 
     while offset < code.len() {
@@ -239,10 +237,6 @@ fn construct_cynefin_parse_outcome_controlled(
                 current_domain = None;
                 continue;
             };
-            lexemes.keyword(header.header_span);
-            if let Some(span) = header.colon_span {
-                lexemes.delimiter(span);
-            }
             (header.body, header.body_start)
         } else {
             let body_start = line_start;
@@ -256,7 +250,6 @@ fn construct_cynefin_parse_outcome_controlled(
         if let Some(parsed) = parse_langium_common(code, body_start) {
             offset = body_start + parsed.consumed;
             current_domain = None;
-            lexemes.extend(parsed.lexemes.clone());
             push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "cynefin");
             if let Some(diagnostic) = parsed.diagnostic {
                 let error = Error::diagram_parse_insertion_point(
@@ -273,7 +266,6 @@ fn construct_cynefin_parse_outcome_controlled(
         }
 
         let parsed_line = parse_cynefin_line_parts_controlled(body, body_start, control)?;
-        lexemes.extend(parsed_line.lexemes);
         if let Some(error) = parsed_line.error {
             let span = trimmed_source_span(body, body_start);
             let message = cynefin_error_message(&error);
@@ -386,7 +378,6 @@ fn construct_cynefin_parse_outcome_controlled(
     model.title = common.title;
     model.acc_title = common.acc_title;
     model.acc_descr = common.acc_descr;
-    lexemes.attach(code, &mut editor_facts);
 
     control.checkpoint()?;
     Ok(CynefinParseOutcome {
@@ -421,8 +412,6 @@ fn cynefin_error_message(error: &Error) -> String {
 struct CynefinHeader<'a> {
     body: &'a str,
     body_start: usize,
-    header_span: SourceSpan,
-    colon_span: Option<SourceSpan>,
 }
 
 fn split_header(line: &str, line_start: usize) -> Option<CynefinHeader<'_>> {
@@ -436,13 +425,9 @@ fn split_header(line: &str, line_start: usize) -> Option<CynefinHeader<'_>> {
 
     let colon_len = after_header.starts_with(':') as usize;
     let body_offset = leading + HEADER.len() + colon_len;
-    let header_start = line_start + leading;
-    let colon_start = header_start + HEADER.len();
     Some(CynefinHeader {
         body: &line[body_offset..],
         body_start: line_start + body_offset,
-        header_span: SourceSpan::new(header_start, colon_start),
-        colon_span: (colon_len == 1).then_some(SourceSpan::new(colon_start, colon_start + 1)),
     })
 }
 
@@ -495,11 +480,7 @@ fn parse_cynefin_line_parts_controlled(
         break;
     }
 
-    Ok(CynefinParsedLine {
-        parts,
-        lexemes: cursor.lexemes,
-        error,
-    })
+    Ok(CynefinParsedLine { parts, error })
 }
 
 fn physical_line_at(code: &str, start: usize) -> (&str, usize) {
@@ -558,7 +539,6 @@ struct CynefinCursor<'input> {
     input: &'input str,
     line_start: usize,
     pos: usize,
-    lexemes: LangiumLexemeTrace,
 }
 
 impl<'input> CynefinCursor<'input> {
@@ -567,7 +547,6 @@ impl<'input> CynefinCursor<'input> {
             input,
             line_start,
             pos: 0,
-            lexemes: LangiumLexemeTrace::default(),
         }
     }
 
@@ -590,17 +569,14 @@ impl<'input> CynefinCursor<'input> {
 
     fn take_transition(&mut self) -> Result<Option<TransitionParts>> {
         let start = self.pos;
-        let lexeme_checkpoint = self.lexemes.checkpoint();
         self.skip_ws();
         let Some(from) = self.take_domain() else {
             self.pos = start;
-            self.lexemes.rollback(lexeme_checkpoint);
             return Ok(None);
         };
         self.skip_ws();
         if !self.take_operator("-->") {
             self.pos = start;
-            self.lexemes.rollback(lexeme_checkpoint);
             return Ok(None);
         }
 
@@ -639,11 +615,8 @@ impl<'input> CynefinCursor<'input> {
     }
 
     fn take_operator(&mut self, operator: &str) -> bool {
-        let start = self.line_start + self.pos;
         if self.remaining().starts_with(operator) {
             self.pos += operator.len();
-            self.lexemes
-                .operator(SourceSpan::new(start, start + operator.len()));
             true
         } else {
             false
@@ -651,11 +624,8 @@ impl<'input> CynefinCursor<'input> {
     }
 
     fn take_delimiter(&mut self, delimiter: &str) -> bool {
-        let start = self.line_start + self.pos;
         if self.remaining().starts_with(delimiter) {
             self.pos += delimiter.len();
-            self.lexemes
-                .delimiter(SourceSpan::new(start, start + delimiter.len()));
             true
         } else {
             false
@@ -677,8 +647,6 @@ impl<'input> CynefinCursor<'input> {
             }
             let start = self.line_start + self.pos;
             self.pos += domain.len();
-            self.lexemes
-                .keyword(SourceSpan::new(start, start + domain.len()));
             return Some(SpannedText {
                 text: (*domain).to_string(),
                 span: SourceSpan::new(start, start + domain.len()),
@@ -692,7 +660,6 @@ impl<'input> CynefinCursor<'input> {
         let start = self.line_start + self.pos;
         let parsed = parse_langium_string(self.remaining(), start)?;
         self.pos += parsed.consumed;
-        self.lexemes.string(parsed.raw_span);
         Some(SpannedText {
             text: parsed.value,
             span: parsed.raw_span,
@@ -779,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn cynefin_recovery_preserves_cursor_prefix_and_later_crlf_lexemes() {
+    fn cynefin_recovery_preserves_cursor_prefix_for_crlf_input() {
         let source = concat!(
             "cynefin-beta\r\n",
             "  complex --> ??? %% malformed target\r\n",
@@ -800,19 +767,6 @@ mod tests {
             },
         );
 
-        let has_lexeme = |text: &str, kind: crate::EditorLexemeKind| {
-            let start = source.find(text).unwrap();
-            facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == kind
-                    && lexeme.span() == SourceSpan::new(start, start + text.len())
-                    && lexeme.producer().kind() == crate::EditorLexemeProducerKind::FamilyRecovery
-            })
-        };
-        assert!(has_lexeme("complex", crate::EditorLexemeKind::Keyword));
-        assert!(has_lexeme("-->", crate::EditorLexemeKind::Operator));
-        assert!(has_lexeme("title", crate::EditorLexemeKind::Keyword));
-        assert!(has_lexeme("Later", crate::EditorLexemeKind::String));
-        assert!(has_lexeme("clear", crate::EditorLexemeKind::Keyword));
         assert!(facts.diagnostics.iter().any(|diagnostic| {
             diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
                 && diagnostic.span

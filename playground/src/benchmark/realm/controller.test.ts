@@ -335,6 +335,7 @@ function sampleInput(
           theme: "default",
           diagramFont: "trebuchet",
           externalRequirements: { externalDiagrams: [], layoutModules: [] },
+          screenAvailableWidth: 1512,
           viewport: { width: 800, height: 600 },
         },
       }

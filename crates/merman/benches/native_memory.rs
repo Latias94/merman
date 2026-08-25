@@ -258,7 +258,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
                 .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed)),
         )
         .with_parse_options(ParseOptions::strict())
-        .with_resource_policy(render_policy.input_policy().clone());
+        .with_resource_policy(*render_policy.input_policy());
     let input_nodes = NODES_PER_SCALE * u64::from(request.scale);
     let input_edges = EDGES_PER_SCALE * u64::from(request.scale);
 
@@ -281,7 +281,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
                         },
                     )
                     .with_parse_options(ParseOptions::strict())
-                    .with_resource_policy(render_policy.input_policy().clone()),
+                    .with_resource_policy(*render_policy.input_policy()),
                 )
                 .map_err(|error| ProbeError::new(format!("flowchart render failed: {error}")))?;
             let RenderOutput::Svg(Some(svg)) = output else {

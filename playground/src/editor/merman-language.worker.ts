@@ -3,10 +3,8 @@
 import {
   createEditorSession,
   editorCompletionTriggerCharacters,
-  editorSemanticTokenDescriptor,
   initMerman,
   runtimeCatalog,
-  SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
   transportApiVersion,
 } from "@mermanjs/web";
 import {
@@ -31,9 +29,7 @@ const port: EditorWorkerRuntimePort = {
 const runtime = createEditorWorkerRuntime(port, {
   createEditorSession,
   editorCompletionTriggerCharacters,
-  editorSemanticTokenDescriptor,
   initMerman,
-  legendDigest: SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
   runtimeCatalog,
   transportApiVersion,
 });

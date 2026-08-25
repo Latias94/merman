@@ -1,5 +1,9 @@
 # Semantic-token reducer decision — 2026-08-08
 
+> Superseded on 2026-08-17. The parser-backed semantic-token planner and this reducer were removed
+> when Tree-sitter became the sole syntax-highlighting owner. The revision-bound measurements below
+> remain historical evidence and do not describe the current implementation.
+
 ## Decision
 
 The one-pass semantic-token reducer is **accepted-structural**. The optional public latency and

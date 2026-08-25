@@ -9,13 +9,12 @@ pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleC
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::{
     DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
-    SEMANTIC_TOKEN_DESCRIPTOR_DIGEST, semantic_token_descriptor,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tower_lsp_server::ls_types::{Location, Position, Range, Uri};
 
-pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
+pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 2;
 pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 2;
 pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
 pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
@@ -70,7 +69,6 @@ impl ConfigSchemaResponse {
 }
 
 pub fn experimental_capabilities() -> serde_json::Value {
-    let editor_language = semantic_token_descriptor();
     let diagram_families = merman_core::diagram_family_capabilities()
         .iter()
         .map(|family| {
@@ -85,10 +83,6 @@ pub fn experimental_capabilities() -> serde_json::Value {
         "merman": {
             "schemaVersion": EXPERIMENTAL_SCHEMA_VERSION,
             "editorLanguage": {
-                "schemaVersion": editor_language.schema_version,
-                "descriptorDigest": SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
-                "packedEncoding": editor_language.packed.encoding,
-                "wordsPerToken": editor_language.packed.words_per_token,
                 "renamePolicies": EditorRenamePolicy::IDS,
             },
             "diagramSupport": {
@@ -217,9 +211,8 @@ mod tests {
     #[test]
     fn experimental_capability_advertises_rule_catalog_request() {
         let capabilities = experimental_capabilities();
-        let descriptor = semantic_token_descriptor();
 
-        assert_eq!(EXPERIMENTAL_SCHEMA_VERSION, 1);
+        assert_eq!(EXPERIMENTAL_SCHEMA_VERSION, 2);
         assert_eq!(
             capabilities["merman"]["requests"]["ruleCatalog"],
             RULE_CATALOG_METHOD
@@ -235,10 +228,6 @@ mod tests {
         assert_eq!(
             capabilities["merman"]["editorLanguage"],
             serde_json::json!({
-                "schemaVersion": descriptor.schema_version,
-                "descriptorDigest": descriptor.digest,
-                "packedEncoding": descriptor.packed.encoding,
-                "wordsPerToken": descriptor.packed.words_per_token,
                 "renamePolicies": EditorRenamePolicy::IDS,
             })
         );

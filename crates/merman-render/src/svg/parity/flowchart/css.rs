@@ -2,6 +2,41 @@
 
 use super::*;
 
+/// One Flowchart CSS selector identity that preserves the operation-owned SVG ID projection.
+///
+/// Production callers pass the already normalized [`SvgDiagramId`], so every selector occurrence
+/// is formatted through its projection. Test-only raw strings retain the historical CSS escaping
+/// behavior without weakening the production boundary.
+#[derive(Clone, Copy)]
+pub(in crate::svg::parity::flowchart) struct FlowchartCssSelectorDiagramId<I>(I);
+
+impl<I> FlowchartCssSelectorDiagramId<I> {
+    pub(in crate::svg::parity::flowchart) const fn new(value: I) -> Self {
+        Self(value)
+    }
+}
+
+impl<I> std::fmt::Display for FlowchartCssSelectorDiagramId<I>
+where
+    I: SvgDiagramIdValue,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let semantic = self.0.semantic_value();
+        let normalized = semantic
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphabetic)
+            && semantic
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
+        if normalized {
+            std::fmt::Display::fmt(&self.0, formatter)
+        } else {
+            formatter.write_str(&crate::svg::escape_css_identifier(semantic))
+        }
+    }
+}
+
 #[derive(Debug)]
 struct FlowchartClassDefCssDeclaration {
     property_css: String,
@@ -124,9 +159,9 @@ where
     }
 }
 
-pub(in crate::svg::parity) fn write_flowchart_css<DropShadowId, DropShadowSmallId>(
+pub(in crate::svg::parity) fn write_flowchart_css<DiagramId, DropShadowId, DropShadowSmallId>(
     out: &mut impl crate::svg::parity::SvgOutput,
-    diagram_id: &str,
+    diagram_id: DiagramId,
     drop_shadow_id: DropShadowId,
     drop_shadow_small_id: DropShadowSmallId,
     effective_config: &serde_json::Value,
@@ -135,10 +170,11 @@ pub(in crate::svg::parity) fn write_flowchart_css<DropShadowId, DropShadowSmallI
     class_defs: &IndexMap<String, Vec<String>>,
 ) -> Result<()>
 where
+    DiagramId: SvgDiagramIdValue,
     DropShadowId: std::fmt::Display,
     DropShadowSmallId: std::fmt::Display,
 {
-    let id = crate::svg::escape_css_identifier(diagram_id);
+    let id = FlowchartCssSelectorDiagramId(diagram_id);
     let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
     let stroke = theme.common.line_color.as_str();
     let arrowhead_color = theme.arrowhead_color.as_str();
@@ -168,7 +204,7 @@ where
     let _ = write!(
         &mut *out,
         r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id.as_str(),
+        id,
         font_family,
         fmt(font_size),
         text_color
@@ -179,61 +215,38 @@ where
     let _ = write!(
         &mut *out,
         r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id.as_str(),
-        id.as_str()
+        id, id
     );
     let _ = write!(
         &mut *out,
         r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        id.as_str(),
-        error_bkg,
-        id.as_str(),
-        error_text,
-        error_text
+        id, error_bkg, id, error_text, error_text
     );
     let _ = write!(
         &mut *out,
         r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id.as_str(),
-        stroke_width,
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
-        id.as_str()
+        id, stroke_width, id, id, id, id, id
     );
     let _ = write!(
         &mut *out,
         r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        id.as_str(),
-        stroke,
-        stroke,
-        id.as_str(),
-        stroke
+        id, stroke, stroke, id, stroke
     );
     let _ = write!(
         &mut *out,
         r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};color:{};}}"#,
-        id.as_str(),
+        id,
         font_family,
         fmt(font_size),
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
         font_family,
         node_text_color
     );
     let _ = write!(
         &mut *out,
         r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span{{color:{};}}#{} .cluster-label span p{{background-color:transparent;}}#{} .label text,#{} span{{fill:{};color:{};}}"#,
-        id.as_str(),
-        title_color,
-        id.as_str(),
-        title_color,
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
-        node_text_color,
-        node_text_color
+        id, title_color, id, title_color, id, id, id, node_text_color, node_text_color
     );
     let _ = write!(
         &mut *out,
@@ -242,64 +255,55 @@ where
     let _ = write!(
         &mut *out,
         r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePath .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
-        id.as_str(),
-        stroke,
-        stroke,
-        id.as_str(),
-        arrowhead_color,
-        id.as_str(),
-        stroke,
-        stroke_width,
-        id.as_str(),
-        stroke
+        id, stroke, stroke, id, arrowhead_color, id, stroke, stroke_width, id, stroke
     );
     let _ = write!(
         &mut *out,
         r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
-        id.as_str(),
+        id,
         edge_label_background,
-        id.as_str(),
+        id,
         edge_label_background,
-        id.as_str(),
+        id,
         edge_label_background,
         edge_label_background,
-        id.as_str(),
+        id,
         label_bkg
     );
     let _ = write!(
         &mut *out,
         "#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
-        id.as_str(),
+        id,
         cluster_bkg,
         cluster_border,
-        id.as_str(),
+        id,
         title_color,
-        id.as_str(),
+        id,
         title_color,
-        id.as_str(),
+        id,
         font_family,
         tertiary,
         cluster_border,
-        id.as_str(),
+        id,
         text_color,
-        id.as_str()
+        id
     );
     let _ = write!(
         &mut *out,
         r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
         edge_label_background,
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
         edge_label_background,
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
         edge_label_background,
         edge_label_background,
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
+        id,
+        id,
+        id,
         font_family
     );
     if neo {
@@ -333,10 +337,10 @@ where
             let _ = write!(
                 &mut *out,
                 r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                id.as_str(),
+                id,
                 escape_xml(class),
                 style,
-                id.as_str(),
+                id,
                 escape_xml(class),
                 style
             );
@@ -345,7 +349,7 @@ where
                 let _ = write!(
                     &mut *out,
                     r#"#{} .{} {}{{{}}}"#,
-                    id.as_str(),
+                    id,
                     escape_xml(class),
                     css_element,
                     style
@@ -356,7 +360,7 @@ where
             let _ = write!(
                 &mut *out,
                 r#"#{} .{} tspan{{{}}}"#,
-                id.as_str(),
+                id,
                 escape_xml(class),
                 text_style
             );

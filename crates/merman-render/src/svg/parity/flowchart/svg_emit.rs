@@ -19,7 +19,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             layout: artifact.pair().layout(),
             swimlane_layout: None,
             model: artifact.pair().semantic(),
-            render_label_sources: artifact.label_sources(),
+            render_context: artifact.render_context(),
             effective_config: &metadata.effective_config,
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
@@ -36,7 +36,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) layout: &'a FlowchartLayout,
     pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
     pub(super) model: &'a crate::flowchart::FlowchartModel,
-    pub(super) render_label_sources: &'a crate::flowchart::FlowchartRenderLabelSources,
+    pub(super) render_context: &'a crate::flowchart::FlowchartRenderContext,
     pub(super) effective_config: &'a merman_core::MermaidConfig,
     pub(super) diagram_type: &'a str,
     pub(super) diagram_title: Option<&'a str>,
@@ -54,7 +54,7 @@ pub(super) fn render_flowchart_svg_model(
         layout,
         swimlane_layout,
         model,
-        render_label_sources,
+        render_context,
         effective_config,
         diagram_type,
         diagram_title,
@@ -63,7 +63,7 @@ pub(super) fn render_flowchart_svg_model(
         edge_style_plan,
         edge_theme,
     } = request;
-    let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources);
+    let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
     let model = &render_model;
     if model
         .nodes
@@ -90,7 +90,8 @@ pub(super) fn render_flowchart_svg_model(
         "render.flowchart.roughjs",
     );
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
+    let diagram_id_value = diagram_id.semantic_str();
     let _g_build_ctx = render_timing.section(&mut timings.build_ctx);
 
     let FlowchartRenderInputs {
@@ -271,7 +272,7 @@ pub(super) fn render_flowchart_svg_model(
 
     let node_dom_index = flowchart_node_dom_indices(model);
     let document_ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
-        diagram_id,
+        diagram_id: diagram_id_value,
         edge_order: &edge_order,
         node_dom_index: &node_dom_index,
         subgraph_index_by_id: &subgraph_index_by_id,
@@ -282,6 +283,7 @@ pub(super) fn render_flowchart_svg_model(
     let node_theme_ordinals =
         flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
+    let checkpoint_emit = || options.checkpoint_emit();
     let ctx = FlowchartRenderCtx {
         model,
         diagram_id,
@@ -294,9 +296,11 @@ pub(super) fn render_flowchart_svg_model(
         work_meter: options.work_meter(),
         resolved_theme: options.resolved_theme(),
         theme_evidence,
+        emit: FlowchartEmitCheckpoint::new(&checkpoint_emit),
         math_renderer: options.math_renderer(),
         svg_label_sidecar: Some(svg_label_sidecar),
         icon_registry: options.icon_registry(),
+        icon_scope_prefix: None,
         security_level_loose: effective_config.get_str("securityLevel") == Some("loose"),
         node_html_labels,
         edge_html_labels,
@@ -331,7 +335,7 @@ pub(super) fn render_flowchart_svg_model(
         edge_order,
         nodes_by_id,
         subgraphs_by_id,
-        subgraph_index_by_id,
+        subgraph_indices_by_id: subgraph_index_by_id,
         subgraph_ids_with_children,
         tooltips: &model.tooltips,
         recursive_clusters,
@@ -610,6 +614,7 @@ mod tests {
     fn node(id: &str) -> crate::flowchart::FlowNode {
         crate::flowchart::FlowNode {
             id: id.to_string(),
+            provenance: Default::default(),
             label: None,
             label_type: None,
             layout_shape: None,

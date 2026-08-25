@@ -16,11 +16,15 @@ mod io;
 mod markdown;
 #[cfg(feature = "network-icons")]
 mod network;
+#[cfg(any(feature = "svg", feature = "ascii"))]
+mod operation;
 mod output;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 mod render;
 mod resources;
 mod runtime;
+#[cfg(feature = "rustdoc")]
+mod rustdoc;
 #[cfg(feature = "markdown")]
 mod transaction;
 

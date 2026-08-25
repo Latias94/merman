@@ -8,6 +8,7 @@ export async function inspectPackageManifests(nodeRoot, descriptor) {
     throw new Error("Node package surface descriptor must define the schema-1 public alpha group.");
   }
   const root = await inspectManifest(nodeRoot, descriptor.root, "loader");
+  const wasm = await inspectManifest(nodeRoot, descriptor.wasm, "wasm");
   const targets = [];
   for (const targetDescriptor of descriptor.targets) {
     targets.push({
@@ -15,12 +16,17 @@ export async function inspectPackageManifests(nodeRoot, descriptor) {
       ...(await inspectManifest(nodeRoot, targetDescriptor, "platform")),
     });
   }
-  const versions = new Set([root.manifest.version, ...targets.map((item) => item.manifest.version)]);
+  const versions = new Set([
+    root.manifest.version,
+    wasm.manifest.version,
+    ...targets.map((item) => item.manifest.version),
+  ]);
   if (versions.size !== 1 || !versions.has(descriptor.version)) {
     throw new Error("Node candidate package versions must be exact and lockstep.");
   }
   const engineRanges = new Set([
     root.manifest.engines?.node,
+    wasm.manifest.engines?.node,
     ...targets.map((item) => item.manifest.engines?.node),
   ]);
   if (
@@ -51,13 +57,14 @@ export async function inspectPackageManifests(nodeRoot, descriptor) {
   if (JSON.stringify(optionalNames) !== JSON.stringify(targetNames)) {
     throw new Error("Node loader optional dependencies must exactly match the target package set.");
   }
-  return { root, targets };
+  return { root, wasm, targets };
 }
 
 export function verifyPackedFileOwnership({ packageName, role, files }) {
-  const paths = files.map((item) => item.path);
+  const paths = files.map((item) => item.path.replace(/^package\//, ""));
   const nodeFiles = paths.filter((item) => item.endsWith(".node"));
   const wasmFiles = paths.filter((item) => item.endsWith(".wasm"));
+  const cjsFiles = paths.filter((item) => item.endsWith(".cjs"));
   if (role === "loader" && nodeFiles.length !== 0) {
     throw new Error(`${packageName} loader package must not contain native binaries.`);
   }
@@ -69,6 +76,21 @@ export function verifyPackedFileOwnership({ packageName, role, files }) {
   }
   if (role === "platform" && wasmFiles.length !== 0) {
     throw new Error(`${packageName} platform package must not contain WASM binaries.`);
+  }
+  if (role === "wasm") {
+    if (nodeFiles.length !== 0) {
+      throw new Error(`${packageName} WASM package must not contain native binaries.`);
+    }
+    if (wasmFiles.length !== 1 || wasmFiles[0] !== "artifact/merman_node_bg.wasm") {
+      throw new Error(
+        `${packageName} WASM package must contain exactly package/artifact/merman_node_bg.wasm.`,
+      );
+    }
+    if (cjsFiles.length !== 1 || cjsFiles[0] !== "artifact/merman_node.cjs") {
+      throw new Error(
+        `${packageName} WASM package must contain exactly package/artifact/merman_node.cjs.`,
+      );
+    }
   }
 }
 
@@ -92,6 +114,22 @@ async function inspectManifest(nodeRoot, descriptor, role) {
   const wasmFiles = declaredFiles.filter((item) => item.endsWith(".wasm"));
   if (role === "platform" && (nodeFiles.length !== 1 || nodeFiles[0] !== descriptor.node_artifact)) {
     throw new Error(`${descriptor.name} must own exactly ${descriptor.node_artifact}.`);
+  }
+  if (role === "wasm") {
+    if (
+      manifest.main !== "./dist/index.mjs" ||
+      manifest.types !== "./dist/index.d.ts" ||
+      !declaredFiles.includes("artifact") ||
+      !declaredFiles.includes("dist") ||
+      Object.keys({
+        ...manifest.dependencies,
+        ...manifest.optionalDependencies,
+        ...manifest.peerDependencies,
+      }).length !== 0 ||
+      ["os", "cpu", "libc"].some((field) => field in manifest)
+    ) {
+      throw new Error(`${descriptor.name} must be an unconstrained, dependency-free Node WASM package.`);
+    }
   }
   const dependencyNames = Object.keys({
     ...manifest.dependencies,

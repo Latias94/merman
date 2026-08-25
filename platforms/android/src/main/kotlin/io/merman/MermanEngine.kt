@@ -36,6 +36,24 @@ class MermanEngine(
         nativeExecute(it, operationId, source, optionsJson, uri)
     }
 
+    /** Executes an operation with caller-owned cooperative cancellation or a relative deadline. */
+    fun execute(
+        operationId: String,
+        source: String,
+        control: MermanOperationControl,
+        optionsJson: String? = null,
+        uri: String? = null,
+    ): MermanOperationResult = withLiveHandle {
+        nativeExecuteControlled(
+            it,
+            operationId,
+            source,
+            optionsJson,
+            uri,
+            control.tokenForExecution(),
+        )
+    }
+
     fun renderSvg(source: String, optionsJson: String? = null): String =
         executeText(MermanBindingOperationId.SVG, source, optionsJson)
 
@@ -142,6 +160,16 @@ class MermanEngine(
             source: String,
             optionsJson: String?,
             uri: String?,
+        ): MermanOperationResult
+
+        @JvmStatic
+        private external fun nativeExecuteControlled(
+            handle: Long,
+            operationId: String,
+            source: String,
+            optionsJson: String?,
+            uri: String?,
+            controlToken: Long,
         ): MermanOperationResult
     }
 }

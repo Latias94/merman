@@ -3,14 +3,12 @@ import test from "node:test";
 
 import * as webApi from "../dist/index.js";
 import * as coreRuntime from "../dist/runtime-core.js";
-import * as editorRuntimeBindings from "../dist/runtime-editor.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 
 if (typeof globalThis.window === "undefined") globalThis.window = {};
 if (typeof globalThis.document === "undefined") globalThis.document = {};
 
 const nativeSessions = [];
-let descriptorCalls = 0;
 const { WEB_TRANSPORT_API_VERSION } = coreRuntime;
 const coreTestImplementation = {
   getMerman: coreRuntime.getMerman,
@@ -19,10 +17,6 @@ const coreTestImplementation = {
   packageVersion: coreRuntime.packageVersion,
   runtimeCatalog: coreRuntime.runtimeCatalog,
   transportApiVersion: coreRuntime.transportApiVersion,
-};
-const editorTestImplementation = {
-  ...coreTestImplementation,
-  createEditorSession: editorRuntimeBindings.createEditorSession,
 };
 
 class FakeNativeEditorSession {
@@ -90,10 +84,6 @@ class FakeNativeEditorSession {
     return null;
   }
 
-  semanticTokens() {
-    return new Uint32Array([0, 0, 1, 0, 0]);
-  }
-
   free() {
     this.freeCalls += 1;
     if (this.throwOnFree) {
@@ -112,13 +102,8 @@ await webApi.initMerman({
     editorSearchDocumentSymbols(source, query, uri, optionsJson) {
       return [{ name: query, source, uri, optionsJson }];
     },
-    editorSemanticTokenDescriptor() {
-      descriptorCalls += 1;
-      return runtimeDescriptor(webApi.SEMANTIC_TOKEN_DESCRIPTOR);
-    },
   }),
 });
-
 test("a native free failure still seals the browser editor session", () => {
   const session = webApi.createEditorSession("flowchart TD", 1);
   const native = nativeSessions.at(-1);
@@ -130,38 +115,6 @@ test("a native free failure still seals the browser editor session", () => {
   session.dispose();
   assert.equal(native.freeCalls, 1);
 });
-
-test("editor sessions retain their creating surface runtime", async () => {
-  const descriptorCounts = { editor: 0, full: 0 };
-  const editorRuntime = bindSurfaceRuntime(
-    async () =>
-      surfaceModule(() => {
-        descriptorCounts.editor += 1;
-      }),
-    editorTestImplementation,
-  );
-  const fullRuntime = bindSurfaceRuntime(
-    async () =>
-      surfaceModule(() => {
-        descriptorCounts.full += 1;
-      }),
-    editorTestImplementation,
-  );
-  await editorRuntime.initMerman();
-  const editorSession = editorRuntime.createEditorSession("flowchart TD", 1);
-  await fullRuntime.initMerman();
-  const fullSession = fullRuntime.createEditorSession("flowchart TD", 1);
-
-  editorSession.semanticTokens();
-  editorSession.semanticTokens();
-  fullSession.semanticTokens();
-  fullSession.semanticTokens();
-  assert.deepEqual(descriptorCounts, { editor: 1, full: 1 });
-
-  editorSession.dispose();
-  fullSession.dispose();
-});
-
 test("browser editor session owns one native analyzed document", () => {
   const session = webApi.createEditorSession(
     "flowchart TD\nA-->B",
@@ -205,12 +158,6 @@ test("browser editor session owns one native analyzed document", () => {
   assert.equal(native.source, "flowchart TD\nA-->C");
   assert.equal(session.version, 2);
 
-  const firstTokens = session.semanticTokens();
-  const secondTokens = session.semanticTokens();
-  assert.deepEqual([...firstTokens], [0, 0, 1, 0, 0]);
-  assert.deepEqual([...secondTokens], [0, 0, 1, 0, 0]);
-  assert.equal(descriptorCalls, 1);
-
   session.dispose();
   session.dispose();
   assert.equal(native.freeCalls, 1);
@@ -229,7 +176,6 @@ test("browser editor session owns one native analyzed document", () => {
     () => session.references({ line: 0, character: 0 }),
     () => session.prepareRename({ line: 0, character: 0 }),
     () => session.rename({ line: 0, character: 0 }, "B"),
-    () => session.semanticTokens(),
   ]) {
     assert.throws(access, /editor session is disposed/i);
   }
@@ -304,20 +250,6 @@ const SVG_OPTION_GROUP_IDS = [
   "theme",
   "version",
 ];
-
-function surfaceModule(recordDescriptorCall) {
-  return {
-    default: async () => {},
-    packageVersion: () => "0.8.0-alpha.4",
-    transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
-    runtimeCatalog: runtimeCatalogFixture,
-    EditorSession: FakeNativeEditorSession,
-    editorSemanticTokenDescriptor() {
-      recordDescriptorCall();
-      return runtimeDescriptor(webApi.SEMANTIC_TOKEN_DESCRIPTOR);
-    },
-  };
-}
 
 function runtimeCatalogFixture({
   capabilities = editorCapabilities(),
@@ -1182,7 +1114,6 @@ test("resource options preserve wrapper placement and stricter caller limits", (
     },
   );
 });
-
 test("resource options preserve a caller profile stricter than the transport ceiling", () => {
   const ceiling = { profile: "interactive" };
 
@@ -1296,7 +1227,7 @@ test("Web transport API version rejects invalid module reports", async () => {
   assert.equal(runtime.isMermanInitialized(), false);
 });
 
-test("Web transport API 3 loaders are rejected before publishing a module", async () => {
+test("older Web transport API loaders are rejected before publishing a module", async () => {
   let initialized = false;
   const runtime = bindSurfaceRuntime(
     async () => ({
@@ -1334,31 +1265,3 @@ test("Web transport API version rejects an older published epoch", async () => {
     ),
   );
 });
-
-function runtimeDescriptor(descriptor) {
-  return {
-    schemaVersion: descriptor.schemaVersion,
-    digest: descriptor.digest,
-    tokenTypes: descriptor.tokenTypes.map(({ id, code, lspName, lspIndex }) => ({
-      id,
-      code,
-      lspName,
-      lspIndex,
-    })),
-    modifiers: descriptor.modifiers.map(({ id, index, bit, lspName, lspIndex }) => ({
-      id,
-      index,
-      bit,
-      lspName,
-      lspIndex,
-    })),
-    packed: {
-      encoding: descriptor.packed.encoding,
-      wordWidthBits: descriptor.packed.wordWidthBits,
-      recordWidth: descriptor.packed.recordWidth,
-      fieldOrder: [...descriptor.packed.fieldOrder],
-    },
-    validTypeCodeMax: descriptor.validTypeCodeMax,
-    validModifierMask: descriptor.validModifierMask,
-  };
-}

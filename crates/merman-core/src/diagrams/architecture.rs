@@ -1,8 +1,8 @@
 use crate::diagrams::scan::strip_line_ending;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, OperationControl, OperationControlResult,
-    ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
+    SourceSpan,
     family::{CombinedSemanticFailure, CombinedSemanticParse},
 };
 use serde::{Deserialize, Serialize};

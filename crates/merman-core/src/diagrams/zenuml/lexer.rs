@@ -1,7 +1,4 @@
-use crate::{
-    EditorLexemeKind, EditorLexemeModifiers, OperationControl, OperationControlResult, SourceSpan,
-    editor::{EditorLexemeBatchResult, EditorLexemeJournal},
-};
+use crate::{OperationControl, OperationControlResult, SourceSpan};
 use unicode_general_category::{GeneralCategory, get_general_category};
 
 const KNOWN_UNITS: &[&str] = &[
@@ -192,71 +189,6 @@ pub(super) fn parser_tokens_controlled(
     }
     control.checkpoint()?;
     Ok(parser_tokens)
-}
-
-pub(super) fn editor_lexemes_controlled(
-    source: &str,
-    tokens: &[Token],
-    recovered: bool,
-    control: &OperationControl,
-) -> OperationControlResult<EditorLexemeBatchResult> {
-    let mut journal = if recovered {
-        EditorLexemeJournal::family_recovery(source)
-    } else {
-        EditorLexemeJournal::family_lexer(source)
-    };
-    for (index, token) in tokens.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        let kind = match &token.kind {
-            TokenKind::Keyword(Keyword::True | Keyword::False) => EditorLexemeKind::Boolean,
-            TokenKind::Keyword(_) => EditorLexemeKind::Keyword,
-            TokenKind::Identifier(value) if value.eq_ignore_ascii_case("zenuml") => {
-                EditorLexemeKind::Keyword
-            }
-            TokenKind::Identifier(_) | TokenKind::DigitLeadingName(_) => {
-                EditorLexemeKind::Identifier
-            }
-            TokenKind::StringLiteral { .. } => EditorLexemeKind::String,
-            TokenKind::Integer(_)
-            | TokenKind::Float(_)
-            | TokenKind::Money(_)
-            | TokenKind::NumberUnit(_) => EditorLexemeKind::Number,
-            TokenKind::Color(_) => EditorLexemeKind::Color,
-            TokenKind::Annotation(_)
-            | TokenKind::ReturnAnnotation
-            | TokenKind::StarterAnnotation
-            | TokenKind::Modifier => EditorLexemeKind::Keyword,
-            TokenKind::Comment(_) => EditorLexemeKind::Comment,
-            TokenKind::Divider(_) | TokenKind::EventPayload(_) | TokenKind::TitleContent(_) => {
-                EditorLexemeKind::String
-            }
-            TokenKind::Colon
-            | TokenKind::Semicolon
-            | TokenKind::Comma
-            | TokenKind::OpenParen
-            | TokenKind::CloseParen
-            | TokenKind::OpenBrace
-            | TokenKind::CloseBrace
-            | TokenKind::OpenBracket
-            | TokenKind::CloseBracket
-            | TokenKind::StereotypeOpen
-            | TokenKind::StereotypeClose => EditorLexemeKind::Delimiter,
-            TokenKind::Assign
-            | TokenKind::Dot
-            | TokenKind::Arrow
-            | TokenKind::ReturnArrow
-            | TokenKind::Operator(_) => EditorLexemeKind::Operator,
-            TokenKind::Other(_) => EditorLexemeKind::Literal,
-            TokenKind::EventEnd | TokenKind::TitleEnd | TokenKind::LineBreak | TokenKind::Eof => {
-                continue;
-            }
-        };
-        journal.push(kind, EditorLexemeModifiers::NONE, token.span);
-    }
-    control.checkpoint()?;
-    Ok(journal.finish())
 }
 
 struct Lexer<'a> {

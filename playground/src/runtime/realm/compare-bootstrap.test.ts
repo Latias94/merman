@@ -86,8 +86,26 @@ test("Mermaid engine errors retain their stage and detail without blocking later
   }
 });
 
+test("sets the controlled screen width before loading the Mermaid engine", async () => {
+  let screenWidthAtLoad: number | null = null;
+  const harness = createRealmServerHarness(
+    [async () => engineSuccess("<svg />")],
+    () => {
+      screenWidthAtLoad = window.screen.availWidth;
+    },
+  );
+  try {
+    harness.dispatch(renderRequest(1, "request-1", 1512));
+    assert.equal((await harness.waitForTerminal("request-1")).type, "render-success");
+    assert.equal(screenWidthAtLoad, 1512);
+  } finally {
+    harness.dispose();
+  }
+});
+
 function createRealmServerHarness(
-  renders: Array<() => Promise<ReturnType<typeof engineSuccess>>>
+  renders: Array<() => Promise<ReturnType<typeof engineSuccess>>>,
+  onLoadEngine: () => void = () => undefined,
 ) {
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
   const previousElement = Object.getOwnPropertyDescriptor(globalThis, "HTMLElement");
@@ -99,7 +117,11 @@ function createRealmServerHarness(
     fonts: { ready: Promise.resolve() },
     getElementById: (id: string) => (id === "presentation-host" ? host : null),
   });
-  defineGlobal("window", { innerWidth: 800, innerHeight: 600 });
+  defineGlobal("window", {
+    innerWidth: 800,
+    innerHeight: 600,
+    screen: { availWidth: 800 },
+  });
 
   const channel = new MessageChannel();
   const messages: Array<Record<string, unknown>> = [];
@@ -109,14 +131,17 @@ function createRealmServerHarness(
   channel.port2.start();
 
   let renderIndex = 0;
-  serveCompareRealmPort(channel.port1, IDENTITY, async () => ({
-    renderWithMermaid: async () => {
-      const render = renders[renderIndex];
-      renderIndex += 1;
-      if (!render) throw new Error("Unexpected render request.");
-      return render();
-    },
-  }));
+  serveCompareRealmPort(channel.port1, IDENTITY, async () => {
+    onLoadEngine();
+    return {
+      renderWithMermaid: async () => {
+        const render = renders[renderIndex];
+        renderIndex += 1;
+        if (!render) throw new Error("Unexpected render request.");
+        return render();
+      },
+    };
+  });
 
   return {
     messages,
@@ -155,7 +180,11 @@ function createRealmServerHarness(
   };
 }
 
-function renderRequest(sequence: number, requestId: string): CompareRenderRequest {
+function renderRequest(
+  sequence: number,
+  requestId: string,
+  screenAvailableWidth = 1512,
+): CompareRenderRequest {
   return {
     type: "render",
     protocol: REALM_PROTOCOL_VERSION,
@@ -168,6 +197,7 @@ function renderRequest(sequence: number, requestId: string): CompareRenderReques
       theme: "default",
       diagramFont: "trebuchet",
       externalRequirements: { externalDiagrams: [], layoutModules: [] },
+      screenAvailableWidth,
       viewport: { width: 800, height: 600 },
     },
   };

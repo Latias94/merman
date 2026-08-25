@@ -195,13 +195,22 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             ),
         });
     };
+    let Some(subgraph_index) = ctx.subgraph_indices_by_id.get(cluster.id.as_str()).copied() else {
+        return Err(crate::Error::InvalidModel {
+            message: format!(
+                "missing semantic Flowchart subgraph index for cluster `{}`",
+                cluster.id
+            ),
+        });
+    };
     if !ctx.subgraph_has_children(cluster.id.as_str())
         && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
     {
         return Ok(());
     }
 
-    let compiled_styles = flowchart_compile_styles(ctx.class_defs, &sg.classes, &sg.styles, &[]);
+    let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
+    let compiled_styles = flowchart_compile_styles(ctx.class_defs, classes, styles, &[]);
     let fill_precedence = FlowchartFacetPrecedence::new(
         compiled_styles.source_fill_status(),
         ctx.cluster_fill_config_override,
@@ -233,16 +242,9 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             ),
         });
     };
+    ctx.checkpoint_emit()?;
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");
-    let Some(subgraph_index) = ctx.subgraph_index_by_id.get(cluster.id.as_str()).copied() else {
-        return Err(crate::Error::InvalidModel {
-            message: format!(
-                "missing semantic Flowchart subgraph index for cluster `{}`",
-                cluster.id
-            ),
-        });
-    };
     let render_title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
     let title_owner = ctx
         .svg_label_sidecar
@@ -254,7 +256,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         );
 
     let mut class_attr = String::new();
-    for c in &sg.classes {
+    for c in classes {
         let c = c.trim();
         if c.is_empty() {
             continue;
@@ -315,8 +317,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 ctx.class_defs,
-                &sg.classes,
-                &sg.styles,
+                classes,
+                styles,
             );
             let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
                 ctx.svg_label_sidecar,

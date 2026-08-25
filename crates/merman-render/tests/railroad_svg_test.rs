@@ -217,17 +217,17 @@ fn railroad_svg_scopes_every_family_selector_to_the_root_id() {
 }
 
 #[test]
-fn railroad_svg_escapes_css_significant_characters_in_the_root_id_selector() {
+fn railroad_svg_normalizes_css_significant_characters_in_the_root_id_selector() {
     let (svg, _) = render_railroad_with_id(json!({}), "railroad.theme:one");
     let style = railroad_style(&svg);
 
-    assert!(style.contains(r#"#railroad\.theme\:one.railroad-diagram{"#));
-    assert!(!style.contains(r#"#railroad\.theme\:one .railroad-diagram{"#));
-    assert!(style.contains(r#"#railroad\.theme\:one .railroad-terminal rect{"#));
+    assert!(style.contains(r#"#railroad-theme-one.railroad-diagram{"#));
+    assert!(!style.contains(r#"#railroad-theme-one .railroad-diagram{"#));
+    assert!(style.contains(r#"#railroad-theme-one .railroad-terminal rect{"#));
 
     let document = roxmltree::Document::parse(&svg).expect("valid Railroad SVG");
     let root = document.root_element();
-    assert_eq!(root.attribute("id"), Some("railroad.theme:one"));
+    assert_eq!(root.attribute("id"), Some("railroad-theme-one"));
     assert_eq!(root.attribute("class"), Some("railroad-diagram"));
 }
 

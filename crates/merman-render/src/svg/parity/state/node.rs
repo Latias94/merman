@@ -67,87 +67,6 @@ pub(super) fn render_state_node_svg(
     let w = ln.width.max(1.0);
     let h = ln.height.max(1.0);
 
-    #[inline]
-    fn cached_circle(
-        ctx: &StateRenderCtx<'_>,
-        key: StateRoughCacheKey,
-        allow_cache: bool,
-        build: impl FnOnce() -> String,
-    ) -> Rc<String> {
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_draw_request(StateRoughGeometryKind::Circle);
-        if !allow_cache {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_bypass_build(StateRoughGeometryKind::Circle);
-            return Rc::new(build());
-        }
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_lookup(StateRoughGeometryKind::Circle);
-        let existing = ctx.rough_cache.get_circle(key);
-        if let Some(v) = existing {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_operation_hit(StateRoughGeometryKind::Circle);
-            return v;
-        }
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_miss(StateRoughGeometryKind::Circle);
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_build(StateRoughGeometryKind::Circle);
-        let built = Rc::new(build());
-        ctx.rough_cache.insert_circle(key, Rc::clone(&built));
-        #[cfg(test)]
-        state_rough_lifecycle_observe_operation_cache(ctx);
-        built
-    }
-
-    #[inline]
-    fn cached_paths(
-        ctx: &StateRenderCtx<'_>,
-        key: StateRoughCacheKey,
-        allow_cache: bool,
-        build: impl FnOnce() -> (String, String),
-    ) -> (Rc<String>, Rc<String>) {
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_draw_request(StateRoughGeometryKind::Paths);
-        if !allow_cache {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_bypass_build(StateRoughGeometryKind::Paths);
-            let (fill_d, stroke_d) = build();
-            return (Rc::new(fill_d), Rc::new(stroke_d));
-        }
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_lookup(StateRoughGeometryKind::Paths);
-        let existing = ctx.rough_cache.get_paths(key);
-        if let Some(v) = existing {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_operation_hit(StateRoughGeometryKind::Paths);
-            return v;
-        }
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_miss(StateRoughGeometryKind::Paths);
-        #[cfg(test)]
-        ctx.rough_lifecycle_probe
-            .record_operation_build(StateRoughGeometryKind::Paths);
-        let (fill_d, stroke_d) = build();
-        let built = (Rc::new(fill_d), Rc::new(stroke_d));
-        ctx.rough_cache
-            .insert_paths(key, (Rc::clone(&built.0), Rc::clone(&built.1)));
-        #[cfg(test)]
-        state_rough_lifecycle_observe_operation_cache(ctx);
-        built
-    }
-
     let node_class = if node.css_classes.trim().is_empty() {
         "node".to_string()
     } else {
@@ -155,9 +74,6 @@ pub(super) fn render_state_node_svg(
     };
     let node_dom_id = state_scoped_dom_id(ctx, &node.dom_id);
     let data_look = state_data_look(ctx);
-    // A fallback `Math.random()` stream is ordered across shapes, so cache hits would otherwise
-    // skip consumption and change subsequent output.
-    let allow_rough_cache = !ctx.hand_drawn_seed.seed().may_use_math_random();
     let node_style = ctx.style_plan.node(node_id);
     let compatibility = ctx.style_plan.compatibility();
     let node_text_style = node_style
@@ -206,7 +122,7 @@ pub(super) fn render_state_node_svg(
                     details.leaf_roughjs_calls += 1;
                     details.leaf_roughjs_unique.insert(key);
                 }
-                let path_d = cached_circle(ctx, key, allow_rough_cache, || {
+                let path_d = ctx.rough_cache.get_or_build_circle(key, || {
                     roughjs_circle_path_d(14.0, &ctx.hand_drawn_seed)
                         .unwrap_or_else(|| "M0,0".to_string())
                 });
@@ -219,12 +135,12 @@ pub(super) fn render_state_node_svg(
                 let compatibility_fill = compatibility.terminal_paint_css(
                     surface,
                     crate::state::StateTerminalPaintProperty::Fill,
-                    &ctx.diagram_id,
+                    ctx.diagram_id,
                 );
                 let compatibility_stroke = compatibility.terminal_paint_css(
                     surface,
                     crate::state::StateTerminalPaintProperty::Stroke,
-                    &ctx.diagram_id,
+                    ctx.diagram_id,
                 );
                 let fill = fill_override.unwrap_or(compatibility_fill.as_str());
                 let stroke = stroke_override.unwrap_or(compatibility_stroke.as_str());
@@ -245,7 +161,7 @@ pub(super) fn render_state_node_svg(
                 let _ = write!(
                     out,
                     r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
-                    escape_xml_display(&node_dom_id),
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
@@ -270,7 +186,7 @@ pub(super) fn render_state_node_svg(
             let _ = write!(
                 out,
                 r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14" style="{}"/></g>"#,
-                escape_xml_display(&node_dom_id),
+                node_dom_id.attr(),
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
@@ -312,11 +228,11 @@ pub(super) fn render_state_node_svg(
                 seed: ctx.hand_drawn_seed.seed(),
             };
 
-            let outer_d = cached_circle(ctx, outer_key, allow_rough_cache, || {
+            let outer_d = ctx.rough_cache.get_or_build_circle(outer_key, || {
                 roughjs_circle_path_d(14.0, &ctx.hand_drawn_seed)
                     .unwrap_or_else(|| "M0,0".to_string())
             });
-            let inner_d = cached_circle(ctx, inner_key, allow_rough_cache, || {
+            let inner_d = ctx.rough_cache.get_or_build_circle(inner_key, || {
                 roughjs_circle_path_d(5.0, &ctx.hand_drawn_seed)
                     .unwrap_or_else(|| "M0,0".to_string())
             });
@@ -330,22 +246,22 @@ pub(super) fn render_state_node_svg(
             let compatibility_outer_fill = compatibility.terminal_paint_css(
                 outer_surface,
                 crate::state::StateTerminalPaintProperty::Fill,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let compatibility_outer_stroke = compatibility.terminal_paint_css(
                 outer_surface,
                 crate::state::StateTerminalPaintProperty::Stroke,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let inner_fill = compatibility.terminal_paint_css(
                 inner_surface,
                 crate::state::StateTerminalPaintProperty::Fill,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let inner_stroke = compatibility.terminal_paint_css(
                 inner_surface,
                 crate::state::StateTerminalPaintProperty::Stroke,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let outer_fill = fill_override.unwrap_or(compatibility_outer_fill.as_str());
             let outer_stroke = stroke_override.unwrap_or(compatibility_outer_stroke.as_str());
@@ -385,7 +301,7 @@ pub(super) fn render_state_node_svg(
             let _ = write!(
                 out,
                 r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
-                escape_attr(&node_dom_id),
+                node_dom_id.attr(),
                 escape_attr(data_look),
                 fmt(cx),
                 fmt(cy),
@@ -419,7 +335,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+            let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_rect(StateRoughRectSpec {
                     x: -w / 2.0,
                     y: -h / 2.0,
@@ -441,12 +357,12 @@ pub(super) fn render_state_node_svg(
             let compatibility_fill = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Fill,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let compatibility_stroke = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Stroke,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
             let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
@@ -468,7 +384,7 @@ pub(super) fn render_state_node_svg(
                 out,
                 r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
                 escape_xml_display(&node_class),
-                escape_xml_display(&node_dom_id),
+                node_dom_id.attr(),
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
@@ -495,7 +411,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+            let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_choice_diamond_path_data(w, h),
                     "#ECECFF",
@@ -516,12 +432,12 @@ pub(super) fn render_state_node_svg(
             let compatibility_fill = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Fill,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let compatibility_stroke = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Stroke,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
             let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
@@ -543,7 +459,7 @@ pub(super) fn render_state_node_svg(
                 out,
                 r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
                 escape_xml_display(&node_class),
-                escape_xml_display(&node_dom_id),
+                node_dom_id.attr(),
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
@@ -608,7 +524,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+            let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 if note_radius == 0.0 {
                     roughjs_paths_for_rect(StateRoughRectSpec {
                         x: -w / 2.0,
@@ -667,12 +583,12 @@ pub(super) fn render_state_node_svg(
             let compatibility_fill = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Fill,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let compatibility_stroke = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Stroke,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
             let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
@@ -703,7 +619,7 @@ pub(super) fn render_state_node_svg(
                     out,
                     r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                     escape_xml_display(&node_class),
-                    escape_xml_display(&node_dom_id),
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
@@ -728,7 +644,7 @@ pub(super) fn render_state_node_svg(
                     out,
                     r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
                     escape_xml_display(&node_class),
-                    escape_xml_display(&node_dom_id),
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
@@ -899,7 +815,7 @@ pub(super) fn render_state_node_svg(
                     out,
                     r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject{} width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
                     escape_xml_display(&node_class),
-                    escape_xml_display(&node_dom_id),
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
@@ -936,7 +852,7 @@ pub(super) fn render_state_node_svg(
                     out,
                     r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><g transform="translate({}, 0)">{}</g><g transform="translate({}, {})">{}</g></g></g>"#,
                     escape_xml_display(&node_class),
-                    escape_xml_display(&node_dom_id),
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
@@ -1064,12 +980,12 @@ pub(super) fn render_state_node_svg(
             let compatibility_fill = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Fill,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let compatibility_stroke = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Stroke,
-                &ctx.diagram_id,
+                ctx.diagram_id,
             );
             let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
             let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
@@ -1172,7 +1088,7 @@ pub(super) fn render_state_node_svg(
                         r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
                         link_open,
                         escape_xml_display(&node_class),
-                        escape_xml_display(&node_dom_id),
+                        node_dom_id.attr(),
                         escape_xml_display(data_look),
                         fmt_display(cx),
                         fmt_display(cy),
@@ -1201,7 +1117,7 @@ pub(super) fn render_state_node_svg(
                         r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
                         link_open,
                         escape_xml_display(&node_class),
-                        escape_xml_display(&node_dom_id),
+                        node_dom_id.attr(),
                         escape_xml_display(data_look),
                         fmt_display(cx),
                         fmt_display(cy),
@@ -1245,7 +1161,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+            let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_rounded_rect_path_data(w, h, rect_radius),
                     "#ECECFF",
@@ -1268,7 +1184,7 @@ pub(super) fn render_state_node_svg(
                     r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
                     link_open,
                     escape_xml_display(&node_class),
-                    escape_xml_display(&node_dom_id),
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
@@ -1296,7 +1212,7 @@ pub(super) fn render_state_node_svg(
                     r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
                     link_open,
                     escape_xml_display(&node_class),
-                    escape_xml_display(&node_dom_id),
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),

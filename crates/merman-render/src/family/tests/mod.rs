@@ -7679,7 +7679,7 @@ Alice->>Bob: Hello
 }
 
 #[test]
-fn sequence_text_color_derivation_owns_precedence_over_typed_message_stroke() {
+fn sequence_text_color_source_ownership_controls_typed_message_stroke() {
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
@@ -7701,6 +7701,8 @@ fn sequence_text_color_derivation_owns_precedence_over_typed_message_stroke() {
                 "themeVariables": {"textColor": "#22c55e"}
             }))),
             "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            "#22c55e",
+            true,
         ),
         (
             "init directive",
@@ -7720,10 +7722,12 @@ participant Alice
 participant Bob
 Alice->>Bob: Hello
 "##,
+            "#333",
+            false,
         ),
     ];
 
-    for (case, engine, source) in cases {
+    for (case, engine, source, expected_signal_color, signal_is_source_owned) in cases {
         let parsed = theme
             .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -7747,15 +7751,15 @@ Alice->>Bob: Hello
                 .metadata()
                 .effective_config
                 .get_str("themeVariables.signalColor"),
-            Some("#22c55e"),
-            "{case} must derive signalColor from textColor"
+            Some(expected_signal_color),
+            "{case} must retain Mermaid's source/config materialization semantics"
         );
         assert!(
             merman_core::__private::config_path_overrides_typed_default(
                 &parsed.metadata().effective_config,
                 "themeVariables.signalColor",
-            ),
-            "{case} must propagate ownership to signalColor"
+            ) == signal_is_source_owned,
+            "{case} signalColor ownership must follow the selected source"
         );
         let rendered = prepare(
             parsed,
@@ -7765,33 +7769,54 @@ Alice->>Bob: Hello
                 .begin_session_with_theme(&theme)
                 .expect("begin configured strict Sequence Message session"),
         )
-        .expect("derived signalColor should remain evaluable")
+        .expect("source/config signalColor should remain evaluable")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("derived signalColor should satisfy strict portability");
 
-        assert!(
-            rendered.svg().contains("stroke:#22c55e"),
-            "{case}: {}",
-            rendered.svg()
-        );
-        assert!(
-            !rendered
-                .svg()
-                .contains("#merman .messageLine0,#merman .messageLine1{stroke:#ef4444;}")
-        );
-        assert_eq!(
-            rendered.style_report().theme_not_applicable_mechanisms(),
-            &[FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Message,
-            }]
-        );
-        assert!(
-            rendered
-                .style_report()
-                .theme_applied_mechanisms()
-                .is_empty()
-        );
+        if signal_is_source_owned {
+            assert!(
+                rendered.svg().contains("stroke:#22c55e"),
+                "{case}: {}",
+                rendered.svg()
+            );
+            assert!(
+                !rendered
+                    .svg()
+                    .contains("#merman .messageLine0,#merman .messageLine1{stroke:#ef4444;}")
+            );
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Message,
+                }]
+            );
+            assert!(
+                rendered
+                    .style_report()
+                    .theme_applied_mechanisms()
+                    .is_empty()
+            );
+        } else {
+            assert!(
+                rendered.svg().contains("stroke:#ef4444"),
+                "{case}: {}",
+                rendered.svg()
+            );
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Message,
+                }]
+            );
+            assert!(
+                rendered
+                    .style_report()
+                    .theme_not_applicable_mechanisms()
+                    .is_empty()
+            );
+        }
         assert!(rendered.style_report().theme_residuals().is_empty());
     }
 }
@@ -10266,7 +10291,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
         };
         let model = crate::flowchart::FlowchartRenderModelRef::new(
             flowchart.pair().semantic(),
-            flowchart.label_sources(),
+            flowchart.render_context(),
         );
         let edge = model.edges.get(1).expect("self-loop edge");
         assert_eq!(edge.id, "self-loop-edge");
@@ -10399,7 +10424,7 @@ linkStyle 0 font-size:12px,font-style:italic
         };
         let model = crate::flowchart::FlowchartRenderModelRef::new(
             swimlane.pair().semantic(),
-            swimlane.label_sources(),
+            swimlane.render_context(),
         );
         let edge = model.edges.first().expect("styled Swimlane edge");
         assert_eq!(edge.id, "styled");
@@ -10945,7 +10970,7 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
         };
         let model = crate::flowchart::FlowchartRenderModelRef::new(
             flowchart.pair().semantic(),
-            flowchart.label_sources(),
+            flowchart.render_context(),
         );
         let node_index = model
             .nodes
@@ -11325,7 +11350,7 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
         };
         let model = crate::flowchart::FlowchartRenderModelRef::new(
             swimlane.pair().semantic(),
-            swimlane.label_sources(),
+            swimlane.render_context(),
         );
         let edge_index = model
             .edges

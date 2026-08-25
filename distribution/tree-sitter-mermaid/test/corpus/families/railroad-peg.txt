@@ -1,0 +1,198 @@
+==================
+ordered choice sequence predicates suffixes grouping and any
+==================
+
+railroad-peg-beta
+title PEG grammar
+# PEG comment
+Expression <- Term (("+" / "-") Term)* ;
+Term <- &"a" !"b" . other? item+ tail* ;
+
+---
+
+(source_file
+  (railroad_peg_diagram
+    (railroad_peg_header
+      (diagram_keyword))
+    (railroad_peg_body
+      (railroad_title_statement
+        (railroad_statement_keyword)
+        (railroad_line_text))
+      (railroad_peg_comment)
+      (railroad_peg_rule
+        (railroad_peg_identifier)
+        (railroad_peg_assignment_operator)
+        (railroad_peg_ordered_choice
+          (railroad_peg_sequence
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_reference
+                    (railroad_peg_identifier)))))
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_group
+                    (railroad_peg_ordered_choice
+                      (railroad_peg_sequence
+                        (railroad_peg_prefix
+                          (railroad_peg_suffix
+                            (railroad_peg_primary
+                              (railroad_peg_group
+                                (railroad_peg_ordered_choice
+                                  (railroad_peg_sequence
+                                    (railroad_peg_prefix
+                                      (railroad_peg_suffix
+                                        (railroad_peg_primary
+                                          (railroad_peg_literal
+                                            (railroad_peg_string))))))
+                                  (railroad_peg_choice_operator)
+                                  (railroad_peg_sequence
+                                    (railroad_peg_prefix
+                                      (railroad_peg_suffix
+                                        (railroad_peg_primary
+                                          (railroad_peg_literal
+                                            (railroad_peg_string)))))))))))
+                        (railroad_peg_prefix
+                          (railroad_peg_suffix
+                            (railroad_peg_primary
+                              (railroad_peg_reference
+                                (railroad_peg_identifier)))))))))
+                (railroad_peg_suffix_operator))))))
+      (railroad_peg_rule
+        (railroad_peg_identifier)
+        (railroad_peg_assignment_operator)
+        (railroad_peg_ordered_choice
+          (railroad_peg_sequence
+            (railroad_peg_prefix
+              (railroad_peg_prefix_operator)
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_literal
+                    (railroad_peg_string)))))
+            (railroad_peg_prefix
+              (railroad_peg_prefix_operator)
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_literal
+                    (railroad_peg_string)))))
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_any))))
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_reference
+                    (railroad_peg_identifier)))
+                (railroad_peg_suffix_operator)))
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_reference
+                    (railroad_peg_identifier)))
+                (railroad_peg_suffix_operator)))
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_reference
+                    (railroad_peg_identifier)))
+                (railroad_peg_suffix_operator)))))))))
+
+==================
+comments remain named beside structured rules
+==================
+
+railroad-peg-beta
+# before rule
+rule <- "a" ("b" / ref) ;
+
+---
+
+(source_file
+  (railroad_peg_diagram
+    (railroad_peg_header
+      (diagram_keyword))
+    (railroad_peg_body
+      (railroad_peg_comment)
+      (railroad_peg_rule
+        (railroad_peg_identifier)
+        (railroad_peg_assignment_operator)
+        (railroad_peg_ordered_choice
+          (railroad_peg_sequence
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_literal
+                    (railroad_peg_string)))))
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_group
+                    (railroad_peg_ordered_choice
+                      (railroad_peg_sequence
+                        (railroad_peg_prefix
+                          (railroad_peg_suffix
+                            (railroad_peg_primary
+                              (railroad_peg_literal
+                                (railroad_peg_string))))))
+                      (railroad_peg_choice_operator)
+                      (railroad_peg_sequence
+                        (railroad_peg_prefix
+                          (railroad_peg_suffix
+                            (railroad_peg_primary
+                              (railroad_peg_reference
+                                (railroad_peg_identifier)))))))))))))))))
+
+==================
+missing definition preserves later sibling
+==================
+
+railroad-peg-beta
+before <- "a" ;
+broken <- ;
+after <- . ;
+
+---
+
+(source_file
+  (railroad_peg_diagram
+    (railroad_peg_header
+      (diagram_keyword))
+    (railroad_peg_body
+      (railroad_peg_rule
+        (railroad_peg_identifier)
+        (railroad_peg_assignment_operator)
+        (railroad_peg_ordered_choice
+          (railroad_peg_sequence
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_literal
+                    (railroad_peg_string))))))))
+      (railroad_peg_incomplete_rule
+        (railroad_peg_identifier)
+        (railroad_peg_assignment_operator))
+      (railroad_peg_rule
+        (railroad_peg_identifier)
+        (railroad_peg_assignment_operator)
+        (railroad_peg_ordered_choice
+          (railroad_peg_sequence
+            (railroad_peg_prefix
+              (railroad_peg_suffix
+                (railroad_peg_primary
+                  (railroad_peg_any))))))))))
+
+==================
+header only remains structured
+==================
+
+railroad-peg-beta
+
+---
+
+(source_file
+  (railroad_peg_diagram
+    (railroad_peg_header
+      (diagram_keyword))
+    (railroad_peg_body)))

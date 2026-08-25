@@ -20,7 +20,7 @@ from typing import Literal, TypeAlias
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_DESCRIPTOR = Path("capabilities/artifact-profiles-v1.json")
 CLI_RELEASE_PROFILE = "cli-release"
-CLI_CONTRACT_VERSION = 3
+CLI_CONTRACT_VERSION = 4
 CAPABILITIES_SCHEMA_VERSION = 2
 COMMANDS = (
     "batch",
@@ -34,6 +34,7 @@ COMMANDS = (
     "mmdc",
     "parse",
     "render",
+    "rustdoc",
 )
 HOMEBREW_COMPLETION_PATHS = {
     "bash": Path("etc/bash_completion.d/merman-cli"),
@@ -64,6 +65,9 @@ MANPAGE_NAMES = (
     "merman-cli-mmdc.1",
     "merman-cli-parse.1",
     "merman-cli-render.1",
+    "merman-cli-rustdoc-build.1",
+    "merman-cli-rustdoc-check.1",
+    "merman-cli-rustdoc.1",
     "merman-cli.1",
 )
 RUNTIME_TIMEOUT_SECONDS = 30
@@ -137,29 +141,29 @@ def _run(
     return completed.stdout
 
 
-def _require_regular_path(path: Path, label: str) -> None:
+def _require_regular_path(path: Path, description: str) -> None:
     if path.is_symlink() or not path.is_file():
-        raise CliInstallationError(f"missing installed {label}: {path}")
+        raise CliInstallationError(f"missing {description}: {path}")
 
 
-def _read_regular_file(path: Path, label: str) -> bytes:
-    _require_regular_path(path, label)
+def _read_regular_file(path: Path, description: str) -> bytes:
+    _require_regular_path(path, description)
     try:
         with path.open("rb") as handle:
             contents = handle.read(SUPPORT_ASSET_MAX_BYTES + 1)
     except OSError as error:
-        raise CliInstallationError(f"cannot read installed {label}: {error}") from error
+        raise CliInstallationError(f"cannot read {description}: {error}") from error
     if not contents:
-        raise CliInstallationError(f"installed {label} is empty: {path}")
+        raise CliInstallationError(f"{description} is empty: {path}")
     if len(contents) > SUPPORT_ASSET_MAX_BYTES:
         raise CliInstallationError(
-            f"installed {label} exceeds {SUPPORT_ASSET_MAX_BYTES} bytes: {path}"
+            f"{description} exceeds {SUPPORT_ASSET_MAX_BYTES} bytes: {path}"
         )
     return contents
 
 
 def _read_manpage(path: Path, name: str) -> bytes:
-    contents = _read_regular_file(path, f"man page {name}")
+    contents = _read_regular_file(path, f"installed man page {name}")
     if path.suffix != ".gz":
         return contents
     try:
@@ -285,7 +289,9 @@ def _verify_capabilities(
     except (KeyError, TypeError) as error:
         raise CliInstallationError("cli-release expected surface is incomplete") from error
     if _string_set(document.get("commands"), "installed commands") != set(COMMANDS):
-        raise CliInstallationError("installed command set differs from CLI contract 3")
+        raise CliInstallationError(
+            f"installed command set differs from CLI contract {CLI_CONTRACT_VERSION}"
+        )
     if _id_set(document.get("capabilities"), "installed capabilities") != expected_capabilities:
         raise CliInstallationError(
             "installed capability set differs from cli-release"
@@ -302,7 +308,10 @@ def _verify_completion_paths(
     runner: CommandRunner,
 ) -> None:
     for shell, relative in completion_paths.items():
-        installed = _read_regular_file(prefix / relative, f"{shell} completion")
+        installed = _read_regular_file(
+            prefix / relative,
+            f"installed {shell} completion",
+        )
         generated = _run(binary, ["completion", shell], runner=runner)
         if installed != generated:
             raise CliInstallationError(
@@ -334,7 +343,7 @@ def verify_cli_installation(
         ) from error
     if not installed_prefix.is_dir():
         raise CliInstallationError(f"invalid CLI installation prefix: {prefix}")
-    _require_regular_path(binary, "merman-cli binary")
+    _require_regular_path(binary, "installed merman-cli binary")
 
     profile, authority = read_release_contract(contract_root)
     capabilities = _run(binary, ["capabilities", "--json"], runner=runner)
@@ -364,12 +373,20 @@ def verify_cli_installation(
             installed_manpages[name] = path
     if set(installed_manpages) != set(MANPAGE_NAMES):
         raise CliInstallationError(
-            "installed man page set differs from CLI contract 3: "
+            f"installed man page set differs from CLI contract {CLI_CONTRACT_VERSION}: "
             f"expected {sorted(MANPAGE_NAMES)}, got {sorted(installed_manpages)}"
         )
     for name in MANPAGE_NAMES:
         contents = _read_manpage(installed_manpages[name], name)
         _verify_manpage(contents, name=name, package_version=package_version)
+        source = _read_regular_file(
+            contract_root / "crates/merman-cli/assets/man" / name,
+            f"release source man page {name}",
+        )
+        if contents != source:
+            raise CliInstallationError(
+                f"installed man page differs from release source asset: {name}"
+            )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

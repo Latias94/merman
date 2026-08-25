@@ -1,11 +1,6 @@
 use std::fmt::{Display, Write};
 use std::ops::MulAssign;
 
-use euclid::default::Point2D;
-use euclid::Trig;
-use num_traits::{Float, FromPrimitive};
-use svgtypes::PathSegment;
-
 use crate::core::{
     _c, Drawable, FillStyle, OpSet, OpSetType, OpType, Options, OptionsBuilder, PathInfo,
     RoughJsSeed, RoughMathRandom, RoughRandomness,
@@ -18,6 +13,10 @@ use crate::renderer::{
     linear_path, pattern_fill_arc, pattern_fill_polygons, rectangle, solid_fill_polygon, svg_path,
     svg_segments, ArcParams, ArcRenderParams,
 };
+use crate::SvgPathSegment;
+use euclid::default::Point2D;
+use euclid::Trig;
+use num_traits::{Float, FromPrimitive};
 
 pub struct Generator {
     default_options: Options,
@@ -393,7 +392,7 @@ impl Generator {
 
     pub fn path_from_segments<F>(
         &self,
-        segments: Vec<PathSegment>,
+        segments: Vec<impl SvgPathSegment>,
         options: &Option<Options>,
     ) -> Drawable<F>
     where

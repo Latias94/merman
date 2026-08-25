@@ -25,6 +25,7 @@ class NodePackageGroupTests(unittest.TestCase):
         self.version = self.descriptor["version"]
         for target in self.descriptor["targets"]:
             self._write_package(target["name"], role="platform", target=target)
+        self._write_package(self.descriptor["wasm"]["name"], role="wasm")
         self._write_package(self.descriptor["root"]["name"], role="loader")
 
     def tearDown(self) -> None:
@@ -60,6 +61,11 @@ class NodePackageGroupTests(unittest.TestCase):
             }
             for required in node_package_group.REQUIRED_LOADER_FILES:
                 files[required] = b"loader"
+        elif role == "wasm":
+            manifest["main"] = "./dist/index.mjs"
+            manifest["types"] = "./dist/index.d.ts"
+            for required in node_package_group.REQUIRED_WASM_FILES:
+                files[required] = b"wasm"
         else:
             assert target is not None
             manifest["main"] = f"./{target['node_artifact']}"
@@ -94,6 +100,7 @@ class NodePackageGroupTests(unittest.TestCase):
         self.assertEqual(
             [record["name"] for record in manifest["packages"]],
             [target["name"] for target in self.descriptor["targets"]]
+            + [self.descriptor["wasm"]["name"]]
             + [self.descriptor["root"]["name"]],
         )
 

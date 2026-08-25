@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use super::diagrams::compare_diagram_request;
 use super::{
     AcceptedResidualPolicy, CompareEvidence, CompareRequest, CompareRunResult,
-    RootDeltaReportLimit, diagram_supports_root_delta_report, parse_root_delta_report_limit,
+    RootDeltaReportLimit, diagram_supports_root_delta_report, dom_mode_label,
+    parse_root_delta_report_limit,
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -52,6 +53,7 @@ fn compare_selected_diagram_svgs(
 struct CompareAllOptions {
     check_dom: bool,
     dom_mode: Option<String>,
+    dom_modes: Vec<crate::svgdom::DomMode>,
     dom_decimals: Option<u32>,
     filter: Option<String>,
     flowchart_text_measurer: Option<String>,
@@ -71,7 +73,19 @@ impl CompareAllOptions {
                 "--check-dom" => options.check_dom = true,
                 "--dom-mode" => {
                     i += 1;
-                    options.dom_mode = args.get(i).map(|s| s.trim().to_string());
+                    let mode = args
+                        .get(i)
+                        .ok_or(XtaskError::Usage)?
+                        .parse::<crate::svgdom::DomMode>()
+                        .map_err(|_| XtaskError::Usage)?;
+                    options.dom_mode = Some(mode.to_string());
+                }
+                "--dom-modes" => {
+                    if !options.dom_modes.is_empty() {
+                        return Err(XtaskError::Usage);
+                    }
+                    i += 1;
+                    options.dom_modes = parse_dom_modes(args.get(i).map(String::as_str))?;
                 }
                 "--dom-decimals" => {
                     i += 1;
@@ -117,6 +131,9 @@ impl CompareAllOptions {
             }
             i += 1;
         }
+        if options.dom_mode.is_some() && !options.dom_modes.is_empty() {
+            return Err(XtaskError::Usage);
+        }
         Ok(options)
     }
 
@@ -124,6 +141,7 @@ impl CompareAllOptions {
         CompareAllInvocationOptions {
             check_dom: self.check_dom,
             dom_mode: self.dom_mode.as_deref(),
+            dom_modes: &self.dom_modes,
             dom_decimals: self.dom_decimals,
             filter: self.filter.as_deref(),
             flowchart_text_measurer: self.flowchart_text_measurer.as_deref(),
@@ -241,6 +259,7 @@ impl CompareAllFailures {
 struct CompareAllInvocationOptions<'a> {
     check_dom: bool,
     dom_mode: Option<&'a str>,
+    dom_modes: &'a [crate::svgdom::DomMode],
     dom_decimals: Option<u32>,
     filter: Option<&'a str>,
     flowchart_text_measurer: Option<&'a str>,
@@ -250,7 +269,20 @@ struct CompareAllInvocationOptions<'a> {
 
 impl CompareAllInvocationOptions<'_> {
     fn for_diagram(&self, diagram: &str, compare_dir: &Path) -> DiagramCompareInvocation {
-        let report_path = self.dom_mode.map(dom_mode_slug).and_then(|mode| {
+        let report_mode = if self.dom_modes.is_empty() {
+            self.dom_mode.map(dom_mode_slug)
+        } else if self.dom_modes.contains(&crate::svgdom::DomMode::ParityRoot) {
+            Some("parity_root".to_string())
+        } else {
+            Some(
+                self.dom_modes
+                    .iter()
+                    .map(|mode| dom_mode_slug(dom_mode_label(*mode)))
+                    .collect::<Vec<_>>()
+                    .join("_"),
+            )
+        };
+        let report_path = report_mode.and_then(|mode| {
             (!mode.is_empty()).then(|| compare_dir.join(format!("{diagram}_report_{mode}.md")))
         });
         let is_flowchart = diagram == "flowchart";
@@ -260,6 +292,7 @@ impl CompareAllInvocationOptions<'_> {
             filter: self.filter.map(str::to_string),
             check_dom: self.check_dom,
             dom_mode: self.dom_mode.map(str::to_string),
+            dom_modes: self.dom_modes.to_vec(),
             dom_decimals: self.dom_decimals,
             report_root: self.report_root && supports_root_report,
             root_report_limit: supports_root_report
@@ -280,6 +313,25 @@ impl CompareAllInvocationOptions<'_> {
             request,
             report_path,
         }
+    }
+}
+
+fn parse_dom_modes(value: Option<&str>) -> Result<Vec<crate::svgdom::DomMode>, XtaskError> {
+    let value = value.ok_or(XtaskError::Usage)?;
+    let mut modes = Vec::new();
+    for raw in value.split(',') {
+        let mode = raw
+            .parse::<crate::svgdom::DomMode>()
+            .map_err(|_| XtaskError::Usage)?;
+        if modes.contains(&mode) {
+            return Err(XtaskError::Usage);
+        }
+        modes.push(mode);
+    }
+    if modes.is_empty() {
+        Err(XtaskError::Usage)
+    } else {
+        Ok(modes)
     }
 }
 
@@ -366,6 +418,55 @@ mod tests {
         assert!(CompareAllOptions::parse(vec!["--diagram".to_string()]).is_err());
         assert!(CompareAllOptions::parse(vec!["--skip".to_string()]).is_err());
         assert!(CompareAllOptions::parse(vec!["--report-root-limit".to_string()]).is_err());
+        assert!(CompareAllOptions::parse(vec!["--dom-modes".to_string()]).is_err());
+    }
+
+    #[test]
+    fn compare_all_options_parse_one_render_dom_suite() {
+        let options = CompareAllOptions::parse(vec![
+            "--check-dom".to_string(),
+            "--dom-modes".to_string(),
+            "structure, parity, parity-root".to_string(),
+        ])
+        .expect("DOM suite should parse");
+
+        assert_eq!(
+            options.dom_modes,
+            [
+                crate::svgdom::DomMode::Structure,
+                crate::svgdom::DomMode::Parity,
+                crate::svgdom::DomMode::ParityRoot,
+            ]
+        );
+        assert!(options.dom_mode.is_none());
+    }
+
+    #[test]
+    fn compare_all_options_reject_conflicting_or_ambiguous_dom_suites() {
+        assert!(
+            CompareAllOptions::parse(vec![
+                "--dom-mode".to_string(),
+                "parity".to_string(),
+                "--dom-modes".to_string(),
+                "structure,parity".to_string(),
+            ])
+            .is_err()
+        );
+        assert!(
+            CompareAllOptions::parse(vec!["--dom-modes".to_string(), "parity,parity".to_string(),])
+                .is_err()
+        );
+        assert!(
+            CompareAllOptions::parse(vec![
+                "--dom-modes".to_string(),
+                "structure,unknown".to_string(),
+            ])
+            .is_err()
+        );
+        assert!(
+            CompareAllOptions::parse(vec!["--dom-mode".to_string(), "unknown".to_string(),])
+                .is_err()
+        );
     }
 
     #[test]
@@ -670,6 +771,30 @@ mod tests {
         );
         assert_eq!(
             invocation.request.out_path.as_deref(),
+            Some(expected_report.as_path())
+        );
+    }
+
+    #[test]
+    fn compare_invocation_projects_dom_suite_into_one_report_and_request() {
+        let compare_dir = Path::new("target/compare");
+        let modes = [
+            crate::svgdom::DomMode::Structure,
+            crate::svgdom::DomMode::Parity,
+            crate::svgdom::DomMode::ParityRoot,
+        ];
+        let expected_report = compare_dir.join("info_report_parity_root.md");
+        let invocation = CompareAllInvocationOptions {
+            check_dom: true,
+            dom_modes: &modes,
+            ..Default::default()
+        }
+        .for_diagram("info", compare_dir);
+
+        assert_eq!(invocation.request.dom_modes, modes);
+        assert!(invocation.request.dom_mode.is_none());
+        assert_eq!(
+            invocation.report_path.as_deref(),
             Some(expected_report.as_path())
         );
     }

@@ -1,4 +1,3 @@
-import type { PngRasterPlan } from "../lib/png-export-plan.ts";
 import type { MermanDomainFacade, MermanRuntimeState } from "./merman-core.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
 import {
@@ -20,6 +19,40 @@ import {
 
 export type ArtifactEngine = "merman" | "mermaid";
 
+const FROZEN_EXPORT_TARGET: unique symbol = Symbol("FrozenExportTarget");
+
+export interface FrozenExportTarget {
+  readonly [FROZEN_EXPORT_TARGET]: true;
+  readonly engine: ArtifactEngine;
+  readonly filename: string;
+  readonly publicationId: RenderPublicationId;
+  readonly svgArtifact: NavigableInlineSvg;
+}
+
+export interface FreezeExportTargetCommand {
+  readonly engine: ArtifactEngine;
+  readonly publicationId: RenderPublicationId;
+}
+
+export interface ExportTargetOwner {
+  freeze(command: FreezeExportTargetCommand): FrozenExportTarget;
+  rasterArtifact(target: FrozenExportTarget): NavigableInlineSvg;
+}
+
+interface MermaidRasterAuthority {
+  readonly kind: "artifact";
+  readonly artifact: NavigableInlineSvg;
+}
+
+interface MermanRasterAuthority {
+  readonly kind: "merman-operation";
+  readonly operation: FrozenRenderOperation;
+  readonly runtimeState: MermanRuntimeState;
+  artifact?: NavigableInlineSvg;
+}
+
+type RasterAuthority = MermaidRasterAuthority | MermanRasterAuthority;
+
 interface ArtifactActionBase {
   readonly publicationId: RenderPublicationId;
 }
@@ -30,39 +63,16 @@ export type ArtifactActionCommand =
   | (ArtifactActionBase & {
       readonly action: "copy-svg";
       readonly engine: ArtifactEngine;
-    })
-  | (ArtifactActionBase & {
-      readonly action: "download-svg";
-      readonly engine: ArtifactEngine;
-    })
-  | (ArtifactActionBase & {
-      readonly action: "download-png";
-      readonly engine: ArtifactEngine;
-      readonly scale?: number;
     });
 
-type DownloadPngCommand = Extract<
-  ArtifactActionCommand,
-  { readonly action: "download-png" }
->;
-
-type NonPngCommand = Exclude<ArtifactActionCommand, DownloadPngCommand>;
-
 export interface ArtifactActionOwner {
-  (command: DownloadPngCommand): Promise<PngRasterPlan>;
-  (command: NonPngCommand): Promise<void>;
+  (command: ArtifactActionCommand): Promise<void>;
 }
 
 export interface ArtifactActionIo {
   copyAscii(ascii: string): Promise<void>;
   copySvg(artifact: NavigableInlineSvg): Promise<void>;
   downloadAscii(ascii: string, filename: string): void;
-  downloadPng(
-    artifact: NavigableInlineSvg,
-    filename: string,
-    scale: number
-  ): Promise<PngRasterPlan>;
-  downloadSvg(artifact: NavigableInlineSvg, filename: string): void;
 }
 
 export interface ArtifactActionDependencies {
@@ -71,7 +81,82 @@ export interface ArtifactActionDependencies {
   readonly io: ArtifactActionIo;
 }
 
+export interface ExportTargetDependencies {
+  readonly getRenderState: () => RenderCoordinatorState;
+  readonly getRuntimeState: () => MermanRuntimeState;
+}
+
+export function createExportTargetOwner({
+  getRenderState,
+  getRuntimeState,
+}: ExportTargetDependencies): ExportTargetOwner {
+  const authorities = new WeakMap<object, RasterAuthority>();
+
+  return Object.freeze({
+    freeze(command: FreezeExportTargetCommand): FrozenExportTarget {
+      const publication = currentPublication(
+        getRenderState(),
+        command.publicationId,
+      );
+      const svgArtifact = currentSvg(publication, command.engine);
+      const target = Object.freeze({
+        [FROZEN_EXPORT_TARGET]: true as const,
+        engine: command.engine,
+        filename: `${command.engine}-diagram`,
+        publicationId: command.publicationId,
+        svgArtifact,
+      });
+      authorities.set(
+        target,
+        command.engine === "mermaid"
+          ? { kind: "artifact", artifact: svgArtifact }
+          : {
+              kind: "merman-operation",
+              operation: publication.snapshot.operation,
+              runtimeState: getRuntimeState(),
+            },
+      );
+      return target;
+    },
+
+    rasterArtifact(target: FrozenExportTarget): NavigableInlineSvg {
+      const authority = authorities.get(target);
+      if (!authority) {
+        throw actionError(
+          "invalid-command",
+          "The export target does not belong to this owner.",
+        );
+      }
+      if (authority.kind === "artifact") return authority.artifact;
+      if (authority.artifact) return authority.artifact;
+
+      const runtimeState = authority.runtimeState;
+      if (runtimeState.status !== "ready") {
+        throw actionError(
+          "runtime-unavailable",
+          "Merman runtime was unavailable when this export target was opened.",
+        );
+      }
+      if (
+        runtimeState.facade.packageVersion !==
+        authority.operation.versions.merman
+      ) {
+        throw actionError(
+          "runtime-version-mismatch",
+          "The Merman runtime did not match this export target.",
+        );
+      }
+      authority.artifact = renderMermanRasterArtifact(
+        runtimeState.facade,
+        authority.operation,
+      );
+      return authority.artifact;
+    },
+  });
+}
+
 export type ArtifactActionErrorCode =
+  | "ascii-render-failed"
   | "artifact-unavailable"
   | "invalid-command"
   | "publication-not-current"
@@ -106,37 +191,18 @@ type FrozenActionPlan =
       readonly ascii: string;
       readonly filename: string;
     }
-  | { readonly action: "copy-svg"; readonly artifact: NavigableInlineSvg }
-  | {
-      readonly action: "download-svg";
-      readonly artifact: NavigableInlineSvg;
-      readonly filename: string;
-    }
-  | {
-      readonly action: "download-png";
-      readonly artifact: NavigableInlineSvg;
-      readonly engine: "mermaid";
-      readonly filename: string;
-      readonly scale: number;
-    }
-  | {
-      readonly action: "download-png";
-      readonly engine: "merman";
-      readonly facade: MermanDomainFacade;
-      readonly filename: string;
-      readonly operation: FrozenRenderOperation;
-      readonly scale: number;
-    };
+  | { readonly action: "copy-svg"; readonly artifact: NavigableInlineSvg };
 
 export function createArtifactActionOwner({
   getRenderState,
   getRuntimeState,
   io,
 }: ArtifactActionDependencies): ArtifactActionOwner {
-  const execute = async (
-    command: ArtifactActionCommand
-  ): Promise<PngRasterPlan | void> => {
-    const plan = freezeActionPlan(command, getRenderState(), getRuntimeState);
+  const renderedAscii = new WeakMap<CompletedRenderBatch, string>();
+  return async (command: ArtifactActionCommand): Promise<void> => {
+    const plan = freezeActionPlan(command, getRenderState(), (publication) =>
+      currentAscii(publication, getRuntimeState, renderedAscii),
+    );
     switch (plan.action) {
       case "copy-ascii":
         await io.copyAscii(plan.ascii);
@@ -147,36 +213,26 @@ export function createArtifactActionOwner({
       case "download-ascii":
         io.downloadAscii(plan.ascii, plan.filename);
         return;
-      case "download-svg":
-        io.downloadSvg(plan.artifact, plan.filename);
-        return;
-      case "download-png":
-        return io.downloadPng(
-          artifactForPng(plan),
-          plan.filename,
-          plan.scale
-        );
     }
   };
-  return execute as ArtifactActionOwner;
 }
 
 function freezeActionPlan(
   command: ArtifactActionCommand,
   renderState: RenderCoordinatorState,
-  getRuntimeState: () => MermanRuntimeState
+  resolveAscii: (publication: CompletedRenderBatch) => string,
 ): FrozenActionPlan {
   const publication = currentPublication(renderState, command.publicationId);
   if (command.action === "copy-ascii") {
     return Object.freeze({
       action: command.action,
-      ascii: currentAscii(publication),
+      ascii: resolveAscii(publication),
     });
   }
   if (command.action === "download-ascii") {
     return Object.freeze({
       action: command.action,
-      ascii: currentAscii(publication),
+      ascii: resolveAscii(publication),
       filename: "merman-diagram",
     });
   }
@@ -186,50 +242,7 @@ function freezeActionPlan(
       artifact: currentSvg(publication, command.engine),
     });
   }
-  if (command.action === "download-svg") {
-    return Object.freeze({
-      action: command.action,
-      artifact: currentSvg(publication, command.engine),
-      filename: `${command.engine}-diagram`,
-    });
-  }
-
-  const scale = command.scale ?? 2;
-  if (!Number.isFinite(scale) || scale <= 0) {
-    throw actionError("invalid-command", "PNG scale must be positive.");
-  }
-  if (command.engine === "mermaid") {
-    return Object.freeze({
-      action: command.action,
-      artifact: successfulMermaidArtifact(publication).artifact,
-      engine: command.engine,
-      filename: "mermaid-diagram",
-      scale,
-    });
-  }
-
-  const runtimeState = getRuntimeState();
-  if (runtimeState.status !== "ready") {
-    throw actionError("runtime-unavailable", "Merman runtime is unavailable.");
-  }
-  if (
-    runtimeState.facade.packageVersion !==
-    publication.snapshot.operation.versions.merman
-  ) {
-    throw actionError(
-      "runtime-version-mismatch",
-      "The active Merman runtime does not match this render publication."
-    );
-  }
-  successfulMermanArtifact(publication);
-  return Object.freeze({
-    action: command.action,
-    engine: command.engine,
-    facade: runtimeState.facade,
-    filename: "merman-diagram",
-    operation: publication.snapshot.operation,
-    scale,
-  });
+  throw actionError("invalid-command", "Unsupported artifact action.");
 }
 
 function currentPublication(
@@ -248,11 +261,56 @@ function currentPublication(
   return state;
 }
 
-function currentAscii(publication: CompletedRenderBatch): string {
-  if (publication.ascii.status !== "success") {
+function currentAscii(
+  publication: CompletedRenderBatch,
+  getRuntimeState: () => MermanRuntimeState,
+  renderedAscii: WeakMap<CompletedRenderBatch, string>,
+): string {
+  if (publication.ascii?.status === "success") {
+    return publication.ascii.artifact;
+  }
+  if (publication.ascii !== null) {
     throw actionError("artifact-unavailable", "ASCII artifact is unavailable.");
   }
-  return publication.ascii.artifact;
+  const cached = renderedAscii.get(publication);
+  if (cached !== undefined) return cached;
+
+  const runtimeState = getRuntimeState();
+  if (runtimeState.status !== "ready") {
+    throw actionError(
+      "runtime-unavailable",
+      "Merman runtime is unavailable for ASCII rendering.",
+    );
+  }
+  if (
+    runtimeState.facade.packageVersion !==
+    publication.snapshot.operation.versions.merman
+  ) {
+    throw actionError(
+      "runtime-version-mismatch",
+      "The Merman runtime does not match this publication.",
+    );
+  }
+
+  let result;
+  try {
+    result = runtimeState.facade.renderAscii(publication.snapshot.operation);
+  } catch (error) {
+    throw new ArtifactActionError(
+      "ascii-render-failed",
+      projectError(error),
+      "render",
+    );
+  }
+  if (result.status === "failure") {
+    throw new ArtifactActionError(
+      "ascii-render-failed",
+      projectError(result.error),
+      "render",
+    );
+  }
+  renderedAscii.set(publication, result.ascii);
+  return result.ascii;
 }
 
 function currentSvg(
@@ -264,15 +322,14 @@ function currentSvg(
     : successfulMermaidArtifact(publication).artifact;
 }
 
-function artifactForPng(
-  plan: Extract<FrozenActionPlan, { readonly action: "download-png" }>
+function renderMermanRasterArtifact(
+  facade: MermanDomainFacade,
+  operation: FrozenRenderOperation,
 ): NavigableInlineSvg {
-  if (plan.engine === "mermaid") return plan.artifact;
-
   let result;
   try {
-    result = plan.facade.render(
-      renderOperationWithSvgPipeline(plan.operation, "resvg-safe")
+    result = facade.render(
+      renderOperationWithSvgPipeline(operation, "resvg-safe"),
     );
   } catch (error) {
     throw new ArtifactActionError(

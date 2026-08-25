@@ -1,0 +1,527 @@
+==================
+complete chart keeps axes and series structured
+==================
+
+xychart-beta horizontal
+title "`季度收入`"
+x-axis "月份" [jan, "二月", 2023-04]
+y-axis "收入 ($)" -10.5 --> +11000
+line "收益" [3.8 "Phi-3", +7, -.34 "低"]
+bar [12, 2, 20]
+accTitle: Accessible chart
+accDescr {
+  Quarterly values
+  include Unicode labels.
+}
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword)
+      (xy_chart_beta_marker)
+      (xy_chart_orientation))
+    (xy_chart_body
+      (xy_chart_title_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_markdown_text
+            (xy_chart_markdown_delimiter)
+            (xy_chart_markdown_content)
+            (xy_chart_markdown_delimiter))))
+      (xy_chart_x_axis_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_quoted_text
+            (xy_chart_quote_delimiter)
+            (xy_chart_quoted_content)
+            (xy_chart_quote_delimiter)))
+        (xy_chart_category_array
+          (xy_chart_array_open)
+          (xy_chart_text
+            (xy_chart_bare_text
+              (xy_chart_text_atom)))
+          (xy_chart_array_delimiter)
+          (xy_chart_text
+            (xy_chart_quoted_text
+              (xy_chart_quote_delimiter)
+              (xy_chart_quoted_content)
+              (xy_chart_quote_delimiter)))
+          (xy_chart_array_delimiter)
+          (xy_chart_text
+            (xy_chart_bare_text
+              (xy_chart_number)
+              (xy_chart_number)))
+          (xy_chart_array_close)))
+      (xy_chart_y_axis_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_quoted_text
+            (xy_chart_quote_delimiter)
+            (xy_chart_quoted_content)
+            (xy_chart_quote_delimiter)))
+        (xy_chart_axis_range
+          (xy_chart_number)
+          (xy_chart_range_delimiter)
+          (xy_chart_number)))
+      (xy_chart_line_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_quoted_text
+            (xy_chart_quote_delimiter)
+            (xy_chart_quoted_content)
+            (xy_chart_quote_delimiter)))
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number)
+            (xy_chart_quoted_text
+              (xy_chart_quote_delimiter)
+              (xy_chart_quoted_content)
+              (xy_chart_quote_delimiter)))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number)
+            (xy_chart_quoted_text
+              (xy_chart_quote_delimiter)
+              (xy_chart_quoted_content)
+              (xy_chart_quote_delimiter)))
+          (xy_chart_array_close)))
+      (xy_chart_bar_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_close)))
+      (xy_chart_accessibility_title_statement
+        (statement_keyword)
+        (xy_chart_accessibility_delimiter)
+        (xy_chart_accessibility_text))
+      (xy_chart_accessibility_description_statement
+        (statement_keyword)
+        (xy_chart_accessibility_description_block
+          (xy_chart_accessibility_block_text))))))
+
+==================
+case insensitive header and statements with CR-independent boundaries
+==================
+
+XYCHART-BETA Vertical
+TITLE Overview
+X-AXIS Months [Q1, Q2]
+Y-AXIS Values 0 --> 100
+LINE [25 "Launch", 90 "Target Hit"]
+BAR [20, 80]
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword)
+      (xy_chart_beta_marker)
+      (xy_chart_orientation))
+    (xy_chart_body
+      (xy_chart_title_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_bare_text
+            (xy_chart_text_atom))))
+      (xy_chart_x_axis_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_bare_text
+            (xy_chart_text_atom)))
+        (xy_chart_category_array
+          (xy_chart_array_open)
+          (xy_chart_text
+            (xy_chart_bare_text
+              (xy_chart_text_atom)
+              (xy_chart_number)))
+          (xy_chart_array_delimiter)
+          (xy_chart_text
+            (xy_chart_bare_text
+              (xy_chart_text_atom)
+              (xy_chart_number)))
+          (xy_chart_array_close)))
+      (xy_chart_y_axis_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_bare_text
+            (xy_chart_text_atom)))
+        (xy_chart_axis_range
+          (xy_chart_number)
+          (xy_chart_range_delimiter)
+          (xy_chart_number)))
+      (xy_chart_line_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number)
+            (xy_chart_quoted_text
+              (xy_chart_quote_delimiter)
+              (xy_chart_quoted_content)
+              (xy_chart_quote_delimiter)))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number)
+            (xy_chart_quoted_text
+              (xy_chart_quote_delimiter)
+              (xy_chart_quoted_content)
+              (xy_chart_quote_delimiter)))
+          (xy_chart_array_close)))
+      (xy_chart_bar_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_close))))))
+
+==================
+numeric axes and title-only axes preserve optional fields
+==================
+
+xychart
+x-axis 0 --> 2
+x-axis Version 2023 0 --> 10
+y-axis "Number of Sales"
+y-axis -10 --> .75
+line [+1.3, .6, 2.4, -.34]
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword))
+    (xy_chart_body
+      (xy_chart_x_axis_statement
+        (statement_keyword)
+        (xy_chart_axis_range
+          (xy_chart_number)
+          (xy_chart_range_delimiter)
+          (xy_chart_number)))
+      (xy_chart_x_axis_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_bare_text
+            (xy_chart_text_atom)
+            (xy_chart_number)))
+        (xy_chart_axis_range
+          (xy_chart_number)
+          (xy_chart_range_delimiter)
+          (xy_chart_number)))
+      (xy_chart_y_axis_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_quoted_text
+            (xy_chart_quote_delimiter)
+            (xy_chart_quoted_content)
+            (xy_chart_quote_delimiter))))
+      (xy_chart_y_axis_statement
+        (statement_keyword)
+        (xy_chart_axis_range
+          (xy_chart_number)
+          (xy_chart_range_delimiter)
+          (xy_chart_number)))
+      (xy_chart_line_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_close))))))
+
+==================
+semicolon boundaries permit compact statements
+==================
+
+xychart;title Sales;x-axis [Q1, Q2];y-axis 0 --> 10;line [1, 2];bar [2, 3]
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword))
+    (xy_chart_statement_delimiter)
+    (xy_chart_body
+      (xy_chart_title_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_bare_text
+            (xy_chart_text_atom))))
+      (xy_chart_statement_delimiter)
+      (xy_chart_x_axis_statement
+        (statement_keyword)
+        (xy_chart_category_array
+          (xy_chart_array_open)
+          (xy_chart_text
+            (xy_chart_bare_text
+              (xy_chart_text_atom)
+              (xy_chart_number)))
+          (xy_chart_array_delimiter)
+          (xy_chart_text
+            (xy_chart_bare_text
+              (xy_chart_text_atom)
+              (xy_chart_number)))
+          (xy_chart_array_close)))
+      (xy_chart_statement_delimiter)
+      (xy_chart_y_axis_statement
+        (statement_keyword)
+        (xy_chart_axis_range
+          (xy_chart_number)
+          (xy_chart_range_delimiter)
+          (xy_chart_number)))
+      (xy_chart_statement_delimiter)
+      (xy_chart_line_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_close)))
+      (xy_chart_statement_delimiter)
+      (xy_chart_bar_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_close))))))
+
+==================
+line-local recovery preserves following siblings
+==================
+
+xychart
+line "unterminated [1, 2
+bar [3, 4]
+x-axis [A, "unterminated
+y-axis 0 --> 10
+x-axis Draft 0 -->
+y-axis 0 -->
+unknown ???
+accDescr {unclosed
+title "after"
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword))
+    (xy_chart_body
+      (xy_chart_malformed_series_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_unclosed_quoted_text
+            (xy_chart_quote_delimiter)
+            (xy_chart_quoted_content))))
+      (xy_chart_bar_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_close)))
+      (xy_chart_incomplete_x_axis_statement
+        (statement_keyword)
+        (xy_chart_unclosed_category_array
+          (xy_chart_array_open)
+          (xy_chart_text
+            (xy_chart_bare_text
+              (xy_chart_text_atom)))
+          (xy_chart_array_delimiter)
+          (xy_chart_text
+            (xy_chart_unclosed_quoted_text
+              (xy_chart_quote_delimiter)
+              (xy_chart_quoted_content)))))
+      (xy_chart_y_axis_statement
+        (statement_keyword)
+        (xy_chart_axis_range
+          (xy_chart_number)
+          (xy_chart_range_delimiter)
+          (xy_chart_number)))
+      (xy_chart_incomplete_x_axis_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_bare_text
+            (xy_chart_text_atom)))
+        (xy_chart_incomplete_axis_range
+          (xy_chart_number)
+          (xy_chart_range_delimiter)))
+      (xy_chart_incomplete_y_axis_statement
+        (statement_keyword)
+        (xy_chart_incomplete_axis_range
+          (xy_chart_number)
+          (xy_chart_range_delimiter)))
+      (xy_chart_malformed_statement
+        (xy_chart_unknown_keyword)
+        (xy_chart_unknown_tail))
+      (xy_chart_accessibility_description_statement
+        (statement_keyword)
+        (xy_chart_unclosed_accessibility_description_block
+          (xy_chart_unclosed_accessibility_block_text)))
+      (xy_chart_title_statement
+        (statement_keyword)
+        (xy_chart_text
+          (xy_chart_quoted_text
+            (xy_chart_quote_delimiter)
+            (xy_chart_quoted_content)
+            (xy_chart_quote_delimiter)))))))
+
+==================
+known invalid forms remain explicit recovery nodes
+==================
+
+xychart
+y-axis [A, B]
+line []
+lineage [1]
+bar [3]
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword))
+    (xy_chart_body
+      (xy_chart_malformed_y_axis_categories_statement
+        (statement_keyword)
+        (xy_chart_category_array
+          (xy_chart_array_open)
+          (xy_chart_text
+            (xy_chart_bare_text
+              (xy_chart_text_atom)))
+          (xy_chart_array_delimiter)
+          (xy_chart_text
+            (xy_chart_bare_text
+              (xy_chart_text_atom)))
+          (xy_chart_array_close)))
+      (xy_chart_malformed_series_statement
+        (statement_keyword)
+        (xy_chart_empty_series_array
+          (xy_chart_array_open)
+          (xy_chart_array_close)))
+      (xy_chart_malformed_statement
+        (xy_chart_unknown_keyword)
+        (xy_chart_unknown_tail))
+      (xy_chart_bar_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_close))))))
+
+==================
+bad comma remains local to one series
+==================
+
+xychart
+line [1, , 2]
+bar [3, 4]
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword))
+    (xy_chart_body
+      (xy_chart_line_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (ERROR)
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_close)))
+      (xy_chart_bar_statement
+        (statement_keyword)
+        (xy_chart_series_array
+          (xy_chart_array_open)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_delimiter)
+          (xy_chart_data_point
+            (xy_chart_number))
+          (xy_chart_array_close))))))
+
+==================
+same-line statements require a semicolon
+==================
+
+xychart
+line [1] bar [2]
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword))
+    (xy_chart_body
+      (xy_chart_malformed_statement_sequence
+        (xy_chart_line_statement
+          (statement_keyword)
+          (xy_chart_series_array
+            (xy_chart_array_open)
+            (xy_chart_data_point
+              (xy_chart_number))
+            (xy_chart_array_close)))
+        (xy_chart_trailing_text)))))
+
+==================
+header only remains an xy chart root at EOF
+==================
+
+xychart-beta vertical
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword)
+      (xy_chart_beta_marker)
+      (xy_chart_orientation))))

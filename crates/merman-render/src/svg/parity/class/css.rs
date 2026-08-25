@@ -14,7 +14,6 @@ fn write_class_marker_css(
         id, marker_id_suffix, id, marker_class, fill, line_color
     );
 }
-
 fn write_class_icon_css(out: &mut impl SvgOutput, id: &str) {
     let _ = write!(
         out,

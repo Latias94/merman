@@ -13,10 +13,11 @@
 Alpha.5 is a broad prerelease upgrade, not a drop-in patch. It expands the Mermaid baseline to
 11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with
 observable capabilities, splits the browser SDK into standalone packages, and finalizes separate
-native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 1, the
-browser transport uses API 4, and Apple/Python use UniFFI API 4 in the current source candidate.
+native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 2, the
+browser transport uses API 5, and Apple/Python use UniFFI API 4 in the current source candidate.
 Published artifacts may advance on their own channel; always compare the loaded runtime catalog
-before mixing a generated wrapper with a native library.
+before mixing a generated wrapper with a native library. Current API 5 Web wrappers reject API 4
+WASM modules during initialization rather than continuing with a mixed transport.
 
 The practical upgrade rule is:
 
@@ -34,7 +35,7 @@ The practical upgrade rule is:
 | `merman-cli` root `-i/-o` flags | Existing scripts still route to the compatibility parser, but new scripts should choose `render`, `batch`, or `mmdc` explicitly. |
 | `@mermanjs/web/<subpath>` or `@mermanjs/web/pkg/**` | Replace the import with one standalone browser package. Subpaths and raw WASM files are no longer public API. |
 | Native C or Flutter bindings | Rebuild or upgrade the complete host package and migrate from ABI 2 to ABI 3. Reject an ABI mismatch during initialization. |
-| Android JNI/Kotlin | Upgrade the complete AAR and Kotlin sources together. The alpha.5 surface is direct `JNI_OnLoad`/`RegisterNatives` transport API 1, not the C ABI; do not link the old `libmerman_ffi.so` JNI path. |
+| Android JNI/Kotlin | Upgrade the complete AAR and Kotlin sources together. The alpha.5 surface is direct `JNI_OnLoad`/`RegisterNatives` transport API 2, not the C ABI; do not link the old `libmerman_ffi.so` JNI path. API 2 adds operation-scoped cancellation and relative deadlines while retaining the existing execute overloads. |
 | Python or Apple bindings | Upgrade the generated UniFFI API 4 wrapper and matching native artifact together; resource and cancellation errors now carry structured details. Do not mix a published API 3 artifact with the current source-candidate wrapper. |
 | Analysis, editor, or LSP APIs | Follow the [Rust and embedding API migration](#rust-and-embedding-api-migration) section for exact type, method, ownership, and capability replacements. |
 | `render_svg_resvg_safe{,_sync}` or `svg_resvg_safe()` | Migrate to the typed `ResvgCompatibleSvg` boundaries described under [Rendering and option contracts](#rendering-and-option-contracts). No string-returning compatibility alias is retained. |
@@ -179,9 +180,10 @@ owner document before replacement. Manual hosts must replace `assertSafeSvgForDo
 
 ## Native ABI migration
 
-Alpha.5 C and Flutter hosts use ABI 3. Android uses direct JNI transport API 1. The current source
-candidate's browser and UniFFI transports use API 4; older published alpha.5 artifacts may still
-report API 3. Resource failures include the stable `cause` discriminator (`ceiling` or
+Alpha.5 C and Flutter hosts use ABI 3. Android uses direct JNI transport API 2. The current source
+candidate's browser transport uses API 5, while its UniFFI transport uses API 4; older published
+alpha.5 artifacts may still report API 3 or 4. Resource failures include the stable `cause`
+discriminator (`ceiling` or
 `arithmetic_overflow`), and cancellation failures include `reason` and `phase`. Upgrade each
 language package and native artifact together; never mix a generated wrapper with a library whose
 runtime catalog reports a different transport version.
@@ -341,7 +343,11 @@ cancellation message.
 ### Web editor and measurement APIs
 
 - Replace `createBrowserTextMeasurer()` with `createBrowserTextMeasurementSession()`, retain the returned `measure` callback for the session lifetime, and call `dispose()` when the browser realm or session ends.
-- Rename `editorSemanticTokenLegend()` to `editorSemanticTokenDescriptor()` and decode the packed `Uint32Array` returned by `editorSemanticTokens()` against that generated descriptor.
+- Remove calls to `editorSemanticTokenLegend()`, `editorSemanticTokenDescriptor()`, and
+  `editorSemanticTokens()`. Syntax highlighting now comes from the separately distributed
+  `tree-sitter-mermaid` grammar, its portable highlight query, and the consumer's Tree-sitter
+  runtime; publish that dependency before the consuming release. Merman's Web editor surface
+  remains responsible for diagnostics, completion, navigation, and rename.
 - Remove `selectedRegistryProfile()`, `bindingCapabilities()`, and any assumption that package identity or exported function names determine callable operations. Query `runtimeCatalog()` from the initialized artifact.
 
 ### Smaller Rust renames

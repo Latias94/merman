@@ -85,7 +85,7 @@ contract.
 
 ## Deadlines and cancellation
 
-The current browser transport API is `4`, reported by `transportApiVersion()` and the runtime
+The current browser transport API is `5`, reported by `transportApiVersion()` and the runtime
 catalog. Transport-dispatched one-shot operations accept a transport-owned top-level `timeout_ms`
 field in their options JSON. Because this field is not part of the shared binding-options schema,
 pass it through the public functions' JSON-string form:

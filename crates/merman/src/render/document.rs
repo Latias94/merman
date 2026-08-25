@@ -227,6 +227,7 @@ impl RenderedDocument {
     pub(super) fn new(
         svg: merman_render::svg::ResvgCompatibleSvg,
         family: merman_render::family::FamilyRenderReport,
+        required_capabilities: Vec<merman_render::RenderCapability>,
     ) -> Self {
         let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
         let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
@@ -244,7 +245,7 @@ impl RenderedDocument {
                 native_svg_digest,
             )
             .into_boxed_slice();
-        let evidence = Arc::new(RenderEvidence::from_family(family));
+        let evidence = Arc::new(RenderEvidence::from_family(family, required_capabilities));
         let portability = document_portability_report(&svg, &evidence);
         let document_digest = document_digest(
             public_svg_digest,
@@ -673,8 +674,9 @@ impl PdfOutput {
 pub(super) fn finish_standalone_svg_target(
     svg: merman_render::svg::StandaloneSvgArtifact,
     family: merman_render::family::FamilyRenderReport,
+    required_capabilities: Vec<merman_render::RenderCapability>,
 ) -> Result<SvgOutput, RenderError> {
-    let evidence = RenderEvidence::from_family(family);
+    let evidence = RenderEvidence::from_family(family, required_capabilities);
     let portability = document_portability_report(&svg, &evidence);
     let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
     let native_svg = svg.native_export_svg();

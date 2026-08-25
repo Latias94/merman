@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::actor_shapes::{
     ActorLabelContext, is_actor_man_variant, write_actor_man_lifeline,
     write_collection_actor_shape, write_database_bottom_actor_shape,
@@ -21,12 +22,13 @@ pub(super) struct SequenceActorRenderContext<'a> {
     pub(super) actor_text_style: &'a TextStyle,
     pub(super) actor_typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
+    pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 pub(super) fn render_sequence_bottom_actors(
     out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
-) {
+) -> Result<()> {
     let label_ctx = ActorLabelContext::new(
         ctx.actor_wrap_width,
         ctx.measurer,
@@ -34,10 +36,15 @@ pub(super) fn render_sequence_bottom_actors(
         ctx.actor_typography,
         ctx.typography_receipt,
         ctx.math_sidecar,
+        ctx.checkpoints,
     );
 
     // Mermaid draws bottom actors first (reverse DOM order).
-    for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate().rev() {
+    ctx.checkpoints.checkpoint()?;
+    for (emission_index, (actor_index, actor_id)) in
+        ctx.model.actor_order.iter().enumerate().rev().enumerate()
+    {
+        ctx.checkpoints.checkpoint_loop(emission_index)?;
         let label_ctx = label_ctx.for_actor(actor_index);
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
@@ -55,26 +62,27 @@ pub(super) fn render_sequence_bottom_actors(
             }
             "collections" => {
                 out.push_str("<g>");
-                write_collection_actor_shape(out, n, actor_id, actor, "actor-bottom", &label_ctx);
+                write_collection_actor_shape(out, n, actor_id, actor, "actor-bottom", &label_ctx)?;
                 out.push_str("</g>");
             }
             "queue" => {
                 out.push_str(r#"<g class="actor actor-bottom">"#);
-                write_queue_actor_shape(out, n, actor, "actor-bottom", &label_ctx);
+                write_queue_actor_shape(out, n, actor, "actor-bottom", &label_ctx)?;
                 out.push_str("</g>");
             }
             "database" => {
                 out.push_str("<g>");
-                write_database_bottom_actor_shape(out, n, actor, ctx.label_box_height, &label_ctx);
+                write_database_bottom_actor_shape(out, n, actor, ctx.label_box_height, &label_ctx)?;
                 out.push_str("</g>");
             }
             _ => {
                 out.push_str("<g>");
-                write_rect_actor_shape(out, n, actor_id, actor, "actor-bottom", &label_ctx);
+                write_rect_actor_shape(out, n, actor_id, actor, "actor-bottom", &label_ctx)?;
                 out.push_str("</g>");
             }
         }
     }
+    ctx.checkpoints.checkpoint()
 }
 
 pub(super) fn render_sequence_top_actors_and_lifelines(
@@ -89,9 +97,14 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
         ctx.actor_typography,
         ctx.typography_receipt,
         ctx.math_sidecar,
+        ctx.checkpoints,
     );
 
-    for (idx, actor_id) in ctx.model.actor_order.iter().enumerate().rev() {
+    ctx.checkpoints.checkpoint()?;
+    for (emission_index, (idx, actor_id)) in
+        ctx.model.actor_order.iter().enumerate().rev().enumerate()
+    {
+        ctx.checkpoints.checkpoint_loop(emission_index)?;
         let label_ctx = label_ctx.for_actor(idx);
         theme_receipt.record_line_candidate();
         let Some(actor) = ctx.model.actors.get(actor_id) else {
@@ -125,31 +138,31 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 out.checkpoint()?;
                 theme_receipt.record_line_emission();
-                write_collection_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx);
+                write_collection_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx)?;
                 out.push_str("</g></g>");
             }
             "queue" => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 out.checkpoint()?;
                 theme_receipt.record_line_emission();
-                write_queue_actor_shape(out, top, actor, "actor-top", &label_ctx);
+                write_queue_actor_shape(out, top, actor, "actor-top", &label_ctx)?;
                 out.push_str("</g></g>");
             }
             "database" => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 out.checkpoint()?;
                 theme_receipt.record_line_emission();
-                write_database_top_actor_shape(out, top, actor, ctx.actor_height, &label_ctx);
+                write_database_top_actor_shape(out, top, actor, ctx.actor_height, &label_ctx)?;
                 out.push_str("</g></g>");
             }
             _ => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 out.checkpoint()?;
                 theme_receipt.record_line_emission();
-                write_rect_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx);
+                write_rect_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx)?;
                 out.push_str("</g></g>");
             }
         }
     }
-    Ok(())
+    ctx.checkpoints.checkpoint()
 }

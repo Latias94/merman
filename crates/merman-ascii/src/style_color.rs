@@ -56,32 +56,27 @@ fn parse_hex_digit(digit: u8) -> Option<u8> {
 }
 
 fn parse_rgb_function(value: &str) -> Option<CssColor> {
-    let lower = value.to_ascii_lowercase();
-    let (prefix, min_components) = if lower.starts_with("rgb(") {
-        ("rgb(", 3)
-    } else if lower.starts_with("rgba(") {
-        ("rgba(", 4)
+    let (inner, min_components) = if let Some(inner) = strip_ascii_case_prefix(value, "rgb(") {
+        (inner.strip_suffix(')')?, 3)
+    } else if let Some(inner) = strip_ascii_case_prefix(value, "rgba(") {
+        (inner.strip_suffix(')')?, 4)
     } else {
         return None;
     };
-    if !value.ends_with(')') {
-        return None;
-    }
 
-    let inner = &value[prefix.len()..value.len() - 1];
-    let components = inner
+    let mut components = inner
         .split([',', ' '])
         .filter(|part| !part.trim().is_empty() && part.trim() != "/")
-        .map(str::trim)
-        .collect::<Vec<_>>();
-    if components.len() < min_components {
+        .map(str::trim);
+
+    let r = parse_rgb_component(components.next()?)?;
+    let g = parse_rgb_component(components.next()?)?;
+    let b = parse_rgb_component(components.next()?)?;
+    let alpha_component = components.next();
+    if min_components == 4 && alpha_component.is_none() {
         return None;
     }
-
-    let r = parse_rgb_component(components[0])?;
-    let g = parse_rgb_component(components[1])?;
-    let b = parse_rgb_component(components[2])?;
-    let alpha = match components.get(3) {
+    let alpha = match alpha_component {
         Some(value) => Some(parse_alpha(value)?),
         None => None,
     };
@@ -93,32 +88,27 @@ fn parse_rgb_function(value: &str) -> Option<CssColor> {
 }
 
 fn parse_hsl_function(value: &str) -> Option<CssColor> {
-    let lower = value.to_ascii_lowercase();
-    let (prefix, min_components) = if lower.starts_with("hsl(") {
-        ("hsl(", 3)
-    } else if lower.starts_with("hsla(") {
-        ("hsla(", 4)
+    let (inner, min_components) = if let Some(inner) = strip_ascii_case_prefix(value, "hsl(") {
+        (inner.strip_suffix(')')?, 3)
+    } else if let Some(inner) = strip_ascii_case_prefix(value, "hsla(") {
+        (inner.strip_suffix(')')?, 4)
     } else {
         return None;
     };
-    if !value.ends_with(')') {
-        return None;
-    }
 
-    let inner = &value[prefix.len()..value.len() - 1];
-    let components = inner
+    let mut components = inner
         .split([',', ' '])
         .filter(|part| !part.trim().is_empty() && part.trim() != "/")
-        .map(str::trim)
-        .collect::<Vec<_>>();
-    if components.len() < min_components {
+        .map(str::trim);
+
+    let hue = parse_hue(components.next()?)?;
+    let saturation = parse_percentage(components.next()?)?;
+    let lightness = parse_percentage(components.next()?)?;
+    let alpha_component = components.next();
+    if min_components == 4 && alpha_component.is_none() {
         return None;
     }
-
-    let hue = parse_hue(components[0])?;
-    let saturation = parse_percentage(components[1])?;
-    let lightness = parse_percentage(components[2])?;
-    let alpha = match components.get(3) {
+    let alpha = match alpha_component {
         Some(value) => Some(parse_alpha(value)?),
         None => None,
     };
@@ -204,21 +194,35 @@ fn parse_alpha(value: &str) -> Option<u8> {
 }
 
 fn parse_named_color(value: &str) -> Option<AsciiRgb> {
-    match value.to_ascii_lowercase().as_str() {
-        "black" => Some(AsciiRgb::from_hex24(0x000000)),
-        "white" => Some(AsciiRgb::from_hex24(0xffffff)),
-        "red" => Some(AsciiRgb::from_hex24(0xff0000)),
-        "green" => Some(AsciiRgb::from_hex24(0x008000)),
-        "blue" => Some(AsciiRgb::from_hex24(0x0000ff)),
-        "yellow" => Some(AsciiRgb::from_hex24(0xffff00)),
-        "cyan" | "aqua" => Some(AsciiRgb::from_hex24(0x00ffff)),
-        "magenta" | "fuchsia" => Some(AsciiRgb::from_hex24(0xff00ff)),
-        "gray" | "grey" => Some(AsciiRgb::from_hex24(0x808080)),
-        "orange" => Some(AsciiRgb::from_hex24(0xffa500)),
-        "purple" => Some(AsciiRgb::from_hex24(0x800080)),
-        "lime" => Some(AsciiRgb::from_hex24(0x00ff00)),
-        _ => None,
-    }
+    const NAMED_COLORS: [(&str, u32); 15] = [
+        ("black", 0x000000),
+        ("white", 0xffffff),
+        ("red", 0xff0000),
+        ("green", 0x008000),
+        ("blue", 0x0000ff),
+        ("yellow", 0xffff00),
+        ("cyan", 0x00ffff),
+        ("aqua", 0x00ffff),
+        ("magenta", 0xff00ff),
+        ("fuchsia", 0xff00ff),
+        ("gray", 0x808080),
+        ("grey", 0x808080),
+        ("orange", 0xffa500),
+        ("purple", 0x800080),
+        ("lime", 0x00ff00),
+    ];
+
+    NAMED_COLORS
+        .iter()
+        .find(|(name, _)| value.eq_ignore_ascii_case(name))
+        .map(|(_, rgb)| AsciiRgb::from_hex24(*rgb))
+}
+
+fn strip_ascii_case_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    let candidate = value.get(..prefix.len())?;
+    candidate
+        .eq_ignore_ascii_case(prefix)
+        .then(|| &value[prefix.len()..])
 }
 
 #[cfg(test)]
@@ -254,6 +258,10 @@ mod tests {
         assert_eq!(
             parse_css_color("hsla(240, 100%, 50%, 1)"),
             Some(AsciiRgb::from_hex24(0x0000ff))
+        );
+        assert_eq!(
+            parse_css_color("RGB(1, 2, 3)"),
+            Some(AsciiRgb::new(1, 2, 3))
         );
     }
 

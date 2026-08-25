@@ -86,16 +86,16 @@ fn assert_scoped_definition_id(svg: &str, diagram_id: &str, local_id: &str) {
     );
 }
 
-fn assert_css_root_scope_escapes_selector_significant_id_characters(family: &str, source: &str) {
+fn assert_css_root_scope_normalizes_selector_significant_id_characters(family: &str, source: &str) {
     const DIAGRAM_ID: &str = "seq:prod.v1";
-    const ESCAPED_SELECTOR: &str = r"#seq\:prod\.v1";
+    const NORMALIZED_ID: &str = "seq-prod-v1";
 
     let svg = render_svg_from_text(source, DIAGRAM_ID);
     let document = roxmltree::Document::parse(&svg).expect("valid SVG");
     assert_eq!(
         document.root_element().attribute("id"),
-        Some(DIAGRAM_ID),
-        "{family} must preserve the XML id spelling"
+        Some(NORMALIZED_ID),
+        "{family} must normalize the XML id spelling"
     );
     let css = document
         .descendants()
@@ -103,8 +103,8 @@ fn assert_css_root_scope_escapes_selector_significant_id_characters(family: &str
         .filter_map(|node| node.text())
         .collect::<String>();
     assert!(
-        css.contains(ESCAPED_SELECTOR),
-        "{family} must CSS-escape its root selector: {css}"
+        css.contains("#seq-prod-v1"),
+        "{family} must use the normalized root selector: {css}"
     );
     for invalid_selector_prefix in [
         "#seq:prod.v1{",
@@ -120,7 +120,7 @@ fn assert_css_root_scope_escapes_selector_significant_id_characters(family: &str
 }
 
 #[test]
-fn css_root_scope_escapes_selector_significant_ids_across_families() {
+fn css_root_scope_normalizes_selector_significant_ids_across_families() {
     for (family, source) in [
         ("Flowchart", "flowchart TD\n  A --> B\n"),
         ("State", "stateDiagram-v2\n  [*] --> Ready\n"),
@@ -140,7 +140,7 @@ fn css_root_scope_escapes_selector_significant_ids_across_families() {
         ),
         ("Timeline", "timeline\n  section Release\n    2026 : Ship\n"),
     ] {
-        assert_css_root_scope_escapes_selector_significant_id_characters(family, source);
+        assert_css_root_scope_normalizes_selector_significant_id_characters(family, source);
     }
 }
 

@@ -14,7 +14,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackageLegalMaterialError(RuntimeError):
-    """A publishable Cargo package omitted required legal material."""
+    """A governed Cargo package omitted required legal material."""
+
+
+def requires_third_party_bundle(package: dict[str, Any]) -> bool:
+    metadata = package.get("metadata") or {}
+    legal = metadata.get("merman-legal")
+    if legal is None:
+        return False
+    if legal != {"third-party-bundle": True}:
+        raise PackageLegalMaterialError(
+            f"{package['name']} has invalid merman-legal package metadata"
+        )
+    return True
 
 
 def required_legal_paths(package: dict[str, Any]) -> set[str]:
@@ -36,7 +48,7 @@ def required_legal_paths(package: dict[str, Any]) -> set[str]:
 
     notice = crate_root / "THIRD_PARTY_NOTICES.md"
     license_root = crate_root / "THIRD_PARTY_LICENSES"
-    if notice.exists() or license_root.exists():
+    if requires_third_party_bundle(package) or notice.exists() or license_root.exists():
         if not notice.is_file() or not license_root.is_dir():
             raise PackageLegalMaterialError(
                 f"{package['name']} has an incomplete third-party legal bundle"
@@ -71,10 +83,18 @@ def cargo_json(*args: str) -> Any:
     return json.loads(result.stdout)
 
 
-def publishable_packages() -> list[dict[str, Any]]:
-    metadata = cargo_json("metadata", "--no-deps", "--format-version", "1")
+def governed_packages(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    independent = set(
+        metadata.get("metadata", {})
+        .get("merman-release", {})
+        .get("independent-packages", [])
+    )
     return sorted(
-        (package for package in metadata["packages"] if package.get("publish") != []),
+        (
+            package
+            for package in metadata["packages"]
+            if package.get("publish") != [] or package.get("name") in independent
+        ),
         key=lambda package: package["name"],
     )
 
@@ -92,7 +112,8 @@ def package_listing(name: str) -> set[str]:
 
 
 def verify_repository() -> int:
-    packages = publishable_packages()
+    metadata = cargo_json("metadata", "--locked", "--no-deps", "--format-version", "1")
+    packages = governed_packages(metadata)
     for package in packages:
         verify_package_listing(package, package_listing(package["name"]))
     return len(packages)
@@ -104,7 +125,7 @@ def main() -> int:
     except (PackageLegalMaterialError, KeyError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
         print(f"Cargo package legal-material verification failed: {error}", file=sys.stderr)
         return 1
-    print(f"verified legal materials in {count} publishable Cargo packages")
+    print(f"verified legal materials in {count} governed Cargo packages")
     return 0
 
 

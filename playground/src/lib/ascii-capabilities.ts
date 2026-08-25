@@ -29,7 +29,7 @@ export function useAsciiSupport() {
 
   const supportedTypes = useMemo(() => {
     const fromCapabilities = capabilities
-      .filter((capability) => capability.support_level !== "unsupported")
+      .filter((capability) => capability.primary_projection !== "none")
       .map((capability) => capability.diagram_type);
     return fromCapabilities.length > 0
       ? fromCapabilities

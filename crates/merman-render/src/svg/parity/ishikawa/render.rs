@@ -35,7 +35,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("ishikawa");
+    let diagram_id = options.diagram_id_or("ishikawa");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut text_terminals = IshikawaTextTerminalWriter::new(text_theme);
     let root_bounds = root_svg::DiagramBounds::from_view_box(
@@ -50,6 +50,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     let root_document =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::ISHIKAWA, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     let css = ishikawa_css(layout, effective_config);
     let _ = write!(&mut out, "<style>{css}</style>");
@@ -72,7 +73,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
         push_hand_drawn_diagram(&mut out, layout, &rough, &mut text_terminals)?;
     } else {
         let marker_id = format!("ishikawa-arrow-{diagram_id}");
-        push_classic_diagram(&mut out, layout, &marker_id, &mut text_terminals)?;
+        push_classic_diagram(&mut out, layout, &marker_id, options, &mut text_terminals)?;
     }
 
     out.push_str("</g></svg>\n");
@@ -90,10 +91,11 @@ fn push_classic_diagram(
     out: &mut impl SvgOutput,
     layout: &IshikawaDiagramLayout,
     marker_id: &str,
+    options: &SvgExecution<'_>,
     text_terminals: &mut IshikawaTextTerminalWriter<'_>,
 ) -> Result<()> {
     let _ = write!(out, r#"<defs><marker id=""#);
-    escape_xml_into(out, marker_id);
+    escape_attr_into(out, marker_id);
     out.push_str(
         r#"" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 10 0 L 0 5 L 10 10 Z" class="ishikawa-arrow"></path></marker></defs>"#,
     );
@@ -116,6 +118,7 @@ fn push_classic_diagram(
         out.checkpoint()?;
     }
     for pair in &layout.pairs {
+        options.checkpoint_emit()?;
         out.push_str(r#"<g class="ishikawa-pair">"#);
         push_branch(out, &pair.upper, marker_id, text_terminals)?;
         if let Some(lower) = &pair.lower {

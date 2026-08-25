@@ -1,11 +1,10 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import Editor from "@monaco-editor/react";
 import {
   AlertCircle,
   Check,
   Code2,
   Copy,
-  FileCode,
+  Download,
   ImageIcon,
   Loader2,
   RefreshCw,
@@ -23,9 +22,13 @@ import {
   useSvgViewportController,
   type SvgViewportController,
 } from "@/src/components/SvgViewport";
+import type { MermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
+import type { SvgPresentationMode } from "@/src/lib/svg-presentation";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
 import { cn } from "@/lib/utils";
+import type { WorkbenchEditorThemeName } from "@/src/editor/workbench-editor-theme";
+import { ReadOnlyEditor } from "@/src/components/ReadOnlyEditor";
 
 export type CompareEngineKey = "merman" | "mermaid";
 type SvgDisplayMode = "visual" | "source";
@@ -55,10 +58,8 @@ export interface ComparePaneActions {
     readonly engine: CompareEngineKey;
     readonly publicationId: RenderPublicationId;
   } | null;
-  exportingPngEngines: ReadonlySet<CompareEngineKey>;
   onCopySvg(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
-  onExportPng(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
-  onExportSvg(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
+  onExport(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
   onPresentationReady(engine: CompareEngineKey, at: number): void;
   onRetry(): void;
 }
@@ -67,19 +68,27 @@ export function CompareView({
   merman,
   mermaid,
   actions,
-  isDarkMode,
+  canvasTone,
+  editorTheme,
+  showSvgBounds,
+  presentationMode,
   t,
 }: {
   merman: ComparePaneModel;
   mermaid: ComparePaneModel;
   actions: ComparePaneActions;
-  isDarkMode: boolean;
+  canvasTone: MermaidCanvasTone;
+  editorTheme: WorkbenchEditorThemeName;
+  showSvgBounds: boolean;
+  presentationMode: SvgPresentationMode;
   t: (key: string) => string;
 }) {
   return (
     <div
-      className="h-full overflow-auto overscroll-contain p-2 sm:p-3"
+      className="preview-canvas h-full overflow-auto overscroll-contain p-2 sm:p-3"
       data-merman-compare-scroll-owner="true"
+      data-preview-canvas-tone={canvasTone}
+      data-svg-presentation-mode={presentationMode}
     >
       <div className="grid min-h-full grid-cols-1 gap-3 xl:grid-cols-2">
         {[merman, mermaid].map((pane) => (
@@ -87,7 +96,10 @@ export function CompareView({
             key={pane.artifact.key}
             model={pane}
             actions={actions}
-            isDarkMode={isDarkMode}
+            canvasTone={canvasTone}
+            editorTheme={editorTheme}
+            showSvgBounds={showSvgBounds}
+            presentationMode={presentationMode}
             t={t}
           />
         ))}
@@ -99,19 +111,24 @@ export function CompareView({
 function ComparePane({
   model,
   actions,
-  isDarkMode,
+  canvasTone,
+  editorTheme,
+  showSvgBounds,
+  presentationMode,
   t,
 }: {
   model: ComparePaneModel;
   actions: ComparePaneActions;
-  isDarkMode: boolean;
+  canvasTone: MermaidCanvasTone;
+  editorTheme: WorkbenchEditorThemeName;
+  showSvgBounds: boolean;
+  presentationMode: SvgPresentationMode;
   t: (key: string) => string;
 }) {
   const { artifact } = model;
   const copied =
     actions.copiedSvgTarget?.engine === artifact.key &&
     actions.copiedSvgTarget.publicationId === artifact.publicationId;
-  const exporting = actions.exportingPngEngines.has(artifact.key);
   const hasSvg = Boolean(artifact.svgArtifact);
   const actionsDisabled =
     artifact.publicationId === null ||
@@ -156,9 +173,9 @@ function ComparePane({
           ownedFocus.current = false;
         }
       }}
-      className="flex min-h-[320px] min-w-0 flex-col overflow-hidden rounded-md border bg-background outline-none focus-visible:ring-2 focus-visible:ring-ring xl:min-h-0"
+      className="preview-canvas-frame flex min-h-[320px] min-w-0 flex-col overflow-hidden rounded-md border outline-none xl:min-h-0"
     >
-      <div className="border-b bg-muted/30 px-3 py-2">
+      <div className="preview-canvas-toolbar border-b px-3 py-2">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="max-w-full truncate text-sm font-medium">
@@ -209,16 +226,15 @@ function ComparePane({
             </CompareIconButton>
             <CompareIconButton
               label={
-                artifact.unavailableLabel ??
-                t("preview.exportSvg")
+                artifact.unavailableLabel ?? t("export.workbenchTitle")
               }
               onClick={() =>
                 artifact.publicationId &&
-                actions.onExportSvg(artifact.key, artifact.publicationId)
+                actions.onExport(artifact.key, artifact.publicationId)
               }
               disabled={actionsDisabled}
             >
-              <FileCode className="size-4" />
+              <Download className="size-4" />
             </CompareIconButton>
             <CompareIconButton
               label={
@@ -239,24 +255,6 @@ function ComparePane({
                 <ImageIcon className="size-4" />
               )}
             </CompareIconButton>
-            <CompareIconButton
-              label={
-                exporting
-                  ? t("preview.exporting")
-                  : (artifact.unavailableLabel ?? t("preview.exportPng"))
-              }
-              onClick={() =>
-                artifact.publicationId &&
-                actions.onExportPng(artifact.key, artifact.publicationId)
-              }
-              disabled={actionsDisabled || exporting}
-            >
-              {exporting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <ImageIcon className="size-4" />
-              )}
-            </CompareIconButton>
           </div>
         </div>
       </div>
@@ -268,9 +266,10 @@ function ComparePane({
       >
         <ComparePaneBody
           artifact={artifact}
+          canvasTone={canvasTone}
           controller={controller}
           displayMode={svgDisplayMode}
-          isDarkMode={isDarkMode}
+          editorTheme={editorTheme}
           onPresentationReady={(at) =>
             actions.onPresentationReady(artifact.key, at)
           }
@@ -278,6 +277,8 @@ function ComparePane({
             paneRef.current?.focus({ preventScroll: true });
             actions.onRetry();
           }}
+          showSvgBounds={showSvgBounds}
+          presentationMode={presentationMode}
           t={t}
         />
       </div>
@@ -308,19 +309,25 @@ function compareArtifactStatus(
 
 function ComparePaneBody({
   artifact,
+  canvasTone,
   controller,
   displayMode,
-  isDarkMode,
+  editorTheme,
   onPresentationReady,
   onRetry,
+  showSvgBounds,
+  presentationMode,
   t,
 }: {
   artifact: CompareArtifact;
+  canvasTone: MermaidCanvasTone;
   controller: SvgViewportController;
   displayMode: SvgDisplayMode;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
   onPresentationReady(at: number): void;
   onRetry(): void;
+  showSvgBounds: boolean;
+  presentationMode: SvgPresentationMode;
   t: (key: string) => string;
 }) {
   if (artifact.loading && !artifact.svgArtifact) {
@@ -346,17 +353,21 @@ function ComparePaneBody({
     return (
       <CompareSvgSource
         svg={artifact.svgArtifact?.svg ?? null}
-        isDarkMode={isDarkMode}
+        editorTheme={editorTheme}
+        feature={t("preview.viewSvgSource")}
       />
     );
   }
   return (
     <SvgViewport
       artifact={artifact.svgArtifact}
+      canvasTone={canvasTone}
       presentationKey={artifact.publicationId}
       controller={controller}
       navigationEnabled={!artifact.loading && !artifact.stale}
       onPresentationReady={onPresentationReady}
+      showSvgBounds={showSvgBounds}
+      presentationMode={presentationMode}
       renderMountError={(mountError) => (
         <CompareFailure
           detail={mountError.stack ?? null}
@@ -368,7 +379,7 @@ function ComparePaneBody({
         />
       )}
       empty={
-        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        <div className="preview-canvas-status-muted flex h-full items-center justify-center text-sm">
           {t("preview.empty")}
         </div>
       }
@@ -393,7 +404,7 @@ function CompareFailure({
 }) {
   return (
     <div
-      className="flex h-full items-center justify-center p-5"
+      className="preview-canvas-status flex h-full items-center justify-center p-5"
       data-merman-render-error="true"
       data-merman-error-engine={engine}
       data-merman-error-stage={stage ?? undefined}
@@ -403,17 +414,17 @@ function CompareFailure({
         <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-full bg-destructive/10">
           <AlertCircle className="size-5 text-destructive" />
         </div>
-        <h3 className="mb-1 font-medium text-foreground">
+        <h3 className="mb-1 font-medium">
           {engine} · {t("preview.error")}
         </h3>
         {stage && (
-          <p className="mb-2 font-mono text-xs text-muted-foreground">{stage}</p>
+          <p className="preview-canvas-status-muted mb-2 font-mono text-xs">{stage}</p>
         )}
-        <p className="rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
+        <p className="preview-canvas-status-muted rounded-md bg-black/5 p-3 font-mono text-sm dark:bg-white/5">
           {message}
         </p>
         {detail && (
-          <details className="mt-3 text-left text-xs text-muted-foreground">
+          <details className="preview-canvas-status-muted mt-3 text-left text-xs">
             <summary className="cursor-pointer select-none text-center">
               {t("preview.errorDetails")}
             </summary>
@@ -433,21 +444,22 @@ function CompareFailure({
 
 function CompareSvgSource({
   svg,
-  isDarkMode,
+  editorTheme,
+  feature,
 }: {
   svg: string | null;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
+  feature: string;
 }) {
   if (!svg) return null;
   return (
-    <Editor
+    <ReadOnlyEditor
+      feature={feature}
       height="100%"
       language="xml"
       value={svg}
-      theme={isDarkMode ? "vs-dark" : "light"}
+      theme={editorTheme}
       options={{
-        readOnly: true,
-        domReadOnly: true,
         minimap: { enabled: false },
         fontSize: 12,
         scrollBeyondLastLine: false,
@@ -496,8 +508,8 @@ function CenteredMessage({
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-full flex-1 items-center justify-center">
-      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+    <div className="preview-canvas-status flex h-full flex-1 items-center justify-center">
+      <div className="preview-canvas-status-muted flex flex-col items-center gap-3">
         {icon}
         <span className="text-sm">{children}</span>
       </div>

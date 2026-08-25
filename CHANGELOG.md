@@ -17,9 +17,17 @@ The next workspace release remains in development. This section records only com
 - Removed host-owned CSS and security controls from general binding and Web options. `site_config.themeCSS`, `site_config.secure`, `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and `svg.cssOverridePolicy` are rejected across one-shot calls, reusable constructors, and request overlays; trusted Rust and native CLI hosts retain the explicit scoped-CSS and override-policy capabilities.
 - Removed the Typst package's high-level `scoped-css` and `css-override-policy` arguments and profile fields. Handwritten legacy profiles now fail with migration guidance, default options omit the rejected binding keys, and raw `options` continue to fail at the general binding trust boundary.
 - Removed the provisional `--theme-preset` and `--theme-file` extensions from the `mmdc` compatibility and `layout` commands. Compiled theme selection remains available on native `render` and `batch`; `mmdc` retains only its official `-t`/`--theme` selector.
+- Removed Merman's parser-emitted `EditorLexeme*` API, mixed token planner, generated semantic-token
+  descriptor, packed token-equivalence evidence, and Web/WASM semantic-token methods. The Web
+  editor transport advances to API `5`; completion, hover, diagnostics, navigation, and safe rename
+  remain parser-backed, while syntax highlighting now comes exclusively from Tree-sitter.
 - Replaced `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` helpers, public SVG prepared stages, and CPU-bound render `async fn` wrappers with one operation-scoped `Renderer`, typed `RenderRequest` / `RenderTarget`, and format-neutral `SemanticArtifact`. Hosts retain a cloneable `OperationControl` to cancel stale synchronous work or set a monotonic deadline; cancellation is reported separately from resource exhaustion and returns no partial output.
 - Renamed parser-only `ParseControl`, `ParseCancelled`, and `ParseControlResult` to the operation-neutral `OperationControl`, `OperationCancelled`, and `OperationControlResult`. Analysis cancellation tokens now delegate to the same shared operation state instead of maintaining a second atomic flag.
-- Advanced the direct Apple/Python UniFFI binding API to `4` because lint rule catalog records now include required `tags`. API 4 replaces the generated `binding_api_version` probe with `transport_api_version` and removes the old native method symbol, so API 3 generated bindings reject the new library before decoding the changed record; regenerate and deploy each language projection with its matching native artifact.
+- Advanced the direct Apple/Python UniFFI binding API from alpha.5 API `3` to API `5`. The final
+  API 5 surface includes required lint-rule tags, revised ASCII capability fields, and structured
+  diagnostic records; it replaces the intermediate API 4 `transport_api_version` probe with
+  `binding_api_version_v5`, so API 3 and API 4 generated bindings fail before decoding changed
+  records. Regenerate and deploy each language projection with its matching native artifact.
 - Renamed the generic UniFFI request to `MermanOperationRequestV4` and added optional `MermanOperationControl` ownership with structured cancellation reason/phase details. Web transport API `4` accepts transport-owned `timeout_ms`; synchronous same-realm WASM remains cooperatively cancellable, while hard interruption requires terminating a Worker or process.
 - Default Android, Apple, Python, and Flutter native artifacts now bundle SVG, Cytoscape and ELK layouts, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native clock/time-zone/random adapters. Generated wrapper methods remain stable and report typed missing-capability or unsupported-operation errors; consumers that need an omitted operation must build a current-contract custom native library.
 - `DiagramParseOutcome::Parsed(Value)` is now `DiagramParseOutcome::Parsed { model, warning_facts }`. Rust editor integrations should match the struct variant and consume the parser-owned typed warning facts instead of decoding the compatibility model's `warningFacts` field.
@@ -30,15 +38,28 @@ The next workspace release remains in development. This section records only com
 - Advanced the prerelease LSP `merman/configSchema` response to version `2` because the typed `constraints` projection is now mandatory. Clients must negotiate version `2` instead of partially decoding the former response shape.
 - Removed the stateful Rust `DocumentWorkspace` map and `DocumentAnalysisOutcome` wrapper. Editor hosts now call `analyze_document_snapshot_with_shared_text` or `analyze_document_context_with_shared_text` and own URI/version storage themselves. The cancellable context function preserves cooperative cancellation as the outer result and resource rejection as the inner result; no deprecated alias or compatibility cache remains. See the [unreleased upgrade guide](docs/release/UNRELEASED_UPGRADE_GUIDE.md).
 - The Flutter/Dart package now uses `package_ffi` and Native Assets with Dart 3.10 / Flutter 3.38 minimums. Legacy Flutter plugin registrars and platform-specific CocoaPods, SwiftPM, Gradle, CMake, and desktop wrapper glue are removed; `Merman.open()` remains the default API and `openMermanLibrary()` is removed.
+- Replaced ASCII's single grid ceiling with a typed six-phase resource policy, added an explicit terminal-width profile, and expanded ASCII errors and diagnostics with stable resource details. Flowchart edge semantics, Gantt constraints, Timeline/Journey ownership, ER declaration order, and the terminal output of the common diagram families have consequently changed; consumers that compare ASCII bytes should refresh their snapshots.
 
 ### Added
 
+- Added production Tree-sitter syntax highlighting to the native LSP and Playground. Both adapters
+  consume the canonical `tree-sitter-mermaid` grammar and portable highlight query; the Playground
+  loads the distribution WASM and runs incremental syntax parsing in a dedicated browser worker.
+  The independently versioned grammar is published as the `tree-sitter-mermaid` crate and the
+  `@mermanjs/tree-sitter-mermaid` npm package; its standalone GitHub Release remains deferred.
 - Added the experimental public `@mermanjs/node` alpha package group for Node.js 22 and newer on macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. The root loader selects one exact-version native package and exposes deterministic static SVG plus metadata/layout operations without a postinstall downloader or browser-WASM fallback.
+- Added grapheme-aware terminal plans, checked six-phase ASCII resource descriptors, parser-backed semantic evidence for the diagrammatic families, and explicit structured-text projections for Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, and TreeView.
+- Added configurable terminal-cell wrapping for ordinary Flowchart node labels, including the Issue #53 regression fixture and binding JSON snake/camel aliases.
+- Added `merman-cli rustdoc build/check` as a checked static-fragment workflow. Crates can commit deterministic light/dark SVG Markdown, consume it through Rust's native `include_str!`, verify freshness in CI, and build hosted documentation without adding a Merman renderer or proc macro to the consuming Cargo graph.
 
 ### Changed
 
+- Playground coloring no longer waits for or triggers immediate full Merman analysis on every
+  keystroke. Tree-sitter syntax state and strict semantic analysis now have independent version and
+  failure lifecycles; semantic requests still flush the latest parser-backed state on demand.
 - Native release recipes now follow each wrapper's callable interface instead of shipping one universal complete binary. This substantially reduces distributed dependency closures, replaces Flutter's duplicated platform packaging with one Native Assets matrix, and adds an explicit compressed-package budget before pub.dev publication.
 - Prepared text now has an operation-local retained-memory ceiling exposed as `max_prepared_text_retained_bytes`: 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input. Resource builders can configure the limit through the generated override ID, while reusable requests remain bounded by their constructor ceiling.
+- Documented `merman-cli rustdoc` and `merman-rustdoc` as independent peer integrations. The existing macro, native `complete-svg` renderer profile, and one-step attribute behavior remain available; they do not invoke or fall back to checked CLI generation.
 - Flutter pub.dev releases use package-specific `flutter-v<version>` tags so an unpublished package version can be built from a reviewed commit without moving an existing workspace tag.
 - Web and Node npm publishing now preflight existing registry integrity and tags, publish missing exact versions directly under the requested final tag, and place the default Web package or Node loader last; retries skip members that already match the verified manifest.
 
@@ -46,8 +67,14 @@ The next workspace release remains in development. This section records only com
 
 - Resource ceilings now govern compiled themes before JSON, fonts, or effects are materialized across reusable bindings, the CLI, and Typst. Request profiles can tighten but cannot disguise a looser profile with generic overrides; resource errors report the effective standard profile, and Web resource composition preserves the same rule.
 - Restored generated SDK contract alignment for the prepared-text retained-memory limit, structured resource-error causes, and all 11 Mermaid compatibility theme IDs.
+- `merman-rustdoc` now defaults to browser-parity SVG instead of adding a second visible text
+  fallback beside each native HTML label. Explicit `readable` and `resvg-safe` pipelines remain
+  available for consumers that need SVG text fallbacks. #81
+- Restored `roughr-merman` 0.12 source compatibility for stable Merman 0.7 without removing the operation-owned randomness contract used by current releases, and raised the workspace dependency floor to the repaired patch.
 - Playground Mermaid.js comparison realms now preserve SVG label colors without letting page CSS override Mermaid output, and ZenUML's injected `MS Sans Serif` font remains isolated to the affected comparison instead of changing other examples.
 - Native Assets eliminates Flutter's legacy Linux Windows-wrapper linkage and SwiftPM symlink packaging paths, while Apple dylibs use normalized install names and refreshed signatures before Flutter's final assembly. #55 #56 #57
+- Fixed ASCII direction, compound ownership, parallel and self-loop routing, markers, notes, Sequence control frames, XYChart axes and disclosure, labels, and declaration-order semantics across the common families.
+- Aligned ASCII capability metadata, Playground discovery, Web catalogs, support documentation, and executable reference evidence on which families are diagrammatic, structured text, partial, or unsupported.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 

@@ -4,6 +4,9 @@ use super::super::defs::FlowchartMarkerEmissionPlan;
 use super::super::*;
 use std::fmt;
 
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
+
 const NEO_EDGE_MASK_PREFIX: &str = "stroke-dasharray: 0 ";
 const NEO_EDGE_MASK_DASH_PAIR: &str = "2 2 ";
 const NEO_EDGE_MASK_SUFFIX: &str = "; stroke-dashoffset: 0;";
@@ -168,8 +171,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         marker_attrs: &scratch.edge_marker_attrs,
         default_edge_style: &ctx.default_edge_style,
         neo_edge_mask,
-    }
-    .append_to(out, source_style_svg_bytes, ctx.work_meter)?;
+    };
+    ctx.checkpoint_emit()?;
+    let edge_receipt = edge_receipt.append_to(out, source_style_svg_bytes, ctx.work_meter)?;
 
     let source_residuals =
         emitted_styles.emitted_edge_source_residuals(edge.id.as_str(), hand_drawn);
@@ -266,11 +270,7 @@ where
             .map_or(0, FlowchartNeoEdgeMaskPlan::work_units);
         let edge_work = neo_mask_work
             .checked_add(usize::from(self.typed_stroke_width.is_some()))
-            .ok_or_else(|| {
-                crate::resources::OperationWorkError::ResourceLimitExceeded(
-                    work_meter.arithmetic_overflow(),
-                )
-            })?;
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
 
         work_meter.preflight(edge_work)?;
         let serialized_bytes = self.serialized_bytes(projected_contribution, work_meter)?;
@@ -570,8 +570,24 @@ mod tests {
             label_type: None,
             edge_type: Some(edge_type.to_string()),
             arrow: String::new(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: if edge_type.starts_with("arrow_open") {
+                FlowEdgeMarker::None
+            } else {
+                FlowEdgeMarker::Point
+            },
             is_user_defined_id: false,
             stroke: Some(stroke.to_string()),
+            stroke_kind: match stroke {
+                "dotted" => FlowEdgeStroke::Dotted,
+                "thick" => FlowEdgeStroke::Thick,
+                _ => FlowEdgeStroke::Normal,
+            },
+            visibility: if stroke == "invisible" {
+                FlowEdgeVisibility::Invisible
+            } else {
+                FlowEdgeVisibility::Visible
+            },
             interpolate: None,
             classes: Vec::new(),
             style: Vec::new(),

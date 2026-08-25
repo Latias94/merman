@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::actor_man_glyphs::{
     ActorManBottomGlyphMetrics, write_actor_man_bottom_glyph, write_actor_man_top_glyph,
 };
@@ -12,14 +13,16 @@ pub(super) fn render_sequence_actor_man_tops(
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     actor_height: f64,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     actor_text_style: &TextStyle,
     math_sidecar: &crate::sequence::SequenceMathSidecar,
     typography: &crate::sequence::SequenceResolvedTypography,
     typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
-) {
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<()> {
     // Actor-man variants (actor/boundary/control/entity) are emitted after `<defs>`.
     for (actor_idx, actor_id) in model.actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(actor_idx)?;
         let Some(actor) = model.actors.get(actor_id) else {
             continue;
         };
@@ -51,7 +54,9 @@ pub(super) fn render_sequence_actor_man_tops(
             typography,
             typography_receipt,
         );
+        checkpoints.checkpoint()?;
     }
+    checkpoints.checkpoint()
 }
 
 pub(super) fn render_sequence_actor_man_bottoms(
@@ -60,38 +65,45 @@ pub(super) fn render_sequence_actor_man_bottoms(
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     actor_height: f64,
     label_box_height: f64,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     actor_text_style: &TextStyle,
     math_sidecar: &crate::sequence::SequenceMathSidecar,
     typography: &crate::sequence::SequenceResolvedTypography,
     typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
-) {
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<()> {
     // Actor-man footers (actor/boundary/control/entity) are emitted after messages.
     let last_idx = model.actor_order.len().saturating_sub(1);
-    let mut footer_actors = model
-        .actor_order
-        .iter()
-        .enumerate()
-        .filter_map(|(actor_index, actor_id)| {
-            let actor = model.actors.get(actor_id)?;
-            let actor_type = actor.actor_type.as_str();
-            if !is_actor_man_variant(actor_type) {
-                return None;
-            }
-            let node_id = format!("actor-bottom-{actor_id}");
-            let n = nodes_by_id.get(node_id.as_str()).copied()?;
-            Some((
-                actor_index,
-                actor_id,
-                actor_type,
-                actor.description.as_str(),
-                n,
-            ))
-        })
-        .collect::<Vec<_>>();
+    let mut footer_actors = Vec::with_capacity(model.actor_order.len());
+    for (actor_index, actor_id) in model.actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(actor_index)?;
+        let Some(actor) = model.actors.get(actor_id) else {
+            continue;
+        };
+        let actor_type = actor.actor_type.as_str();
+        if !is_actor_man_variant(actor_type) {
+            continue;
+        }
+        let node_id = format!("actor-bottom-{actor_id}");
+        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+            continue;
+        };
+        footer_actors.push((
+            actor_index,
+            actor_id,
+            actor_type,
+            actor.description.as_str(),
+            n,
+        ));
+    }
+    checkpoints.checkpoint()?;
     footer_actors.sort_by(|a, b| b.4.x.total_cmp(&a.4.x));
 
-    for (actor_index, actor_id, actor_type, label, n) in footer_actors {
+    checkpoints.checkpoint()?;
+    for (emission_index, (actor_index, actor_id, actor_type, label, n)) in
+        footer_actors.into_iter().enumerate()
+    {
+        checkpoints.checkpoint_loop(emission_index)?;
         let prepared_math = math_sidecar
             .terminal_for_occurrence(&crate::sequence::SequenceMathOccurrence::Actor(actor_index));
         let math_label = sequence_katex_label(
@@ -115,5 +127,7 @@ pub(super) fn render_sequence_actor_man_bottoms(
             typography,
             typography_receipt,
         );
+        checkpoints.checkpoint()?;
     }
+    checkpoints.checkpoint()
 }

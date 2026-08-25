@@ -14,7 +14,7 @@ from pathlib import Path
 
 from compare_mermaid_renderers import strip_ansi
 from compare_self import (
-    _NATIVE_CRITERION_PREFLIGHT_CONTRACT,
+    _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT,
     RunnerRecipe,
     cargo_prebuild_command,
     criterion_list_command,
@@ -162,14 +162,20 @@ def validate_pipeline_bench_list(
     declared_contracts = {lane.evidence_contract for lane in active_native_lanes}
     if declared_contracts == {None}:
         requires_receipts = False
-    elif declared_contracts == {_NATIVE_CRITERION_PREFLIGHT_CONTRACT}:
-        requires_receipts = True
     else:
-        raise PipelineBenchListError(
-            "pipeline native Criterion lanes must uniformly declare "
-            f"{_NATIVE_CRITERION_PREFLIGHT_CONTRACT!r}; "
-            f"actual={sorted(repr(value) for value in declared_contracts)}"
-        )
+        matching_contracts = {
+            contract
+            for contract, output_kinds in _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT.items()
+            if frozenset(output_kinds) == frozenset(current)
+        }
+        if len(matching_contracts) != 1 or declared_contracts != matching_contracts:
+            raise PipelineBenchListError(
+                "native Criterion lanes must uniformly declare the correct preflight contract: "
+                f"groups={sorted(current)}, "
+                f"expected={sorted(matching_contracts)}, "
+                f"actual={sorted(repr(value) for value in declared_contracts)}"
+            )
+        requires_receipts = True
     receipt_count = 0
     if requires_receipts:
         try:

@@ -7,7 +7,7 @@ registry metadata maintained by Homebrew, Scoop, or WinGet.
 ## Canonical release profile
 
 The complete CLI is defined by the `cli-release` entry in
-`capabilities/artifact-profiles-v1.json`. The same 18 direct features must appear in three places:
+`capabilities/artifact-profiles-v1.json`. The same 19 direct features must appear in three places:
 
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
@@ -26,11 +26,13 @@ layout accepted by `scripts/verify_cli_release_archive.py`.
 
 ## CLI contract migration
 
-Complete releases governed by this contract, beginning with `0.8.0-alpha.5`, report capability
-document schema 2 and CLI contract 3.
-Contract 3 advertises `-f/--format` for native `render` and `batch`, makes `lint` text-first while
-keeping explicit JSON stable, and removes no-op configuration and rendering controls from `detect`.
-The archive, installation, and Homebrew verifiers require that exact contract.
+Complete releases governed by this source contract report capability document schema 2 and CLI
+contract 4. Contract 4 advertises `-f/--format` for native `render` and `batch`, makes `lint`
+text-first while keeping explicit JSON stable, removes no-op configuration and rendering controls
+from `detect`, and adds the feature-gated top-level `rustdoc` command with `build` and `check`
+subcommands. The complete release command inventory is `batch`, `capabilities`, `completion`,
+`detect`, `fix`, `layout`, `lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`. The
+archive, installation, and Homebrew verifiers require that exact contract.
 
 Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
 the explicit compatibility command while remaining absent from help and completions. The separate
@@ -69,7 +71,9 @@ Users extracting an archive directly should verify its adjacent `.sha256` file f
 archives use a `merman-cli-<target>/` wrapper; the Windows ZIP is flat. In both cases, the logical
 payload contains the executable, package README, repository changelog and licenses,
 `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/`. CLI archives additionally contain
-`completions/` and `man/`.
+`completions/` and `man/`. Contract 4 carries 15 manual pages, including the top-level
+`merman-cli-rustdoc.1` page and the nested `merman-cli-rustdoc-build.1` and
+`merman-cli-rustdoc-check.1` pages.
 
 The script installers start from the pinned cargo-dist `0.32.0` output, then pass through one
 repository-owned deterministic hardening step. PowerShell binds the downloaded Windows ZIP with
@@ -254,10 +258,12 @@ is invalid and cannot fall back to the current branch's implementation. The inst
 capability schema and digest must also match that tag's declared capability authority.
 
 Formula versions below `0.8.0` retain the legacy binary-only contract. The `0.8.x` release line must
-expose CLI contract 3, match the complete `cli-release` capability set, install four Homebrew
-completion files, and install all 12 man pages. A later release line may advance the contract through
-its tag-owned verifier. `SUPPORT_ASSETS_SINCE` in `homebrew.yml` is the single operational threshold.
-Invalid or prerelease formula versions fail rather than falling back to the weaker check.
+expose CLI contract 4, match the complete `cli-release` capability set, install four Homebrew
+completion files, and install all 15 man pages. The inventory includes
+`merman-cli-rustdoc.1`, `merman-cli-rustdoc-build.1`, and `merman-cli-rustdoc-check.1`. A later
+release line may advance the contract through its tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
+`homebrew.yml` is the single operational threshold. Invalid or prerelease formula versions fail
+rather than falling back to the weaker check.
 
 Use this shape when preparing the upstream Formula change for `0.8.0`:
 
@@ -265,7 +271,7 @@ Use this shape when preparing the upstream Formula change for `0.8.0`:
 def install
   features = %w[
     analysis ascii icons jpeg layout-cytoscape layout-elk markdown math
-    network-icons parallel-markdown pdf png shell-completions svg
+    network-icons parallel-markdown pdf png rustdoc shell-completions svg
     system-clock system-random system-timezone system-timing
   ]
 

@@ -21,7 +21,6 @@ import type {
   EditorPrepareRename,
   EditorRange,
   EditorSemanticFactSource,
-  EditorSemanticTokenLegend,
   EditorSymbolKind,
   EditorTextEdit,
   EditorWorkspaceEdit,
@@ -48,7 +47,6 @@ import {
   optionalNullableSetProperty,
   optionalNullableStringProperty,
   projectArray,
-  projectStringArray,
 } from "./protocol-schema.ts";
 
 export type EditorWorkerQuery =
@@ -81,8 +79,7 @@ export type EditorWorkerQuery =
       readonly kind: "rename";
       readonly position: EditorPosition;
       readonly newName: string;
-    }
-  | { readonly kind: "semanticTokens" };
+    };
 
 export interface EditorWorkerQueryResults {
   diagnostics: EditorDiagnosticsResult;
@@ -95,7 +92,6 @@ export interface EditorWorkerQueryResults {
   references: EditorLocation[];
   prepareRename: EditorPrepareRename | null;
   rename: EditorWorkspaceEdit | null;
-  semanticTokens: Uint32Array;
 }
 
 export type EditorWorkerQueryResult<Query extends EditorWorkerQuery> =
@@ -190,30 +186,12 @@ export function projectEditorWorkerQueryResult<Query extends EditorWorkerQuery>(
     case "rename":
       result = value === null ? null : projectWorkspaceEdit(value);
       break;
-    case "semanticTokens":
-      if (!(value instanceof Uint32Array)) {
-        fail("Editor semantic tokens must be a Uint32Array.");
-      }
-      result = value;
-      break;
     default:
       fail("Editor worker query kind is invalid.");
   }
   return result as EditorWorkerQueryResult<Query>;
 }
 
-export function projectEditorSemanticTokenLegend(
-  value: unknown,
-): EditorSemanticTokenLegend {
-  const legend = expectRecord(value, "semantic token legend");
-  return {
-    tokenTypes: projectStringArray(legend.tokenTypes, "semantic token types"),
-    tokenModifiers: projectStringArray(
-      legend.tokenModifiers,
-      "semantic token modifiers",
-    ),
-  };
-}
 function projectDiagramDetection(value: unknown): DiagramDetectionFacts {
   const detection = expectRecord(value, "diagram detection result");
   if (detection.status === "unavailable") {

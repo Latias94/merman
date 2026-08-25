@@ -82,7 +82,7 @@
 //!     doc,
 //!     merman_rustdoc::merman(
 //!         scope = "item",
-//!         pipeline = "readable",
+//!         pipeline = "parity",
 //!         fail = "error",
 //!         source = "hide",
 //!         sanitize = "strict",
@@ -99,11 +99,17 @@
 //! | Option | Values | Default | Meaning |
 //! | --- | --- | --- | --- |
 //! | `scope` | `item`, `tree` | `item` | Controls whether only the annotated item or the inline item tree is rewritten. |
-//! | `pipeline` | `readable`, `parity`, `resvg-safe` | `readable` | Selects the SVG output pipeline. |
+//! | `pipeline` | `parity`, `readable`, `resvg-safe` | `parity` | Selects the SVG output pipeline. |
 //! | `fail` | `error`, `keep-source` | `error` | Controls what happens when rendering or file includes fail. |
 //! | `source` | `hide`, `details` | `hide` | Adds a collapsed Mermaid source block under the SVG when set to `details`. |
 //! | `sanitize` | `strict`, `off` | `strict` | Checks rendered SVG for script elements, event attributes, and unsafe resource references. |
 //! | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme name | `rustdoc` | Controls whether diagrams follow rustdoc light/dark themes, use Mermaid source config, or use a fixed Mermaid theme. |
+//!
+//! `parity` is the default because rustdoc pages target browsers, which render Mermaid's native
+//! `<foreignObject>` labels directly. `readable` deliberately adds SVG `<text>` fallbacks alongside
+//! those labels and can display both representations in consumers that support each one.
+//! `resvg-safe` removes the native labels and retains the SVG text fallback for compatible
+//! rasterizers.
 //!
 //! Use `scope = "tree"` to process docs on children inside an inline module, trait, impl block,
 //! struct fields, and enum variants:

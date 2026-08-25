@@ -15,11 +15,99 @@ pub use pack::IconPack;
 
 use ingest::{BuildUsage, ParsedPack, ResolvedIcon};
 use limits::IconRegistryBuildLimits;
+use merman_core::OperationPhase;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
 const MERMAID_UNKNOWN_ICON_BODY: &str = r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g>"#;
+const ICON_ID_SCOPE_HASH_OFFSET: u64 = 0xcbf29ce484222325;
+const ICON_ID_SCOPE_HASH_PRIME: u64 = 0x100000001b3;
+const ICON_ID_SCOPE_CHECKPOINT_BYTES: usize = 4 * 1024;
+
+/// Precomputed identity used to scope internal IDs in one rendered icon.
+///
+/// Callers cannot provide an arbitrary string: the scope must first pass through the controlled
+/// prefix builder, which charges and checkpoints every scanned byte before icon materialization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::svg) struct IconIdScope(u64);
+
+impl IconIdScope {
+    pub(super) const fn hash(self) -> u64 {
+        self.0
+    }
+}
+
+/// Incremental FNV-1a state for a family-owned icon scope prefix.
+///
+/// Reusing this value preserves the historical hash of the concatenated textual scope while
+/// avoiding a per-icon clone and rescan of the complete diagram ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::svg) struct IconIdScopePrefix(u64);
+
+impl IconIdScopePrefix {
+    pub(in crate::svg) fn from_parts(
+        parts: &[&str],
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        controlled_hash_icon_scope_parts(ICON_ID_SCOPE_HASH_OFFSET, parts, work_meter).map(Self)
+    }
+
+    pub(in crate::svg) fn extend_parts(
+        self,
+        parts: &[&str],
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        controlled_hash_icon_scope_parts(self.0, parts, work_meter).map(Self)
+    }
+
+    pub(in crate::svg) fn scope_parts(
+        self,
+        parts: &[&str],
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<IconIdScope> {
+        self.extend_parts(parts, work_meter)
+            .map(|prefix| IconIdScope(prefix.0))
+    }
+}
+
+fn controlled_hash_icon_scope_parts(
+    mut hash: u64,
+    parts: &[&str],
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> crate::Result<u64> {
+    let scan_bytes = parts.iter().try_fold(0usize, |total, part| {
+        total
+            .checked_add(part.len())
+            .ok_or_else(|| work_meter.arithmetic_overflow())
+    })?;
+
+    // Reject the complete scan before touching caller-sized bytes. No scope buffer is allocated.
+    work_meter.charge(scan_bytes)?;
+    work_meter.checkpoint(OperationPhase::Emit)?;
+    for part in parts {
+        for chunk in part.as_bytes().chunks(ICON_ID_SCOPE_CHECKPOINT_BYTES) {
+            for byte in chunk {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(ICON_ID_SCOPE_HASH_PRIME);
+            }
+            work_meter.checkpoint(OperationPhase::Emit)?;
+        }
+    }
+    Ok(hash)
+}
+
+#[cfg(test)]
+pub(in crate::svg) fn icon_id_scope_for_test(value: &str) -> IconIdScope {
+    let hash = value
+        .as_bytes()
+        .iter()
+        .fold(ICON_ID_SCOPE_HASH_OFFSET, |mut hash, byte| {
+            hash ^= u64::from(*byte);
+            hash.wrapping_mul(ICON_ID_SCOPE_HASH_PRIME)
+        });
+    IconIdScope(hash)
+}
 
 pub(in crate::svg) fn mermaid_unknown_icon_svg(
     width: impl fmt::Display,
@@ -222,14 +310,17 @@ pub(in crate::svg) struct IconRenderRequest<'a> {
     pub(in crate::svg) height_px: f64,
     pub(in crate::svg) fallback_prefix: Option<&'a str>,
     pub(in crate::svg) extra_class: Option<&'a str>,
-    pub(in crate::svg) id_scope: &'a str,
+    pub(in crate::svg) id_scope: IconIdScope,
     pub(in crate::svg) effective_config: &'a merman_core::MermaidConfig,
     pub(in crate::svg) work_meter: &'a crate::resources::OperationWorkMeter,
 }
 
 /// Strictly scopes IDs in a trusted built-in SVG fragment without a textual parse fallback.
 #[cfg(feature = "layout-cytoscape")]
-pub(in crate::svg) fn scope_svg_internal_ids(body: &str, scope: &str) -> crate::Result<String> {
+pub(in crate::svg) fn scope_svg_internal_ids(
+    body: &str,
+    scope: IconIdScope,
+) -> crate::Result<String> {
     let validated =
         xml::ValidatedIconBody::parse(body.to_owned(), 0, &IconRegistryBuildLimits::fixed())
             .map_err(|_| crate::Error::icon_processing("built-in icon fragment is invalid"))?;
@@ -278,6 +369,63 @@ fn build_allocation_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn incremental_icon_scope_preserves_the_legacy_concatenated_hash() {
+        assert_eq!(
+            icon_id_scope_for_test("diagram-a").hash(),
+            0xb5cb_5676_c393_2910
+        );
+        let diagram_id = "diagram-".repeat(1_024);
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let prefix =
+            IconIdScopePrefix::from_parts(&[diagram_id.as_str(), "-flowchart-icon-"], &work_meter)
+                .expect("scope prefix is admitted");
+        let first = prefix
+            .scope_parts(&["node-a"], &work_meter)
+            .expect("first node scope is admitted");
+        let second = prefix
+            .scope_parts(&["node-b"], &work_meter)
+            .expect("second node scope is admitted");
+
+        assert_eq!(
+            first,
+            icon_id_scope_for_test(&format!("{diagram_id}-flowchart-icon-node-a"))
+        );
+        assert_eq!(
+            second,
+            icon_id_scope_for_test(&format!("{diagram_id}-flowchart-icon-node-b"))
+        );
+        assert_eq!(
+            work_meter.used(),
+            diagram_id.len() + "-flowchart-icon-".len() + "node-a".len() + "node-b".len()
+        );
+    }
+
+    #[test]
+    fn icon_scope_scan_admits_the_complete_fragment_before_hashing() {
+        let parts = ["diagram", "-service-", "node", "-icon"];
+        let exact_work = parts.iter().map(|part| part.len()).sum::<usize>();
+        let exact_meter = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact_work)
+                .expect("configure exact work ceiling"),
+        );
+        IconIdScopePrefix::from_parts(&parts, &exact_meter)
+            .expect("the exact scope scan is admitted");
+        assert_eq!(exact_meter.used(), exact_work);
+
+        let rejected_meter = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+                .expect("configure N-1 work ceiling"),
+        );
+        IconIdScopePrefix::from_parts(&parts, &rejected_meter)
+            .expect_err("N-1 must fail before the scope bytes are scanned");
+        assert_eq!(rejected_meter.used(), 0);
+    }
 
     #[test]
     fn fixed_pack_and_input_byte_limits_fail_before_json_decoding() {

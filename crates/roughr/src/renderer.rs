@@ -13,6 +13,7 @@ use crate::filler::FillerType::{
 };
 use crate::geometry::{convert_bezier_quadratic_to_cubic, BezierQuadratic};
 use crate::svg_path::{absolutize, normalize};
+use crate::SvgPathSegment;
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct EllipseParams<F: Float> {
@@ -1161,19 +1162,26 @@ where
     opset_from_path(o, ops, first, current, normalized_segments)
 }
 
-pub fn svg_segments<F>(path_segments: Vec<PathSegment>, o: &mut Options) -> OpSet<F>
+pub fn svg_segments<F>(path_segments: Vec<impl SvgPathSegment>, o: &mut Options) -> OpSet<F>
 where
     F: Float + FromPrimitive + Trig,
 {
     let ops = vec![];
     let first = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
     let current = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
+    let path_segments: Vec<PathSegment> = path_segments
+        .into_iter()
+        .map(SvgPathSegment::into_current)
+        .collect();
     let normalized_segments = normalize(absolutize(path_segments.iter()));
 
     opset_from_path(o, ops, first, current, normalized_segments)
 }
 
-pub fn svg_normalized_segments<F>(normalized_segments: &[PathSegment], o: &mut Options) -> OpSet<F>
+pub fn svg_normalized_segments<F>(
+    normalized_segments: &[impl SvgPathSegment],
+    o: &mut Options,
+) -> OpSet<F>
 where
     F: Float + FromPrimitive + Trig,
 {
@@ -1181,7 +1189,16 @@ where
     let first = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
     let current = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
 
-    opset_from_path(o, ops, first, current, normalized_segments.iter().cloned())
+    opset_from_path(
+        o,
+        ops,
+        first,
+        current,
+        normalized_segments
+            .iter()
+            .copied()
+            .map(SvgPathSegment::into_current),
+    )
 }
 
 fn opset_from_path<F>(

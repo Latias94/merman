@@ -9,8 +9,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("railroad");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("railroad");
     let acc_title = model
         .acc_title
         .as_deref()
@@ -42,8 +41,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{}">{}</title>"#,
-            diagram_id_esc,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml_display(title)
         );
         out.checkpoint()?;
@@ -51,15 +49,19 @@ pub(crate) fn render_railroad_diagram_svg_model(
     if let Some(descr) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{}">{}</desc>"#,
-            diagram_id_esc,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml_display(descr)
         );
         out.checkpoint()?;
     }
     out.push_str("<style>");
     out.checkpoint()?;
-    write_railroad_css(&mut out, style, diagram_id, &mut surface_receipt)?;
+    write_railroad_css(
+        &mut out,
+        style,
+        diagram_id.semantic_str(),
+        &mut surface_receipt,
+    )?;
     out.push_str("</style>");
     out.checkpoint()?;
     out.push_str("<g/>");

@@ -39,12 +39,14 @@ test("manual tabs preserve the editor model, selection, and undo history", async
     .poll(() => page.locator(".monaco-editor:visible .squiggly-error").count())
     .toBeGreaterThan(0);
   await codeTab.click();
+  await expect(page.locator(".monaco-editor")).toHaveCount(1);
   await configTab.click();
   await expect(page.getByText(/Invalid JSON/)).toBeVisible();
   await configEditor.focus();
   await page.keyboard.press("Control+Z");
   await expect(page.getByText("Config OK", { exact: true })).toBeVisible();
   await codeTab.click();
+  await expect(page.locator(".monaco-editor")).toHaveCount(1);
 
   await editor.focus();
   await page.keyboard.insertText("C");
@@ -202,9 +204,166 @@ test("example dialog traps focus, closes with Escape, and restores its trigger",
   errors.assertNone();
 });
 
-test("preview tabs use manual keyboard activation", async ({ page }) => {
+test("export workbench targets toolbar and Compare artifacts through one dialog", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.addInitScript(() => {
+    const blobs = new Map<string, Blob>();
+    const createObjectURL = URL.createObjectURL;
+    URL.createObjectURL = ((object: Blob | MediaSource) => {
+      const url = createObjectURL.call(URL, object);
+      if (object instanceof Blob) blobs.set(url, object);
+      return url;
+    }) as typeof URL.createObjectURL;
+    Object.defineProperty(window, "__mermanExportBlobs", { value: blobs });
+  });
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const trigger = page.getByRole("button", { name: "Export", exact: true });
+  await trigger.click();
+  await page.getByRole("menuitem", { name: "Export image…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Export image" });
+  await expect(dialog).toHaveAttribute("data-export-engine", "merman");
+  await expect(
+    dialog.getByRole("button", { name: "SVG", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+
+  await dialog.getByRole("button", { name: "PNG", exact: true }).click();
+  await dialog.getByRole("button", { name: "Transparent", exact: true }).click();
+  await dialog.getByRole("button", { name: "Width", exact: true }).click();
+  await dialog.getByRole("textbox", { name: /^Width/u }).fill("320");
+  await expect(dialog.getByTestId("export-output-dimensions")).toContainText(
+    "320 ×",
+  );
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+  const widthInput = dialog.getByRole("textbox", { name: /^Width/u });
+  const exportPreview = dialog.getByRole("img", { name: "Export preview" });
+  await expect(exportPreview).toBeVisible();
+  await widthInput.fill("");
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Width must be a positive integer",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Download", exact: true }),
+  ).toBeDisabled();
+  await expect(exportPreview).toHaveCount(0);
+  await widthInput.fill("320");
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+  await expect(exportPreview).toBeVisible();
+
+  await dialog.getByRole("button", { name: "JPEG", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Transparent", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "Custom", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  const quality = dialog.getByRole("slider", { name: "Quality" });
+  await quality.fill("73");
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+  await page.evaluate(() => {
+    const exportWindow = window as typeof window & {
+      __mermanOriginalCanvasToBlob?: HTMLCanvasElement["toBlob"];
+    };
+    exportWindow.__mermanOriginalCanvasToBlob =
+      HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = (callback) => callback(null);
+  });
+  await quality.fill("72");
+  await expect(dialog.getByRole("alert")).toContainText("could not encode");
+  await expect(
+    dialog.getByRole("button", { name: "Download", exact: true }),
+  ).toBeDisabled();
+  await page.evaluate(() => {
+    const exportWindow = window as typeof window & {
+      __mermanOriginalCanvasToBlob?: HTMLCanvasElement["toBlob"];
+    };
+    const original = exportWindow.__mermanOriginalCanvasToBlob;
+    if (!original) throw new Error("Canvas encoder was not captured.");
+    HTMLCanvasElement.prototype.toBlob = original;
+    delete exportWindow.__mermanOriginalCanvasToBlob;
+  });
+  await quality.fill("71");
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+  const previewBytes = await dialog
+    .getByRole("img", { name: "Export preview" })
+    .evaluate(async (image) => {
+      const blobs = (
+        window as typeof window & {
+          __mermanExportBlobs: Map<string, Blob>;
+        }
+      ).__mermanExportBlobs;
+      const blob = blobs.get((image as HTMLImageElement).src);
+      if (!blob) throw new Error("Preview Blob was not captured.");
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    });
+  const jpegDownload = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download", exact: true }).click();
+  const downloadedJpeg = await jpegDownload;
+  expect(downloadedJpeg.suggestedFilename()).toBe("merman-diagram.jpg");
+  expect(await downloadBytes(downloadedJpeg)).toEqual(Buffer.from(previewBytes));
+
+  const accessibility = await new AxeBuilder({ page })
+    .include('[data-testid="export-dialog"]')
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+  await dialog.getByRole("button", { name: "Close export" }).click();
+  await expect(trigger).toBeFocused();
+
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
+  await mermaidPane.getByRole("button", { name: "Export image" }).click();
+  await expect(dialog).toHaveAttribute("data-export-engine", "mermaid");
+  await expect(dialog).toContainText("Mermaid JS");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  errors.assertNone();
+});
+
+test("toolbar ASCII export renders on explicit intent from SVG mode", async ({
+  page,
+}) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
+  await replaceEditorSource(page, "flowchart LR\n  Alpha --> Beta");
+  await waitForPreviewSvg(page);
+  await expect(
+    page.getByRole("tab", { name: "SVG", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const exportAscii = page.getByRole("menuitem", {
+    name: /^Export ASCII/u,
+  });
+  await expect(exportAscii).toBeEnabled();
+  const download = page.waitForEvent("download");
+  await exportAscii.click();
+  const artifact = await download;
+
+  expect(artifact.suggestedFilename()).toBe("merman-diagram.txt");
+  const ascii = (await downloadBytes(artifact)).toString("utf8");
+  expect(ascii).toContain("Alpha");
+  expect(ascii).toContain("Beta");
+  errors.assertNone();
+});
+
+test("preview tabs use manual keyboard activation", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const viewerOutput = optionalFeatureOutput("viewer");
+  const viewerJsonOutput = optionalFeatureOutput("viewerJson");
+  const requests: string[] = [];
+  const workers: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  page.on("worker", (worker) => workers.push(worker.url()));
+  await openPlayground(page);
+  expect(wasRequested(requests, viewerOutput)).toBe(false);
+  await page.getByRole("button", { name: "View SVG source", exact: true }).click();
+  await expect.poll(() => requestCount(requests, viewerOutput)).toBe(1);
+  expect(wasRequested(requests, viewerJsonOutput)).toBe(false);
+  expect(workers.some((url) => /json\.worker/i.test(url))).toBe(false);
   const diagnosticsTab = page.getByRole("tab", {
     name: "Diagnostics",
     exact: true,
@@ -218,6 +377,12 @@ test("preview tabs use manual keyboard activation", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(diagnosticsTab).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tab", { name: "Parse JSON" })).toBeVisible();
+  await expect.poll(() => requestCount(requests, viewerJsonOutput)).toBe(1);
+  await expect.poll(() => workers.some((url) => /json\.worker/i.test(url))).toBe(true);
+  await expect.poll(() => requestCount(requests, viewerOutput)).toBe(1);
+  expect(
+    requests.some((url) => url.startsWith("https://cdn.jsdelivr.net/")),
+  ).toBe(false);
   errors.assertNone();
 });
 
@@ -279,4 +444,14 @@ function requestCount(requests: readonly string[], output: string): number {
   return requests.filter((url) =>
     new URL(url).pathname.endsWith(`/${output}`),
   ).length;
+}
+
+async function downloadBytes(
+  download: import("@playwright/test").Download,
+): Promise<Buffer> {
+  const stream = await download.createReadStream();
+  if (!stream) throw new Error("Download stream is unavailable");
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
 }

@@ -1,21 +1,17 @@
-use crate::resources::{
-    RenderResourcePolicy, ResourceLimitCause, ResourceLimitExceeded, ResourceLimitId,
-    ResourceLimitOverride, ResourceLimitPhase,
-};
 use crate::{Error, Result};
-use cssparser::{Delimiter, Parser, ParserInput};
 use std::borrow::Cow;
 
 use super::css_override::{CssOverridePolicy, strip_css_important};
-use super::util::{escape_xml_attr, find_matching_brace, find_tag_end};
-use crate::svg::escape_css_identifier;
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+use super::util::{
+    checkpoint_loop, find_tag_end_with_checkpoints, find_with_checkpoints, rfind_with_checkpoints,
+    trim_with_checkpoints,
+};
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessExecution, SvgPostprocessor};
 
-const SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT: usize = 64;
-const SCOPED_CSS_GROUPING_DEPTH_HARD_CAP_ID: &str = "max_scoped_css_grouping_depth_hard_cap";
-const SCOPED_STYLE_OPEN: &str = r#"<style data-merman-postprocess="scoped-css">"#;
-const SCOPED_STYLE_CLOSE: &str = "</style>";
-const XML_STYLE_END_ESCAPE: &str = "&lt;/style";
+mod rewrite;
+
+const STYLE_OPEN: &str = r#"<style data-merman-postprocess="scoped-css">"#;
+const STYLE_CLOSE: &str = "</style>";
 
 #[derive(Debug, Clone)]
 pub struct ScopedCssPostprocessor {
@@ -62,654 +58,249 @@ impl SvgPostprocessor for ScopedCssPostprocessor {
         svg: Cow<'a, str>,
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        if self.css.trim().is_empty() {
+        let execution = ctx.execution();
+        execution.checkpoint()?;
+        let mut checkpoint = || execution.checkpoint();
+        if trim_with_checkpoints(&self.css, &mut checkpoint)?.is_empty() {
             return Ok(svg);
         }
 
         let base = match self.override_policy {
-            CssOverridePolicy::Preserve => svg.into_owned(),
-            CssOverridePolicy::StripExistingImportant => strip_css_important(svg.as_ref()),
+            CssOverridePolicy::Preserve => svg,
+            CssOverridePolicy::StripExistingImportant => {
+                let stripped = strip_css_important(svg.as_ref());
+                execution.checkpoint()?;
+                Cow::Owned(stripped)
+            }
         };
-        let css = decode_mermaid_css_hash_placeholders(&self.css);
-        let injection = StyleInjection::for_svg(&base, self.merge_into_existing_style);
-        let scoped_css = scope_css(
-            css.as_ref(),
-            ctx.svg_id(),
-            ctx.resource_policy(),
-            base.len(),
-            injection.wrapper_bytes(),
-        )?;
-        Ok(Cow::Owned(inject_style(
-            base,
-            &scoped_css,
-            injection,
-            ctx.resource_policy(),
-        )?))
-    }
-}
+        let css = decode_mermaid_css_hash_placeholders(&self.css, execution)?;
+        let scope = css_scope(ctx.svg_id(), execution)?;
+        let plan = InjectionPlan::locate(base.as_ref(), self.merge_into_existing_style, execution)?;
 
-#[derive(Debug, Clone, Copy)]
-struct StyleInjection {
-    index: usize,
-    wrap: bool,
-}
+        let projected_css_bytes =
+            rewrite::projected_css_bytes(css.as_ref(), scope.as_deref(), execution)?;
+        let projected_svg_bytes = plan
+            .projected_svg_bytes(base.len(), projected_css_bytes)
+            .ok_or_else(|| execution.svg_byte_count_overflow())?;
+        execution.preflight_svg_byte_count(projected_svg_bytes)?;
+        execution.checkpoint()?;
 
-impl StyleInjection {
-    fn for_svg(svg: &str, merge_into_existing_style: bool) -> Self {
-        if merge_into_existing_style && let Some(index) = svg.find("</style") {
-            return Self { index, wrap: false };
+        let mut output = String::new();
+        output
+            .try_reserve_exact(projected_svg_bytes)
+            .map_err(|error| {
+                Error::svg_postprocess(
+                    "scoped-css",
+                    format!("failed to allocate scoped SVG: {error}"),
+                )
+            })?;
+        output.push_str(&base[..plan.insertion]);
+        if plan.wrapped {
+            output.push_str(STYLE_OPEN);
         }
-
-        let index = if let Some(start) = svg.find("<svg")
-            && let Some(root_end) = find_tag_end(svg, start)
-        {
-            svg.rfind("</style")
-                .and_then(|style_start| find_tag_end(svg, style_start))
-                .map_or(root_end + 1, |style_end| style_end + 1)
-        } else {
-            svg.len()
-        };
-        Self { index, wrap: true }
+        rewrite::materialize_css(css.as_ref(), scope.as_deref(), &mut output, execution)?;
+        if plan.wrapped {
+            output.push_str(STYLE_CLOSE);
+        }
+        output.push_str(&base[plan.insertion..]);
+        execution.checkpoint()?;
+        if output.len() != projected_svg_bytes {
+            return Err(Error::svg_postprocess(
+                "scoped-css",
+                "scoped SVG byte projection changed during materialization",
+            ));
+        }
+        Ok(Cow::Owned(output))
     }
+}
 
-    const fn wrapper_bytes(self) -> usize {
-        if self.wrap {
-            SCOPED_STYLE_OPEN.len() + SCOPED_STYLE_CLOSE.len()
-        } else {
-            0
+fn decode_mermaid_css_hash_placeholders<'a>(
+    css: &'a str,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Cow<'a, str>> {
+    let mut checkpoint = || execution.checkpoint();
+    let mut has_placeholder = false;
+    for (iteration, character) in css.chars().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        if matches!(character, 'ﬂ' | '¶') {
+            has_placeholder = true;
+            break;
         }
     }
-}
-
-fn inject_style(
-    svg: String,
-    css: &str,
-    injection: StyleInjection,
-    resource_policy: RenderResourcePolicy,
-) -> Result<String> {
-    let escaped_css_bytes = css.len().saturating_add(
-        css.match_indices("</style")
-            .count()
-            .saturating_mul(XML_STYLE_END_ESCAPE.len() - "</style".len()),
-    );
-    let projected_svg_bytes = svg
-        .len()
-        .saturating_add(injection.wrapper_bytes())
-        .saturating_add(escaped_css_bytes);
-    resource_policy
-        .check_svg_byte_count(projected_svg_bytes, ResourceLimitPhase::SvgPostprocess)?;
-
-    let mut out = String::with_capacity(projected_svg_bytes);
-    out.push_str(&svg[..injection.index]);
-    if injection.wrap {
-        out.push_str(SCOPED_STYLE_OPEN);
-    }
-    push_style_safe_css(&mut out, css);
-    if injection.wrap {
-        out.push_str(SCOPED_STYLE_CLOSE);
-    }
-    out.push_str(&svg[injection.index..]);
-    Ok(out)
-}
-
-fn push_style_safe_css(out: &mut String, css: &str) {
-    let mut cursor = 0;
-    while let Some(relative_start) = css[cursor..].find("</style") {
-        let start = cursor + relative_start;
-        out.push_str(&css[cursor..start]);
-        out.push_str(XML_STYLE_END_ESCAPE);
-        cursor = start + "</style".len();
-    }
-    out.push_str(&css[cursor..]);
-}
-
-fn scope_css(
-    css: &str,
-    svg_id: Option<&str>,
-    resource_policy: RenderResourcePolicy,
-    base_svg_bytes: usize,
-    wrapper_bytes: usize,
-) -> Result<String> {
-    let mut out = BoundedCssOutput::new(css.len(), resource_policy, base_svg_bytes, wrapper_bytes);
-    let Some(svg_id) = svg_id.filter(|id| !id.trim().is_empty()) else {
-        out.push_str(css)?;
-        return Ok(out.finish());
-    };
-    let scope = format!("#{}", escape_css_identifier(svg_id));
-    let first_unclosed_grouping = first_unclosed_grouping_open(css, resource_policy)?;
-    scope_css_block(css, &scope, first_unclosed_grouping, &mut out)?;
-    Ok(out.finish())
-}
-
-fn decode_mermaid_css_hash_placeholders(css: &str) -> Cow<'_, str> {
-    if !css.contains('ﬂ') && !css.contains('¶') {
-        return Cow::Borrowed(css);
+    checkpoint()?;
+    if !has_placeholder {
+        return Ok(Cow::Borrowed(css));
     }
 
-    let mut decoded = String::with_capacity(css.len());
-    let mut cursor = 0;
+    let mut decoded = String::new();
+    decoded.try_reserve_exact(css.len()).map_err(|error| {
+        Error::svg_postprocess(
+            "scoped-css",
+            format!("failed to allocate decoded scoped CSS: {error}"),
+        )
+    })?;
+    let mut cursor = 0usize;
+    let mut iteration = 0usize;
     while cursor < css.len() {
-        let remainder = &css[cursor..];
-        if remainder.starts_with("ﬂ°°") {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        iteration = iteration.wrapping_add(1);
+        let tail = &css[cursor..];
+        if tail.starts_with("ﬂ°°") {
             decoded.push('#');
             cursor += "ﬂ°°".len();
-        } else if remainder.starts_with("ﬂ°") {
+        } else if tail.starts_with("ﬂ°") {
             decoded.push('#');
             cursor += "ﬂ°".len();
-        } else if remainder.starts_with("¶ß") {
+        } else if tail.starts_with("¶ß") {
             decoded.push(';');
             cursor += "¶ß".len();
         } else {
-            let ch = remainder
+            let character = tail
                 .chars()
                 .next()
-                .expect("a non-empty CSS remainder must contain one character");
-            decoded.push(ch);
-            cursor += ch.len_utf8();
+                .expect("cursor remains on a UTF-8 character boundary");
+            decoded.push(character);
+            cursor += character.len_utf8();
         }
     }
-    Cow::Owned(decoded)
+    checkpoint()?;
+    Ok(Cow::Owned(decoded))
 }
 
-struct BoundedCssOutput {
-    value: String,
-    resource_policy: RenderResourcePolicy,
-    base_svg_bytes: usize,
-    wrapper_bytes: usize,
-}
-
-impl BoundedCssOutput {
-    fn new(
-        estimated_css_bytes: usize,
-        resource_policy: RenderResourcePolicy,
-        base_svg_bytes: usize,
-        wrapper_bytes: usize,
-    ) -> Self {
-        let available = resource_policy
-            .value(ResourceLimitId::MaxSvgBytes)
-            .map_or(estimated_css_bytes, |limit| {
-                limit.saturating_sub(base_svg_bytes.saturating_add(wrapper_bytes))
-            });
-        Self {
-            value: String::with_capacity(estimated_css_bytes.min(available)),
-            resource_policy,
-            base_svg_bytes,
-            wrapper_bytes,
-        }
+fn css_scope(
+    svg_id: Option<&str>,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Option<String>> {
+    let Some(svg_id) = svg_id else {
+        return Ok(None);
+    };
+    let mut checkpoint = || execution.checkpoint();
+    let svg_id = trim_with_checkpoints(svg_id, &mut checkpoint)?;
+    if svg_id.is_empty() {
+        return Ok(None);
     }
 
-    fn ensure_additional(&self, additional: usize) -> Result<()> {
-        let css_bytes = self.value.len().saturating_add(additional);
-        let projected_svg_bytes = self
-            .base_svg_bytes
-            .saturating_add(self.wrapper_bytes)
-            .saturating_add(css_bytes);
-        self.resource_policy
-            .check_svg_byte_count(projected_svg_bytes, ResourceLimitPhase::SvgPostprocess)?;
-        Ok(())
-    }
-
-    fn remaining_capacity_hint(&self) -> usize {
-        self.resource_policy
-            .value(ResourceLimitId::MaxSvgBytes)
-            .map_or(usize::MAX, |limit| {
-                limit.saturating_sub(
-                    self.base_svg_bytes
-                        .saturating_add(self.wrapper_bytes)
-                        .saturating_add(self.value.len()),
-                )
+    let mut checkpoint = || execution.checkpoint();
+    let mut escaped_bytes = 1usize;
+    for (iteration, character) in svg_id.chars().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        escaped_bytes = escaped_bytes
+            .checked_add(if is_css_identifier_character(character) {
+                character.len_utf8()
+            } else {
+                1 + character.len_utf8()
             })
+            .ok_or_else(|| execution.svg_byte_count_overflow())?;
     }
+    checkpoint()?;
+    let mut scope = String::new();
+    scope.try_reserve_exact(escaped_bytes).map_err(|error| {
+        Error::svg_postprocess(
+            "scoped-css",
+            format!("failed to allocate scoped CSS root selector: {error}"),
+        )
+    })?;
+    scope.push('#');
+    for (iteration, character) in svg_id.chars().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        if !is_css_identifier_character(character) {
+            scope.push('\\');
+        }
+        scope.push(character);
+    }
+    checkpoint()?;
+    Ok(Some(scope))
+}
 
-    fn len(&self) -> usize {
-        self.value.len()
-    }
-
-    fn truncate(&mut self, len: usize) {
-        self.value.truncate(len);
-    }
-
-    fn push_str(&mut self, value: &str) -> Result<()> {
-        self.ensure_additional(value.len())?;
-        self.value.push_str(value);
-        Ok(())
-    }
-
-    fn push_char(&mut self, value: char) -> Result<()> {
-        self.ensure_additional(value.len_utf8())?;
-        self.value.push(value);
-        Ok(())
-    }
-
-    fn finish(self) -> String {
-        self.value
-    }
+fn is_css_identifier_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '-' || character == '_'
 }
 
 #[derive(Debug, Clone, Copy)]
-struct GroupingFrame {
-    source_cursor: usize,
-    output_checkpoint: usize,
+struct InjectionPlan {
+    insertion: usize,
+    wrapped: bool,
 }
 
-fn first_unclosed_grouping_open(
-    css: &str,
-    resource_policy: RenderResourcePolicy,
-) -> Result<Option<usize>> {
-    let mut grouping_opens = Vec::with_capacity(SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT);
-    let mut cursor = 0;
-    loop {
-        let Some((relative_brace, brace)) =
-            next_scope_brace(&css[cursor..], !grouping_opens.is_empty())
-        else {
-            return Ok(grouping_opens.first().copied());
-        };
-        if brace == '}' {
-            cursor += relative_brace + 1;
-            grouping_opens.pop();
-            continue;
-        }
-
-        let open = cursor + relative_brace;
-        let selector_start = css[cursor..open]
-            .rfind(';')
-            .map(|rel| cursor + rel + 1)
-            .unwrap_or(cursor);
-        let selector = &css[selector_start..open];
-        if selector.trim_start().starts_with('@')
-            && is_css_grouping_rule(css_at_rule_name(selector))
+impl InjectionPlan {
+    fn locate(
+        svg: &str,
+        merge_into_existing_style: bool,
+        execution: SvgPostprocessExecution<'_>,
+    ) -> Result<Self> {
+        let mut checkpoint = || execution.checkpoint();
+        if merge_into_existing_style
+            && let Some(insertion) = find_with_checkpoints(svg, "</style", &mut checkpoint)?
         {
-            check_grouping_depth(resource_policy, grouping_opens.len().saturating_add(1))?;
-            grouping_opens.push(open);
-            cursor = open + 1;
-            continue;
+            return Ok(Self {
+                insertion,
+                wrapped: false,
+            });
         }
 
-        let Some(close) = find_matching_brace(css, open) else {
-            return Ok(grouping_opens.first().copied());
-        };
-        cursor = close + 1;
-    }
-}
-
-fn scope_css_block(
-    css: &str,
-    scope: &str,
-    first_unclosed_grouping: Option<usize>,
-    out: &mut BoundedCssOutput,
-) -> Result<()> {
-    // Only grouping at-rules recursively scope their bodies. Retaining their continuation state
-    // here keeps emission to one traversal and avoids one call-stack frame per nesting level.
-    let mut grouping_frames: Vec<GroupingFrame> =
-        Vec::with_capacity(SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT);
-    let mut cursor = 0;
-
-    loop {
-        let Some((relative_brace, brace)) =
-            next_scope_brace(&css[cursor..], !grouping_frames.is_empty())
-        else {
-            preserve_unclosed_grouping(css, cursor, &grouping_frames, out)?;
-            return Ok(());
-        };
-
-        if brace == '}' {
-            let close = cursor + relative_brace;
-            out.push_str(&css[cursor..close])?;
-            out.push_char('}')?;
-            cursor = close + 1;
-            grouping_frames.pop();
-            continue;
-        }
-
-        let open = cursor + relative_brace;
-        let selector_start = css[cursor..open]
-            .rfind(';')
-            .map(|rel| cursor + rel + 1)
-            .unwrap_or(cursor);
-        let output_checkpoint = out.len();
-        push_scope_css_statement_prefix(out, &css[cursor..selector_start])?;
-        let selector = &css[selector_start..open];
-        if selector.trim_start().starts_with('@') {
-            let name = css_at_rule_name(selector);
-            if is_css_grouping_rule(name) {
-                if first_unclosed_grouping == Some(open) {
-                    out.push_str(&css[cursor..])?;
-                    return Ok(());
-                }
-                check_grouping_depth(out.resource_policy, grouping_frames.len().saturating_add(1))?;
-                out.push_str(selector)?;
-                out.push_char('{')?;
-                grouping_frames.push(GroupingFrame {
-                    source_cursor: cursor,
-                    output_checkpoint,
+        if let Some(root_start) = find_with_checkpoints(svg, "<svg", &mut checkpoint)?
+            && let Some(root_end) = find_tag_end_with_checkpoints(svg, root_start, &mut checkpoint)?
+        {
+            if let Some(style_start) = rfind_with_checkpoints(svg, "</style", &mut checkpoint)?
+                && let Some(style_end) =
+                    find_tag_end_with_checkpoints(svg, style_start, &mut checkpoint)?
+            {
+                return Ok(Self {
+                    insertion: style_end + 1,
+                    wrapped: true,
                 });
-                cursor = open + 1;
-                continue;
             }
+            return Ok(Self {
+                insertion: root_end + 1,
+                wrapped: true,
+            });
+        }
 
-            let Some(close) = find_matching_brace(css, open) else {
-                preserve_unclosed_grouping(css, cursor, &grouping_frames, out)?;
-                return Ok(());
-            };
-            if is_css_keyframes_rule(name) {
-                out.push_str(selector)?;
-                out.push_str(&css[open..=close])?;
-            }
-            cursor = close + 1;
+        Ok(Self {
+            insertion: svg.len(),
+            wrapped: true,
+        })
+    }
+
+    fn projected_svg_bytes(self, svg_bytes: usize, css_bytes: usize) -> Option<usize> {
+        let wrapper_bytes = if self.wrapped {
+            STYLE_OPEN.len() + STYLE_CLOSE.len()
         } else {
-            let Some(close) = find_matching_brace(css, open) else {
-                preserve_unclosed_grouping(css, cursor, &grouping_frames, out)?;
-                return Ok(());
-            };
-            let body = &css[open + 1..close];
-            write_scope_selector(out, selector, body, scope)?;
-            out.push_char(' ')?;
-            out.push_str(&css[open..=close])?;
-            cursor = close + 1;
-        }
+            0
+        };
+        svg_bytes.checked_add(css_bytes)?.checked_add(wrapper_bytes)
     }
-}
-
-fn next_scope_brace(css: &str, accept_group_close: bool) -> Option<(usize, char)> {
-    css.char_indices()
-        .find(|(_, ch)| *ch == '{' || (accept_group_close && *ch == '}'))
-}
-
-fn preserve_unclosed_grouping(
-    css: &str,
-    cursor: usize,
-    grouping_frames: &[GroupingFrame],
-    out: &mut BoundedCssOutput,
-) -> Result<()> {
-    if let Some(outermost) = grouping_frames.first().copied() {
-        out.truncate(outermost.output_checkpoint);
-        out.push_str(&css[outermost.source_cursor..])
-    } else {
-        out.push_str(&css[cursor..])
-    }
-}
-
-fn push_scope_css_statement_prefix(out: &mut BoundedCssOutput, prefix: &str) -> Result<()> {
-    let trimmed = prefix.trim_start();
-    if trimmed.starts_with("@import")
-        || trimmed.starts_with("@namespace")
-        || trimmed.starts_with("@charset")
-    {
-        return Ok(());
-    }
-    out.push_str(prefix)
-}
-
-fn css_at_rule_name(selector: &str) -> &str {
-    selector
-        .trim_start()
-        .split(|ch: char| ch.is_whitespace() || ch == '{')
-        .next()
-        .unwrap_or("")
-}
-
-fn is_css_keyframes_rule(name: &str) -> bool {
-    name.eq_ignore_ascii_case("@keyframes") || name.eq_ignore_ascii_case("@-webkit-keyframes")
-}
-
-fn is_css_grouping_rule(name: &str) -> bool {
-    [
-        "@media",
-        "@supports",
-        "@layer",
-        "@scope",
-        "@container",
-        "@starting-style",
-    ]
-    .iter()
-    .any(|candidate| name.eq_ignore_ascii_case(candidate))
-}
-
-fn check_grouping_depth(resource_policy: RenderResourcePolicy, depth: usize) -> Result<()> {
-    if depth <= SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT {
-        return Ok(());
-    }
-    Err(Error::ResourceLimitExceeded(ResourceLimitExceeded {
-        cause: ResourceLimitCause::Ceiling,
-        phase: ResourceLimitPhase::SvgPostprocess,
-        limit: SCOPED_CSS_GROUPING_DEPTH_HARD_CAP_ID,
-        actual: depth,
-        max: SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT,
-        profile: resource_policy.profile(),
-        explicit_overrides: resource_policy
-            .explicit_overrides()
-            .map(|(id, value)| ResourceLimitOverride { id, value })
-            .collect(),
-    }))
-}
-
-fn write_scope_selector(
-    out: &mut BoundedCssOutput,
-    selector: &str,
-    body: &str,
-    scope: &str,
-) -> Result<()> {
-    let safe_root_declarations = selector
-        .split(',')
-        .any(|part| matches!(part.trim(), "&") || part.trim() == scope)
-        && has_only_safe_root_declarations(body);
-    for (index, part) in selector.split(',').enumerate() {
-        if index != 0 {
-            out.push_str(", ")?;
-        }
-        let trimmed = part.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let expanded = expand_selector(trimmed, scope, out)?;
-        if (expanded == scope && safe_root_declarations)
-            || is_already_namespaced(expanded.as_ref(), scope)
-        {
-            out.push_str(expanded.as_ref())?;
-        } else if let Some(suffix) = safe_root_selector_suffix(expanded.as_ref(), ":root") {
-            out.push_str(scope)?;
-            out.push_str(suffix)?;
-        } else if let Some(suffix) = safe_root_selector_suffix(expanded.as_ref(), "svg") {
-            out.push_str(scope)?;
-            out.push_str(suffix)?;
-        } else {
-            out.push_str(scope)?;
-            out.push_char(' ')?;
-            out.push_str(expanded.as_ref())?;
-        }
-    }
-    Ok(())
-}
-
-fn expand_selector<'a>(
-    selector: &'a str,
-    scope: &str,
-    out: &BoundedCssOutput,
-) -> Result<Cow<'a, str>> {
-    if !selector.contains('&') {
-        return Ok(Cow::Borrowed(selector));
-    }
-
-    let mut expanded = String::with_capacity(selector.len().min(out.remaining_capacity_hint()));
-    let mut parts = selector.split('&').peekable();
-    while let Some(part) = parts.next() {
-        let next_len = expanded.len().saturating_add(part.len());
-        out.ensure_additional(next_len)?;
-        expanded.push_str(part);
-        if parts.peek().is_some() {
-            let next_len = expanded.len().saturating_add(scope.len());
-            out.ensure_additional(next_len)?;
-            expanded.push_str(scope);
-        }
-    }
-    Ok(Cow::Owned(expanded))
-}
-
-fn safe_root_selector_suffix<'a>(selector: &'a str, root: &str) -> Option<&'a str> {
-    let suffix = selector.strip_prefix(root)?;
-    if !is_safe_root_suffix(suffix, true) {
-        return None;
-    }
-    Some(suffix)
-}
-
-fn is_safely_scoped_selector(selector: &str, scope: &str) -> bool {
-    let Some(suffix) = selector.strip_prefix(scope) else {
-        return false;
-    };
-    is_safe_root_suffix(suffix, false)
-}
-
-fn is_safe_root_suffix(suffix: &str, require_attribute_qualifier: bool) -> bool {
-    if suffix.is_empty() {
-        return true;
-    }
-    if suffix.starts_with('>') {
-        return !require_attribute_qualifier;
-    }
-    if suffix.chars().next().is_some_and(char::is_whitespace) {
-        if require_attribute_qualifier {
-            return false;
-        }
-        return !starts_with_sibling_or_comment(suffix.trim_start());
-    }
-    if !suffix.starts_with('[') {
-        return false;
-    }
-
-    let Some(rest) = consume_attribute_qualifiers(suffix) else {
-        return false;
-    };
-    if rest.is_empty() || rest.starts_with('>') {
-        return true;
-    }
-    if rest.chars().next().is_some_and(char::is_whitespace) {
-        return !starts_with_sibling_or_comment(rest.trim_start());
-    }
-    false
-}
-
-fn starts_with_sibling_or_comment(selector: &str) -> bool {
-    matches!(selector.chars().next(), Some('+' | '~' | '/'))
-}
-
-fn consume_attribute_qualifiers(mut selector: &str) -> Option<&str> {
-    while selector.starts_with('[') {
-        let mut quote = None;
-        let mut escaped = false;
-        let mut end = None;
-        let mut chars = selector.char_indices().skip(1).peekable();
-        while let Some((index, ch)) = chars.next() {
-            if escaped {
-                escaped = false;
-                continue;
-            }
-            if ch == '\\' {
-                escaped = true;
-                continue;
-            }
-            if let Some(open_quote) = quote {
-                if ch == open_quote {
-                    quote = None;
-                }
-                continue;
-            }
-            if matches!(ch, '\'' | '"') {
-                quote = Some(ch);
-            } else if ch == '/' && chars.peek().is_some_and(|(_, next)| *next == '*') {
-                return None;
-            } else if ch == ']' {
-                end = Some(index + ch.len_utf8());
-                break;
-            }
-        }
-        selector = &selector[end?..];
-    }
-    Some(selector)
-}
-
-fn has_only_safe_root_declarations(body: &str) -> bool {
-    let mut input = ParserInput::new(body);
-    let mut parser = Parser::new(&mut input);
-
-    while !parser.is_exhausted() {
-        if parser
-            .try_parse(|declaration| declaration.expect_semicolon())
-            .is_ok()
-        {
-            continue;
-        }
-
-        let allowed = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
-            let property = declaration.expect_ident_cloned()?;
-            declaration.expect_colon()?;
-            while declaration.next_including_whitespace().is_ok() {}
-
-            Ok::<_, cssparser::ParseError<'_, ()>>(matches!(
-                property.as_ref(),
-                "font-family" | "font-size" | "fill"
-            ))
-        });
-        if !matches!(allowed, Ok(true)) {
-            return false;
-        }
-    }
-
-    true
-}
-
-fn is_already_namespaced(selector: &str, scope: &str) -> bool {
-    let Some(suffix) = selector.strip_prefix(scope) else {
-        return false;
-    };
-    if suffix.starts_with('>') {
-        return true;
-    }
-
-    let Some(first) = suffix.chars().next() else {
-        return false;
-    };
-    if !is_css_whitespace(first) {
-        return false;
-    }
-
-    let descendant = suffix.trim_start_matches(is_css_whitespace);
-    !descendant.is_empty()
-        && !descendant.starts_with('+')
-        && !descendant.starts_with('~')
-        && !descendant.starts_with("||")
-}
-
-fn is_css_whitespace(ch: char) -> bool {
-    matches!(ch, ' ' | '\n' | '\r' | '\t' | '\u{000C}')
-}
-
-#[allow(dead_code)]
-fn scoped_attr_selector(id: &str) -> String {
-    format!(r#"svg[id="{}"]"#, escape_xml_attr(id))
-}
-
-#[cfg(test)]
-fn scope_selector(selector: &str, body: &str, scope: &str) -> String {
-    let mut out = BoundedCssOutput::new(
-        selector.len(),
-        RenderResourcePolicy::unbounded_for_trusted_input(),
-        0,
-        0,
-    );
-    write_scope_selector(&mut out, selector, body, scope).expect("unbounded selector scoping");
-    out.finish()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::svg::pipeline::SvgPipeline;
+    use crate::environment::RenderEnvironment;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase};
+    use crate::svg::pipeline::{SvgPipeline, SvgPipelinePreset, SvgPostprocessMetadata};
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     fn render_session() -> crate::environment::RenderSession {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    fn scoped_selector(selector: &str) -> String {
+        let session = render_session();
+        let execution = SvgPostprocessExecution::new(&session);
+        let mut output = String::new();
+        rewrite::materialize_css(
+            &format!("{selector}{{color:red;}}"),
+            Some("#diagram"),
+            &mut output,
+            execution,
+        )
+        .expect("valid scoped selector");
+        output
+            .split_once(" {")
+            .map(|(selector, _)| selector.to_string())
+            .expect("materialized selector and declaration block")
     }
 
     #[test]
@@ -807,79 +398,24 @@ mod tests {
     }
 
     #[test]
-    fn scoped_css_preserves_root_svg_selector_qualifiers() {
-        assert_eq!(
-            scope_selector(
-                r#"svg[aria-roledescription="classDiagram"] g.classGroup rect, svg > g, :root, svg-icon"#,
-                "color: red;",
-                "#diagram",
-            ),
-            r#"#diagram[aria-roledescription="classDiagram"] g.classGroup rect, #diagram svg > g, #diagram, #diagram svg-icon"#
-        );
-    }
-
-    #[test]
-    fn scoped_css_does_not_escape_through_root_siblings_or_id_prefixes() {
-        assert_eq!(
-            scope_selector(
-                "svg + .outside, svg ~ .outside, svg:has(+ .outside), #diagram-other .node",
-                "color: red;",
-                "#diagram",
-            ),
-            "#diagram svg + .outside, #diagram svg ~ .outside, #diagram svg:has(+ .outside), #diagram #diagram-other .node"
-        );
-    }
-
-    #[test]
-    fn scoped_css_parses_repeated_and_escaped_root_attributes() {
-        assert_eq!(
-            scope_selector(
-                r#"svg[data-label="a]b"][data-path="a\"b"] .node"#,
-                "color: red;",
-                "#diagram",
-            ),
-            r#"#diagram[data-label="a]b"][data-path="a\"b"] .node"#
-        );
-    }
-
-    #[test]
-    fn scoped_css_keeps_ambiguous_root_suffixes_inside_the_scope() {
-        assert_eq!(
-            scope_selector(
-                "svg[data-x] + .outside, svg[data-x]~.outside, svg[data-x] /* guard */ + .outside, svg[data-x",
-                "color: red;",
-                "#diagram",
-            ),
-            "#diagram svg[data-x] + .outside, #diagram svg[data-x]~.outside, #diagram svg[data-x] /* guard */ + .outside, #diagram svg[data-x"
-        );
-    }
-
-    #[test]
-    fn scoped_css_fails_closed_for_attribute_comments_and_sibling_suffixes() {
-        assert_eq!(
-            scope_selector(
-                "svg[data-x/* ] */] + .outside, svg[data-x]/*guard*/+.outside, svg[a][b] + .outside, svg[a][b] ~ .outside",
-                "color: red;",
-                "#diagram",
-            ),
-            "#diagram svg[data-x/* ] */] + .outside, #diagram svg[data-x]/*guard*/+.outside, #diagram svg[a][b] + .outside, #diagram svg[a][b] ~ .outside"
-        );
-    }
-
-    #[test]
-    fn scoped_css_handles_escaped_brackets_and_unclosed_repeated_attributes() {
-        assert_eq!(
-            scope_selector(
-                r"svg[data-label=a\]b] .node, svg[a][b",
-                "color: red;",
-                "#diagram",
-            ),
-            r"#diagram[data-label=a\]b] .node, #diagram svg[a][b"
-        );
-    }
-
-    #[test]
     fn scoped_css_matches_mermaid_namespace_boundary_rules() {
+        fn normalize_css_whitespace(value: &str) -> String {
+            let mut normalized = String::with_capacity(value.len());
+            let mut pending_space = false;
+            for character in value.chars() {
+                if matches!(character, ' ' | '\n' | '\r' | '\t' | '\u{000C}') {
+                    pending_space = true;
+                    continue;
+                }
+                if pending_space && !normalized.is_empty() {
+                    normalized.push(' ');
+                }
+                pending_space = false;
+                normalized.push(character);
+            }
+            normalized
+        }
+
         let cases = [
             ("& ~ *", "color: red;", "#diagram #diagram ~ *"),
             (
@@ -894,17 +430,100 @@ mod tests {
                 "font-family: serif; font-size: 12px; fill: red;",
                 "#diagram",
             ),
+            ("#diagram", "color: red;", "#diagram #diagram"),
+            (
+                "#diagram",
+                "font-family: serif; font-size: 12px; fill: red;",
+                "#diagram",
+            ),
             ("& > *", "color: red;", "#diagram > *"),
             ("& *", "color: red;", "#diagram *"),
         ];
 
         for (selector, body, expected) in cases {
-            assert_eq!(
-                scope_selector(selector, body, "#diagram"),
-                expected,
-                "selector: {selector:?}"
+            let css = format!("{selector}{{{body}}}");
+            let svg = r#"<svg id="diagram"><g/></svg>"#;
+            let session = render_session();
+            let out = SvgPipeline::parity()
+                .with_postprocessor(ScopedCssPostprocessor::new(css))
+                .process_to_string(svg, &session)
+                .unwrap();
+            let normalized_output = normalize_css_whitespace(&out);
+            let normalized_expected = normalize_css_whitespace(&format!("{expected} {{{body}}}"));
+            assert!(
+                normalized_output.contains(&normalized_expected),
+                "selector: {selector:?}; output: {out}"
             );
         }
+    }
+
+    #[test]
+    fn scoped_css_preserves_root_svg_selector_qualifiers() {
+        assert_eq!(
+            scoped_selector(
+                r#"svg[aria-roledescription="classDiagram"] g.classGroup rect, svg > g, :root, svg-icon"#,
+            ),
+            r#"#diagram[aria-roledescription="classDiagram"] g.classGroup rect, #diagram svg > g, #diagram, #diagram svg-icon"#
+        );
+    }
+
+    #[test]
+    fn scoped_css_does_not_escape_through_root_siblings_or_id_prefixes() {
+        assert_eq!(
+            scoped_selector(
+                "svg + .outside, svg ~ .outside, svg:has(+ .outside), #diagram-other .node",
+            ),
+            "#diagram svg + .outside, #diagram svg ~ .outside, #diagram svg:has(+ .outside), #diagram #diagram-other .node"
+        );
+    }
+
+    #[test]
+    fn scoped_css_parses_repeated_and_escaped_root_attributes() {
+        assert_eq!(
+            scoped_selector(r#"svg[data-label="a]b"][data-path="a\"b"] .node"#),
+            r#"#diagram[data-label="a]b"][data-path="a\"b"] .node"#
+        );
+    }
+
+    #[test]
+    fn scoped_css_keeps_ambiguous_root_suffixes_inside_the_scope() {
+        assert_eq!(
+            scoped_selector(
+                "svg[data-x] + .outside, svg[data-x]~.outside, svg[data-x] /* guard */ + .outside",
+            ),
+            "#diagram svg[data-x] + .outside, #diagram svg[data-x]~.outside, #diagram svg[data-x] /* guard */ + .outside"
+        );
+    }
+
+    #[test]
+    fn scoped_css_fails_closed_for_attribute_comments_and_sibling_suffixes() {
+        assert_eq!(
+            scoped_selector(
+                "svg[data-x/* ] */] + .outside, svg[data-x]/*guard*/+.outside, svg[a][b] + .outside, svg[a][b] ~ .outside",
+            ),
+            "#diagram svg[data-x/* ] */] + .outside, #diagram svg[data-x]/*guard*/+.outside, #diagram svg[a][b] + .outside, #diagram svg[a][b] ~ .outside"
+        );
+    }
+
+    #[test]
+    fn scoped_css_handles_escaped_brackets_and_rejects_unclosed_attributes() {
+        assert_eq!(
+            scoped_selector(r"svg[data-label=a\]b] .node"),
+            r"#diagram[data-label=a\]b] .node"
+        );
+
+        let session = render_session();
+        let execution = SvgPostprocessExecution::new(&session);
+        let mut output = String::new();
+        let error = rewrite::materialize_css(
+            "svg[a][b{color:red;}",
+            Some("#diagram"),
+            &mut output,
+            execution,
+        )
+        .expect_err("unclosed root attributes must fail before CSS injection");
+        assert!(error.to_string().contains("invalid scoped CSS"));
+        assert!(output.is_empty());
     }
 
     #[test]
@@ -913,135 +532,17 @@ mod tests {
         let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(
-                "@import url('https://example.test/styles.css'); @media (max-width: 600px) { * { fill: red; } } @supports selector(h2 > p) { h2 > p { color: red; } }",
+                "@layer theme; @import url('https://example.test/styles.css'); @media (max-width: 600px) { * { fill: red; } } @supports selector(h2 > p) { h2 > p { color: red; } }",
             ))
             .process_to_string(svg, &session)
             .unwrap();
 
+        assert!(out.contains("@layer theme;"));
         assert!(!out.contains("@import"));
         assert!(out.contains("@media (max-width: 600px) {"));
         assert!(out.contains("#diagram * { fill: red; }"));
         assert!(out.contains("@supports selector(h2 > p) {"));
         assert!(out.contains("#diagram h2 > p { color: red; }"));
-    }
-
-    #[test]
-    fn scoped_css_grouping_depth_is_iterative_and_hard_bounded() {
-        fn nested_grouping(depth: usize) -> String {
-            format!(
-                "{}.node{{fill:red}}{}",
-                "@media all{".repeat(depth),
-                "}".repeat(depth)
-            )
-        }
-
-        let svg = r#"<svg id="diagram"><g/></svg>"#;
-        let session = render_session();
-        let exact = SvgPipeline::parity()
-            .with_postprocessor(ScopedCssPostprocessor::new(nested_grouping(
-                SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT,
-            )))
-            .process_to_string(svg, &session)
-            .expect("the inclusive grouping depth boundary must remain supported");
-        assert_eq!(
-            exact.matches("@media all{").count(),
-            SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT
-        );
-        assert!(exact.contains("#diagram .node {fill:red}"), "{exact}");
-
-        let error = SvgPipeline::parity()
-            .with_postprocessor(ScopedCssPostprocessor::new(nested_grouping(
-                SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT + 1,
-            )))
-            .process_to_string(svg, &session)
-            .expect_err("one grouping level past the hard bound must be rejected");
-        let Error::ResourceLimitExceeded(error) = error else {
-            panic!("expected a resource-limit error, got {error}");
-        };
-        assert_eq!(error.limit, SCOPED_CSS_GROUPING_DEPTH_HARD_CAP_ID);
-        assert_eq!(error.actual, SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT + 1);
-        assert_eq!(error.max, SCOPED_CSS_GROUPING_DEPTH_HARD_LIMIT);
-    }
-
-    #[test]
-    fn scoped_css_preserves_unclosed_grouping_rules_without_partial_rewrite() {
-        let svg = r#"<svg id="diagram"><g/></svg>"#;
-        let css = "@media all {.node{fill:red}";
-        let session = render_session();
-        let expected = SvgPipeline::parity()
-            .with_postprocessor(ScopedCssPostprocessor::new(css))
-            .process_to_string(svg, &session)
-            .unwrap();
-
-        assert!(expected.contains(css), "{expected}");
-        assert!(!expected.contains("#diagram .node"), "{expected}");
-
-        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxSvgBytes, expected.len())
-            .unwrap();
-        let exact_session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(exact_policy)
-            .begin_session()
-            .unwrap();
-        let exact = SvgPipeline::parity()
-            .with_postprocessor(ScopedCssPostprocessor::new(css))
-            .process_to_string(svg, &exact_session)
-            .expect("an unclosed grouping must not exceed the exact raw fallback boundary");
-        assert_eq!(exact, expected);
-    }
-
-    #[test]
-    fn scoped_css_honors_the_exact_postprocess_svg_byte_boundary() {
-        let svg = r#"<svg id="diagram"><g/></svg>"#;
-        let css = ".node { fill: red; }";
-        let expected = SvgPipeline::parity()
-            .with_postprocessor(ScopedCssPostprocessor::new(css))
-            .process_to_string(svg, &render_session())
-            .unwrap();
-        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxSvgBytes, expected.len())
-            .unwrap();
-        let exact_session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(exact_policy)
-            .begin_session()
-            .unwrap();
-        let exact = SvgPipeline::parity()
-            .with_postprocessor(ScopedCssPostprocessor::new(css))
-            .process_to_string(svg, &exact_session)
-            .expect("the exact final SVG byte boundary must pass");
-        assert_eq!(exact, expected);
-
-        let short_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxSvgBytes, expected.len() - 1)
-            .unwrap();
-        let short_session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(short_policy)
-            .begin_session()
-            .unwrap();
-        let error = SvgPipeline::parity()
-            .with_postprocessor(ScopedCssPostprocessor::new(css))
-            .process_to_string(svg, &short_session)
-            .expect_err("one byte below the final SVG size must fail during postprocess");
-        let Error::ResourceLimitExceeded(error) = error else {
-            panic!("expected a resource-limit error, got {error}");
-        };
-        assert_eq!(error.limit, ResourceLimitId::MaxSvgBytes.as_str());
-        assert_eq!(error.phase, ResourceLimitPhase::SvgPostprocess);
-    }
-
-    #[test]
-    fn scoped_css_escapes_style_end_tokens_during_the_single_svg_rebuild() {
-        let svg = r#"<svg id="diagram"><g/></svg>"#;
-        let session = render_session();
-        let out = SvgPipeline::parity()
-            .with_postprocessor(ScopedCssPostprocessor::new(
-                r#".node::after { content: "</style"; }"#,
-            ))
-            .process_to_string(svg, &session)
-            .unwrap();
-
-        assert!(out.contains(r#"content: "&lt;/style"#), "{out}");
-        assert_eq!(out.matches("</style>").count(), 1, "{out}");
     }
 
     #[test]
@@ -1069,5 +570,165 @@ mod tests {
             .unwrap();
 
         assert!(out.contains("#diagram .node { fill: #123456; }"));
+    }
+
+    #[test]
+    fn scoped_css_uses_css_tokens_for_braces_and_selector_commas() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                r#"/* { } */ svg:not([data-x="{"]) { content: "}"; opacity: 0 } .node:is(.a, .b) { fill: red }"#,
+            ))
+            .process_to_string(svg, &session)
+            .unwrap();
+
+        assert!(
+            out.contains(r#"#diagram svg:not([data-x="{"]) { content: "}"; opacity: 0 }"#),
+            "{out}"
+        );
+        assert!(
+            out.contains("#diagram .node:is(.a, .b) { fill: red }"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn scoped_css_escapes_style_terminators_after_tokenized_rewrite() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                r#".node { content: "</style"; }"#,
+            ))
+            .process_to_string(svg, &session)
+            .unwrap();
+
+        assert!(out.contains(r#"content: "\3c /style";"#), "{out}");
+        assert_eq!(out.matches("</style>").count(), 1, "{out}");
+    }
+
+    #[test]
+    fn scoped_css_rejects_unclosed_rule_before_injection() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let error = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                r#".node { content: "{"; fill: red;"#,
+            ))
+            .process_to_string(svg, &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("unclosed"), "{error}");
+    }
+
+    #[test]
+    fn scoped_css_rejects_excessive_rule_nesting() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let css = format!(
+            "{} .node {{ fill: red; }} {}",
+            "@media all {".repeat(64),
+            "}".repeat(64)
+        );
+        let error = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(css))
+            .process_to_string(svg, &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("nesting"), "{error}");
+    }
+
+    #[test]
+    fn scoped_css_preflights_exact_projected_bytes_before_materialization() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let processor =
+            ScopedCssPostprocessor::new(".node, .edge, .label { fill: red; stroke: blue; }");
+        let metadata = SvgPostprocessMetadata::from_svg(svg);
+        let unbounded_session = RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session()
+            .unwrap();
+        let unbounded_context = SvgPostprocessContext::new(
+            SvgPipelinePreset::Parity,
+            0,
+            "scoped-css",
+            &metadata,
+            &unbounded_session,
+        );
+        let projected_bytes = processor
+            .process(Cow::Borrowed(svg), &unbounded_context)
+            .expect("unbounded scoped CSS should materialize")
+            .len();
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, projected_bytes)
+            .unwrap();
+        let exact_session = RenderEnvironment::deterministic()
+            .with_resource_policy(exact_policy)
+            .begin_session()
+            .unwrap();
+        let exact_context = SvgPostprocessContext::new(
+            SvgPipelinePreset::Parity,
+            0,
+            "scoped-css",
+            &metadata,
+            &exact_session,
+        );
+        assert_eq!(
+            processor
+                .process(Cow::Borrowed(svg), &exact_context)
+                .expect("the exact SVG byte limit should admit scoped CSS")
+                .len(),
+            projected_bytes
+        );
+
+        let limited_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, projected_bytes - 1)
+            .unwrap();
+        let limited_session = RenderEnvironment::deterministic()
+            .with_resource_policy(limited_policy)
+            .begin_session()
+            .unwrap();
+        let limited_context = SvgPostprocessContext::new(
+            SvgPipelinePreset::Parity,
+            0,
+            "scoped-css",
+            &metadata,
+            &limited_session,
+        );
+        let error = processor
+            .process(Cow::Borrowed(svg), &limited_context)
+            .unwrap_err();
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte resource rejection, got {error}");
+        };
+        assert_eq!(details.phase, ResourceLimitPhase::SvgPostprocess);
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.actual, projected_bytes);
+        assert_eq!(details.max, projected_bytes - 1);
+    }
+
+    #[test]
+    fn scoped_css_token_walk_observes_mid_stream_cancellation() {
+        let control = OperationControl::new();
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let css = ".node { fill: red; }".repeat(512);
+        control.cancel_after_checkpoints(2);
+
+        let error = rewrite::projected_css_bytes(
+            &css,
+            Some("#diagram"),
+            SvgPostprocessExecution::new(&session),
+        )
+        .expect_err("the CSS token walk must observe cancellation before completion");
+        let Error::Cancelled(cancelled) = error else {
+            panic!("expected structured cancellation, got {error}");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
+        assert_eq!(cancelled.reason, CancelReason::Requested);
     }
 }

@@ -1,6 +1,8 @@
+use super::super::SvgDiagramId;
 use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgInterface;
 use super::bounds::include_xywh;
+use super::context::ClassEmitCheckpoint;
 use super::label::{class_math_html_label, class_node_label_style};
 use super::node::ClassNodeRenderPosition;
 use crate::entities::decode_entities_minimal_cow;
@@ -8,7 +10,7 @@ use crate::model::{Bounds, LayoutNode};
 use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 
 pub(super) struct ClassInterfaceRenderContext<'a> {
-    pub diagram_id: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub line_height: f64,
@@ -16,6 +18,7 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub theme_expectation: &'a crate::class::ClassNodeTerminalExpectation,
+    pub emit: ClassEmitCheckpoint<'a>,
 }
 
 pub(super) struct ClassInterfaceRenderState<'a, O: SvgOutput> {
@@ -29,7 +32,7 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassInterfaceRenderContext<'_>,
-) -> crate::class::ClassNodeTerminalEmission {
+) -> crate::Result<crate::class::ClassNodeTerminalEmission> {
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
 
@@ -74,10 +77,12 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
         fo_h,
     );
 
+    out.push_str(r#"<g class="node undefined" id=""#);
+    let _ = write!(out, "{}", ctx.diagram_id);
+    ctx.emit.checkpoint()?;
     let _ = write!(
         out,
-        r#"<g class="node undefined" id="{}-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"{}>"#,
-        escape_attr_display(ctx.diagram_id),
+        r#"-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"{}>"#,
         escape_attr_display(&iface.id),
         escape_attr_display(ctx.look),
         fmt(position.node_tx),
@@ -110,7 +115,7 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
         out.push_str("</p>");
     }
     out.push_str("</span></div></foreignObject></g></g>");
-    crate::class::ClassNodeTerminalEmission::new(
+    Ok(crate::class::ClassNodeTerminalEmission::new(
         &iface.id,
         crate::class::ClassNodePaintTerminalEmission::not_applicable(),
         crate::class::ClassNodePaintTerminalEmission::not_applicable(),
@@ -120,5 +125,5 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
             &label_style,
         )
         .with_terminal_verified(label_fill_verified),
-    )
+    ))
 }

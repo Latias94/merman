@@ -121,6 +121,7 @@ function verifyOwnedEditorWorkers() {
   const requiredWorkers = [
     /^editor\.worker-[\w-]+\.js$/u,
     /^json\.worker-[\w-]+\.js$/u,
+    /^mermaid-syntax\.worker-[\w-]+\.js$/u,
     /^merman-language\.worker-[\w-]+\.js$/u,
   ];
   const missing = requiredWorkers.filter(

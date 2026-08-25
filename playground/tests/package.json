@@ -16,7 +16,7 @@
     "test": "playwright test --project=chromium-desktop",
     "test:desktop": "playwright test --project=chromium-desktop",
     "test:mobile": "playwright test --project=chromium-mobile-interactions",
-    "test:smoke:non-chromium": "playwright test --project=firefox-smoke --project=webkit-smoke",
+    "test:smoke:non-chromium": "playwright test --project=firefox-smoke --project=webkit-smoke --project=webkit-mobile-smoke",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

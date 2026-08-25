@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { planPngRaster } from "../lib/png-export-plan.ts";
+import { isAsciiExportAvailable } from "../components/toolbar-artifact-availability.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
   type WorkspaceSnapshot,
@@ -9,6 +9,7 @@ import {
 import {
   ArtifactActionError,
   createArtifactActionOwner,
+  createExportTargetOwner,
   type ArtifactActionIo,
 } from "./artifact-actions.ts";
 import type {
@@ -21,13 +22,43 @@ import {
 } from "./merman-operation-input.ts";
 import type {
   CompletedRenderBatch,
+  MermanAsciiBatchResult,
   RenderCoordinatorState,
   RenderPublicationId,
 } from "./render-coordinator.ts";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
 
-test("selects SVG and ASCII only from the named current publication", async () => {
+test("enables ASCII export only for lazy or successful artifacts", () => {
+  const cases: ReadonlyArray<
+    readonly [string, MermanAsciiBatchResult | null, boolean]
+  > = [
+    ["lazy", null, true],
+    ["success", { artifact: "ascii", status: "success" }, true],
+    [
+      "failure",
+      {
+        error: { summary: "render failed", detail: null },
+        status: "failure",
+      },
+      false,
+    ],
+    ["unsupported", { diagramType: "flowchart", status: "unsupported" }, false],
+    [
+      "unavailable",
+      { reason: "diagram-detection-unavailable", status: "unavailable" },
+      false,
+    ],
+  ];
+
+  assert.equal(isAsciiExportAvailable(true, null), false);
+  for (const [label, ascii, expected] of cases) {
+    assert.equal(isAsciiExportAvailable(true, { ascii }), expected, label);
+  }
+  assert.equal(isAsciiExportAvailable(false, { ascii: cases[1][1] }), false);
+});
+
+test("selects copied SVG and ASCII only from the named current publication", async () => {
   const publication = completedPublication("current");
   const publicationId = publication.snapshot.publicationId;
   const calls: string[] = [];
@@ -38,16 +69,120 @@ test("selects SVG and ASCII only from the named current publication", async () =
   });
 
   await owner({ action: "copy-svg", engine: "merman", publicationId });
-  await owner({ action: "download-svg", engine: "mermaid", publicationId });
+  await owner({ action: "copy-svg", engine: "mermaid", publicationId });
   await owner({ action: "copy-ascii", publicationId });
   await owner({ action: "download-ascii", publicationId });
 
   assert.deepEqual(calls, [
     "copy-svg:merman",
-    "download-svg:mermaid:mermaid-diagram",
+    "copy-svg:mermaid",
     "copy-ascii:ascii-current",
     "download-ascii:ascii-current:merman-diagram",
   ]);
+});
+
+test("renders and caches ASCII only after an explicit artifact action", async () => {
+  const completed = completedPublication("on-demand");
+  const publication: CompletedRenderBatch = Object.freeze({
+    ...completed,
+    ascii: null,
+  });
+  const renderInputs: ConfiguredMermanOperationInput[] = [];
+  const calls: string[] = [];
+  const owner = createArtifactActionOwner({
+    getRenderState: () => publication,
+    getRuntimeState: () =>
+      readyRuntime(undefined, (input) => {
+        renderInputs.push(input);
+        return {
+          ascii: "ascii-on-demand",
+          error: null,
+          status: "success",
+        };
+      }),
+    io: recordingIo(calls),
+  });
+
+  await owner({
+    action: "copy-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+  await owner({
+    action: "download-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+
+  assert.equal(renderInputs.length, 1);
+  assert.equal(renderInputs[0], publication.snapshot.operation);
+  assert.deepEqual(calls, [
+    "copy-ascii:ascii-on-demand",
+    "download-ascii:ascii-on-demand:merman-diagram",
+  ]);
+});
+
+test("on-demand ASCII failures reject before artifact I/O", async () => {
+  const completed = completedPublication("on-demand-failure");
+  const publication: CompletedRenderBatch = Object.freeze({
+    ...completed,
+    ascii: null,
+  });
+  const cases: ReadonlyArray<{
+    readonly code: ArtifactActionError["code"];
+    readonly runtime: () => MermanRuntimeState;
+    readonly stage: string | null;
+  }> = [
+    {
+      code: "runtime-unavailable",
+      runtime: () => ({ status: "idle", suspended: false }),
+      stage: null,
+    },
+    {
+      code: "runtime-version-mismatch",
+      runtime: () => readyRuntime(undefined, undefined, "different-version"),
+      stage: null,
+    },
+    {
+      code: "ascii-render-failed",
+      runtime: () =>
+        readyRuntime(undefined, () => {
+          throw new Error("ASCII render threw.");
+        }),
+      stage: "render",
+    },
+    {
+      code: "ascii-render-failed",
+      runtime: () =>
+        readyRuntime(undefined, () => ({
+          ascii: null,
+          error: { detail: null, summary: "ASCII render failed." },
+          status: "failure",
+        })),
+      stage: "render",
+    },
+  ];
+
+  for (const { code, runtime, stage } of cases) {
+    const calls: string[] = [];
+    const owner = createArtifactActionOwner({
+      getRenderState: () => publication,
+      getRuntimeState: runtime,
+      io: recordingIo(calls),
+    });
+
+    await assert.rejects(
+      owner({
+        action: "copy-ascii",
+        publicationId: publication.snapshot.publicationId,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof ArtifactActionError);
+        assert.equal(error.code, code);
+        assert.equal(error.stage, stage);
+        return true;
+      },
+    );
+    assert.deepEqual(calls, []);
+  }
 });
 
 test("publishes ASCII actions independently from a failed Merman SVG", async () => {
@@ -122,54 +257,58 @@ test("rejects stale, missing, and updating publications before I/O", async () =>
   assert.deepEqual(calls, []);
 });
 
-test("rerenders only Merman PNG through the resvg-safe operation", async () => {
-  const publication = completedPublication("png");
-  const publicationId = publication.snapshot.publicationId;
+test("freezes an export target that does not retarget after a newer publication", () => {
+  const first = completedPublication("first");
+  let state: RenderCoordinatorState = first;
   const renderInputs: ConfiguredMermanOperationInput[] = [];
-  const runtime = readyRuntime((input) => {
-    renderInputs.push(input);
-    return {
-      artifact: projectNavigableInlineSvg(svg("merman-png")),
-      error: null,
-      renderTime: 1,
-      status: "success",
-    };
+  const targetOwner = createExportTargetOwner({
+    getRenderState: () => state,
+    getRuntimeState: () =>
+      readyRuntime((input) => {
+        renderInputs.push(input);
+        return {
+          artifact: projectNavigableInlineSvg(svg("frozen-raster")),
+          error: null,
+          renderTime: 1,
+          status: "success",
+        };
+      }),
   });
-  const calls: string[] = [];
-  const owner = createArtifactActionOwner({
-    getRenderState: () => publication,
-    getRuntimeState: () => runtime,
-    io: recordingIo(calls),
-  });
-
-  const merman = await owner({
-    action: "download-png",
+  const target = targetOwner.freeze({
     engine: "merman",
-    publicationId,
-    scale: 2,
+    publicationId: first.snapshot.publicationId,
   });
-  const mermaid = await owner({
-    action: "download-png",
+  const mermaidTarget = targetOwner.freeze({
     engine: "mermaid",
-    publicationId,
-    scale: 3,
+    publicationId: first.snapshot.publicationId,
   });
 
+  state = completedPublication("second", publicationId(2));
+  assert.equal(label(target.svgArtifact.svg), "merman");
+  assert.equal(label(mermaidTarget.svgArtifact.svg), "mermaid");
+  assert.equal(target.publicationId, first.snapshot.publicationId);
+  assert.equal(label(targetOwner.rasterArtifact(target).svg), "frozen-raster");
+  assert.equal(label(targetOwner.rasterArtifact(target).svg), "frozen-raster");
   assert.equal(renderInputs.length, 1);
-  assert.deepEqual(renderInputs[0].bindingOptions.svg, {
+  assert.deepEqual(renderInputs[0]?.bindingOptions.svg, {
     pipeline: "resvg-safe",
   });
-  assert.equal(Object.isFrozen(merman), true);
-  assert.equal(Object.isFrozen(mermaid), true);
-  assert.deepEqual(calls, [
-    "download-png:merman-png:merman-diagram:2",
-    "download-png:mermaid:mermaid-diagram:3",
-  ]);
+  assert.equal(
+    targetOwner.rasterArtifact(mermaidTarget),
+    mermaidTarget.svgArtifact,
+  );
+
+  assert.throws(() =>
+    targetOwner.freeze({
+      engine: "mermaid",
+      publicationId: first.snapshot.publicationId,
+    }),
+  );
 });
 
-test("preserves structured Resvg render failures", async () => {
+test("preserves structured Resvg render failures", () => {
   const publication = completedPublication("failure");
-  const owner = createArtifactActionOwner({
+  const owner = createExportTargetOwner({
     getRenderState: () => publication,
     getRuntimeState: () =>
       readyRuntime(() => ({
@@ -182,22 +321,21 @@ test("preserves structured Resvg render failures", async () => {
         stage: "render",
         status: "failure",
       })),
-    io: recordingIo([]),
+  });
+  const target = owner.freeze({
+    engine: "merman",
+    publicationId: publication.snapshot.publicationId,
   });
 
-  await assert.rejects(
-    owner({
-      action: "download-png",
-      engine: "merman",
-      publicationId: publication.snapshot.publicationId,
-    }),
+  assert.throws(
+    () => owner.rasterArtifact(target),
     (error: unknown) => {
       assert.ok(error instanceof ArtifactActionError);
       assert.equal(error.code, "svg-render-failed");
       assert.equal(error.stage, "render");
       assert.match(error.detail ?? "", /MERMAN_RESVG/);
       return true;
-    }
+    },
   );
 });
 
@@ -206,6 +344,7 @@ function completedPublication(
   id: RenderPublicationId = publicationId(1)
 ): CompletedRenderBatch {
   const operation = freezeRenderOperation({
+    asciiEnabled: true,
     compareEnabled: true,
     diagnosticsEnabled: false,
     layoutEnvironment: { containerWidth: 800, containerHeight: 600 },
@@ -268,12 +407,22 @@ function readyRuntime(
     error: null,
     renderTime: 1,
     status: "success",
-  })
+  }),
+  renderAscii: MermanDomainFacade["renderAscii"] = () => ({
+    ascii: "ascii",
+    error: null,
+    status: "success",
+  }),
+  packageVersion = "test-merman",
 ): MermanRuntimeState {
   return {
     status: "ready",
     suspended: false,
-    facade: { packageVersion: "test-merman", render } as MermanDomainFacade,
+    facade: {
+      packageVersion,
+      render,
+      renderAscii,
+    } as MermanDomainFacade,
   };
 }
 
@@ -287,13 +436,6 @@ function recordingIo(calls: string[]): ArtifactActionIo {
     },
     downloadAscii(ascii, filename) {
       calls.push(`download-ascii:${ascii}:${filename}`);
-    },
-    async downloadPng(artifact, filename, scale) {
-      calls.push(`download-png:${label(artifact.svg)}:${filename}:${scale}`);
-      return planPngRaster(100, 50, scale);
-    },
-    downloadSvg(artifact, filename) {
-      calls.push(`download-svg:${label(artifact.svg)}:${filename}`);
     },
   };
 }

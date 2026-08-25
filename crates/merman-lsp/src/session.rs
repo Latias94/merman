@@ -24,6 +24,7 @@ mod cache;
 mod client_effects;
 mod documents;
 mod lifecycle;
+mod syntax;
 
 use client_effects::ClientEffectDispatcher;
 pub(crate) use client_effects::ClientEffects;

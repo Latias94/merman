@@ -22,6 +22,7 @@ mod session;
 mod snapshot;
 mod structure;
 mod sync;
+mod syntax_highlighting;
 #[cfg(feature = "stdio")]
 mod transport;
 mod workspace_edit;

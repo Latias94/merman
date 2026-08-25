@@ -91,7 +91,7 @@ test("package provenance rejects stale copied WASM and entry wrappers", () => {
 
     cpSync(sourceDistRoot, packageDistRoot, { recursive: true, force: true });
     writeFileSync(
-      path.join(packageDistRoot, "editor-semantic-tokens.js"),
+      path.join(packageDistRoot, "stale-unowned.js"),
       "export const stale = true;\n",
     );
     assert.throws(

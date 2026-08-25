@@ -8,10 +8,10 @@ Most applications that want rendered output should use the `merman` facade inste
 
 ## Quick Start
 
-Add the exact alpha.5 prerelease:
+Add the exact alpha.6 prerelease:
 
 ```sh
-cargo add merman-core@0.8.0-alpha.5
+cargo add merman-core@0.8.0-alpha.6
 ```
 
 Parse Mermaid into its compatibility semantic JSON projection:
@@ -25,8 +25,8 @@ fn main() -> Result<(), merman_core::Error> {
         .parse_diagram_sync("flowchart TD; A[API] --> B[DB];", ParseOptions::strict())?
         .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
-    println!("{}", parsed.model);
+    assert_eq!(parsed.metadata().diagram_type, "flowchart-v2");
+    println!("{}", parsed.model());
 
     Ok(())
 }
@@ -74,7 +74,7 @@ fn main() -> Result<(), merman_core::Error> {
         )?
         .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "sequence");
+    assert_eq!(parsed.metadata().diagram_type, "sequence");
     Ok(())
 }
 ```
@@ -99,7 +99,11 @@ fn main() -> Result<(), merman_core::Error> {
         .parse_diagram_for_render_model_sync("flowchart TD; A --> B", ParseOptions::strict())?
         .expect("diagram detected");
 
-    println!("{} -> {}", parsed.meta.diagram_type, parsed.model.kind());
+    println!(
+        "{} -> {}",
+        parsed.metadata().diagram_type,
+        parsed.model().kind()
+    );
     Ok(())
 }
 ```

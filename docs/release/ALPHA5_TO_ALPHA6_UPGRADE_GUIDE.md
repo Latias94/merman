@@ -1,0 +1,111 @@
+# Upgrade from 0.8.0-alpha.5 to 0.8.0-alpha.6
+
+> [!IMPORTANT]
+> Alpha.6 is currently a prepared prerelease candidate. This document does not imply that any
+> registry package, tag, or platform artifact has been published.
+
+Alpha.6 deliberately breaks the prerelease ASCII API so terminal rendering can expose one coherent
+semantic, resource, and capability contract. Upgrade generated wrappers together with their native
+or WASM artifact; versions from alpha.5 and alpha.6 are not wire-compatible.
+
+## Rust ASCII API
+
+- `AsciiRenderOptions::max_grid_cells` and `with_max_grid_cells(...)` are removed. Select an
+  `AsciiResourcePolicy` independently from `AsciiRenderOptions`. Facade users set
+  `AsciiRequest::resources`; direct typed-model users pass the policy as the fourth argument to
+  `AsciiRenderer::render_model`. Select a profile with `AsciiResourcePolicy::for_profile(...)`; to
+  replace the old builder directly, use
+  `policy.with_limit(AsciiResourceLimitId::MaxGridCells, value)?`.
+- The policy now owns independent limits for grid cells, layout work, document cells, encoded
+  output bytes, grapheme bytes, and nesting depth. A grid limit is not a proxy for later phases.
+- `AsciiError::RenderLimitExceeded { actual, limit }` is replaced by
+  `AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded)`. Match its typed `limit`,
+  `actual`, `max`, and `profile`; use `phase()` for the typed failure phase. Post-admission
+  allocation failures use `AsciiError::AllocationFailed`.
+- `AsciiResourceLimitDescriptor::phase` is now `AsciiResourceLimitPhase`, and every descriptor has
+  a typed `id`. Use `phase.as_str()` and `stable_id` only at display or serialization boundaries.
+- Source-to-output ASCII rendering now uses `Renderer` with `RenderRequest::ascii`. The former
+  `HeadlessAsciiRenderer`, source helpers, and per-family pass-throughs are removed. Hosts that
+  already own a typed model may use `AsciiRenderer::render_model` only with a caller-owned
+  `OperationControl`, `OperationContext`, and `AsciiResourcePolicy`.
+- `AsciiDiagnostic` is the bounded terminal-display projection for parse, runtime-policy, and
+  target errors. It does not expose authored text through an error source chain; use
+  `terminal_diagnostic_details()` for safe structured diagnostics.
+- `AsciiRenderOptions` now carries `terminal_width_profile`. Use its constructors and builders so
+  Unicode and CJK width behavior remains explicit.
+- Ordinary Flowchart node labels now wrap before layout at `40` terminal display cells by default.
+  Use `with_flowchart_node_label_wrap_width(...)` or the binding JSON field
+  `ascii.flowchart_node_label_wrap_width` / `ascii.flowchartNodeLabelWrapWidth` to tune the limit.
+  The value must be non-zero and is independent of Mermaid's SVG pixel width. Review and regenerate
+  byte snapshots that contain long Flowchart node labels.
+
+## Typed render models
+
+- `merman_core::diagrams::flowchart::FlowEdge` now carries independent `start_marker`,
+  `end_marker`, `stroke_kind`, and `visibility` fields in addition to the authored arrow. Legacy
+  serialized values remain readable, but Rust struct literals must initialize the complete shape.
+- `ErDiagramRenderModel::{classes, entities}` now use declaration-ordered `indexmap::IndexMap`
+  instead of `std::collections::BTreeMap`. Update explicit annotations, constructors, and helper
+  signatures.
+- `GanttRenderTask` now carries typed `start_constraint` and `end_constraint` fields. Initialize
+  them in Rust struct literals; use `GanttTaskStartConstraint::{PreviousTaskEnd, Fixed, After}` and
+  `GanttTaskEndConstraint::{Unspecified, Fixed, Duration, Until}` instead of recovering authored
+  constraints from the compatibility `raw` strings.
+- `SequenceDiagramRenderModel` now carries `actor_lifecycles`. Parser-produced models set this to a
+  vector aligned with `actor_order`; each entry records the actual signal that consumed a pending
+  create or destroy request. Rust struct literals must initialize the field, normally with `None`
+  for legacy direct models or `Some(...)` when supplying parser-resolved ownership. Typed Serde
+  includes `actorLifecycles`; Mermaid compatibility JSON keeps the existing `createdActors` and
+  `destroyedActors` shape unchanged.
+- Mindmap direct models now treat `MindmapDiagramRenderNode::id` as the internal topology key used
+  by edge endpoints and `node_id` as the authored identity disclosed in StructuredText. Populate a
+  unique, non-empty `node_id` for every node; missing or duplicate authored identities are rejected.
+
+## Capability discovery
+
+ASCII support is no longer one undifferentiated label. Read both dimensions:
+
+- `semantic_coverage` states whether the admitted projection is full or partial.
+- `primary_projection` distinguishes `diagrammatic` output from `structured-text` output.
+
+The compatibility `support_level` is derived from those values. The old `summary_fallback` field is
+renamed to `structured_text_fallback`. Do not count a structured-text family as a diagram merely
+because it produces useful terminal output. The six primary diagrammatic families remain Partial:
+Flowchart, Sequence, State, Class, ER, and XYChart.
+
+## UniFFI and browser WASM
+
+- UniFFI binding API advances from `3` to `5`. API 5 replaces the API 4
+  `transport_api_version` / `transportApiVersion` probe with
+  `binding_api_version_v5` / `bindingApiVersionV5`, so stale generated bindings fail before
+  decoding revised capability or structured-error records.
+- Browser WASM transport API advances from `3` to `4`.
+- Generated ASCII capability records expose `semantic_coverage`, `primary_projection`, and
+  `structured_text_fallback`.
+- Structured resource diagnostics expose stable typed limit, phase, cause, observed, and maximum
+  fields. Do not classify failures by parsing display text.
+
+Upgrade the Python or Apple wrapper together with its alpha.6 UniFFI library. Likewise, upgrade an
+`@mermanjs/web*` package together with its owned alpha.6 WASM artifact. Runtime version checks are
+expected to reject mixed artifacts.
+
+## Output compatibility
+
+ASCII snapshots can change even when the Mermaid source does not. Alpha.6 fixes graph direction,
+compound ownership, parallel and self-loop routing, Sequence signal/control semantics, Class/ER
+endpoint roles, State notes and compartments, and XYChart coordinates. Treat those changes as
+semantic corrections and regenerate byte snapshots after reviewing the resulting topology and
+fact disclosures.
+
+Families whose terminal value is primarily a report remain StructuredText. Unsupported families
+continue to fail explicitly; they do not silently return a lossy summary.
+
+## Sectioned direct models
+
+`TimelineRenderTask`, `JourneyRenderTask`, and `GanttRenderTask` now carry an optional
+`section_index` occurrence owner. Parser-produced tasks always point at the section occurrence that
+authored them, so repeated section labels remain distinct. Direct-model callers should set
+`section_index` when the label is ambiguous; a unique legacy label may remain `None` and is inferred.
+Gantt rejects an explicit occurrence when no declared section exists. Unknown, orphan, and empty
+Timeline or Journey sections are retained in the structured-text projection with explicit
+`[undeclared]` or `[unsectioned]` markers instead of being silently dropped.

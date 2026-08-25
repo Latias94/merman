@@ -61,19 +61,10 @@ const DEFAULT_EDITOR_WORKER_TOMBSTONE_LIMIT = 256;
 
 export interface EditorLanguageIdentity {
   readonly completionTriggerCharacters: readonly string[];
-  readonly legend: ReadonlyEditorSemanticTokenLegend;
-  readonly legendDigest: string;
   readonly transportApiVersion: number;
 }
 
-export interface ReadonlyEditorSemanticTokenLegend {
-  readonly tokenTypes: readonly string[];
-  readonly tokenModifiers: readonly string[];
-}
-
-interface EditorSnapshotIdentity extends EditorDocumentIdentity {
-  readonly legendDigest: string;
-}
+type EditorSnapshotIdentity = EditorDocumentIdentity;
 
 type PendingExpected = "queryResult" | "ready" | "result";
 
@@ -113,7 +104,7 @@ export class StaleLanguageSnapshotError extends Error {
   readonly detail: string | null;
 
   constructor(
-    message = "The editor result belongs to an obsolete document or legend.",
+    message = "The editor result belongs to an obsolete document.",
     detail: string | null = null,
   ) {
     super(message);
@@ -143,20 +134,18 @@ export class EditorWorkerProtocolError extends Error {
 
 export function createMermanLanguageWorkerClient(
   worker: EditorWorkerPort,
-  expectedLegendDigest: string,
   options: EditorWorkerClientOptions = {},
 ): MermanLanguageWorkerClient {
-  return new WorkerClient(worker, expectedLegendDigest, options);
+  return new WorkerClient(worker, options);
 }
 
 export function startMermanLanguageWorkerClient(
   worker: EditorWorkerPort,
-  expectedLegendDigest: string,
   timeoutMs = DEFAULT_EDITOR_WORKER_REQUEST_TIMEOUT_MS,
 ): MermanLanguageWorkerStartup {
   let client: MermanLanguageWorkerClient;
   try {
-    client = createMermanLanguageWorkerClient(worker, expectedLegendDigest, {
+    client = createMermanLanguageWorkerClient(worker, {
       requestTimeoutMs: timeoutMs,
     });
   } catch (error) {
@@ -185,7 +174,6 @@ class WorkerClient implements MermanLanguageWorkerClient {
   private readonly requestTimeoutMs: number;
   private transportClosed = false;
   private readonly worker: EditorWorkerPort;
-  private readonly expectedLegendDigest: string;
 
   private readonly handleError = (event: { message?: unknown }) => {
     const detail =
@@ -248,24 +236,12 @@ class WorkerClient implements MermanLanguageWorkerClient {
     try {
       switch (response.type) {
         case "ready":
-          if (response.legendDigest !== this.expectedLegendDigest) {
-            throw new EditorWorkerProtocolError(
-              `Merman editor legend ${response.legendDigest} does not match ${this.expectedLegendDigest}.`,
-            );
-          }
           this.completePending(response.requestId, pending);
           pending.resolve(
             Object.freeze({
               completionTriggerCharacters: Object.freeze([
                 ...response.completionTriggerCharacters,
               ]),
-              legend: Object.freeze({
-                tokenTypes: Object.freeze([...response.legend.tokenTypes]),
-                tokenModifiers: Object.freeze([
-                  ...response.legend.tokenModifiers,
-                ]),
-              }),
-              legendDigest: response.legendDigest,
               transportApiVersion: response.transportApiVersion,
             }) satisfies EditorLanguageIdentity,
           );
@@ -307,14 +283,8 @@ class WorkerClient implements MermanLanguageWorkerClient {
 
   constructor(
     worker: EditorWorkerPort,
-    expectedLegendDigest: string,
     options: EditorWorkerClientOptions,
   ) {
-    if (!expectedLegendDigest) {
-      throw new EditorWorkerProtocolError(
-        "A generated editor legend digest is required.",
-      );
-    }
     this.requestTimeoutMs = positiveOption(
       options.requestTimeoutMs ?? DEFAULT_EDITOR_WORKER_REQUEST_TIMEOUT_MS,
       "editor worker request timeout",
@@ -324,7 +294,6 @@ class WorkerClient implements MermanLanguageWorkerClient {
       "editor worker tombstone limit",
     );
     this.worker = worker;
-    this.expectedLegendDigest = expectedLegendDigest;
     this.tombstones = new RequestTombstoneLedger(tombstoneLimit);
     worker.addEventListener("error", this.handleError);
     worker.addEventListener("message", this.handleMessage);
@@ -459,7 +428,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
     }
 
     const requestId = this.allocateRequestId();
-    const snapshot = snapshotIdentity(identity, this.expectedLegendDigest);
+    const snapshot = identityOf(identity);
     return this.request<EditorWorkerQueryResult<Query>>(
       {
         protocol: EDITOR_WORKER_PROTOCOL,
@@ -467,7 +436,6 @@ class WorkerClient implements MermanLanguageWorkerClient {
         type: "query",
         uri: identity.uri,
         version: identity.version,
-        legendDigest: this.expectedLegendDigest,
         query: projectedQuery,
       },
       {
@@ -714,14 +682,11 @@ class WorkerClient implements MermanLanguageWorkerClient {
   }
 
   private isCurrentDocument(
-    document: EditorDocumentIdentity &
-      Partial<Pick<EditorSnapshotIdentity, "legendDigest">>,
+    document: EditorDocumentIdentity,
   ): boolean {
     return (
       this.currentDocument?.uri === document.uri &&
-      this.currentDocument.version === document.version &&
-      (document.legendDigest === undefined ||
-        document.legendDigest === this.expectedLegendDigest)
+      this.currentDocument.version === document.version
     );
   }
 
@@ -853,15 +818,8 @@ function projectSnapshotForClient(
   }
 }
 
-function identityOf(document: EditorDocumentSnapshot): EditorDocumentIdentity {
+function identityOf(document: EditorDocumentIdentity): EditorDocumentIdentity {
   return { uri: document.uri, version: document.version };
-}
-
-function snapshotIdentity(
-  document: EditorDocumentIdentity,
-  legendDigest: string,
-): EditorSnapshotIdentity {
-  return { uri: document.uri, version: document.version, legendDigest };
 }
 
 function sameSnapshotIdentity(
@@ -870,8 +828,7 @@ function sameSnapshotIdentity(
 ): boolean {
   return (
     expected.uri === actual.uri &&
-    expected.version === actual.version &&
-    expected.legendDigest === actual.legendDigest
+    expected.version === actual.version
   );
 }
 

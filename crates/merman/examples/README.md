@@ -69,11 +69,11 @@ cargo run -p merman --example custom_svg_pipeline > consumer-safe.svg
 
 ## Copy Into An Application
 
-Use the exact alpha.5 dependency expected by these examples:
+Use the exact alpha.6 dependency expected by these examples:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.5" }
+merman = { version = "=0.8.0-alpha.6" }
 ```
 
 Copy the relevant `.rs` file into your application's `examples/` directory and run it by filename:

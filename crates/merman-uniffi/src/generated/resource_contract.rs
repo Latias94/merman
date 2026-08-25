@@ -26,7 +26,6 @@ pub enum MermanResourceOverrideId {
     MaxModelTextBytes,
     MaxModelNestingDepth,
     MaxLayoutWorkUnits,
-    MaxPreparedTextRetainedBytes,
     MaxSvgBytes,
     MaxSvgElements,
     MaxDocumentDiagrams,
@@ -39,6 +38,12 @@ pub enum MermanResourceOverrideId {
     MaxEmbeddedImagePixels,
     MaxTotalEmbeddedImagePixels,
     MaxPdfFilterImagePixels,
+    MaxAsciiLayoutWorkUnits,
+    MaxAsciiDocumentCells,
+    MaxAsciiOutputBytes,
+    MaxAsciiGraphemeBytes,
+    MaxAsciiNestingDepth,
+    MaxPreparedTextRetainedBytes,
 }
 
 impl MermanResourceOverrideId {
@@ -48,7 +53,6 @@ impl MermanResourceOverrideId {
         Self::MaxModelTextBytes => "max_model_text_bytes",
         Self::MaxModelNestingDepth => "max_model_nesting_depth",
         Self::MaxLayoutWorkUnits => "max_layout_work_units",
-        Self::MaxPreparedTextRetainedBytes => "max_prepared_text_retained_bytes",
         Self::MaxSvgBytes => "max_svg_bytes",
         Self::MaxSvgElements => "max_svg_elements",
         Self::MaxDocumentDiagrams => "max_document_diagrams",
@@ -61,6 +65,12 @@ impl MermanResourceOverrideId {
         Self::MaxEmbeddedImagePixels => "max_embedded_image_pixels",
         Self::MaxTotalEmbeddedImagePixels => "max_total_embedded_image_pixels",
         Self::MaxPdfFilterImagePixels => "max_pdf_filter_image_pixels",
+        Self::MaxAsciiLayoutWorkUnits => "max_ascii_layout_work_units",
+        Self::MaxAsciiDocumentCells => "max_ascii_document_cells",
+        Self::MaxAsciiOutputBytes => "max_ascii_output_bytes",
+        Self::MaxAsciiGraphemeBytes => "max_ascii_grapheme_bytes",
+        Self::MaxAsciiNestingDepth => "max_ascii_nesting_depth",
+        Self::MaxPreparedTextRetainedBytes => "max_prepared_text_retained_bytes",
         }
     }
 }

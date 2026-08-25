@@ -1,26 +1,86 @@
+mod geometry;
+mod paint;
+
+use super::chars::SequenceChars;
+use super::layout::SequenceLayout;
 use super::model::SequenceControlKind;
-use super::render::SequenceChars;
-use super::text::{SequenceLine, padded_line, trim_right};
-use crate::color::{AsciiColorRole, AsciiRgb};
-use crate::text::display_width;
+use super::text::{
+    SequenceDocumentExtent, SequenceDocumentPlan, SequenceLine, SequenceRetainedRowRun,
+    SequenceRetainedRows, SequenceRowFootprint,
+};
+pub(super) use super::tree::SequenceParticipantSpan;
+use super::{SequenceCheckpointCursor, try_plan_sequence_label};
+use crate::color::AsciiRgb;
+use crate::error::{AsciiError, Result};
+use crate::options::TerminalWidthProfile;
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::safe_text::LabelBreakPolicy;
+use crate::safe_text::NormalizedLabelPlan;
+use geometry::{SequenceControlBoundaryState, SequenceFrameBounds};
+use paint::materialize_control_frames;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SequenceControlFrame {
+pub(super) struct SequenceControlBoundary {
+    state: SequenceControlBoundaryState,
+    retained_width: usize,
+}
+
+impl SequenceControlBoundary {
+    pub(super) fn try_capture(
+        active_counts: &[usize],
+        visible_actors: &[bool],
+        retained_width: usize,
+        resources: &mut ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
+    ) -> Result<Self> {
+        Ok(Self {
+            state: SequenceControlBoundaryState::try_capture(
+                active_counts,
+                visible_actors,
+                resources,
+                checkpoints,
+            )?,
+            retained_width,
+        })
+    }
+
+    pub(super) fn render_lifeline(
+        &self,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<SequenceLine> {
+        self.state
+            .render_lifeline(layout, chars, resources, checkpoints)
+    }
+
+    const fn retained_width(&self) -> usize {
+        self.retained_width
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct SequenceControlFrame<'a> {
     pub(super) kind: SequenceControlKind,
-    pub(super) label: String,
+    pub(super) label: &'a str,
     pub(super) background: Option<AsciiRgb>,
+    pub(super) participant_span: Option<SequenceParticipantSpan>,
+    pub(super) start_boundary: SequenceControlBoundary,
     pub(super) start_row: usize,
-    pub(super) separators: Vec<SequenceControlFrameSeparator>,
+    pub(super) separators: Vec<SequenceControlFrameSeparator<'a>>,
+    pub(super) end_boundary: Option<SequenceControlBoundary>,
     pub(super) end_row: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SequenceControlFrameSeparator {
-    pub(super) label: String,
+pub(super) struct SequenceControlFrameSeparator<'a> {
+    pub(super) label: &'a str,
+    pub(super) boundary: SequenceControlBoundary,
     pub(super) row: usize,
 }
 
-impl SequenceControlFrame {
+impl SequenceControlFrame<'_> {
     pub(super) fn current_section_start_row(&self) -> usize {
         self.separators
             .last()
@@ -29,378 +89,1322 @@ impl SequenceControlFrame {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SequenceControlFrameNode {
-    frame_index: usize,
-    children: Vec<SequenceControlFrameNode>,
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct SequenceControlFrameNode {
+    pub(super) frame_index: usize,
+    pub(super) children: Vec<usize>,
+    pub(super) depth: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum SequenceControlBodyRow {
-    Content(SequenceLine),
-    Separator(usize),
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct SequenceControlFrameForest {
+    pub(super) nodes: Vec<SequenceControlFrameNode>,
+    pub(super) roots: Vec<usize>,
 }
 
-pub(super) fn render_sequence_control_frames(
-    lines: Vec<SequenceLine>,
-    frames: &[SequenceControlFrame],
-    chars: &SequenceChars,
-) -> Vec<SequenceLine> {
-    if frames.is_empty() || lines.is_empty() {
-        return lines;
-    }
-
-    let tree = control_frame_tree(frames, lines.len());
-    if tree.is_empty() {
-        return lines;
-    }
-
-    render_control_range(&lines, frames, &tree, 0, lines.len(), chars)
+#[derive(Debug)]
+pub(super) struct SequenceControlFrameTree<'diagram> {
+    pub(super) forest: SequenceControlFrameForest,
+    pub(super) frames: Vec<SequenceControlFrame<'diagram>>,
 }
 
-fn render_control_range(
-    lines: &[SequenceLine],
-    frames: &[SequenceControlFrame],
-    nodes: &[SequenceControlFrameNode],
-    start_row: usize,
-    end_row: usize,
-    chars: &SequenceChars,
-) -> Vec<SequenceLine> {
-    let mut rendered = Vec::new();
-    let mut row = start_row;
+#[derive(Debug)]
+pub(super) struct PreparedSequenceControlFrames<'diagram> {
+    forest: SequenceControlFrameForest,
+    frames: Vec<SequenceControlFrame<'diagram>>,
+    frame_plans: Vec<SequenceControlFramePlan<'diagram>>,
+    output_admission: SequenceControlOutputAdmission,
+}
 
-    for node in nodes {
-        let frame = &frames[node.frame_index];
-        let Some(node_end) = valid_frame_end_row(frame, lines.len()) else {
-            continue;
+#[derive(Debug)]
+struct SequenceControlFramePlan<'a> {
+    body_rows: usize,
+    bounds: SequenceFrameBounds,
+    row_count: usize,
+    total_width: usize,
+    title: SequenceControlTitlePlan<'a>,
+    separator_titles: Vec<SequenceControlTitlePlan<'a>>,
+}
+
+struct SequenceFrameBodyPlanContext<'a, 'diagram> {
+    forest: &'a SequenceControlFrameForest,
+    frames: &'a [SequenceControlFrame<'diagram>],
+    footprints: &'a [SequenceRowFootprint],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SequenceControlTitlePlan<'a> {
+    keyword: &'static str,
+    label: &'a str,
+    label_plan: Option<NormalizedLabelPlan>,
+    width: usize,
+    capacity: usize,
+}
+
+impl<'a> SequenceControlTitlePlan<'a> {
+    fn try_new(
+        keyword: &'static str,
+        label: &'a str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
+    ) -> Result<Self> {
+        checkpoints.before_charge()?;
+        resources.charge_layout_work(keyword.len().max(1))?;
+        let label_plan = if label.is_empty() {
+            None
+        } else {
+            let plan = try_plan_sequence_label(
+                label,
+                width_profile,
+                false,
+                None,
+                LabelBreakPolicy::VisibleLine,
+                resources,
+                checkpoints,
+            )?
+            .ok_or_else(invalid_control_frame)?;
+            checkpoints.before_charge()?;
+            plan.check_materialization_limits(resources)?;
+            Some(plan)
         };
+        let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
+        let separator_bytes = if label.is_empty() { 2 } else { 3 };
+        let capacity = keyword
+            .len()
+            .checked_add(label_metrics.map_or(0, |metrics| metrics.materialized_bytes))
+            .and_then(|length| length.checked_add(separator_bytes))
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        checkpoints.before_charge()?;
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, capacity)?;
 
-        if row < frame.start_row {
-            rendered.extend(lines[row..frame.start_row].iter().cloned());
+        let mut width = resources.checked_grid_add(keyword.len(), 2)?;
+        if let Some(label_metrics) = label_metrics {
+            width = resources.checked_grid_add(
+                width,
+                resources.checked_grid_add(label_metrics.max_width, 1)?,
+            )?;
         }
-        rendered.extend(render_frame_node(node, frames, lines, chars, 0));
-        row = node_end + 1;
+        Ok(Self {
+            keyword,
+            label,
+            label_plan,
+            width,
+            capacity,
+        })
     }
 
-    if row < end_row {
-        rendered.extend(lines[row..end_row].iter().cloned());
+    const fn width(self) -> usize {
+        self.width
     }
-    rendered
+
+    fn materialization_work_units(self, resources: &ResourceContext) -> Result<usize> {
+        resources.checked_work_add(
+            self.capacity.max(1),
+            self.label_plan
+                .map_or(0, NormalizedLabelPlan::materialization_work_units),
+        )
+    }
+
+    fn materialize_after_admission(
+        self,
+        checkpoints: &SequenceCheckpointCursor<'_>,
+    ) -> Result<String> {
+        checkpoints.checkpoint()?;
+        let materialized = self.materialize_impl(|| checkpoints.checkpoint());
+        checkpoints.checkpoint()?;
+        materialized
+    }
+
+    fn materialize_impl(self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<String> {
+        let label = match self.label_plan {
+            Some(plan) => {
+                let (mut lines, _) = plan
+                    .materialize_after_admission_with_checkpoint(self.label, &mut checkpoint)?
+                    .into_parts();
+                if lines.len() != 1 {
+                    return Err(invalid_control_frame());
+                }
+                Some(lines.pop().ok_or_else(invalid_control_frame)?)
+            }
+            None => None,
+        };
+        let mut title = String::new();
+        title
+            .try_reserve_exact(self.capacity)
+            .map_err(|_| allocation_failed())?;
+        title.push(' ');
+        title.push_str(self.keyword);
+        if let Some(label) = label.as_deref() {
+            title.push(' ');
+            title.push_str(label);
+        }
+        title.push(' ');
+        if title.len() != self.capacity {
+            return Err(invalid_control_frame());
+        }
+        Ok(title)
+    }
 }
 
-fn render_frame_node(
-    node: &SequenceControlFrameNode,
-    frames: &[SequenceControlFrame],
-    lines: &[SequenceLine],
-    chars: &SequenceChars,
-    inset: usize,
-) -> Vec<SequenceLine> {
-    let frame = &frames[node.frame_index];
-    let body_rows = render_frame_body(node, frames, lines, chars, inset);
-    let width = frame_width(frame, &body_rows, inset);
-    let mut rendered = Vec::with_capacity(body_rows.len() + 2);
-    rendered.push(render_top_border(frame, inset, width, chars));
-
-    for row in body_rows {
-        match row {
-            SequenceControlBodyRow::Content(line) => {
-                rendered.push(render_content_row(
-                    line,
-                    inset,
-                    width,
-                    chars,
-                    frame.background,
-                ));
-            }
-            SequenceControlBodyRow::Separator(separator_index) => {
-                rendered.push(render_separator_border(
-                    frame,
-                    &frame.separators[separator_index],
-                    inset,
-                    width,
-                    chars,
-                ));
-            }
-        }
-    }
-
-    rendered.push(render_bottom_border(inset, width, chars, frame.background));
-    rendered
+#[derive(Debug, Default, PartialEq, Eq)]
+struct SequenceControlOutputAdmission {
+    height: usize,
+    max_width: usize,
+    document_cells: usize,
+    work_units: usize,
+    box_input_max_width: usize,
+    box_input_document_cells: usize,
+    box_input_rows: Vec<SequenceRetainedRowRun>,
 }
 
-fn render_frame_body(
-    node: &SequenceControlFrameNode,
-    frames: &[SequenceControlFrame],
-    lines: &[SequenceLine],
-    chars: &SequenceChars,
-    inset: usize,
-) -> Vec<SequenceControlBodyRow> {
-    let frame = &frames[node.frame_index];
-    let end_row = frame
-        .end_row
-        .expect("control frame tree should only contain closed frames");
-    let mut body_rows = Vec::new();
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SequenceControlRowVisitStage {
+    Top,
+    Body,
+    Bottom,
+    Complete,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SequenceControlRowVisit {
+    node_index: usize,
+    active_right: usize,
+    row: usize,
+    child_index: usize,
+    separator_index: usize,
+    stage: SequenceControlRowVisitStage,
+}
+
+enum SequenceControlRowVisitAction {
+    Emit(usize),
+    Push(SequenceControlRowVisit),
+    Pop,
+    Continue,
+}
+
+pub(super) fn prepare_sequence_control_frames<'diagram>(
+    tree: SequenceControlFrameTree<'diagram>,
+    footprints: &[SequenceRowFootprint],
+    layout: &SequenceLayout,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Option<PreparedSequenceControlFrames<'diagram>>> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        prepare_sequence_control_frames_transactional(
+            tree,
+            footprints,
+            layout,
+            resources,
+            checkpoints,
+        )
+    })
+}
+
+fn prepare_sequence_control_frames_transactional<'diagram>(
+    tree: SequenceControlFrameTree<'diagram>,
+    footprints: &[SequenceRowFootprint],
+    layout: &SequenceLayout,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Option<PreparedSequenceControlFrames<'diagram>>> {
+    if tree.frames.is_empty() || footprints.is_empty() {
+        return Ok(None);
+    }
+
+    let mut input_width = 0usize;
+    for footprint in footprints {
+        checkpoints.tick()?;
+        input_width = input_width.max(footprint.retained_width());
+    }
+    resources.grid_extent(input_width, footprints.len())?;
+    checkpoints.before_charge()?;
+    charge_work_product(resources, tree.frames.len(), 2)?;
+    resources.grid_extent(tree.frames.len(), 1)?;
+    if tree.forest.nodes.is_empty() {
+        return Ok(None);
+    }
+    let frame_plans = plan_control_frames(
+        &tree.forest,
+        &tree.frames,
+        footprints,
+        layout,
+        input_width,
+        resources,
+        checkpoints,
+    )?;
+    let output_admission = admit_control_output(
+        footprints,
+        &tree.forest,
+        &tree.frames,
+        &frame_plans,
+        resources,
+        checkpoints,
+    )?;
+    Ok(Some(PreparedSequenceControlFrames {
+        forest: tree.forest,
+        frames: tree.frames,
+        frame_plans,
+        output_admission,
+    }))
+}
+
+impl PreparedSequenceControlFrames<'_> {
+    pub(super) fn output_plan(&self) -> SequenceDocumentPlan<'_> {
+        SequenceDocumentPlan::with_box_input(
+            SequenceDocumentExtent::new(
+                self.output_admission.max_width,
+                self.output_admission.height,
+                self.output_admission.document_cells,
+            ),
+            SequenceDocumentExtent::new(
+                self.output_admission.box_input_max_width,
+                self.output_admission.height,
+                self.output_admission.box_input_document_cells,
+            ),
+            SequenceRetainedRows::Runs(&self.output_admission.box_input_rows),
+        )
+    }
+
+    pub(super) fn materialization_work_units(
+        &self,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<usize> {
+        control_materialization_work_units(&self.frame_plans, resources, checkpoints)
+    }
+
+    pub(super) fn materialize(
+        self,
+        lines: Vec<SequenceLine>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<Vec<SequenceLine>> {
+        materialize_control_frames(
+            lines,
+            &self.forest,
+            &self.frames,
+            &self.frame_plans,
+            self.output_admission,
+            layout,
+            chars,
+            resources,
+            checkpoints,
+        )
+    }
+}
+
+fn control_materialization_work_units(
+    frame_plans: &[SequenceControlFramePlan<'_>],
+    resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<usize> {
+    let mut total = 0usize;
+    for plan in frame_plans {
+        checkpoints.tick()?;
+        total =
+            resources.checked_work_add(total, plan.title.materialization_work_units(resources)?)?;
+        for title in &plan.separator_titles {
+            checkpoints.tick()?;
+            total =
+                resources.checked_work_add(total, title.materialization_work_units(resources)?)?;
+        }
+    }
+    Ok(total)
+}
+
+#[cfg(test)]
+fn line_footprint(line: &SequenceLine) -> Result<SequenceRowFootprint> {
+    let retained_width = line.len();
+    let left = (0..retained_width).find(|index| line.get(*index).is_some_and(|ch| ch != ' '));
+    let right = (0..retained_width)
+        .rev()
+        .find(|index| line.get(*index).is_some_and(|ch| ch != ' '));
+    match left.zip(right) {
+        Some((left, right)) => SequenceRowFootprint::with_content(retained_width, left, right),
+        None => Ok(SequenceRowFootprint::lifeline(retained_width)),
+    }
+}
+
+fn plan_control_frames<'diagram>(
+    forest: &SequenceControlFrameForest,
+    frames: &[SequenceControlFrame<'diagram>],
+    footprints: &[SequenceRowFootprint],
+    layout: &SequenceLayout,
+    input_width: usize,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Vec<SequenceControlFramePlan<'diagram>>> {
+    let body_context = SequenceFrameBodyPlanContext {
+        forest,
+        frames,
+        footprints,
+    };
+    let mut pending = Vec::new();
+    pending
+        .try_reserve_exact(forest.nodes.len())
+        .map_err(|_| allocation_failed())?;
+    pending.resize_with(forest.nodes.len(), || None);
+
+    for node_index in (0..forest.nodes.len()).rev() {
+        checkpoints.tick()?;
+        let node = forest
+            .nodes
+            .get(node_index)
+            .ok_or_else(invalid_control_frame)?;
+        resources.check_nesting_depth(node.depth)?;
+        checkpoints.before_charge()?;
+        resources.charge_layout_work(1)?;
+        let frame = frames
+            .get(node.frame_index)
+            .ok_or_else(invalid_control_frame)?;
+        let (participant_span, initial_bounds) = if layout.participant_centers.is_empty() {
+            (None, SequenceFrameBounds::full_width(input_width.max(1))?)
+        } else {
+            let span = match frame.participant_span {
+                Some(span) => span,
+                None => SequenceParticipantSpan::all(layout.participant_centers.len())?,
+            };
+            (
+                Some(span),
+                SequenceFrameBounds::from_participants(span, layout, resources)?,
+            )
+        };
+        let (body_rows, mut bounds) = planned_frame_body_extent(
+            node_index,
+            &body_context,
+            &pending,
+            participant_span,
+            initial_bounds,
+            resources,
+            checkpoints,
+        )?;
+        let title = frame_title_plan(frame, layout.width_profile, resources, checkpoints)?;
+        let mut separator_titles = Vec::new();
+        separator_titles
+            .try_reserve_exact(frame.separators.len())
+            .map_err(|_| allocation_failed())?;
+        for separator in &frame.separators {
+            checkpoints.tick()?;
+            separator_titles.push(separator_title_plan(
+                frame,
+                separator,
+                layout.width_profile,
+                resources,
+                checkpoints,
+            )?);
+        }
+        let minimum_width = resources.checked_grid_add(title.width(), 2)?.max(3).max(
+            resources.checked_grid_add(
+                separator_titles
+                    .iter()
+                    .map(|title| title.width())
+                    .max()
+                    .unwrap_or(0),
+                2,
+            )?,
+        );
+        bounds.ensure_width(minimum_width, resources)?;
+        let inset_levels = node
+            .depth
+            .checked_sub(1)
+            .ok_or_else(invalid_control_frame)?;
+        bounds.shift_right(resources.checked_grid_mul(inset_levels, 2)?, resources)?;
+        let row_count = resources.checked_grid_add(body_rows, 2)?;
+        let total_width = input_width.max(bounds.right_exclusive(resources)?);
+        resources.grid_extent(total_width, row_count)?;
+        checkpoints.before_charge()?;
+        charge_work_product(resources, total_width, row_count)?;
+        let slot = pending
+            .get_mut(node_index)
+            .ok_or_else(invalid_control_frame)?;
+        *slot = Some(SequenceControlFramePlan {
+            body_rows,
+            bounds,
+            row_count,
+            total_width,
+            title,
+            separator_titles,
+        });
+    }
+
+    let mut plans = Vec::new();
+    plans
+        .try_reserve_exact(pending.len())
+        .map_err(|_| allocation_failed())?;
+    for plan in pending {
+        checkpoints.tick()?;
+        plans.push(plan.ok_or_else(invalid_control_frame)?);
+    }
+    Ok(plans)
+}
+
+fn planned_frame_body_extent(
+    node_index: usize,
+    context: &SequenceFrameBodyPlanContext<'_, '_>,
+    frame_plans: &[Option<SequenceControlFramePlan<'_>>],
+    participant_span: Option<SequenceParticipantSpan>,
+    mut bounds: SequenceFrameBounds,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<(usize, SequenceFrameBounds)> {
+    let node = context
+        .forest
+        .nodes
+        .get(node_index)
+        .ok_or_else(invalid_control_frame)?;
+    let frame = context
+        .frames
+        .get(node.frame_index)
+        .ok_or_else(invalid_control_frame)?;
+    let end_row = frame.end_row.ok_or_else(invalid_control_frame)?;
+    let mut planned_rows = 0;
     let mut row = frame.start_row;
     let mut child_index = 0;
     let mut separator_index = 0;
 
     while row <= end_row {
+        checkpoints.before_charge()?;
+        resources.charge_layout_work(1)?;
         while frame
             .separators
             .get(separator_index)
             .is_some_and(|separator| separator.row == row)
         {
-            body_rows.push(SequenceControlBodyRow::Separator(separator_index));
-            separator_index += 1;
+            checkpoints.tick()?;
+            planned_rows = resources.checked_grid_add(planned_rows, 1)?;
+            separator_index = resources.checked_grid_add(separator_index, 1)?;
         }
 
-        if let Some(child) = node.children.get(child_index) {
-            let child_frame = &frames[child.frame_index];
+        if let Some(child_node_index) = node.children.get(child_index).copied() {
+            let child = context
+                .forest
+                .nodes
+                .get(child_node_index)
+                .ok_or_else(invalid_control_frame)?;
+            let child_frame = context
+                .frames
+                .get(child.frame_index)
+                .ok_or_else(invalid_control_frame)?;
             if child_frame.start_row == row {
-                body_rows.extend(
-                    render_frame_node(child, frames, lines, chars, inset + 2)
-                        .into_iter()
-                        .map(SequenceControlBodyRow::Content),
-                );
-                row = child_frame
-                    .end_row
-                    .expect("control frame tree should only contain closed frames")
-                    + 1;
-                child_index += 1;
+                let child_plan = frame_plans
+                    .get(child_node_index)
+                    .and_then(Option::as_ref)
+                    .ok_or_else(invalid_control_frame)?;
+                planned_rows = resources.checked_grid_add(planned_rows, child_plan.row_count)?;
+                bounds.include_child(child_plan.bounds, resources)?;
+                row = resources
+                    .checked_grid_add(child_frame.end_row.ok_or_else(invalid_control_frame)?, 1)?;
+                child_index = resources.checked_grid_add(child_index, 1)?;
                 continue;
             }
         }
 
-        body_rows.push(SequenceControlBodyRow::Content(lines[row].clone()));
-        row += 1;
+        let footprint = context
+            .footprints
+            .get(row)
+            .copied()
+            .ok_or_else(invalid_control_frame)?;
+        planned_rows = resources.checked_grid_add(planned_rows, 1)?;
+        if participant_span.is_some() {
+            bounds.include_footprint_content(footprint, resources)?;
+        }
+        row = resources.checked_grid_add(row, 1)?;
     }
 
-    body_rows
+    Ok((planned_rows, bounds))
 }
 
-fn control_frame_tree(
-    frames: &[SequenceControlFrame],
-    line_count: usize,
-) -> Vec<SequenceControlFrameNode> {
-    let mut roots = Vec::new();
-    let mut stack: Vec<SequenceControlFrameNode> = Vec::new();
+fn admit_control_output(
+    footprints: &[SequenceRowFootprint],
+    forest: &SequenceControlFrameForest,
+    frames: &[SequenceControlFrame<'_>],
+    frame_plans: &[SequenceControlFramePlan<'_>],
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<SequenceControlOutputAdmission> {
+    let mut admission = SequenceControlOutputAdmission::default();
+    let mut row = 0;
 
-    for (frame_index, frame) in frames.iter().enumerate() {
-        if valid_frame_end_row(frame, line_count).is_none() {
-            continue;
+    for root in &forest.roots {
+        checkpoints.tick()?;
+        let node = forest.nodes.get(*root).ok_or_else(invalid_control_frame)?;
+        let frame = frames
+            .get(node.frame_index)
+            .ok_or_else(invalid_control_frame)?;
+        let end_row =
+            valid_frame_end_row(frame, footprints.len()).ok_or_else(invalid_control_frame)?;
+        if frame.start_row < row {
+            return Err(invalid_control_frame());
         }
-
-        while stack.last().is_some_and(|node| {
-            let active = &frames[node.frame_index];
-            active
-                .end_row
-                .is_some_and(|end_row| end_row < frame.start_row)
-        }) {
-            complete_node(&mut roots, &mut stack);
+        for footprint in footprints
+            .get(row..frame.start_row)
+            .ok_or_else(invalid_control_frame)?
+        {
+            checkpoints.tick()?;
+            admission.add_line(
+                footprint.retained_width(),
+                footprint.retained_width(),
+                resources,
+            )?;
         }
-
-        stack.push(SequenceControlFrameNode {
-            frame_index,
-            children: Vec::new(),
-        });
+        let plan = frame_plans.get(*root).ok_or_else(invalid_control_frame)?;
+        let initial_height = admission.height;
+        visit_control_box_input_widths(
+            *root,
+            forest,
+            frames,
+            frame_plans,
+            footprints,
+            resources,
+            checkpoints,
+            |box_input_width| admission.add_line(plan.total_width, box_input_width, resources),
+        )?;
+        if admission.height.checked_sub(initial_height) != Some(plan.row_count) {
+            return Err(invalid_control_frame());
+        }
+        row = resources.checked_grid_add(end_row, 1)?;
     }
+
+    for footprint in footprints.get(row..).ok_or_else(invalid_control_frame)? {
+        checkpoints.tick()?;
+        admission.add_line(
+            footprint.retained_width(),
+            footprint.retained_width(),
+            resources,
+        )?;
+    }
+    admission.admit(resources, checkpoints)?;
+    Ok(admission)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn visit_control_box_input_widths(
+    root: usize,
+    forest: &SequenceControlFrameForest,
+    frames: &[SequenceControlFrame<'_>],
+    frame_plans: &[SequenceControlFramePlan<'_>],
+    footprints: &[SequenceRowFootprint],
+    resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+    mut visit: impl FnMut(usize) -> Result<()>,
+) -> Result<()> {
+    let root_node = forest.nodes.get(root).ok_or_else(invalid_control_frame)?;
+    let root_frame = frames
+        .get(root_node.frame_index)
+        .ok_or_else(invalid_control_frame)?;
+    let mut stack = Vec::new();
+    stack.try_reserve(1).map_err(|_| allocation_failed())?;
+    stack.push(SequenceControlRowVisit {
+        node_index: root,
+        active_right: 0,
+        row: root_frame.start_row,
+        child_index: 0,
+        separator_index: 0,
+        stage: SequenceControlRowVisitStage::Top,
+    });
 
     while !stack.is_empty() {
-        complete_node(&mut roots, &mut stack);
+        checkpoints.tick()?;
+        match next_control_box_input_action(
+            &mut stack,
+            forest,
+            frames,
+            frame_plans,
+            footprints,
+            resources,
+        )? {
+            SequenceControlRowVisitAction::Emit(width) => visit(width)?,
+            SequenceControlRowVisitAction::Push(child) => {
+                stack.try_reserve(1).map_err(|_| allocation_failed())?;
+                stack.push(child);
+            }
+            SequenceControlRowVisitAction::Pop => {
+                stack.pop();
+            }
+            SequenceControlRowVisitAction::Continue => {}
+        }
     }
-
-    roots
+    Ok(())
 }
 
-fn complete_node(
-    roots: &mut Vec<SequenceControlFrameNode>,
-    stack: &mut Vec<SequenceControlFrameNode>,
-) {
-    let node = stack
-        .pop()
-        .expect("stack should contain a node to complete");
-    if let Some(parent) = stack.last_mut() {
-        parent.children.push(node);
-    } else {
-        roots.push(node);
+fn next_control_box_input_action(
+    stack: &mut [SequenceControlRowVisit],
+    forest: &SequenceControlFrameForest,
+    frames: &[SequenceControlFrame<'_>],
+    frame_plans: &[SequenceControlFramePlan<'_>],
+    footprints: &[SequenceRowFootprint],
+    resources: &ResourceContext,
+) -> Result<SequenceControlRowVisitAction> {
+    let state = stack.last_mut().ok_or_else(invalid_control_frame)?;
+    let node = forest
+        .nodes
+        .get(state.node_index)
+        .ok_or_else(invalid_control_frame)?;
+    let frame = frames
+        .get(node.frame_index)
+        .ok_or_else(invalid_control_frame)?;
+    let plan = frame_plans
+        .get(state.node_index)
+        .ok_or_else(invalid_control_frame)?;
+
+    match state.stage {
+        SequenceControlRowVisitStage::Top => {
+            state.active_right = state
+                .active_right
+                .max(plan.bounds.right_exclusive(resources)?);
+            state.stage = SequenceControlRowVisitStage::Body;
+            Ok(SequenceControlRowVisitAction::Emit(
+                state
+                    .active_right
+                    .max(frame.start_boundary.retained_width()),
+            ))
+        }
+        SequenceControlRowVisitStage::Body => {
+            let end_row = frame.end_row.ok_or_else(invalid_control_frame)?;
+            if state.row > end_row {
+                if state.child_index != node.children.len()
+                    || state.separator_index != frame.separators.len()
+                {
+                    return Err(invalid_control_frame());
+                }
+                state.stage = SequenceControlRowVisitStage::Bottom;
+                return Ok(SequenceControlRowVisitAction::Continue);
+            }
+
+            if let Some(separator) = frame.separators.get(state.separator_index) {
+                if separator.row < state.row {
+                    return Err(invalid_control_frame());
+                }
+                if separator.row == state.row {
+                    state.separator_index = resources.checked_grid_add(state.separator_index, 1)?;
+                    return Ok(SequenceControlRowVisitAction::Emit(
+                        state.active_right.max(separator.boundary.retained_width()),
+                    ));
+                }
+            }
+
+            if let Some(child_node_index) = node.children.get(state.child_index).copied() {
+                let child_node = forest
+                    .nodes
+                    .get(child_node_index)
+                    .ok_or_else(invalid_control_frame)?;
+                let child_frame = frames
+                    .get(child_node.frame_index)
+                    .ok_or_else(invalid_control_frame)?;
+                if child_frame.start_row < state.row {
+                    return Err(invalid_control_frame());
+                }
+                if child_frame.start_row == state.row {
+                    let child_end = valid_frame_end_row(child_frame, footprints.len())
+                        .ok_or_else(invalid_control_frame)?;
+                    state.child_index = resources.checked_grid_add(state.child_index, 1)?;
+                    state.row = resources.checked_grid_add(child_end, 1)?;
+                    return Ok(SequenceControlRowVisitAction::Push(
+                        SequenceControlRowVisit {
+                            node_index: child_node_index,
+                            active_right: state.active_right,
+                            row: child_frame.start_row,
+                            child_index: 0,
+                            separator_index: 0,
+                            stage: SequenceControlRowVisitStage::Top,
+                        },
+                    ));
+                }
+            }
+
+            let footprint = footprints
+                .get(state.row)
+                .copied()
+                .ok_or_else(invalid_control_frame)?;
+            state.row = resources.checked_grid_add(state.row, 1)?;
+            Ok(SequenceControlRowVisitAction::Emit(
+                state.active_right.max(footprint.retained_width()),
+            ))
+        }
+        SequenceControlRowVisitStage::Bottom => {
+            let boundary_width = frame
+                .end_boundary
+                .as_ref()
+                .ok_or_else(invalid_control_frame)?
+                .retained_width();
+            state.stage = SequenceControlRowVisitStage::Complete;
+            Ok(SequenceControlRowVisitAction::Emit(
+                state.active_right.max(boundary_width),
+            ))
+        }
+        SequenceControlRowVisitStage::Complete => Ok(SequenceControlRowVisitAction::Pop),
     }
 }
 
-fn valid_frame_end_row(frame: &SequenceControlFrame, line_count: usize) -> Option<usize> {
+impl SequenceControlOutputAdmission {
+    fn add_line(
+        &mut self,
+        width: usize,
+        box_input_width: usize,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        if let Some(last) = self.box_input_rows.last_mut()
+            && last.width() == box_input_width
+        {
+            *last = SequenceRetainedRowRun::new(
+                box_input_width,
+                resources.checked_grid_add(last.count(), 1)?,
+            );
+        } else {
+            self.box_input_rows
+                .try_reserve(1)
+                .map_err(|_| allocation_failed())?;
+            self.box_input_rows
+                .push(SequenceRetainedRowRun::new(box_input_width, 1));
+        }
+        self.box_input_max_width = self.box_input_max_width.max(box_input_width);
+        self.box_input_document_cells = self
+            .box_input_document_cells
+            .checked_add(box_input_width)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        self.add_metrics(width, 1, resources)
+    }
+
+    fn add_metrics(
+        &mut self,
+        width: usize,
+        height: usize,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.height = resources.checked_grid_add(self.height, height)?;
+        self.max_width = self.max_width.max(width);
+        let cells = width
+            .checked_mul(height)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        self.document_cells = self
+            .document_cells
+            .checked_add(cells)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        let work = resources.checked_work_mul(width.max(1), height)?;
+        self.work_units = resources.checked_work_add(self.work_units, work)?;
+        Ok(())
+    }
+
+    fn admit(
+        &self,
+        resources: &mut ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        resources.grid_extent(self.max_width, self.height)?;
+        checkpoints.before_charge()?;
+        resources.charge_layout_work(self.work_units)
+    }
+
+    fn validate(
+        self,
+        lines: &[SequenceLine],
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        let mut actual = Self::default();
+        let mut run_index = 0usize;
+        let mut run_remaining = self.box_input_rows.first().map_or(0, |run| run.count());
+        for line in lines {
+            checkpoints.tick()?;
+            let box_input_width = line.trimmed_len(false);
+            let expected = self
+                .box_input_rows
+                .get(run_index)
+                .ok_or_else(invalid_control_frame)?;
+            if box_input_width != expected.width() || run_remaining == 0 {
+                return Err(invalid_control_frame());
+            }
+            actual.add_metrics(line.len(), 1, resources)?;
+            actual.box_input_max_width = actual.box_input_max_width.max(box_input_width);
+            actual.box_input_document_cells = actual
+                .box_input_document_cells
+                .checked_add(box_input_width)
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+            run_remaining -= 1;
+            if run_remaining == 0 {
+                run_index = resources.checked_grid_add(run_index, 1)?;
+                run_remaining = self
+                    .box_input_rows
+                    .get(run_index)
+                    .map_or(0, |run| run.count());
+            }
+        }
+        if actual.height != self.height
+            || actual.max_width != self.max_width
+            || actual.document_cells != self.document_cells
+            || actual.work_units != self.work_units
+            || actual.box_input_max_width != self.box_input_max_width
+            || actual.box_input_document_cells != self.box_input_document_cells
+            || run_index != self.box_input_rows.len()
+            || run_remaining != 0
+        {
+            return Err(invalid_control_frame());
+        }
+        Ok(())
+    }
+}
+
+fn valid_frame_end_row(frame: &SequenceControlFrame<'_>, line_count: usize) -> Option<usize> {
     let end_row = frame.end_row?;
     (frame.start_row < line_count && end_row < line_count && frame.start_row <= end_row)
         .then_some(end_row)
 }
 
-fn frame_width(
-    frame: &SequenceControlFrame,
-    rows: &[SequenceControlBodyRow],
-    inset: usize,
-) -> usize {
-    let max_row_width = rows
-        .iter()
-        .filter_map(|row| match row {
-            SequenceControlBodyRow::Content(line) => Some(line.len().saturating_sub(inset)),
-            SequenceControlBodyRow::Separator(_) => None,
-        })
-        .max()
-        .unwrap_or(0);
-    let title_width = display_width(&frame_title(frame));
-    let separator_width = frame
-        .separators
-        .iter()
-        .map(|separator| display_width(&separator_title(frame, separator)))
-        .max()
-        .unwrap_or(0);
-
-    max_row_width
-        .saturating_add(3)
-        .max(title_width + 2)
-        .max(3)
-        .max(separator_width + 2)
-}
-
-fn render_top_border(
-    frame: &SequenceControlFrame,
-    inset: usize,
-    width: usize,
-    chars: &SequenceChars,
-) -> SequenceLine {
-    render_border_row(
-        chars.top_left,
-        chars.top_right,
-        chars.horizontal,
-        inset,
-        width,
-        Some(&frame_title(frame)),
-        frame.background,
+fn frame_title_plan<'a>(
+    frame: &SequenceControlFrame<'a>,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+    checkpoints: &SequenceCheckpointCursor<'_>,
+) -> Result<SequenceControlTitlePlan<'a>> {
+    SequenceControlTitlePlan::try_new(
+        frame.kind.keyword(),
+        frame.label,
+        width_profile,
+        resources,
+        checkpoints,
     )
 }
 
-fn render_bottom_border(
-    inset: usize,
-    width: usize,
-    chars: &SequenceChars,
-    background: Option<AsciiRgb>,
-) -> SequenceLine {
-    render_border_row(
-        chars.bottom_left,
-        chars.bottom_right,
-        chars.horizontal,
-        inset,
-        width,
-        None,
-        background,
-    )
-}
-
-fn render_separator_border(
-    frame: &SequenceControlFrame,
-    separator: &SequenceControlFrameSeparator,
-    inset: usize,
-    width: usize,
-    chars: &SequenceChars,
-) -> SequenceLine {
-    render_border_row(
-        chars.tee_right,
-        chars.tee_left,
-        chars.horizontal,
-        inset,
-        width,
-        Some(&separator_title(frame, separator)),
-        frame.background,
-    )
-}
-
-fn render_border_row(
-    left: char,
-    right: char,
-    horizontal: char,
-    inset: usize,
-    width: usize,
-    label: Option<&str>,
-    background: Option<AsciiRgb>,
-) -> SequenceLine {
-    let total_width = inset + width;
-    let mut row = SequenceLine::blank(total_width);
-    paint_row_background(&mut row, inset..total_width, background);
-    for x in inset..total_width {
-        row.set_role(x, horizontal, AsciiColorRole::SequenceFrame);
-    }
-    row.set_role(inset, left, AsciiColorRole::SequenceFrame);
-    row.set_role(total_width - 1, right, AsciiColorRole::SequenceFrame);
-    if let Some(label) = label {
-        row.write_text_role(inset + 1, label, AsciiColorRole::Text);
-    }
-    trim_right(row)
-}
-
-fn render_content_row(
-    row: SequenceLine,
-    inset: usize,
-    width: usize,
-    chars: &SequenceChars,
-    background: Option<AsciiRgb>,
-) -> SequenceLine {
-    let total_width = inset + width;
-    let mut row = padded_line(row, total_width);
-    paint_row_background_if_unset(&mut row, inset..total_width, background);
-    row.set_role(inset, chars.vertical, AsciiColorRole::SequenceFrame);
-    row.set_role(
-        total_width - 1,
-        chars.vertical,
-        AsciiColorRole::SequenceFrame,
-    );
-    trim_right(row)
-}
-
-fn paint_row_background(
-    row: &mut SequenceLine,
-    range: impl Iterator<Item = usize>,
-    background: Option<AsciiRgb>,
-) {
-    let Some(background) = background else {
-        return;
-    };
-    for x in range {
-        row.set_background_color(x, background);
-    }
-}
-
-fn paint_row_background_if_unset(
-    row: &mut SequenceLine,
-    range: impl Iterator<Item = usize>,
-    background: Option<AsciiRgb>,
-) {
-    let Some(background) = background else {
-        return;
-    };
-    for x in range {
-        row.set_background_color_if_unset(x, background);
-    }
-}
-
-fn frame_title(frame: &SequenceControlFrame) -> String {
-    control_title(frame.kind.keyword(), &frame.label)
-}
-
-fn separator_title(
-    frame: &SequenceControlFrame,
-    separator: &SequenceControlFrameSeparator,
-) -> String {
-    control_title(
+fn separator_title_plan<'a>(
+    frame: &SequenceControlFrame<'_>,
+    separator: &SequenceControlFrameSeparator<'a>,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+    checkpoints: &SequenceCheckpointCursor<'_>,
+) -> Result<SequenceControlTitlePlan<'a>> {
+    SequenceControlTitlePlan::try_new(
         frame
             .kind
             .separator_keyword()
             .unwrap_or_else(|| frame.kind.keyword()),
-        &separator.label,
+        separator.label,
+        width_profile,
+        resources,
+        checkpoints,
     )
 }
 
-fn control_title(keyword: &str, label: &str) -> String {
-    if label.is_empty() {
-        format!(" {keyword} ")
-    } else {
-        format!(" {keyword} {label} ")
+fn charge_work_product(resources: &mut ResourceContext, left: usize, right: usize) -> Result<()> {
+    resources.charge_layout_work_product(left, right)
+}
+
+fn work_overflow(resources: &ResourceContext) -> AsciiError {
+    resources.work_overflow()
+}
+
+fn invalid_control_frame() -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "sequence",
+        feature: "control block ordering",
+    }
+}
+
+fn allocation_failed() -> AsciiError {
+    AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::operation::AsciiExecution;
+    use crate::resource::AsciiResourcePolicy;
+    use crate::sequence::text::blank_line;
+    #[cfg(not(target_arch = "wasm32"))]
+    use merman_core::resources::ResourceProfile;
+    use merman_core::{OperationControl, OperationPhase};
+
+    #[test]
+    fn control_output_admits_aggregate_extent_before_frame_materialization() {
+        let rendered = render_disjoint_frames_with_limit(AsciiResourceLimitId::MaxGridCells, 48)
+            .expect("the exact aggregate grid extent should be admitted");
+        assert_eq!(rendered.len(), 6);
+
+        let error = render_disjoint_frames_with_limit(AsciiResourceLimitId::MaxGridCells, 47)
+            .expect_err("the aggregate grid extent should exceed the limit");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == 48
+                    && details.max == 47
+        ));
+    }
+
+    #[test]
+    fn control_title_materialization_follows_aggregate_grid_admission() {
+        let exact = admit_and_materialize_control_title(84)
+            .expect("the exact 14x6 aggregate control extent should be admitted");
+        assert_eq!(exact, " loop batch ");
+
+        let error = admit_and_materialize_control_title(83)
+            .expect_err("the aggregate control extent should exceed the limit by one cell");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == 84
+                    && details.max == 83
+        ));
+    }
+
+    fn admit_and_materialize_control_title(maximum: usize) -> Result<String> {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, maximum)
+            .expect("the aggregate control grid limit override should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let lines = [
+            blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
+            blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
+        ];
+        let frames = vec![
+            test_frame(SequenceControlKind::Loop, "batch", 0, 0),
+            test_frame(SequenceControlKind::Loop, "batch", 1, 1),
+        ];
+        let tree = disjoint_tree(frames);
+        let footprints = lines
+            .iter()
+            .map(line_footprint)
+            .collect::<Result<Vec<_>>>()?;
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::for_test(&policy),
+            OperationPhase::Layout,
+        );
+        let transaction = resources.clone();
+        let result = transaction.transaction(|_| {
+            let frame_plans = plan_control_frames(
+                &tree.forest,
+                &tree.frames,
+                &footprints,
+                &test_layout(),
+                4,
+                &mut resources,
+                &mut checkpoints,
+            )?;
+            let admission = admit_control_output(
+                &footprints,
+                &tree.forest,
+                &tree.frames,
+                &frame_plans,
+                &mut resources,
+                &mut checkpoints,
+            )?;
+            assert_eq!(admission.max_width, 14);
+            assert_eq!(admission.height, 6);
+            let title = frame_plans[0].title;
+            checkpoints.before_charge()?;
+            resources.charge_layout_work(title.materialization_work_units(&resources)?)?;
+            title.materialize_after_admission(&checkpoints)
+        });
+        if result.is_err() {
+            assert_eq!(resources.layout_work_used(), 0);
+            assert_eq!(resources.document_cells_used(), 0);
+        }
+        result
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn deeply_nested_frames_render_on_a_small_stack() {
+        const DEPTH: usize = 96;
+
+        let rendered_len = std::thread::Builder::new()
+            .name("sequence-control-small-stack".to_string())
+            // Keep the stack bounded while allowing debug builds on Linux to
+            // retain their larger test frames.
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let policy =
+                    AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+                let mut resources = ResourceContext::new(policy);
+                let line = blank_line(1, TerminalWidthProfile::Unicode, &resources)
+                    .expect("the seed row should fit");
+                let frames = vec![test_frame(SequenceControlKind::Loop, "", 0, 0); DEPTH];
+                let tree = nested_tree(frames);
+
+                render_control_tree(
+                    vec![line],
+                    tree,
+                    &test_layout(),
+                    &ascii_chars(),
+                    &mut resources,
+                )
+                .expect("iterative rendering should not depend on the thread stack")
+                .len()
+            })
+            .expect("the small-stack thread should start")
+            .join()
+            .expect("the small-stack thread should finish");
+
+        assert_eq!(rendered_len, DEPTH * 2 + 1);
+    }
+
+    #[test]
+    fn control_frame_planning_inner_loop_observes_cancellation() {
+        const ROWS: usize = 128;
+        let policy = AsciiResourcePolicy::default();
+        let mut resources = ResourceContext::new(policy);
+        let lines = (0..ROWS)
+            .map(|_| blank_line(4, TerminalWidthProfile::Unicode, &resources))
+            .collect::<Result<Vec<_>>>()
+            .expect("control test rows should fit");
+        let footprints = lines
+            .iter()
+            .map(line_footprint)
+            .collect::<Result<Vec<_>>>()
+            .expect("control test footprints should be valid");
+        let tree = disjoint_tree(vec![test_frame(SequenceControlKind::Loop, "", 0, ROWS - 1)]);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(5);
+
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::new(&control, &policy),
+            OperationPhase::Layout,
+        );
+        let error = prepare_sequence_control_frames(
+            tree,
+            &footprints,
+            &test_layout(),
+            &mut resources,
+            &mut checkpoints,
+        )
+        .expect_err("control-frame planning should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn control_frame_materialization_inner_loop_observes_cancellation() {
+        const ROWS: usize = 128;
+        let policy = AsciiResourcePolicy::default();
+        let mut resources = ResourceContext::new(policy);
+        let lines = (0..ROWS)
+            .map(|_| blank_line(4, TerminalWidthProfile::Unicode, &resources))
+            .collect::<Result<Vec<_>>>()
+            .expect("control test rows should fit");
+        let footprints = lines
+            .iter()
+            .map(line_footprint)
+            .collect::<Result<Vec<_>>>()
+            .expect("control test footprints should be valid");
+        let tree = disjoint_tree(vec![test_frame(SequenceControlKind::Loop, "", 0, ROWS - 1)]);
+        let mut planning_checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::for_test(&policy),
+            OperationPhase::Layout,
+        );
+        let prepared = prepare_sequence_control_frames(
+            tree,
+            &footprints,
+            &test_layout(),
+            &mut resources,
+            &mut planning_checkpoints,
+        )
+        .expect("control-frame planning should succeed")
+        .expect("the test frame should require materialization");
+        let materialization_work = prepared
+            .materialization_work_units(&resources, &mut planning_checkpoints)
+            .expect("control-frame materialization work should be representable");
+        planning_checkpoints
+            .before_charge()
+            .expect("standalone planning checkpoint should succeed");
+        resources
+            .charge_layout_work(materialization_work)
+            .expect("control-frame materialization work should fit");
+        let before_materialization = resources.layout_work_used();
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::new(&control, &policy),
+            OperationPhase::Layout,
+        );
+
+        let transaction = resources.clone();
+        let error = transaction
+            .transaction(|_| {
+                prepared.materialize(
+                    lines,
+                    &test_layout(),
+                    &ascii_chars(),
+                    &mut resources,
+                    &mut checkpoints,
+                )
+            })
+            .expect_err("control-frame materialization should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), before_materialization);
+    }
+
+    fn render_disjoint_frames_with_limit(
+        limit: AsciiResourceLimitId,
+        maximum: usize,
+    ) -> Result<Vec<SequenceLine>> {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(limit, maximum)
+            .expect("the aggregate output limit override should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let lines = vec![
+            blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
+            blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
+        ];
+        let frames = vec![
+            test_frame(SequenceControlKind::Loop, "", 0, 0),
+            test_frame(SequenceControlKind::Loop, "", 1, 1),
+        ];
+
+        render_control_tree(
+            lines,
+            disjoint_tree(frames),
+            &test_layout(),
+            &ascii_chars(),
+            &mut resources,
+        )
+    }
+
+    fn render_control_tree(
+        lines: Vec<SequenceLine>,
+        tree: SequenceControlFrameTree<'_>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<SequenceLine>> {
+        let footprints = lines
+            .iter()
+            .map(line_footprint)
+            .collect::<Result<Vec<_>>>()?;
+        let policy = resources.policy();
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::for_test(&policy),
+            OperationPhase::Layout,
+        );
+        let Some(prepared) = prepare_sequence_control_frames(
+            tree,
+            &footprints,
+            layout,
+            resources,
+            &mut checkpoints,
+        )?
+        else {
+            return Ok(lines);
+        };
+        let materialization_work =
+            prepared.materialization_work_units(resources, &mut checkpoints)?;
+        checkpoints.before_charge()?;
+        resources.charge_layout_work(materialization_work)?;
+        prepared.materialize(lines, layout, chars, resources, &mut checkpoints)
+    }
+
+    fn disjoint_tree(
+        frames: Vec<SequenceControlFrame<'static>>,
+    ) -> SequenceControlFrameTree<'static> {
+        let nodes = (0..frames.len())
+            .map(|frame_index| SequenceControlFrameNode {
+                frame_index,
+                children: Vec::new(),
+                depth: 1,
+            })
+            .collect();
+        SequenceControlFrameTree {
+            forest: SequenceControlFrameForest {
+                nodes,
+                roots: (0..frames.len()).collect(),
+            },
+            frames,
+        }
+    }
+
+    fn nested_tree(
+        frames: Vec<SequenceControlFrame<'static>>,
+    ) -> SequenceControlFrameTree<'static> {
+        let nodes = (0..frames.len())
+            .map(|frame_index| SequenceControlFrameNode {
+                frame_index,
+                children: (frame_index + 1 < frames.len())
+                    .then_some(frame_index + 1)
+                    .into_iter()
+                    .collect(),
+                depth: frame_index + 1,
+            })
+            .collect();
+        SequenceControlFrameTree {
+            forest: SequenceControlFrameForest {
+                nodes,
+                roots: (!frames.is_empty()).then_some(0).into_iter().collect(),
+            },
+            frames,
+        }
+    }
+
+    fn test_frame(
+        kind: SequenceControlKind,
+        label: &'static str,
+        start_row: usize,
+        end_row: usize,
+    ) -> SequenceControlFrame<'static> {
+        SequenceControlFrame {
+            kind,
+            label,
+            background: None,
+            participant_span: None,
+            start_boundary: SequenceControlBoundary {
+                state: SequenceControlBoundaryState::default(),
+                retained_width: 0,
+            },
+            start_row,
+            separators: Vec::new(),
+            end_boundary: Some(SequenceControlBoundary {
+                state: SequenceControlBoundaryState::default(),
+                retained_width: 0,
+            }),
+            end_row: Some(end_row),
+        }
+    }
+
+    fn test_layout() -> SequenceLayout {
+        SequenceLayout {
+            participant_widths: Vec::new(),
+            participant_centers: Vec::new(),
+            total_width: 3,
+            message_spacing: 1,
+            self_message_width: 4,
+            width_profile: TerminalWidthProfile::Unicode,
+        }
+    }
+
+    fn ascii_chars() -> SequenceChars {
+        SequenceChars {
+            top_left: '+',
+            top_right: '+',
+            bottom_left: '+',
+            bottom_right: '+',
+            horizontal: '-',
+            vertical: '|',
+            active_vertical: '#',
+            destroyed_mark: 'x',
+            tee_down: '+',
+            tee_up: '+',
+            tee_right: '+',
+            tee_left: '+',
+            filled_arrow_right: '>',
+            filled_arrow_left: '<',
+            solid_line: '-',
+            dotted_line: '.',
+            self_top_right: '+',
+            self_bottom: '+',
+            unicode_markers: false,
+        }
     }
 }

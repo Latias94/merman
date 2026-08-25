@@ -1,5 +1,7 @@
+import { sha256 } from "@noble/hashes/sha2.js";
 import {
   RealmProtocolError,
+  realmEngineArtifactSourceBytes,
   type RealmEngineArtifact,
 } from "./channel-protocol.ts";
 
@@ -16,19 +18,14 @@ export async function verifyAndCreateRealmEngineModuleLoader<T extends object>(
   artifact: RealmEngineArtifact,
   validate: (module: Record<string, unknown>) => T
 ): Promise<() => Promise<T>> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(artifact.source)
-  );
-  const actual = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
+  const sourceBytes = realmEngineArtifactSourceBytes(artifact);
+  const actual = await sha256Hex(sourceBytes);
   if (actual !== artifact.sha256) {
     throw new RealmProtocolError("Realm engine artifact digest is invalid.");
   }
   let modulePromise: Promise<T> | null = null;
   return () => {
-    modulePromise ??= importEngineModule(artifact, validate).catch((error) => {
+    modulePromise ??= importEngineModule(sourceBytes, validate).catch((error) => {
       modulePromise = null;
       throw error;
     });
@@ -36,13 +33,30 @@ export async function verifyAndCreateRealmEngineModuleLoader<T extends object>(
   };
 }
 
+/**
+ * Computes SHA-256 with Web Crypto when available and a pure-JavaScript
+ * fallback for HTTP development origins where SubtleCrypto is unavailable.
+ */
+export async function sha256Hex(
+  bytes: Uint8Array,
+  subtle: Pick<SubtleCrypto, "digest"> | null =
+    globalThis.crypto?.subtle ?? null,
+): Promise<string> {
+  const digest = subtle
+    ? new Uint8Array(await subtle.digest("SHA-256", bytes))
+    : sha256(bytes);
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
 async function importEngineModule<T extends object>(
-  artifact: RealmEngineArtifact,
+  sourceBytes: Uint8Array,
   validate: (module: Record<string, unknown>) => T
 ): Promise<T> {
   installEphemeralStorageFacades();
   const url = URL.createObjectURL(
-    new Blob([artifact.source], { type: "text/javascript" })
+    new Blob([sourceBytes], { type: "text/javascript" })
   );
   try {
     const module = (await import(/* @vite-ignore */ url)) as Record<

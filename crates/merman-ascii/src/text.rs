@@ -1,166 +1,602 @@
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorRole, AsciiRgb};
-use crate::terminal::{
-    CanvasColor, CanvasStyle, TerminalCell, char_display_width,
-    display_width as terminal_display_width, push_primary_cell, write_primary_cell_from_cell,
-    write_primary_cell_style,
+use crate::error::{AsciiError, Result};
+use crate::options::TerminalWidthProfile;
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+#[cfg(test)]
+use crate::resource::{AsciiResourcePolicy, CheckedOutput};
+#[cfg(test)]
+use crate::safe_text::SafeText;
+use crate::safe_text::{
+    DeferredTextLine, SafeLine, terminal_char_display_width, terminal_line_display_width,
+    visit_quoted_terminal_text, visit_safe_line_graphemes,
 };
+use crate::terminal::{
+    CanvasColor, CanvasStyle, GlyphArena, SurfaceCellCheckpoints, TerminalCell,
+    is_retained_glyph_budget_error, owner_index, primary_width_with_checkpoints, style_at,
+    try_append_cells_from_surface_with_checkpoint,
+    try_push_primary_deferred_style_with_resources_and_checkpoints,
+    try_push_primary_grapheme_style_with_resources_and_checkpoint,
+    try_write_primary_cell_from_surface_with_resources_and_checkpoint,
+    try_write_primary_grapheme_style_with_resources_and_checkpoint,
+};
+#[cfg(test)]
+use crate::terminal::{primary_width, try_mirror_surface};
 
 pub(crate) type StyledCell = TerminalCell;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+const STYLED_LINE_PAINT_CHUNK: usize = 64;
+
+#[derive(Debug, Clone)]
 pub(crate) struct StyledLine {
     cells: Vec<StyledCell>,
+    arena: GlyphArena,
+    width_profile: TerminalWidthProfile,
+    resources: ResourceContext,
 }
 
+impl PartialEq for StyledLine {
+    fn eq(&self, other: &Self) -> bool {
+        self.cells == other.cells
+            && self.arena == other.arena
+            && self.width_profile == other.width_profile
+            && self.resources.policy() == other.resources.policy()
+    }
+}
+
+impl Eq for StyledLine {}
+
 impl StyledLine {
-    pub(crate) fn new() -> Self {
-        Self { cells: Vec::new() }
+    /// Test-only convenience. Production renderers must pass their selected resource policy.
+    #[cfg(test)]
+    pub(crate) fn with_width_profile(width_profile: TerminalWidthProfile) -> Self {
+        Self::with_resource_policy(width_profile, compatibility_policy())
     }
 
-    pub(crate) fn from_cells(cells: Vec<StyledCell>) -> Self {
-        Self { cells }
+    #[cfg(test)]
+    pub(crate) fn with_resource_policy(
+        width_profile: TerminalWidthProfile,
+        resources: AsciiResourcePolicy,
+    ) -> Self {
+        let resources = ResourceContext::new(resources);
+        Self::with_resources(width_profile, &resources)
     }
 
-    pub(crate) fn blank(width: usize) -> Self {
+    pub(crate) fn with_resources(
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Self {
         Self {
-            cells: vec![StyledCell::blank(); width],
+            cells: Vec::new(),
+            arena: GlyphArena::default(),
+            width_profile,
+            resources: resources.clone(),
         }
     }
 
-    pub(crate) fn role_text(text: &str, role: AsciiColorRole) -> Self {
-        let mut line = Self::new();
-        line.push_role_text(text, role);
-        line
+    pub(crate) fn try_from_surface_cells_with_resources(
+        cells: &[StyledCell],
+        arena: &GlyphArena,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let line_resources = resources.clone();
+        line_resources.charge_document_cells(cells.len())?;
+        let (cells, arena) =
+            GlyphArena::try_compact_surface_with_resources(arena, cells, resources)?;
+        Ok(Self {
+            cells,
+            arena,
+            width_profile,
+            resources: line_resources,
+        })
     }
 
-    pub(crate) fn plain_text(text: &str) -> Self {
-        let mut line = Self::new();
-        for ch in text.chars() {
-            line.push_plain_char(ch);
-        }
-        line
+    /// Test-only convenience. Production renderers must pass their selected resource policy.
+    #[cfg(test)]
+    pub(crate) fn blank_with_profile(width: usize, width_profile: TerminalWidthProfile) -> Self {
+        let resources = compatibility_policy();
+        Self::try_blank_with_policy(width, width_profile, resources)
+            .expect("test terminal line should fit the unbounded resource policy")
     }
 
-    pub(crate) fn text_with_roles(text: &str, roles: Vec<Option<AsciiColorRole>>) -> Self {
-        assert_eq!(text.chars().count(), roles.len());
-        let mut line = Self::new();
-        for (ch, role) in text.chars().zip(roles) {
-            match role {
-                Some(role) => line.push_role_char(ch, role),
-                None => line.push_plain_char(ch),
+    #[cfg(test)]
+    pub(crate) fn try_blank_with_policy(
+        width: usize,
+        width_profile: TerminalWidthProfile,
+        resources: AsciiResourcePolicy,
+    ) -> Result<Self> {
+        let resources = ResourceContext::new(resources);
+        Self::try_blank_with_resources(width, width_profile, &resources)
+    }
+
+    pub(crate) fn try_blank_with_resources(
+        width: usize,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        Self::try_blank_with_resources_and_checkpoint(width, width_profile, resources, || Ok(()))
+    }
+
+    pub(crate) fn try_blank_with_resources_and_checkpoint(
+        width: usize,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<Self> {
+        resources.transaction(|resources| {
+            resources.check_usage(0, width)?;
+            resources.check(AsciiResourceLimitId::MaxGridCells, width)?;
+            let mut cells = Vec::new();
+            cells
+                .try_reserve_exact(width)
+                .map_err(|_| document_allocation_failed())?;
+            let mut remaining = width;
+            while remaining > 0 {
+                checkpoint()?;
+                let chunk = remaining.min(STYLED_LINE_PAINT_CHUNK);
+                cells.extend(std::iter::repeat_n(StyledCell::blank(), chunk));
+                remaining -= chunk;
             }
-        }
-        line
+            resources.charge_usage(0, width)?;
+            Ok(Self {
+                cells,
+                arena: GlyphArena::default(),
+                width_profile,
+                resources: resources.clone(),
+            })
+        })
+    }
+
+    /// Test-only convenience. Production renderers must pass their selected resource policy.
+    #[cfg(test)]
+    pub(crate) fn role_text_with_profile(
+        text: &str,
+        role: AsciiColorRole,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
+        let resources = compatibility_policy();
+        Self::try_role_text_with_policy(text, role, width_profile, resources)
+            .expect("test terminal text should fit the unbounded resource policy")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_role_text_with_policy(
+        text: &str,
+        role: AsciiColorRole,
+        width_profile: TerminalWidthProfile,
+        resources: AsciiResourcePolicy,
+    ) -> Result<Self> {
+        let resources = ResourceContext::new(resources);
+        let mut line = Self::with_resources(width_profile, &resources);
+        line.try_push_role_text(text, role)?;
+        Ok(line)
+    }
+
+    /// Test-only convenience. Production renderers must pass their selected resource policy.
+    #[cfg(test)]
+    pub(crate) fn plain_text_with_profile(text: &str, width_profile: TerminalWidthProfile) -> Self {
+        let resources = compatibility_policy();
+        Self::try_plain_text_with_policy(text, width_profile, resources)
+            .expect("test terminal text should fit the unbounded resource policy")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_plain_text_with_policy(
+        text: &str,
+        width_profile: TerminalWidthProfile,
+        resources: AsciiResourcePolicy,
+    ) -> Result<Self> {
+        let resources = ResourceContext::new(resources);
+        let mut line = Self::with_resources(width_profile, &resources);
+        line.try_push_plain_text(text)?;
+        Ok(line)
     }
 
     pub(crate) fn len(&self) -> usize {
         self.cells.len()
     }
 
+    pub(crate) fn surface_cells(&self) -> &[StyledCell] {
+        &self.cells
+    }
+
+    pub(crate) fn surface_arena(&self) -> &GlyphArena {
+        &self.arena
+    }
+
+    pub(crate) fn trimmed_len(&self, preserve_color: bool) -> usize {
+        self.cells
+            .iter()
+            .rposition(|cell| !cell.is_trimmable_blank(preserve_color))
+            .map_or(0, |index| index + 1)
+    }
+
+    pub(crate) fn width_profile(&self) -> TerminalWidthProfile {
+        self.width_profile
+    }
+
     pub(crate) fn get(&self, index: usize) -> Option<char> {
         self.cells.get(index).and_then(|cell| cell.output_char())
     }
 
+    /// Test-only convenience for assertions that do not need a fallible result.
+    #[cfg(test)]
     pub(crate) fn text(&self) -> String {
-        self.cells
-            .iter()
-            .filter_map(|cell| cell.output_char())
-            .collect()
+        self.try_text()
+            .expect("test terminal text should fit the unbounded resource policy")
     }
 
-    pub(crate) fn into_text(self) -> String {
-        self.cells
-            .into_iter()
-            .filter_map(|cell| cell.output_char())
-            .collect()
+    #[cfg(test)]
+    pub(crate) fn try_text(&self) -> Result<String> {
+        let mut output = CheckedOutput::new(&self.resources);
+        self.try_write_plain_to(&mut output)?;
+        Ok(output.finish())
     }
 
+    /// Writes this row into an existing checked output without a per-line `String`.
+    #[cfg(test)]
+    pub(crate) fn try_write_plain_to(&self, output: &mut CheckedOutput) -> Result<()> {
+        let mut offset = 0usize;
+        while let Some(cell) = self.cells.get(offset).copied() {
+            if let Some(text) = cell.try_output_text(&self.arena)? {
+                match text {
+                    crate::terminal::TerminalCellText::Scalar(ch) => output.push_char(ch)?,
+                    crate::terminal::TerminalCellText::Grapheme(grapheme) => {
+                        output.push_str(grapheme)?;
+                    }
+                }
+            }
+            offset = offset
+                .checked_add(primary_width(&self.cells, offset).max(1))
+                .ok_or_else(document_allocation_failed)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_into_text(self) -> Result<String> {
+        self.try_text()
+    }
+
+    #[cfg(test)]
     pub(crate) fn pad_to(&mut self, width: usize) {
-        if self.cells.len() < width {
-            self.cells.resize(width, StyledCell::blank());
-        }
+        self.try_pad_to(width)
+            .expect("test terminal padding should fit the unbounded resource policy");
     }
 
-    pub(crate) fn push_plain_char(&mut self, ch: char) {
-        push_primary_cell(&mut self.cells, ch, None);
+    #[cfg(test)]
+    pub(crate) fn try_pad_to(&mut self, width: usize) -> Result<()> {
+        self.try_pad_to_with_checkpoint(width, || Ok(()))
     }
 
-    pub(crate) fn push_spaces(&mut self, count: usize) {
-        self.cells
-            .extend(std::iter::repeat_n(StyledCell::blank(), count));
-    }
-
-    pub(crate) fn push_line(&mut self, line: &StyledLine) {
-        self.cells.extend(line.cells.iter().copied());
-    }
-
-    pub(crate) fn push_role_char(&mut self, ch: char, role: AsciiColorRole) {
-        push_primary_cell(&mut self.cells, ch, Some(CanvasColor::Role(role)));
-    }
-
-    pub(crate) fn push_role_text(&mut self, text: &str, role: AsciiColorRole) {
-        for ch in text.chars() {
-            self.push_role_char(ch, role);
-        }
-    }
-
-    pub(crate) fn push_role_text_with_unstyled_trailing_spaces(
+    pub(crate) fn try_pad_to_with_checkpoint(
         &mut self,
-        text: &str,
-        role: AsciiColorRole,
-    ) {
-        let trimmed = text.trim_end_matches(' ');
-        self.push_role_text(trimmed, role);
-        self.push_spaces(text.chars().count() - trimmed.chars().count());
-    }
-
-    pub(crate) fn push_role_repeat(&mut self, ch: char, count: usize, role: AsciiColorRole) {
-        for _ in 0..count {
-            self.push_role_char(ch, role);
-        }
-    }
-
-    pub(crate) fn push_right_aligned_role_text(
-        &mut self,
-        text: &str,
         width: usize,
-        role: AsciiColorRole,
-    ) {
-        let len = display_width(text);
-        self.push_spaces(width.saturating_sub(len));
-        self.push_role_text(text, role);
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        if self.cells.len() < width {
+            return self.try_push_spaces_with_checkpoint(width - self.cells.len(), checkpoint);
+        }
+        Ok(())
     }
 
-    pub(crate) fn push_cells(&mut self, cells: &[StyledCell]) {
-        self.cells.extend(cells.iter().copied());
+    #[cfg(test)]
+    pub(crate) fn push_plain_char(&mut self, ch: char) {
+        self.try_push_plain_char(ch)
+            .expect("test terminal character should fit the unbounded resource policy");
     }
 
-    pub(crate) fn set_role(&mut self, index: usize, ch: char, role: AsciiColorRole) {
-        let background = self
-            .cells
-            .get(index)
-            .map(|cell| cell.raw_style().background)
-            .unwrap_or_default();
-        write_primary_cell_style(
+    pub(crate) fn try_push_plain_char(&mut self, ch: char) -> Result<()> {
+        self.try_push_char_style(ch, CanvasStyle::default())
+    }
+
+    pub(crate) fn try_push_plain_text(&mut self, text: &str) -> Result<()> {
+        let work_resources = self.resources.clone();
+        let mut resources = self.resources.scoped();
+        let result = visit_safe_line_graphemes(
+            &mut resources,
+            text,
+            self.width_profile,
+            |grapheme, width| {
+                self.try_push_measured_grapheme_with_resources(
+                    grapheme,
+                    width,
+                    CanvasStyle::default(),
+                    &work_resources,
+                )?;
+                Ok(true)
+            },
+        );
+        if let Err(error) = result {
+            return self.record_error(error);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn try_push_spaces(&mut self, count: usize) -> Result<()> {
+        let resources = self.resources.clone();
+        self.try_push_spaces_with_checkpoint(count, || resources.checkpoint())
+    }
+
+    pub(crate) fn try_push_spaces_with_checkpoint(
+        &mut self,
+        count: usize,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        let Some(final_len) = self.cells.len().checked_add(count) else {
+            return self.record_error(document_allocation_failed());
+        };
+        let initial_len = self.cells.len();
+        let resources = self.resources.clone();
+        let result = resources.transaction(|resources| {
+            resources.check_usage(0, count)?;
+            resources.check(AsciiResourceLimitId::MaxGridCells, final_len)?;
+            self.cells
+                .try_reserve(count)
+                .map_err(|_| document_allocation_failed())?;
+            let mut remaining = count;
+            while remaining > 0 {
+                checkpoint()?;
+                let chunk = remaining.min(STYLED_LINE_PAINT_CHUNK);
+                self.cells
+                    .extend(std::iter::repeat_n(StyledCell::blank(), chunk));
+                remaining -= chunk;
+            }
+            resources.charge_usage(0, count)
+        });
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.cells.truncate(initial_len);
+                self.record_error(error)
+            }
+        }
+    }
+
+    pub(crate) fn try_push_line(&mut self, line: &StyledLine) -> Result<()> {
+        let resources = self.resources.clone();
+        self.try_push_line_with_checkpoint(line, &resources, || resources.checkpoint())
+    }
+
+    pub(crate) fn try_push_line_with_checkpoint(
+        &mut self,
+        line: &StyledLine,
+        work_resources: &ResourceContext,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        if self.width_profile != line.width_profile {
+            return self.record_error(width_profile_mismatch());
+        }
+        if let Err(error) = self.resources.charge_document_cells(line.cells.len()) {
+            return self.record_error(error);
+        }
+        match try_append_cells_from_surface_with_checkpoint(
             &mut self.cells,
+            &mut self.arena,
+            &line.cells,
+            &line.arena,
+            work_resources,
+            &mut checkpoint,
+        ) {
+            Ok(()) => Ok(()),
+            Err(error) if is_retained_glyph_budget_error(&error) => {
+                if let Err(compaction_error) = self
+                    .arena
+                    .try_compact_in_place_with_resources_and_checkpoint(
+                        &mut self.cells,
+                        work_resources,
+                        &mut checkpoint,
+                    )
+                {
+                    return self.record_error(compaction_error);
+                }
+                match try_append_cells_from_surface_with_checkpoint(
+                    &mut self.cells,
+                    &mut self.arena,
+                    &line.cells,
+                    &line.arena,
+                    work_resources,
+                    &mut checkpoint,
+                ) {
+                    Ok(()) => Ok(()),
+                    Err(error) => self.record_error(error),
+                }
+            }
+            Err(error) => self.record_error(error),
+        }
+    }
+
+    pub(crate) fn try_push_role_char(&mut self, ch: char, role: AsciiColorRole) -> Result<()> {
+        self.try_push_char_style(ch, CanvasStyle::foreground(CanvasColor::Role(role)))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn push_role_text(&mut self, text: &str, role: AsciiColorRole) {
+        self.try_push_role_text(text, role)
+            .expect("test terminal text should fit the unbounded resource policy");
+    }
+
+    pub(crate) fn try_push_role_text(&mut self, text: &str, role: AsciiColorRole) -> Result<()> {
+        let style = CanvasStyle::foreground(CanvasColor::Role(role));
+        let work_resources = self.resources.clone();
+        let mut resources = self.resources.scoped();
+        let result = visit_safe_line_graphemes(
+            &mut resources,
+            text,
+            self.width_profile,
+            |grapheme, width| {
+                self.try_push_measured_grapheme_with_resources(
+                    grapheme,
+                    width,
+                    style,
+                    &work_resources,
+                )?;
+                Ok(true)
+            },
+        );
+        if let Err(error) = result {
+            return self.record_error(error);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn try_push_role_text_with_checkpoint(
+        &mut self,
+        text: &str,
+        role: AsciiColorRole,
+        work_resources: &ResourceContext,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        let style = CanvasStyle::foreground(CanvasColor::Role(role));
+        let mut resources = self.resources.scoped();
+        let result = visit_safe_line_graphemes(
+            &mut resources,
+            text,
+            self.width_profile,
+            |grapheme, width| {
+                checkpoint()?;
+                self.resources.charge_document_cells(width)?;
+                try_push_primary_grapheme_style_with_resources_and_checkpoint(
+                    &mut self.cells,
+                    &mut self.arena,
+                    grapheme,
+                    width,
+                    style,
+                    work_resources,
+                    &mut checkpoint,
+                )?;
+                Ok(true)
+            },
+        );
+        if let Err(error) = result {
+            return self.record_error(error);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn try_push_deferred_text(
+        &mut self,
+        text: &DeferredTextLine,
+        role: AsciiColorRole,
+    ) -> Result<()> {
+        let initial_len = self.cells.len();
+        let final_len = self
+            .cells
+            .len()
+            .checked_add(text.width())
+            .ok_or_else(document_allocation_failed)?;
+        let style = CanvasStyle::foreground(CanvasColor::Role(role));
+        let resources = self.resources.clone();
+        let result = resources.transaction(|resources| {
+            resources.check_usage(0, text.width())?;
+            resources.check(AsciiResourceLimitId::MaxGridCells, final_len)?;
+            let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
+            for glyph in text.glyphs() {
+                try_push_primary_deferred_style_with_resources_and_checkpoints(
+                    &mut self.cells,
+                    glyph.id(),
+                    glyph.width(),
+                    style,
+                    resources,
+                    &mut checkpoints,
+                )?;
+            }
+            resources.charge_usage(0, text.width())
+        });
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.cells.truncate(initial_len);
+                self.record_error(error)
+            }
+        }
+    }
+
+    pub(crate) fn try_push_role_quoted_text(
+        &mut self,
+        text: &str,
+        role: AsciiColorRole,
+    ) -> Result<()> {
+        let resources = self.resources.clone();
+        visit_quoted_terminal_text(text, &resources, |fragment| {
+            self.try_push_role_text(fragment, role)
+        })
+    }
+
+    pub(crate) fn try_push_role_text_with_unstyled_trailing_spaces(
+        &mut self,
+        text: &str,
+        role: AsciiColorRole,
+    ) -> Result<()> {
+        let trimmed = text.trim_end_matches(' ');
+        self.try_push_role_text(trimmed, role)?;
+        self.try_push_spaces(text.len() - trimmed.len())
+    }
+
+    pub(crate) fn try_push_role_repeat(
+        &mut self,
+        ch: char,
+        count: usize,
+        role: AsciiColorRole,
+    ) -> Result<()> {
+        for _ in 0..count {
+            self.try_push_char_style(ch, CanvasStyle::foreground(CanvasColor::Role(role)))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn try_set_role(
+        &mut self,
+        index: usize,
+        ch: char,
+        role: AsciiColorRole,
+    ) -> Result<()> {
+        let width = terminal_char_display_width(ch, self.width_profile);
+        debug_assert_eq!(
+            width, 1,
+            "renderer-owned structural glyphs must occupy one terminal cell"
+        );
+        if width != 1 {
+            return Ok(());
+        }
+        let background = style_at(&self.cells, index).background;
+        let mut buffer = [0; 4];
+        let grapheme = ch.encode_utf8(&mut buffer);
+        let resources = self.resources.clone();
+        let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
+        let result = try_write_primary_grapheme_style_with_resources_and_checkpoint(
+            &mut self.cells,
+            &mut self.arena,
             index,
-            ch,
+            grapheme,
+            1,
             CanvasStyle {
                 foreground: Some(CanvasColor::Role(role)),
                 background,
             },
+            &resources,
+            &mut checkpoints,
         );
+        match result {
+            Ok(_) => Ok(()),
+            Err(error) => self.record_error(error),
+        }
     }
 
     pub(crate) fn set_background_color(&mut self, index: usize, color: AsciiRgb) {
-        if let Some(cell) = self.cells.get_mut(index) {
+        if let Some(owner) = owner_index(&self.cells, index)
+            && let Some(cell) = self.cells.get_mut(owner)
+        {
             cell.set_background(CanvasColor::Direct(color));
         }
     }
 
     pub(crate) fn set_background_color_if_unset(&mut self, index: usize, color: AsciiRgb) {
-        let Some(cell) = self.cells.get_mut(index) else {
+        let Some(owner) = owner_index(&self.cells, index) else {
+            return;
+        };
+        let Some(cell) = self.cells.get_mut(owner) else {
             return;
         };
         if cell.raw_style().background.is_none() {
@@ -168,139 +604,411 @@ impl StyledLine {
         }
     }
 
-    pub(crate) fn write_text_role(&mut self, start: usize, text: &str, role: AsciiColorRole) {
-        let mut offset = 0;
-        for ch in text.chars() {
-            self.set_role(start + offset, ch, role);
-            offset += char_display_width(ch);
-        }
+    pub(crate) fn try_write_text_role(
+        &mut self,
+        start: usize,
+        text: &str,
+        role: AsciiColorRole,
+    ) -> Result<()> {
+        let resources = self.resources.clone();
+        self.try_write_text_role_with_checkpoint(start, text, role, &resources, || {
+            resources.checkpoint()
+        })
     }
 
+    pub(crate) fn try_write_text_role_with_checkpoint(
+        &mut self,
+        start: usize,
+        text: &str,
+        role: AsciiColorRole,
+        work_resources: &ResourceContext,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        let mut resources = self.resources.scoped();
+        let mut write_width = 0usize;
+        let measured =
+            visit_safe_line_graphemes(&mut resources, text, self.width_profile, |_, width| {
+                checkpoint()?;
+                write_width = write_width
+                    .checked_add(width)
+                    .ok_or_else(document_allocation_failed)?;
+                Ok(true)
+            });
+        if let Err(error) = measured {
+            return self.record_error(error);
+        }
+        if !write_span_fits(self.cells.len(), start, write_width) {
+            return self.record_error(terminal_surface_does_not_fit());
+        }
+
+        let mut offset = 0usize;
+        let mut surface_checkpoints = SurfaceCellCheckpoints::new(&mut checkpoint);
+        let written = visit_safe_line_graphemes(
+            &mut resources,
+            text,
+            self.width_profile,
+            |grapheme, width| {
+                if width == 0 {
+                    return Ok(true);
+                }
+                let index = start
+                    .checked_add(offset)
+                    .ok_or_else(document_allocation_failed)?;
+                let background = style_at(&self.cells, index).background;
+                if !try_write_primary_grapheme_style_with_resources_and_checkpoint(
+                    &mut self.cells,
+                    &mut self.arena,
+                    index,
+                    grapheme,
+                    width,
+                    CanvasStyle {
+                        foreground: Some(CanvasColor::Role(role)),
+                        background,
+                    },
+                    work_resources,
+                    &mut surface_checkpoints,
+                )? {
+                    return Err(terminal_surface_does_not_fit());
+                }
+                offset = offset
+                    .checked_add(width)
+                    .ok_or_else(document_allocation_failed)?;
+                Ok(true)
+            },
+        );
+        if let Err(error) = written {
+            return self.record_error(error);
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
     pub(crate) fn write_line(&mut self, start: usize, line: &StyledLine) {
-        for (offset, cell) in line.cells.iter().copied().enumerate() {
-            write_primary_cell_from_cell(&mut self.cells, start + offset, cell);
-        }
+        self.try_write_line(start, line)
+            .expect("test terminal composition should fit the unbounded resource policy");
     }
 
+    #[cfg(test)]
+    pub(crate) fn try_write_line(&mut self, start: usize, line: &StyledLine) -> Result<()> {
+        let work_resources = self.resources.clone();
+        self.try_write_line_with_checkpoint(start, line, &work_resources, || Ok(()))
+    }
+
+    pub(crate) fn try_write_line_with_checkpoint(
+        &mut self,
+        start: usize,
+        line: &StyledLine,
+        work_resources: &ResourceContext,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        if self.width_profile != line.width_profile {
+            return self.record_error(width_profile_mismatch());
+        }
+        let concurrent_cells = match self
+            .resources
+            .checked_grid_add(self.cells.len(), line.cells.len())
+        {
+            Ok(concurrent_cells) => concurrent_cells,
+            Err(error) => return self.record_error(error),
+        };
+        if let Err(error) = self
+            .resources
+            .check(AsciiResourceLimitId::MaxGridCells, concurrent_cells)
+        {
+            return self.record_error(error);
+        }
+        if !write_span_fits(self.cells.len(), start, line.cells.len()) {
+            return self.record_error(terminal_surface_does_not_fit());
+        }
+        let mut offset = 0usize;
+        let mut surface_checkpoints = SurfaceCellCheckpoints::new(&mut checkpoint);
+        while offset < line.cells.len() {
+            let cell = line.cells[offset];
+            if cell.is_continuation() {
+                offset += 1;
+                continue;
+            }
+            let width =
+                match primary_width_with_checkpoints(&line.cells, offset, &mut surface_checkpoints)
+                {
+                    Ok(width) => width.max(1),
+                    Err(error) => return self.record_error(error),
+                };
+            let index = match start.checked_add(offset) {
+                Some(index) => index,
+                None => return self.record_error(document_allocation_failed()),
+            };
+            match try_write_primary_cell_from_surface_with_resources_and_checkpoint(
+                &mut self.cells,
+                &mut self.arena,
+                index,
+                cell,
+                width,
+                &line.arena,
+                work_resources,
+                &mut surface_checkpoints,
+            ) {
+                Ok(true) => {}
+                Ok(false) => return self.record_error(terminal_surface_does_not_fit()),
+                Err(error) => return self.record_error(error),
+            }
+            offset = match offset.checked_add(width) {
+                Some(offset) => offset,
+                None => return self.record_error(document_allocation_failed()),
+            };
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
     pub(crate) fn trim_right(mut self) -> Self {
         while self
             .cells
             .last()
-            .is_some_and(|cell| cell.output_char() == Some(' '))
+            .is_some_and(|cell| cell.is_trimmable_blank(false))
         {
             self.cells.pop();
         }
         self
     }
 
-    pub(crate) fn write_to(&self, canvas: &mut Canvas, y: usize) {
-        self.write_to_at(canvas, 0, y);
+    pub(crate) fn try_trim_right(mut self) -> Result<Self> {
+        let mut cells_until_checkpoint = 0usize;
+        let resources = self.resources.clone();
+        let mut checkpoint = || resources.charge_layout_work(0);
+        while self
+            .cells
+            .last()
+            .is_some_and(|cell| cell.is_trimmable_blank(false))
+        {
+            checkpoint_primary_cell(&mut cells_until_checkpoint, &mut checkpoint)?;
+            self.cells.pop();
+        }
+        Ok(self)
     }
 
-    pub(crate) fn write_to_at(&self, canvas: &mut Canvas, x_offset: usize, y: usize) {
-        for (x, cell) in self.cells.iter().enumerate() {
-            if cell.is_continuation() {
-                continue;
-            }
-            if let Some(style) = cell.style() {
-                canvas.set_style(x_offset + x, y, cell.output_char().unwrap_or(' '), style);
-            } else {
-                canvas.set(x_offset + x, y, cell.output_char().unwrap_or(' '));
-            }
+    #[cfg(test)]
+    pub(crate) fn write_to(&self, canvas: &mut Canvas, y: usize) {
+        self.try_write_to(canvas, y)
+            .expect("test terminal surface should fit the target canvas");
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_write_to(&self, canvas: &mut Canvas, y: usize) -> Result<()> {
+        self.try_write_to_at(canvas, 0, y)
+    }
+
+    pub(crate) fn try_write_to_at(
+        &self,
+        canvas: &mut Canvas,
+        x_offset: usize,
+        y: usize,
+    ) -> Result<()> {
+        if !canvas.try_write_cells_from_surface(
+            x_offset,
+            y,
+            &self.cells,
+            &self.arena,
+            self.width_profile,
+        )? {
+            return Err(AsciiError::InvalidOption {
+                field: "terminal_surface",
+                message: "terminal surface does not fit the target canvas",
+            });
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_mirrored(&self) -> Result<Self> {
+        let (cells, arena) = try_mirror_surface(&self.cells, &self.arena, self.resources.policy())?;
+        Ok(Self {
+            cells,
+            arena,
+            width_profile: self.width_profile,
+            resources: self.resources.scoped(),
+        })
+    }
+
+    fn try_push_char_style(&mut self, ch: char, style: CanvasStyle) -> Result<()> {
+        let width = terminal_char_display_width(ch, self.width_profile);
+        debug_assert_eq!(
+            width, 1,
+            "renderer-owned structural glyphs must occupy one terminal cell"
+        );
+        if width != 1 {
+            return Ok(());
+        }
+        let mut buffer = [0; 4];
+        let grapheme = ch.encode_utf8(&mut buffer);
+        self.try_push_measured_grapheme(grapheme, 1, style)
+    }
+
+    fn try_push_measured_grapheme(
+        &mut self,
+        grapheme: &str,
+        width: usize,
+        style: CanvasStyle,
+    ) -> Result<()> {
+        let resources = self.resources.clone();
+        self.try_push_measured_grapheme_with_resources(grapheme, width, style, &resources)
+    }
+
+    fn try_push_measured_grapheme_with_resources(
+        &mut self,
+        grapheme: &str,
+        width: usize,
+        style: CanvasStyle,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.resources.charge_document_cells(width)?;
+        let result = try_push_primary_grapheme_style_with_resources_and_checkpoint(
+            &mut self.cells,
+            &mut self.arena,
+            grapheme,
+            width,
+            style,
+            resources,
+            || resources.checkpoint(),
+        );
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => self.record_error(error),
         }
     }
+
+    fn record_error<T>(&mut self, error: AsciiError) -> Result<T> {
+        Err(error)
+    }
 }
 
-pub(crate) fn display_width(text: &str) -> usize {
-    terminal_display_width(text)
+fn checkpoint_primary_cell(
+    cells_until_checkpoint: &mut usize,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<()> {
+    if *cells_until_checkpoint == 0 {
+        checkpoint()?;
+        *cells_until_checkpoint = STYLED_LINE_PAINT_CHUNK;
+    }
+    *cells_until_checkpoint -= 1;
+    Ok(())
 }
 
-pub(crate) fn truncate_display_width(value: &str, width: usize) -> String {
+fn width_profile_mismatch() -> AsciiError {
+    AsciiError::InvalidOption {
+        field: "terminal_width_profile",
+        message: "cannot compose terminal surfaces with different width profiles",
+    }
+}
+
+fn terminal_surface_does_not_fit() -> AsciiError {
+    AsciiError::InvalidOption {
+        field: "terminal_surface",
+        message: "terminal surface does not fit the target line",
+    }
+}
+
+fn write_span_fits(target_width: usize, start: usize, write_width: usize) -> bool {
+    write_width == 0
+        || start
+            .checked_add(write_width)
+            .is_some_and(|end| end <= target_width)
+}
+
+fn document_allocation_failed() -> AsciiError {
+    AsciiError::AllocationFailed {
+        phase: AsciiResourceLimitPhase::Document.as_str(),
+    }
+}
+
+#[cfg(test)]
+fn compatibility_policy() -> AsciiResourcePolicy {
+    AsciiResourcePolicy::for_profile(
+        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+    )
+}
+
+pub(crate) fn display_width_with_profile(text: &str, width_profile: TerminalWidthProfile) -> usize {
+    terminal_line_display_width(text, width_profile)
+}
+
+pub(crate) fn truncate_display_width_with_profile(
+    value: &str,
+    width: usize,
+    width_profile: TerminalWidthProfile,
+) -> Result<String> {
     let mut out = String::new();
     let mut used = 0;
 
-    for ch in value.chars() {
-        let ch_width = char_display_width(ch);
-        if used + ch_width > width {
+    let value = SafeLine::try_new(value)?;
+    for grapheme in value.graphemes(width_profile) {
+        if used + grapheme.width() > width {
             break;
         }
-        out.push(ch);
-        used += ch_width;
+        out.push_str(grapheme.text());
+        used += grapheme.width();
     }
 
-    out
+    Ok(out)
 }
 
-pub(crate) fn wrap_display_lines(text: &str, max_width: usize) -> Vec<String> {
-    let max_width = max_width.max(1);
-    let mut lines = Vec::new();
-
-    for paragraph in text.split('\n') {
-        wrap_display_paragraph(paragraph, max_width, &mut lines);
-    }
-
-    lines
-}
-
-pub(crate) fn normalize_optional_text(text: Option<&str>) -> Option<String> {
-    text.map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
-}
-
-pub(crate) fn trim_trailing_blank_lines(mut lines: Vec<String>) -> Vec<String> {
-    while lines.last().is_some_and(|line| line.trim().is_empty()) {
-        lines.pop();
-    }
-    lines
-}
-
-pub(crate) fn push_wrapped_prefixed_line(
-    lines: &mut Vec<String>,
-    first_prefix: &str,
-    continuation_prefix: &str,
+#[cfg(test)]
+pub(crate) fn wrap_display_lines_with_profile(
     text: &str,
     max_width: usize,
-) {
-    let available = max_width
-        .saturating_sub(display_width(first_prefix))
-        .min(max_width.saturating_sub(display_width(continuation_prefix)))
-        .max(1);
-    let wrapped = wrap_display_lines(text, available);
-    if wrapped.is_empty() {
-        lines.push(first_prefix.to_string());
-        return;
+    width_profile: TerminalWidthProfile,
+) -> Vec<String> {
+    let max_width = max_width.max(1);
+    let mut lines = Vec::new();
+    let normalized = SafeText::new(text);
+
+    for paragraph in normalized.lines() {
+        wrap_display_paragraph(paragraph, max_width, width_profile, &mut lines);
     }
 
-    for (index, line) in wrapped.iter().enumerate() {
-        if index == 0 {
-            lines.push(format!("{first_prefix}{line}"));
-        } else {
-            lines.push(format!("{continuation_prefix}{line}"));
-        }
-    }
+    lines
 }
 
+#[cfg(test)]
+pub(crate) fn normalize_optional_text(text: Option<&str>) -> Option<String> {
+    let normalized = SafeText::new(text?);
+    let trimmed = normalized.as_str().trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+#[cfg(test)]
 pub(crate) fn split_label_lines(raw: &str) -> Vec<String> {
-    normalize_label_breaks(raw)
+    let normalized = normalize_label_breaks(raw);
+    SafeText::new(&normalized)
+        .as_str()
         .split('\n')
         .map(ToOwned::to_owned)
         .collect()
 }
 
-pub(crate) fn wrap_label_lines(raw: &str, max_width: usize) -> Vec<String> {
+#[cfg(test)]
+pub(crate) fn wrap_label_lines_with_profile(
+    raw: &str,
+    max_width: usize,
+    width_profile: TerminalWidthProfile,
+) -> Vec<String> {
     let normalized = normalize_label_breaks(raw);
     let mut lines = Vec::new();
     for paragraph in normalized.split('\n') {
         if paragraph.is_empty() {
             lines.push(String::new());
         } else {
-            lines.extend(wrap_display_lines(paragraph, max_width));
+            lines.extend(wrap_display_lines_with_profile(
+                paragraph,
+                max_width,
+                width_profile,
+            ));
         }
     }
     lines
 }
 
+#[cfg(test)]
 fn normalize_label_breaks(raw: &str) -> String {
     let mut normalized = String::with_capacity(raw.len());
     let mut index = 0;
@@ -317,6 +1025,7 @@ fn normalize_label_breaks(raw: &str) -> String {
             continue;
         }
 
+        // This scalar advances the UTF-8 syntax scanner; text layout remains grapheme-based.
         let Some(ch) = raw[index..].chars().next() else {
             break;
         };
@@ -327,7 +1036,7 @@ fn normalize_label_breaks(raw: &str) -> String {
     normalized
 }
 
-fn html_break_end(raw: &str, start: usize) -> Option<usize> {
+pub(crate) fn html_break_end(raw: &str, start: usize) -> Option<usize> {
     let bytes = raw.as_bytes();
     if bytes.get(start).copied()? != b'<' {
         return None;
@@ -358,18 +1067,24 @@ fn byte_eq_ignore_ascii_case(left: u8, right: u8) -> bool {
     left.eq_ignore_ascii_case(&right)
 }
 
-fn wrap_display_paragraph(text: &str, max_width: usize, lines: &mut Vec<String>) {
+#[cfg(test)]
+fn wrap_display_paragraph(
+    text: &str,
+    max_width: usize,
+    width_profile: TerminalWidthProfile,
+    lines: &mut Vec<String>,
+) {
     let mut current = String::new();
     let mut current_width = 0;
 
     for word in text.split_whitespace() {
-        let word_width = display_width(word);
+        let word_width = display_width_with_profile(word, width_profile);
         if word_width > max_width {
             if !current.is_empty() {
                 lines.push(std::mem::take(&mut current));
                 current_width = 0;
             }
-            push_wrapped_word(word, max_width, lines);
+            push_wrapped_word(word, max_width, width_profile, lines);
             continue;
         }
 
@@ -392,18 +1107,24 @@ fn wrap_display_paragraph(text: &str, max_width: usize, lines: &mut Vec<String>)
     }
 }
 
-fn push_wrapped_word(word: &str, max_width: usize, lines: &mut Vec<String>) {
+#[cfg(test)]
+fn push_wrapped_word(
+    word: &str,
+    max_width: usize,
+    width_profile: TerminalWidthProfile,
+    lines: &mut Vec<String>,
+) {
     let mut current = String::new();
     let mut current_width = 0;
 
-    for ch in word.chars() {
-        let ch_width = char_display_width(ch);
-        if current_width + ch_width > max_width && !current.is_empty() {
+    let word = SafeLine::new(word);
+    for grapheme in word.graphemes(width_profile) {
+        if current_width + grapheme.width() > max_width && !current.is_empty() {
             lines.push(std::mem::take(&mut current));
             current_width = 0;
         }
-        current.push(ch);
-        current_width += ch_width;
+        current.push_str(grapheme.text());
+        current_width += grapheme.width();
     }
 
     if !current.is_empty() {
@@ -414,24 +1135,31 @@ fn push_wrapped_word(word: &str, max_width: usize, lines: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operation::AsciiExecution;
+    use crate::resource::{
+        AsciiResourceLimitExceeded, AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext,
+    };
     use crate::{AsciiColorMode, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn styled_line_writes_role_runs_to_canvas() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
-        let mut line = StyledLine::new();
+        let mut line = StyledLine::with_width_profile(TerminalWidthProfile::Unicode);
         line.push_role_text("AB", AsciiColorRole::Text);
         line.push_plain_char('!');
         let mut canvas = Canvas::new(3, 1);
 
         line.write_to(&mut canvas, 0);
 
-        let output = canvas.finish_with_options(
-            &AsciiRenderOptions::ascii()
-                .with_color_mode(AsciiColorMode::TrueColor)
-                .with_color_theme(theme),
-        );
+        let output = canvas
+            .finish_with_options(
+                &AsciiRenderOptions::ascii()
+                    .with_color_mode(AsciiColorMode::TrueColor)
+                    .with_color_theme(theme),
+            )
+            .expect("test output should fit the unbounded canvas policy");
         assert_eq!(output, "\u{1b}[38;2;1;2;3mAB\u{1b}[0m!\n");
     }
 
@@ -439,7 +1167,7 @@ mod tests {
     fn styled_line_counts_wide_chars_by_display_width() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
-        let mut line = StyledLine::new();
+        let mut line = StyledLine::with_width_profile(TerminalWidthProfile::Unicode);
         line.push_role_text("中A", AsciiColorRole::Text);
         let mut canvas = Canvas::new(3, 1);
 
@@ -450,11 +1178,13 @@ mod tests {
 
         line.write_to(&mut canvas, 0);
 
-        let output = canvas.finish_with_options(
-            &AsciiRenderOptions::ascii()
-                .with_color_mode(AsciiColorMode::TrueColor)
-                .with_color_theme(theme),
-        );
+        let output = canvas
+            .finish_with_options(
+                &AsciiRenderOptions::ascii()
+                    .with_color_mode(AsciiColorMode::TrueColor)
+                    .with_color_theme(theme),
+            )
+            .expect("test output should fit the unbounded canvas policy");
         assert_eq!(output, "\u{1b}[38;2;1;2;3m中A\u{1b}[0m\n");
     }
 
@@ -462,24 +1192,31 @@ mod tests {
     fn styled_line_trim_and_pad_use_unstyled_spaces() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
-        let mut line = StyledLine::role_text("A ", AsciiColorRole::Text).trim_right();
+        let mut line = StyledLine::role_text_with_profile(
+            "A ",
+            AsciiColorRole::Text,
+            TerminalWidthProfile::Unicode,
+        )
+        .trim_right();
         line.pad_to(3);
         let mut canvas = Canvas::new(3, 1);
 
         line.write_to(&mut canvas, 0);
 
-        let output = canvas.finish_trimmed_with_options(
-            &AsciiRenderOptions::ascii()
-                .with_color_mode(AsciiColorMode::TrueColor)
-                .with_color_theme(theme),
-        );
+        let output = canvas
+            .finish_trimmed_with_options(
+                &AsciiRenderOptions::ascii()
+                    .with_color_mode(AsciiColorMode::TrueColor)
+                    .with_color_theme(theme),
+            )
+            .expect("test output should fit the unbounded canvas policy");
         assert_eq!(output, "\u{1b}[38;2;1;2;3mA\u{1b}[0m\n");
     }
 
     #[test]
     fn styled_line_write_line_preserves_wide_cell_invariants() {
-        let mut target = StyledLine::plain_text("abcd");
-        let source = StyledLine::plain_text("中");
+        let mut target = StyledLine::plain_text_with_profile("abcd", TerminalWidthProfile::Unicode);
+        let source = StyledLine::plain_text_with_profile("中", TerminalWidthProfile::Unicode);
 
         target.write_line(1, &source);
 
@@ -492,29 +1229,216 @@ mod tests {
 
     #[test]
     fn styled_line_write_line_rejects_wide_cell_at_final_column() {
-        let mut target = StyledLine::plain_text("ab");
-        let source = StyledLine::plain_text("中");
+        let mut target = StyledLine::plain_text_with_profile("ab", TerminalWidthProfile::Unicode);
+        let source = StyledLine::plain_text_with_profile("中", TerminalWidthProfile::Unicode);
 
-        target.write_line(1, &source);
+        let error = target
+            .try_write_line(1, &source)
+            .expect_err("the complete source line must fit before writing begins");
 
-        assert_eq!(target.text(), "ab");
+        assert_eq!(error, terminal_surface_does_not_fit());
+        assert_eq!(target.get(0), Some('a'));
         assert_eq!(target.get(1), Some('b'));
     }
 
     #[test]
     fn styled_line_write_text_role_rejects_wide_cell_at_final_column() {
-        let mut target = StyledLine::plain_text("ab");
+        let mut target = StyledLine::plain_text_with_profile("ab", TerminalWidthProfile::Unicode);
 
-        target.write_text_role(1, "🚀", AsciiColorRole::Text);
+        let error = target
+            .try_write_text_role(1, "🚀", AsciiColorRole::Text)
+            .expect_err("the complete text span must fit before writing begins");
 
-        assert_eq!(target.text(), "ab");
+        assert_eq!(error, terminal_surface_does_not_fit());
+        assert_eq!(target.get(0), Some('a'));
         assert_eq!(target.get(1), Some('b'));
     }
 
     #[test]
+    fn small_participant_row_overwrite_work_is_independent_of_full_line_width() {
+        fn overwrite_work(width: usize) -> usize {
+            let policy = AsciiResourcePolicy::default();
+            let base_resources = ResourceContext::new(policy);
+            let control = OperationControl::new();
+            let execution = AsciiExecution::new(&control, &policy);
+            let line_resources =
+                execution.resource_context(&base_resources, OperationPhase::Layout);
+            let mut target = StyledLine::try_blank_with_resources(
+                width,
+                TerminalWidthProfile::Unicode,
+                &line_resources,
+            )
+            .expect("the participant row should fit");
+            let source = StyledLine::plain_text_with_profile("X", TerminalWidthProfile::Unicode);
+            let before = base_resources.layout_work_used();
+
+            target
+                .try_write_line_with_checkpoint(width / 2, &source, &line_resources, || {
+                    execution.checkpoint(OperationPhase::Layout)
+                })
+                .expect("the one-cell participant segment should fit");
+
+            base_resources.layout_work_used() - before
+        }
+
+        assert_eq!(overwrite_work(64), overwrite_work(4_096));
+    }
+
+    #[test]
+    fn default_surface_append_charges_both_passes_against_used_work() {
+        let source = StyledLine::plain_text_with_profile("X", TerminalWidthProfile::Unicode);
+
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 3)
+            .expect("the exact test limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        exact_resources
+            .charge_layout_work(1)
+            .expect("the existing work debit should fit");
+        let mut exact_target =
+            StyledLine::with_resources(TerminalWidthProfile::Unicode, &exact_resources);
+        exact_target
+            .try_push_line(&source)
+            .expect("one existing unit plus both one-cell append passes should fit exactly");
+        assert_eq!(exact_resources.layout_work_used(), 3);
+
+        let below_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+            .expect("the N-1 test limit should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        below_resources
+            .charge_layout_work(1)
+            .expect("the existing work debit should fit");
+        let before_document = below_resources.document_cells_used();
+        let mut below_target =
+            StyledLine::with_resources(TerminalWidthProfile::Unicode, &below_resources);
+        let owner = below_resources.clone();
+        let error = owner
+            .transaction(|_| below_target.try_push_line(&source))
+            .expect_err("N-1 cumulative work must reject before copying the source surface");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxLayoutWorkUnits,
+                actual: 3,
+                max: 2,
+                ..
+            })
+        ));
+        assert_eq!(below_resources.layout_work_used(), 1);
+        assert_eq!(below_resources.document_cells_used(), before_document);
+        assert_eq!(below_target.len(), 0);
+    }
+
+    #[test]
+    fn checkpointed_surface_append_charges_each_referenced_arena_entry() {
+        let source = StyledLine::plain_text_with_profile("e\u{301}", TerminalWidthProfile::Unicode);
+
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 4)
+            .expect("the exact complex-glyph limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        exact_resources
+            .charge_layout_work(1)
+            .expect("the existing work debit should fit");
+        let mut exact_target =
+            StyledLine::with_resources(TerminalWidthProfile::Unicode, &exact_resources);
+        exact_target
+            .try_push_line_with_checkpoint(&source, &exact_resources, || Ok(()))
+            .expect("the two cell passes and one arena entry should fit exactly");
+        assert_eq!(exact_resources.layout_work_used(), 4);
+
+        let below_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 3)
+            .expect("the N-1 complex-glyph limit should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        below_resources
+            .charge_layout_work(1)
+            .expect("the existing work debit should fit");
+        let mut below_target =
+            StyledLine::with_resources(TerminalWidthProfile::Unicode, &below_resources);
+        let owner = below_resources.clone();
+        let error = owner
+            .transaction(|_| {
+                below_target.try_push_line_with_checkpoint(&source, &below_resources, || Ok(()))
+            })
+            .expect_err("N-1 must reject before importing the complex glyph");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxLayoutWorkUnits,
+                actual: 4,
+                max: 3,
+                ..
+            })
+        ));
+        assert_eq!(below_resources.layout_work_used(), 1);
+        assert_eq!(below_target.len(), 0);
+    }
+
+    #[test]
+    fn controlled_compaction_observes_mid_pass_cancellation_and_owner_rolls_back_work() {
+        const WIDTH: usize = 129;
+        let source = StyledLine::plain_text_with_profile(
+            &"e\u{301}".repeat(WIDTH),
+            TerminalWidthProfile::Unicode,
+        );
+        let policy = AsciiResourcePolicy::default();
+        let base_resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
+        let resources = execution.resource_context(&base_resources, OperationPhase::Layout);
+        let before_work = base_resources.layout_work_used();
+        let mut callback_count = 0usize;
+        let mut cells = source.surface_cells().to_vec();
+        let mut arena = source.surface_arena().clone();
+
+        let error = resources
+            .transaction(|resources| {
+                arena.try_compact_in_place_with_resources_and_checkpoint(
+                    &mut cells,
+                    resources,
+                    || {
+                        callback_count += 1;
+                        if callback_count == 3 {
+                            control.cancel();
+                        }
+                        execution.checkpoint(OperationPhase::Layout)
+                    },
+                )
+            })
+            .expect_err("a later compaction pass should observe cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(base_resources.layout_work_used(), before_work);
+    }
+
+    #[test]
+    fn styled_line_write_line_preflight_prevents_partial_prefix_writes() {
+        let mut target = StyledLine::plain_text_with_profile("abc", TerminalWidthProfile::Unicode);
+        let source = StyledLine::plain_text_with_profile("XY", TerminalWidthProfile::Unicode);
+
+        let error = target
+            .try_write_line(2, &source)
+            .expect_err("a source line wider than the remaining target must be rejected");
+
+        assert_eq!(error, terminal_surface_does_not_fit());
+        assert_eq!(target.get(0), Some('a'));
+        assert_eq!(target.get(1), Some('b'));
+        assert_eq!(target.get(2), Some('c'));
+    }
+
+    #[test]
     fn styled_line_write_line_ignores_source_continuation_cells() {
-        let mut target = StyledLine::plain_text("abcd");
-        let source = StyledLine::plain_text("中Z");
+        let mut target = StyledLine::plain_text_with_profile("abcd", TerminalWidthProfile::Unicode);
+        let source = StyledLine::plain_text_with_profile("中Z", TerminalWidthProfile::Unicode);
 
         target.write_line(1, &source);
 
@@ -528,8 +1452,8 @@ mod tests {
     fn styled_line_write_line_preserves_wide_cell_style() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
-        let mut target = StyledLine::plain_text("abcd");
-        let mut source = StyledLine::new();
+        let mut target = StyledLine::plain_text_with_profile("abcd", TerminalWidthProfile::Unicode);
+        let mut source = StyledLine::with_width_profile(TerminalWidthProfile::Unicode);
         source.push_role_text("中", AsciiColorRole::Text);
         source.set_background_color(0, AsciiRgb::new(4, 5, 6));
 
@@ -537,11 +1461,13 @@ mod tests {
         let mut canvas = Canvas::new(4, 1);
         target.write_to(&mut canvas, 0);
 
-        let output = canvas.finish_with_options(
-            &AsciiRenderOptions::ascii()
-                .with_color_mode(AsciiColorMode::TrueColor)
-                .with_color_theme(theme),
-        );
+        let output = canvas
+            .finish_with_options(
+                &AsciiRenderOptions::ascii()
+                    .with_color_mode(AsciiColorMode::TrueColor)
+                    .with_color_theme(theme),
+            )
+            .expect("test output should fit the unbounded canvas policy");
         assert_eq!(
             output,
             "a\u{1b}[38;2;1;2;3m\u{1b}[48;2;4;5;6m中\u{1b}[0md\n"
@@ -549,10 +1475,250 @@ mod tests {
     }
 
     #[test]
+    fn styled_line_composition_remaps_complex_grapheme_ownership() {
+        let mut target = StyledLine::blank_with_profile(5, TerminalWidthProfile::Unicode);
+        let source = StyledLine::role_text_with_profile(
+            "👩‍💻",
+            AsciiColorRole::Text,
+            TerminalWidthProfile::Unicode,
+        );
+
+        target.write_line(1, &source);
+
+        assert_eq!(target.text(), " 👩‍💻  ");
+        let mut canvas = Canvas::new(5, 1);
+        target.write_to(&mut canvas, 0);
+        let output = canvas
+            .finish_with_options(&AsciiRenderOptions::unicode())
+            .expect("test output should fit the unbounded canvas policy");
+        assert_eq!(output, " 👩‍💻  \n");
+    }
+
+    #[test]
+    fn styled_line_mirror_compacts_complex_graphemes_without_a_third_cell_surface() {
+        let line = StyledLine::try_plain_text_with_policy(
+            "👩‍💻A",
+            TerminalWidthProfile::Unicode,
+            compatibility_policy(),
+        )
+        .expect("test source line should fit");
+
+        let mirrored = line
+            .try_mirrored()
+            .expect("mirroring should compact the owned cells in place");
+
+        assert_eq!(
+            mirrored.try_text().expect("mirrored text should encode"),
+            "A👩‍💻"
+        );
+        assert_eq!(mirrored.arena.entry_count(), 1);
+    }
+
+    #[test]
+    fn cjk_profile_controls_wrap_and_truncation_at_ambiguous_graphemes() {
+        assert_eq!(
+            display_width_with_profile("A·B", TerminalWidthProfile::Unicode),
+            3
+        );
+        assert_eq!(
+            display_width_with_profile("A·B", TerminalWidthProfile::Cjk),
+            4
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("A·B", 2, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
+            "A·"
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("A·B", 2, TerminalWidthProfile::Cjk)
+                .expect("test text should truncate"),
+            "A"
+        );
+        assert_eq!(
+            wrap_display_lines_with_profile("A·B", 2, TerminalWidthProfile::Cjk),
+            ["A", "·", "B"]
+        );
+    }
+
+    #[test]
     fn truncate_display_width_preserves_terminal_cell_boundaries() {
-        assert_eq!(truncate_display_width("中国A", 1), "");
-        assert_eq!(truncate_display_width("中国A", 2), "中");
-        assert_eq!(truncate_display_width("中国A", 4), "中国");
-        assert_eq!(truncate_display_width("中国A", 5), "中国A");
+        assert_eq!(
+            truncate_display_width_with_profile("中国A", 1, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
+            ""
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("中国A", 2, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
+            "中"
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("中国A", 4, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
+            "中国"
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("中国A", 5, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
+            "中国A"
+        );
+    }
+
+    #[test]
+    fn styled_line_constructor_checks_document_cells_before_allocating() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 2)
+            .expect("valid test override");
+
+        let error = StyledLine::try_blank_with_policy(3, TerminalWidthProfile::Unicode, policy)
+            .expect_err("three cells must exceed a two-cell document policy");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxDocumentCells,
+                actual: 3,
+                max: 2,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn styled_line_constructor_checks_primary_grid_cells_before_allocating() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 2)
+            .expect("valid test override");
+
+        let error = StyledLine::try_blank_with_policy(3, TerminalWidthProfile::Unicode, policy)
+            .expect_err("three primary cells must exceed a two-cell grid policy");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxGridCells,
+                actual: 3,
+                max: 2,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn styled_line_reports_grapheme_resource_errors_without_poisoning_future_writes() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 2)
+            .expect("valid test override");
+        let mut line = StyledLine::with_resource_policy(TerminalWidthProfile::Unicode, policy);
+
+        let error = line
+            .try_push_role_text("e\u{301}", AsciiColorRole::Text)
+            .expect_err("three-byte grapheme must exceed a two-byte policy");
+
+        assert_eq!(line.len(), 0);
+        assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
+        line.try_push_role_repeat('x', 1, AsciiColorRole::Text)
+            .expect("a failed write must not poison later independent writes");
+        assert_eq!(line.try_text().expect("valid retained text"), "x");
+        assert_eq!(line.try_into_text().expect("valid retained text"), "x");
+    }
+
+    #[test]
+    fn styled_line_checks_raw_control_grapheme_before_visible_escape() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1)
+            .expect("valid test override");
+        let mut line = StyledLine::with_resource_policy(TerminalWidthProfile::Unicode, policy);
+
+        let error = line
+            .try_push_role_text("\u{85}", AsciiColorRole::Text)
+            .expect_err("a two-byte control grapheme must fail before escaping");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxGraphemeBytes,
+                actual: 2,
+                max: 1,
+                ..
+            })
+        ));
+        assert_eq!(line.len(), 0);
+    }
+
+    #[test]
+    fn styled_line_budgets_control_escape_before_mutation() {
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 7)
+            .expect("valid test override");
+        let mut exact =
+            StyledLine::with_resource_policy(TerminalWidthProfile::Unicode, exact_policy);
+        exact
+            .try_push_role_text("\u{85}", AsciiColorRole::Text)
+            .expect("one scan plus a six-byte visible escape should fit exactly");
+        assert_eq!(
+            exact.try_text().expect("escaped text should encode"),
+            "\\u{85}"
+        );
+
+        let below_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 6)
+            .expect("valid test override");
+        let mut below =
+            StyledLine::with_resource_policy(TerminalWidthProfile::Unicode, below_policy);
+        let error = below
+            .try_push_role_text("\u{85}", AsciiColorRole::Text)
+            .expect_err("visible escape expansion must be charged before mutation");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxLayoutWorkUnits,
+                actual: 7,
+                max: 6,
+                ..
+            })
+        ));
+        assert_eq!(below.len(), 0);
+    }
+
+    #[test]
+    fn styled_line_composition_imports_only_referenced_source_glyphs() {
+        let mut source =
+            StyledLine::with_resource_policy(TerminalWidthProfile::Unicode, compatibility_policy());
+        source
+            .try_push_role_text("e\u{301}a\u{308}", AsciiColorRole::Text)
+            .expect("source test glyphs should fit");
+        assert_eq!(source.arena.entry_count(), 2);
+        source.cells.truncate(1);
+
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 3)
+            .expect("valid test override")
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 2)
+            .expect("valid test override");
+        let mut overwritten =
+            StyledLine::try_blank_with_policy(1, TerminalWidthProfile::Unicode, policy)
+                .expect("target test line should fit");
+        overwritten
+            .try_write_line(0, &source)
+            .expect("write composition must not import the unused source glyph");
+        assert_eq!(
+            overwritten.try_text().expect("target text should encode"),
+            "e\u{301}"
+        );
+        assert_eq!(overwritten.arena.entry_count(), 1);
+        assert_eq!(overwritten.arena.retained_bytes(), 3);
+
+        let mut appended = StyledLine::with_resource_policy(TerminalWidthProfile::Unicode, policy);
+        appended
+            .try_push_line(&source)
+            .expect("append composition must not import the unused source glyph");
+        assert_eq!(
+            appended.try_text().expect("target text should encode"),
+            "e\u{301}"
+        );
+        assert_eq!(appended.arena.entry_count(), 1);
+        assert_eq!(appended.arena.retained_bytes(), 3);
     }
 }

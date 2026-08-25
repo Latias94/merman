@@ -1,11 +1,18 @@
 {
   "schema_version": 1,
   "admission_status": "public-alpha",
-  "version": "0.8.0-alpha.5",
+  "version": "0.8.0-alpha.6",
   "node_engine": ">=22.0.0",
   "root": {
     "name": "@mermanjs/node",
     "directory": "packages/node"
+  },
+  "wasm": {
+    "name": "@mermanjs/node-wasm",
+    "directory": "packages/node-wasm",
+    "artifact_directory": "artifact",
+    "node_artifact": "merman_node.cjs",
+    "wasm_artifact": "merman_node_bg.wasm"
   },
   "targets": [
     {

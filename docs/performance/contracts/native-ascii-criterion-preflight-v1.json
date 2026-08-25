@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "native-ascii-criterion-preflight-v1",
+  "line_prefix": "[bench][preflight] ",
+  "postflight_line_prefix": "[bench][postflight] ",
+  "required_fields": [
+    "schema_version",
+    "benchmark",
+    "output_kind",
+    "output_bytes",
+    "output_sha256",
+    "svg_elements"
+  ],
+  "output_kinds": {
+    "ascii_end_to_end": "plain_ascii"
+  },
+  "comparison": {
+    "ignore_fields": ["benchmark"],
+    "required_equal_fields": [
+      "schema_version",
+      "output_kind",
+      "output_bytes",
+      "output_sha256",
+      "svg_elements"
+    ]
+  }
+}

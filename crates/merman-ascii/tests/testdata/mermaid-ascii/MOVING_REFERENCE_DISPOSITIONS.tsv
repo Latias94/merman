@@ -1,0 +1,146 @@
+# format	merman-ascii-moving-reference-dispositions-v1
+# moving_reference	b1b35f67d6a5dd0699ccfc968c00a763db573076
+# immutable_baseline	6fffb8e2714acab2c4cb41c78894fabbc62cee56
+# capability_prior_art	2ac8bbbb060ca0a65a6a21f3200bd99b1587b488
+# mermaid_version	11.16.1
+section	classification	admission	semantic_feature	path
+Flowchart Bidirectional Edges	mermaid_valid	semantic_probe	bidirectional endpoints, labels, and LR/TD direction	ascii/bidirectional_labeled_lr.txt
+Flowchart Bidirectional Edges	mermaid_valid	semantic_probe	bidirectional endpoints, labels, and LR/TD direction	ascii/bidirectional_lr.txt
+Flowchart Bidirectional Edges	mermaid_valid	semantic_probe	bidirectional endpoints, labels, and LR/TD direction	ascii/bidirectional_td.txt
+Flowchart Bidirectional Edges	mermaid_valid	semantic_probe	bidirectional endpoints, labels, and LR/TD direction	extended-chars/bidirectional_lr.txt
+Flowchart Bidirectional Edges	mermaid_valid	semantic_probe	bidirectional endpoints, labels, and LR/TD direction	extended-chars/bidirectional_td.txt
+Flowchart Multibyte Labels	mermaid_valid	semantic_probe	accented Latin, Greek, and Cyrillic node and edge labels retain authored text	multibyte/accented_latin_node_and_edge_labels.txt
+Flowchart Multibyte Labels	mermaid_valid	semantic_probe	accented Latin, Greek, and Cyrillic node and edge labels retain authored text	multibyte/cyrillic_node_and_edge_labels.txt
+Flowchart Multibyte Labels	mermaid_valid	semantic_probe	accented Latin, Greek, and Cyrillic node and edge labels retain authored text	multibyte/greek_node_and_edge_labels.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence/actor_alias.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence/actor_participant_mix.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence/central_spaced_names.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence/fragment_spaced_names.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence/note_over_spaced_names.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence/participant_names_dashes.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence/participant_names_spaces.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence/self_message_spaced_name.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence-ascii/actor_alias.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence-ascii/actor_participant_mix.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence-ascii/fragment_spaced_names.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence-ascii/note_over_spaced_names.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence-ascii/participant_names_dashes.txt
+Sequence Actor Identity	mermaid_valid	semantic_probe	aliases, actor/participant mixing, spaces, dashes, and actor identity inside central, fragment, note, and self-message contexts	sequence-ascii/participant_names_spaces.txt
+Sequence Quoted Actor Extension	reference_private	discovery_only	a quoted actor token containing arrow text is accepted by the moving reference but is outside pinned Mermaid 11.16.1 actor syntax	sequence/quoted_name_with_arrow.txt
+Sequence Mixed Alias Behavior	mixed_valid_private_behavior	discovery_only	`data=svc as DS` is a Mermaid alias, while `cron job as Cron` is one literal spaced actor id under pinned Mermaid and a split alias under the moving reference	sequence/participant_names_alias_equals.txt
+Sequence Mixed Alias Behavior	mixed_valid_private_behavior	discovery_only	`data=svc as DS` is a Mermaid alias, while `cron job as Cron` is one literal spaced actor id under pinned Mermaid and a split alias under the moving reference	sequence-ascii/participant_names_alias_equals.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence/arrow_types.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence/async_point_arrows.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence/bidirectional_arrows.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence/central_connection_self.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence/central_connections.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence/cross_arrows.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence/self_arrow_variants.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence-ascii/arrow_types.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence-ascii/async_point_arrows.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence-ascii/bidirectional_arrows.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence-ascii/central_connection_self.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence-ascii/central_connections.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence-ascii/cross_arrows.txt
+Sequence Message Markers	mermaid_valid	semantic_probe	open/filled/cross/point/bidirectional markers, central connections, and self message endpoint ownership in ASCII and Unicode	sequence-ascii/self_arrow_variants.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/alt_basic.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/alt_multiple_else.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/break_rect.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/critical_basic.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/fragment_partial_span.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/loop_autonumber.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/loop_basic.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/loop_empty.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/note_in_loop.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/note_over_single.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/note_over_span.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/opt_basic.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/opt_no_label.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence/par_basic.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence-ascii/alt_basic.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence-ascii/loop_basic.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence-ascii/loop_empty.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence-ascii/note_over_single.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence-ascii/opt_basic.txt
+Sequence Controls And Notes	mermaid_valid	semantic_probe	empty and nested controls, alternate sections, autonumber, notes, participant span, and control labels	sequence-ascii/par_basic.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_asterisk_names.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_backtick_names.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_basic.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_closing_brace_inline.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_complex_types.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_composite_key.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_empty_block.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_keys_and_comments.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_multiple_blocks.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er/attributes_with_relationship.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er-ascii/attributes_keys_and_comments.txt
+ER Attributes	mermaid_valid	semantic_probe	attribute type/name roles, keys, comments, quoted names, repeated blocks, and relationship coexistence	er-ascii/attributes_with_relationship.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/cardinality_numeric.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/cardinality_numeric_all.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/cardinality_one_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/cardinality_one_to_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/cardinality_word_aliases.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/cardinality_words.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/cardinality_zero_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/cardinality_zero_or_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_or_more_to_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_or_more_to_one_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_or_more_to_one_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_or_more_to_one_or_more_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_or_more_to_zero_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_or_more_to_zero_or_more_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_or_more_to_zero_or_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_or_more_to_zero_or_one_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_to_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_to_one_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_to_one_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_to_one_or_more_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_to_zero_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_to_zero_or_more_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_to_zero_or_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_one_to_zero_or_one_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_more_to_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_more_to_one_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_more_to_one_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_more_to_one_or_more_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_more_to_zero_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_more_to_zero_or_more_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_more_to_zero_or_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_more_to_zero_or_one_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_one_to_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_one_to_one_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_one_to_one_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_one_to_one_or_more_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_one_to_zero_or_more.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_one_to_zero_or_more_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_one_to_zero_or_one.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er/matrix_zero_or_one_to_zero_or_one_dashed.txt
+ER Cardinality Matrix	mermaid_valid	semantic_probe	numeric and word aliases plus every identifying/non-identifying cardinality endpoint combination	er-ascii/cardinality_one_or_more.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er/alias_forms.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er/cjk_entities.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er/empty_label.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er/entities_without_relationships.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er/long_entity_names.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er/multiword_labels.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er/quoted_entity_names.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er-ascii/alias_forms.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er-ascii/cjk_entities.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er-ascii/multiword_labels.txt
+ER Entity Identity	mermaid_valid	semantic_probe	aliases, quoted and multiword names, CJK, empty labels, standalone entities, and long terminal labels	er-ascii/quoted_entity_names.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er/classic_order_example.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er/dash_dot_variants.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er/dense_five_entities.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er/duplicate_relationships.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er/mixed_identifying.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er/multiple_self_relationships.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er/non_identifying.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er/self_relationship.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er/single_relationship.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er-ascii/classic_order_example.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er-ascii/duplicate_relationships.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er-ascii/non_identifying.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er-ascii/self_relationship.txt
+ER Relation Topology	mermaid_valid	semantic_probe	declaration order, dense components, duplicate and self relationships, identifying kind, dashed variants, and relation labels	er-ascii/single_relationship.txt
+ER Directives And Omission Policy	mermaid_valid	semantic_probe	accessibility metadata, comments, style, and direction are either consumed by the typed model or intentionally classified instead of leaking parser bookkeeping	er/acc_title_descr_skipped.txt
+ER Directives And Omission Policy	mermaid_valid	semantic_probe	accessibility metadata, comments, style, and direction are either consumed by the typed model or intentionally classified instead of leaking parser bookkeeping	er/comments_skipped.txt
+ER Directives And Omission Policy	mermaid_valid	semantic_probe	accessibility metadata, comments, style, and direction are either consumed by the typed model or intentionally classified instead of leaking parser bookkeeping	er/style_and_direction_skipped.txt

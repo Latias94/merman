@@ -8,10 +8,6 @@ const NAVIGABLE_INLINE_SVG_ARTIFACTS = new WeakSet<object>();
 
 export interface NavigableInlineSvg {
   readonly [NAVIGABLE_INLINE_SVG]: true;
-  readonly exportFormats: {
-    readonly png: true;
-    readonly svg: true;
-  };
   readonly kind: "navigable-inline-svg";
   readonly mountAdmission: NavigableSvgDomAdmission;
   readonly svg: string;
@@ -22,7 +18,6 @@ export function projectNavigableInlineSvg(svg: string): NavigableInlineSvg {
   const artifact: NavigableInlineSvg = {
     [NAVIGABLE_INLINE_SVG]: true,
     kind: "navigable-inline-svg",
-    exportFormats: Object.freeze({ png: true, svg: true }),
     mountAdmission,
     svg,
   };

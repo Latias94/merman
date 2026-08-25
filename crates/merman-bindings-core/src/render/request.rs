@@ -568,7 +568,7 @@ fn classify_render_error(
 ) -> BindingError {
     match err {
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
-        merman::RenderError::Parse(err) => crate::common::core_error(err),
+        merman::RenderError::Parse(err) => crate::common::parse_error(err),
         merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
             match err.cause {
                 merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
@@ -639,19 +639,48 @@ mod tests {
     #[test]
     fn theme_evaluation_limits_keep_resource_status_for_render_outputs() {
         let error = classify_render_error(
-            merman::RenderError::Parse(merman::Error::ThemeEvaluationLimit(
-                merman::ThemeEvaluationLimitExceeded {
+            merman::RenderError::Parse(
+                merman::Error::ThemeEvaluationLimit(merman::ThemeEvaluationLimitExceeded {
                     limit: "THEME_COLOR_LIMIT",
                     requested: "65".to_string(),
                     max: 64,
-                },
-            )),
+                })
+                .into(),
+            ),
             merman::resources::ResourceProfile::Interactive,
         );
 
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
         assert!(error.message().contains("THEME_COLOR_LIMIT"));
         assert_eq!(error.resource_details(), None);
+    }
+
+    #[test]
+    fn graphical_parse_errors_are_terminal_safe_and_structured() {
+        let span = merman::SourceSpan::new(2, 7);
+        let diagnostic = merman::ParseDiagnostic::new("bad\u{7}input")
+            .with_span(span, merman::ParseDiagnosticSpanKind::Exact)
+            .with_code("merman.test\u{1b}");
+        let error = classify_render_error(
+            merman::RenderError::from(merman::Error::diagram_parse_diagnostic(
+                "flow\u{1b}",
+                diagnostic,
+            )),
+            merman::resources::ResourceProfile::Interactive,
+        );
+
+        assert_eq!(error.status(), BindingStatus::ParseError);
+        assert!(!error.message().contains('\u{1b}'));
+        assert!(!error.message().contains('\u{7}'));
+        let details = error
+            .diagnostic_details()
+            .expect("graphical parse errors preserve structured details");
+        assert_eq!(details.code, "merman.test\\u{1B}");
+        assert_eq!(details.diagram_type.as_deref(), Some("flow\\u{1B}"));
+        assert_eq!(
+            details.span,
+            Some(crate::common::BindingDiagnosticSpan::new(2, 7, "exact"))
+        );
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]

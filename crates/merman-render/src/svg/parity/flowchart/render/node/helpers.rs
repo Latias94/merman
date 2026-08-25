@@ -22,16 +22,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
                 message: format!("missing prepared Flowchart icon scope for node `{node_id}`"),
             })?;
     let icon = match ctx.icon_registry {
-        Some(registry) => registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
-            icon_name,
-            width_px: icon_size,
-            height_px: icon_size,
-            fallback_prefix: None,
-            extra_class: None,
-            id_scope: &id_scope,
-            effective_config: ctx.config,
-            work_meter: ctx.work_meter,
-        })?,
+        Some(registry) => {
+            let id_scope = crate::svg::icon_registry::IconIdScopePrefix::from_parts(
+                &[id_scope.as_str()],
+                ctx.work_meter,
+            )?
+            .scope_parts(&[], ctx.work_meter)?;
+            registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
+                icon_name,
+                width_px: icon_size,
+                height_px: icon_size,
+                fallback_prefix: None,
+                extra_class: None,
+                id_scope,
+                effective_config: ctx.config,
+                work_meter: ctx.work_meter,
+            })?
+        }
         None => None,
     };
     Ok(icon.unwrap_or_else(|| {
@@ -275,7 +282,8 @@ pub(super) fn resolve_node_render_info<'a>(
     if let Some(sg) = ctx.subgraphs_by_id.get(node_id)
         && !ctx.subgraph_has_children(node_id)
     {
-        let subgraph_index = ctx.subgraph_index_by_id.get(node_id).copied()?;
+        let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied()?;
+        let (node_classes, node_styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
         return Some(ResolvedNodeRenderInfo {
             dom_idx: None,
             class_attr_base: "node",
@@ -292,8 +300,8 @@ pub(super) fn resolve_node_render_info<'a>(
             node_constraint: None,
             node_asset_width: None,
             node_asset_height: None,
-            node_styles: &sg.styles,
-            node_classes: &sg.classes,
+            node_styles,
+            node_classes,
         });
     }
 

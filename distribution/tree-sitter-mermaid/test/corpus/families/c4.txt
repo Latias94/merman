@@ -1,0 +1,571 @@
+==================
+context entities nested boundaries relationships and updates stay structural
+==================
+
+C4Context
+title Internet Banking Context
+accTitle: Accessible context
+accDescr {Context model for banking.}
+direction LR
+Enterprise_Boundary(bank, "Bank") {
+  Person(customer, "Customer", "Owns accounts")
+  Person_Ext(auditor, "Auditor")
+  System(system, "Internet Banking", "Serves customers")
+  SystemDb(database, "Core Database")
+  SystemQueue_Ext(events, "External Events")
+  System_Boundary(core, "Core") {
+    SystemQueue(queue, "Queue")
+  }
+}
+BiRel(customer, system, "Uses")
+Rel_Right(system, database, "Reads", "SQL")
+UpdateElementStyle(system, $bgColor="blue", $fontColor="white")
+UpdateRelStyle(system, database, $lineColor="red", $offsetY="-10")
+UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+
+---
+
+(source_file
+  (c4_diagram
+    (c4_header
+      (diagram_keyword))
+    (c4_body
+      (c4_title_statement
+        (c4_statement_keyword)
+        (c4_line_text))
+      (c4_accessibility_title_statement
+        (c4_statement_keyword)
+        (c4_line_text))
+      (c4_accessibility_description_statement
+        (c4_statement_keyword)
+        (c4_accessibility_description_block))
+      (c4_direction_statement
+        (c4_statement_keyword)
+        (c4_direction))
+      (c4_boundary_statement
+        (c4_boundary_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))
+        (c4_boundary_body
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string)))
+          (c4_boundary_statement
+            (c4_boundary_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_boundary_body
+              (c4_entity_declaration
+                (c4_entity_kind)
+                (c4_reference
+                  (c4_identifier))
+                (c4_argument
+                  (c4_string)))))))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string)))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))
+        (c4_argument
+          (c4_string)))
+      (c4_style_update_statement
+        (c4_update_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_named_argument
+            (c4_property_name)
+            (c4_string)))
+        (c4_argument
+          (c4_named_argument
+            (c4_property_name)
+            (c4_string))))
+      (c4_style_update_statement
+        (c4_update_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_named_argument
+            (c4_property_name)
+            (c4_string)))
+        (c4_argument
+          (c4_named_argument
+            (c4_property_name)
+            (c4_string))))
+      (c4_style_update_statement
+        (c4_update_kind)
+        (c4_argument
+          (c4_named_argument
+            (c4_property_name)
+            (c4_string)))
+        (c4_argument
+          (c4_named_argument
+            (c4_property_name)
+            (c4_string)))))))
+
+==================
+container variant and positional named and empty attributes
+==================
+
+C4Container
+Person(customer, Customer, "Owns accounts",, $sprite="users", $link="https://example.test")
+Container_Boundary(apps, "Applications") {
+  Container(web, "Web", "TypeScript", "Serves HTML")
+  ContainerDb(db, "Database", "PostgreSQL")
+  ContainerQueue(queue, "Events", "Kafka")
+  Container_Ext(external, "External")
+  ContainerDb_Ext(archive, "Archive")
+  ContainerQueue_Ext(remoteQueue, "Remote Queue")
+}
+Rel(customer, web, "Uses", "HTTPS")
+
+---
+
+(source_file
+  (c4_diagram
+    (c4_header
+      (diagram_keyword))
+    (c4_body
+      (c4_entity_declaration
+        (c4_entity_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_unquoted_argument))
+        (c4_argument
+          (c4_string))
+        (c4_argument
+          (c4_named_argument
+            (c4_property_name)
+            (c4_string)))
+        (c4_argument
+          (c4_named_argument
+            (c4_property_name)
+            (c4_string))))
+      (c4_boundary_statement
+        (c4_boundary_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))
+        (c4_boundary_body
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string)))))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))
+        (c4_argument
+          (c4_string))))))
+
+==================
+component variant exposes component kinds and relationships
+==================
+
+C4Component
+Container_Boundary(api, "API") {
+  Component(controller, "Controller", "Rust", "Accepts requests")
+  ComponentDb(store, "Store", "SQL")
+  ComponentQueue(bus, "Bus", "NATS")
+  Component_Ext(remote, "Remote")
+  ComponentDb_Ext(remoteDb, "Remote DB")
+  ComponentQueue_Ext(remoteBus, "Remote Bus")
+}
+Rel_U(controller, store, "Reads")
+Rel_Down(controller, bus, "Publishes")
+
+---
+
+(source_file
+  (c4_diagram
+    (c4_header
+      (diagram_keyword))
+    (c4_body
+      (c4_boundary_statement
+        (c4_boundary_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))
+        (c4_boundary_body
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string)))
+          (c4_entity_declaration
+            (c4_entity_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string)))))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string)))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))))))
+
+==================
+dynamic variant preserves indexed and directional relationship variants
+==================
+
+C4Dynamic
+Container(c1, "Browser")
+Container(c2, "API")
+ContainerDb(c3, "Database")
+RelIndex(1, c1, c2, "Submit", "HTTPS")
+RelIndex(2, c2, c3, "Query", "SQL")
+Rel_Left(c3, c2, "Result")
+Rel_Back(c2, c1, "Response")
+
+---
+
+(source_file
+  (c4_diagram
+    (c4_header
+      (diagram_keyword))
+    (c4_body
+      (c4_entity_declaration
+        (c4_entity_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string)))
+      (c4_entity_declaration
+        (c4_entity_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string)))
+      (c4_entity_declaration
+        (c4_entity_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string)))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_argument
+          (c4_unquoted_argument))
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))
+        (c4_argument
+          (c4_string)))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_argument
+          (c4_unquoted_argument))
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))
+        (c4_argument
+          (c4_string)))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string)))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))))))
+
+==================
+deployment variant preserves node nesting and aliases
+==================
+
+C4Deployment
+Deployment_Node(cloud, "Cloud", "Region") {
+  Node_L(primary, "Primary") {
+    Container(api, "API")
+  }
+  Node_R(secondary, "Secondary") {
+    ContainerDb(replica, "Replica")
+  }
+  Node(edge, "Edge") {
+    ContainerQueue(events, "Events")
+  }
+}
+Rel(api, replica, "Replicates")
+
+---
+
+(source_file
+  (c4_diagram
+    (c4_header
+      (diagram_keyword))
+    (c4_body
+      (c4_boundary_statement
+        (c4_boundary_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))
+        (c4_argument
+          (c4_string))
+        (c4_boundary_body
+          (c4_boundary_statement
+            (c4_boundary_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_boundary_body
+              (c4_entity_declaration
+                (c4_entity_kind)
+                (c4_reference
+                  (c4_identifier))
+                (c4_argument
+                  (c4_string)))))
+          (c4_boundary_statement
+            (c4_boundary_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_boundary_body
+              (c4_entity_declaration
+                (c4_entity_kind)
+                (c4_reference
+                  (c4_identifier))
+                (c4_argument
+                  (c4_string)))))
+          (c4_boundary_statement
+            (c4_boundary_kind)
+            (c4_reference
+              (c4_identifier))
+            (c4_argument
+              (c4_string))
+            (c4_boundary_body
+              (c4_entity_declaration
+                (c4_entity_kind)
+                (c4_reference
+                  (c4_identifier))
+                (c4_argument
+                  (c4_string)))))))
+      (c4_relationship_statement
+        (c4_relationship_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))))))
+
+==================
+known incomplete calls recover on one line and preserve siblings
+==================
+
+C4Context
+Person(before, "Before")
+Rel(before,
+System(after, "After")
+UpdateRelStyle(after, before, $lineColor="blue"
+Person(last, "Last")
+
+---
+
+(source_file
+  (c4_diagram
+    (c4_header
+      (diagram_keyword))
+    (c4_body
+      (c4_entity_declaration
+        (c4_entity_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string)))
+      (c4_incomplete_statement
+        (c4_relationship_kind)
+        (c4_reference
+          (c4_identifier)))
+      (c4_entity_declaration
+        (c4_entity_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string)))
+      (c4_incomplete_statement
+        (c4_update_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_named_argument
+            (c4_property_name)
+            (c4_string))))
+      (c4_entity_declaration
+        (c4_entity_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))))))
+
+==================
+header-only c4 input is rejected without an entity body
+==================
+
+C4Deployment
+
+---
+
+(source_file
+  (c4_diagram
+    (c4_header
+      (diagram_keyword))
+    (c4_body
+      (MISSING comment))))

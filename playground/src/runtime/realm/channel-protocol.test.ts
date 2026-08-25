@@ -10,6 +10,7 @@ import {
   assertRealmInitBudget,
   createOneTimeRealmInitGate,
   createRealmToken,
+  realmEngineArtifactSourceBytes,
   utf8ByteLength,
   validateCompareRenderRequest,
   validateCompareRenderResponse,
@@ -168,6 +169,19 @@ test("engine artifact validation binds identity, bytes, and resource authority",
   );
 });
 
+test("validated engine artifacts own one reusable UTF-8 byte buffer", () => {
+  const artifact = validateRealmEngineArtifact(
+    ENGINE_ARTIFACT,
+    ENGINE_IDENTITY,
+  );
+  const first = realmEngineArtifactSourceBytes(artifact);
+  const second = realmEngineArtifactSourceBytes(artifact);
+
+  assert.equal(first, second);
+  assert.equal(first.byteLength, ENGINE_ARTIFACT.bytes);
+  assert.equal(new TextDecoder().decode(first), ENGINE_ARTIFACT.source);
+});
+
 test("one-time realm init gate rejects missing ports and replay", () => {
   const boot = {
     kind: IDENTITY.kind,
@@ -262,6 +276,22 @@ test("protocol budgets reject one byte beyond each public limit", () => {
     () => assertEncodedMessageBudget("m".repeat(REALM_BUDGETS.messageBytes + 1)),
     RealmProtocolError
   );
+});
+
+test("compare input validates the controlled browser screen width", () => {
+  assert.equal(
+    validateCompareRenderRequest(renderRequest(), IDENTITY, 1).payload
+      .screenAvailableWidth,
+    1512,
+  );
+  for (const screenAvailableWidth of [0, -1, Number.NaN, 16_385]) {
+    const request = renderRequest() as ReturnType<typeof renderRequest>;
+    request.payload.screenAvailableWidth = screenAvailableWidth;
+    assert.throws(
+      () => validateCompareRenderRequest(request, IDENTITY, 1),
+      RealmProtocolError,
+    );
+  }
 });
 
 test("realm initialization reserves a separate verified-engine budget", () => {
@@ -371,6 +401,7 @@ function renderRequest(
       theme: "default",
       diagramFont: "trebuchet",
       externalRequirements: { externalDiagrams: [], layoutModules: [] },
+      screenAvailableWidth: 1512,
       viewport: { width: 800, height: 600 },
     },
   };

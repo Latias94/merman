@@ -41,6 +41,169 @@ pub fn layout_controlled(
     Ok(())
 }
 
+/// Runs the source-backed Dagre ranking phases without ordering or coordinate assignment.
+///
+/// The complete SVG pipeline doubles `minlen` before ranking to reserve edge-label proxy ranks.
+/// Terminal renderers own label geometry, so this seam deliberately keeps caller `minlen` values
+/// in semantic rank units while reusing the same cycle breaking, nesting graph, non-compound
+/// ranker, empty-rank cleanup, and normalization phases.
+pub(crate) fn rank_plan_controlled(
+    input: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<rank::RankPlan, LayoutError> {
+    let mut ranked_graph = build_layout_graph(input, work_control)?;
+
+    // Self-loops do not constrain ranks in Dagre. Remove them before cycle breaking exactly as the
+    // complete pipeline does, but do not materialize positioning-only self-edge dummies.
+    work_control.charge(edge_snapshot_work_units(&ranked_graph)?)?;
+    self_edges::remove_self_edges_with_count(&mut ranked_graph);
+
+    let rank_outcome = run_rank_phases(&mut ranked_graph, work_control)?;
+    if !rank_outcome.tiny_simple_chain {
+        work_control.charge(remove_empty_ranks_work_units(&ranked_graph)?)?;
+        util::remove_empty_ranks(&mut ranked_graph);
+        if ranked_graph.options().compound {
+            charge_graph_scan(&ranked_graph, work_control)?;
+            nesting_graph::cleanup(&mut ranked_graph);
+        }
+        work_control.charge(checked_mul(ranked_graph.node_order_slot_count(), 2)?)?;
+        util::normalize_ranks(&mut ranked_graph);
+        assign_rank_min_max(&mut ranked_graph, work_control, false)?;
+    }
+
+    // Capture original edge identities rather than the temporary reversed keys created by
+    // `acyclic::run`. Nesting edges are introduced after cycle breaking and are never caller-owned.
+    work_control.charge(edge_snapshot_work_units(&ranked_graph)?)?;
+    let mut reversed_edges = Vec::new();
+    for key in ranked_graph.edges() {
+        let Some(edge) = ranked_graph.edge_by_key(key) else {
+            continue;
+        };
+        if !edge.reversed || edge.nesting_edge {
+            continue;
+        }
+        reversed_edges.push(graphlib::EdgeKey::new(
+            key.w.clone(),
+            key.v.clone(),
+            edge.forward_name.clone(),
+        ));
+    }
+    work_control.charge(checked_n_log_n(reversed_edges.len())?)?;
+    reversed_edges.sort_by(|left, right| {
+        (left.v.as_str(), left.w.as_str(), left.name.as_deref()).cmp(&(
+            right.v.as_str(),
+            right.w.as_str(),
+            right.name.as_deref(),
+        ))
+    });
+
+    work_control.charge(node_snapshot_work_units(input)?)?;
+    let mut nodes = Vec::with_capacity(input.node_count());
+    for id in input.nodes() {
+        let node = ranked_graph.node(id);
+        nodes.push(rank::RankPlanNode {
+            id: id.to_string(),
+            rank: node.and_then(|label| label.rank),
+            min_rank: node.and_then(|label| label.min_rank),
+            max_rank: node.and_then(|label| label.max_rank),
+        });
+    }
+
+    Ok(rank::RankPlan {
+        nodes,
+        reversed_edges,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RankPhaseOutcome {
+    tiny_simple_chain: bool,
+    ran_acyclic: bool,
+}
+
+/// Runs the cycle-breaking, nesting, and configured ranker phases shared by every layout surface.
+///
+/// Callers own any surface-specific preprocessing before this seam. The complete SVG pipeline has
+/// already doubled `minlen` for edge-label proxy ranks, while terminal ranking passes semantic
+/// `minlen` values through unchanged.
+fn run_rank_phases(
+    g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<RankPhaseOutcome, LayoutError> {
+    work_control.charge(g.node_order_slot_count())?;
+    let mut has_compound_structure = false;
+    g.for_each_node(|id, _node| {
+        has_compound_structure |= g.parent(id).is_some() || g.children_iter(id).next().is_some();
+    });
+    let uses_network_simplex = !matches!(
+        g.graph().ranker.as_deref(),
+        Some("longest-path" | "tight-tree")
+    );
+    let tiny_simple_chain = g.node_count() == 2
+        && g.edge_count() == 1
+        && !has_compound_structure
+        && uses_network_simplex;
+    let first_edge = if tiny_simple_chain {
+        g.edges().next().cloned()
+    } else {
+        None
+    };
+
+    let ran_acyclic = if tiny_simple_chain || g.edge_count() <= 1 {
+        false
+    } else {
+        acyclic::run_controlled(g, work_control)?;
+        true
+    };
+    // Mermaid's Dagre adapter always uses a compound graph. The nesting pass both supplies cluster
+    // constraints and connects otherwise disconnected components for network-simplex.
+    if g.options().compound && !tiny_simple_chain {
+        nesting_graph::run_controlled(g, work_control)?;
+    }
+
+    if tiny_simple_chain {
+        // Network-simplex's simplify phase floors a simple edge `minlen` to one. Keep the same
+        // semantics in the fixed-cost shortcut used by both complete and rank-only layout.
+        g.for_each_node_mut(|_id, node| node.rank = Some(0));
+        if let Some(edge_key) = first_edge {
+            let minlen = g
+                .edge_by_key(&edge_key)
+                .map_or(1, |edge| edge.minlen.max(1));
+            let minlen = i32::try_from(minlen).map_err(|_| WorkError::ArithmeticOverflow)?;
+            if let Some(node) = g.node_mut(&edge_key.v) {
+                node.rank = Some(0);
+            }
+            if let Some(node) = g.node_mut(&edge_key.w) {
+                node.rank = Some(minlen);
+            }
+        }
+    } else {
+        // Dagre ranks a non-compound view. Nesting border nodes remain leaves in that view and
+        // carry cluster constraints, while compound labels themselves never receive a leaf rank.
+        let mut rank_graph = build_non_compound_rank_graph(g, work_control)?;
+        rank::rank_controlled(&mut rank_graph, work_control)?;
+        // Dagre's JavaScript graph views share node-label objects. Rust graphs do not, so copy leaf
+        // ranks back explicitly before surface-specific cleanup and normalization.
+        work_control.charge(node_snapshot_work_units(g)?)?;
+        for id in g.node_ids() {
+            if g.children_iter(&id).next().is_some() {
+                continue;
+            }
+            let Some(node_rank) = rank_graph.node(&id).and_then(|node| node.rank) else {
+                continue;
+            };
+            if let Some(node) = g.node_mut(&id) {
+                node.rank = Some(node_rank);
+            }
+        }
+    }
+
+    Ok(RankPhaseOutcome {
+        tiny_simple_chain,
+        ran_acyclic,
+    })
+}
+
 // Dagre runs its mutating phases on a temporary graph built from a whitelist of layout inputs.
 // Keeping the same ownership boundary prevents rank doubling, dummy metadata, and other
 // algorithm-local state from leaking into a later layout of the caller's graph.
@@ -317,88 +480,10 @@ fn run_layout(
     // deterministic, spacing-aware offset in BK positioning.
     work_control.charge(edge_snapshot_work_units(g)?)?;
     let self_edge_count = self_edges::remove_self_edges_with_count(g);
-
-    work_control.charge(g.node_order_slot_count())?;
-    let mut has_compound_structure = false;
-    g.for_each_node(|id, _n| {
-        if g.parent(id).is_some() || g.children_iter(id).next().is_some() {
-            has_compound_structure = true;
-        }
-    });
-    let uses_network_simplex = !matches!(
-        g.graph().ranker.as_deref(),
-        Some("longest-path" | "tight-tree")
-    );
-    let tiny_simple_chain = g.node_count() == 2
-        && g.edge_count() == 1
-        && !has_compound_structure
-        && uses_network_simplex;
-    let first_edge_pre = if tiny_simple_chain {
-        g.edges().next().cloned()
-    } else {
-        None
-    };
-
-    let ran_acyclic = if tiny_simple_chain || g.edge_count() <= 1 {
-        false
-    } else {
-        acyclic::run_controlled(g, work_control)?;
-        true
-    };
-    // Mermaid's dagre adapter always enables `compound: true`, and Dagre's ranker expects a
-    // connected graph. Nesting graph connects components (even if there are no explicit
-    // subgraphs), preventing network-simplex from panicking on disconnected inputs.
-    if g.options().compound && !tiny_simple_chain {
-        nesting_graph::run_controlled(g, work_control)?;
-    }
-
-    // Match upstream Dagre: ranking runs on a non-compound view of the graph so cluster nodes
-    // (nodes with children) do not participate in ranking / network-simplex connectivity.
-    //
-    // `nesting_graph::run` materializes border nodes and nesting edges; those border nodes are
-    // leaf nodes and remain in the non-compound graph, providing the constraints Dagre expects.
-    if tiny_simple_chain {
-        // For the smallest flowcharts (e.g. `A --> B`) network-simplex + ordering overhead
-        // dominates total runtime. A deterministic direct rank assignment keeps behavior
-        // identical for these cases while cutting fixed-cost work.
-        g.for_each_node_mut(|_id, n| n.rank = Some(0));
-        if let Some(ek) = first_edge_pre.clone() {
-            let minlen = match g.edge_by_key(&ek) {
-                // The shortcut replaces network-simplex, whose `simplify` stage floors a simple
-                // edge to one even when the source label explicitly carries zero.
-                Some(edge) => {
-                    i32::try_from(edge.minlen.max(1)).map_err(|_| WorkError::ArithmeticOverflow)?
-                }
-                None => 1,
-            };
-            if let Some(n) = g.node_mut(&ek.v) {
-                n.rank = Some(0);
-            }
-            if let Some(n) = g.node_mut(&ek.w) {
-                n.rank = Some(minlen);
-            }
-        }
-    } else {
-        let mut rank_graph = build_non_compound_rank_graph(g, work_control)?;
-        rank::rank_controlled(&mut rank_graph, work_control)?;
-        // Mirror Dagre's JS behavior: `rank(asNonCompoundGraph(g))` mutates the same label objects
-        // for leaf nodes, but does not propagate ranks to compound nodes (nodes with children).
-        //
-        // In Rust we don't share label objects between graphs, so we copy ranks explicitly for leaf
-        // nodes only.
-        work_control.charge(node_snapshot_work_units(g)?)?;
-        for v in g.node_ids() {
-            if g.children_iter(&v).next().is_some() {
-                continue;
-            }
-            let Some(rank) = rank_graph.node(&v).and_then(|n| n.rank) else {
-                continue;
-            };
-            if let Some(n) = g.node_mut(&v) {
-                n.rank = Some(rank);
-            }
-        }
-    }
+    let RankPhaseOutcome {
+        tiny_simple_chain,
+        ran_acyclic,
+    } = run_rank_phases(g, work_control)?;
     // Mirror Dagre's `injectEdgeLabelProxies` / `removeEdgeLabelProxies` to compute label ranks.
     // These label ranks are used by `normalize::run` to materialize `edge-label` dummy nodes with
     // the correct width/height, letting BK positioning account for edge labels.
@@ -451,31 +536,7 @@ fn run_layout(
     charge_graph_scan(g, work_control)?;
     remove_edge_label_proxies(g, edge_proxy_nodes);
 
-    // Dagre uses `assignRankMinMax` to annotate compound nodes with their rank span, derived from
-    // the `nestingGraph` border top/bottom nodes. This rank span is later used by subgraph
-    // ordering and border segment generation.
-    if g.options().compound && !tiny_simple_chain {
-        work_control.charge(node_snapshot_work_units(g)?)?;
-        let node_ids = g.node_ids();
-        for v in node_ids {
-            let Some(node) = g.node(&v).cloned() else {
-                continue;
-            };
-            let (Some(bt), Some(bb)) = (node.border_top.clone(), node.border_bottom.clone()) else {
-                continue;
-            };
-            let (Some(min_rank), Some(max_rank)) = (
-                g.node(&bt).and_then(|n| n.rank),
-                g.node(&bb).and_then(|n| n.rank),
-            ) else {
-                continue;
-            };
-            if let Some(n) = g.node_mut(&v) {
-                n.min_rank = Some(min_rank);
-                n.max_rank = Some(max_rank);
-            }
-        }
-    }
+    assign_rank_min_max(g, work_control, tiny_simple_chain)?;
 
     let normalization_plan = prepare_normalization(g, work_control)?;
     normalize::run_planned(g, normalization_plan);
@@ -759,6 +820,42 @@ fn charge_graph_scan(
     work_control: &mut dyn WorkControl,
 ) -> Result<(), WorkError> {
     work_control.charge(graph_scan_work_units(g)?)
+}
+
+fn assign_rank_min_max(
+    g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+    skip_compound_phase: bool,
+) -> Result<(), WorkError> {
+    // Dagre derives compound-node rank spans from the nesting border nodes after ranks have been
+    // normalized. Both the complete layout and the rank-only seam share this exact ownership.
+    if !g.options().compound || skip_compound_phase {
+        return Ok(());
+    }
+
+    work_control.charge(node_snapshot_work_units(g)?)?;
+    let node_ids = g.node_ids();
+    for id in node_ids {
+        let Some(node) = g.node(&id).cloned() else {
+            continue;
+        };
+        let (Some(border_top), Some(border_bottom)) =
+            (node.border_top.as_deref(), node.border_bottom.as_deref())
+        else {
+            continue;
+        };
+        let (Some(min_rank), Some(max_rank)) = (
+            g.node(border_top).and_then(|node| node.rank),
+            g.node(border_bottom).and_then(|node| node.rank),
+        ) else {
+            continue;
+        };
+        if let Some(node) = g.node_mut(&id) {
+            node.min_rank = Some(min_rank);
+            node.max_rank = Some(max_rank);
+        }
+    }
+    Ok(())
 }
 
 fn graph_scan_work_units(

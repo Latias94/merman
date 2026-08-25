@@ -1,14 +1,11 @@
 use crate::diagram::legacy_warning_messages;
 use crate::sanitize::sanitize_text;
 use crate::{
-    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind,
-    EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticRole, EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
-    editor::{
-        EditorLexemeJournal, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
-        lalrpop_recovery_span,
-    },
+    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
+    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig, OperationControl,
+    OperationControlResult, ParseMetadata, Result, SourceSpan,
+    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
@@ -56,7 +53,6 @@ mod accessibility;
 mod ast;
 mod build;
 mod lex;
-mod lexeme;
 mod lexer;
 mod lexer_iter;
 mod link;
@@ -73,11 +69,15 @@ use text::{
 };
 
 #[doc(hidden)]
-pub use model::FlowchartRenderLabelSources;
-pub use model::{FlowEdge, FlowEdgeDefaults, FlowNode, FlowSubgraph, FlowchartModel};
+pub use model::FlowchartRenderContext;
+pub use model::{
+    FlowEdge, FlowEdgeDefaults, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode,
+    FlowNodeProvenance, FlowSubgraph, FlowchartModel,
+};
 
 pub(crate) use model::{
-    Edge, EdgeDefaults, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
+    Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, FlowchartRenderLabelSources,
+    FlowchartRenderStyleSources, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
 };
 
 pub(crate) use ast::{
@@ -85,7 +85,6 @@ pub(crate) use ast::{
     LinkStyleStmt, Stmt, StyleStmt, SubgraphBlock,
 };
 
-pub(crate) use lexeme::FlowchartLexemeComponent;
 pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
 use accessibility::{
@@ -94,10 +93,11 @@ use accessibility::{
 };
 use build::FlowchartBuildState;
 use lexer::Lexer;
-use link::{destruct_end_link, destruct_start_link};
+use link::{destruct_end_link, destruct_labeled_end_link, destruct_start_link};
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};
 use shape_data::{
-    apply_shape_data_value_to_node, public_pinned_shape_names, value_to_bool, value_to_string,
+    apply_shape_data_value_to_node, pinned_shape_names, public_pinned_shape_names, value_to_bool,
+    value_to_string,
 };
 use subgraph::SubgraphBuilder;
 
@@ -133,6 +133,7 @@ struct FlowchartSemanticSource {
     nodes: Vec<Node>,
     edges: Vec<Edge>,
     subgraphs: Vec<FlowSubGraph>,
+    subgraph_vertex_styles: FlowchartRenderStyleSources,
     warning_facts: Vec<DiagramWarningFact>,
 }
 
@@ -166,7 +167,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
         statements: accessibility_statements,
     } = scan_flowchart_accessibility_controlled(code, control)?;
     control.checkpoint()?;
-    let trace = construct_flowchart_token_trace(&code, &accessibility_statements, control)?;
+    let trace = construct_flowchart_token_trace(&code, control)?;
     let construction = match parse_flowchart_ast_from_trace(&trace, control)? {
         Ok(ast) => {
             let mut facts = editor_facts_from_flowchart_ast(&ast, control)?;
@@ -177,7 +178,6 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
                 control,
             )?;
             collect_expected_syntax_from_tokens(&code, trace.editor_tokens(), &mut facts, control)?;
-            facts.replace_family_lexemes(trace.lexemes);
             let (model, warning_facts) = match parse_flowchart_semantic_source_from_ast_controlled(
                 ast, acc_title, acc_descr, meta, control,
             )? {
@@ -229,7 +229,7 @@ pub(crate) fn parse_flowchart_model_for_render(
 pub(crate) fn parse_flowchart_model_with_render_context(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(FlowchartModel, FlowchartRenderLabelSources)> {
+) -> Result<(FlowchartModel, FlowchartRenderContext)> {
     parse_flowchart_semantic_source(code, meta)?.into_render_model_parts(meta)
 }
 
@@ -237,7 +237,7 @@ pub(crate) fn parse_flowchart_model_with_render_context_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderLabelSources)>> {
+) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
     let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
     match source {
         Ok(source) => source.into_render_model_parts_controlled(meta, control),
@@ -257,6 +257,23 @@ pub(crate) fn render_model_to_compat_json(
             "flowchart typed model did not serialize to an object".to_string(),
         )
     })?;
+    if let Some(edges) = root.get_mut("edges").and_then(Value::as_array_mut) {
+        for edge in edges {
+            if let Some(edge) = edge.as_object_mut() {
+                edge.remove("startMarker");
+                edge.remove("endMarker");
+                edge.remove("strokeKind");
+                edge.remove("visibility");
+            }
+        }
+    }
+    if let Some(nodes) = root.get_mut("nodes").and_then(Value::as_array_mut) {
+        for node in nodes {
+            if let Some(node) = node.as_object_mut() {
+                node.remove("provenance");
+            }
+        }
+    }
     root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     if model
         .warning_facts
@@ -276,6 +293,11 @@ pub(crate) fn render_model_to_compat_json(
 
 pub fn flowchart_public_shape_names() -> impl Iterator<Item = &'static str> {
     public_pinned_shape_names()
+}
+
+#[doc(hidden)]
+pub fn flowchart_pinned_shape_names() -> impl Iterator<Item = &'static str> {
+    pinned_shape_names()
 }
 
 fn parse_flowchart_semantic_source(
@@ -306,13 +328,22 @@ fn parse_flowchart_semantic_source_controlled(
         description: acc_descr,
         ..
     } = scan_flowchart_accessibility_controlled(code, control)?;
-    control.checkpoint()?;
-    let ast = match parse_flowchart_ast(&code, meta) {
+    let ast = match parse_flowchart_ast_controlled(&code, meta, control)? {
         Ok(ast) => ast,
         Err(error) => return Ok(Err(error)),
     };
-    control.checkpoint()?;
     parse_flowchart_semantic_source_from_ast_controlled(ast, acc_title, acc_descr, meta, control)
+}
+
+fn parse_flowchart_ast_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<FlowchartAst>> {
+    control.checkpoint()?;
+    let parsed = parse_flowchart_ast(code, meta);
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 fn parse_flowchart_semantic_source_from_ast_controlled(
@@ -341,23 +372,15 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         .collect();
 
     let mut build = FlowchartBuildState::new(subgraph_ids);
-    if let Err(error) = build.add_statements(&ast.statements, &shape_data_documents, control)? {
-        return Ok(Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            error,
-        )));
-    }
-    let FlowchartBuildState {
-        nodes,
-        edges,
-        vertex_calls,
-        warning_facts: build_warning_facts,
-        ..
-    } = build;
+    build.add_statements(&ast.statements, control)?;
+    let FlowchartBuildState { nodes, edges, .. } = build;
     let mut nodes = nodes;
     let mut edges = edges;
 
     let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
+    let mut subgraph_vertex_styles = FlowchartRenderStyleSources::default();
+    let mut vertex_calls = Vec::new();
+    let mut warning_facts = Vec::new();
     let mut tooltips: HashMap<String, String> = HashMap::new();
     let mut edge_defaults = EdgeDefaults {
         style: Vec::new(),
@@ -371,14 +394,6 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         }
         node_index.insert(n.id.clone(), idx);
     }
-    let mut subgraph_index: HashMap<String, usize> = HashMap::new();
-    for (idx, sg) in builder.subgraphs.iter().enumerate() {
-        if idx % 128 == 0 {
-            control.checkpoint()?;
-        }
-        subgraph_index.insert(sg.id.clone(), idx);
-    }
-
     let security_level_loose = meta.effective_config.get_str("securityLevel") == Some("loose");
     {
         let mut semantic_ctx = FlowchartSemanticContext {
@@ -386,7 +401,9 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
             node_index: &mut node_index,
             edges: &mut edges,
             subgraphs: &mut builder.subgraphs,
-            subgraph_index: &mut subgraph_index,
+            subgraph_vertex_styles: &mut subgraph_vertex_styles,
+            vertex_calls: &mut vertex_calls,
+            warning_facts: &mut warning_facts,
             class_defs: &mut class_defs,
             tooltips: &mut tooltips,
             edge_defaults: &mut edge_defaults,
@@ -402,7 +419,6 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
     }
 
     let direction = ast.direction;
-    let mut warning_facts = build_warning_facts;
     warning_facts.extend(flowchart_warning_facts(&direction, ast.header_span));
     control.checkpoint()?;
     Ok(Ok(FlowchartSemanticSource {
@@ -417,6 +433,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         nodes,
         edges,
         subgraphs: builder.subgraphs,
+        subgraph_vertex_styles,
         warning_facts,
     }))
 }
@@ -440,8 +457,8 @@ fn prepare_flowchart_shape_data(
         visited = visited.saturating_add(1);
 
         match statement {
-            Stmt::Chain { nodes, .. } => {
-                for (index, node) in nodes.iter().enumerate() {
+            Stmt::Chain { node_groups, .. } => {
+                for (index, node) in node_groups.iter().flatten().enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }
@@ -511,7 +528,6 @@ enum FlowchartTracedItem {
 
 struct FlowchartTokenTrace {
     items: Vec<FlowchartTracedItem>,
-    lexemes: crate::editor::EditorLexemeBatchResult,
 }
 
 impl FlowchartTokenTrace {
@@ -545,7 +561,6 @@ impl FlowchartTokenTrace {
 
 fn construct_flowchart_token_trace(
     code: &str,
-    accessibility_statements: &[FlowchartAccessibilityStatement],
     control: &OperationControl,
 ) -> OperationControlResult<FlowchartTokenTrace> {
     #[cfg(test)]
@@ -555,25 +570,13 @@ fn construct_flowchart_token_trace(
             .saturating_add(1),
     );
 
-    let mut journal = EditorLexemeJournal::family_lexer(code);
-    for (index, component) in accessibility_statements
-        .iter()
-        .flat_map(|statement| statement.lexemes.iter())
-        .enumerate()
-    {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        journal.push(component.kind, EditorLexemeModifiers::NONE, component.span);
-    }
     let mut items = Vec::new();
     for item in Lexer::recovering(code) {
         if items.len() % 128 == 0 {
             control.checkpoint()?;
         }
         match item {
-            Ok(mut token @ (start, _, end)) => {
-                record_flowchart_lexeme(&mut journal, &token.1, start, end);
+            Ok(mut token) => {
                 let strict_error = match &mut token.1 {
                     Tok::NodeLabel(label) => label.recovery_error.take(),
                     Tok::DirectionStmt(direction) => direction.recovery_error.take(),
@@ -594,10 +597,7 @@ fn construct_flowchart_token_trace(
     }
 
     control.checkpoint()?;
-    Ok(FlowchartTokenTrace {
-        items,
-        lexemes: journal.finish(),
-    })
+    Ok(FlowchartTokenTrace { items })
 }
 
 fn parse_flowchart_ast_from_trace(
@@ -610,75 +610,6 @@ fn parse_flowchart_ast_from_trace(
         .map_err(Box::new);
     control.checkpoint()?;
     Ok(parsed)
-}
-
-fn record_flowchart_lexeme(
-    journal: &mut EditorLexemeJournal<'_>,
-    token: &Tok,
-    start: usize,
-    end: usize,
-) {
-    let components = match token {
-        Tok::DirectionStmt(token) => Some(token.lexeme_components.as_slice()),
-        Tok::NodeLabel(token) => Some(token.lexeme_components.as_slice()),
-        Tok::Arrow(arrow) if !arrow.lexeme_components.is_empty() => {
-            Some(arrow.lexeme_components.as_slice())
-        }
-        Tok::EdgeLabel(label) => Some(label.lexeme_components.as_slice()),
-        Tok::SubgraphHeader(header) => Some(header.lexeme_components.as_slice()),
-        Tok::StyleStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        Tok::ClassDefStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        Tok::ClassAssignStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        Tok::ClickStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        Tok::LinkStyleStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        _ => None,
-    };
-    if let Some(components) = components {
-        for component in components {
-            journal.push(component.kind, EditorLexemeModifiers::NONE, component.span);
-        }
-        return;
-    }
-
-    let span = SourceSpan::new(start, end);
-    let kind = match token {
-        Tok::KwGraph
-        | Tok::KwFlowchart
-        | Tok::KwFlowchartElk
-        | Tok::KwSwimlane
-        | Tok::KwSubgraph
-        | Tok::KwEnd => EditorLexemeKind::Keyword,
-        Tok::Amp | Tok::StyleSep | Tok::Arrow(_) => EditorLexemeKind::Operator,
-        Tok::Direction(_) => EditorLexemeKind::Literal,
-        Tok::ShapeData(_) => EditorLexemeKind::Style,
-        Tok::Id(_) => EditorLexemeKind::Identifier,
-        Tok::EdgeId(_) => {
-            if start + 1 < end {
-                journal.push(
-                    EditorLexemeKind::Identifier,
-                    EditorLexemeModifiers::NONE,
-                    SourceSpan::new(start, end - 1),
-                );
-            }
-            journal.push(
-                EditorLexemeKind::Operator,
-                EditorLexemeModifiers::NONE,
-                SourceSpan::new(end - 1, end),
-            );
-            return;
-        }
-        Tok::DirectionStmt(_)
-        | Tok::NodeLabel(_)
-        | Tok::EdgeLabel(_)
-        | Tok::SubgraphHeader(_)
-        | Tok::StyleStmt(_)
-        | Tok::ClassDefStmt(_)
-        | Tok::ClassAssignStmt(_)
-        | Tok::ClickStmt(_)
-        | Tok::LinkStyleStmt(_) => unreachable!("compound tokens return above"),
-        Tok::Sep => return,
-    };
-    journal.push(kind, EditorLexemeModifiers::NONE, span);
 }
 
 fn flowchart_warning_facts(
@@ -736,8 +667,6 @@ fn recover_flowchart_editor_facts_from_tokens(
             facts.push_directive_prefix(prefix);
         }
     }
-    facts.replace_family_lexemes(trace.lexemes);
-
     control.checkpoint()?;
     Ok(facts)
 }
@@ -1009,19 +938,23 @@ fn collect_editor_facts_from_statements_with_seen_edges(
         visited = visited.saturating_add(1);
 
         match stmt {
-            Stmt::Chain { nodes, edges } => {
-                for (index, node) in nodes.iter().enumerate() {
+            Stmt::Chain {
+                node_groups,
+                edge_groups,
+            } => {
+                for (index, node) in node_groups.iter().flatten().enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }
-                    let occurrence = if edges.is_empty() || node_defines_flowchart_entity(node) {
-                        FlowchartNodeOccurrence::Definition
-                    } else {
-                        FlowchartNodeOccurrence::RelationEndpoint
-                    };
+                    let occurrence =
+                        if edge_groups.is_empty() || node_defines_flowchart_entity(node) {
+                            FlowchartNodeOccurrence::Definition
+                        } else {
+                            FlowchartNodeOccurrence::RelationEndpoint
+                        };
                     push_flowchart_node_symbol(facts, node, seen_entities, occurrence);
                 }
-                for (index, edge) in edges.iter().enumerate() {
+                for (index, edge) in edge_groups.iter().flatten().enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }
@@ -1604,7 +1537,7 @@ impl FlowchartSemanticSource {
     fn into_render_model_parts(
         self,
         meta: &ParseMetadata,
-    ) -> Result<(FlowchartModel, FlowchartRenderLabelSources)> {
+    ) -> Result<(FlowchartModel, FlowchartRenderContext)> {
         let control = OperationControl::new();
         self.into_render_model_parts_controlled(meta, &control)
             .expect("a private parse control cannot be cancelled")
@@ -1624,7 +1557,7 @@ impl FlowchartSemanticSource {
         self,
         meta: &ParseMetadata,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderLabelSources)>> {
+    ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
         control.checkpoint()?;
         let FlowchartSemanticSource {
             acc_descr,
@@ -1635,6 +1568,7 @@ impl FlowchartSemanticSource {
             mut nodes,
             edges,
             subgraphs,
+            subgraph_vertex_styles,
             warning_facts,
             tooltips,
             keyword,
@@ -1679,7 +1613,7 @@ impl FlowchartSemanticSource {
             }
             let (subgraph, render_title_source) =
                 flow_subgraph_to_model(subgraph, &meta.effective_config);
-            render_label_sources.push_subgraph(render_title_source);
+            render_label_sources.insert_subgraph(subgraph.id.clone(), index, render_title_source);
             render_subgraphs.push(subgraph);
         }
         let mut render_tooltips = rustc_hash::FxHashMap::default();
@@ -1709,7 +1643,10 @@ impl FlowchartSemanticSource {
             tooltips: render_tooltips,
             warning_facts,
         };
-        Ok(Ok((model, render_label_sources)))
+        Ok(Ok((
+            model,
+            FlowchartRenderContext::new(render_label_sources, subgraph_vertex_styles),
+        )))
     }
 }
 
@@ -1732,6 +1669,8 @@ fn append_missing_subgraph_nodes(
         if existing_ids.insert(subgraph.id.clone()) {
             nodes.push(Node {
                 id: subgraph.id.clone(),
+                provenance: FlowNodeProvenance::SubgraphAnchor,
+                syntax: FlowNodeSyntax::BareReference,
                 id_span: None,
                 label: None,
                 label_type: TitleKind::Text,
@@ -1767,6 +1706,7 @@ fn flow_node_to_model(n: Node, config: &MermaidConfig) -> (FlowNode, Option<Stri
 
     let node = FlowNode {
         id: n.id,
+        provenance: n.provenance,
         label: Some(label),
         label_type: Some(title_kind_str(&n.label_type).to_string()),
         layout_shape: Some(layout_shape),
@@ -1804,6 +1744,8 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
             "flowchart edge id missing".to_string(),
         )
     })?;
+    let edge_type = e.link.compatibility_edge_type().to_string();
+    let stroke = e.link.compatibility_stroke().to_string();
 
     Ok((
         FlowEdge {
@@ -1812,10 +1754,14 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
             to: e.to,
             label,
             label_type: Some(title_kind_str(&e.label_type).to_string()),
-            edge_type: Some(e.link.edge_type),
+            edge_type: Some(edge_type),
             arrow: e.link.end,
+            start_marker: e.link.start_marker,
+            end_marker: e.link.end_marker,
             is_user_defined_id: e.is_user_defined_id,
-            stroke: Some(e.link.stroke),
+            stroke: Some(stroke),
+            stroke_kind: e.link.stroke_kind,
+            visibility: e.link.visibility,
             length: e.link.length,
             style: e.style,
             classes: e.classes,
@@ -1828,7 +1774,7 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
 }
 
 fn layout_shape_for_node(n: &Node) -> String {
-    // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at 11.12.2.
+    // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at the pinned Mermaid 11.16.1 baseline.
     if n.img.is_some() {
         return "imageSquare".to_string();
     }
@@ -1917,6 +1863,246 @@ fn flow_subgraph_to_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn flowchart_test_meta(diagram_type: &str) -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: diagram_type.to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn flowchart_subgraph_endpoint_provenance_preserves_authored_nodes() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (endpoint_only, endpoint_context) = parse_flowchart_model_with_render_context(
+            "flowchart TD\nsubgraph G\n  A\nend\nG --> A\n",
+            &meta,
+        )
+        .expect("subgraph endpoint model");
+        let endpoint = endpoint_only
+            .nodes
+            .iter()
+            .find(|node| node.id == "G")
+            .expect("subgraph endpoint node");
+        assert_eq!(endpoint.provenance, FlowNodeProvenance::SubgraphAnchor);
+        assert!(endpoint_context.contains_subgraph_vertex("G"));
+
+        for source in [
+            "flowchart TD\nG\nsubgraph G\n  A\nend\nG --> A\n",
+            "flowchart TD\nsubgraph G\n  A\nend\nG --> A\nG\n",
+            "flowchart TD\nsubgraph G\n  A\nend\nG:::authored --> A\n",
+            concat!(
+                "flowchart TD\n",
+                "G@{ shape: rect, label: \"Authored G\" }\n",
+                "subgraph G\n  A\nend\n",
+                "G --> A\n",
+            ),
+            concat!(
+                "flowchart TD\n",
+                "subgraph G\n  A\nend\n",
+                "G --> A\n",
+                "G@{ shape: rect, label: \"Authored G\" }\n",
+            ),
+        ] {
+            let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
+                .expect("authored node and subgraph model");
+            let node = model
+                .nodes
+                .iter()
+                .find(|node| node.id == "G")
+                .expect("authored G node");
+            assert_eq!(node.provenance, FlowNodeProvenance::Authored, "{source}");
+            assert!(context.contains_subgraph_vertex("G"), "{source}");
+        }
+    }
+
+    #[test]
+    fn same_id_shape_data_is_retained_on_the_authored_typed_node() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (model, _) = parse_flowchart_model_with_render_context(
+            concat!(
+                "flowchart TD\n",
+                "subgraph G\n",
+                "  A\n",
+                "end\n",
+                "G --> A\n",
+                "G@{ shape: stadium, label: \"Authored G\" }\n",
+            ),
+            &meta,
+        )
+        .expect("same-id shapeData should parse");
+        let node = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "G")
+            .expect("authored G node");
+        assert_eq!(node.provenance, FlowNodeProvenance::Authored);
+        assert_eq!(node.shape.as_deref(), Some("stadium"));
+        assert_eq!(node.label.as_deref(), Some("Authored G"));
+    }
+
+    #[test]
+    fn same_id_subgraph_vertex_style_preserves_statement_order() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let cases = [
+            (
+                concat!(
+                    "flowchart TD\n",
+                    "classDef base stroke:#00f\n",
+                    "subgraph G\n  A\nend\n",
+                    "class G base\n",
+                    "style G fill:#f00\n",
+                ),
+                Vec::<String>::new(),
+            ),
+            (
+                concat!(
+                    "flowchart TD\n",
+                    "classDef base stroke:#00f\n",
+                    "subgraph G\n  A\nend\n",
+                    "style G fill:#f00\n",
+                    "class G base\n",
+                ),
+                vec!["base".to_string()],
+            ),
+        ];
+
+        for (source, expected_vertex_classes) in cases {
+            let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
+                .expect("same-ID group model");
+            let (subgraph_index, subgraph) = model
+                .subgraphs
+                .iter()
+                .enumerate()
+                .find(|(_, subgraph)| subgraph.id == "G")
+                .expect("subgraph G");
+            let (vertex_classes, vertex_styles) =
+                context.effective_subgraph_css(subgraph_index, subgraph);
+
+            assert_eq!(subgraph.classes, ["base"]);
+            assert_eq!(vertex_classes, expected_vertex_classes, "{source}");
+            assert_eq!(vertex_styles, ["fill:#f00"], "{source}");
+        }
+    }
+
+    #[test]
+    fn same_id_subgraph_vertex_style_stays_out_of_the_public_model() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (model, context) = parse_flowchart_model_with_render_context(
+            concat!(
+                "flowchart TD\n",
+                "subgraph G\n  A\nend\n",
+                "style G fill:#f00\n",
+                "class G hot\n",
+            ),
+            &meta,
+        )
+        .expect("same-ID group model");
+
+        let json = serde_json::to_value(&model).expect("serialize Flowchart model");
+        assert!(json["subgraphs"][0].get("sameIdVertexStyle").is_none());
+        let subgraph = &model.subgraphs[0];
+        assert!(subgraph.styles.is_empty());
+        let (classes, styles) = context.effective_subgraph_css(0, subgraph);
+        assert_eq!(classes, ["hot"]);
+        assert_eq!(styles, ["fill:#f00"]);
+
+        let compatibility =
+            render_model_to_compat_json(&model, &meta).expect("legacy flowchart JSON");
+        assert!(
+            compatibility["subgraphs"][0]
+                .get("sameIdVertexStyle")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn duplicate_subgraph_vertex_css_is_owned_by_the_last_declaration() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let cases = [
+            concat!(
+                "flowchart TD\n",
+                "style X fill:#f00\n",
+                "subgraph X\n  A\nend\n",
+                "subgraph X\n  B\nend\n",
+            ),
+            concat!(
+                "flowchart TD\n",
+                "subgraph X\n  A\nend\n",
+                "style X fill:#f00\n",
+                "subgraph X\n  B\nend\n",
+            ),
+            concat!(
+                "flowchart TD\n",
+                "subgraph X\n  A\nend\n",
+                "subgraph X\n  B\nend\n",
+                "style X fill:#f00\n",
+            ),
+        ];
+
+        for source in cases {
+            let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
+                .expect("duplicate subgraph declarations should parse");
+
+            assert_eq!(model.subgraphs.len(), 2, "{source}");
+            assert!(
+                model
+                    .subgraphs
+                    .iter()
+                    .all(|subgraph| subgraph.styles.is_empty()),
+                "style statements belong to FlowDB's vertex record, not FlowSubgraph: {source}"
+            );
+            let (_, first_styles) = context.effective_subgraph_css(0, &model.subgraphs[0]);
+            let (_, second_styles) = context.effective_subgraph_css(1, &model.subgraphs[1]);
+
+            assert!(
+                first_styles.is_empty(),
+                "Graphlib's later setNode replaces the styled later declaration: {source}"
+            );
+            assert_eq!(second_styles, ["fill:#f00"], "{source}");
+        }
+    }
+
+    #[test]
+    fn flowchart_elk_missing_subgraph_node_is_an_explicit_anchor_fact() {
+        let meta = flowchart_test_meta("flowchart-elk");
+        let model =
+            parse_flowchart_model_for_render("flowchart-elk TD\nsubgraph Empty\nend\n", &meta)
+                .expect("empty ELK subgraph model");
+        let node = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "Empty")
+            .expect("ELK subgraph anchor");
+
+        assert_eq!(node.provenance, FlowNodeProvenance::SubgraphAnchor);
+    }
+
+    #[test]
+    fn legacy_flowchart_json_omits_typed_node_provenance() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let model = parse_flowchart_model_for_render(
+            "flowchart TD\nsubgraph G\n  A\nend\nG --> A\n",
+            &meta,
+        )
+        .expect("subgraph endpoint model");
+        assert!(
+            model
+                .nodes
+                .iter()
+                .any(|node| node.provenance == FlowNodeProvenance::SubgraphAnchor)
+        );
+
+        let compatibility = render_model_to_compat_json(&model, &meta)
+            .expect("legacy flowchart compatibility JSON");
+        let nodes = compatibility
+            .get("nodes")
+            .and_then(Value::as_array)
+            .expect("legacy nodes array");
+        assert!(nodes.iter().all(|node| node.get("provenance").is_none()));
+    }
 
     #[test]
     fn flowchart_model_trims_parser_labels_before_entity_decode() {
@@ -2087,7 +2273,7 @@ A -->|second &lt; owner| B
             "flowchart LR\nsubgraph X[First]\n  A\nend\nsubgraph X[\"&nbsp;Second\"]\n  B\nend\n";
         let (later_entity_model, later_entity_sources) =
             parse_flowchart_model_with_render_context(later_entity_source, &meta)
-                .expect("duplicate subgraph model with later entity title");
+                .expect("duplicate subgraph model with later entity label");
         assert_eq!(
             later_entity_sources.subgraph_title_for_render(0, &later_entity_model.subgraphs[0]),
             "First"
@@ -2156,9 +2342,9 @@ A -->|second &lt; owner| B
             )
             .expect("parse flowchart")
             .expect("detect flowchart");
-        let render_label_sources = parsed
-            .flowchart_render_label_sources()
-            .expect("flowchart render label sources");
+        let render_context = parsed
+            .flowchart_render_context()
+            .expect("flowchart render context");
         let crate::RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart model");
         };
@@ -2170,7 +2356,7 @@ A -->|second &lt; owner| B
             .expect("comparison node");
         assert_eq!(comparison.label.as_deref(), Some("x &lt; y and y > z"));
         assert_eq!(
-            render_label_sources.node_label_for_render(comparison),
+            render_context.node_label_for_render(comparison),
             Some("x &lt; y and y &gt; z")
         );
 
@@ -2180,7 +2366,7 @@ A -->|second &lt; owner| B
             .find(|node| node.id == "D")
             .expect("formatted node");
         assert_eq!(
-            render_label_sources.node_label_for_render(formatted),
+            render_context.node_label_for_render(formatted),
             Some("<u>under</u> and <i>italic</i>")
         );
     }
@@ -2214,6 +2400,27 @@ A -->|second &lt; owner| B
     }
 
     #[test]
+    fn flowchart_parse_error_cannot_mask_post_parser_cancellation() {
+        let meta = ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+        control.cancel_after_checkpoints(1);
+
+        assert!(matches!(
+            parse_flowchart_ast_controlled("flowchart TD\nA-->\n", &meta, &control),
+            Err(crate::OperationCancelled {
+                phase: crate::OperationPhase::Parse,
+                reason: crate::CancelReason::Requested,
+            })
+        ));
+        assert!(control.is_cancelled());
+    }
+
+    #[test]
     fn token_trace_stops_after_cancellation_during_parser_work() {
         let mut source = String::from("flowchart TD\n");
         for index in 0..512 {
@@ -2223,7 +2430,7 @@ A -->|second &lt; owner| B
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
-            construct_flowchart_token_trace(&source, &[], &control),
+            construct_flowchart_token_trace(&source, &control),
             Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());
@@ -2245,7 +2452,8 @@ A -->|second &lt; owner| B
         let ast = parse_flowchart_ast(&source, &meta).expect("large node group should parse");
         assert!(matches!(
             ast.statements.as_slice(),
-            [Stmt::Chain { nodes, .. }] if nodes.len() == 256
+            [Stmt::Chain { node_groups, .. }]
+                if node_groups.iter().map(Vec::len).sum::<usize>() == 256
         ));
 
         let shape_data_control = OperationControl::new();

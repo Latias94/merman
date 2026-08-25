@@ -4,7 +4,7 @@ use crate::error::InputRole;
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 use crate::error::{FileOperation, safe_path};
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-use crate::input::InputReadError;
+use crate::input::{IO_CHUNK_BYTES, InputReadError};
 use crate::invocation::ResolvedInput;
 use crate::invocation::ResolvedInvocation;
 use std::path::{Path, PathBuf};
@@ -24,6 +24,9 @@ use std::io::Write;
 use std::path::Component;
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 use std::sync::{Arc, OnceLock};
+
+#[cfg(feature = "markdown")]
+const NUMBERED_PREFLIGHT_CHECKPOINT_INTERVAL: usize = 64;
 
 pub(crate) struct LocalPreflight {
     invocation: ResolvedInvocation,
@@ -179,6 +182,25 @@ impl PublicationGuards {
                 canonical: input.canonical.clone(),
                 identity: Arc::clone(&input.identity),
             }));
+    }
+
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn protect_rustdoc_input(
+        &mut self,
+        path: &Path,
+        identity: &Arc<same_file::Handle>,
+    ) -> Result<(), CliError> {
+        if self
+            .protected
+            .iter()
+            .any(|input| input.canonical == path && *input.identity == **identity)
+        {
+            return Ok(());
+        }
+        let cwd = self.working_directory()?.to_path_buf();
+        let input = ProtectedInput::protect_acquired("Rustdoc include", path, identity, &cwd)?;
+        self.protect(&[input]);
+        Ok(())
     }
 
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -416,7 +438,10 @@ impl PublicationGuards {
 pub(crate) fn preflight(
     mut invocation: ResolvedInvocation,
     cwd: &Path,
+    #[cfg(any(feature = "svg", feature = "ascii"))] operation_control: &merman::OperationControl,
 ) -> Result<LocalPreflight, CliError> {
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    crate::operation::checkpoint(operation_control, merman::OperationPhase::Admission)?;
     #[allow(unused_mut)]
     let mut publications = PublicationGuards::new(Some(cwd));
     match &mut invocation {
@@ -459,8 +484,13 @@ pub(crate) fn preflight(
                 preflight_file_target(&manifest_path, cwd, &inputs, MissingParent::Allow)?;
             require_transaction_descendant(&transaction_root, &manifest.parent, &manifest_path)?;
             publications.approve_exact(manifest)?;
-            let parent =
-                preflight_numbered_namespace(&namespace, cwd, &inputs, MissingParent::Allow)?;
+            let parent = preflight_numbered_namespace(
+                &namespace,
+                cwd,
+                &inputs,
+                MissingParent::Allow,
+                operation_control,
+            )?;
             require_transaction_descendant(
                 &transaction_root,
                 &parent.parent,
@@ -469,6 +499,10 @@ pub(crate) fn preflight(
             publications.approve_transaction_root(transaction_root)?;
             publications.approve_numbered(namespace, parent)?;
             publications.protect(&inputs);
+        }
+        #[cfg(feature = "rustdoc")]
+        ResolvedInvocation::Rustdoc(args) => {
+            preflight_rustdoc(args, cwd, &mut publications, operation_control)?;
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Mmdc(args) => {
@@ -509,8 +543,13 @@ pub(crate) fn preflight(
                     } else {
                         MissingParent::Reject
                     };
-                    let parent =
-                        preflight_numbered_namespace(&namespace, cwd, &inputs, missing_parent)?;
+                    let parent = preflight_numbered_namespace(
+                        &namespace,
+                        cwd,
+                        &inputs,
+                        missing_parent,
+                        operation_control,
+                    )?;
                     let manifest_path = crate::markdown::strict_manifest_path(target)?;
                     let manifest =
                         preflight_file_target(&manifest_path, cwd, &inputs, MissingParent::Reject)?;
@@ -550,6 +589,134 @@ pub(crate) fn preflight(
         invocation,
         publications,
     })
+}
+
+#[cfg(feature = "rustdoc")]
+fn preflight_rustdoc(
+    args: &mut crate::invocation::ResolvedRustdoc,
+    cwd: &Path,
+    publications: &mut PublicationGuards,
+    control: &merman::OperationControl,
+) -> Result<(), CliError> {
+    args.anchor_config(cwd);
+    let mut config =
+        crate::rustdoc::config::load(args.requested_config()?, &args.resources, control)?;
+    let mut inputs = Vec::with_capacity(config.fragments().len() + 1);
+    verify_rustdoc_identity(config.root(), config.root_identity(), "configuration root")?;
+    inputs.push(ProtectedInput::protect_acquired(
+        "Rustdoc configuration",
+        config.path(),
+        config.identity(),
+        cwd,
+    )?);
+    for fragment in config.fragments() {
+        inputs.push(ProtectedInput::protect_acquired(
+            "Rustdoc source",
+            fragment.source(),
+            fragment.identity(),
+            cwd,
+        )?);
+    }
+
+    reject_rustdoc_output_symlink_components(config.root(), config.output_root())?;
+    let output_root = prospective_directory(
+        config.output_root(),
+        config.output_root(),
+        MissingParent::Allow,
+    )?;
+    if output_root.expected.strip_prefix(config.root()).is_err() {
+        return Err(CliError::InvalidOutput(format!(
+            "managed Rustdoc output root {} escapes configuration root {}",
+            safe_path(&output_root.expected),
+            safe_path(config.root())
+        )));
+    }
+    for input in &inputs {
+        if input.canonical.starts_with(&output_root.expected) {
+            return Err(CliError::InvalidOutput(format!(
+                "managed output root {} overlaps protected {} {}",
+                safe_path(&output_root.expected),
+                input.role,
+                safe_path(&input.requested)
+            )));
+        }
+    }
+
+    // The filesystem may canonicalize an existing ancestor to a different spelling, notably on
+    // case-insensitive filesystems. Every later target and transaction comparison must use the
+    // exact root approved by preflight.
+    config.adopt_approved_output_root(output_root.expected.clone());
+
+    for fragment in config.fragments() {
+        let output = fragment.output(config.output_root());
+        let target = preflight_file_target(&output, cwd, &inputs, MissingParent::Allow)?;
+        require_transaction_descendant(&output_root, &target.parent, &output)?;
+        publications.approve_exact(target)?;
+    }
+    let receipt = config.receipt_path();
+    let target = preflight_file_target(&receipt, cwd, &inputs, MissingParent::Allow)?;
+    require_transaction_descendant(&output_root, &target.parent, &receipt)?;
+    publications.approve_exact(target)?;
+    publications.approve_transaction_root(output_root)?;
+    publications.protect(&inputs);
+    args.prepare_config(config)
+}
+
+#[cfg(feature = "rustdoc")]
+fn reject_rustdoc_output_symlink_components(
+    root: &Path,
+    output_root: &Path,
+) -> Result<(), CliError> {
+    let relative = output_root.strip_prefix(root).map_err(|_| {
+        CliError::InvalidOutput(format!(
+            "managed Rustdoc output root {} escapes configuration root {}",
+            safe_path(output_root),
+            safe_path(root)
+        ))
+    })?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component.as_os_str());
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(CliError::InvalidOutput(format!(
+                    "managed Rustdoc output root {} contains symlink component {}",
+                    safe_path(output_root),
+                    safe_path(&current)
+                )));
+            }
+            Ok(metadata) if current != output_root && !metadata.is_dir() => {
+                return Err(CliError::InvalidOutput(format!(
+                    "managed Rustdoc output ancestor {} is not a directory",
+                    safe_path(&current)
+                )));
+            }
+            Ok(_) => {}
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => break,
+            Err(source) => {
+                return Err(CliError::file(FileOperation::Inspect, &current, source));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "rustdoc")]
+fn verify_rustdoc_identity(
+    path: &Path,
+    expected: &Arc<same_file::Handle>,
+    role: &str,
+) -> Result<(), CliError> {
+    let current = same_file::Handle::from_path(path)
+        .map_err(|source| CliError::file(FileOperation::VerifyPublication, path, source))?;
+    if current != **expected {
+        return Err(CliError::file(
+            FileOperation::VerifyPublication,
+            path,
+            std::io::Error::other(format!("Rustdoc {role} changed identity after acquisition")),
+        ));
+    }
+    Ok(())
 }
 
 fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
@@ -594,6 +761,10 @@ fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
             anchor_input(&mut args.input, cwd);
             anchor_render_inputs(&mut args.common, cwd);
             anchor_optional_path(&mut args.compatibility.puppeteer_config_file, cwd);
+        }
+        #[cfg(feature = "rustdoc")]
+        ResolvedInvocation::Rustdoc(args) => {
+            args.anchor_config(cwd);
         }
         #[cfg(feature = "shell-completions")]
         ResolvedInvocation::Completion(_) => {}
@@ -807,6 +978,34 @@ impl ProtectedInput {
             lexical,
             canonical,
             identity,
+        })
+    }
+
+    #[cfg(feature = "rustdoc")]
+    fn protect_acquired(
+        role: &'static str,
+        requested: &Path,
+        expected_identity: &Arc<same_file::Handle>,
+        cwd: &Path,
+    ) -> Result<Self, CliError> {
+        verify_rustdoc_identity(requested, expected_identity, role)?;
+        let absolute = anchored_absolute(requested, cwd);
+        let canonical = std::fs::canonicalize(&absolute)
+            .map_err(|source| CliError::file(FileOperation::Canonicalize, requested, source))?;
+        if canonical != requested {
+            return Err(CliError::file(
+                FileOperation::VerifyPublication,
+                requested,
+                std::io::Error::other("Rustdoc acquisition path changed after canonicalization"),
+            ));
+        }
+        Ok(Self {
+            role,
+            requested: requested.to_path_buf(),
+            absolute,
+            lexical: lexical_absolute(requested, cwd),
+            canonical,
+            identity: Arc::clone(expected_identity),
         })
     }
 }
@@ -1446,7 +1645,9 @@ fn preflight_numbered_namespace(
     cwd: &Path,
     inputs: &[ProtectedInput],
     missing_parent: MissingParent,
+    control: &merman::OperationControl,
 ) -> Result<NumberedTargetGuard, CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
     let directory = if namespace.directory().as_os_str().is_empty() {
         cwd.to_path_buf()
     } else {
@@ -1456,7 +1657,10 @@ fn preflight_numbered_namespace(
     let parent = prospective_directory(&directory, namespace.directory(), missing_parent)?;
     let canonical_directory = &parent.expected;
 
-    for input in inputs {
+    for (input_index, input) in inputs.iter().enumerate() {
+        if input_index % NUMBERED_PREFLIGHT_CHECKPOINT_INTERVAL == 0 {
+            crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+        }
         let lexical_match = input
             .lexical
             .parent()
@@ -1491,7 +1695,10 @@ fn preflight_numbered_namespace(
     let mut existing = HashMap::new();
     let entries = std::fs::read_dir(&directory)
         .map_err(|source| CliError::file(FileOperation::ReadDirectory, &directory, source))?;
-    for entry in entries {
+    for (entry_index, entry) in entries.enumerate() {
+        if entry_index % NUMBERED_PREFLIGHT_CHECKPOINT_INTERVAL == 0 {
+            crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+        }
         let entry = entry
             .map_err(|source| CliError::file(FileOperation::ReadDirectory, &directory, source))?;
         let Some(index) = numbered_index_hint(&entry.file_name()) else {
@@ -1538,6 +1745,7 @@ fn preflight_numbered_namespace(
             }
         }
     }
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
     Ok(NumberedTargetGuard { parent, existing })
 }
 
@@ -1723,25 +1931,8 @@ fn lexical_absolute(path: &Path, cwd: &Path) -> PathBuf {
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-pub(crate) fn publish_atomic_file(
-    path: &Path,
-    bytes: &[u8],
-    publications: &PublicationGuards,
-) -> Result<(), CliError> {
-    publish_with_backend(path, bytes, publications, &SystemAtomicBackend)
-}
-
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 pub(crate) trait PublicationBackend {
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-    fn publish_file(
-        &mut self,
-        path: &Path,
-        bytes: &[u8],
-        publications: &PublicationGuards,
-    ) -> Result<(), CliError>;
-
-    #[cfg(feature = "analysis")]
     fn publish_file_verified(
         &mut self,
         path: &Path,
@@ -1749,6 +1940,19 @@ pub(crate) trait PublicationBackend {
         publications: &PublicationGuards,
         verify: &mut dyn FnMut(&Path) -> Result<(), CliError>,
     ) -> Result<(), CliError>;
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn publish_file_controlled(
+        &mut self,
+        path: &Path,
+        bytes: &[u8],
+        publications: &PublicationGuards,
+        control: &merman::OperationControl,
+    ) -> Result<(), CliError> {
+        let mut verify =
+            |_: &Path| crate::operation::checkpoint(control, merman::OperationPhase::Emit);
+        self.publish_file_verified(path, bytes, publications, &mut verify)
+    }
 
     #[cfg(feature = "markdown")]
     fn acquire_transaction(
@@ -1782,6 +1986,17 @@ pub(crate) trait PublicationBackend {
         ready.commit().map_err(Into::into)
     }
 
+    #[cfg(feature = "rustdoc")]
+    fn commit_transaction_verified(
+        &mut self,
+        ready: crate::transaction::ReadyTransaction,
+        verify: &mut dyn FnMut() -> Result<(), CliError>,
+    ) -> Result<(), CliError> {
+        ready
+            .commit_with_precommit_validation(&mut || verify().map_err(|error| error.to_string()))
+            .map_err(Into::into)
+    }
+
     #[cfg(feature = "markdown")]
     fn abort_transaction(
         &mut self,
@@ -1807,7 +2022,7 @@ impl AcquiredTransaction {
         &self.root
     }
 
-    pub(crate) fn approve_native_stale_artifact(
+    pub(crate) fn approve_stale_artifact(
         &self,
         publications: &PublicationGuards,
         target: &crate::transaction::RelativeTarget,
@@ -1815,8 +2030,7 @@ impl AcquiredTransaction {
         publications.verify()?;
         let root_guard = publications.transaction_root.as_ref().ok_or_else(|| {
             CliError::InvalidOutput(
-                "native Markdown cleanup has no transaction root approved by local preflight"
-                    .to_string(),
+                "managed cleanup has no transaction root approved by local preflight".to_string(),
             )
         })?;
         if root_guard.expected != self.root {
@@ -1827,7 +2041,7 @@ impl AcquiredTransaction {
         let requested = target.to_path(&self.root)?;
         if requested.parent() != Some(self.root.as_path()) {
             return Err(CliError::InvalidOutput(format!(
-                "manifest-owned stale artifact {} is not a direct child of native batch root {}",
+                "generation-owned stale artifact {} is not a direct child of transaction root {}",
                 safe_path(&requested),
                 safe_path(&self.root)
             )));
@@ -1850,7 +2064,7 @@ impl AcquiredTransaction {
                     .is_some_and(|identity| **identity == *input.identity);
             if aliases_input {
                 return Err(CliError::InvalidOutput(format!(
-                    "manifest-owned stale artifact {} aliases protected {} {}",
+                    "generation-owned stale artifact {} aliases protected {} {}",
                     safe_path(&requested),
                     input.role,
                     safe_path(&input.requested)
@@ -1861,7 +2075,7 @@ impl AcquiredTransaction {
 
         let file_name = requested.file_name().ok_or_else(|| {
             CliError::InvalidOutput(format!(
-                "manifest-owned stale artifact {} must name a file",
+                "generation-owned stale artifact {} must name a file",
                 safe_path(&requested)
             ))
         })?;
@@ -1881,16 +2095,6 @@ impl AcquiredTransaction {
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 impl PublicationBackend for SystemPublicationBackend {
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-    fn publish_file(
-        &mut self,
-        path: &Path,
-        bytes: &[u8],
-        publications: &PublicationGuards,
-    ) -> Result<(), CliError> {
-        publish_atomic_file(path, bytes, publications)
-    }
-
-    #[cfg(feature = "analysis")]
     fn publish_file_verified(
         &mut self,
         path: &Path,
@@ -1899,6 +2103,17 @@ impl PublicationBackend for SystemPublicationBackend {
         verify: &mut dyn FnMut(&Path) -> Result<(), CliError>,
     ) -> Result<(), CliError> {
         publish_atomic_file_verified(path, bytes, publications, verify)
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn publish_file_controlled(
+        &mut self,
+        path: &Path,
+        bytes: &[u8],
+        publications: &PublicationGuards,
+        control: &merman::OperationControl,
+    ) -> Result<(), CliError> {
+        publish_atomic_file_controlled(path, bytes, publications, control)
     }
 
     #[cfg(feature = "markdown")]
@@ -1913,14 +2128,38 @@ impl PublicationBackend for SystemPublicationBackend {
     }
 }
 
-#[cfg(feature = "analysis")]
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 pub(crate) fn publish_atomic_file_verified(
     path: &Path,
     bytes: &[u8],
     publications: &PublicationGuards,
     verify: impl FnMut(&Path) -> Result<(), CliError>,
 ) -> Result<(), CliError> {
-    publish_with_backend_and_verifier(path, bytes, publications, &SystemAtomicBackend, verify)
+    publish_with_backend_and_callbacks(
+        path,
+        bytes,
+        publications,
+        &SystemAtomicBackend,
+        verify,
+        || Ok(()),
+    )
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn publish_atomic_file_controlled(
+    path: &Path,
+    bytes: &[u8],
+    publications: &PublicationGuards,
+    control: &merman::OperationControl,
+) -> Result<(), CliError> {
+    publish_with_backend_and_callbacks(
+        path,
+        bytes,
+        publications,
+        &SystemAtomicBackend,
+        |_| crate::operation::checkpoint(control, merman::OperationPhase::Emit),
+        || crate::operation::checkpoint(control, merman::OperationPhase::Emit),
+    )
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -1963,22 +2202,25 @@ impl AtomicBackend for SystemAtomicBackend {
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-fn publish_with_backend<B: AtomicBackend>(
-    path: &Path,
-    bytes: &[u8],
-    publications: &PublicationGuards,
-    backend: &B,
-) -> Result<(), CliError> {
-    publish_with_backend_and_verifier(path, bytes, publications, backend, |_| Ok(()))
-}
-
-#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[cfg(test)]
 fn publish_with_backend_and_verifier<B: AtomicBackend>(
     path: &Path,
     bytes: &[u8],
     publications: &PublicationGuards,
     backend: &B,
+    verify: impl FnMut(&Path) -> Result<(), CliError>,
+) -> Result<(), CliError> {
+    publish_with_backend_and_callbacks(path, bytes, publications, backend, verify, || Ok(()))
+}
+
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+fn publish_with_backend_and_callbacks<B: AtomicBackend>(
+    path: &Path,
+    bytes: &[u8],
+    publications: &PublicationGuards,
+    backend: &B,
     mut verify: impl FnMut(&Path) -> Result<(), CliError>,
+    mut progress: impl FnMut() -> Result<(), CliError>,
 ) -> Result<(), CliError> {
     let approved = publications.publication_for(path)?;
     verify_publication_target(&approved, &publications.protected)?;
@@ -1989,9 +2231,13 @@ fn publish_with_backend_and_verifier<B: AtomicBackend>(
     backend
         .verify_parent(&stage, &approved.path, &approved.parent_identity)
         .map_err(|source| CliError::file(FileOperation::VerifyPublication, path, source))?;
-    stage
-        .write_all(bytes)
-        .map_err(|source| CliError::file(FileOperation::WriteAtomicStaging, path, source))?;
+    for chunk in bytes.chunks(IO_CHUNK_BYTES) {
+        progress()?;
+        stage
+            .write_all(chunk)
+            .map_err(|source| CliError::file(FileOperation::WriteAtomicStaging, path, source))?;
+    }
+    progress()?;
     verify_commit_preconditions(path, &approved, publications, backend, &stage, &mut verify)?;
     // The condition is intentionally repeatable: the final call narrows, but
     // cannot eliminate, the portable compare-to-rename window.
@@ -2162,13 +2408,54 @@ mod tests {
             crate::cli::RenderFormat::Svg,
             None,
         );
+        let control = merman::OperationControl::new();
 
-        let guard =
-            preflight_numbered_namespace(&namespace, directory.path(), &[], MissingParent::Reject)
-                .unwrap();
+        let guard = preflight_numbered_namespace(
+            &namespace,
+            directory.path(),
+            &[],
+            MissingParent::Reject,
+            &control,
+        )
+        .unwrap();
 
         assert_eq!(guard.existing.len(), 1);
         assert!(guard.existing.contains_key(OsStr::new("out-1.svg")));
+    }
+
+    #[cfg(feature = "markdown")]
+    #[test]
+    fn cancelled_numbered_namespace_scan_returns_structured_admission_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("out.svg");
+        std::fs::create_dir(directory.path().join("out-1.svg")).unwrap();
+        let namespace = crate::markdown::NumberedOutputNamespace::new(
+            &target,
+            crate::cli::RenderFormat::Svg,
+            None,
+        );
+        let control = merman::OperationControl::new();
+        control.cancel();
+
+        let error = match preflight_numbered_namespace(
+            &namespace,
+            directory.path(),
+            &[],
+            MissingParent::Reject,
+            &control,
+        ) {
+            Ok(_) => panic!("cancelled numbered preflight unexpectedly succeeded"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            CliError::Render(merman::RenderError::Cancelled(merman::OperationCancelled {
+                phase: merman::OperationPhase::Admission,
+                reason: merman::CancelReason::Requested,
+            }))
+        ));
+        assert!(directory.path().join("out-1.svg").is_dir());
     }
 
     #[cfg(all(feature = "markdown", unix))]
@@ -2197,9 +2484,15 @@ mod tests {
             crate::cli::RenderFormat::Svg,
             None,
         );
-        let numbered =
-            preflight_numbered_namespace(&namespace, directory.path(), &[], MissingParent::Reject)
-                .unwrap();
+        let control = merman::OperationControl::new();
+        let numbered = preflight_numbered_namespace(
+            &namespace,
+            directory.path(),
+            &[],
+            MissingParent::Reject,
+            &control,
+        )
+        .unwrap();
 
         let error = guards.approve_numbered(namespace, numbered).unwrap_err();
         assert!(matches!(
@@ -2236,9 +2529,15 @@ mod tests {
             crate::cli::RenderFormat::Svg,
             None,
         );
-        let numbered_guard =
-            preflight_numbered_namespace(&namespace, directory.path(), &[], MissingParent::Reject)
-                .unwrap();
+        let control = merman::OperationControl::new();
+        let numbered_guard = preflight_numbered_namespace(
+            &namespace,
+            directory.path(),
+            &[],
+            MissingParent::Reject,
+            &control,
+        )
+        .unwrap();
         guards.approve_numbered(namespace, numbered_guard).unwrap();
 
         let (approved, generation) = guards
@@ -2249,9 +2548,10 @@ mod tests {
         assert_eq!(approved, numbered);
         assert_eq!(
             generation,
-            crate::transaction::TargetGeneration::Existing(Arc::new(
-                same_file::Handle::from_path(&numbered).unwrap()
-            ))
+            crate::transaction::TargetGeneration::Existing {
+                identity: Arc::new(same_file::Handle::from_path(&numbered).unwrap()),
+                content: None,
+            }
         );
     }
 
@@ -2561,8 +2861,14 @@ mod tests {
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
 
-        let error = publish_with_backend(&target, b"replacement", &guards, &FailingWriteBackend)
-            .unwrap_err();
+        let error = publish_with_backend_and_verifier(
+            &target,
+            b"replacement",
+            &guards,
+            &FailingWriteBackend,
+            |_| Ok(()),
+        )
+        .unwrap_err();
 
         assert!(matches!(
             error,
@@ -2575,6 +2881,88 @@ mod tests {
             std::fs::read(&target).unwrap(),
             b"complete old output",
             "staging failures must leave the prior complete contents visible"
+        );
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    #[test]
+    fn cancellation_after_atomic_staging_prevents_commit() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("output.svg");
+        std::fs::write(&target, b"complete old output").unwrap();
+        let mut guards = PublicationGuards::new(Some(directory.path()));
+        let target_guard =
+            preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
+        guards.approve_exact(target_guard).unwrap();
+        let control = merman::OperationControl::new();
+
+        let error = publish_with_backend_and_verifier(
+            &target,
+            b"replacement",
+            &guards,
+            &SystemAtomicBackend,
+            |_| {
+                control.cancel();
+                crate::operation::checkpoint(&control, merman::OperationPhase::Emit)
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CliError::Render(merman::RenderError::Cancelled(merman::OperationCancelled {
+                phase: merman::OperationPhase::Emit,
+                reason: merman::CancelReason::Requested,
+            }))
+        ));
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"complete old output",
+            "cancellation must not commit the staged replacement"
+        );
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    #[test]
+    fn cancellation_between_staging_chunks_preserves_existing_output() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("output.svg");
+        std::fs::write(&target, b"complete old output").unwrap();
+        let mut guards = PublicationGuards::new(Some(directory.path()));
+        let target_guard =
+            preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
+        guards.approve_exact(target_guard).unwrap();
+        let control = merman::OperationControl::new();
+        let replacement = vec![b'x'; IO_CHUNK_BYTES.saturating_mul(2)];
+        let mut checkpoints = 0_u8;
+
+        let error = publish_with_backend_and_callbacks(
+            &target,
+            &replacement,
+            &guards,
+            &SystemAtomicBackend,
+            |_| Ok(()),
+            || {
+                checkpoints = checkpoints.saturating_add(1);
+                if checkpoints == 2 {
+                    control.cancel();
+                }
+                crate::operation::checkpoint(&control, merman::OperationPhase::Emit)
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CliError::Render(merman::RenderError::Cancelled(merman::OperationCancelled {
+                phase: merman::OperationPhase::Emit,
+                reason: merman::CancelReason::Requested,
+            }))
+        ));
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"complete old output",
+            "mid-staging cancellation must not publish a partial replacement"
         );
     }
 
@@ -2591,7 +2979,8 @@ mod tests {
         std::fs::remove_file(&target).unwrap();
         std::fs::write(&target, b"concurrent replacement").unwrap();
 
-        let error = publish_atomic_file(&target, b"our replacement", &guards).unwrap_err();
+        let error = publish_atomic_file_verified(&target, b"our replacement", &guards, |_| Ok(()))
+            .unwrap_err();
 
         assert!(matches!(
             error,
@@ -2613,11 +3002,12 @@ mod tests {
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
 
-        let error = publish_with_backend(
+        let error = publish_with_backend_and_verifier(
             &target,
             b"our replacement",
             &guards,
             &TargetSwapDuringWriteBackend,
+            |_| Ok(()),
         )
         .unwrap_err();
 
@@ -2738,7 +3128,8 @@ mod tests {
         guards.approve_exact(target_guard).unwrap();
 
         symlink(&redirect, &target).unwrap();
-        let error = publish_atomic_file(&target, b"replacement", &guards).unwrap_err();
+        let error =
+            publish_atomic_file_verified(&target, b"replacement", &guards, |_| Ok(())).unwrap_err();
 
         assert!(matches!(
             error,
@@ -2771,13 +3162,14 @@ mod tests {
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
 
-        let error = publish_with_backend(
+        let error = publish_with_backend_and_verifier(
             &target,
             b"replacement",
             &guards,
             &RedirectedStageBackend {
                 redirected: redirected_target.clone(),
             },
+            |_| Ok(()),
         )
         .unwrap_err();
 
@@ -2807,7 +3199,7 @@ mod tests {
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
 
-        let error = publish_with_backend(
+        let error = publish_with_backend_and_verifier(
             &target,
             b"replacement",
             &guards,
@@ -2816,6 +3208,7 @@ mod tests {
                 displaced_directory: displaced_directory.clone(),
                 redirect_directory: redirect_directory.clone(),
             },
+            |_| Ok(()),
         )
         .unwrap_err();
 
@@ -2866,7 +3259,8 @@ mod tests {
         std::fs::rename(&output_dir, &displaced_dir).unwrap();
         symlink(&protected_dir, &output_dir).unwrap();
 
-        let error = publish_atomic_file(&output_path, b"replacement", &guards).unwrap_err();
+        let error = publish_atomic_file_verified(&output_path, b"replacement", &guards, |_| Ok(()))
+            .unwrap_err();
 
         assert!(matches!(
             error,

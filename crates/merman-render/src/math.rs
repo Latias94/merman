@@ -30,6 +30,7 @@ use merman_core::MermaidConfig;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use std::collections::HashMap;
+#[cfg(any(feature = "math", test))]
 use std::fmt::Write as _;
 #[cfg(test)]
 use std::io::Write as _;

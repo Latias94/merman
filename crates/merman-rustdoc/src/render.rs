@@ -154,6 +154,7 @@ fn render_mermaid_svg(
     let request = SvgRequest {
         environment: SvgEnvironment::deterministic(),
         pipeline: match pipeline {
+            // No post-processing is the parity pipeline for an SVG request.
             PipelineMode::Parity => None,
             PipelineMode::Readable => Some(SvgPipeline::readable()),
             PipelineMode::ResvgSafe => Some(SvgPipeline::resvg_safe()),
@@ -258,6 +259,62 @@ mod tests {
         .unwrap();
 
         assert!(matches!(rendered, RenderedDiagram::Single(_)));
+    }
+
+    #[test]
+    fn default_pipeline_keeps_one_browser_label_representation() {
+        let source = r#"classDiagram
+    EventConsumer <|.. OnClickConsumer
+    OnClick <.. OnClickConsumer : uses
+"#;
+        let rendered = render_mermaid_diagram(
+            source,
+            0,
+            Options {
+                theme: ThemeMode::Fixed("default"),
+                ..Options::default()
+            },
+        )
+        .unwrap();
+
+        let RenderedDiagram::Single(svg) = rendered else {
+            panic!("expected fixed theme to render one SVG");
+        };
+        assert!(svg.contains("<foreignObject"), "{svg}");
+        assert!(
+            !svg.contains(r#"data-merman-foreignobject="fallback""#),
+            "default rustdoc output must not add a second visible label representation: {svg}"
+        );
+        assert!(
+            svg.contains(r#"class="edge-thickness-normal edge-pattern-dashed relation""#),
+            "expected dotted Class relations to keep Mermaid's dashed edge pattern: {svg}"
+        );
+        assert!(
+            svg.contains(".edge-pattern-dashed{stroke-dasharray:3;}"),
+            "expected Class SVG to include Mermaid's shared dashed-edge CSS: {svg}"
+        );
+    }
+
+    #[test]
+    fn readable_pipeline_remains_an_explicit_fallback_overlay_option() {
+        let rendered = render_mermaid_diagram(
+            "flowchart TD\nA[Start] --> B[Done]",
+            0,
+            Options {
+                pipeline: PipelineMode::Readable,
+                theme: ThemeMode::Fixed("default"),
+                ..Options::default()
+            },
+        )
+        .unwrap();
+
+        let RenderedDiagram::Single(svg) = rendered else {
+            panic!("expected fixed theme to render one SVG");
+        };
+        assert!(
+            svg.contains(r#"data-merman-foreignobject="fallback""#),
+            "explicit readable output should retain SVG text fallbacks: {svg}"
+        );
     }
 
     #[test]

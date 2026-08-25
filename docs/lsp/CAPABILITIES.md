@@ -12,37 +12,31 @@ product row instead of creating a second LSP maturity claim.
 
 ## Ownership Boundary
 
-`merman-lsp` is a protocol projection over `merman-analysis` and `merman-editor-core`, not a
-separate lint engine or preview product. Analysis owns diagnostics, rule metadata, source/fence
-mapping, and internal projection failures. Editor-core owns protocol-neutral completion, hover,
-symbols, navigation, rename, folding, and semantic-token facts. LSP owns request lifecycle,
-capability advertising, URI/range conversion, token delta encoding, and client cache state.
+`merman-lsp` is a protocol projection over `merman-analysis`, `merman-editor-core`, and the shared
+Tree-sitter Mermaid syntax package; it is not a separate lint engine or preview product. Analysis
+owns diagnostics, rule metadata, semantic source/fence mapping, and internal projection failures.
+Editor-core owns protocol-neutral completion, hover, symbols, navigation, rename, and folding. The
+Tree-sitter grammar and `queries/portable/highlights.scm` own tolerant base coloring. LSP owns
+request lifecycle, capability advertising, syntax document state, URI/range conversion, capture to
+standard-token mapping, delta encoding, and client cache state.
 
-Semantic-token codes, modifier bits, legend indices, and the five-word relative UTF-16 record are
-owned by `contracts/editor-language/token-descriptor-v1.json` and generated into Rust, Web, and the VS Code
-extension. LSP initialization publishes the descriptor digest and packed encoding under
-`capabilities.experimental.merman.editorLanguage`; the extension fails closed when that identity or
-the standard LSP legend differs. The same capability publishes the descriptor-owned rename-policy
-list, which the extension also validates exactly before enabling language intelligence. The same
-descriptor projects custom VS Code token declarations,
-theme supertypes, source-owned TextMate fallback scopes, and Mermaid semantic-highlighting defaults;
-standard VS Code types and modifiers are not redeclared. Editor-only theme metadata is excluded from
-the packed-protocol digest and guarded by the generated manifest drift check instead, so a scope or
-description change cannot create a false LSP/WASM incompatibility.
-`contracts/editor-language/token-equivalence-v1.json` records the exact planner output for the 35-public-type
-baseline plus malformed recovery, and LSP, Web WASM, Monaco, and VS Code gates consume that one
-generated evidence artifact without transport-local sorting or token name lookup.
+The standard LSP semantic-token legend is adapter-owned and deliberately small. It is not generated
+from Merman semantic facts and is not published through a Merman-specific descriptor digest. Safe
+rename policies remain parser-owned in `contracts/editor-language/rename-policy-v1.json`; they are
+independent from coloring and are not a VS Code compatibility handshake. Highlight verification is
+the normal Tree-sitter query suite plus focused LSP projection tests, not a permanent packed-token
+equivalence matrix.
 
-The private `LanguageSession` keeps weighted lazy editor generations built from the same active
-analyzer environment used for diagnostics. Diagnostic-only lint rule changes reproject diagnostics
-without invalidating editor snapshots or semantic-token result state. Snapshot-affecting changes
-such as site config, fixed date/time, resource limits, or source descriptor changes clear
-snapshot-dependent state.
+The private `LanguageSession` keeps weighted lazy semantic generations built from the same active
+analyzer environment used for diagnostics, alongside an independent syntax epoch. Diagnostic-only
+lint rule changes reproject diagnostics without invalidating semantic snapshots or syntax-token
+state. Source and document-kind changes advance the syntax epoch; semantic configuration does not
+rebuild Tree-sitter trees.
 
 Typed session operations capture document/configuration generations before running projection work
-outside the session mutex. Semantic-token responses only commit cached token state while the captured
-snapshot is still current; stale previous result ids fall back to full tokens after snapshot-affecting
-configuration changes. Push diagnostics re-check currentness immediately before publishing and
+outside the session mutex. Semantic-token responses only commit cached token state while the
+captured syntax epoch is still current; stale previous result ids fall back to full tokens after
+source changes. Push diagnostics re-check currentness immediately before publishing and
 suppress contexts that are already stale. Pull diagnostics use a bounded retry loop, recomputing
 from the latest context up to three times when stale analyzer output is detected. This is a bounded
 LSP adapter contract, not a cancellation framework for notifications already handed to the client
@@ -78,8 +72,9 @@ These schema versions do not rename Mermaid grammar ids such as `flowchart-v2`,
 
 For supported rows below, completion and refactoring still use complete or tested recovered parser
 facts. The intentional behavior change is on unavailable input: unknown, unsupported, or
-unrecoverable body text no longer receives guessed node ids, symbols, references, rename edits, or
-semantic tokens. Legal source-start header and template completion remains catalog-backed.
+unrecoverable body text no longer receives guessed node ids, symbols, references, or rename edits.
+Tree-sitter syntax captures remain available independently. Legal source-start header and template
+completion remains catalog-backed.
 
 ## Family Coverage
 
@@ -87,7 +82,7 @@ Rows follow the catalog-owned public diagram-type order. `Yes` means the feature
 to parser-backed facts, including returning no target when a valid position has no applicable
 entity. It does not mean that every family grammar exposes renameable entities at every position.
 
-| Family | Public diagram type | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |
+| Family | Public diagram type | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Syntax Highlighting | Definition / References / Rename | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Architecture | `architecture` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for groups, services, junctions, edges, and accessibility/title payloads. |
 | Block | `block` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for block ids, nested composites, edges, class/style targets, arrow directions, and role-separated payload spans. |
@@ -152,7 +147,7 @@ unavailability:
 | --- | --- | --- |
 | `ParserComplete` | Semantic facts came from a successful family parser/editor-facts path. | Mature when covered by the family row and editor-core tests. |
 | `ParserRecovered` | Semantic facts came from parser recovery after an incomplete or invalid edit buffer. | Mature for incomplete-buffer editing when tests cover the family and feature. |
-| `Unavailable` | No parser-backed body facts are available. | No body completion, hover, symbols, navigation, rename, or semantic tokens are projected. |
+| `Unavailable` | No parser-backed body facts are available. | No body completion, hover, symbols, navigation, or rename is projected; tolerant syntax highlighting remains available. |
 
 Preprocessing owns a composable edit map. Facts are mapped independently through it, so an
 unrepresentable span is omitted only for that fact and produces a recovery diagnostic; unrelated
@@ -267,16 +262,12 @@ Remaining fallback ledger:
   remain source-backed compatibility warnings.
 - Semantic index: parser-backed payload facts are retained as semantic items even when they are
   not projected into completion, outline, or rename surfaces.
-- Semantic tokens: the full-document, range, and delta providers are wired from all five
-  parser-backed semantic roles: `entity`, `class_definition`, `reference`, `outline`, and
-  `payload`. Token types derive from `EditorSymbolKind`; token modifiers preserve the role category
-  (`class_definition` shares the structural outline modifier while `reference` has its own
-  modifier). The LSP semantic-token legend is derived from the editor-core legend so token ordering
-  stays tied to the protocol-neutral semantic contract. Snapshot-affecting
-  configuration changes ask the client to refresh semantic tokens when refresh support is
-  advertised and clear cached token state. Diagnostic-only lint configuration changes refresh
-  diagnostics without invalidating semantic-token state. Delta requests reuse cached previous token
-  state only when the result id matches state from the current snapshot generation; otherwise they
+- Syntax highlighting: full-document, range, and delta semantic-token transport is backed solely by
+  the canonical Tree-sitter highlight query. The LSP adapter maps portable captures to a fixed set
+  of standard token types, splits multiline captures, resolves overlaps, and converts source
+  positions to UTF-16. Source changes advance a syntax epoch and invalidate cached token state;
+  strict-analysis configuration changes do not rebuild syntax trees. Delta requests reuse cached
+  previous token state only when the result id belongs to the current syntax epoch; otherwise they
   return full tokens.
 - Unavailable facts: source-start headers/templates are catalog-backed, while unknown or
   unsupported body text produces no semantic items. Parser-backed payload facts remain outside

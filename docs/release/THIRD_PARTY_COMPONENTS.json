@@ -158,9 +158,22 @@
       ]
     },
     {
+      "id": "tree-sitter-mermaid-source",
+      "description": "The independently versioned Tree-sitter Mermaid language source package and its pinned syntax and compatibility references.",
+      "extends": [],
+      "components": [
+        "monaqa-tree-sitter-mermaid",
+        "pappasam-tree-sitter-mermaid",
+        "singularity-tree-sitter-mermaid",
+        "tree-sitter-generator",
+        "tree-sitter-mermaid-mermaid-baseline",
+        "tree-sitter-mermaid-zenuml-baseline"
+      ]
+    },
+    {
       "id": "source-archive",
       "description": "Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.",
-      "extends": ["ascii-render", "cli-default", "typst-publish"],
+      "extends": ["ascii-render", "cli-default", "tree-sitter-mermaid-source", "typst-publish"],
       "components": []
     }
   ],
@@ -872,6 +885,201 @@
         }
       ],
       "notice": "The Typst WASM transport links wasm-minimal-protocol; its upstream license file is the Unlicense text."
+    },
+    {
+      "id": "tree-sitter-generator",
+      "name": "Tree-sitter",
+      "version": "0.26.12",
+      "source": {
+        "repository": "https://github.com/tree-sitter/tree-sitter.git",
+        "ref": "v0.26.12",
+        "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00",
+        "path": "."
+      },
+      "relationships": ["copied", "generated", "modified"],
+      "local_paths": ["distribution/tree-sitter-mermaid"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/tree-sitter/LICENSE",
+          "sha256": "c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78",
+          "source_url": "https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {"type": "repository", "repository_id": "tree-sitter"}
+      ],
+      "notice": "The language package uses the pinned generator, copies its generated support headers, and modifies its C, Rust, and Node binding templates."
+    },
+    {
+      "id": "tree-sitter-mermaid-mermaid-baseline",
+      "name": "Mermaid (tree-sitter-mermaid baseline)",
+      "version": "11.16.1",
+      "source": {
+        "repository": "https://github.com/mermaid-js/mermaid.git",
+        "ref": "mermaid@11.16.1",
+        "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+        "path": "packages/mermaid"
+      },
+      "relationships": ["behavior-reference", "fixtures", "translated"],
+      "local_paths": ["distribution/tree-sitter-mermaid"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/mermaid/LICENSE",
+          "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/7ecca0cd7f1658ef74f4e7e91f925724ef403bbf/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
+          "sha256": "fd4aea27cc44b602bf8e0ac15c238528219155c4267b0f17323da3c56b6eea32"
+        },
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
+          "sha256": "cd3acb16e9c6f0fc77f2bd2ef61ba73143c830f8238f38329ae8346330779691"
+        },
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/test/fixtures/family-roots.json",
+          "sha256": "ffb243b182472af1d95afa74a3ea4543e9480c4d7b4823e4810ad4e4ca4adbf4"
+        }
+      ],
+      "notice": "The language package translates the exact Mermaid 11.16.1 syntax baseline and carries Merman-selected representative fixtures recorded against that baseline; this component intentionally does not move with the repository baseline."
+    },
+    {
+      "id": "tree-sitter-mermaid-zenuml-baseline",
+      "name": "ZenUML Core (tree-sitter-mermaid baseline)",
+      "version": "3.50.1",
+      "source": {
+        "repository": "https://github.com/mermaid-js/zenuml-core.git",
+        "ref": "v3.50.1",
+        "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+        "path": "."
+      },
+      "relationships": ["behavior-reference", "fixtures", "translated"],
+      "local_paths": ["distribution/tree-sitter-mermaid"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/zenuml-core/LICENSE",
+          "sha256": "d4a77cbf1dc0975cd4be7266972dc6d3a6c6d68d43235384d6e4b6f12934e978",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/zenuml-core/38404ccc14243ed54ab45b804b2eb6f2ca73af36/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
+          "sha256": "fd4aea27cc44b602bf8e0ac15c238528219155c4267b0f17323da3c56b6eea32"
+        },
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
+          "sha256": "cd3acb16e9c6f0fc77f2bd2ef61ba73143c830f8238f38329ae8346330779691"
+        },
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/test/fixtures/family-roots.json",
+          "sha256": "ffb243b182472af1d95afa74a3ea4543e9480c4d7b4823e4810ad4e4ca4adbf4"
+        }
+      ],
+      "notice": "The language package follows the exact ZenUML Core 3.50.1 companion baseline and carries its representative wrapper fixture; this component intentionally does not move with the repository baseline."
+    },
+    {
+      "id": "monaqa-tree-sitter-mermaid",
+      "name": "monaqa/tree-sitter-mermaid",
+      "version": "0.0.2",
+      "source": {
+        "repository": "https://github.com/monaqa/tree-sitter-mermaid.git",
+        "ref": "master",
+        "commit": "90ae195b31933ceb9d079abfa8a3ad0a36fee4cc",
+        "path": "."
+      },
+      "relationships": ["behavior-reference"],
+      "local_paths": ["distribution/tree-sitter-mermaid"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/tree-sitter-mermaid-monaqa/LICENSE",
+          "sha256": "40e46efcec726e70cc95c553ac377674f0a5d2eec6089483ba237af7dae4c54c",
+          "source_url": "https://raw.githubusercontent.com/monaqa/tree-sitter-mermaid/90ae195b31933ceb9d079abfa8a3ad0a36fee4cc/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {"type": "repository", "repository_id": "monaqa-tree-sitter-mermaid"}
+      ],
+      "notice": "The language package uses this grammar as the fixed downstream editor compatibility reference; it is not the public CST schema authority."
+    },
+    {
+      "id": "pappasam-tree-sitter-mermaid",
+      "name": "pappasam/tree-sitter-mermaid",
+      "version": "0.1.0",
+      "source": {
+        "repository": "https://github.com/pappasam/tree-sitter-mermaid.git",
+        "ref": "main",
+        "commit": "1a11e2d8cf11afcfdb768f537c1a9bde294c24f9",
+        "path": "."
+      },
+      "relationships": ["behavior-reference", "modified"],
+      "local_paths": ["distribution/tree-sitter-mermaid"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/tree-sitter-mermaid-pappasam/LICENSE",
+          "sha256": "66f5a051ab96d2bb3ecccf32f6db1d97245dfcee2f0563de3e3267e827717061",
+          "source_url": "https://raw.githubusercontent.com/pappasam/tree-sitter-mermaid/1a11e2d8cf11afcfdb768f537c1a9bde294c24f9/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {"type": "repository", "repository_id": "pappasam-tree-sitter-mermaid"},
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
+          "sha256": "cd3acb16e9c6f0fc77f2bd2ef61ba73143c830f8238f38329ae8346330779691"
+        }
+      ],
+      "notice": "The language package modifies selected grammar helpers and Flowchart/Mindmap seeds; metadata/derivations.json records each local path and source range."
+    },
+    {
+      "id": "singularity-tree-sitter-mermaid",
+      "name": "singularity-parser-mermaid",
+      "version": "0.9.1",
+      "source": {
+        "repository": "https://github.com/singularity-ng/singularity-parser-mermaid.git",
+        "ref": "main",
+        "commit": "f5ac2752fbf0f74f9c836014b87e511303d2abae",
+        "path": "."
+      },
+      "relationships": ["behavior-reference"],
+      "local_paths": ["distribution/tree-sitter-mermaid"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/tree-sitter-mermaid-singularity/LICENSE",
+          "sha256": "601f9a3a5d582af11bd0386a3352435f8765b1d35bee882e5dc7ebb29cf3b540",
+          "source_url": "https://raw.githubusercontent.com/singularity-ng/singularity-parser-mermaid/f5ac2752fbf0f74f9c836014b87e511303d2abae/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {"type": "repository", "repository_id": "singularity-tree-sitter-mermaid"}
+      ],
+      "notice": "The language package retains this implementation as an additional behavior reference for grammar and query coverage."
     },
     {
       "id": "zenuml-core",

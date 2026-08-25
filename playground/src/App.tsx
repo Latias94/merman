@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
+import { AlertTriangle } from "lucide-react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -17,11 +18,18 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
-import { CodeEditor } from "./components/Editor";
 import { Preview } from "./components/Preview";
+import { ExportWorkbench } from "./components/ExportDialog";
 import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
 import { useAppStore, type WorkspacePane } from "./store";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
+import { playgroundStartupBoundary } from "@/src/runtime/startup-boundary";
+
+const CodeEditor = lazy(() =>
+  import("./components/EditorFeature").then((module) => ({
+    default: module.CodeEditor,
+  })),
+);
 
 const ConfigEditor = lazy(() =>
   import("./components/ConfigEditorFeature").then((module) => ({
@@ -30,10 +38,17 @@ const ConfigEditor = lazy(() =>
 );
 export default function App() {
   const { t, i18n } = useTranslation();
-  const { editorMode, setEditorMode, workspacePane, setWorkspacePane } = useAppStore(
+  const {
+    editorMode,
+    setEditorMode,
+    shareViewWarning,
+    workspacePane,
+    setWorkspacePane,
+  } = useAppStore(
     useShallow((state) => ({
       editorMode: state.editorMode,
       setEditorMode: state.setEditorMode,
+      shareViewWarning: state.shareViewWarning,
       setWorkspacePane: state.setWorkspacePane,
       workspacePane: state.workspacePane,
     }))
@@ -51,87 +66,107 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <RenderCoordinatorBridge />
-      <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
-        <Toolbar />
+      <ExportWorkbench>
+        <RenderCoordinatorBridge />
+        <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
+          <Toolbar />
 
-        <main className="relative min-h-0 flex-1 overflow-hidden">
-          <div className="flex h-full min-h-0 flex-col overflow-hidden">
-            {isNarrowLayout && (
-              <WorkspaceTabs
-                value={workspacePane}
-                onValueChange={setWorkspacePane}
-                editorLabel={t("layout.editor")}
-                previewLabel={t("layout.preview")}
-              />
-            )}
-            <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
-              <ResizablePanel
-                defaultSize="45%"
-                minSize="25%"
-                maxSize="75%"
-                className="bg-card"
-                id={isNarrowLayout ? "workspace-editor-panel" : undefined}
-                role={isNarrowLayout ? "tabpanel" : undefined}
-                aria-labelledby={isNarrowLayout ? "workspace-editor-tab" : undefined}
-                hidden={isNarrowLayout && workspacePane !== "editor"}
-                onFocusCapture={() => setWorkspacePane("editor")}
-                onPointerDownCapture={() => setWorkspacePane("editor")}
-              >
-                <EditorPanel
-                  editorMode={editorMode}
-                  setEditorMode={setEditorMode}
-                  t={t}
+          {shareViewWarning && (
+            <div
+              role="alert"
+              data-testid="share-view-warning"
+              className="flex shrink-0 items-start gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100 sm:px-4"
+            >
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>{t("share.issueViewNotRestored")}</span>
+            </div>
+          )}
+
+          <main className="relative min-h-0 flex-1 overflow-hidden">
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              {isNarrowLayout && (
+                <WorkspaceTabs
+                  value={workspacePane}
+                  onValueChange={setWorkspacePane}
+                  editorLabel={t("layout.editor")}
+                  previewLabel={t("layout.preview")}
                 />
-              </ResizablePanel>
+              )}
+              <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
+                <ResizablePanel
+                  defaultSize="45%"
+                  minSize="25%"
+                  maxSize="75%"
+                  className="bg-card"
+                  id={isNarrowLayout ? "workspace-editor-panel" : undefined}
+                  role={isNarrowLayout ? "tabpanel" : undefined}
+                  aria-labelledby={isNarrowLayout ? "workspace-editor-tab" : undefined}
+                  hidden={isNarrowLayout && workspacePane !== "editor"}
+                  onFocusCapture={() => setWorkspacePane("editor")}
+                  onPointerDownCapture={() => setWorkspacePane("editor")}
+                >
+                  <EditorPanel
+                    activateEditorLanguageImmediately={
+                      isNarrowLayout && workspacePane === "editor"
+                    }
+                    editorMode={editorMode}
+                    mountCodeEditorImmediately={
+                      !isNarrowLayout || workspacePane === "editor"
+                    }
+                    setEditorMode={setEditorMode}
+                    t={t}
+                  />
+                </ResizablePanel>
 
-              <ResizableHandle
-                withHandle
-                className={isNarrowLayout ? "hidden" : undefined}
-              />
+                <ResizableHandle
+                  withHandle
+                  className={isNarrowLayout ? "hidden" : undefined}
+                />
 
-              <ResizablePanel
-                defaultSize="55%"
-                minSize="25%"
-                id={isNarrowLayout ? "workspace-preview-panel" : undefined}
-                role={isNarrowLayout ? "tabpanel" : undefined}
-                aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}
-                hidden={isNarrowLayout && workspacePane !== "preview"}
-                onFocusCapture={() => setWorkspacePane("preview")}
-                onPointerDownCapture={() => setWorkspacePane("preview")}
-              >
-                <PreviewPanel t={t} />
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </div>
-        </main>
+                <ResizablePanel
+                  defaultSize="55%"
+                  minSize="25%"
+                  id={isNarrowLayout ? "workspace-preview-panel" : undefined}
+                  role={isNarrowLayout ? "tabpanel" : undefined}
+                  aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}
+                  hidden={isNarrowLayout && workspacePane !== "preview"}
+                  onFocusCapture={() => setWorkspacePane("preview")}
+                  onPointerDownCapture={() => setWorkspacePane("preview")}
+                >
+                  <Preview
+                    active={!isNarrowLayout || workspacePane === "preview"}
+                    className="h-full min-h-0"
+                  />
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </div>
+          </main>
 
-        <StatusBar />
-      </div>
+          <StatusBar />
+        </div>
+      </ExportWorkbench>
     </TooltipProvider>
   );
 }
 
 function EditorPanel({
+  activateEditorLanguageImmediately,
   editorMode,
+  mountCodeEditorImmediately,
   setEditorMode,
   t,
 }: {
+  activateEditorLanguageImmediately: boolean;
   editorMode: "code" | "config";
+  mountCodeEditorImmediately: boolean;
   setEditorMode(mode: "code" | "config"): void;
   t(key: string): string;
 }) {
-  const [hasActivatedConfig, setHasActivatedConfig] = useState(
-    editorMode === "config",
-  );
-  const configActivated = hasActivatedConfig || editorMode === "config";
-
   return (
     <Tabs
       value={editorMode}
       onValueChange={(value) => {
         const mode = value as "code" | "config";
-        if (mode === "config") setHasActivatedConfig(true);
         setEditorMode(mode);
       }}
       activationMode="manual"
@@ -158,35 +193,102 @@ function EditorPanel({
         forceMount
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        <CodeEditor className="h-full min-h-0" />
+        <StartupCodeEditor
+          activateLanguageImmediately={activateEditorLanguageImmediately}
+          className="h-full min-h-0"
+          mountImmediately={mountCodeEditorImmediately}
+        />
       </TabsContent>
       <TabsContent
         value="config"
-        forceMount={configActivated ? true : undefined}
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        {configActivated && (
-          <LazyFeatureBoundary
-            feature={t("editor.configMode")}
-            presentation={{ kind: "panel" }}
-          >
-            <ConfigEditor className="h-full min-h-0" />
-          </LazyFeatureBoundary>
-        )}
+        <LazyFeatureBoundary
+          feature={t("editor.configMode")}
+          presentation={{ kind: "panel" }}
+        >
+          <ConfigEditor className="h-full min-h-0" />
+        </LazyFeatureBoundary>
       </TabsContent>
     </Tabs>
   );
 }
 
-function PreviewPanel({ t }: { t(key: string): string }) {
+function StartupCodeEditor({
+  activateLanguageImmediately,
+  className,
+  mountImmediately,
+}: {
+  readonly activateLanguageImmediately: boolean;
+  readonly className?: string;
+  readonly mountImmediately: boolean;
+}) {
+  const { t } = useTranslation();
+  const [mounted, setMounted] = useState(
+    () => mountImmediately || playgroundStartupBoundary.reason() !== null,
+  );
+
+  useEffect(() => {
+    let active = true;
+    void playgroundStartupBoundary.wait().then(() => {
+      if (active) setMounted(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mountImmediately) return;
+    setMounted(true);
+  }, [mountImmediately]);
+
+  useEffect(() => {
+    if (!activateLanguageImmediately) return;
+    playgroundStartupBoundary.activate("editor-visible");
+  }, [activateLanguageImmediately]);
+
+  const activateLanguageFromEditorIntent = () => {
+    playgroundStartupBoundary.activate("editor-intent");
+  };
+
+  const mountFromEditorIntent = () => {
+    activateLanguageFromEditorIntent();
+    setMounted(true);
+  };
+
+  if (!mounted) {
+    return (
+      <button
+        type="button"
+        data-testid="editor-activation"
+        aria-label={t("editor.loading")}
+        className={`${className ?? ""} flex w-full items-center justify-center bg-card text-sm text-muted-foreground`}
+        onClick={mountFromEditorIntent}
+        onFocus={mountFromEditorIntent}
+        onPointerDown={mountFromEditorIntent}
+      >
+        {t("editor.loading")}
+      </button>
+    );
+  }
+
   return (
-    <div className="h-full min-h-0 flex flex-col">
-      <div className="flex h-11 shrink-0 items-center border-b bg-muted/20 px-3 sm:px-4">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("preview.title")}
-        </span>
-      </div>
-      <Preview className="min-h-0 flex-1 bg-[linear-gradient(to_right,var(--preview-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--preview-grid)_1px,transparent_1px)] bg-[size:20px_20px]" />
+    <div
+      className={`${className ?? ""} flex flex-col`}
+      data-testid="editor-startup-surface"
+      onFocusCapture={activateLanguageFromEditorIntent}
+      onPointerDownCapture={activateLanguageFromEditorIntent}
+    >
+      <LazyFeatureBoundary
+        feature={t("layout.editor")}
+        presentation={{ kind: "panel" }}
+      >
+        <CodeEditor
+          className="h-full min-h-0"
+          waitForLanguageActivation={playgroundStartupBoundary.wait}
+        />
+      </LazyFeatureBoundary>
     </div>
   );
 }

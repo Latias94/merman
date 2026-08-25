@@ -1,7 +1,6 @@
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, OperationControl,
-    OperationControlResult, SourceSpan, editor::EditorLexemeJournal,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, SourceSpan,
 };
 #[cfg(test)]
 use std::{cell::RefCell, collections::BTreeMap};
@@ -42,114 +41,6 @@ pub(crate) struct LangiumString {
 
 pub(crate) fn is_ecmascript_line_terminator(ch: char) -> bool {
     matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}')
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct LangiumLexeme {
-    kind: EditorLexemeKind,
-    modifiers: EditorLexemeModifiers,
-    span: SourceSpan,
-}
-
-/// Parser-owned lexical events emitted while a Langium-style cursor consumes structured syntax.
-///
-/// Callers can only append an explicitly classified, already recognized span. The trace never
-/// inspects source text, so it cannot become a second scanner or a heuristic highlighter.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct LangiumLexemeTrace {
-    lexemes: Vec<LangiumLexeme>,
-}
-
-impl LangiumLexemeTrace {
-    pub(crate) fn keyword(&mut self, span: SourceSpan) {
-        self.push(EditorLexemeKind::Keyword, span);
-    }
-
-    pub(crate) fn operator(&mut self, span: SourceSpan) {
-        self.push(EditorLexemeKind::Operator, span);
-    }
-
-    pub(crate) fn delimiter(&mut self, span: SourceSpan) {
-        self.push(EditorLexemeKind::Delimiter, span);
-    }
-
-    pub(crate) fn identifier(&mut self, span: SourceSpan) {
-        self.push(EditorLexemeKind::Identifier, span);
-    }
-
-    pub(crate) fn number(&mut self, span: SourceSpan) {
-        self.push(EditorLexemeKind::Number, span);
-    }
-
-    pub(crate) fn boolean(&mut self, span: SourceSpan) {
-        self.push(EditorLexemeKind::Boolean, span);
-    }
-
-    pub(crate) fn string(&mut self, span: SourceSpan) {
-        self.push(EditorLexemeKind::String, span);
-    }
-
-    pub(crate) fn style(&mut self, span: SourceSpan) {
-        self.push(EditorLexemeKind::Style, span);
-    }
-
-    pub(crate) fn literal(&mut self, span: SourceSpan) {
-        self.push(EditorLexemeKind::Literal, span);
-    }
-
-    pub(crate) fn extend(&mut self, other: Self) {
-        self.lexemes.extend(other.lexemes);
-    }
-
-    pub(crate) fn checkpoint(&self) -> usize {
-        self.lexemes.len()
-    }
-
-    pub(crate) fn rollback(&mut self, checkpoint: usize) {
-        self.lexemes.truncate(checkpoint);
-    }
-
-    pub(crate) fn attach(self, source: &str, facts: &mut EditorSemanticFacts) {
-        let control = OperationControl::new();
-        self.attach_controlled(source, facts, &control)
-            .expect("a private parse control cannot be cancelled");
-    }
-
-    pub(crate) fn attach_controlled(
-        self,
-        source: &str,
-        facts: &mut EditorSemanticFacts,
-        control: &OperationControl,
-    ) -> OperationControlResult<()> {
-        let mut journal = EditorLexemeJournal::family_parser(source);
-        for (index, lexeme) in self.lexemes.into_iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            journal.push(lexeme.kind, lexeme.modifiers, lexeme.span);
-        }
-        facts.replace_family_lexemes(journal.finish_controlled(control)?);
-        control.checkpoint()
-    }
-
-    fn push(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
-        self.push_with_modifiers(kind, EditorLexemeModifiers::NONE, span);
-    }
-
-    pub(crate) fn push_with_modifiers(
-        &mut self,
-        kind: EditorLexemeKind,
-        modifiers: EditorLexemeModifiers,
-        span: SourceSpan,
-    ) {
-        if span.start < span.end {
-            self.lexemes.push(LangiumLexeme {
-                kind,
-                modifiers,
-                span,
-            });
-        }
-    }
 }
 
 /// Parses the shared Langium `STRING` terminal and applies `DefaultValueConverter` unescaping.
@@ -254,7 +145,6 @@ pub(crate) struct LangiumCommonDiagnostic {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LangiumCommonParse {
     pub(crate) fact: LangiumCommonFact,
-    pub(crate) lexemes: LangiumLexemeTrace,
     /// Bytes consumed from the supplied offset, including the required EOL or EOF.
     pub(crate) consumed: usize,
     /// Last whitespace-only physical line consumed as trailing EOL trivia, if any.
@@ -346,8 +236,6 @@ pub(crate) fn parse_langium_common(source: &str, offset: usize) -> Option<Langiu
 
 fn parse_title(source: &str, offset: usize, token_start: usize) -> Option<LangiumCommonParse> {
     let keyword_end = token_start + "title".len();
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(SourceSpan::new(token_start, keyword_end));
     let next = source.get(keyword_end..)?.chars().next();
     let capture_start = keyword_end;
     let raw_end = if next.is_some_and(is_horizontal_whitespace) {
@@ -361,7 +249,6 @@ fn parse_title(source: &str, offset: usize, token_start: usize) -> Option<Langiu
         raw_end,
         LangiumCommonField::Title,
         capture_start,
-        lexemes,
     )
 }
 
@@ -371,9 +258,6 @@ fn parse_acc_title(source: &str, offset: usize, token_start: usize) -> Option<La
     if source.as_bytes().get(colon) != Some(&b':') {
         return None;
     }
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(SourceSpan::new(token_start, keyword_end));
-    lexemes.delimiter(SourceSpan::new(colon, colon + 1));
     let capture_start = colon + 1;
     let raw_end = inline_terminal_end(source, capture_start);
     parsed_inline(
@@ -382,7 +266,6 @@ fn parse_acc_title(source: &str, offset: usize, token_start: usize) -> Option<La
         raw_end,
         LangiumCommonField::AccTitle,
         capture_start,
-        lexemes,
     )
 }
 
@@ -390,9 +273,6 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
     let keyword_end = token_start + "accDescr".len();
     let horizontal_end = keyword_end + horizontal_whitespace_len(source.get(keyword_end..)?);
     if source.as_bytes().get(horizontal_end) == Some(&b':') {
-        let mut lexemes = LangiumLexemeTrace::default();
-        lexemes.keyword(SourceSpan::new(token_start, keyword_end));
-        lexemes.delimiter(SourceSpan::new(horizontal_end, horizontal_end + 1));
         let capture_start = horizontal_end + 1;
         let raw_end = inline_terminal_end(source, capture_start);
         return parsed_inline(
@@ -401,7 +281,6 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
             raw_end,
             LangiumCommonField::AccDescr,
             capture_start,
-            lexemes,
         );
     }
 
@@ -409,14 +288,10 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
     if source.as_bytes().get(opening) != Some(&b'{') {
         return None;
     }
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(SourceSpan::new(token_start, keyword_end));
-    lexemes.delimiter(SourceSpan::new(opening, opening + 1));
     let content_start = opening + 1;
     let Some(relative_close) = source.get(content_start..)?.find('}') else {
         let raw_end = source.len();
         let (value, value_span) = normalized_block_value(source, content_start, raw_end);
-        lexemes.string(value_span);
         return Some(LangiumCommonParse {
             fact: LangiumCommonFact {
                 field: LangiumCommonField::AccDescr,
@@ -424,7 +299,6 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
                 raw_span: SourceSpan::new(offset, raw_end),
                 value_span,
             },
-            lexemes,
             consumed: raw_end - offset,
             trailing_whitespace_span: None,
             diagnostic: Some(LangiumCommonDiagnostic {
@@ -438,8 +312,6 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
     let raw_end = close + 1;
     let eol = consume_required_eol(source, raw_end)?;
     let (value, value_span) = normalized_block_value(source, content_start, close);
-    lexemes.string(value_span);
-    lexemes.delimiter(SourceSpan::new(close, close + 1));
     Some(LangiumCommonParse {
         fact: LangiumCommonFact {
             field: LangiumCommonField::AccDescr,
@@ -447,7 +319,6 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
             raw_span: SourceSpan::new(offset, raw_end),
             value_span,
         },
-        lexemes,
         consumed: eol.end - offset,
         trailing_whitespace_span: eol.trailing_whitespace_span,
         diagnostic: None,
@@ -460,7 +331,6 @@ fn parsed_inline(
     raw_end: usize,
     field: LangiumCommonField,
     capture_start: usize,
-    mut lexemes: LangiumLexemeTrace,
 ) -> Option<LangiumCommonParse> {
     let eol = consume_required_eol(source, raw_end)?;
     let capture = source.get(capture_start..raw_end)?;
@@ -468,7 +338,6 @@ fn parsed_inline(
     let leading = capture.len() - capture.trim_start().len();
     let value_start = capture_start + leading;
     let value_span = SourceSpan::new(value_start, value_start + trimmed.len());
-    lexemes.string(value_span);
     Some(LangiumCommonParse {
         fact: LangiumCommonFact {
             field,
@@ -476,7 +345,6 @@ fn parsed_inline(
             raw_span: SourceSpan::new(offset, raw_end),
             value_span,
         },
-        lexemes,
         consumed: eol.end - offset,
         trailing_whitespace_span: eol.trailing_whitespace_span,
         diagnostic: None,

@@ -19,7 +19,7 @@ import type {
   HostTextWhiteSpace,
   HostTextWrapMode,
 } from "./generated/text-measurement-abi.js";
-import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
+import type { EditorRenamePolicy } from "./generated/editor-rename-policy.js";
 import type {
   BINDING_OPTIONS_SCHEMA_VERSION,
   ResourceOverrideId,
@@ -624,6 +624,7 @@ export type CommonBindingOptions = BindingVersionOptions &
   CommonBindingFields;
 
 export type AsciiCharsetOption = "ascii" | "unicode";
+export type AsciiWidthProfileOption = "unicode" | "cjk";
 export type AsciiDirectionOption =
   | "lr"
   | "leftRight"
@@ -662,6 +663,8 @@ export interface AsciiThemeOptions {
 
 export interface AsciiRenderOptions {
   charset?: AsciiCharsetOption;
+  width_profile?: AsciiWidthProfileOption;
+  widthProfile?: AsciiWidthProfileOption;
   default_direction?: AsciiDirectionOption;
   defaultDirection?: AsciiDirectionOption;
   color_mode?: AsciiColorModeOption;
@@ -675,6 +678,8 @@ export interface AsciiRenderOptions {
   graphPaddingX?: number;
   graph_padding_y?: number;
   graphPaddingY?: number;
+  flowchart_node_label_wrap_width?: number;
+  flowchartNodeLabelWrapWidth?: number;
   sequence_participant_spacing?: number;
   sequenceParticipantSpacing?: number;
   sequence_message_spacing?: number;
@@ -1182,14 +1187,6 @@ export interface EditorWorkspaceEdit {
   changes: Record<string, EditorTextEdit[]>;
 }
 
-export interface EditorSemanticTokenLegend {
-  tokenTypes: string[];
-  tokenModifiers: string[];
-}
-
-export type EditorSemanticTokenDescriptor =
-  typeof import("./generated/token-descriptor.js").SEMANTIC_TOKEN_DESCRIPTOR;
-
 export interface BrowserEditorSession {
   readonly version: number;
   readonly uri: string;
@@ -1205,7 +1202,6 @@ export interface BrowserEditorSession {
   references(position: EditorPosition, includeDeclaration?: boolean): EditorLocation[];
   prepareRename(position: EditorPosition): EditorPrepareRename | null;
   rename(position: EditorPosition, newName: string): EditorWorkspaceEdit | null;
-  semanticTokens(): Uint32Array;
   dispose(): void;
 }
 
@@ -1232,7 +1228,6 @@ export interface WasmEditorSessionBinding {
     character: number,
     newName: string
   ): EditorWorkspaceEdit | null;
-  semanticTokens(): Uint32Array;
   free(): void;
 }
 
@@ -1243,32 +1238,6 @@ export interface WasmEditorSessionConstructor {
     uri?: string | null,
     optionsJson?: string | null
   ): WasmEditorSessionBinding;
-}
-
-export interface WasmSemanticTokenDescriptor {
-  schemaVersion: number;
-  digest: string;
-  tokenTypes: Array<{
-    id: string;
-    code: number;
-    lspName: string;
-    lspIndex: number;
-  }>;
-  modifiers: Array<{
-    id: string;
-    index: number;
-    bit: number;
-    lspName: string;
-    lspIndex: number;
-  }>;
-  packed: {
-    encoding: string;
-    wordWidthBits: number;
-    recordWidth: number;
-    fieldOrder: string[];
-  };
-  validTypeCodeMax: number;
-  validModifierMask: number;
 }
 
 export type MermanWasmSource =
@@ -1389,13 +1358,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
     uri?: string | null,
     optionsJson?: string | null
   ) => EditorWorkspaceEdit | null;
-  editorSemanticTokenDescriptor?: () => WasmSemanticTokenDescriptor;
   editorCompletionTriggerCharacters?: () => string[];
-  editorSemanticTokens?: (
-    source: string,
-    uri?: string | null,
-    optionsJson?: string | null
-  ) => Uint32Array;
   asciiSupportedDiagrams: () => string[];
   asciiCapabilities: () => AsciiCapability[];
   runtimeCatalog: () => RuntimeCatalog;

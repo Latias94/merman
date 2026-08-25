@@ -1,0 +1,1589 @@
+use crate::error::{AsciiError, Result};
+use merman_core::resources::{GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, ResourceProfile};
+use merman_core::{
+    OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
+    OperationResourceLimitExceeded, OperationResourceOverride, OperationResourceProvenance,
+};
+use std::cell::Cell;
+use std::fmt;
+use std::rc::Rc;
+
+const KIB: usize = 1024;
+const MIB: usize = 1024 * KIB;
+
+pub const ASCII_RESOURCE_LIMIT_COUNT: usize = 6;
+
+pub const MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID: &str = "max_ascii_grid_cells";
+pub const MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID: &str = "max_ascii_layout_work_units";
+pub const MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID: &str = "max_ascii_document_cells";
+pub const MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID: &str = "max_ascii_output_bytes";
+pub const MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID: &str = "max_ascii_grapheme_bytes";
+pub const MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID: &str = "max_ascii_nesting_depth";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AsciiResourceLimitPhase {
+    Layout,
+    LayoutWork,
+    Document,
+    Output,
+    Grapheme,
+    Nesting,
+}
+
+/// Stable reason why an ASCII resource check failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AsciiResourceLimitCause {
+    /// The requested work exceeded the configured policy ceiling.
+    Ceiling,
+    /// Computing cumulative work overflowed the platform counter.
+    ArithmeticOverflow,
+}
+
+impl AsciiResourceLimitCause {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ceiling => "ceiling",
+            Self::ArithmeticOverflow => "arithmetic_overflow",
+        }
+    }
+}
+
+impl fmt::Display for AsciiResourceLimitCause {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl AsciiResourceLimitPhase {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Layout => "ascii_layout",
+            Self::LayoutWork => "ascii_layout_work",
+            Self::Document => "ascii_document",
+            Self::Output => "ascii_output",
+            Self::Grapheme => "ascii_grapheme",
+            Self::Nesting => "ascii_nesting",
+        }
+    }
+}
+
+impl fmt::Display for AsciiResourceLimitPhase {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[repr(usize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AsciiResourceLimitId {
+    MaxGridCells,
+    MaxLayoutWorkUnits,
+    MaxDocumentCells,
+    MaxOutputBytes,
+    MaxGraphemeBytes,
+    MaxNestingDepth,
+}
+
+impl AsciiResourceLimitId {
+    pub const ALL: [Self; ASCII_RESOURCE_LIMIT_COUNT] = [
+        Self::MaxGridCells,
+        Self::MaxLayoutWorkUnits,
+        Self::MaxDocumentCells,
+        Self::MaxOutputBytes,
+        Self::MaxGraphemeBytes,
+        Self::MaxNestingDepth,
+    ];
+
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+
+    pub const fn descriptor(self) -> &'static AsciiResourceLimitDescriptor {
+        &ASCII_RESOURCE_LIMIT_DESCRIPTORS[self.index()]
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        self.descriptor().stable_id
+    }
+
+    pub fn from_stable_id(stable_id: &str) -> Option<Self> {
+        ASCII_RESOURCE_LIMIT_DESCRIPTORS
+            .iter()
+            .find(|descriptor| descriptor.stable_id == stable_id)
+            .map(|descriptor| descriptor.id)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct AsciiResourceLimitDescriptor {
+    pub id: AsciiResourceLimitId,
+    pub stable_id: &'static str,
+    pub phase: AsciiResourceLimitPhase,
+    pub description: &'static str,
+    pub overridable: bool,
+    pub minimum_value: usize,
+}
+
+macro_rules! ascii_limit_descriptors {
+    ($($id:ident => ($stable:ident, $phase:ident, $description:literal)),+ $(,)?) => {
+        pub static ASCII_RESOURCE_LIMIT_DESCRIPTORS:
+            [AsciiResourceLimitDescriptor; ASCII_RESOURCE_LIMIT_COUNT] = [
+                $(AsciiResourceLimitDescriptor {
+                    id: AsciiResourceLimitId::$id,
+                    stable_id: $stable,
+                    phase: AsciiResourceLimitPhase::$phase,
+                    description: $description,
+                    overridable: true,
+                    minimum_value: 1,
+                }),+
+            ];
+    };
+}
+
+ascii_limit_descriptors! {
+    MaxGridCells => (MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, Layout, "Maximum terminal grid cells allocated by ASCII layout"),
+    MaxLayoutWorkUnits => (MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID, LayoutWork, "Maximum deterministic ASCII layout and planning work units"),
+    MaxDocumentCells => (MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID, Document, "Maximum aggregate terminal display cells in an ASCII document"),
+    MaxOutputBytes => (MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID, Output, "Maximum encoded ASCII output bytes"),
+    MaxGraphemeBytes => (MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID, Grapheme, "Maximum UTF-8 bytes in one terminal grapheme cluster"),
+    MaxNestingDepth => (MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID, Nesting, "Maximum semantic nesting depth traversed by ASCII rendering"),
+}
+
+const PROFILE_VALUES: [[Option<usize>; 4]; ASCII_RESOURCE_LIMIT_COUNT] = [
+    [Some(250_000), Some(125_000), Some(1_000_000), None],
+    [Some(2_000_000), Some(1_000_000), Some(8_000_000), None],
+    [Some(250_000), Some(125_000), Some(1_000_000), None],
+    [Some(16 * MIB), Some(8 * MIB), Some(64 * MIB), None],
+    [Some(4 * KIB), Some(2 * KIB), Some(64 * KIB), None],
+    [Some(256), Some(128), Some(1_024), None],
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AsciiResourcePolicy {
+    profile: ResourceProfile,
+    base_values: [Option<usize>; ASCII_RESOURCE_LIMIT_COUNT],
+    effective_values: [Option<usize>; ASCII_RESOURCE_LIMIT_COUNT],
+    explicit_overrides: [Option<usize>; ASCII_RESOURCE_LIMIT_COUNT],
+}
+
+impl Default for AsciiResourcePolicy {
+    fn default() -> Self {
+        Self::for_profile(GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE)
+    }
+}
+
+impl AsciiResourcePolicy {
+    /// Creates the trusted-input profile used by compatibility benchmarks and offline tooling.
+    pub const fn unbounded() -> Self {
+        Self::for_profile(ResourceProfile::UnboundedForTrustedInput)
+    }
+
+    pub const fn for_profile(profile: ResourceProfile) -> Self {
+        let mut values = [None; ASCII_RESOURCE_LIMIT_COUNT];
+        let mut index = 0;
+        while index < ASCII_RESOURCE_LIMIT_COUNT {
+            values[index] = PROFILE_VALUES[index][profile as usize];
+            index += 1;
+        }
+        Self {
+            profile,
+            base_values: values,
+            effective_values: values,
+            explicit_overrides: [None; ASCII_RESOURCE_LIMIT_COUNT],
+        }
+    }
+
+    pub const fn profile(self) -> ResourceProfile {
+        self.profile
+    }
+
+    pub const fn value(self, id: AsciiResourceLimitId) -> Option<usize> {
+        self.effective_values[id.index()]
+    }
+
+    pub const fn base_value(self, id: AsciiResourceLimitId) -> Option<usize> {
+        self.base_values[id.index()]
+    }
+
+    pub const fn explicit_override(self, id: AsciiResourceLimitId) -> Option<usize> {
+        self.explicit_overrides[id.index()]
+    }
+
+    pub fn explicit_overrides(&self) -> impl Iterator<Item = (AsciiResourceLimitId, usize)> + '_ {
+        AsciiResourceLimitId::ALL
+            .into_iter()
+            .filter_map(|id| self.explicit_override(id).map(|value| (id, value)))
+    }
+
+    #[must_use]
+    pub fn with_profile(self, profile: ResourceProfile) -> Self {
+        let mut rebased = Self::for_profile(profile);
+        for (id, value) in self.explicit_overrides() {
+            rebased.effective_values[id.index()] = Some(value);
+            rebased.explicit_overrides[id.index()] = Some(value);
+        }
+        rebased
+    }
+
+    pub fn apply_override(
+        &mut self,
+        stable_id: &str,
+        value: usize,
+    ) -> std::result::Result<(), AsciiResourceLimitOverrideError> {
+        let id = AsciiResourceLimitId::from_stable_id(stable_id)
+            .ok_or_else(|| AsciiResourceLimitOverrideError::UnknownLimit(stable_id.to_string()))?;
+        self.apply_limit(id, value)
+    }
+
+    pub fn apply_limit(
+        &mut self,
+        id: AsciiResourceLimitId,
+        value: usize,
+    ) -> std::result::Result<(), AsciiResourceLimitOverrideError> {
+        if value < id.descriptor().minimum_value {
+            return Err(AsciiResourceLimitOverrideError::BelowMinimum {
+                limit_id: id.as_str(),
+                minimum: id.descriptor().minimum_value,
+            });
+        }
+        self.effective_values[id.index()] = Some(value);
+        self.explicit_overrides[id.index()] = Some(value);
+        Ok(())
+    }
+
+    pub fn with_limit(
+        mut self,
+        id: AsciiResourceLimitId,
+        value: usize,
+    ) -> std::result::Result<Self, AsciiResourceLimitOverrideError> {
+        self.apply_limit(id, value)?;
+        Ok(self)
+    }
+
+    pub(crate) fn check(self, id: AsciiResourceLimitId, actual: usize) -> Result<()> {
+        if let Some(max) = self.value(id)
+            && actual > max
+        {
+            return Err(AsciiResourceLimitExceeded {
+                cause: AsciiResourceLimitCause::Ceiling,
+                limit: id,
+                actual,
+                max,
+                profile: self.profile,
+            }
+            .into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn overflow(self, id: AsciiResourceLimitId) -> AsciiError {
+        // The mathematical result is larger than `usize::MAX`. Saturate the public five-field
+        // projection to the same truthful ordering used by the SVG resource meter: `actual` is the
+        // largest representable value and `max` remains strictly smaller, including for an
+        // otherwise-unbounded policy or an explicit `usize::MAX` override.
+        let max = self.value(id).unwrap_or(usize::MAX - 1).min(usize::MAX - 1);
+        AsciiResourceLimitExceeded {
+            cause: AsciiResourceLimitCause::ArithmeticOverflow,
+            limit: id,
+            actual: usize::MAX,
+            max,
+            profile: self.profile,
+        }
+        .into()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum AsciiResourceLimitOverrideError {
+    #[error("unknown ASCII resource limit `{0}`")]
+    UnknownLimit(String),
+    #[error("ASCII resource limit `{limit_id}` must be at least {minimum}")]
+    BelowMinimum {
+        limit_id: &'static str,
+        minimum: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct AsciiResourceLimitExceeded {
+    pub cause: AsciiResourceLimitCause,
+    pub limit: AsciiResourceLimitId,
+    pub actual: usize,
+    pub max: usize,
+    pub profile: ResourceProfile,
+}
+
+impl AsciiResourceLimitExceeded {
+    pub const fn phase(self) -> AsciiResourceLimitPhase {
+        self.limit.descriptor().phase
+    }
+}
+
+impl fmt::Display for AsciiResourceLimitExceeded {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "ASCII resource limit `{}` exceeded during `{}`: actual {}, maximum {} (profile `{}`)",
+            self.limit.as_str(),
+            self.phase().as_str(),
+            self.actual,
+            self.max,
+            self.profile.id()
+        )?;
+        if self.cause == AsciiResourceLimitCause::ArithmeticOverflow {
+            write!(formatter, " (cause `{}`)", self.cause)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for AsciiResourceLimitExceeded {}
+
+pub fn ascii_resource_profile_value(profile: ResourceProfile, stable_id: &str) -> Option<usize> {
+    AsciiResourceLimitId::from_stable_id(stable_id)
+        .and_then(|id| AsciiResourcePolicy::for_profile(profile).value(id))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LogicalExtent {
+    width: usize,
+    height: usize,
+    cells: usize,
+}
+
+impl LogicalExtent {
+    #[cfg(test)]
+    pub(crate) fn checked(
+        width: usize,
+        height: usize,
+        policy: AsciiResourcePolicy,
+    ) -> Result<Self> {
+        let cells = width
+            .checked_mul(height)
+            .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxGridCells))?;
+        policy.check(AsciiResourceLimitId::MaxGridCells, cells)?;
+        Ok(Self {
+            width,
+            height,
+            cells,
+        })
+    }
+
+    pub(crate) const fn width(self) -> usize {
+        self.width
+    }
+
+    pub(crate) const fn height(self) -> usize {
+        self.height
+    }
+
+    pub(crate) const fn cells(self) -> usize {
+        self.cells
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ResourceContext {
+    policy: AsciiResourcePolicy,
+    layout_work_used: Rc<Cell<usize>>,
+    document_cells_used: Rc<Cell<usize>>,
+    operation: Option<ResourceOperation>,
+}
+
+#[derive(Debug, Clone)]
+struct ResourceOperation {
+    control: OperationControl,
+    phase: OperationPhase,
+}
+
+impl ResourceContext {
+    pub(crate) fn new(policy: AsciiResourcePolicy) -> Self {
+        Self {
+            policy,
+            layout_work_used: Rc::new(Cell::new(0)),
+            document_cells_used: Rc::new(Cell::new(0)),
+            operation: None,
+        }
+    }
+
+    /// Creates a ledger-sharing view whose resource admissions observe operation cancellation.
+    pub(crate) fn controlled(&self, control: OperationControl, phase: OperationPhase) -> Self {
+        Self {
+            policy: self.policy,
+            layout_work_used: Rc::clone(&self.layout_work_used),
+            document_cells_used: Rc::clone(&self.document_cells_used),
+            operation: Some(ResourceOperation { control, phase }),
+        }
+    }
+
+    /// Creates an independent zeroed ledger while preserving policy and operation control.
+    ///
+    /// Deterministic replay phases use this context to verify their measured usage without
+    /// charging the render-wide ledger twice. Keeping the operation binding ensures cancellation
+    /// and deadlines retain priority over resource admission during the replay.
+    pub(crate) fn detached(&self) -> Self {
+        Self {
+            policy: self.policy,
+            layout_work_used: Rc::new(Cell::new(0)),
+            document_cells_used: Rc::new(Cell::new(0)),
+            operation: self.operation.clone(),
+        }
+    }
+
+    /// Rebinds an existing controlled ledger view to a different operation phase.
+    pub(crate) fn with_operation_phase(&self, phase: OperationPhase) -> Self {
+        let mut scoped = self.clone();
+        scoped.operation = self.operation.as_ref().map(|operation| ResourceOperation {
+            control: operation.control.clone(),
+            phase,
+        });
+        scoped
+    }
+
+    /// Starts a new document/grid scope while preserving the render-wide work ledger.
+    pub(crate) fn scoped(&self) -> Self {
+        Self {
+            policy: self.policy,
+            layout_work_used: Rc::clone(&self.layout_work_used),
+            document_cells_used: Rc::new(Cell::new(0)),
+            operation: self.operation.clone(),
+        }
+    }
+
+    /// Starts a disposable materialization scope after the retained document has been admitted.
+    ///
+    /// Renderers may build padded rows whose temporary cell count exceeds the final trimmed
+    /// document count. The caller must first admit both the retained document cells and a grid
+    /// extent covering `materialized_cells`; this scope then prevents the retained-document limit
+    /// from rejecting that already-bounded temporary representation a second time.
+    pub(crate) fn scoped_after_document_admission(
+        &self,
+        materialized_cells: usize,
+    ) -> Result<Self> {
+        let policy = match self.policy.value(AsciiResourceLimitId::MaxDocumentCells) {
+            Some(current) if current < materialized_cells => self
+                .policy
+                .with_limit(
+                    AsciiResourceLimitId::MaxDocumentCells,
+                    materialized_cells.max(1),
+                )
+                .map_err(|_| self.overflow(AsciiResourceLimitId::MaxDocumentCells))?,
+            _ => self.policy,
+        };
+        let mut scoped = self.scoped();
+        scoped.policy = policy;
+        Ok(scoped)
+    }
+
+    pub(crate) const fn policy(&self) -> AsciiResourcePolicy {
+        self.policy
+    }
+
+    pub(crate) fn check(&self, id: AsciiResourceLimitId, actual: usize) -> Result<()> {
+        self.resource_checkpoint()?;
+        self.check_after_checkpoint(id, actual)
+    }
+
+    pub(crate) fn overflow(&self, id: AsciiResourceLimitId) -> AsciiError {
+        self.resource_checkpoint()
+            .err()
+            .unwrap_or_else(|| self.overflow_after_checkpoint(id))
+    }
+
+    pub(crate) fn layout_work_used(&self) -> usize {
+        self.layout_work_used.get()
+    }
+
+    pub(crate) fn document_cells_used(&self) -> usize {
+        self.document_cells_used.get()
+    }
+
+    pub(crate) fn grid_extent(&self, width: usize, height: usize) -> Result<LogicalExtent> {
+        self.resource_checkpoint()?;
+        let cells = width
+            .checked_mul(height)
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxGridCells))?;
+        self.check_after_checkpoint(AsciiResourceLimitId::MaxGridCells, cells)?;
+        Ok(LogicalExtent {
+            width,
+            height,
+            cells,
+        })
+    }
+
+    pub(crate) fn checked_grid_add(&self, left: usize, right: usize) -> Result<usize> {
+        self.resource_checkpoint()?;
+        left.checked_add(right)
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxGridCells))
+    }
+
+    pub(crate) fn checked_grid_mul(&self, left: usize, right: usize) -> Result<usize> {
+        self.resource_checkpoint()?;
+        left.checked_mul(right)
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxGridCells))
+    }
+
+    pub(crate) fn checked_work_add(&self, left: usize, right: usize) -> Result<usize> {
+        self.resource_checkpoint()?;
+        left.checked_add(right)
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxLayoutWorkUnits))
+    }
+
+    pub(crate) fn checked_work_mul(&self, left: usize, right: usize) -> Result<usize> {
+        self.resource_checkpoint()?;
+        left.checked_mul(right)
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxLayoutWorkUnits))
+    }
+
+    pub(crate) fn charge_layout_work(&self, delta: usize) -> Result<()> {
+        self.resource_checkpoint()?;
+        let actual = self.checked_total(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            self.layout_work_used.get(),
+            delta,
+        )?;
+        self.layout_work_used.set(actual);
+        Ok(())
+    }
+
+    pub(crate) fn charge_layout_work_product(&self, left: usize, right: usize) -> Result<()> {
+        self.resource_checkpoint()?;
+        let work = left.checked_mul(right).ok_or_else(|| {
+            self.overflow_after_checkpoint(AsciiResourceLimitId::MaxLayoutWorkUnits)
+        })?;
+        let actual = self.checked_total(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            self.layout_work_used.get(),
+            work,
+        )?;
+        self.layout_work_used.set(actual);
+        Ok(())
+    }
+
+    pub(crate) fn charge_document_cells(&self, delta: usize) -> Result<()> {
+        self.resource_checkpoint()?;
+        let actual = self.checked_total(
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.document_cells_used.get(),
+            delta,
+        )?;
+        self.document_cells_used.set(actual);
+        Ok(())
+    }
+
+    /// Checks one compound work/document admission without mutating either shared ledger.
+    pub(crate) fn check_usage(
+        &self,
+        layout_work_delta: usize,
+        document_cells_delta: usize,
+    ) -> Result<()> {
+        self.resource_checkpoint()?;
+        self.checked_total(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            self.layout_work_used.get(),
+            layout_work_delta,
+        )?;
+        self.checked_total(
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.document_cells_used.get(),
+            document_cells_delta,
+        )?;
+        Ok(())
+    }
+
+    /// Commits one compound work/document admission after both totals have been checked.
+    ///
+    /// Keeping the writes together prevents a document failure from leaving work debited, or a
+    /// work failure from leaving document cells debited, when a caller materializes from a plan.
+    pub(crate) fn charge_usage(
+        &self,
+        layout_work_delta: usize,
+        document_cells_delta: usize,
+    ) -> Result<()> {
+        self.resource_checkpoint()?;
+        let layout_work_used = self.checked_total(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            self.layout_work_used.get(),
+            layout_work_delta,
+        )?;
+        let document_cells_used = self.checked_total(
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.document_cells_used.get(),
+            document_cells_delta,
+        )?;
+        self.layout_work_used.set(layout_work_used);
+        self.document_cells_used.set(document_cells_used);
+        Ok(())
+    }
+
+    /// Runs one planning or materialization phase atomically against the shared ledgers.
+    ///
+    /// Resource accounting is intentionally incremental inside many scanners so the reported
+    /// failure points remain precise. A later dimension (for example output bytes) can still
+    /// reject the phase after work or document cells have been charged. This boundary restores
+    /// both ledgers to their entry values on any error while preserving successful charges.
+    /// Nested transactions are safe because each call restores only its own checkpoint.
+    pub(crate) fn transaction<T, E>(
+        &self,
+        operation: impl FnOnce(&Self) -> std::result::Result<T, E>,
+    ) -> std::result::Result<T, E> {
+        let layout_work_checkpoint = self.layout_work_used.get();
+        let document_cells_checkpoint = self.document_cells_used.get();
+        match operation(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.layout_work_used.set(layout_work_checkpoint);
+                self.document_cells_used.set(document_cells_checkpoint);
+                Err(error)
+            }
+        }
+    }
+
+    /// Runs a recoverable planning phase while retaining work already performed.
+    ///
+    /// Semantic fallbacks may discard speculative document rows, but the CPU work used to reach
+    /// that decision remains part of the successful render-wide budget. Callers that need a
+    /// resource failure to restore both ledgers should wrap this boundary in [`Self::transaction`]
+    /// and propagate the resource error through the outer transaction.
+    pub(crate) fn transaction_preserving_layout_work<T, E>(
+        &self,
+        operation: impl FnOnce(&Self) -> std::result::Result<T, E>,
+    ) -> std::result::Result<T, E> {
+        let document_cells_checkpoint = self.document_cells_used.get();
+        match operation(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.document_cells_used.set(document_cells_checkpoint);
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) fn check_grapheme_bytes(&self, bytes: usize) -> Result<()> {
+        self.check(AsciiResourceLimitId::MaxGraphemeBytes, bytes)
+    }
+
+    pub(crate) fn check_nesting_depth(&self, depth: usize) -> Result<()> {
+        self.check(AsciiResourceLimitId::MaxNestingDepth, depth)
+    }
+
+    pub(crate) fn grid_overflow(&self) -> AsciiError {
+        self.overflow(AsciiResourceLimitId::MaxGridCells)
+    }
+
+    pub(crate) fn work_overflow(&self) -> AsciiError {
+        self.overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+    }
+
+    pub(crate) fn nesting_overflow(&self) -> AsciiError {
+        self.overflow(AsciiResourceLimitId::MaxNestingDepth)
+    }
+
+    pub(crate) fn checkpoint(&self) -> Result<()> {
+        self.operation.as_ref().map_or(Ok(()), |operation| {
+            operation
+                .control
+                .terminal_checkpoint_at(operation.phase)
+                .map_err(|error| self.operation_error(error))
+        })
+    }
+
+    fn resource_checkpoint(&self) -> Result<()> {
+        self.checkpoint()
+    }
+
+    fn check_after_checkpoint(&self, id: AsciiResourceLimitId, actual: usize) -> Result<()> {
+        self.policy
+            .check(id, actual)
+            .map_err(|error| self.terminate_resource_error(error))
+    }
+
+    fn overflow_after_checkpoint(&self, id: AsciiResourceLimitId) -> AsciiError {
+        self.terminate_resource_error(self.policy.overflow(id))
+    }
+
+    fn terminate_resource_error(&self, error: AsciiError) -> AsciiError {
+        let Some(operation) = self.operation.as_ref() else {
+            return error;
+        };
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            return error;
+        };
+        let provenance = OperationResourceProvenance::new(
+            OperationResourceDomain::Ascii,
+            Some(details.profile),
+            self.policy
+                .explicit_overrides()
+                .map(|(id, value)| OperationResourceOverride {
+                    id: id.as_str(),
+                    value: u64::try_from(value).unwrap_or(u64::MAX),
+                }),
+        );
+        let terminal = match details.cause {
+            AsciiResourceLimitCause::Ceiling => {
+                operation
+                    .control
+                    .terminate_resource_limit(OperationResourceLimitExceeded {
+                        id: details.limit.as_str(),
+                        phase: operation.phase,
+                        resource_phase: details.limit.descriptor().phase.as_str(),
+                        limit: details.max as u64,
+                        consumed: 0,
+                        requested: details.actual as u64,
+                        provenance,
+                    })
+            }
+            AsciiResourceLimitCause::ArithmeticOverflow => {
+                operation.control.terminate_resource_overflow(
+                    details.limit.as_str(),
+                    operation.phase,
+                    details.limit.descriptor().phase.as_str(),
+                    u64::try_from(details.actual).unwrap_or(u64::MAX),
+                    u64::try_from(details.max).unwrap_or(u64::MAX),
+                    provenance,
+                )
+            }
+        };
+        self.operation_error(terminal)
+    }
+
+    fn operation_error(&self, error: OperationLedgerError) -> AsciiError {
+        operation_terminal_error(error)
+    }
+
+    fn checked_total(
+        &self,
+        id: AsciiResourceLimitId,
+        current: usize,
+        delta: usize,
+    ) -> Result<usize> {
+        let actual = current
+            .checked_add(delta)
+            .ok_or_else(|| self.overflow_after_checkpoint(id))?;
+        self.check_after_checkpoint(id, actual)?;
+        Ok(actual)
+    }
+}
+
+pub(crate) fn operation_terminal_error(error: OperationLedgerError) -> AsciiError {
+    match error {
+        OperationLedgerError::Cancelled(error) => AsciiError::Cancelled(error),
+        OperationLedgerError::ResourceLimitExceeded(error) => {
+            let Some((limit, profile)) = project_ascii_provenance(&error) else {
+                return AsciiError::OperationResourceTerminal(
+                    OperationLedgerError::ResourceLimitExceeded(error),
+                );
+            };
+            AsciiResourceLimitExceeded {
+                cause: AsciiResourceLimitCause::Ceiling,
+                limit,
+                actual: usize::try_from(error.consumed.saturating_add(error.requested))
+                    .unwrap_or(usize::MAX),
+                max: usize::try_from(error.limit).unwrap_or(usize::MAX),
+                profile,
+            }
+            .into()
+        }
+        OperationLedgerError::ArithmeticOverflow {
+            id,
+            actual,
+            maximum,
+            provenance,
+            phase,
+            resource_phase,
+        } => {
+            let Some((limit, profile)) =
+                project_ascii_overflow_provenance(id, resource_phase, &provenance)
+            else {
+                return AsciiError::OperationResourceTerminal(
+                    OperationLedgerError::ArithmeticOverflow {
+                        id,
+                        phase,
+                        resource_phase,
+                        actual,
+                        maximum,
+                        provenance,
+                    },
+                );
+            };
+            AsciiResourceLimitExceeded {
+                cause: AsciiResourceLimitCause::ArithmeticOverflow,
+                limit,
+                actual: usize::try_from(actual).unwrap_or(usize::MAX),
+                max: usize::try_from(maximum).unwrap_or(usize::MAX),
+                profile,
+            }
+            .into()
+        }
+    }
+}
+
+fn project_ascii_provenance(
+    error: &OperationResourceLimitExceeded,
+) -> Option<(AsciiResourceLimitId, ResourceProfile)> {
+    let limit = AsciiResourceLimitId::from_stable_id(error.id)?;
+    if error.provenance.domain != OperationResourceDomain::Ascii
+        || error.resource_phase != limit.descriptor().phase.as_str()
+    {
+        return None;
+    }
+    validate_ascii_overrides(&error.provenance)?;
+    Some((limit, error.provenance.profile?))
+}
+
+fn project_ascii_overflow_provenance(
+    id: &'static str,
+    resource_phase: &'static str,
+    provenance: &OperationResourceProvenance,
+) -> Option<(AsciiResourceLimitId, ResourceProfile)> {
+    let limit = AsciiResourceLimitId::from_stable_id(id)?;
+    if provenance.domain != OperationResourceDomain::Ascii
+        || resource_phase != limit.descriptor().phase.as_str()
+    {
+        return None;
+    }
+    validate_ascii_overrides(provenance)?;
+    Some((limit, provenance.profile?))
+}
+
+fn validate_ascii_overrides(provenance: &OperationResourceProvenance) -> Option<()> {
+    provenance
+        .explicit_overrides
+        .iter()
+        .all(|override_| {
+            AsciiResourceLimitId::from_stable_id(override_.id).is_some()
+                && usize::try_from(override_.value).is_ok()
+        })
+        .then_some(())
+}
+
+#[derive(Debug)]
+pub(crate) struct CheckedOutput {
+    resources: ResourceContext,
+    expected_len: Option<usize>,
+    admit_each_append: bool,
+    output: String,
+}
+
+impl CheckedOutput {
+    pub(crate) fn new(resources: &ResourceContext) -> Self {
+        Self {
+            resources: resources.clone(),
+            expected_len: None,
+            admit_each_append: true,
+            output: String::new(),
+        }
+    }
+
+    /// Creates an output buffer for a policy without an encoded-output ceiling.
+    ///
+    /// The caller remains responsible for cooperative cancellation at bounded emission
+    /// intervals. Appends still use checked length arithmetic and fallible reservation, but they
+    /// do not repeat a resource-terminal checkpoint that cannot observe an output-byte ceiling.
+    pub(crate) fn new_unbounded(resources: &ResourceContext) -> Self {
+        debug_assert!(
+            resources
+                .policy()
+                .value(AsciiResourceLimitId::MaxOutputBytes)
+                .is_none()
+        );
+        Self {
+            resources: resources.clone(),
+            expected_len: None,
+            admit_each_append: false,
+            output: String::new(),
+        }
+    }
+
+    /// Creates an output buffer after the complete encoded byte count has been admitted.
+    pub(crate) fn try_prebudgeted(
+        resources: &ResourceContext,
+        expected_len: usize,
+    ) -> Result<Self> {
+        let mut output = String::new();
+        output
+            .try_reserve_exact(expected_len)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::Output.as_str(),
+            })?;
+        Ok(Self {
+            resources: resources.clone(),
+            expected_len: Some(expected_len),
+            admit_each_append: false,
+            output,
+        })
+    }
+
+    pub(crate) fn push_str(&mut self, value: &str) -> Result<()> {
+        if let Some(expected_len) = self.expected_len {
+            let remaining = expected_len
+                .checked_sub(self.output.len())
+                .ok_or_else(invalid_prebudgeted_output_plan)?;
+            if value.len() > remaining {
+                return Err(invalid_prebudgeted_output_plan());
+            }
+            self.output.push_str(value);
+            return Ok(());
+        }
+        let actual = self.output.len().checked_add(value.len()).ok_or_else(|| {
+            self.resources
+                .overflow(AsciiResourceLimitId::MaxOutputBytes)
+        })?;
+        if self.admit_each_append {
+            self.resources
+                .check(AsciiResourceLimitId::MaxOutputBytes, actual)?;
+        } else if self.expected_len.is_none() && actual > self.output.capacity() {
+            self.resources.checkpoint()?;
+        }
+        self.output
+            .try_reserve(value.len())
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::Output.as_str(),
+            })?;
+        self.output.push_str(value);
+        Ok(())
+    }
+
+    pub(crate) fn push_char(&mut self, value: char) -> Result<()> {
+        let mut encoded = [0; 4];
+        self.push_str(value.encode_utf8(&mut encoded))
+    }
+
+    pub(crate) fn write_fmt(&mut self, arguments: fmt::Arguments<'_>) -> Result<()> {
+        struct Adapter<'a> {
+            output: &'a mut CheckedOutput,
+            error: Option<AsciiError>,
+        }
+
+        impl fmt::Write for Adapter<'_> {
+            fn write_str(&mut self, value: &str) -> fmt::Result {
+                match self.output.push_str(value) {
+                    Ok(()) => Ok(()),
+                    Err(error) => {
+                        self.error = Some(error);
+                        Err(fmt::Error)
+                    }
+                }
+            }
+        }
+
+        let mut adapter = Adapter {
+            output: self,
+            error: None,
+        };
+        if fmt::write(&mut adapter, arguments).is_err() {
+            return Err(adapter.error.unwrap_or(AsciiError::InvalidOption {
+                field: "output",
+                message: "formatting failed",
+            }));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish(self) -> String {
+        self.output
+    }
+
+    #[cfg(test)]
+    fn finish_prebudgeted(self) -> Result<String> {
+        if self.expected_len == Some(self.output.len()) {
+            Ok(self.output)
+        } else {
+            Err(invalid_prebudgeted_output_plan())
+        }
+    }
+}
+
+fn invalid_prebudgeted_output_plan() -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "terminal_output",
+        feature: "encoded output byte accounting",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_core::CancelReason;
+
+    #[test]
+    fn descriptors_and_profile_matrix_are_total() {
+        assert_eq!(
+            ASCII_RESOURCE_LIMIT_DESCRIPTORS.len(),
+            ASCII_RESOURCE_LIMIT_COUNT
+        );
+        let expected = [
+            [Some(250_000), Some(125_000), Some(1_000_000), None],
+            [Some(2_000_000), Some(1_000_000), Some(8_000_000), None],
+            [Some(250_000), Some(125_000), Some(1_000_000), None],
+            [Some(16 * MIB), Some(8 * MIB), Some(64 * MIB), None],
+            [Some(4 * KIB), Some(2 * KIB), Some(64 * KIB), None],
+            [Some(256), Some(128), Some(1_024), None],
+        ];
+        for (index, id) in AsciiResourceLimitId::ALL.into_iter().enumerate() {
+            assert_eq!(id.index(), index);
+            assert_eq!(AsciiResourceLimitId::from_stable_id(id.as_str()), Some(id));
+            assert_eq!(id.descriptor().id, id);
+            for (profile_index, profile) in ResourceProfile::ALL.into_iter().enumerate() {
+                let policy = AsciiResourcePolicy::for_profile(profile);
+                assert_eq!(
+                    ascii_resource_profile_value(profile, id.as_str()),
+                    expected[index][profile_index]
+                );
+                assert_eq!(policy.value(id), expected[index][profile_index]);
+            }
+        }
+    }
+
+    #[test]
+    fn every_limit_accepts_exact_value_and_rejects_limit_plus_one() {
+        for id in AsciiResourceLimitId::ALL {
+            let policy = AsciiResourcePolicy::default()
+                .with_limit(id, 3)
+                .expect("valid override");
+            policy.check(id, 3).expect("exact limit should pass");
+            assert_eq!(
+                policy.check(id, 4),
+                Err(AsciiError::ResourceLimitExceeded(
+                    AsciiResourceLimitExceeded {
+                        cause: AsciiResourceLimitCause::Ceiling,
+                        limit: id,
+                        actual: 4,
+                        max: 3,
+                        profile: ResourceProfile::Interactive,
+                    }
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn profile_rebase_preserves_explicit_overrides() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 42)
+            .expect("valid override")
+            .with_profile(ResourceProfile::Constrained);
+
+        assert_eq!(policy.profile(), ResourceProfile::Constrained);
+        assert_eq!(policy.value(AsciiResourceLimitId::MaxGridCells), Some(42));
+        assert_eq!(
+            policy.value(AsciiResourceLimitId::MaxDocumentCells),
+            Some(125_000)
+        );
+    }
+
+    #[test]
+    fn override_rejects_zero_and_unknown_ids() {
+        let mut policy = AsciiResourcePolicy::default();
+        assert!(matches!(
+            policy.apply_limit(AsciiResourceLimitId::MaxGridCells, 0),
+            Err(AsciiResourceLimitOverrideError::BelowMinimum { .. })
+        ));
+        assert_eq!(
+            policy.apply_override("not_a_resource_limit", 1),
+            Err(AsciiResourceLimitOverrideError::UnknownLimit(
+                "not_a_resource_limit".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn checked_extent_reports_overflow_without_allocating() {
+        let error = LogicalExtent::checked(usize::MAX, 2, AsciiResourcePolicy::default())
+            .expect_err("overflow must fail");
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected resource error");
+        };
+        assert_eq!(details.cause, AsciiResourceLimitCause::ArithmeticOverflow);
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+        assert_eq!(details.actual, usize::MAX);
+    }
+
+    #[test]
+    fn arithmetic_overflow_preserves_an_exceeded_projection_for_unbounded_policies() {
+        for policy in [
+            AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput),
+            AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_limit(AsciiResourceLimitId::MaxGridCells, usize::MAX)
+                .expect("maximum usize is a valid direct-API override"),
+        ] {
+            let AsciiError::ResourceLimitExceeded(details) =
+                policy.overflow(AsciiResourceLimitId::MaxGridCells)
+            else {
+                panic!("expected a resource overflow");
+            };
+            assert_eq!(details.cause, AsciiResourceLimitCause::ArithmeticOverflow);
+            assert_eq!(details.actual, usize::MAX);
+            assert_eq!(details.max, usize::MAX - 1);
+            assert!(details.actual > details.max);
+        }
+    }
+
+    #[test]
+    fn checked_output_counts_actual_encoded_bytes_before_append() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 3)
+            .expect("valid override");
+        let resources = ResourceContext::new(policy);
+        let mut output = CheckedOutput::new(&resources);
+
+        output.push_str("abc").expect("exact limit should pass");
+        let error = output
+            .push_str("d")
+            .expect_err("limit plus one should fail");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxOutputBytes,
+                actual: 4,
+                max: 3,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn prebudgeted_output_reuses_one_formal_admission() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 3)
+            .expect("valid override");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let resources = ResourceContext::new(policy).controlled(control, OperationPhase::Emit);
+
+        resources
+            .check(AsciiResourceLimitId::MaxOutputBytes, 3)
+            .expect("the exact encoded byte count should be admitted once");
+        let mut output = CheckedOutput::try_prebudgeted(&resources, 3)
+            .expect("the admitted buffer should reserve exactly once");
+        output
+            .push_str("abc")
+            .expect("prebudgeted appends should not repeat the formal admission");
+        assert_eq!(output.finish(), "abc");
+
+        let error = resources
+            .checkpoint()
+            .expect_err("the next controlled operation should observe cancellation");
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn prebudgeted_output_rejects_plan_overrun() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut output = CheckedOutput::try_prebudgeted(&resources, 3)
+            .expect("the admitted buffer should reserve");
+
+        output.push_str("abc").expect("the exact plan should fit");
+        let error = output
+            .push_char('d')
+            .expect_err("an encoder may not exceed its admitted byte count");
+
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "terminal_output",
+                feature: "encoded output byte accounting",
+            }
+        ));
+    }
+
+    #[test]
+    fn prebudgeted_output_rejects_plan_underrun() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut output = CheckedOutput::try_prebudgeted(&resources, 4)
+            .expect("the admitted buffer should reserve");
+        output.push_str("abc").expect("the prefix should fit");
+
+        let error = output
+            .finish_prebudgeted()
+            .expect_err("an encoder must fill its exact admitted byte count");
+
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "terminal_output",
+                feature: "encoded output byte accounting",
+            }
+        ));
+    }
+
+    #[test]
+    fn transaction_restores_shared_ledgers_when_a_later_limit_fails() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 10)
+            .expect("valid work limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 10)
+            .expect("valid document limit")
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 1)
+            .expect("valid output limit");
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(2, 3)
+            .expect("the checkpoint should start with prior usage");
+
+        let error = resources
+            .transaction(|resources| {
+                resources.charge_usage(4, 5)?;
+                resources.check(AsciiResourceLimitId::MaxOutputBytes, 2)
+            })
+            .expect_err("the output check should fail");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxOutputBytes,
+                actual: 2,
+                max: 1,
+                ..
+            })
+        ));
+        assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn controlled_compound_admission_prioritizes_cancellation_without_ledger_mutation() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("valid work limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 1)
+            .expect("valid document limit");
+        let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel();
+        let controlled = resources.controlled(control, OperationPhase::Emit);
+
+        let error = controlled
+            .charge_usage(2, 2)
+            .expect_err("cancellation must win over both compound ceilings");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn controlled_compound_admission_uses_one_terminal_checkpoint() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let controlled = resources.controlled(control, OperationPhase::Layout);
+
+        controlled
+            .charge_usage(2, 3)
+            .expect("one compound admission should consume one checkpoint");
+        let error = controlled
+            .checkpoint()
+            .expect_err("the following operation should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn controlled_resource_terminal_replays_before_later_cancellation() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("valid work limit");
+        let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
+
+        let first = controlled
+            .charge_layout_work(2)
+            .expect_err("the first formal charge must reject");
+        assert_eq!(resources.layout_work_used(), 0);
+
+        control.cancel();
+        let emit = controlled.with_operation_phase(OperationPhase::Emit);
+        let replayed = emit
+            .charge_document_cells(usize::MAX)
+            .expect_err("the first resource terminal must remain sticky");
+
+        assert_eq!(replayed, first);
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn controlled_resource_terminal_replays_the_originating_policy_provenance() {
+        let originating_policy =
+            AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+                .expect("valid originating work limit");
+        let observing_policy = AsciiResourcePolicy::for_profile(ResourceProfile::Interactive);
+        let control = OperationControl::new();
+        let originating = ResourceContext::new(originating_policy)
+            .controlled(control.clone(), OperationPhase::Layout);
+        let observing = ResourceContext::new(observing_policy)
+            .controlled(control.clone(), OperationPhase::Emit);
+
+        let first = originating
+            .charge_layout_work(2)
+            .expect_err("the originating policy must reject the charge");
+        let replayed = observing
+            .checkpoint()
+            .expect_err("the observing policy must replay the stored terminal");
+
+        assert_eq!(replayed, first);
+        assert!(matches!(
+            replayed,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                profile: ResourceProfile::UnboundedForTrustedInput,
+                ..
+            })
+        ));
+        let terminal = control
+            .terminal_checkpoint_at(OperationPhase::Postprocess)
+            .expect_err("the core ledger must retain the exact originating provenance");
+        assert!(matches!(
+            terminal,
+            OperationLedgerError::ResourceLimitExceeded(OperationResourceLimitExceeded {
+                provenance: OperationResourceProvenance {
+                    domain: OperationResourceDomain::Ascii,
+                    profile: Some(ResourceProfile::UnboundedForTrustedInput),
+                    explicit_overrides,
+                },
+                ..
+            }) if explicit_overrides.as_ref()
+                == [OperationResourceOverride {
+                    id: MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID,
+                    value: 1,
+                }]
+        ));
+    }
+
+    #[test]
+    fn controlled_resource_terminal_preserves_a_foreign_render_domain() {
+        let control = OperationControl::new();
+        let terminal = control.terminate_resource_limit(OperationResourceLimitExceeded {
+            id: "max_svg_bytes",
+            phase: OperationPhase::Emit,
+            resource_phase: "svg_output",
+            limit: 17,
+            consumed: 17,
+            requested: 1,
+            provenance: OperationResourceProvenance::new(
+                OperationResourceDomain::Render,
+                Some(ResourceProfile::Constrained),
+                [OperationResourceOverride {
+                    id: "max_svg_bytes",
+                    value: 17,
+                }],
+            ),
+        });
+        let observing = ResourceContext::new(AsciiResourcePolicy::default())
+            .controlled(control, OperationPhase::Layout);
+
+        assert_eq!(
+            observing
+                .checkpoint()
+                .expect_err("ASCII must not reclassify a render resource terminal"),
+            AsciiError::OperationResourceTerminal(terminal)
+        );
+    }
+
+    #[test]
+    fn detached_context_preserves_control_without_sharing_ledger_usage() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+            .expect("valid work limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 2)
+            .expect("valid document limit");
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(1, 1)
+            .expect("the shared ledger should accept its initial usage");
+        let control = OperationControl::new();
+        let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
+        let detached = controlled.detached();
+
+        assert_eq!(detached.layout_work_used(), 0);
+        assert_eq!(detached.document_cells_used(), 0);
+        control.cancel();
+        let error = detached
+            .charge_usage(3, 3)
+            .expect_err("cancellation must win over detached resource ceilings");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 1);
+        assert_eq!(resources.document_cells_used(), 1);
+        assert_eq!(detached.layout_work_used(), 0);
+        assert_eq!(detached.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn transaction_commits_success_and_nested_failure_isolated() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 20)
+            .expect("valid work limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 20)
+            .expect("valid document limit");
+        let resources = ResourceContext::new(policy);
+
+        resources
+            .transaction(|resources| {
+                resources.charge_usage(2, 3)?;
+                let nested = resources.transaction(|resources| {
+                    resources.charge_usage(4, 5)?;
+                    Err::<(), _>(resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
+                });
+                assert!(nested.is_err());
+                assert_eq!(resources.layout_work_used(), 2);
+                assert_eq!(resources.document_cells_used(), 3);
+                resources.charge_usage(1, 1)
+            })
+            .expect("outer transaction should commit");
+
+        assert_eq!(resources.layout_work_used(), 3);
+        assert_eq!(resources.document_cells_used(), 4);
+    }
+
+    #[test]
+    fn transaction_rolls_back_domain_errors_without_an_ascii_error_adapter() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum PlanningFailure {
+            RouteCollision,
+        }
+
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        resources
+            .charge_usage(2, 3)
+            .expect("the checkpoint should start with prior usage");
+
+        let error = resources
+            .transaction(|resources| {
+                resources
+                    .charge_usage(4, 5)
+                    .expect("the speculative usage should fit");
+                Err::<(), _>(PlanningFailure::RouteCollision)
+            })
+            .expect_err("the domain failure should roll back the transaction");
+
+        assert_eq!(error, PlanningFailure::RouteCollision);
+        assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn recoverable_transaction_keeps_work_and_restores_document_cells() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum PlanningFailure {
+            RouteCollision,
+        }
+
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        resources
+            .charge_usage(2, 3)
+            .expect("the checkpoint should start with prior usage");
+
+        let error = resources
+            .transaction_preserving_layout_work(|resources| {
+                resources
+                    .charge_usage(4, 5)
+                    .expect("the speculative usage should fit");
+                Err::<(), _>(PlanningFailure::RouteCollision)
+            })
+            .expect_err("the semantic failure should discard speculative document cells");
+
+        assert_eq!(error, PlanningFailure::RouteCollision);
+        assert_eq!(resources.layout_work_used(), 6);
+        assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn scoped_contexts_share_one_render_wide_layout_work_ledger() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 5)
+            .expect("valid layout-work limit");
+        let resources = ResourceContext::new(policy);
+        let first_phase = resources.scoped();
+        let second_phase = resources.scoped();
+
+        resources
+            .charge_layout_work(2)
+            .expect("the root phase should fit");
+        first_phase
+            .charge_layout_work(3)
+            .expect("the exact cumulative render work should fit");
+        let error = second_phase
+            .charge_layout_work(1)
+            .expect_err("a later phase must observe work charged by earlier scopes");
+
+        assert_eq!(resources.layout_work_used(), 5);
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxLayoutWorkUnits,
+                actual: 6,
+                max: 5,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn scoped_contexts_keep_document_ledgers_local() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 3)
+            .expect("valid document limit");
+        let resources = ResourceContext::new(policy);
+        let document = resources.scoped();
+
+        resources
+            .charge_document_cells(3)
+            .expect("the root document should fit exactly");
+        document
+            .charge_document_cells(3)
+            .expect("a separate document scope should have an independent ledger");
+        let error = document
+            .charge_document_cells(1)
+            .expect_err("the scoped document must still enforce its own cumulative limit");
+
+        assert_eq!(resources.document_cells_used(), 3);
+        assert_eq!(document.document_cells_used(), 3);
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxDocumentCells,
+                actual: 4,
+                max: 3,
+                ..
+            })
+        ));
+    }
+}

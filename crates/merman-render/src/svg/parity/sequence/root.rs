@@ -5,10 +5,9 @@ pub(super) fn write_sequence_svg_root_open(
     out: &mut impl SvgOutput,
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
+    resources: crate::resources::RenderResourcePolicy,
 ) -> Result<root_svg::RootDocument> {
-    let diagram_id_esc = escape_xml(diagram_id);
-
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
         min_y: 0.0,
@@ -37,13 +36,14 @@ pub(super) fn write_sequence_svg_root_open(
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
     let document = root_svg::RootViewportContext::new(crate::DiagramFamilyId::SEQUENCE, diagram_id)
+        .with_resource_policy(resources)
         .write_open(out, root_spec, root_chrome)?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(
             out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml_display(title)
         );
     }
@@ -51,7 +51,7 @@ pub(super) fn write_sequence_svg_root_open(
         let _ = write!(
             out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml_display(desc)
         );
     }

@@ -16,6 +16,7 @@ import {
 } from "@/src/lib/mermaid-config";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { WORKBENCH_EDITOR_THEMES } from "@/src/editor/workbench-editor-theme";
 import {
   Tooltip,
   TooltipContent,
@@ -25,6 +26,8 @@ import {
 interface ConfigEditorProps {
   className?: string;
 }
+
+const MERMAID_CONFIG_DOCUMENT_URI = "file:///merman/playground-config.json";
 
 export function ConfigEditor({ className }: ConfigEditorProps) {
   const { t } = useTranslation();
@@ -40,7 +43,7 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
     [mermaidConfig, t],
   );
 
-  const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
+  const editorTheme = WORKBENCH_EDITOR_THEMES[resolvedTheme].name;
 
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
@@ -95,7 +98,9 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
       <div className="min-h-0 flex-1">
         <Editor
           height="100%"
+          keepCurrentModel
           language="json"
+          path={MERMAID_CONFIG_DOCUMENT_URI}
           theme={editorTheme}
           value={mermaidConfig}
           onChange={(value) => setMermaidConfig(value || "")}
@@ -116,6 +121,7 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
             scrollBeyondLastLine: false,
             padding: { top: 16, bottom: 16 },
             renderLineHighlight: "line",
+            occurrencesHighlight: "off",
             cursorBlinking: "smooth",
             smoothScrolling: true,
             tabSize: 2,

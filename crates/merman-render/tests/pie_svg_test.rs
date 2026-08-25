@@ -2,7 +2,6 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{DiagramFamilyId, ParseOptions};
-use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
     EffectBinding, EffectGraph, EffectInput, EffectPrimitive, OrdinalPalette, OrdinalSelector,
@@ -12,10 +11,11 @@ use merman_render::diagram_theme::{
 use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
 use merman_render::family;
 use merman_render::model::PieDiagramLayout;
-use merman_render::resources::{
-    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
-};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::{
+    Error, LayoutOptions, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+    ResourceLimitPhase,
+};
 
 fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
     let engine = legacy_init_theme_compat_engine();
@@ -34,6 +34,10 @@ fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
 }
 
 fn render_pie_from_text(text: &str) -> String {
+    render_pie_from_text_with_options(text, &SvgRenderOptions::default())
+}
+
+fn render_pie_from_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
     let engine = legacy_init_theme_compat_engine();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
@@ -46,7 +50,7 @@ fn render_pie_from_text(text: &str) -> String {
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
     artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .render_svg(options, &SvgDebugOptions::default())
         .expect("svg render ok")
         .svg()
         .to_owned()
@@ -378,6 +382,44 @@ fn pie_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
     }));
 }
 
+fn render_pie_with_svg_limit(
+    text: &str,
+    diagram_id: &str,
+    maximum: usize,
+) -> merman_render::Result<String> {
+    let engine = legacy_init_theme_compat_engine();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session()
+        .expect("begin bounded Pie session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+
+    artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .map(|rendered| rendered.svg().to_owned())
+}
+
+fn render_pie_error_with_svg_limit(text: &str, diagram_id: &str, maximum: usize) -> Error {
+    match render_pie_with_svg_limit(text, diagram_id, maximum) {
+        Ok(_) => panic!("bounded Pie SVG must exceed the test budget"),
+        Err(error) => error,
+    }
+}
+
 fn root_viewbox_width(svg: &str) -> f64 {
     let start = svg.find(r#"viewBox=""#).expect("viewBox start") + r#"viewBox=""#.len();
     let end = svg[start..].find('"').expect("viewBox end") + start;
@@ -429,6 +471,41 @@ fn pie_slices_follow_input_order_like_mermaid_11_16() {
         .collect();
 
     assert_eq!(labels, vec!["A", "B", "C"]);
+}
+
+#[test]
+fn pie_large_diagram_id_stylesheet_is_preflighted_at_exact_n() {
+    let source = "pie\n  \"A\" : 1\n";
+    // Host-special characters exercise the public normalization boundary. Counting and
+    // materialization share the same writer over the resulting CSS-safe ID rather than assuming
+    // a byte slope.
+    let diagram_id = "diagram<&:.id".repeat(128);
+    let full_svg = render_pie_from_text_with_options(
+        source,
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.clone()),
+            ..SvgRenderOptions::default()
+        },
+    );
+    let projected_svg_bytes = full_svg.len();
+    let n_minus_one_maximum = projected_svg_bytes
+        .checked_sub(1)
+        .expect("Pie SVG projection must not be empty");
+
+    let Error::ResourceLimitExceeded(n_minus_one) =
+        render_pie_error_with_svg_limit(source, &diagram_id, n_minus_one_maximum)
+    else {
+        panic!("expected N-1 Pie CSS byte projection error");
+    };
+    assert_eq!(n_minus_one.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(n_minus_one.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(n_minus_one.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(n_minus_one.actual, projected_svg_bytes);
+    assert_eq!(n_minus_one.max, n_minus_one_maximum);
+
+    let exact = render_pie_with_svg_limit(source, &diagram_id, projected_svg_bytes)
+        .expect("the exact Pie CSS byte projection must succeed");
+    assert_eq!(exact, full_svg);
 }
 
 #[test]

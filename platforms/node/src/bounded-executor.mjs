@@ -59,6 +59,9 @@ export class BoundedExecutor {
         signal.addEventListener("abort", job.abortListener, { once: true });
       }
       this.#pending.push(job);
+      // Close the race between the initial admission check and listener registration. Calling the
+      // idempotent listener is safe even when an abort event already removed the job.
+      if (signal?.aborted) job.abortListener?.();
     });
   }
 

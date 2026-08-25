@@ -3,11 +3,11 @@ import type { IDisposable } from "monaco-editor";
 import * as monacoApi from "monaco-editor/esm/vs/editor/editor.api.js";
 import "monaco-editor/esm/vs/editor/editor.all.js";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import { registerWorkbenchEditorThemes } from "./workbench-editor-theme";
 
 export const localMonaco = monacoApi as typeof import("monaco-editor");
 
 interface MonacoEnvironmentOwner {
-  readonly monaco: typeof localMonaco;
   dispose(): void;
 }
 
@@ -18,6 +18,7 @@ interface MonacoEnvironment {
 type MonacoWorkerFactory = () => Worker;
 
 let jsonWorkerFactory: MonacoWorkerFactory | null = null;
+let configuredOwner: MonacoEnvironmentOwner | null = null;
 
 export function registerLocalMonacoJsonWorker(
   factory: MonacoWorkerFactory,
@@ -37,7 +38,7 @@ export function registerLocalMonacoJsonWorker(
   };
 }
 
-export function configureLocalMonaco(): MonacoEnvironmentOwner {
+function configureLocalMonaco(): MonacoEnvironmentOwner {
   const target = globalThis as typeof globalThis & {
     MonacoEnvironment?: MonacoEnvironment;
   };
@@ -55,10 +56,10 @@ export function configureLocalMonaco(): MonacoEnvironmentOwner {
       return new EditorWorker({ name: "monaco-editor" });
     },
   };
+  registerWorkbenchEditorThemes(localMonaco);
   loader.config({ monaco: localMonaco });
 
   return {
-    monaco: localMonaco,
     dispose() {
       if (previous) {
         target.MonacoEnvironment = previous;
@@ -67,4 +68,15 @@ export function configureLocalMonaco(): MonacoEnvironmentOwner {
       }
     },
   };
+}
+
+export function ensureLocalMonacoConfigured(): void {
+  configuredOwner ??= configureLocalMonaco();
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    configuredOwner?.dispose();
+    configuredOwner = null;
+  });
 }

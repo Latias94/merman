@@ -1490,7 +1490,7 @@ fn state_transition_marker_paints_use_transition_color_before_line_color() {
                     node.has_tag_name("marker")
                         && node
                             .attribute("id")
-                            .is_some_and(|id| id.ends_with("_stateDiagram-barbEnd-1"))
+                            .is_some_and(|id| id.ends_with("-stateDiagram-barbEnd-1"))
                 })
                 .and_then(|marker| marker.children().find(|node| node.has_tag_name("path")))
                 .expect("typed State barbEnd marker path");

@@ -9,9 +9,8 @@ pub use source_config::{
 pub use source_edit_map::PreprocessedSource;
 
 use crate::{
-    DetectorRegistry, EditorExpectedSyntaxKind, EditorLexemeKind, Error, MermaidConfig,
-    OperationControl, OperationControlResult, Result, SourceSpan, diagram::CapturedPanic,
-    editor::line_content_end,
+    DetectorRegistry, EditorExpectedSyntaxKind, Error, MermaidConfig, OperationControl,
+    OperationControlResult, Result, SourceSpan, diagram::CapturedPanic, editor::line_content_end,
 };
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
@@ -416,10 +415,6 @@ fn preprocess_single_pass_controlled(
                 EditorExpectedSyntaxKind::Frontmatter,
                 SourceSpan::new(0, expected_end),
             );
-            source.record_global_lexeme(
-                EditorLexemeKind::Frontmatter,
-                SourceSpan::new(0, frontmatter_len),
-            );
         }
         source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)], control)?;
     }
@@ -466,10 +461,6 @@ fn preprocess_single_pass_controlled(
         for removal in &processed_directives.removals {
             source.record_global_expected_syntax(
                 EditorExpectedSyntaxKind::Directive,
-                SourceSpan::new(removal.start, removal.end),
-            );
-            source.record_global_lexeme(
-                EditorLexemeKind::Directive,
                 SourceSpan::new(removal.start, removal.end),
             );
         }
@@ -680,9 +671,9 @@ fn remove_mermaid_comments_controlled(
             if !after_marker.starts_with('{') && has_comment_body {
                 let range = line_start..line_end;
                 if capture_editor_evidence {
-                    comments.push((
-                        SourceSpan::new(range.start, range.end),
-                        SourceSpan::new(range.start, editor_evidence_line_end(text, range.end)),
+                    comments.push(SourceSpan::new(
+                        range.start,
+                        editor_evidence_line_end(text, range.end),
                     ));
                 }
                 edits.push(SourceEdit::delete(range));
@@ -694,11 +685,10 @@ fn remove_mermaid_comments_controlled(
         line_start = newline + 1;
     }
     checkpoints.finish()?;
-    for (index, (lexeme_span, expected_span)) in comments.into_iter().enumerate() {
+    for (index, expected_span) in comments.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        source.record_global_lexeme(EditorLexemeKind::Comment, lexeme_span);
         source.record_global_expected_syntax(EditorExpectedSyntaxKind::Directive, expected_span);
     }
     source.apply_edits(edits, control)?;

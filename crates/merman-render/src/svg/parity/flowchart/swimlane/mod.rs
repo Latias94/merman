@@ -2,6 +2,8 @@ use super::*;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneLayout,
 };
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
 
 mod cluster;
@@ -80,7 +82,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             layout: &flowchart_layout,
             swimlane_layout: Some(layout),
             model,
-            render_label_sources: artifact.label_sources(),
+            render_context: artifact.render_context(),
             effective_config: &metadata.effective_config,
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
@@ -330,8 +332,13 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     Ok(())
 }
 
-pub(super) fn write_swimlane_css(out: &mut impl crate::svg::parity::SvgOutput, diagram_id: &str) {
-    let id = crate::svg::escape_css_identifier(diagram_id);
+pub(super) fn write_swimlane_css<DiagramId>(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    diagram_id: DiagramId,
+) where
+    DiagramId: crate::svg::parity::SvgDiagramIdValue,
+{
+    let id = super::FlowchartCssSelectorDiagramId::new(diagram_id);
     let _ = write!(
         out,
         r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
@@ -375,8 +382,12 @@ mod tests {
             label_type: None,
             edge_type: Some("arrow_open".to_string()),
             arrow: String::new(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::None,
             is_user_defined_id: false,
             stroke: Some("normal".to_string()),
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
             interpolate: Some("linear".to_string()),
             classes: Vec::new(),
             style: Vec::new(),

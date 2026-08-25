@@ -288,7 +288,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae67d5c03ee972c101a1d8db3ddbf8a9c819ad1ea9d6fd9cd385605547b60edb"
 dependencies = [
- "nix",
+ "nix 0.31.3",
  "rand 0.10.2",
 ]
 
@@ -917,6 +917,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctrlc"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "881c5d0a13b2f1498e2306e82cbada78390e152d4b1378fb28a84f4dcd0dc4f3"
+dependencies = [
+ "dispatch",
+ "nix 0.30.1",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "dashmap"
 version = "6.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1022,6 +1033,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dispatch"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
+
+[[package]]
 name = "displaydoc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1049,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "dugong"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "criterion",
  "dugong-graphlib",
@@ -1060,7 +1077,7 @@ dependencies = [
 
 [[package]]
 name = "dugong-graphlib"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "hashbrown 0.17.1",
  "rustc-hash",
@@ -2196,7 +2213,7 @@ dependencies = [
  "png",
  "rustc-hash",
  "rustybuzz",
- "siphasher",
+ "siphasher 1.0.3",
  "skrifa",
  "smallvec",
  "subsetter",
@@ -2220,6 +2237,15 @@ dependencies = [
  "smallvec",
  "tiny-skia",
  "usvg",
+]
+
+[[package]]
+name = "kurbo"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd85a5776cd9500c2e2059c8c76c3b01528566b7fcbaf8098b55a33fc298849b"
+dependencies = [
+ "arrayvec",
 ]
 
 [[package]]
@@ -2386,7 +2412,7 @@ dependencies = [
 
 [[package]]
 name = "manatee"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "indexmap",
  "libm",
@@ -2421,12 +2447,13 @@ dependencies = [
 
 [[package]]
 name = "merman"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "base64 0.22.1",
  "criterion",
  "merman-analysis",
  "merman-ascii",
+ "merman-ascii-test-contracts",
  "merman-core",
  "merman-editor-core",
  "merman-export",
@@ -2440,11 +2467,12 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.20",
+ "usvg",
 ]
 
 [[package]]
 name = "merman-analysis"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "jsonschema",
  "merman-core",
@@ -2456,7 +2484,7 @@ dependencies = [
 
 [[package]]
 name = "merman-android-jni"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "jni",
  "merman-bindings-core",
@@ -2465,20 +2493,32 @@ dependencies = [
 
 [[package]]
 name = "merman-ascii"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
+ "dugong",
  "merman-core",
+ "sha2 0.10.9",
  "thiserror 2.0.20",
+ "unicode-segmentation",
  "unicode-width",
 ]
 
 [[package]]
+name = "merman-ascii-test-contracts"
+version = "0.8.0-alpha.6"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "merman-bindings-core"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "criterion",
  "merman",
  "merman-analysis",
+ "merman-ascii-test-contracts",
  "merman-core",
  "merman-render",
  "merman-theme-authoring-fixtures",
@@ -2491,17 +2531,19 @@ dependencies = [
 
 [[package]]
 name = "merman-cli"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "assert_cmd",
  "atomic-write-file",
  "clap",
  "clap_complete",
  "clap_mangen",
+ "ctrlc",
  "hickory-resolver",
  "libc",
  "merman",
  "merman-analysis",
+ "merman-ascii-test-contracts",
  "merman-bindings-core",
  "merman-render",
  "png",
@@ -2517,6 +2559,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "toml",
  "unicode-normalization",
  "url",
  "windows-sys 0.61.2",
@@ -2524,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "merman-core"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "euclid",
  "futures",
@@ -2545,13 +2588,15 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.20",
  "unicode-general-category",
+ "unicode-segmentation",
+ "unicode-width",
  "url",
  "web-time",
 ]
 
 [[package]]
 name = "merman-editor-core"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "merman-analysis",
  "merman-core",
@@ -2560,14 +2605,14 @@ dependencies = [
 
 [[package]]
 name = "merman-elk-layered"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "merman-export"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "base64 0.22.1",
  "cssparser",
@@ -2581,7 +2626,7 @@ dependencies = [
  "quick-xml",
  "resvg",
  "sha2 0.10.9",
- "svgtypes",
+ "svgtypes 0.16.1",
  "thiserror 2.0.20",
  "tiny-skia",
  "ttf-parser",
@@ -2590,7 +2635,7 @@ dependencies = [
 
 [[package]]
 name = "merman-ffi"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "cc",
  "libloading",
@@ -2602,7 +2647,7 @@ dependencies = [
 
 [[package]]
 name = "merman-fixture-render-context"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "json5",
  "serde",
@@ -2614,7 +2659,7 @@ dependencies = [
 
 [[package]]
 name = "merman-layout-elk"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "merman-elk-layered",
  "thiserror 2.0.20",
@@ -2622,7 +2667,7 @@ dependencies = [
 
 [[package]]
 name = "merman-lsp"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "futures",
  "merman-analysis",
@@ -2637,11 +2682,13 @@ dependencies = [
  "tower-lsp-server",
  "tracing",
  "tracing-subscriber",
+ "tree-sitter",
+ "tree-sitter-mermaid",
 ]
 
 [[package]]
 name = "merman-render"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "base64 0.22.1",
  "brotli-decompressor",
@@ -2652,7 +2699,7 @@ dependencies = [
  "icu_collator",
  "icu_locale_core",
  "indexmap",
- "kurbo",
+ "kurbo 0.13.1",
  "libm",
  "manatee",
  "merman-core",
@@ -2674,7 +2721,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "svgtypes",
+ "svgtypes 0.16.1",
  "thiserror 2.0.20",
  "ttf-parser",
  "unicode-linebreak",
@@ -2686,7 +2733,7 @@ dependencies = [
 
 [[package]]
 name = "merman-rustdoc"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "merman",
  "proc-macro2",
@@ -2698,7 +2745,7 @@ dependencies = [
 
 [[package]]
 name = "merman-theme-acceptance"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "flate2",
  "image",
@@ -2716,11 +2763,11 @@ dependencies = [
 
 [[package]]
 name = "merman-theme-authoring-fixtures"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 
 [[package]]
 name = "merman-theme-contract"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "merman-theme-authoring-fixtures",
  "serde",
@@ -2731,7 +2778,7 @@ dependencies = [
 
 [[package]]
 name = "merman-theme-fixtures"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "cssparser",
  "json5",
@@ -2746,7 +2793,7 @@ dependencies = [
 
 [[package]]
 name = "merman-typst-plugin"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "merman-bindings-core",
  "serde_json",
@@ -2755,9 +2802,10 @@ dependencies = [
 
 [[package]]
 name = "merman-uniffi"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "merman",
+ "merman-ascii-test-contracts",
  "merman-bindings-core",
  "serde_json",
  "tempfile",
@@ -2767,11 +2815,12 @@ dependencies = [
 
 [[package]]
 name = "merman-wasm"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "merman-analysis",
+ "merman-ascii-test-contracts",
  "merman-bindings-core",
  "merman-core",
  "merman-editor-core",
@@ -2868,6 +2917,18 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "nix"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
+dependencies = [
+ "bitflags 2.13.1",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
 
 [[package]]
 name = "nix"
@@ -3207,7 +3268,7 @@ version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67eabc2ef2a60eb7faa00097bd1ffdb5bd28e62bf39990626a582201b7a754e5"
 dependencies = [
- "siphasher",
+ "siphasher 1.0.3",
 ]
 
 [[package]]
@@ -3216,7 +3277,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e57fef6bc5981e38c2ce2d63bfa546861309f875b8a75f092d1d54ae2d64f266"
 dependencies = [
- "siphasher",
+ "siphasher 1.0.3",
 ]
 
 [[package]]
@@ -3317,6 +3378,15 @@ dependencies = [
  "serde_core",
  "writeable",
  "zerovec",
+]
+
+[[package]]
+name = "ppv-lite86"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
+dependencies = [
+ "zerocopy",
 ]
 
 [[package]]
@@ -3488,6 +3558,8 @@ version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22f6172bdec972074665ed81ed53b71da00bfc44b65a753cfde883ec4c702a1a"
 dependencies = [
+ "libc",
+ "rand_chacha",
  "rand_core 0.6.4",
 ]
 
@@ -3503,10 +3575,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_chacha"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.6.4",
+]
+
+[[package]]
 name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+dependencies = [
+ "getrandom 0.2.17",
+]
 
 [[package]]
 name = "rand_core"
@@ -3802,7 +3887,7 @@ dependencies = [
  "log",
  "pico-args",
  "rgb",
- "svgtypes",
+ "svgtypes 0.16.1",
  "tiny-skia",
  "usvg",
  "zune-jpeg",
@@ -3849,12 +3934,15 @@ dependencies = [
 
 [[package]]
 name = "roughr-merman"
-version = "0.12.2"
+version = "0.12.3"
 dependencies = [
  "euclid",
+ "getrandom 0.2.17",
  "num-traits",
  "palette",
- "svgtypes",
+ "rand 0.8.7",
+ "svgtypes 0.11.0",
+ "svgtypes 0.16.1",
 ]
 
 [[package]]
@@ -4332,6 +4420,12 @@ dependencies = [
 
 [[package]]
 name = "siphasher"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38b58827f4464d87d377d175e90bf58eb00fd8716ff0a62f80356b5e61555d0d"
+
+[[package]]
+name = "siphasher"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
@@ -4408,6 +4502,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
 
 [[package]]
+name = "streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b2231b7c3057d5e4ad0156fb3dc807d900806020c5ffa3ee6ff2c8c76fb8520"
+
+[[package]]
 name = "strict-num"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4472,7 +4572,7 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38803281d1c23166c5ebcb455439a5d2afe711cc909cf88af72448c297756ad6"
 dependencies = [
- "kurbo",
+ "kurbo 0.13.1",
  "rustc-hash",
  "skrifa",
  "write-fonts",
@@ -4486,12 +4586,22 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "svgtypes"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed4b0611e7f3277f68c0fa18e385d9e2d26923691379690039548f867cef02a7"
+dependencies = [
+ "kurbo 0.9.5",
+ "siphasher 0.3.11",
+]
+
+[[package]]
+name = "svgtypes"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "695b5790b3131dafa99b3bbfd25a216edb3d216dad9ca208d4657bfb8f2abc3d"
 dependencies = [
- "kurbo",
- "siphasher",
+ "kurbo 0.13.1",
+ "siphasher 1.0.3",
 ]
 
 [[package]]
@@ -4928,6 +5038,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter"
+version = "0.26.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83c567a8e18ae93f20982c90370b16fd24023aeaf52f6052b96957ab253a0fec"
+dependencies = [
+ "cc",
+ "regex",
+ "regex-syntax",
+ "serde_json",
+ "streaming-iterator",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-language"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
+
+[[package]]
+name = "tree-sitter-mermaid"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "merman-core",
+ "merman-fixture-render-context",
+ "serde",
+ "serde_json",
+ "tree-sitter",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5130,7 +5273,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78de021f5547e56ab16c665a49d67d4fd3d31e77422f7739a2e9359d328cd9e7"
 dependencies = [
  "anyhow",
- "siphasher",
+ "siphasher 1.0.3",
  "uniffi_internal_macros",
  "uniffi_pipeline",
 ]
@@ -5189,15 +5332,15 @@ dependencies = [
  "flate2",
  "fontdb",
  "imagesize",
- "kurbo",
+ "kurbo 0.13.1",
  "log",
  "pico-args",
  "roxmltree 0.21.1",
  "rustybuzz",
  "simplecss",
- "siphasher",
+ "siphasher 1.0.3",
  "strict-num",
- "svgtypes",
+ "svgtypes 0.16.1",
  "tiny-skia-path",
  "ttf-parser",
  "unicode-bidi",
@@ -5649,7 +5792,7 @@ checksum = "cb731d4c4d93eacc69a1ad2f270f905788a98e4a3438267bcafbe08d3431c8d8"
 dependencies = [
  "font-types",
  "indexmap",
- "kurbo",
+ "kurbo 0.13.1",
  "log",
  "read-fonts",
 ]
@@ -5689,7 +5832,7 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xtask"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.6"
 dependencies = [
  "base64 0.22.1",
  "brotli",
@@ -5715,7 +5858,7 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "sha2 0.10.9",
- "svgtypes",
+ "svgtypes 0.16.1",
  "tempfile",
  "thiserror 2.0.20",
  "toml",

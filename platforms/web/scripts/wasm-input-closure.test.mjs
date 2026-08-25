@@ -40,6 +40,8 @@ const expectedCrateDirectories = {
     "roughr",
   ],
   ascii: [
+    "dugong",
+    "dugong-graphlib",
     "merman",
     "merman-ascii",
     "merman-bindings-core",

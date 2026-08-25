@@ -63,7 +63,6 @@ impl OperationLayoutWorkControl {
             return error;
         }
         let error = self.meter.arithmetic_overflow();
-        let error = OperationWorkError::ResourceLimitExceeded(error);
         *self.rejection.borrow_mut() = Some(error.clone());
         error
     }

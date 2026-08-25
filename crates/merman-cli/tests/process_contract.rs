@@ -166,6 +166,7 @@ fn non_mmdc_root_render_syntax_points_to_explicit_workflows() {
         vec!["--suppress-errors"],
         vec!["--sequence-mirror-actors"],
         vec!["--ascii-charset"],
+        vec!["--ascii-width-profile"],
         vec!["--ascii-direction"],
         vec!["--ascii-color"],
         vec!["--xychart-vertical-plot-height"],

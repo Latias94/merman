@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 use super::Action;
 use super::render_model::{
-    SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
-    SequenceMessagePayload, SequenceNote,
+    SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
+    SequenceDiagramRenderModel, SequenceMessage, SequenceMessagePayload, SequenceNote,
 };
 use super::{
     LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_AUTONUMBER, LINETYPE_CENTRAL_CONNECTION,
@@ -28,6 +28,7 @@ struct Actor {
     box_index: Option<usize>,
     links: serde_json::Map<String, Value>,
     properties: serde_json::Map<String, Value>,
+    lifecycle: SequenceActorLifecycle,
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +119,7 @@ impl SequenceDb {
                 box_index: None,
                 links: serde_json::Map::new(),
                 properties: serde_json::Map::new(),
+                lifecycle: SequenceActorLifecycle::default(),
             },
         );
     }
@@ -199,6 +201,7 @@ impl SequenceDb {
                 box_index: self.current_box,
                 links: serde_json::Map::new(),
                 properties: serde_json::Map::new(),
+                lifecycle: SequenceActorLifecycle::default(),
             },
         );
 
@@ -480,6 +483,9 @@ impl SequenceDb {
                         ));
                     }
                     self.last_created = None;
+                    if let Some(actor) = self.actors.get_mut(&last_created) {
+                        actor.lifecycle.created_at = Some(self.messages.len());
+                    }
                 } else if let Some(last_destroyed) = self.last_destroyed.clone() {
                     if from != last_destroyed && to != last_destroyed {
                         return Err(format!(
@@ -487,6 +493,9 @@ impl SequenceDb {
                         ));
                     }
                     self.last_destroyed = None;
+                    if let Some(actor) = self.actors.get_mut(&last_destroyed) {
+                        actor.lifecycle.destroyed_at = Some(self.messages.len());
+                    }
                 }
 
                 let msg = self.parse_message(&text);
@@ -668,8 +677,10 @@ impl SequenceDb {
     pub(super) fn into_render_model(mut self) -> SequenceDiagramRenderModel {
         let mut actors = std::mem::take(&mut self.actors);
         let mut actors_typed = BTreeMap::new();
+        let mut actor_lifecycles = Vec::with_capacity(self.actor_order.len());
         for id in &self.actor_order {
             if let Some(a) = actors.remove(id) {
+                actor_lifecycles.push(a.lifecycle);
                 actors_typed.insert(
                     id.clone(),
                     SequenceActor {
@@ -681,6 +692,8 @@ impl SequenceDb {
                         properties: a.properties,
                     },
                 );
+            } else {
+                actor_lifecycles.push(SequenceActorLifecycle::default());
             }
         }
 
@@ -734,6 +747,7 @@ impl SequenceDb {
             destroyed_actors: std::mem::take(&mut self.destroyed_actors)
                 .into_iter()
                 .collect(),
+            actor_lifecycles: Some(actor_lifecycles),
         }
     }
 }

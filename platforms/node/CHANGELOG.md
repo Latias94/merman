@@ -2,6 +2,17 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- Added the opt-in `@mermanjs/node-wasm` package with a Node-targeted wasm-bindgen artifact. It is
+  published separately from the native `@mermanjs/node` loader and never reuses `@mermanjs/web`.
+- Added a typed `MermanNativeLoadError` for installed native packages that fail dynamic loading,
+  including ABI and glibc diagnostics.
+- Moved Linux GNU candidate builds to a glibc 2.31 baseline container and recorded the build
+  environment in the candidate receipt.
+
 ## [0.8.0-alpha.5] - 2026-08-11
 
 ### Added

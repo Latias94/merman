@@ -26,8 +26,17 @@ impl WasmEngine {
             .map_err(|error| JsValue::from_str(&wire::error_envelope(&error)))
     }
 
-    pub fn execute(&self, request_json: String) -> Result<String, JsValue> {
-        Ok(wire::execute_wire(self.engine()?, &request_json))
+    pub fn execute(
+        &self,
+        request_json: String,
+        timeout_ms: Option<u32>,
+    ) -> Result<String, JsValue> {
+        Ok(wire::execute_wire_with_admitted_control(
+            self.engine()?,
+            &request_json,
+            wire::admitted_operation_control(timeout_ms),
+            timeout_ms,
+        ))
     }
 
     #[wasm_bindgen(js_name = "runtimeCatalogJson")]
@@ -44,8 +53,17 @@ impl WasmEngine {
     }
 
     #[wasm_bindgen(js_name = "executeSync")]
-    pub fn execute_sync(&self, request_json: String) -> Result<String, JsValue> {
-        Ok(wire::execute_wire(self.engine()?, &request_json))
+    pub fn execute_sync(
+        &self,
+        request_json: String,
+        timeout_ms: Option<u32>,
+    ) -> Result<String, JsValue> {
+        Ok(wire::execute_wire_with_admitted_control(
+            self.engine()?,
+            &request_json,
+            wire::admitted_operation_control(timeout_ms),
+            timeout_ms,
+        ))
     }
 
     pub fn dispose(&mut self) {

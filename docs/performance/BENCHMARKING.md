@@ -46,6 +46,105 @@ for exploration, but its internal samples are not independent base/head observat
 themselves establish an optimization claim. Use `compare_self.py --evidence-mode confirmation` for
 that claim.
 
+### ASCII semantic-depth benchmark
+
+The `ascii_pipeline` bench measures the public synchronous ASCII renderer with strict parsing,
+the explicit `UnboundedForTrustedInput` resource profile, Plain 7-bit output, a reused engine, and
+one logical render operation per estimate. This is a controlled local batch/stress lane whose
+inputs come only from the tracked corpus; the public `Interactive` and `TrustedNative` rejection
+boundaries remain covered by exact resource tests rather than benchmark admission:
+
+```bash
+CARGO_BUILD_JOBS=1 cargo bench --locked -p merman \
+  --no-default-features --features ascii --bench ascii_pipeline
+```
+
+Its schema-v2 metadata is `tools/bench/ascii_corpus.json`. The `closeout` and `large-closeout`
+suites cover the five common families selected by U25, while `comparable` contains only fixtures
+whose base and head output identities may support a latency comparison. Every registered benchmark
+must emit a `plain_ascii` preflight receipt with exact output bytes and SHA-256 before Criterion
+timing begins, and an exact invocation must repeat the same identity after timing. Verify the
+compiled list and those receipts with:
+
+```bash
+CARGO_BUILD_JOBS=1 python3 tools/bench/verify_pipeline_bench_list.py \
+  --bench ascii_pipeline \
+  --corpus tools/bench/ascii_corpus.json \
+  --features ascii
+```
+
+The dedicated Performance workflow exposes the same bounded recipe without adding timing to pull
+requests. Dispatch a decision-grade comparison explicitly, using a benchmark-only backport ref
+whose harness and corpus are byte-identical to the head checkout:
+
+```bash
+gh workflow run performance.yml \
+  --ref main \
+  -f run=ascii \
+  -f base_ref=<benchmark-backport-ref> \
+  -f head_ref=my-ascii-branch \
+  -f preset=long \
+  -f ascii_suite=comparable \
+  -f evidence_mode=confirmation \
+  -f relative_threshold_percent=10 \
+  -f absolute_threshold_ns=50000
+```
+
+The workflow accepts `comparable` and `closeout`; use `closeout` for the five medium U25 families.
+The larger `large-closeout` suite is intentionally excluded from unattended timing and must be run
+locally for the tracked closeout scorecard. Pull requests whose changed paths select the performance
+owner still compile and verify the complete ASCII benchmark list without a timing label. Ordinary
+renderer changes do not run the standalone performance contracts unless `perf` or
+`perf-frontmatter` is applied.
+
+For a decision-grade adjacent-revision comparison, first ensure both checkouts contain the same
+benchmark-only harness: `ascii_pipeline.rs`, its `Cargo.toml` bench entry, the selected corpus,
+the referenced preflight contract, and every selected fixture must be byte-identical. If the
+historical product revision predates that harness, create a clean benchmark-only backport commit
+whose parent is the product revision; do not copy only the corpus into an otherwise different
+checkout. Then keep the ASCII feature closure and each checkout's corpus path explicit:
+
+```bash
+python3 tools/bench/compare_self.py \
+  --base-dir ../merman-base \
+  --head-dir . \
+  --base-label BASE \
+  --head-label HEAD \
+  --base-package merman \
+  --head-package merman \
+  --base-bench ascii_pipeline \
+  --head-bench ascii_pipeline \
+  --base-features ascii \
+  --head-features ascii \
+  --no-base-default-features \
+  --no-head-default-features \
+  --base-corpus tools/bench/ascii_corpus.json \
+  --head-corpus tools/bench/ascii_corpus.json \
+  --suite comparable \
+  --group ascii_end_to_end \
+  --preset long \
+  --evidence-mode confirmation \
+  --calibration-pairs 8 \
+  --max-pairs 64 \
+  --relative-threshold-percent 10 \
+  --absolute-threshold-ns 50000 \
+  --out target/performance/ascii_comparison.md \
+  --json-out target/performance/ascii_comparison.json
+```
+
+Both corpus paths are resolved relative to their respective checkout. The benchmark workload,
+`UnboundedForTrustedInput` resource profile, bench source, lane contract, and selected fixture
+bytes must be identical on both sides. Confirmation mode rejects a different Cargo `[[bench]]`
+entry, benchmark source, corpus manifest, or preflight contract before sampling; selected fixture
+bytes are checked independently. Do not compare an older checkout's historical harness under the
+same operation name. Record the benchmark-only backport revision separately from its product parent
+so the final receipt cannot mistake harness provenance for a product change.
+
+The generated Markdown and JSON are machine-local evidence until their exact revision, tree,
+environment, corpus and harness digests, output identities, numeric results, and maintainer
+disposition are committed in an ASCII closeout scorecard. Until that tracked scorecard exists, a
+direct Criterion run or a receipt without those provenance fields is not a U25 closeout claim.
+
 ## Decision-grade self-comparison
 
 ### Two independent runner recipes
@@ -109,8 +208,9 @@ against its adjacent clean pre-change commit using the same two-sided recipe con
 
 `compare_self.py` performs build work before any timed pair:
 
-1. It invokes locked Cargo bench compilation independently for each recipe with `--no-run` and
-   Cargo JSON diagnostics.
+1. It invokes locked Cargo bench compilation independently for each recipe with `--no-run`, Cargo
+   JSON diagnostics, and a forced `CARGO_BUILD_JOBS=1` environment recorded under each runner's
+   `build_environment` receipt.
 2. It accepts exactly one matching Criterion executable for the requested package and bench.
 3. It records and verifies the executable digest and discovers exact benchmark names directly from
    that executable.
@@ -120,9 +220,10 @@ Cargo is therefore outside the timed AB/BA schedule. A missing lockfile, ambiguo
 changed digest, absent benchmark, or failed direct invocation is an evidence-contract failure, not
 a slow sample.
 
-Base and head should normally use distinct target directories. When disk constraints require
-`--freeze-shared-target`, the runner clears only the shared target's `bench` profile before building
-each side, then copies that side's executable under `target/perf-frozen`. This reset is required:
+Base and head should normally use distinct target directories; those prebuilds are still serialized
+with one Cargo build job each. When disk constraints require `--freeze-shared-target`, the runner
+clears only the shared target's `bench` profile before building each side, then copies that side's
+executable under `target/perf-frozen`. This reset is required:
 Cargo's cache is not a content-addressed boundary between different path-workspace checkouts, so a
 plain second `--target-dir` build can otherwise reuse the first checkout's executable. The debug
 profile and immutable frozen copies are not removed. Do not run another Cargo process against that

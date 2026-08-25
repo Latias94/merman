@@ -49,9 +49,9 @@ pub use catalog_contract::{
 };
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION,
-    BindingCancellationErrorDetails, BindingError, BindingErrorKind,
-    BindingIconRegistryErrorDetails, BindingResourceErrorDetails, BindingResourceLimitCause,
-    BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
+    BindingCancellationErrorDetails, BindingDiagnosticErrorDetails, BindingDiagnosticSpan,
+    BindingError, BindingErrorKind, BindingIconRegistryErrorDetails, BindingResourceErrorDetails,
+    BindingResourceLimitCause, BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
     binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
     render_resource_options_unavailable, resource_options_json,
 };
@@ -74,8 +74,8 @@ pub use metadata::{
     RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract, RuntimeResourceLimit,
     RuntimeResourceProfile, RuntimeSystemFontContract, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
     TEXT_MEASUREMENT_PROVIDER_VENDORED, THEME_CATALOG_SCHEMA_VERSION, TextMeasurementCapabilities,
-    ascii_capabilities, ascii_capabilities_json, ascii_supported_diagrams,
-    ascii_supported_diagrams_json, configurable_lint_rule_catalog,
+    ascii_capabilities, ascii_capabilities_json, ascii_diagrammatic_diagrams,
+    ascii_supported_diagrams, ascii_supported_diagrams_json, configurable_lint_rule_catalog,
     configurable_lint_rule_catalog_json, diagram_family_capabilities,
     diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
     runtime_constructor_resource_limits, supported_diagrams, supported_diagrams_json,

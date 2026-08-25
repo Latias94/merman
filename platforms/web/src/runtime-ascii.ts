@@ -4,6 +4,8 @@ import type {
   AsciiCapability,
   AsciiCapabilityEvidence,
   AsciiDiagramType,
+  AsciiPrimaryProjection,
+  AsciiSemanticCoverage,
   AsciiSupportLevel,
 } from "./public-catalog.js";
 import type { AsciiBindingOptions } from "./public-types.js";
@@ -44,6 +46,12 @@ export function asciiCapabilities(): AsciiCapability[] {
   }));
 }
 
+export function asciiDiagrammaticDiagrams(): AsciiDiagramType[] {
+  return asciiCapabilities()
+    .filter((capability) => capability.primary_projection === "diagrammatic")
+    .map((capability) => assertAsciiDiagramType(capability.diagram_type));
+}
+
 function currentAsciiRuntimeCache(): AsciiRuntimeCache {
   const state = currentRuntimeState();
   let cache = asciiRuntimeCaches.get(state);
@@ -75,6 +83,21 @@ function normalizeAsciiCapability(capability: AsciiCapability): AsciiCapability 
   const evidence = Array.isArray(capability.evidence)
     ? capability.evidence.map(normalizeAsciiCapabilityEvidence)
     : [];
+  const semanticCoverage = normalizeAsciiSemanticCoverage(
+    capability.semantic_coverage
+  );
+  const primaryProjection = normalizeAsciiPrimaryProjection(
+    capability.primary_projection
+  );
+  const supportLevel = deriveAsciiSupportLevel(
+    semanticCoverage,
+    primaryProjection
+  );
+  if (capability.support_level !== supportLevel) {
+    throw new Error(
+      "Merman WASM returned an inconsistent ASCII compatibility support level."
+    );
+  }
 
   return {
     diagram_type: capability.diagram_type,
@@ -82,14 +105,48 @@ function normalizeAsciiCapability(capability: AsciiCapability): AsciiCapability 
       typeof capability.display_name === "string"
         ? capability.display_name
         : capability.diagram_type,
-    support_level: normalizeAsciiSupportLevel(capability.support_level),
-    summary_fallback: Boolean(capability.summary_fallback),
+    semantic_coverage: semanticCoverage,
+    primary_projection: primaryProjection,
+    structured_text_fallback: Boolean(capability.structured_text_fallback),
+    support_level: supportLevel,
     supported_semantics: Array.isArray(capability.supported_semantics)
       ? capability.supported_semantics.map(String)
       : [],
     limits: Array.isArray(capability.limits) ? capability.limits.map(String) : [],
     evidence,
   };
+}
+
+function normalizeAsciiSemanticCoverage(level: unknown): AsciiSemanticCoverage {
+  if (level === null || level === "full" || level === "partial") {
+    return level;
+  }
+  throw new Error("Merman WASM returned an invalid ASCII semantic coverage.");
+}
+
+function normalizeAsciiPrimaryProjection(
+  projection: unknown
+): AsciiPrimaryProjection {
+  if (
+    projection === "diagrammatic" ||
+    projection === "structured_text" ||
+    projection === "none"
+  ) {
+    return projection;
+  }
+  throw new Error("Merman WASM returned an invalid ASCII primary projection.");
+}
+
+function deriveAsciiSupportLevel(
+  coverage: AsciiSemanticCoverage,
+  projection: AsciiPrimaryProjection
+): AsciiSupportLevel {
+  if (coverage === null || projection === "none") {
+    if (coverage === null && projection === "none") return "unsupported";
+    throw new Error("Merman WASM returned an invalid ASCII capability combination.");
+  }
+  if (projection === "structured_text") return "summary";
+  return coverage;
 }
 
 function normalizeAsciiCapabilityEvidence(
@@ -100,13 +157,4 @@ function normalizeAsciiCapabilityEvidence(
     source: typeof evidence.source === "string" ? evidence.source : "",
     note: typeof evidence.note === "string" ? evidence.note : "",
   };
-}
-
-function normalizeAsciiSupportLevel(level: unknown): AsciiSupportLevel {
-  return level === "full" ||
-    level === "partial" ||
-    level === "summary" ||
-    level === "unsupported"
-    ? level
-    : "unsupported";
 }

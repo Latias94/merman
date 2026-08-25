@@ -18,6 +18,7 @@ PR_REACHABLE_WORKFLOWS = [
     WORKFLOW_ROOT / "npm-audit.yml",
     WORKFLOW_ROOT / "pages.yml",
     WORKFLOW_ROOT / "security-audit.yml",
+    WORKFLOW_ROOT / "tree-sitter-mermaid.yml",
     WORKFLOW_ROOT / "vscode-extension.yml",
 ]
 PUBLISH_WORKFLOWS = sorted(WORKFLOW_ROOT.glob("release-*.yml")) + [
@@ -39,6 +40,21 @@ WRITE_CAPABILITIES = (
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def workflow_job(text: str, name: str) -> str:
+    jobs = text.split("\njobs:\n", 1)
+    if len(jobs) != 2:
+        raise AssertionError("workflow has no jobs mapping")
+    marker = f"  {name}:\n"
+    start = jobs[1].find(marker)
+    if start < 0:
+        raise AssertionError(f"workflow has no {name!r} job")
+    body = jobs[1][start + len(marker) :]
+    next_job = re.search(r"(?m)^  [A-Za-z0-9_-]+:\s*$", body)
+    if next_job is not None:
+        body = body[: next_job.start()]
+    return marker + body
 
 
 def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) -> None:
@@ -116,6 +132,100 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                     text.count("uses: actions/checkout@"),
                 )
 
+    def test_tree_sitter_mermaid_release_is_protected_and_subdirectory_aware(self) -> None:
+        independent = read(WORKFLOW_ROOT / "release-independent-crate.yml")
+        workflow = read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml")
+        verify = workflow_job(workflow, "verify")
+        prebuild = workflow_job(workflow, "prebuild")
+        assemble = workflow_job(workflow, "assemble")
+        attest = workflow_job(workflow, "attest")
+        publish_crates = workflow_job(workflow, "publish-crates")
+        publish_npm = workflow_job(workflow, "publish-npm")
+        publish_github = workflow_job(workflow, "publish-github")
+
+        self.assertNotIn("- tree-sitter-mermaid", independent)
+        self.assertIn("tree-sitter-mermaid-v", workflow)
+        self.assertIn("publish_github_release:", workflow)
+        self.assertIn("default: false", workflow)
+        self.assertIn("main is build-only", workflow)
+        self.assertIn("publishing requires source_ref to be the matching immutable tag", workflow)
+        self.assertIn(
+            "a GitHub Release requires registry publication or reconciliation", workflow
+        )
+        self.assertIn("distribution/tree-sitter-mermaid", workflow)
+        self.assertIn('npm_manifest["name"] != "@mermanjs/tree-sitter-mermaid"', verify)
+        self.assertIn("npm run prebuild", prebuild)
+        self.assertIn("PREBUILDS_ONLY=1 npm run test:node", prebuild)
+        self.assertIn("TREE_SITTER_MERMAID_REQUIRE_PREBUILDS=1", assemble)
+        self.assertIn('"metadata/provenance.json"', verify)
+        self.assertIn('"CMakeLists.txt": cmake.group(1)', verify)
+        self.assertIn('"Makefile": make.group(1)', verify)
+        self.assertIn(
+            "cargo package --locked --no-verify -p tree-sitter-mermaid",
+            publish_crates,
+        )
+        self.assertIn(
+            '"$release_dir/tree-sitter-mermaid-$VERSION.crate"', publish_crates
+        )
+        self.assertIn(
+            '"target/package/tree-sitter-mermaid-$VERSION.crate"', publish_crates
+        )
+        self.assertIn(
+            "cargo publish --locked --no-verify -p tree-sitter-mermaid",
+            publish_crates,
+        )
+        self.assertIn(
+            "https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION/download",
+            publish_crates,
+        )
+        self.assertIn('--user-agent "$registry_user_agent"', publish_crates)
+        self.assertIn("npm publish", publish_npm)
+        self.assertIn("--provenance", publish_npm)
+        self.assertIn(
+            'npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball',
+            publish_npm,
+        )
+        self.assertIn("uses: actions/attest@v4.2.2", attest)
+        self.assertIn("attestations: write", attest)
+        self.assertIn("gh release create", publish_github)
+        self.assertIn("verify_existing_release", publish_github)
+        self.assertIn(
+            "if: ${{ inputs.publish && inputs.publish_github_release }}",
+            publish_github,
+        )
+        self.assertIn("environment: crates.io", publish_crates)
+        self.assertIn("environment: npm", publish_npm)
+        self.assertIn("environment: github-release", publish_github)
+        self.assertIn(
+            "needs: [validate-inputs, assemble, attest, publish-crates, publish-npm]",
+            publish_github,
+        )
+        self.assertIn("timeout-minutes: 60", verify)
+
+    def test_workflow_job_does_not_accept_a_protection_from_another_job(self) -> None:
+        workflow = """
+jobs:
+  wrong-owner:
+    environment: npm
+  publish-npm:
+    runs-on: ubuntu-latest
+"""
+        self.assertNotIn("environment: npm", workflow_job(workflow, "publish-npm"))
+
+    def test_tree_sitter_owner_runs_its_complete_package_gate(self) -> None:
+        ci = read(CI_WORKFLOW)
+        workflow = read(WORKFLOW_ROOT / "tree-sitter-mermaid.yml")
+
+        self.assertIn("uses: ./.github/workflows/tree-sitter-mermaid.yml", ci)
+        self.assertIn("cargo fmt --all --check", ci)
+        self.assertNotIn("cargo fmt --all", workflow)
+        self.assertIn("cargo clippy --locked -p tree-sitter-mermaid", workflow)
+        self.assertIn("cargo nextest run --locked -p tree-sitter-mermaid", workflow)
+        self.assertIn("npm run check:generated --prefix distribution/tree-sitter-mermaid", workflow)
+        self.assertIn("npm run test:corpus --prefix distribution/tree-sitter-mermaid", workflow)
+        self.assertIn("npm run test:wasm --prefix distribution/tree-sitter-mermaid", workflow)
+        self.assertIn("npm run test:package-smoke --prefix distribution/tree-sitter-mermaid", workflow)
+
     def test_workspace_release_ignores_flutter_package_tags(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")
         self.assertIn("      - '!flutter-v*'\n", text)
@@ -134,6 +244,31 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertNotIn("cargo yank", text)
         self.assertNotIn("--token \"$CARGO_REGISTRY_TOKEN\"", text)
 
+    def test_roughr_semver_gate_is_pinned_before_publication(self) -> None:
+        workflows = {
+            WORKFLOW_ROOT / "release-preflight.yml": (
+                "cargo semver-checks check-release -p roughr-merman --color always",
+                "python3 scripts/crates_io_release.py preflight-initial",
+            ),
+            WORKFLOW_ROOT / "release-crates.yml": (
+                "cargo semver-checks check-release -p roughr-merman --color always",
+                "trusted/scripts/crates_io_release.py publish-receipted",
+            ),
+            WORKFLOW_ROOT / "release-independent-crate.yml": (
+                'cargo semver-checks check-release -p "$PACKAGE" --color always',
+                'env -u CARGO_REGISTRY_TOKEN cargo publish -p "$PACKAGE"',
+            ),
+        }
+        for path, (semver_command, publication_command) in workflows.items():
+            text = read(path)
+            with self.subTest(workflow=path.name):
+                self.assertIn("tool: cargo-semver-checks@0.50.0", text)
+                self.assertIn(semver_command, text)
+                self.assertLess(
+                    text.index("cargo semver-checks check-release"),
+                    text.index(publication_command),
+                )
+
     def test_npm_publish_provenance_cannot_be_disabled_by_repository_config(self) -> None:
         paths = [
             ROOT / ".npmrc",
@@ -141,6 +276,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             ROOT / "platforms" / "node" / ".npmrc",
             WORKFLOW_ROOT / "release-web.yml",
             WORKFLOW_ROOT / "release-node.yml",
+            WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml",
         ]
         for path in paths:
             if path.exists():
@@ -163,6 +299,24 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                 self.assertIn("DISPATCH_PUBLISH_TO_NPM", text)
                 self.assertIn("main is allowed only for a non-publishing build", text)
                 self.assertRegex(text, r"\[\[ \"\$SOURCE_REF\" =~ \^\[0-9a-f\]\{40\}\$ \]\]")
+
+    def test_node_publish_supports_verified_cross_run_recovery(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-node.yml")
+        publish = workflow_job(text, "publish")
+        self.assertIn("recovery_run_id:", text)
+        self.assertIn("DISPATCH_RECOVERY_RUN_ID", text)
+        self.assertIn("recovery_run_id requires publish_to_npm=true", text)
+        self.assertIn("actions: read", publish)
+        self.assertIn("always()", publish)
+        self.assertIn(
+            "needs.package-group.result == 'success' || needs.validate-inputs.outputs.recovery_run_id != ''",
+            publish,
+        )
+        self.assertIn("github-token: ${{ github.token }}", publish)
+        self.assertIn(
+            "run-id: ${{ needs.validate-inputs.outputs.recovery_run_id != '' && needs.validate-inputs.outputs.recovery_run_id || github.run_id }}",
+            publish,
+        )
 
     def test_performance_pull_requests_are_read_only_and_summary_only(self) -> None:
         text = read(WORKFLOW_ROOT / "performance.yml")

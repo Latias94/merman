@@ -49,9 +49,25 @@ def cargo_test(test_name: str, *, ignored: bool, environment: dict[str, str]) ->
         "--bin",
         PACKAGE,
         test_name,
-        "--",
-        "--exact",
     ]
+    discovery_arguments = ["--", "--list", "--format", "terse"]
+    if ignored:
+        discovery_arguments.append("--ignored")
+    discovery = subprocess.run(
+        [*command, *discovery_arguments],
+        cwd=REPO_ROOT,
+        env=environment,
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    expected = f"{test_name}: test"
+    if expected not in discovery.stdout.splitlines():
+        raise RuntimeError(
+            f"Cargo did not discover required CLI asset test {test_name!r} "
+            f"for artifact profile {PROFILE!r}"
+        )
+    command.extend(("--", "--exact"))
     if ignored:
         command.append("--ignored")
     subprocess.run(command, cwd=REPO_ROOT, env=environment, check=True)

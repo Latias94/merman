@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn preflight_includes_pending_ticks_without_consuming_them() {
+    fn rejected_preflight_is_non_consuming_and_sticky() {
         let meter = Arc::new(OperationWorkMeter::new(policy(1)));
         let mut budget = LayoutWorkBudget::for_operation(Arc::clone(&meter));
 
@@ -169,8 +169,13 @@ mod tests {
         assert_eq!(meter.used(), 0);
         assert_eq!(budget.pending_ticks(), 79);
 
-        budget.charge(1).unwrap();
-        assert_eq!(meter.used(), 1);
+        let replayed = budget.charge(1).unwrap_err();
+        let crate::Error::ResourceLimitExceeded(replayed) = replayed else {
+            panic!("expected sticky max_layout_work_units resource limit error");
+        };
+        assert_eq!(replayed, error);
+        assert_eq!(meter.used(), 0);
+        assert_eq!(budget.pending_ticks(), 79);
     }
 
     #[test]

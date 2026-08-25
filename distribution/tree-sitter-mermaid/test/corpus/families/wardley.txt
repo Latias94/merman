@@ -1,0 +1,494 @@
+==================
+complete wardley statements stay structured
+==================
+
+wardley-beta
+title Strategy map
+accTitle: Wardley accessibility
+accDescr: Value-chain: {detail remains free-form}
+size [1200, 900]
+evolution Genesis@0.25 / Concept -> Custom / Emerging -> Product@0.75 -> Commodity@1.0 / Accepted
+anchor "用户需求" [0.95, 0.10]
+component real-time processing [0.80, 0.30] label [-40, 20] (build) (inertia)
+component Database [0.40, 0.70] (buy)
+component Database [0.45, 0.72]
+component byte pair encoding (BPE) [0.55, 0.45]
+component foo--bar [0.30, 0.40]
+component foo- [0.20, 0.30]
+real-time processing +<> Database; 约束
+"Database" "foo--bar"
+byte pair encoding (BPE) -> UTF8
+evolve real-time processing 0.62
+pipeline real-time processing {
+  component batch-loader [0.20] label [-10, 5]
+  component streaming queue [0.80]
+}
+note "关键决策" [0.30, 0.49]
+annotations [1, 0.9]
+annotation 1,[0.57, 1] "重点"
+accelerator "Cloud Native" [0.20, 0.85]
+deaccelerator Legacy-Data [0.40, 0.35]
+
+---
+
+(source_file
+  (wardley_diagram
+    (wardley_header
+      (diagram_keyword))
+    (wardley_body
+      (wardley_title_statement
+        (statement_keyword)
+        (wardley_title_text))
+      (wardley_accessibility_title_statement
+        (statement_keyword)
+        (wardley_accessibility_text))
+      (wardley_accessibility_description_statement
+        (statement_keyword)
+        (wardley_accessibility_text))
+      (wardley_size_statement
+        (statement_keyword)
+        (wardley_integer)
+        (wardley_integer))
+      (wardley_evolution_statement
+        (statement_keyword)
+        (wardley_evolution_stage
+          (wardley_name
+            (wardley_name_word))
+          (wardley_decimal)
+          (wardley_name
+            (wardley_name_word)))
+        (wardley_arrow)
+        (wardley_evolution_stage
+          (wardley_name
+            (wardley_name_word))
+          (wardley_name
+            (wardley_name_word)))
+        (wardley_arrow)
+        (wardley_evolution_stage
+          (wardley_name
+            (wardley_name_word))
+          (wardley_decimal))
+        (wardley_arrow)
+        (wardley_evolution_stage
+          (wardley_name
+            (wardley_name_word))
+          (wardley_decimal)
+          (wardley_name
+            (wardley_name_word))))
+      (wardley_anchor_statement
+        (statement_keyword)
+        (wardley_name
+          (quoted_string))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word)
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal))
+        (wardley_label_clause
+          (statement_keyword)
+          (wardley_signed_integer
+            (wardley_integer))
+          (wardley_signed_integer
+            (wardley_integer)))
+        (wardley_strategy_decorator
+          (wardley_strategy))
+        (wardley_inertia_clause
+          (statement_keyword)))
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal))
+        (wardley_strategy_decorator
+          (wardley_strategy)))
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word)
+          (wardley_name_word)
+          (wardley_name_word)
+          (wardley_parenthesized_name_part
+            (wardley_name_word)))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word)
+          (wardley_name_hyphen)
+          (wardley_name_hyphen)
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word)
+          (wardley_name_hyphen))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word)
+          (wardley_name_word))
+        (wardley_link_port)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_label
+          (wardley_link_label_text
+            (wardley_link_label_value))))
+      (wardley_link_statement
+        (wardley_name
+          (quoted_string))
+        (quoted_string))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word)
+          (wardley_name_word)
+          (wardley_name_word)
+          (wardley_parenthesized_name_part
+            (wardley_name_word)))
+        (wardley_link_operator)
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_evolve_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word)
+          (wardley_name_word))
+        (wardley_decimal))
+      (wardley_pipeline_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word)
+          (wardley_name_word))
+        (wardley_pipeline_body
+          (wardley_pipeline_component_statement
+            (statement_keyword)
+            (wardley_name
+              (wardley_name_word))
+            (wardley_decimal)
+            (wardley_label_clause
+              (statement_keyword)
+              (wardley_signed_integer
+                (wardley_integer))
+              (wardley_signed_integer
+                (wardley_integer))))
+          (wardley_pipeline_component_statement
+            (statement_keyword)
+            (wardley_name
+              (wardley_name_word)
+              (wardley_name_word))
+            (wardley_decimal))))
+      (wardley_note_statement
+        (statement_keyword)
+        (quoted_string)
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_annotations_statement
+        (statement_keyword)
+        (wardley_coordinate_pair
+          (wardley_coordinate_value
+            (wardley_integer))
+          (wardley_coordinate_value
+            (wardley_decimal))))
+      (wardley_annotation_statement
+        (statement_keyword)
+        (wardley_integer)
+        (wardley_coordinate_pair
+          (wardley_coordinate_value
+            (wardley_decimal))
+          (wardley_coordinate_value
+            (wardley_integer)))
+        (quoted_string))
+      (wardley_accelerator_statement
+        (statement_keyword)
+        (wardley_name
+          (quoted_string))
+        (wardley_xy_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_deaccelerator_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_xy_position
+          (wardley_decimal)
+          (wardley_decimal))))))
+
+==================
+link operators remain named
+==================
+
+wardley-beta
+component A [0.1, 0.1]
+component B [0.2, 0.2]
+A->B
+A --> B
+A -.-> B
+A > B
+A +> B
+A +< B
+A +<> B
+A +'backup'> B; labelled flow
+A -> B+>
+
+---
+
+(source_file
+  (wardley_diagram
+    (wardley_header
+      (diagram_keyword))
+    (wardley_body
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_operator)
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_operator)
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_operator)
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_operator)
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_port)
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_port)
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_port)
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_operator)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_label
+          (wardley_link_label_text
+            (wardley_link_label_value))))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_operator)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_port)))))
+
+==================
+header only remains a wardley root at EOF
+==================
+
+wardley-beta
+
+---
+
+(source_file
+  (wardley_diagram
+    (wardley_header
+      (diagram_keyword))))
+
+==================
+malformed top-level and pipeline lines preserve siblings
+==================
+
+wardley-beta
+component A [0.1, 0.1]
+@@broken
+pipeline A {
+  component First [0.2]
+  ???
+  component Second [0.8]
+}
+component B [0.2, 0.2]
+A -> B
+
+---
+
+(source_file
+  (wardley_diagram
+    (wardley_header
+      (diagram_keyword))
+    (wardley_body
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_malformed_statement
+        (wardley_malformed_text))
+      (wardley_pipeline_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_pipeline_body
+          (wardley_pipeline_component_statement
+            (statement_keyword)
+            (wardley_name
+              (wardley_name_word))
+            (wardley_decimal))
+          (wardley_pipeline_malformed_statement
+            (wardley_pipeline_malformed_text))
+          (wardley_pipeline_component_statement
+            (statement_keyword)
+            (wardley_name
+              (wardley_name_word))
+            (wardley_decimal))))
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (wardley_link_operator)
+        (wardley_name
+          (wardley_name_word))))))
+
+==================
+incomplete component remains local
+==================
+
+wardley-beta
+component A [0.1, 0.1]
+component
+anchor Need [0.9, 0.8]
+
+---
+
+(source_file
+  (wardley_diagram
+    (wardley_header
+      (diagram_keyword))
+    (wardley_body
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal)))
+      (wardley_incomplete_component_statement
+        (statement_keyword))
+      (wardley_anchor_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal))))))
+
+==================
+quoted link endpoints remain structurally distinct
+==================
+
+wardley-beta
+"A" B
+A "B"
+"A" +<> B
+
+---
+
+(source_file
+  (wardley_diagram
+    (wardley_header
+      (diagram_keyword))
+    (wardley_body
+      (wardley_link_statement
+        (wardley_name
+          (quoted_string))
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (quoted_string))
+      (wardley_link_statement
+        (wardley_name
+          (quoted_string))
+        (wardley_link_port)
+        (wardley_name
+          (wardley_name_word))))))
+
+==================
+same-line statement follows the header
+==================
+
+wardley-beta component Inline [0.1, 0.2]
+
+---
+
+(source_file
+  (wardley_diagram
+    (wardley_header
+      (diagram_keyword))
+    (wardley_body
+      (wardley_component_statement
+        (statement_keyword)
+        (wardley_name
+          (wardley_name_word))
+        (wardley_position
+          (wardley_decimal)
+          (wardley_decimal))))))

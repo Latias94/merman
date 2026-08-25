@@ -1,0 +1,391 @@
+==================
+requirements elements relationships attributes and styling stay structural
+==================
+
+requirementDiagram
+title Release safety
+accTitle: Accessible requirements
+accDescr {
+  Requirement model for release safety.
+}
+direction LR
+# requirement model
+functionalRequirement "secure checkout":::critical,security {
+  id: "REQ-1"
+  text: "**Encrypt** customer data"
+  risk: high
+  verifyMethod: analysis
+}
+%% element follows
+element gateway:::external {
+  type: service
+  docRef: "docs/security.md"
+}
+gateway - satisfies -> "secure checkout"
+"secure checkout" <- verifies - gateway
+gateway - contains -> "secure checkout"
+gateway - copies -> "secure checkout"
+gateway - derives -> "secure checkout"
+gateway - refines -> "secure checkout"
+gateway - traces -> "secure checkout"
+classDef critical fill:#f96,stroke-width:4px
+class gateway external,critical
+style gateway fill:#fff,stroke:#333
+gateway:::external
+
+---
+
+(source_file
+  (requirement_diagram
+    (requirement_header
+      (diagram_keyword))
+    (requirement_body
+      (requirement_title_statement
+        (requirement_statement_keyword)
+        (requirement_line_text))
+      (requirement_accessibility_title_statement
+        (requirement_statement_keyword)
+        (requirement_line_text))
+      (requirement_accessibility_description_statement
+        (requirement_statement_keyword)
+        (requirement_accessibility_description_block
+          (requirement_accessibility_block_text)))
+      (requirement_direction_statement
+        (requirement_statement_keyword)
+        (requirement_direction))
+      (requirement_hash_comment)
+      (requirement_declaration
+        (requirement_kind)
+        (requirement_name
+          (requirement_string))
+        (requirement_class_annotation
+          (requirement_style_identifier)
+          (requirement_style_identifier))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_string))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_string))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_risk))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_verify_method)))
+      (comment)
+      (requirement_element_declaration
+        (requirement_statement_keyword)
+        (requirement_name
+          (requirement_unquoted_name))
+        (requirement_class_annotation
+          (requirement_style_identifier))
+        (requirement_element_attribute
+          (requirement_attribute_keyword)
+          (requirement_attribute_text))
+        (requirement_element_attribute
+          (requirement_attribute_keyword)
+          (requirement_string)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_string)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_string))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_unquoted_reference)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_string)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_string)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_string)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_string)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_string)))
+      (requirement_class_definition_statement
+        (requirement_statement_keyword)
+        (requirement_identifier_list
+          (requirement_style_identifier))
+        (requirement_style_declaration
+          (requirement_style_property)
+          (requirement_style_value))
+        (requirement_style_declaration
+          (requirement_style_property)
+          (requirement_style_value)))
+      (requirement_class_assignment_statement
+        (requirement_statement_keyword)
+        (requirement_identifier_list
+          (requirement_style_identifier))
+        (requirement_identifier_list
+          (requirement_style_identifier)
+          (requirement_style_identifier)))
+      (requirement_style_statement
+        (requirement_statement_keyword)
+        (requirement_identifier_list
+          (requirement_style_identifier))
+        (requirement_style_declaration
+          (requirement_style_property)
+          (requirement_style_value))
+        (requirement_style_declaration
+          (requirement_style_property)
+          (requirement_style_value)))
+      (requirement_class_shorthand_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_class_annotation
+          (requirement_style_identifier))))))
+
+==================
+minimal declarations and case contract
+==================
+
+requirementDiAgRaM
+requirement Need {
+}
+element Artifact {
+}
+
+---
+
+(source_file
+  (requirement_diagram
+    (requirement_header
+      (diagram_keyword))
+    (requirement_body
+      (requirement_declaration
+        (requirement_kind)
+        (requirement_name
+          (requirement_unquoted_name)))
+      (requirement_element_declaration
+        (requirement_statement_keyword)
+        (requirement_name
+          (requirement_unquoted_name))))))
+
+==================
+unicode labels and crlf boundaries
+==================
+
+requirementdiagram
+requirement "支付安全" {
+  id: "需求-一"
+  text: "保护客户数据"
+  risk: medium
+  verifymethod: demonstration
+}
+element "支付网关" {
+  type: "外部服务"
+  docref: "安全文档"
+}
+"支付网关" - verifies -> "支付安全"
+
+---
+
+(source_file
+  (requirement_diagram
+    (requirement_header
+      (diagram_keyword))
+    (requirement_body
+      (requirement_declaration
+        (requirement_kind)
+        (requirement_name
+          (requirement_string))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_string))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_string))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_risk))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_verify_method)))
+      (requirement_element_declaration
+        (requirement_statement_keyword)
+        (requirement_name
+          (requirement_string))
+        (requirement_element_attribute
+          (requirement_attribute_keyword)
+          (requirement_string))
+        (requirement_element_attribute
+          (requirement_attribute_keyword)
+          (requirement_string)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_string))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_string))))))
+
+==================
+incomplete constructs preserve later siblings
+==================
+
+requirementDiagram
+requirement Before {
+  id: before
+  risk high
+  text: still visible
+}
+functionalRequirement MissingOpen
+Before - traces ->
+element After {
+  type: service
+}
+Before - satisfies -> After
+
+---
+
+(source_file
+  (requirement_diagram
+    (requirement_header
+      (diagram_keyword))
+    (requirement_body
+      (requirement_declaration
+        (requirement_kind)
+        (requirement_name
+          (requirement_unquoted_name))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_attribute_text))
+        (requirement_malformed_attribute
+          (requirement_malformed_attribute_text))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_attribute_text)))
+      (requirement_incomplete_declaration_statement
+        (requirement_kind)
+        (requirement_name
+          (requirement_unquoted_name)))
+      (requirement_incomplete_relationship_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator))
+      (requirement_element_declaration
+        (requirement_statement_keyword)
+        (requirement_name
+          (requirement_unquoted_name))
+        (requirement_element_attribute
+          (requirement_attribute_keyword)
+          (requirement_attribute_text)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_unquoted_reference))))))
+
+==================
+unclosed text and invalid row stay local to later siblings
+==================
+
+requirementDiagram
+requirement Before {
+  id: before
+  text: "unfinished
+  risk: low
+}
+unknown requirement row
+element After {
+  type: service
+}
+Before - satisfies -> After
+
+---
+
+(source_file
+  (requirement_diagram
+    (requirement_header
+      (diagram_keyword))
+    (requirement_body
+      (requirement_declaration
+        (requirement_kind)
+        (requirement_name
+          (requirement_unquoted_name))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_attribute_text))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_unclosed_string))
+        (requirement_attribute
+          (requirement_attribute_keyword)
+          (requirement_risk)))
+      (ERROR
+        (requirement_reference
+          (requirement_unquoted_reference)))
+      (requirement_element_declaration
+        (requirement_statement_keyword)
+        (requirement_name
+          (requirement_unquoted_name))
+        (requirement_element_attribute
+          (requirement_attribute_keyword)
+          (requirement_attribute_text)))
+      (requirement_relationship_statement
+        (requirement_reference
+          (requirement_unquoted_reference))
+        (requirement_relationship_operator)
+        (requirement_relationship_kind)
+        (requirement_relationship_operator)
+        (requirement_reference
+          (requirement_unquoted_reference))))))
+
+==================
+header only at eof
+==================
+
+requirementDiagram
+
+---
+
+(source_file
+  (requirement_diagram
+    (requirement_header
+      (diagram_keyword))))

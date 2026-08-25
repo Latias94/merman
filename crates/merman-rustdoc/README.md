@@ -14,7 +14,7 @@ Keep the renderer out of ordinary builds by making it an optional documentation 
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.5", optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.6", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -48,6 +48,55 @@ The source code still contains the original Mermaid fence. Only the rustdoc outp
 
 ![Rendered Mermaid diagram in rustdoc light theme](resources/rustdoc-light.png)
 
+## Choose Between The Two Rustdoc Paths
+
+This macro is the one-step path: `cargo doc` compiles the selected native renderer closure and
+rewrites annotated item documentation during macro expansion. The independent
+[`merman-cli rustdoc`](../merman-cli/README.md#rustdoc-fragments) path moves rendering to an explicit
+authoring/CI step so the documented crate consumes only committed files. Neither integration
+depends on, executes, discovers, or falls back to the other.
+
+The checked-generation form starts with a configuration such as:
+
+```toml
+schema = 1
+
+[[fragments]]
+id = "crate-overview"
+source = "docs/rustdoc-src/crate-overview.md"
+```
+
+Generate and verify the managed bundle, then use standard Rustdoc input:
+
+```sh
+merman-cli rustdoc build --config merman-rustdoc.toml
+merman-cli rustdoc check --config merman-rustdoc.toml --quiet
+cargo doc --no-deps
+```
+
+```rust
+#![doc = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/docs/generated/merman-rustdoc/crate-overview.md"
+))]
+```
+
+| Concern | `merman-cli rustdoc` | `merman-rustdoc` attribute macro |
+| --- | --- | --- |
+| Cargo dependency closure | No Merman renderer dependency in the documented crate | Compiles this proc macro and the selected native renderer closure |
+| Authoring loop | Explicit `build`; CI runs read-only `check` | One-step rendering during `cargo doc` |
+| Rustdoc scope | Crate and item docs through native `include_str!` | Annotated item docs and recursive inline item trees |
+| Generated ownership | Commit and review fragments plus `receipt.json` | Source comments stay unchanged; SVG exists only in generated Rustdoc output |
+| docs.rs | Reads packaged fragments; it does not run the CLI | Enables the optional macro dependency through docs.rs metadata |
+| Failure timing | Authoring build or CI freshness check | Macro expansion during `cargo doc` |
+| Rollback | Restore or regenerate source/config/managed output as one Git change | Revert the annotated Rust source or feature selection |
+
+Choose CLI generation for published crates, crate-level docs, reproducible package contents, or a
+strict Cargo dependency budget. Choose this macro for item-level docs when one-step `cargo doc`
+ergonomics outweigh the compile cost. A generated fragment must be included at most once on one
+rendered page because it contains deterministic SVG DOM IDs. The CLI guide documents package
+inclusion, Git rollback, and migration from this attribute form.
+
 ## Choose The Renderer Closure
 
 The default feature is `complete-svg`: deterministic SVG rendering with Cytoscape layout, ELK layout, and math. It does not enable host clock, time-zone, random, or timing adapters.
@@ -56,7 +105,7 @@ Use a smaller closure when the documented diagrams need only the base SVG render
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"], optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg"], optional = true }
 ```
 
 | Feature | Adds |
@@ -101,7 +150,7 @@ All attribute options use string literals:
     all(doc, feature = "doc-diagrams"),
     merman_rustdoc::merman(
         scope = "item",
-        pipeline = "readable",
+        pipeline = "parity",
         fail = "error",
         source = "hide",
         sanitize = "strict",
@@ -118,13 +167,19 @@ pub fn configured() {}
 | Option | Values | Default | Meaning |
 | --- | --- | --- | --- |
 | `scope` | `item`, `tree` | `item` | Rewrite only the annotated item or recurse through an inline item tree. |
-| `pipeline` | `readable`, `parity`, `resvg-safe` | `readable` | Select the SVG output pipeline. |
+| `pipeline` | `parity`, `readable`, `resvg-safe` | `parity` | Select the SVG output pipeline. |
 | `fail` | `error`, `keep-source` | `error` | Fail documentation or preserve the Mermaid source after an error. |
 | `source` | `hide`, `details` | `hide` | Optionally add the source in a collapsed details block. |
 | `sanitize` | `strict`, `off` | `strict` | Reject scripts, event attributes, unsafe URLs, and remote resources before insertion. |
 | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme | `rustdoc` | Follow rustdoc, source-level Mermaid config, or one fixed theme. |
 
 `theme = "rustdoc"` renders light and dark SVG variants and switches between them with rustdoc's existing page theme state. No Mermaid runtime is loaded in the browser. `theme = "mermaid"` emits one SVG controlled by Mermaid source config, while a value such as `theme = "dark"` selects one fixed Merman theme. Source-level Mermaid config still takes precedence.
+
+`parity` is the default because rustdoc pages target browsers, which render Mermaid's native
+`<foreignObject>` labels directly. `readable` deliberately adds SVG `<text>` fallbacks alongside
+those labels and can display both representations in consumers that support each one. Use it only
+when the host selects one representation. `resvg-safe` removes `<foreignObject>` labels and keeps
+the SVG text fallback for rasterizers and other compatible consumers.
 
 Use `scope = "tree"` when one attribute should process children inside an inline module, trait, impl block, struct, or enum:
 

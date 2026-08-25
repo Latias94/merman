@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:532cdf1f02060f29eeff2d988fdc1bd7eda0c6e0eddea3ba8e6588b21ce0c548"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:05636a35bffb668c46ff20910cfc4044874d9d4b94372cac69074ac7fb3b2e08"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -26,6 +26,7 @@
 #define MERMAN_CAPABILITY_PARALLEL_MARKDOWN "parallel-markdown"
 #define MERMAN_CAPABILITY_PDF "pdf"
 #define MERMAN_CAPABILITY_PNG "png"
+#define MERMAN_CAPABILITY_RUSTDOC "rustdoc"
 #define MERMAN_CAPABILITY_SHELL_COMPLETIONS "shell-completions"
 #define MERMAN_CAPABILITY_SVG "svg"
 #define MERMAN_CAPABILITY_SYSTEM_CLOCK "system-clock"
@@ -163,6 +164,17 @@ static const char *const MERMAN_CAPABILITY_PNG_TARGETS[] = {
     "native",
 };
 
+static const char *const MERMAN_CAPABILITY_RUSTDOC_TARGETS[] = {
+    "native",
+};
+
+static const char *const MERMAN_CAPABILITY_RUSTDOC_IMPLICATIONS[] = {
+    "layout-cytoscape",
+    "layout-elk",
+    "markdown",
+    "math",
+};
+
 static const char *const MERMAN_CAPABILITY_SHELL_COMPLETIONS_TARGETS[] = {
     "native",
 };
@@ -203,6 +215,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "parallel-markdown", "tool", "Compile parallel CLI Markdown batch processing.", MERMAN_CAPABILITY_PARALLEL_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "pdf", "output", "Export rendered diagrams as PDF.", MERMAN_CAPABILITY_PDF_TARGETS, 1, NULL, 0 },
     { "png", "output", "Export rendered diagrams as PNG.", MERMAN_CAPABILITY_PNG_TARGETS, 1, NULL, 0 },
+    { "rustdoc", "tool", "Compile checked static Mermaid fragment generation for Rustdoc.", MERMAN_CAPABILITY_RUSTDOC_TARGETS, 1, MERMAN_CAPABILITY_RUSTDOC_IMPLICATIONS, 4 },
     { "shell-completions", "tool", "Compile CLI shell completion generation.", MERMAN_CAPABILITY_SHELL_COMPLETIONS_TARGETS, 1, NULL, 0 },
     { "svg", "output", "Render Mermaid input as SVG.", MERMAN_CAPABILITY_SVG_TARGETS, 3, NULL, 0 },
     { "system-clock", "adapter", "Compile the native system clock adapter.", MERMAN_CAPABILITY_SYSTEM_CLOCK_TARGETS, 1, NULL, 0 },
@@ -210,7 +223,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "system-timezone", "adapter", "Compile the native system time-zone adapter.", MERMAN_CAPABILITY_SYSTEM_TIMEZONE_TARGETS, 1, NULL, 0 },
     { "system-timing", "adapter", "Compile the native monotonic timing adapter.", MERMAN_CAPABILITY_SYSTEM_TIMING_TARGETS, 1, NULL, 0 },
 };
-#define MERMAN_CAPABILITY_COUNT 19u
+#define MERMAN_CAPABILITY_COUNT 20u
 
 static const char *const MERMAN_OUTPUT_ASCII_TARGETS[] = {
     "native",

@@ -1,21 +1,21 @@
 use super::builtin::{
-    attr_sanitize::sanitize_element_attributes_cow,
-    css_sanitize::sanitize_style_elements,
+    attr_sanitize::sanitize_element_attributes_cow_with_checkpoints,
+    css_sanitize::apply_sanitize_style_elements,
     foreign_object::{
-        drop_native_duplicate_fallbacks, drop_switch_native_fallbacks, foreign_object_fallback_svg,
-        strip_foreign_objects,
+        apply_drop_switch_native_fallbacks, apply_foreign_object_fallback,
+        apply_strip_foreign_objects, drop_native_duplicate_fallbacks_with_checkpoints,
     },
     prepared_math::project_prepared_math,
-    presentation_fallback::resolve_resvg_presentation_fallbacks,
+    quadrant_resvg_fallback::resolve_quadrant_resvg_fallbacks_with_checkpoints,
 };
-use super::context::SvgPostprocessMetadata;
+use super::context::{SvgPostprocessExecution, SvgPostprocessMetadata};
+use super::final_validation::SvgStructureMetrics;
 use crate::Result;
-use crate::environment::{RenderSession, TextMeasurementPhase};
+use crate::environment::TextMeasurementPhase;
 use crate::math::{
     BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, PREPARED_MATH_CLASS_ATTRIBUTE,
     PreparedMathEvidenceLease,
 };
-use merman_core::OperationPhase;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -45,7 +45,7 @@ pub(crate) enum BuiltinSvgStage {
     StripForeignObject,
     DropSwitchNativeFallbacks,
     SanitizeCss,
-    ResolvePresentationFallbacks,
+    ResolveQuadrantResvgFallbacks,
     SanitizeAttributes,
 }
 
@@ -54,52 +54,38 @@ impl BuiltinSvgStage {
         self,
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
-        session: &RenderSession,
+        execution: SvgPostprocessExecution<'_>,
+        structure: SvgStructureMetrics,
         prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
     ) -> Result<Cow<'a, str>> {
-        Ok(match self {
+        let mut checkpoint = || execution.checkpoint();
+        match self {
             Self::PreparedMathProjection => {
                 if !svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
                     && !svg.contains(BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE)
                 {
                     return Ok(svg);
                 }
-                Cow::Owned(project_prepared_math(
+                Ok(Cow::Owned(project_prepared_math(
                     &svg,
                     metadata.family_id(),
                     prepared_math_evidence,
-                )?)
+                )?))
             }
             Self::ForeignObjectFallback => {
-                if !svg.contains("<foreignObject") {
-                    return Ok(svg);
-                }
-                let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
-                Cow::Owned(foreign_object_fallback_svg(&svg, &measurer))
+                let measurer = execution.controlled_text_measurer(TextMeasurementPhase::Wrap);
+                apply_foreign_object_fallback(svg, &measurer, execution, structure)
             }
-            Self::StripForeignObject => {
-                if !svg.contains("<foreignObject") {
-                    return Ok(svg);
-                }
-                Cow::Owned(strip_foreign_objects(&svg))
+            Self::StripForeignObject => apply_strip_foreign_objects(svg, checkpoint),
+            Self::DropSwitchNativeFallbacks => apply_drop_switch_native_fallbacks(svg, checkpoint),
+            Self::SanitizeCss => apply_sanitize_style_elements(svg, checkpoint),
+            Self::ResolveQuadrantResvgFallbacks => {
+                resolve_quadrant_resvg_fallbacks_with_checkpoints(svg, metadata, &mut checkpoint)
             }
-            Self::DropSwitchNativeFallbacks => {
-                if !svg.contains(r#"data-merman-foreignobject-source="switch-native-fallback""#) {
-                    return Ok(svg);
-                }
-                Cow::Owned(drop_switch_native_fallbacks(&svg))
+            Self::SanitizeAttributes => {
+                sanitize_element_attributes_cow_with_checkpoints(svg, &mut checkpoint)
             }
-            Self::SanitizeCss => {
-                if !svg.contains("<style") {
-                    return Ok(svg);
-                }
-                Cow::Owned(sanitize_style_elements(&svg))
-            }
-            Self::ResolvePresentationFallbacks => {
-                resolve_resvg_presentation_fallbacks(svg, metadata)
-            }
-            Self::SanitizeAttributes => sanitize_element_attributes_cow(svg),
-        })
+        }
     }
 }
 
@@ -113,7 +99,7 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
             BuiltinSvgStage::StripForeignObject,
             BuiltinSvgStage::DropSwitchNativeFallbacks,
             BuiltinSvgStage::SanitizeCss,
-            BuiltinSvgStage::ResolvePresentationFallbacks,
+            BuiltinSvgStage::ResolveQuadrantResvgFallbacks,
             BuiltinSvgStage::SanitizeAttributes,
         ],
     }
@@ -123,17 +109,29 @@ pub(crate) fn apply_preset_cow<'a>(
     preset: SvgPipelinePreset,
     mut current: Cow<'a, str>,
     metadata: &SvgPostprocessMetadata,
-    session: &RenderSession,
+    execution: SvgPostprocessExecution<'_>,
+    structure: SvgStructureMetrics,
     drop_native_duplicates: bool,
     prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
 ) -> Result<Cow<'a, str>> {
     for stage in builtin_stages_for_preset(preset) {
-        session.checkpoint(OperationPhase::Postprocess)?;
-        current = stage.apply(current, metadata, session, prepared_math_evidence)?;
-        session.checkpoint(OperationPhase::Postprocess)?;
+        execution.checkpoint()?;
+        current = stage.apply(
+            current,
+            metadata,
+            execution,
+            structure,
+            prepared_math_evidence,
+        )?;
+        execution.checkpoint()?;
+        execution.preflight_svg_byte_count(current.len())?;
         if *stage == BuiltinSvgStage::ForeignObjectFallback && drop_native_duplicates {
-            current = Cow::Owned(drop_native_duplicate_fallbacks(&current));
-            session.checkpoint(OperationPhase::Postprocess)?;
+            current = Cow::Owned(drop_native_duplicate_fallbacks_with_checkpoints(
+                &current,
+                &mut || execution.checkpoint(),
+            )?);
+            execution.checkpoint()?;
+            execution.preflight_svg_byte_count(current.len())?;
         }
     }
     Ok(current)
@@ -158,7 +156,7 @@ mod tests {
                 BuiltinSvgStage::StripForeignObject,
                 BuiltinSvgStage::DropSwitchNativeFallbacks,
                 BuiltinSvgStage::SanitizeCss,
-                BuiltinSvgStage::ResolvePresentationFallbacks,
+                BuiltinSvgStage::ResolveQuadrantResvgFallbacks,
                 BuiltinSvgStage::SanitizeAttributes
             ]
         );
@@ -170,13 +168,18 @@ mod tests {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
+        let execution = SvgPostprocessExecution::new(&session);
 
         let output = super::super::finalize_resvg_svg(svg, &session).unwrap();
+        let structure =
+            super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
+                .unwrap();
         let expected = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
             &SvgPostprocessMetadata::from_svg(svg),
-            &session,
+            execution,
+            structure,
             false,
             None,
         )
@@ -215,14 +218,20 @@ mod tests {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
+        let execution = SvgPostprocessExecution::new(&session);
         let metadata = SvgPostprocessMetadata::from_svg(&svg)
             .with_family_id(crate::DiagramFamilyId::FLOWCHART);
+        let structure = super::super::final_validation::validate_well_formed_svg_with_execution(
+            &svg, execution,
+        )
+        .unwrap();
 
         let error = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(&svg),
             &metadata,
-            &session,
+            execution,
+            structure,
             false,
             Some(&evidence),
         )
@@ -267,13 +276,18 @@ mod tests {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
+        let execution = SvgPostprocessExecution::new(&session);
         let metadata = SvgPostprocessMetadata::from_svg(svg);
+        let structure =
+            super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
+                .unwrap();
 
         let output = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
             &metadata,
-            &session,
+            execution,
+            structure,
             false,
             None,
         )
@@ -305,19 +319,24 @@ mod tests {
     }
 
     #[test]
-    fn explicit_typed_family_metadata_enables_quadrant_presentation_fallback() {
+    fn explicit_typed_family_metadata_enables_quadrant_resvg_fallback() {
         let svg = r#"<svg id="quadrant" aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
+        let execution = SvgPostprocessExecution::new(&session);
         let metadata = SvgPostprocessMetadata::from_svg(svg)
             .with_family_id(crate::DiagramFamilyId::QUADRANT_CHART);
+        let structure =
+            super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
+                .unwrap();
 
         let out = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
             &metadata,
-            &session,
+            execution,
+            structure,
             false,
             None,
         )

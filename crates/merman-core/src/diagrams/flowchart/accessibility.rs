@@ -1,7 +1,7 @@
 #[cfg(test)]
 use std::cell::Cell;
 
-use crate::{EditorLexemeKind, OperationControl, OperationControlResult, SourceSpan};
+use crate::{OperationControl, OperationControlResult};
 
 #[cfg(test)]
 thread_local! {
@@ -33,17 +33,10 @@ impl FlowchartAccessibilityDirective {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct FlowchartAccessibilityLexeme {
-    pub(super) kind: EditorLexemeKind,
-    pub(super) span: SourceSpan,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FlowchartAccessibilityStatement {
     pub(super) directive: FlowchartAccessibilityDirective,
     pub(super) complete: bool,
-    pub(super) lexemes: Vec<FlowchartAccessibilityLexeme>,
 }
 
 /// One source-backed interpretation of Flowchart accessibility statements.
@@ -87,19 +80,10 @@ pub(super) fn scan_flowchart_accessibility_controlled(
         let prefix_start = start + line.len().saturating_sub(trimmed.len());
 
         if let Some(after_prefix) = trimmed.strip_prefix("accTitle") {
-            let whitespace = after_prefix
-                .len()
-                .saturating_sub(after_prefix.trim_start().len());
             let rest = after_prefix.trim_start();
             if let Some(value) = rest.strip_prefix(':') {
                 title = Some(value.trim().to_string());
-                statements.push(inline_statement(
-                    code,
-                    FlowchartAccessibilityDirective::Title,
-                    prefix_start,
-                    prefix_start + "accTitle".len() + whitespace,
-                    line_end,
-                ));
+                statements.push(inline_statement(FlowchartAccessibilityDirective::Title));
                 mask_range_preserving_newlines(&mut masked, start, line_end, control)?;
                 start = line_end;
                 continue;
@@ -126,13 +110,7 @@ pub(super) fn scan_flowchart_accessibility_controlled(
 
         if let Some(value) = rest.strip_prefix(':') {
             description = Some(value.trim().to_string());
-            statements.push(inline_statement(
-                code,
-                directive,
-                prefix_start,
-                delimiter_start,
-                line_end,
-            ));
+            statements.push(inline_statement(directive));
             mask_range_preserving_newlines(&mut masked, start, line_end, control)?;
             start = line_end;
             continue;
@@ -151,32 +129,9 @@ pub(super) fn scan_flowchart_accessibility_controlled(
         }
 
         let statement_end = closing_brace.map_or(code.len(), |position| position + 1);
-        let mut lexemes = vec![
-            FlowchartAccessibilityLexeme {
-                kind: EditorLexemeKind::Keyword,
-                span: SourceSpan::new(prefix_start, prefix_start + prefix.len()),
-            },
-            FlowchartAccessibilityLexeme {
-                kind: EditorLexemeKind::Delimiter,
-                span: SourceSpan::new(delimiter_start, delimiter_start + 1),
-            },
-        ];
-        if let Some(span) = trimmed_nonempty_span(code, content_start, content_end) {
-            lexemes.push(FlowchartAccessibilityLexeme {
-                kind: EditorLexemeKind::String,
-                span,
-            });
-        }
-        if let Some(closing_brace) = closing_brace {
-            lexemes.push(FlowchartAccessibilityLexeme {
-                kind: EditorLexemeKind::Delimiter,
-                span: SourceSpan::new(closing_brace, closing_brace + 1),
-            });
-        }
         statements.push(FlowchartAccessibilityStatement {
             directive,
             complete: closing_brace.is_some(),
-            lexemes,
         });
         mask_range_preserving_newlines(&mut masked, start, statement_end, control)?;
         start = statement_end;
@@ -193,42 +148,11 @@ pub(super) fn scan_flowchart_accessibility_controlled(
     })
 }
 
-fn inline_statement(
-    code: &str,
-    directive: FlowchartAccessibilityDirective,
-    prefix_start: usize,
-    delimiter_start: usize,
-    line_end: usize,
-) -> FlowchartAccessibilityStatement {
-    let mut lexemes = vec![
-        FlowchartAccessibilityLexeme {
-            kind: EditorLexemeKind::Keyword,
-            span: SourceSpan::new(prefix_start, prefix_start + directive.prefix().len()),
-        },
-        FlowchartAccessibilityLexeme {
-            kind: EditorLexemeKind::Delimiter,
-            span: SourceSpan::new(delimiter_start, delimiter_start + 1),
-        },
-    ];
-    if let Some(span) = trimmed_nonempty_span(code, delimiter_start + 1, line_end) {
-        lexemes.push(FlowchartAccessibilityLexeme {
-            kind: EditorLexemeKind::String,
-            span,
-        });
-    }
+fn inline_statement(directive: FlowchartAccessibilityDirective) -> FlowchartAccessibilityStatement {
     FlowchartAccessibilityStatement {
         directive,
         complete: true,
-        lexemes,
     }
-}
-
-fn trimmed_nonempty_span(code: &str, start: usize, end: usize) -> Option<SourceSpan> {
-    let raw = code.get(start..end)?;
-    let leading = raw.len().saturating_sub(raw.trim_start().len());
-    let trailing = raw.len().saturating_sub(raw.trim_end().len());
-    let span = SourceSpan::new(start + leading, end.saturating_sub(trailing));
-    (span.start < span.end).then_some(span)
 }
 
 fn next_line_end_controlled(
@@ -318,19 +242,6 @@ mod tests {
         assert!(!scan.parser_input.contains("Checkout"));
         assert!(!scan.parser_input.contains("First line"));
 
-        let lexemes = scan
-            .statements
-            .iter()
-            .flat_map(|statement| statement.lexemes.iter())
-            .map(|lexeme| (lexeme.kind, &source[lexeme.span.start..lexeme.span.end]))
-            .collect::<Vec<_>>();
-        assert!(lexemes.contains(&(EditorLexemeKind::Keyword, "accTitle")));
-        assert!(lexemes.contains(&(EditorLexemeKind::Keyword, "accDescr")));
-        assert!(lexemes.contains(&(EditorLexemeKind::Delimiter, ":")));
-        assert!(lexemes.contains(&(EditorLexemeKind::Delimiter, "{")));
-        assert!(lexemes.contains(&(EditorLexemeKind::Delimiter, "}")));
-        assert!(lexemes.contains(&(EditorLexemeKind::String, "Checkout")));
-        assert!(lexemes.contains(&(EditorLexemeKind::String, "First line\n  second line")));
         assert!(scan.parser_input.contains("A --> B"));
     }
 
@@ -356,15 +267,7 @@ mod tests {
         );
 
         let scan = scan_flowchart_accessibility(source);
-        let strings = scan
-            .statements
-            .iter()
-            .flat_map(|statement| statement.lexemes.iter())
-            .filter(|lexeme| lexeme.kind == EditorLexemeKind::String)
-            .map(|lexeme| &source[lexeme.span.start..lexeme.span.end])
-            .collect::<Vec<_>>();
 
-        assert_eq!(strings, ["结账流程", "第一行\n  第二行"]);
         assert_eq!(scan.title.as_deref(), Some("结账流程"));
         assert_eq!(scan.description, None);
         assert!(!scan.statements.last().unwrap().complete);

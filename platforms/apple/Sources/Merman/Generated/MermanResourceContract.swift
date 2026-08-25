@@ -44,8 +44,15 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
     public static let maxPreparedTextRetainedBytes = MermanResourceLimitId("max_prepared_text_retained_bytes")
     public static let maxSvgBytes = MermanResourceLimitId("max_svg_bytes")
     public static let maxSvgElements = MermanResourceLimitId("max_svg_elements")
+    public static let svgBackendTreeNodes = MermanResourceLimitId("svg_backend_tree_nodes")
+    public static let svgBackendTreeDepth = MermanResourceLimitId("svg_backend_tree_depth")
     public static let maxDocumentDiagrams = MermanResourceLimitId("max_document_diagrams")
     public static let maxAsciiGridCells = MermanResourceLimitId("max_ascii_grid_cells")
+    public static let maxAsciiLayoutWorkUnits = MermanResourceLimitId("max_ascii_layout_work_units")
+    public static let maxAsciiDocumentCells = MermanResourceLimitId("max_ascii_document_cells")
+    public static let maxAsciiOutputBytes = MermanResourceLimitId("max_ascii_output_bytes")
+    public static let maxAsciiGraphemeBytes = MermanResourceLimitId("max_ascii_grapheme_bytes")
+    public static let maxAsciiNestingDepth = MermanResourceLimitId("max_ascii_nesting_depth")
     public static let maxRasterWidth = MermanResourceLimitId("max_raster_width")
     public static let maxRasterHeight = MermanResourceLimitId("max_raster_height")
     public static let maxRasterPixels = MermanResourceLimitId("max_raster_pixels")
@@ -59,7 +66,6 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
     public static let maxTotalSvgConversionFilterPrimitives = MermanResourceLimitId("max_total_svg_conversion_filter_primitives")
     public static let maxSvgConversionSubroots = MermanResourceLimitId("max_svg_conversion_subroots")
     public static let maxNestedSvgImages = MermanResourceLimitId("max_nested_svg_images")
-    public static let svgBackendTreeNodes = MermanResourceLimitId("svg_backend_tree_nodes")
 
     public static let knownValues: [MermanResourceLimitId] = [
         .maxSourceBytes,
@@ -71,8 +77,15 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         .maxPreparedTextRetainedBytes,
         .maxSvgBytes,
         .maxSvgElements,
+        .svgBackendTreeNodes,
+        .svgBackendTreeDepth,
         .maxDocumentDiagrams,
         .maxAsciiGridCells,
+        .maxAsciiLayoutWorkUnits,
+        .maxAsciiDocumentCells,
+        .maxAsciiOutputBytes,
+        .maxAsciiGraphemeBytes,
+        .maxAsciiNestingDepth,
         .maxRasterWidth,
         .maxRasterHeight,
         .maxRasterPixels,
@@ -86,7 +99,6 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         .maxTotalSvgConversionFilterPrimitives,
         .maxSvgConversionSubroots,
         .maxNestedSvgImages,
-        .svgBackendTreeNodes,
     ]
 
     private static let knownById: [String: MermanResourceLimitId] =
@@ -102,8 +114,15 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         "max_prepared_text_retained_bytes": MermanResourceLimitMetadata(id: "max_prepared_text_retained_bytes", phase: "layout_model", overridable: true, minimumValue: 1),
         "max_svg_bytes": MermanResourceLimitMetadata(id: "max_svg_bytes", phase: "svg_output", overridable: true, minimumValue: 1),
         "max_svg_elements": MermanResourceLimitMetadata(id: "max_svg_elements", phase: "svg_postprocess", overridable: true, minimumValue: 1),
+        "svg_backend_tree_nodes": MermanResourceLimitMetadata(id: "svg_backend_tree_nodes", phase: "svg_postprocess", overridable: false, minimumValue: 1),
+        "svg_backend_tree_depth": MermanResourceLimitMetadata(id: "svg_backend_tree_depth", phase: "svg_postprocess", overridable: false, minimumValue: 1),
         "max_document_diagrams": MermanResourceLimitMetadata(id: "max_document_diagrams", phase: "document_scan", overridable: true, minimumValue: 0),
         "max_ascii_grid_cells": MermanResourceLimitMetadata(id: "max_ascii_grid_cells", phase: "ascii_layout", overridable: true, minimumValue: 1),
+        "max_ascii_layout_work_units": MermanResourceLimitMetadata(id: "max_ascii_layout_work_units", phase: "ascii_layout_work", overridable: true, minimumValue: 1),
+        "max_ascii_document_cells": MermanResourceLimitMetadata(id: "max_ascii_document_cells", phase: "ascii_document", overridable: true, minimumValue: 1),
+        "max_ascii_output_bytes": MermanResourceLimitMetadata(id: "max_ascii_output_bytes", phase: "ascii_output", overridable: true, minimumValue: 1),
+        "max_ascii_grapheme_bytes": MermanResourceLimitMetadata(id: "max_ascii_grapheme_bytes", phase: "ascii_grapheme", overridable: true, minimumValue: 1),
+        "max_ascii_nesting_depth": MermanResourceLimitMetadata(id: "max_ascii_nesting_depth", phase: "ascii_nesting", overridable: true, minimumValue: 1),
         "max_raster_width": MermanResourceLimitMetadata(id: "max_raster_width", phase: "raster_allocation", overridable: true, minimumValue: 1),
         "max_raster_height": MermanResourceLimitMetadata(id: "max_raster_height", phase: "raster_allocation", overridable: true, minimumValue: 1),
         "max_raster_pixels": MermanResourceLimitMetadata(id: "max_raster_pixels", phase: "raster_allocation", overridable: true, minimumValue: 1),
@@ -117,6 +136,5 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         "max_total_svg_conversion_filter_primitives": MermanResourceLimitMetadata(id: "max_total_svg_conversion_filter_primitives", phase: "svg_conversion", overridable: false, minimumValue: 1),
         "max_svg_conversion_subroots": MermanResourceLimitMetadata(id: "max_svg_conversion_subroots", phase: "svg_conversion", overridable: false, minimumValue: 1),
         "max_nested_svg_images": MermanResourceLimitMetadata(id: "max_nested_svg_images", phase: "svg_conversion", overridable: false, minimumValue: 1),
-        "svg_backend_tree_nodes": MermanResourceLimitMetadata(id: "svg_backend_tree_nodes", phase: "svg_conversion", overridable: false, minimumValue: 1),
     ]
 }

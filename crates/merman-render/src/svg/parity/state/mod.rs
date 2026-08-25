@@ -1,15 +1,10 @@
 use super::*;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
-use std::rc::Rc;
 mod context;
 mod edge;
 mod node;
 mod rough_cache;
-#[cfg(test)]
-mod rough_dispatch_tests;
-#[cfg(test)]
-mod rough_lifecycle_probe;
 pub(in crate::svg::parity) mod roughjs;
 mod style;
 mod viewport;
@@ -30,8 +25,6 @@ use context::*;
 use edge::*;
 use node::*;
 use rough_cache::*;
-#[cfg(test)]
-use rough_lifecycle_probe::*;
 use style::*;
 use viewport::*;
 
@@ -47,7 +40,7 @@ fn state_transition_marker_id(diagram_id: &str, ordinal: usize) -> String {
 }
 
 struct StateRenderCtx<'a> {
-    diagram_id: String,
+    diagram_id: SvgDiagramId<'a>,
     diagram_look: String,
     hand_drawn_seed: roughr::core::RoughRandomness,
     html_labels: bool,
@@ -73,10 +66,6 @@ struct StateRenderCtx<'a> {
     style_plan: &'a crate::state::StateStylePlan,
     theme_receipt: RefCell<crate::state::StateThemeTerminalReceipt>,
     rough_cache: StateRoughCache,
-    // Keep this field after the operation cache. Rust drops fields in declaration order, so the
-    // test-only probe observes retained global/TLS state after operation-owned entries release.
-    #[cfg(test)]
-    rough_lifecycle_probe: StateRoughLifecycleOperationProbe,
 }
 
 mod render;

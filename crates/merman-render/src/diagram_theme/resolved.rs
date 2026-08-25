@@ -617,10 +617,6 @@ impl ResolvedThemeStyle {
         self.typography.computed()
     }
 
-    pub fn effect(&self) -> Option<&str> {
-        self.effect.value().map(String::as_str)
-    }
-
     pub const fn fill_resolution(&self) -> &ResolvedProperty<CanvasPaint> {
         &self.fill
     }

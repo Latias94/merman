@@ -45,6 +45,7 @@ serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
 
 [dev-dependencies]
 criterion = "0.8.2"
+merman-ascii-test-contracts = { path = "../merman-ascii-test-contracts" }
 merman-core.workspace = true
 merman-render.workspace = true
 merman-theme-authoring-fixtures = { path = "../merman-theme-authoring-fixtures" }

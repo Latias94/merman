@@ -269,6 +269,7 @@ test("coalesces callers and starts module import and WASM fetch together", async
 });
 
 function operation({
+  asciiEnabled = false,
   compareEnabled = true,
   diagnosticsEnabled = false,
   layoutEnvironment = {
@@ -280,6 +281,7 @@ function operation({
   viewport = { width: 800, height: 600 },
   workspace: workspaceOverrides = {},
 }: {
+  asciiEnabled?: boolean;
   compareEnabled?: boolean;
   diagnosticsEnabled?: boolean;
   layoutEnvironment?: FreezeRenderOperationInput["layoutEnvironment"];
@@ -293,6 +295,7 @@ function operation({
     ...workspaceOverrides,
   };
   return freezeRenderOperation({
+    asciiEnabled,
     compareEnabled,
     diagnosticsEnabled,
     layoutEnvironment,

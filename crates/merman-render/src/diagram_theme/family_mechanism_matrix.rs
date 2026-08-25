@@ -7,6 +7,7 @@ use crate::theme_route_cutover::{
     ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjectionSet, ThemeRouteCutoverSelector,
     ThemeRouteCutoverValue,
 };
+#[cfg(test)]
 use merman_theme_contract::{
     ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV2, ThemeSupportFacetV1,
 };
@@ -75,6 +76,7 @@ pub(crate) enum FamilyThemePaintKind {
 }
 
 impl FamilyThemePaintKind {
+    #[cfg(test)]
     const ALL: [Self; 6] = [
         Self::Clear,
         Self::Transparent,

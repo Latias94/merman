@@ -2715,7 +2715,7 @@ mod tests {
     }
 
     #[test]
-    fn pie_and_block_unqualified_stroke_retire_only_their_direct_projection() {
+    fn pie_and_block_static_stroke_routes_retire_their_direct_projection() {
         for (family, target, contribution_id) in [
             (
                 DiagramFamilyId::PIE,
@@ -2756,13 +2756,18 @@ mod tests {
             let legacy_bridge = bridge(&legacy_spec);
             let legacy = legacy_bridge.compile_for_family(family);
 
-            assert!(legacy.contribution_ids.contains(contribution_id));
-            assert!(legacy_bridge.owns_contribution_id(contribution_id));
+            if family == DiagramFamilyId::PIE {
+                assert!(legacy.contribution_ids.contains(contribution_id));
+                assert!(legacy_bridge.owns_contribution_id(contribution_id));
+            } else {
+                assert!(!legacy.contribution_ids.contains(contribution_id));
+                assert!(!legacy_bridge.owns_contribution_id(contribution_id));
+            }
         }
     }
 
     #[test]
-    fn block_unqualified_fill_retires_only_its_direct_projection() {
+    fn block_static_fill_routes_retire_their_direct_projection() {
         let contribution_id = "merman.legacy-family-theme.v1.block.node.fill";
         let direct_spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
@@ -2794,18 +2799,21 @@ mod tests {
         let legacy = legacy_bridge.compile_for_family(DiagramFamilyId::BLOCK);
 
         let parsed = parse(&legacy_spec, "block\n  A[\"Alpha\"]\n");
+        let baseline = parse(&DiagramThemeSpec::default(), "block\n  A[\"Alpha\"]\n");
         assert_eq!(
             parsed
                 .effective_config
                 .get_str("themeVariables.primaryColor"),
-            Some("#654321")
+            baseline
+                .effective_config
+                .get_str("themeVariables.primaryColor")
         );
         assert_eq!(
             parsed.effective_config.get_str("themeVariables.mainBkg"),
-            Some("#654321")
+            baseline.effective_config.get_str("themeVariables.mainBkg")
         );
-        assert!(legacy.contribution_ids.contains(contribution_id));
-        assert!(legacy_bridge.owns_contribution_id(contribution_id));
+        assert!(!legacy.contribution_ids.contains(contribution_id));
+        assert!(!legacy_bridge.owns_contribution_id(contribution_id));
     }
 
     #[test]

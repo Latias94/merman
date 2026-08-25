@@ -100,15 +100,13 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
 fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
     match parsed.model() {
         RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
-        RenderSemanticModel::Flowchart(model) => {
-            parsed.flowchart_render_label_sources().map_or_else(
-                || semantic_flowchart_requires_math(model),
-                |label_sources| {
-                    crate::flowchart::FlowchartRenderModelRef::new(model, label_sources)
-                        .requires_math()
-                },
-            )
-        }
+        RenderSemanticModel::Flowchart(model) => parsed.flowchart_render_context().map_or_else(
+            || semantic_flowchart_requires_math(model),
+            |render_context| {
+                crate::flowchart::FlowchartRenderModelRef::new(model, render_context)
+                    .requires_math()
+            },
+        ),
         RenderSemanticModel::Mindmap(model) => mindmap_requires_math(model),
         RenderSemanticModel::Sequence(model) => sequence_requires_math(model),
         _ => false,

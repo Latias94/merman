@@ -16,6 +16,7 @@ export {
   MermanInvalidTransportError,
   MermanLifecycleError,
   MermanMissingPlatformPackageError,
+  MermanNativeLoadError,
   MermanOperationError,
   MermanQueueSaturatedError,
   MermanUnsupportedTargetError,

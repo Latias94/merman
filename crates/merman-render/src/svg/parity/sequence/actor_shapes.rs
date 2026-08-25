@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::math_label::{record_sequence_katex_terminal_emission, sequence_katex_label};
 use crate::math::PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE;
@@ -14,6 +15,7 @@ pub(super) struct ActorLabelContext<'a> {
     typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     actor_index: Option<usize>,
+    checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 impl<'a> ActorLabelContext<'a> {
@@ -24,6 +26,7 @@ impl<'a> ActorLabelContext<'a> {
         typography: &'a crate::sequence::SequenceResolvedTypography,
         typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
         math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+        checkpoints: SequenceEmitCheckpoints<'a>,
     ) -> Self {
         Self {
             wrap_width_px,
@@ -33,6 +36,7 @@ impl<'a> ActorLabelContext<'a> {
             typography_receipt,
             math_sidecar,
             actor_index: None,
+            checkpoints,
         }
     }
 
@@ -43,8 +47,14 @@ impl<'a> ActorLabelContext<'a> {
         }
     }
 
-    fn write_actor(&self, out: &mut impl SvgOutput, cx: f64, cy: f64, actor: &SequenceActor) {
-        write_actor_label(out, cx, cy, &actor.description, actor.wrap, self);
+    fn write_actor(
+        &self,
+        out: &mut impl SvgOutput,
+        cx: f64,
+        cy: f64,
+        actor: &SequenceActor,
+    ) -> Result<()> {
+        write_actor_label(out, cx, cy, &actor.description, actor.wrap, self)
     }
 }
 
@@ -157,7 +167,7 @@ pub(super) fn write_collection_actor_shape(
     actor: &SequenceActor,
     placement_class: &str,
     label_ctx: &ActorLabelContext<'_>,
-) {
+) -> Result<()> {
     const OFFSET: f64 = 6.0;
     let (x, y) = node_left_top(n);
     let front_x = x - OFFSET;
@@ -183,7 +193,7 @@ pub(super) fn write_collection_actor_shape(
         h = fmt(n.height),
         name = escape_xml_display(actor_id)
     );
-    label_ctx.write_actor(out, cx, cy, actor);
+    label_ctx.write_actor(out, cx, cy, actor)
 }
 
 pub(super) fn write_queue_actor_shape(
@@ -192,7 +202,7 @@ pub(super) fn write_queue_actor_shape(
     actor: &SequenceActor,
     _placement_class: &str,
     label_ctx: &ActorLabelContext<'_>,
-) {
+) -> Result<()> {
     let (x, y) = node_left_top(n);
     let ry = n.height / 2.0;
     let rx = ry / (2.5 + n.height / 50.0);
@@ -221,7 +231,7 @@ pub(super) fn write_queue_actor_shape(
         ry = fmt(ry),
         h = fmt(n.height),
     );
-    label_ctx.write_actor(out, n.x, y_mid, actor);
+    label_ctx.write_actor(out, n.x, y_mid, actor)
 }
 
 pub(super) fn write_database_top_actor_shape(
@@ -230,7 +240,7 @@ pub(super) fn write_database_top_actor_shape(
     actor: &SequenceActor,
     actor_height: f64,
     label_ctx: &ActorLabelContext<'_>,
-) {
+) -> Result<()> {
     let (x, y) = node_left_top(n);
     let w = n.width / 3.0;
     let h = n.width / 3.0;
@@ -251,7 +261,7 @@ pub(super) fn write_database_top_actor_shape(
         w = fmt(w),
         h2 = fmt(h - 2.0 * ry),
     );
-    label_ctx.write_actor(out, n.x, y_text, actor);
+    label_ctx.write_actor(out, n.x, y_text, actor)
 }
 
 pub(super) fn write_database_bottom_actor_shape(
@@ -260,7 +270,7 @@ pub(super) fn write_database_bottom_actor_shape(
     actor: &SequenceActor,
     label_box_height: f64,
     label_ctx: &ActorLabelContext<'_>,
-) {
+) -> Result<()> {
     // Mermaid's database actor uses a cylinder glyph and updates the actor height after
     // the top render; the footer render uses that updated height (≈ width/3 + labelBoxHeight).
     let (x, y) = node_left_top(n);
@@ -284,7 +294,7 @@ pub(super) fn write_database_bottom_actor_shape(
         w = fmt(w),
         h2 = fmt(h - 2.0 * ry)
     );
-    label_ctx.write_actor(out, n.x, y_text, actor);
+    label_ctx.write_actor(out, n.x, y_text, actor)
 }
 
 pub(super) fn write_rect_actor_shape(
@@ -294,7 +304,7 @@ pub(super) fn write_rect_actor_shape(
     actor: &SequenceActor,
     placement_class: &str,
     label_ctx: &ActorLabelContext<'_>,
-) {
+) -> Result<()> {
     let (x, y) = node_left_top(n);
     let custom_class = actor_custom_class(actor);
     let fill = if custom_class.is_some() {
@@ -316,7 +326,7 @@ pub(super) fn write_rect_actor_shape(
         fill = escape_xml_display(fill),
         class = escape_attr(&class),
     );
-    label_ctx.write_actor(out, n.x, n.y, actor);
+    label_ctx.write_actor(out, n.x, n.y, actor)
 }
 
 fn actor_custom_class(actor: &SequenceActor) -> Option<&str> {
@@ -335,16 +345,22 @@ fn write_actor_label(
     label: &str,
     wrap: bool,
     ctx: &ActorLabelContext<'_>,
-) {
-    let wrapped_label = wrap.then(|| {
-        crate::sequence::wrap_sequence_label_like_mermaid_lines(
-            label,
-            ctx.measurer,
-            ctx.style,
-            ctx.wrap_width_px,
+) -> Result<()> {
+    ctx.checkpoints.checkpoint()?;
+    let wrapped_label = if wrap {
+        Some(
+            crate::sequence::wrap_sequence_label_like_mermaid_lines(
+                label,
+                ctx.measurer,
+                ctx.style,
+                ctx.wrap_width_px,
+                ctx.checkpoints.text(),
+            )?
+            .join("<br>"),
         )
-        .join("<br>")
-    });
+    } else {
+        None
+    };
     let rendered_label = wrapped_label.as_deref().unwrap_or(label);
 
     let prepared_math = ctx.actor_index.and_then(|actor_index| {
@@ -372,24 +388,14 @@ fn write_actor_label(
         );
         let raw_lines = crate::text::split_html_br_lines(rendered_label);
         let line_count = raw_lines.len();
-        write_actor_label_lines(
-            out,
-            cx,
-            cy,
-            raw_lines,
-            line_count,
-            ctx.style,
-            ctx.typography,
-            ctx.typography_receipt,
-            false,
-        );
+        write_actor_label_lines(out, cx, cy, raw_lines, line_count, ctx, false)?;
         out.push_str("</switch>");
         record_sequence_katex_terminal_emission(
             ctx.typography_receipt,
             crate::sequence::SequenceTextSurface::ParticipantLabel,
             &katex,
         );
-        return;
+        return ctx.checkpoints.checkpoint();
     }
 
     // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
@@ -402,26 +408,15 @@ fn write_actor_label(
             cy,
             raw_lines.iter().copied(),
             raw_lines.len(),
-            ctx.style,
-            ctx.typography,
-            ctx.typography_receipt,
+            ctx,
             true,
-        );
+        )?;
     } else {
         let raw_lines = crate::text::split_html_br_lines(label);
         let line_count = raw_lines.len();
-        write_actor_label_lines(
-            out,
-            cx,
-            cy,
-            raw_lines,
-            line_count,
-            ctx.style,
-            ctx.typography,
-            ctx.typography_receipt,
-            true,
-        );
+        write_actor_label_lines(out, cx, cy, raw_lines, line_count, ctx, true)?;
     }
+    ctx.checkpoints.checkpoint()
 }
 
 fn write_actor_label_lines<'a>(
@@ -430,24 +425,25 @@ fn write_actor_label_lines<'a>(
     cy: f64,
     raw_lines: impl IntoIterator<Item = &'a str>,
     line_count: usize,
-    style: &TextStyle,
-    typography: &crate::sequence::SequenceResolvedTypography,
-    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
+    ctx: &ActorLabelContext<'_>,
     record_receipt: bool,
-) {
+) -> Result<()> {
     let n = line_count.max(1) as f64;
     for (i, raw) in raw_lines.into_iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
         let dy = if n <= 1.0 {
             0.0
         } else {
-            (i as f64 - (n - 1.0) / 2.0) * style.font_size
+            (i as f64 - (n - 1.0) / 2.0) * ctx.style.font_size
         };
         let legacy_style = format!(
             "text-anchor: middle; font-size: {}px; font-weight: 400;",
-            fmt(style.font_size)
+            fmt(ctx.style.font_size)
         );
-        let inline_style = typography.terminal_style("text-anchor: middle", legacy_style);
+        let inline_style = ctx
+            .typography
+            .terminal_style("text-anchor: middle", legacy_style);
         let _ = write!(
             out,
             r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="{style}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
@@ -458,8 +454,9 @@ fn write_actor_label_lines<'a>(
             text = escape_xml_display(decoded.as_ref())
         );
         if record_receipt {
-            typography_receipt
+            ctx.typography_receipt
                 .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
         }
     }
+    ctx.checkpoints.checkpoint()
 }

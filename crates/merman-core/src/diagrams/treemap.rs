@@ -1,5 +1,5 @@
 use crate::diagrams::langium_common::{
-    LangiumCommonField, LangiumLexemeTrace, parse_langium_common, push_langium_common_editor_fact,
+    LangiumCommonField, parse_langium_common, push_langium_common_editor_fact,
 };
 use crate::diagrams::scan::{leading_whitespace_len, physical_line_at, split_ascii_indent};
 use crate::{
@@ -514,25 +514,15 @@ fn parse_treemap_outcome_controlled(
         },
         first_issue: None,
     };
-    let mut lexemes = LangiumLexemeTrace::default();
-
     let body = match treemap_body_start_controlled(code, control)? {
         Ok(Some(body)) => body,
-        Ok(None) => {
-            lexemes.attach(code, &mut outcome.parsed.editor_facts);
-            return Ok(outcome);
-        }
+        Ok(None) => return Ok(outcome),
         Err(issue) => {
-            if let Some(span) = issue.span {
-                lexemes.literal(span);
-            }
             outcome.record_issue(issue.message, issue.span);
-            lexemes.attach(code, &mut outcome.parsed.editor_facts);
             return Ok(outcome);
         }
     };
     outcome.parsed.present = true;
-    lexemes.keyword(body.header_span);
 
     let mut offset = body.offset;
     let mut saw_statement = false;
@@ -545,7 +535,6 @@ fn parse_treemap_outcome_controlled(
             trailing_whitespace_span = parsed.trailing_whitespace_span;
             let field = parsed.fact.field;
             let value = parsed.fact.value.clone();
-            lexemes.extend(parsed.lexemes.clone());
             push_langium_common_editor_fact(
                 &mut outcome.parsed.editor_facts,
                 &parsed.fact,
@@ -584,7 +573,7 @@ fn parse_treemap_outcome_controlled(
         let statement_start = offset + visible.len().saturating_sub(rest_with_trailing.len());
         let statement_span = SourceSpan::new(statement_start, statement_start + rest.len());
 
-        match parse_class_def(rest, statement_start, &mut lexemes) {
+        match parse_class_def(rest, statement_start) {
             Ok(Some(class_def)) => {
                 let style_issue = class_def.style_text.as_ref().and_then(|style| {
                     validate_class_def_style(&style.text)
@@ -598,7 +587,7 @@ fn parse_treemap_outcome_controlled(
                     outcome.record_issue(message, Some(span));
                 }
             }
-            Ok(None) => match parse_item_row(indent, rest, statement_start, &mut lexemes) {
+            Ok(None) => match parse_item_row(indent, rest, statement_start) {
                 Ok(item) => {
                     let row = TreemapRow::Item(item);
                     push_treemap_row_editor_facts(&mut outcome.parsed.editor_facts, &row);
@@ -618,7 +607,6 @@ fn parse_treemap_outcome_controlled(
     if let Some(span) = trailing_whitespace_span {
         outcome.record_issue("unexpected trailing whitespace-only line", Some(span));
     }
-    lexemes.attach(code, &mut outcome.parsed.editor_facts);
 
     control.checkpoint()?;
     Ok(outcome)
@@ -627,7 +615,6 @@ fn parse_treemap_outcome_controlled(
 #[derive(Debug, Clone, Copy)]
 struct TreemapBodyStart {
     offset: usize,
-    header_span: SourceSpan,
 }
 
 fn treemap_body_start_controlled(
@@ -655,7 +642,6 @@ fn treemap_body_start_controlled(
         }
         return Ok(Ok(Some(TreemapBodyStart {
             offset: next_offset,
-            header_span: SourceSpan::new(offset + leading, offset + leading + trimmed.len()),
         })));
     }
     Ok(Ok(None))
@@ -1030,7 +1016,6 @@ fn is_treemap_header(line: &str) -> bool {
 fn parse_class_def(
     line: &str,
     line_start: usize,
-    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<Option<ClassDefStatement>, String> {
     let Some(after_keyword) = line.strip_prefix("classDef") else {
         return Ok(None);
@@ -1042,7 +1027,6 @@ fn parse_class_def(
     {
         return Ok(None);
     }
-    lexemes.keyword(SourceSpan::new(line_start, line_start + "classDef".len()));
     if after_keyword.is_empty() {
         return Err("expected class name".to_string());
     }
@@ -1055,7 +1039,6 @@ fn parse_class_def(
         line_start + class_start,
         line_start + class_start + class_name.len(),
     );
-    lexemes.identifier(class_name_span);
 
     let style_input = tail.trim_start();
     let style_input_start = line.len().saturating_sub(style_input.len());
@@ -1075,13 +1058,6 @@ fn parse_class_def(
             span: SourceSpan::new(start, start + style.len()),
         })
     };
-    if let Some(style) = style_text.as_ref() {
-        lexemes.style(style.span);
-    }
-    if let Some(semi) = semicolon {
-        let start = line_start + style_input_start + semi;
-        lexemes.delimiter(SourceSpan::new(start, start + 1));
-    }
     if !trailing.trim().is_empty() {
         return Err("unexpected tokens after classDef".to_string());
     }
@@ -1100,7 +1076,6 @@ fn parse_item_row(
     indent: usize,
     line: &str,
     line_start: usize,
-    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<ItemRow, String> {
     let mut p = Parser::new(line);
     p.skip_ws();
@@ -1121,19 +1096,10 @@ fn parse_item_row(
             line_start + name_token_end.saturating_sub(quote_len),
         ),
     };
-    lexemes.string(SourceSpan::new(
-        line_start + name_token_start,
-        line_start + name_token_end,
-    ));
     p.skip_ws();
 
     // Section: "Name" (:::class)?
-    let class_delimiter_start = p.pos;
     if p.try_consume_str(":::") {
-        lexemes.delimiter(SourceSpan::new(
-            line_start + class_delimiter_start,
-            line_start + class_delimiter_start + 3,
-        ));
         p.skip_ws();
         let selector_start = p.pos;
         let (cls, _) = parse_id2(p.rest()).ok_or_else(|| "expected class selector".to_string())?;
@@ -1142,7 +1108,6 @@ fn parse_item_row(
             line_start + selector_start,
             line_start + selector_start + cls.len(),
         );
-        lexemes.identifier(selector_span);
         p.skip_ws();
         if !p.eof() {
             return Err("unexpected tokens after section".to_string());
@@ -1161,12 +1126,7 @@ fn parse_item_row(
     }
 
     // Leaf: "Name" : 10 (:::class)?
-    let value_delimiter_start = p.pos;
     if p.try_consume(':') || p.try_consume(',') {
-        lexemes.delimiter(SourceSpan::new(
-            line_start + value_delimiter_start,
-            line_start + value_delimiter_start + 1,
-        ));
         p.skip_ws();
         let value_start = p.pos;
         let token = p
@@ -1177,18 +1137,11 @@ fn parse_item_row(
             line_start + value_start + token.len(),
         );
         let Some(value) = parse_number2_value(&token) else {
-            lexemes.literal(value_span);
             return Err("expected number".to_string());
         };
-        lexemes.number(value_span);
         p.skip_ws();
         let mut class_selector = None;
-        let class_delimiter_start = p.pos;
         if p.try_consume_str(":::") {
-            lexemes.delimiter(SourceSpan::new(
-                line_start + class_delimiter_start,
-                line_start + class_delimiter_start + 3,
-            ));
             p.skip_ws();
             let selector_start = p.pos;
             let (cls, _) =
@@ -1198,7 +1151,6 @@ fn parse_item_row(
                 line_start + selector_start,
                 line_start + selector_start + cls.len(),
             );
-            lexemes.identifier(selector_span);
             class_selector = Some(SpannedText {
                 span: selector_span,
                 text: cls,
@@ -1875,24 +1827,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         );
     }
 
-    fn assert_treemap_lexeme(
-        facts: &EditorSemanticFacts,
-        source: &str,
-        kind: crate::EditorLexemeKind,
-        span: SourceSpan,
-    ) {
-        assert!(
-            facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == kind
-                    && lexeme.span() == span
-                    && source.get(span.start..span.end).is_some()
-            }),
-            "missing {kind:?} lexeme for {:?} at {span:?}: {:?}",
-            source.get(span.start..span.end),
-            facts.lexemes()
-        );
-    }
-
     #[test]
     fn treemap_recoverable_outcome_keeps_error_prefix_and_later_safe_lines() {
         let text = concat!(
@@ -1928,83 +1862,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 .contains("unexpected tokens after classDef")
         }));
 
-        for (kind, token) in [
-            (crate::EditorLexemeKind::String, "\"Broken\""),
-            (crate::EditorLexemeKind::Number, "12"),
-            (crate::EditorLexemeKind::Keyword, "classDef"),
-            (crate::EditorLexemeKind::Identifier, "hot"),
-            (crate::EditorLexemeKind::Style, "fill:#f00"),
-            (crate::EditorLexemeKind::String, "\"After\""),
-        ] {
-            let start = text.find(token).expect("test token");
-            assert_treemap_lexeme(
-                &facts,
-                text,
-                kind,
-                SourceSpan::new(start, start + token.len()),
-            );
-        }
-
-        let broken_start = text.find("\"Broken\"").expect("broken row");
-        let colon = broken_start + "\"Broken\"".len();
-        assert_treemap_lexeme(
-            &facts,
-            text,
-            crate::EditorLexemeKind::Delimiter,
-            SourceSpan::new(colon, colon + 1),
-        );
-        let class_delimiter = text.find(":::").expect("class delimiter");
-        assert_treemap_lexeme(
-            &facts,
-            text,
-            crate::EditorLexemeKind::Delimiter,
-            SourceSpan::new(class_delimiter, class_delimiter + 3),
-        );
-        let semicolon = text.find(';').expect("classDef terminator");
-        assert_treemap_lexeme(
-            &facts,
-            text,
-            crate::EditorLexemeKind::Delimiter,
-            SourceSpan::new(semicolon, semicolon + 1),
-        );
-
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "After"));
-    }
-
-    #[test]
-    fn treemap_crlf_lexemes_keep_original_utf8_byte_spans() {
-        let text = "treemap-beta\r\n\"根\": 12:::hot\r\n";
-        let facts = crate::family::test_support::editor_facts(
-            parse_treemap_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-        assert_eq!(
-            facts.completeness,
-            crate::EditorSemanticCompleteness::Complete
-        );
-
-        for (kind, token) in [
-            (crate::EditorLexemeKind::Keyword, "treemap-beta"),
-            (crate::EditorLexemeKind::String, "\"根\""),
-            (crate::EditorLexemeKind::Number, "12"),
-            (crate::EditorLexemeKind::Identifier, "hot"),
-        ] {
-            let start = text.find(token).expect("test token");
-            assert_treemap_lexeme(
-                &facts,
-                text,
-                kind,
-                SourceSpan::new(start, start + token.len()),
-            );
-        }
-
-        assert!(
-            facts
-                .lexemes()
-                .iter()
-                .all(|lexeme| { !text[lexeme.span().start..lexeme.span().end].contains('\r') })
-        );
     }
 
     #[test]

@@ -6,12 +6,28 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [Unreleased]
 
+### Added
+
+- Added `MermanOperationControl` with cross-thread cooperative cancellation, optional relative
+  timeouts, cancellation state inspection, and idempotent release. Both `Merman.execute` and
+  `MermanEngine.execute` retain their existing overloads and add controlled dispatch overloads.
+- Added structured `MermanCancelledDetails` projection for requested cancellation and deadline
+  expiry. Android JNI transport API 2 owns the opaque control-token registry and controlled native
+  method set.
+- Added lossless `MermanExactResourceErrorDetails` for the complete native unsigned 64-bit count
+  range. Existing `resourceDetails` remains available as a signed-`Long` compatibility projection;
+  migrate overflow-sensitive consumers to `exactResourceDetails`.
+
 ### Breaking changes
 
 - The default AAR now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated helper methods remain stable; unavailable operations return typed missing-capability or unsupported-operation errors. Custom source builds may enable the omitted capabilities.
 - Moved compiled visual styling to the closed `theme` preset-or-spec union, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `presentation`, `host_theme`, and presentation-profile inputs are rejected; use `themeCatalogJson()` for open-ended compiled-theme discovery.
 - Advanced Options JSON to schema `3`; regenerate Kotlin helpers and use `theme`, `raster.matte`, and `pdf.page_paint`. Published schema `2` requests are rejected rather than partially translated.
 - Analysis facts now use schema 2 and no longer include the unused Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact.
+- ASCII capability records now expose independent semantic coverage and primary projection fields,
+  and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and
+  diagnostic payloads also follow the expanded six-phase renderer contract; upgrade Kotlin and
+  native slices together.
 
 ### Changed
 

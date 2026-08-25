@@ -1,0 +1,466 @@
+# Tree-sitter 0.26 Mermaid Ecosystem and Distribution Audit
+
+**Evidence access date:** 2026-08-16
+
+**Tree-sitter baseline:** `v0.26.12` (`808e4b1fc06e269a107c4bd8bd936cc6fde18b00`)
+
+**Scope:** official Tree-sitter documentation, CLI source and workflows; canonical Tree-sitter
+grammar repositories; official Neovim/nvim-treesitter, Helix, Zed, and Monaco documentation or
+source; and the checked-in `distribution/tree-sitter-mermaid` package.
+
+> **Implementation note (2026-08-17):** Sections that describe the local package record the
+> pre-refactor audit baseline from 2026-08-16. The accepted post-audit boundary and current package
+> contract live in ADR-0083 and `distribution/tree-sitter-mermaid/README.md`.
+
+This report deliberately separates **Facts** (directly supported by the cited source or the local
+tree) from **Recommendations** (the proposed Merman release and adoption policy). Verifiable raw
+URLs are listed in the source ledger, with commit pins wherever the source owner provides them.
+
+## Executive conclusion
+
+### Facts
+
+1. `distribution/tree-sitter-mermaid` already contains the hard part of a language package: an
+   authored grammar, committed generated C/JSON artifacts, an external C scanner, Rust and Node
+   bindings, a C header, a language WASM, four query profiles, and extensive clean-consumer and
+   downstream tests.
+2. It is intentionally not publishable today: npm has `private: true`, Cargo has `publish = false`,
+   and the release workflow keeps `tree-sitter-mermaid` in dry-run-only mode. Separately,
+   `tree-sitter.json` disables CLI maintenance of the checked-in C, Node, and Rust bindings; those
+   booleans control `tree-sitter init`, not registry publication.
+3. The Tree-sitter 0.26.12 release model is not “one package for every runtime.” A grammar normally
+   produces a crates.io language crate, an npm grammar package with Node prebuilds, portable C
+   source/build metadata, and one grammar-specific WASM. `web-tree-sitter` is the separate generic
+   browser runtime; the npm `tree-sitter` package is the separate native Node runtime.
+4. An additional TypeScript grammar wrapper is neither standard nor necessary. The official
+   0.26.12 Node scaffold uses JavaScript plus `bindings/node/index.d.ts`; browser consumers load the
+   grammar WASM directly through `web-tree-sitter`.
+5. Neovim/nvim-treesitter, Helix, and Zed consume a grammar repository and a pinned revision, then
+   own editor-specific query placement. They do not consume the crates.io package, and Helix/Zed do
+   not need Merman's prebuilt grammar WASM.
+6. Monaco has generic tokenizer and semantic-token provider APIs, but no first-party Tree-sitter
+   adapter in the inspected official source. A Monaco integration is therefore application code,
+   not a grammar-package requirement.
+
+### Recommendations
+
+1. Make the language ABI an explicit release gate. Prefer ABI 15 for v0.1 after the existing
+   downstream suite passes against it: ABI 15 is the Tree-sitter 0.26.12 default, and the current
+   nvim-treesitter contribution policy requires a committed `parser.c` to support the latest ABI.
+   Retain ABI 14 only if validation finds a concrete compatibility blocker, then document the
+   exception and override every generation/release job explicitly.
+2. Publish one versioned grammar release across GitHub, crates.io, and npm. The npm package should
+   contain native Node prebuilds and a root-level `tree-sitter-mermaid.wasm`; do not create a second
+   TypeScript or browser-wrapper package for v0.1.
+3. Keep the authoritative source in the Merman monorepo initially. Use a custom subdirectory-aware
+   release workflow. Introduce a read-only standalone release mirror only if registry ownership or
+   downstream policy requires a root-layout repository.
+4. Treat Neovim/nvim-treesitter, Helix, and Zed updates as post-release adoption work pinned to the
+   released commit. Treat Monaco integration as optional product work, not a release blocker.
+
+## 1. Canonical Tree-sitter 0.26 grammar repository
+
+### Facts: source, scaffold, and generated layout
+
+`tree-sitter init` establishes a repository that can be consumed from several host languages;
+`tree-sitter generate` reads `grammar.js` or `grammar.json` and writes generated parser artifacts
+to `src/` by default. The official CLI and current canonical JSON/JavaScript grammars converge on
+this shape. (Sources: TS-INIT, TS-GENERATE, JSON-ROOT, JS-ROOT.)
+
+| Ownership | Canonical files | Meaning |
+| --- | --- | --- |
+| Authored | `grammar.js`, optional `src/scanner.c` or `src/scanner.cc`, `queries/*.scm`, `test/corpus/**`, `README.md`, license | The grammar and consumer-facing query contract. The external scanner is source, not generated parser output. |
+| Configuration | `tree-sitter.json` | Grammar name/scope/path, file detection, query paths, package metadata, and which language bindings `tree-sitter init` maintains. Multiple grammars may share one repository. |
+| Generated by `tree-sitter generate` | `src/grammar.json`, `src/node-types.json`, `src/parser.c`, `src/tree_sitter/{parser.h,alloc.h,array.h}` | Portable parser implementation and public node schema. `src/scanner.c` remains authored. |
+| Scaffolded/updated by `tree-sitter init` | `Cargo.toml`, `package.json`, `binding.gyp`, `bindings/{c,node,rust,...}`, `Makefile`, `CMakeLists.txt`, language-specific tests | Host-language packaging and C build/install surfaces. `tree-sitter init --update` is the official maintenance path for stale scaffold files. |
+| Release artifacts | root `tree-sitter-<language>.wasm`, source tarball, registry packages, Node `prebuilds/**` | Produced by `tree-sitter build --wasm` and the official reusable release workflows. |
+
+The `tree-sitter.json` `bindings` booleans are not runtime feature flags. They tell `tree-sitter
+init` which binding files it should create or update. A released repository should therefore make
+those booleans agree with the binding surfaces it claims to maintain. (Source: TS-INIT.)
+
+Tree-sitter 0.26.12 generates ABI 15 by default but accepts ABI 14 as an explicit target. The
+0.26.12 runtime accepts language ABIs 13 through 15. The current Merman parser is ABI 14, so it is
+inside that runtime compatibility window. (Sources: TS-GENERATE, TS-API.)
+
+The v0.26.12 npm scaffold's `files` allowlist includes `prebuilds/**`, `bindings/node/*`,
+`src/**`, `queries/*`, and root `*.wasm`, in addition to the grammar/config/build files. Its
+`install` script runs `node-gyp-build`, and its native `tree-sitter ^0.25.0` peer is optional.
+(Source: TS-TEMPLATE-NPM.)
+
+### Facts: publication products are distinct
+
+| Product | Standard content and consumer | Runtime relationship |
+| --- | --- | --- |
+| Rust grammar crate | `LanguageFn`, `build.rs`, generated C/scanner, node types, and optionally query constants. A consumer converts `LANGUAGE` into `tree_sitter::Language`. | The grammar crate normally depends on `tree-sitter-language`, not on the full Rust runtime. The application chooses its `tree-sitter` runtime version. |
+| npm grammar package for Node | `binding.gyp`, `bindings/node/index.js`, `index.d.ts`, generated source, queries, platform/architecture `prebuilds/**`, and root `*.wasm`. The scaffold's install script runs `node-gyp-build`, selecting a prebuild when available and retaining a source-build path. | The native `tree-sitter` npm runtime is separate. The official 0.26.12 grammar template declares it as an optional peer at `^0.25.0`; the current official Node runtime is `0.25.1`. Version numbers need not match the CLI as long as the generated language ABI is compatible. |
+| C source/build surface | Generated parser/scanner, public header, `Makefile`, `CMakeLists.txt`, and pkg-config metadata. | Applications link the grammar library with the Tree-sitter C runtime. The official GitHub release supplies a complete source tarball rather than a matrix of grammar-specific C binary packages. |
+| Grammar WASM | A root `tree-sitter-<language>.wasm` built by `tree-sitter build --wasm`. | It is loaded by a WASM-capable host such as `web-tree-sitter`, Neovim built with Wasmtime, or a host-specific WASM loader. |
+| `web-tree-sitter` | Generic JS/CJS bindings, `web-tree-sitter.wasm`, declarations, parser/query/tree APIs. | It is the browser/WASM runtime and is published independently from every grammar. A grammar package should not vendor or rename this runtime as though it were language-specific. |
+
+Sources: TS-TEMPLATE-RUST, TS-TEMPLATE-NPM, TS-TEMPLATE-NODE, TS-TEMPLATE-DTS,
+TS-TEMPLATE-CMAKE, TS-BUILD, TS-WEB, NODE-RUNTIME, JSON-ROOT, and JS-ROOT.
+
+The official grammar release workflow builds each grammar WASM, creates a source tarball, and
+attaches both to a GitHub release. The official npm workflow builds Node prebuilds on Windows,
+Linux, and macOS (including arm runners), builds grammar WASM, moves the WASM to the package root,
+and runs `npm publish`. The GitHub, npm, and crates workflows default to ABI 15. They also assume
+that `tree-sitter.json`, `package.json`, and `Cargo.toml` are usable at repository root. (Sources:
+TS-WORKFLOW-RELEASE, TS-WORKFLOW-NPM, TS-WORKFLOW-CRATES.)
+
+The official publishing guide recommends GitHub releases, crates.io, npm, and PyPI. Merman has no
+Python binding today, so PyPI belongs outside the minimum release matrix below: adding an
+otherwise-unneeded binding solely to match the generic publication list would widen the supported
+API surface. (Source: TS-PUBLISHING.)
+
+Canonical `tree-sitter-json` and `tree-sitter-javascript` confirm the practical layout: committed
+generated source, `tree-sitter.json`, Rust `LanguageFn`, Node JavaScript plus declarations, CMake,
+and a tag-triggered workflow that delegates to the official GitHub/npm/crates publishing jobs.
+They also demonstrate that real grammar repositories may lag the newest scaffold's ESM style;
+CommonJS versus ESM is a package compatibility choice, not a reason to add TypeScript source.
+(Sources: JSON-CONFIG, JSON-NPM, JSON-RUST, JSON-PUBLISH, JS-CONFIG, JS-NPM, JS-RUST,
+JS-PUBLISH.)
+
+### Facts: a TypeScript wrapper is not the standard grammar boundary
+
+The Tree-sitter 0.26.12 scaffold contains:
+
+- a JavaScript Node entry point that loads the native addon;
+- `bindings/node/index.d.ts` for TypeScript consumers;
+- query constants or query files; and
+- a root grammar WASM for `Language.load(...)`.
+
+It does not generate an `index.ts` grammar wrapper. `web-tree-sitter` accepts a URL, path, or byte
+buffer for the language WASM. (Sources: TS-TEMPLATE-NODE, TS-TEMPLATE-DTS, TS-WEB.)
+
+### Recommendation: keep the public language boundary small
+
+Publish JavaScript plus `index.d.ts` for Node and expose the WASM as an asset. Do not add a
+grammar-specific TypeScript runtime layer merely to call `Parser.init()` and `Language.load()`.
+Such a wrapper would own bundler URL resolution, async singleton state, worker policy, and error
+semantics that belong to an application or a separately justified integration package.
+
+## 2. How editors consume grammars
+
+### Facts
+
+| Consumer | Grammar acquisition and build | Query ownership | Current Mermaid state on 2026-08-16 |
+| --- | --- | --- | --- |
+| Neovim core 0.12 | Searches `parser/{lang}.*` on `runtimepath` or loads an explicit path. Native shared libraries work normally; `.wasm` works only when Neovim is built with `ENABLE_WASMTIME`. | Reads `queries/<lang>/<purpose>.scm` from `runtimepath`. Filetype-to-language registration is separate. | Core has a generic loading contract rather than a grammar registry. |
+| nvim-treesitter main | `install_info` supports a Git `url`, pinned `revision`, monorepo `location`, and an optional `queries` directory. It compiles committed `src/parser.c` and requires an external scanner to be C. Its contribution policy requires a committed parser to support the latest ABI; preferred Tier 1 parsers additionally make regular semver releases and provide WASM release artifacts. | Copies or links the configured query directory into its runtime. Its own queries remain the maintained editor contract. | Commit `074aa4422bf029908338e855d0c0f71470a971bb` (2026-08-15) still points Mermaid to `monaqa/tree-sitter-mermaid@90ae195...`, tier 2, with only the nvim-treesitter-owned query set. |
+| Helix | `languages.toml` declares `source.git`, `rev`, and optional `subpath`; `hx --grammar fetch/build` clones the revision and compiles `src/parser.c` plus an optional C/C++ scanner into a platform shared library. | Reads queries from Helix's own `runtime/queries/<language>/`. Grammar-repository query files are not consumed automatically. | Helix commit `079a789...` still points Mermaid to `monaqa/tree-sitter-mermaid@d787c662...` and has a Helix-owned `runtime/queries/mermaid/highlights.scm`. |
+| Zed | An extension's `[grammars.<name>]` declares `repository`, `rev`, and optional `path`. Zed checks out that source and compiles `src/parser.c` plus `src/scanner.c`, when present, to a grammar WASM with WASI SDK Clang. | Language metadata and queries live under the extension's `languages/<language>/` directory. | The official extension index contains a Mermaid extension gitlink, but changing grammar source/query behavior is extension work, not npm or crates.io work. |
+
+Sources: NVIM-CORE, NVIM-LANGUAGE, NVIM-TS-README, NVIM-TS-CONTRIBUTING,
+NVIM-TS-PARSERS, HELIX-LANGUAGES, HELIX-CONFIG, HELIX-BUILDER, ZED-LANGUAGES,
+ZED-MANIFEST, ZED-BUILDER, ZED-EXTENSIONS-INDEX.
+
+Two consequences follow directly from these contracts:
+
+1. Publishing Rust or npm packages does not update editor users. Each editor integration must pin
+   the released repository revision and place its own queries where that editor expects them.
+2. A monorepo is technically consumable. nvim-treesitter has `location`, Helix has `subpath`, and
+   Zed has `path`. A standalone grammar repository is an ecosystem-convenience decision, not a
+   hard editor requirement.
+
+### Recommendations
+
+- For nvim-treesitter, propose an install entry pinned to the release commit with
+  `location = "distribution/tree-sitter-mermaid"` and
+  `queries = "distribution/tree-sitter-mermaid/queries/neovim"`, then upstream the reviewed query
+  set to nvim-treesitter's runtime as required by its maintenance policy.
+- For Helix, change the Mermaid grammar source to the Merman repository/release revision with
+  `subpath = "distribution/tree-sitter-mermaid"`; copy and adapt the package's Helix profile into
+  `runtime/queries/mermaid/` in the same Helix change.
+- For Zed, update the Mermaid extension manifest to the Merman repository/revision and
+  `path = "distribution/tree-sitter-mermaid"`; keep `config.toml` and query files in the extension.
+- Do not make editor acceptance a prerequisite for publishing the grammar artifacts. Do require
+  released, immutable parser bytes before opening downstream updates.
+
+## 3. Browser, Monaco, and Tree-sitter Playground
+
+### Facts: browser runtime and offset model
+
+A browser consumer pays for two WASM modules: the generic `web-tree-sitter.wasm` runtime and the
+grammar-specific WASM, plus the JavaScript binding. Initialization is asynchronous: first
+`Parser.init()`, then `Language.load(...)`, then `parser.setLanguage(...)`. The loader supports
+streaming compilation with an ArrayBuffer fallback and requires the application/bundler to serve
+the runtime and grammar assets at resolvable URLs. (Sources: TS-WEB, TS-WEB-LANGUAGE.)
+
+The web binding parses JavaScript strings as UTF-16LE and converts Tree-sitter's internal byte
+offsets back to UTF-16 code-unit offsets at the JavaScript boundary. Monaco's
+`IModelContentChange` exposes `rangeOffset`, `rangeLength`, and replacement `text` in the model's
+JavaScript string coordinate space. **Inference from these official contracts:** the exposed
+web-tree-sitter indices and Monaco offsets align, so an adapter does **not** need a UTF-8
+byte-offset conversion layer. It still must compute/edit row-column points, apply multi-change
+batches correctly, suppress stale async results, and dispose old trees. (Sources: TS-WEB-MARSHAL,
+TS-WEB-NODE-UTF16-TEST, TS-WEB-PARSER-UTF16-TEST, MONACO-CONTENT-CHANGE.)
+
+The inspected Monaco source contains no first-party Tree-sitter adapter. Monaco officially exposes
+three relevant generic surfaces:
+
+- `setMonarchTokensProvider` for a low-cost declarative tokenizer;
+- `setTokensProvider` for a manual top-down tokenizer; and
+- `registerDocumentSemanticTokensProvider`, which complements a top-down tokenizer.
+
+The official semantic-token documentation recommends registering both semantic tokens and a
+top-down tokenizer for the best user experience. (Sources: MONACO-MONARCH,
+MONACO-TOKENS, MONACO-SEMANTIC, MONACO-SOURCE, MONACO-SAMPLE-LANGUAGE,
+MONACO-SAMPLE-SEMANTIC.)
+
+Tree-sitter's own Playground uses CodeMirror and is a grammar-development product, not a Monaco
+integration. After a grammar WASM is built, `tree-sitter playground` serves an interactive
+CST/query UI; `--export` produces static playground files. It is useful for inspecting incremental
+trees, errors, named nodes, and query captures without designing a production editor adapter.
+(Sources: TS-PLAYGROUND, TS-PLAYGROUND-SOURCE.)
+
+### Facts: current local browser payload
+
+The checked-in Merman artifacts measured on 2026-08-16 are:
+
+| Asset | Raw bytes | `gzip -9` bytes | Notes |
+| --- | ---: | ---: | --- |
+| `wasm/tree-sitter-mermaid.wasm` | 2,905,679 | 396,179 | Grammar-specific asset. |
+| `web-tree-sitter@0.26.12/web-tree-sitter.wasm` | 201,104 | 80,328 | Generic runtime WASM; it should remain an external dependency. |
+| `web-tree-sitter@0.26.12/web-tree-sitter.js` | 153,666 | 31,196 | Generic JavaScript binding. |
+| **Essential Tree-sitter subtotal** | **3,260,449** | **507,703** | Excludes Monaco, application code, queries, source maps, HTTP overhead, and runtime heap. `gzip -9` is a local reference, not a CDN transfer guarantee. |
+
+This makes browser Tree-sitter reasonable for structural editor features, but expensive if the
+only requirement is basic Mermaid coloring.
+
+### Recommendations: choose the browser path by product need
+
+| Use case | Recommended path | Why |
+| --- | --- | --- |
+| Basic syntax coloring in Monaco | Monarch tokenizer | Lowest download, initialization, worker, and lifecycle cost. |
+| Semantic highlighting plus future CST features | `web-tree-sitter` in a worker; portable highlight query mapped to Monaco semantic tokens; retain a Monarch fallback | Reuses the grammar's structured captures while keeping UI work off the main thread and matching Monaco's documented provider model. |
+| Outline, folding, selection, injections, structural navigation | Add focused Monaco providers over the retained Tree-sitter tree | These benefits justify the grammar/runtime payload better than highlighting alone. Each provider should be admitted independently. |
+| Grammar development and query debugging | `tree-sitter playground` or a static exported Playground | Already supplied by the official CLI; no product-specific wrapper is required. |
+| Node-side parsing | Native `tree-sitter` plus the grammar's Node binding | The official web runtime explicitly notes that WASM is considerably slower than native Node bindings. |
+
+Do not ship a Monaco adapter in the first grammar release. First publish the standard WASM asset,
+then measure cold download/compile, worker startup, first parse, incremental edit latency, and peak
+heap against representative Mermaid documents. The current local size numbers are sufficient to
+reject an unconditional eager load, but not sufficient to choose final lazy-loading thresholds.
+
+## 4. Audit of `distribution/tree-sitter-mermaid`
+
+### Facts: what is already strong
+
+| Area | Current evidence |
+| --- | --- |
+| Grammar core | Authored modular `grammar.js`/`grammar/**`, committed `grammar.json`, `node-types.json`, `parser.c`, C external scanner, and generated helper headers. |
+| ABI and version pins | ABI 14; Tree-sitter CLI/Rust/web runtime `0.26.12`; native Node runtime `0.25.1`; package version `0.1.0`. This split matches the official runtime/package distinction. |
+| Rust binding | Uses the standard `tree_sitter_language::LanguageFn` pattern and compiles committed C/scanner source. |
+| Node binding | Uses the standard Tree-sitter N-API type tag, `binding.gyp`, `node-gyp-build`, JavaScript entry point, and declarations. |
+| WASM | A committed, loadable grammar WASM is receipt-bound and exercised with `web-tree-sitter`. |
+| Queries | Portable, Neovim, Helix, and Zed profiles exist with package-owned applicability/golden/downstream checks. |
+| Consumer evidence | The package smoke assembles clean npm and Cargo artifacts and loads Node, language-WASM, Rust, and C consumers without the grammar generator in the consumer. |
+| Legal/provenance | Package-local license bundle, notices, source identities, support metadata, and artifact receipts are present. |
+
+### Facts: public-release gaps
+
+| Gap | Evidence and impact |
+| --- | --- |
+| Publication is disabled | `package.json` is private, `Cargo.toml` has `publish = false`, and the independent release workflow sets `publish_admitted=false` for this package. No npm/GitHub grammar publish lane is admitted. |
+| Binding maintenance declaration is inconsistent | `bindings.c`, `bindings.node`, and `bindings.rust` are all `false` even though those bindings are checked in and tested. These are not publication switches, but `tree-sitter init --update` therefore does not own the surfaces the package claims. |
+| Node distribution is source-build-only | There are no tracked `prebuilds/**`, no official-style prebuild matrix, and no optional `tree-sitter` peer dependency. The clean-install smoke succeeds by compiling from source, which imposes a compiler/node-gyp toolchain on npm consumers. |
+| WASM path is nonstandard for the official npm workflow | The only grammar WASM is `wasm/tree-sitter-mermaid.wasm`; the official template and workflow package root `*.wasm`. `bindings/wasm/index.js` depends on Node's `node:path`, so it is a Node path helper, not a browser wrapper. |
+| C packaging is incomplete | The header and `.pc.in` exist, but there is no tracked package-root `Makefile` or `CMakeLists.txt`. C consumers have source, but not the canonical build/install surface described by `tree-sitter init`. |
+| The checked-in subtree is not standalone | Its Cargo manifest inherits edition, authors, repository, homepage, and Rust version from the Merman workspace. `cargo package -p tree-sitter-mermaid` can materialize a crates.io package from the workspace, but a raw subtree tarball or standalone mirror is not self-contained as checked in. |
+| Official reusable workflows cannot be used unchanged | They read `tree-sitter.json`, publish npm, and run Cargo from repository root. Merman has no root `tree-sitter.json`; using those workflows unchanged would address the wrong package/root and the official source-tarball job would include the whole monorepo. |
+| Editor profiles are not automatically distributed | The local profiles and harnesses prove compatibility, but current nvim-treesitter and Helix still pin `monaqa/tree-sitter-mermaid`, and Zed queries remain extension-owned. |
+| ABI selection is not an explicit release gate | The checked-in parser is ABI 14, while Tree-sitter 0.26.12 and the reusable workflows default to ABI 15. A job that inherits the default will silently change parser/WASM ABI; a job that hard-pins 14 will retain a version that creates friction with nvim-treesitter's latest-ABI contribution policy. |
+| Browser product policy is undocumented | The WASM works, but the public package has no standard root asset/export, cold-load budget, worker/lifecycle contract, or Monaco adapter. This is a product gap, not a parser correctness gap. |
+
+### Recommendations: close gaps without widening the product
+
+Priority 0, before any public tag:
+
+1. Resolve package ownership/naming and change npm/Cargo/release gates from dry-run-only to an
+   explicit admitted release state.
+2. Set `tree-sitter.json` binding ownership to `c: true`, `node: true`, and `rust: true`; keep
+   unsupported bindings false. Run the 0.26.12 scaffold update deliberately and review its diff
+   rather than copying every default language binding.
+3. Add canonical C `Makefile` and `CMakeLists.txt` surfaces. Validate an ABI 15 release candidate
+   across the existing downstream suite; retain ABI 14 only for a documented, reproduced
+   compatibility blocker.
+4. Publish Node prebuilds using the official matrix pattern, add the optional `tree-sitter` peer
+   contract compatible with the tested `0.25.1` runtime, and retain source-build fallback.
+5. Put `tree-sitter-mermaid.wasm` at npm/GitHub release root. The existing Node-only
+   `bindings/wasm` helper may remain as convenience, but it must not be documented as the browser
+   API.
+6. Build a subdirectory-aware release job that passes the selected ABI explicitly, produces a
+   grammar-only source tarball, publishes npm from `distribution/tree-sitter-mermaid`, publishes
+   the Cargo package from the workspace, and attaches the exact same receipt-bound WASM to the
+   GitHub tag.
+7. Re-run the existing clean-consumer smoke against the exact staged npm tarball, `.crate`, source
+   tarball, and release WASM rather than against parallel rebuilds.
+
+Priority 1, after the immutable release exists:
+
+1. Update nvim-treesitter, Helix, and the Zed Mermaid extension with the released commit and their
+   editor-owned queries.
+2. Add a small release-consumer page showing native Node, Rust, direct C, and
+   `web-tree-sitter` usage. Keep examples at the standard APIs; do not add a wrapper to make the
+   examples shorter.
+
+Priority 2, optional product work:
+
+1. Export an official Tree-sitter Playground for release candidates or documentation.
+2. Prototype a lazy worker-based Monaco semantic-token adapter and admit structural providers only
+   after browser measurements justify them.
+
+## 5. Minimum recommended release and consumer matrix
+
+| Surface | v0.1 minimum | Explicitly not required for v0.1 | Release gate |
+| --- | --- | --- | --- |
+| GitHub | Version tag; grammar-only source tarball; root ABI-15 `tree-sitter-mermaid.wasm` (or a documented ABI-14 compatibility exception); hashes/attestation; release notes naming Tree-sitter 0.26.12 and Mermaid baseline | Whole-monorepo source projection as the only grammar archive; uncontrolled ABI rebuilds | Clean extraction can build C and expose the committed queries/artifacts; the exact release ABI passes downstream compatibility tests. |
+| crates.io | `tree-sitter-mermaid` crate with `LanguageFn`, generated C/scanner, node types, portable queries, license/provenance | Runtime wrapper crate or bundled `tree-sitter` runtime | Clean Rust consumer loads the exact release ABI with `tree-sitter 0.26.12`. |
+| npm / Node | One `tree-sitter-mermaid` package; JavaScript entry; `index.d.ts`; Node prebuilds; generated source fallback; optional `tree-sitter ^0.25` peer; root grammar WASM | `index.ts`; a second “TypeScript grammar” package; Node-only platform packages unless size data later requires them | Clean install on the official OS/arch matrix; native parse/query smoke; source fallback smoke. |
+| C | Header, parser/scanner source, Makefile, CMake, pkg-config template in source/npm/crate artifacts | Per-platform C binary packages | Build/install/link smoke against the Tree-sitter C runtime. |
+| Browser | Same root grammar WASM consumed with external `web-tree-sitter@0.26.12`; documented lazy load | Vendored generic runtime; grammar-specific TS wrapper; mandatory Monaco integration | Real-browser load, parse, query, edit, and disposal smoke; recorded size/cold-start budget. |
+| Neovim/nvim-treesitter | Released repo/revision plus monorepo `location`; Neovim query profile reviewed in nvim-treesitter | crates.io/npm dependency | Parser compile/install and query smoke in pinned Neovim. |
+| Helix | Released repo/revision plus `subpath`; Helix-owned query update | Prebuilt Merman WASM or npm package | `hx --grammar fetch/build` and representative query behavior. |
+| Zed | Extension manifest repo/revision/path; extension-owned config and queries | Merman's prebuilt grammar WASM or Rust crate | Dev-extension compile and representative highlight/outline/indent smoke. |
+| Monaco | Optional worker adapter over the browser surface; semantic tokens first, then separately justified structure providers | Release-blocking first-party adapter | Separate product benchmark and browser QA, not grammar release CI. |
+
+The smallest coherent public product is therefore **one grammar version with five artifacts or
+interfaces**: GitHub source, GitHub/npm grammar WASM, crates.io language crate, npm Node grammar
+package, and portable C build source. Editor pins and Monaco integration are downstream consumers
+of that product, not additional grammar implementations.
+
+## 6. Source ledger
+
+All sources below were accessed on **2026-08-16**. Commit-pinned raw URLs are used where the owner
+provides source on GitHub.
+
+### Tree-sitter v0.26.12
+
+- **TS-INIT** — CLI init configuration, binding files, and `tree-sitter.json`:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/docs/src/cli/init.md
+- **TS-GENERATE** — generated layout and ABI 15 default / ABI 14 support:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/docs/src/cli/generate.md
+- **TS-BUILD** — native/WASM build behavior:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/docs/src/cli/build.md
+- **TS-PLAYGROUND** — local and static-export Playground command:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/docs/src/cli/playground.md
+- **TS-PLAYGROUND-SOURCE** — Playground packaging/serving implementation:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/crates/cli/src/playground.rs
+- **TS-PUBLISHING** — recommended GitHub/crates.io/npm/PyPI publication and semver policy:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/docs/src/creating-parsers/6-publishing.md
+- **TS-TEMPLATE-NPM** — npm files, prebuilds, root WASM, optional Node peer:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/crates/cli/src/templates/package.json
+- **TS-TEMPLATE-NODE** — standard JavaScript Node entry:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/crates/cli/src/templates/index.js
+- **TS-TEMPLATE-DTS** — standard TypeScript declaration surface:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/crates/cli/src/templates/index.d.ts
+- **TS-TEMPLATE-RUST** — standard Rust `LanguageFn` surface:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/crates/cli/src/templates/lib.rs
+- **TS-TEMPLATE-CMAKE** — canonical CMake build/install surface:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/crates/cli/src/templates/cmakelists.cmake
+- **TS-API** — runtime ABI 13-through-15 compatibility constants:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/lib/include/tree_sitter/api.h
+- **TS-WEB** — `web-tree-sitter` setup, grammar WASM acquisition, browser cautions, and Node native-performance note:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/lib/binding_web/README.md
+- **TS-WEB-LANGUAGE** — `Language.load` URL/buffer loading and streaming compilation:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/lib/binding_web/src/language.ts
+- **TS-WEB-MARSHAL** — UTF-16LE input and code-unit/byte conversion:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/lib/binding_web/lib/tree-sitter.c
+- **TS-WEB-NODE-UTF16-TEST** — official public node-position tests for characters occupying two UTF-16 code units:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/lib/binding_web/test/node.test.ts
+- **TS-WEB-PARSER-UTF16-TEST** — official parser input/progress tests for UTF-16 strings:
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter/808e4b1fc06e269a107c4bd8bd936cc6fde18b00/lib/binding_web/test/parser.test.ts
+
+### Official Tree-sitter publishing workflows
+
+- **TS-WORKFLOW-RELEASE** — GitHub source tarball/root WASM release, default ABI 15:
+  https://raw.githubusercontent.com/tree-sitter/workflows/10c66d66e558b37df92e2a8ec5321218a6547b04/.github/workflows/release.yml
+- **TS-WORKFLOW-NPM** — Node prebuild matrix, root WASM, npm publish, default ABI 15:
+  https://raw.githubusercontent.com/tree-sitter/workflows/10c66d66e558b37df92e2a8ec5321218a6547b04/.github/workflows/package-npm.yml
+- **TS-WORKFLOW-CRATES** — crates.io publication, default ABI 15:
+  https://raw.githubusercontent.com/tree-sitter/workflows/10c66d66e558b37df92e2a8ec5321218a6547b04/.github/workflows/package-crates.yml
+
+### Canonical grammar repositories and Node runtime
+
+- **JSON-ROOT / JSON-CONFIG / JSON-NPM / JSON-RUST / JSON-PUBLISH**:
+  https://github.com/tree-sitter/tree-sitter-json/tree/001c28d7a29832b06b0e831ec77845553c89b56d
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter-json/001c28d7a29832b06b0e831ec77845553c89b56d/tree-sitter.json
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter-json/001c28d7a29832b06b0e831ec77845553c89b56d/package.json
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter-json/001c28d7a29832b06b0e831ec77845553c89b56d/bindings/rust/lib.rs
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter-json/001c28d7a29832b06b0e831ec77845553c89b56d/.github/workflows/publish.yml
+- **JS-ROOT / JS-CONFIG / JS-NPM / JS-RUST / JS-PUBLISH**:
+  https://github.com/tree-sitter/tree-sitter-javascript/tree/58404d8cf191d69f2674a8fd507bd5776f46cb11
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter-javascript/58404d8cf191d69f2674a8fd507bd5776f46cb11/tree-sitter.json
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter-javascript/58404d8cf191d69f2674a8fd507bd5776f46cb11/package.json
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter-javascript/58404d8cf191d69f2674a8fd507bd5776f46cb11/bindings/rust/lib.rs
+  https://raw.githubusercontent.com/tree-sitter/tree-sitter-javascript/58404d8cf191d69f2674a8fd507bd5776f46cb11/.github/workflows/publish.yml
+- **NODE-RUNTIME** — official native Node runtime `0.25.1`:
+  https://raw.githubusercontent.com/tree-sitter/node-tree-sitter/d9c53278dd6d95db507772cef7e62b46888d8744/package.json
+  https://raw.githubusercontent.com/tree-sitter/node-tree-sitter/d9c53278dd6d95db507772cef7e62b46888d8744/README.md
+
+### Neovim and nvim-treesitter
+
+- **NVIM-CORE** — parser and query runtime paths, optional Wasmtime parser loading:
+  https://raw.githubusercontent.com/neovim/neovim/aaf57a053d3d623515a409ee3a5cc3539c94a936/runtime/doc/treesitter.txt
+- **NVIM-LANGUAGE** — native/WASM parser lookup and loading implementation:
+  https://raw.githubusercontent.com/neovim/neovim/aaf57a053d3d623515a409ee3a5cc3539c94a936/runtime/lua/vim/treesitter/language.lua
+- **NVIM-TS-README** — URL/revision/location/query installation contract:
+  https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/074aa4422bf029908338e855d0c0f71470a971bb/README.md
+- **NVIM-TS-CONTRIBUTING** — latest-ABI parser policy and Tier 1 release/WASM expectations:
+  https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/074aa4422bf029908338e855d0c0f71470a971bb/CONTRIBUTING.md
+- **NVIM-TS-PARSERS** — current Mermaid pin and tier:
+  https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/074aa4422bf029908338e855d0c0f71470a971bb/lua/nvim-treesitter/parsers.lua
+
+### Helix
+
+- **HELIX-LANGUAGES** — grammar `git`/`rev`/`subpath` documentation:
+  https://raw.githubusercontent.com/helix-editor/helix/079a789e8cb08ead67f19e1971a1b7438b37354b/book/src/languages.md
+- **HELIX-CONFIG** — current Mermaid grammar pin:
+  https://raw.githubusercontent.com/helix-editor/helix/079a789e8cb08ead67f19e1971a1b7438b37354b/languages.toml
+- **HELIX-BUILDER** — source fetch/build and Helix runtime query loading:
+  https://raw.githubusercontent.com/helix-editor/helix/079a789e8cb08ead67f19e1971a1b7438b37354b/helix-loader/src/grammar.rs
+
+### Zed
+
+- **ZED-LANGUAGES** — extension grammar registration and extension-owned query layout:
+  https://raw.githubusercontent.com/zed-industries/zed/b2d9c2e122fbc408d42276b4456243ba4f90f181/docs/src/extensions/languages.md
+- **ZED-MANIFEST** — grammar manifest `repository`/`rev`/`path` schema:
+  https://raw.githubusercontent.com/zed-industries/zed/b2d9c2e122fbc408d42276b4456243ba4f90f181/crates/extension/src/extension_manifest.rs
+- **ZED-BUILDER** — checkout and WASI compilation of `src/parser.c`/`src/scanner.c`:
+  https://raw.githubusercontent.com/zed-industries/zed/b2d9c2e122fbc408d42276b4456243ba4f90f181/crates/extension/src/extension_builder.rs
+- **ZED-EXTENSIONS-INDEX** — official extension index and Mermaid gitlink:
+  https://raw.githubusercontent.com/zed-industries/extensions/9b113e888d5811e32a7d7347ed629f14fb378519/.gitmodules
+
+### Monaco
+
+- **MONACO-SOURCE** — official source tree inspected for a first-party Tree-sitter adapter:
+  https://github.com/microsoft/monaco-editor/tree/7e432490f0cb319212da4b73a13c5ed986fca8f9
+- **MONACO-CONTENT-CHANGE** — `rangeOffset`, `rangeLength`, and `text`:
+  https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IModelContentChange.html
+- **MONACO-TOKENS** — manual token provider API:
+  https://microsoft.github.io/monaco-editor/typedoc/functions/editor_editor_api.languages.setTokensProvider.html
+- **MONACO-MONARCH** — Monarch token provider API:
+  https://microsoft.github.io/monaco-editor/typedoc/functions/editor_editor_api.languages.setMonarchTokensProvider.html
+- **MONACO-SEMANTIC** — semantic token provider API and recommendation to combine it with a top-down tokenizer:
+  https://microsoft.github.io/monaco-editor/typedoc/functions/editor_editor_api.languages.registerDocumentSemanticTokensProvider.html
+- **MONACO-SAMPLE-LANGUAGE** — official custom-language/Monarch example:
+  https://raw.githubusercontent.com/microsoft/monaco-editor/7e432490f0cb319212da4b73a13c5ed986fca8f9/website/src/website/data/playground-samples/extending-language-services/custom-languages/sample.js
+- **MONACO-SAMPLE-SEMANTIC** — official semantic-token provider example:
+  https://raw.githubusercontent.com/microsoft/monaco-editor/7e432490f0cb319212da4b73a13c5ed986fca8f9/website/src/website/data/playground-samples/extending-language-services/semantic-tokens-provider-example/sample.js
+
+## 7. Local evidence reviewed
+
+The audit inspected, without regenerating artifacts or running Cargo:
+
+- `distribution/tree-sitter-mermaid/tree-sitter.json`
+- `distribution/tree-sitter-mermaid/package.json`
+- `distribution/tree-sitter-mermaid/Cargo.toml`
+- `distribution/tree-sitter-mermaid/{binding.gyp,bindings/**,src/**,wasm/**,queries/**}`
+- `distribution/tree-sitter-mermaid/scripts/package_smoke.py`
+- `distribution/tree-sitter-mermaid/test/downstream/**`
+- `.github/workflows/{tree-sitter-mermaid.yml,release-independent-crate.yml}`
+- `docs/{development,release}/TREE_SITTER_MERMAID.md`
+
+No parser was generated, no Cargo command was run, and no publication action was performed for
+this research.

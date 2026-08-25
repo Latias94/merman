@@ -4,7 +4,7 @@ use crate::{BindingPayloadSchemaKey, ConstructorServiceKey, TargetKey};
 ///
 /// The Web package generator and the WASM producer share this value so a wrapper built for one
 /// incompatible surface cannot silently initialize another.
-pub const WEB_TRANSPORT_API_VERSION: u32 = 4;
+pub const WEB_TRANSPORT_API_VERSION: u32 = 5;
 
 /// Feature-independent facade exposure projected into one concrete artifact selection.
 ///
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn transport_exposure_registry_is_bijective_and_sorted() {
-        assert_eq!(WEB_TRANSPORT_API_VERSION, 4);
+        assert_eq!(WEB_TRANSPORT_API_VERSION, 5);
         assert_eq!(
             BindingTransportKey::ALL.len(),
             TRANSPORT_EXPOSURE_SPECS.len()

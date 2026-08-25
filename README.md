@@ -4,12 +4,15 @@
 
 [![CI status](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)](https://github.com/Latias94/merman/actions/workflows/ci.yml) [![merman on crates.io](https://img.shields.io/crates/v/merman.svg)](https://crates.io/crates/merman) [![Rust API documentation](https://docs.rs/merman/badge.svg)](https://docs.rs/merman) [![MIT or Apache 2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](#license-and-attribution)
 
-[Quick start](#quick-start) · [One-shot and reuse](#one-shot-and-repeated-rendering) · [Output targets](#output-targets) · [Cargo features](#cargo-features) · [Compatibility](#compatibility)
+[Quick start](#quick-start) · [One-shot and reuse](#one-shot-and-repeated-rendering) · [Output targets](#output-targets) · [Cargo features](#cargo-features) · [Ecosystem](#ecosystem) · [Compatibility](#compatibility)
 
 `merman` is the main Rust crate in this repository. It parses Mermaid source into a typed semantic
 model, computes layout, and renders SVG. Optional features add diagnostics, editor facts,
 ASCII/Unicode output, PNG, JPEG, and PDF. The native path does not start Node.js, Puppeteer,
 Chromium, or another JavaScript runtime.
+
+For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
+grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
 Merman currently follows `mermaid@11.16.1`. Its parser, layout, configuration, theming,
 sanitization, and SVG structure are checked against pinned Mermaid source and fixtures.
@@ -142,17 +145,19 @@ for the complete policy model.
 
 ```text
 Mermaid source
+    |-- tree-sitter-mermaid
+    |      `-- tolerant CST ---------------------> highlighting, folding, syntax selection
     |
-    v
-parser-owned semantic model
-    |-- diagnostics, fixes, and editor facts
-    |-- typed layout ----------------------------> Mermaid-style SVG
-    |-- validated SVG ---------------------------> PNG, JPEG, and PDF
-    `-- supported typed diagram models ----------> ASCII and Unicode
+    `-- Merman semantic parser
+           |-- typed model ----------------------> diagnostics, navigation, refactoring
+           |-- typed layout ---------------------> Mermaid-style SVG
+           |-- validated SVG --------------------> PNG, JPEG, and PDF
+           `-- supported typed diagram models ---> ASCII and Unicode
 ```
 
-The semantic model is shared by analysis and rendering. Binary export starts from validated SVG,
-not a browser screenshot.
+The two parsers have different contracts. Tree-sitter keeps useful syntax structure while a document
+is incomplete; Merman remains the strict semantic and rendering authority. The semantic model is
+shared by analysis and rendering. Binary export starts from validated SVG, not a browser screenshot.
 
 ## Rendered output
 
@@ -163,6 +168,41 @@ not a browser screenshot.
 These examples were rendered headlessly by `merman-cli`, which uses the same Rust parser and
 rendering pipeline. The [Playground] covers all 35 built-in diagram families.
 
+## Ecosystem
+
+Choose the surface that owns the job instead of pulling the complete renderer into every host:
+
+| Need | Start with |
+| --- | --- |
+| Parse, lay out, and render from Rust | `merman` |
+| Run shell commands, Markdown batches, linting, or `mmdc` compatibility | [`merman-cli`] |
+| Use WebAssembly in a browser or Worker | [Browser packages] |
+| Use native Node.js bindings | [Node.js package] |
+| Build incremental CSTs, syntax highlighting, folding, or selections | [`tree-sitter-mermaid`] on [crates.io] or [`@mermanjs/tree-sitter-mermaid`] on npm |
+| Add diagnostics, completion, navigation, and rename | [`merman-lsp`] or the [VS Code extension] |
+| Integrate C/C++, Python, Flutter, Android, Apple, Typst, or other delivery surfaces | [Package surface guide] |
+
+`tree-sitter-mermaid` is independently versioned because editor syntax trees and queries have a
+different compatibility contract from Merman's semantic model and renderer. Its [package README]
+covers Node.js, browser, Rust, C/C++, query, and downstream-editor integration.
+
+The [documentation index] covers architecture records, contributor procedures, parity evidence,
+and release operations. The [Typst package] and other independently delivered integrations remain
+listed in the [package surface guide].
+
+## Rustdoc integrations
+
+Merman offers two static-SVG paths for Rustdoc; neither loads JavaScript or fetches diagrams when a
+reader opens the generated documentation.
+
+| Choose | When |
+| --- | --- |
+| [`merman-cli` Rustdoc guide] | Generate and commit checked Markdown fragments without adding a renderer to the documented crate's Cargo graph |
+| [`merman-rustdoc`] | Render annotated Mermaid blocks during `cargo doc` through an opt-in procedural macro and native renderer closure |
+
+The dedicated guides cover configuration, CI freshness, docs.rs, packaging, generated ownership,
+and migration. The two paths are explicit alternatives; neither silently falls back to the other.
+
 ## Compatibility
 
 Merman aims for source-backed agreement in parsing, semantic models, layout, configuration,
@@ -172,22 +212,12 @@ Browser font fallback, `getBBox()` floats, `foreignObject`, HTML labels, and Rou
 can still produce documented differences where a robust headless equivalent is unavailable.
 Mermaid-style SVG may contain HTML labels. Use `SvgPipeline::resvg_safe()` or a typed PNG, JPEG, or
 PDF target when the consumer cannot render `foreignObject`.
+The resvg-safe fallback resolves supported typography from the original SVG/XHTML context before
+removing HTML; host styles that change font metrics should therefore enter the same pipeline before
+fallback generation. See the [fallback typography audit] for the bounded CSS subset and residuals.
 
 Read the [alignment dashboard], [SVG output pipeline], [rendering security guide], and [benchmark
 methodology] for the current evidence boundary.
-
-## Other packages in this repository
-
-This README covers the Rust library. The other products have separate guides:
-
-- Use [`merman-cli`] for shell commands, Markdown batches, linting, and `mmdc` compatibility.
-- Use the [browser packages] for WebAssembly and the [Node.js package] for native Node.js.
-- Use [`merman-lsp`] or the [VS Code extension] for language tooling.
-- The [package surface guide] lists C/C++, Python, Flutter, Android, and Apple bindings.
-- [`merman-rustdoc`] and the [Typst package] cover documentation-system integrations.
-
-The [documentation index] covers architecture records, contributor procedures, parity evidence,
-and release operations.
 
 ## Development
 
@@ -221,13 +251,19 @@ project or its maintainers.
 [resource and options guide]: https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md
 [alignment dashboard]: https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md
 [SVG output pipeline]: https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md
+[fallback typography audit]: https://github.com/Latias94/merman/blob/main/docs/alignment/RESVG_SAFE_FALLBACK_TYPOGRAPHY_AUDIT.md
 [rendering security guide]: https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md
 [benchmark methodology]: https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md
 [`merman-cli`]: https://github.com/Latias94/merman/tree/main/crates/merman-cli#readme
+[`merman-cli` Rustdoc guide]: https://github.com/Latias94/merman/tree/main/crates/merman-cli#rustdoc-fragments
 [Browser packages]: https://github.com/Latias94/merman/blob/main/platforms/web/README.md
 [Node.js package]: https://github.com/Latias94/merman/tree/main/platforms/node#readme
 [`merman-lsp`]: https://github.com/Latias94/merman/tree/main/crates/merman-lsp#readme
 [VS Code extension]: https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme
+[crates.io]: https://crates.io/crates/tree-sitter-mermaid
+[`@mermanjs/tree-sitter-mermaid`]: https://www.npmjs.com/package/@mermanjs/tree-sitter-mermaid
+[`tree-sitter-mermaid`]: https://github.com/Latias94/merman/tree/main/distribution/tree-sitter-mermaid#readme
+[package README]: https://github.com/Latias94/merman/tree/main/distribution/tree-sitter-mermaid#readme
 [Package surface guide]: https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md
 [`merman-rustdoc`]: https://github.com/Latias94/merman/tree/main/crates/merman-rustdoc#readme
 [Typst package]: https://github.com/Latias94/merman/tree/main/distribution/typst/merman#readme

@@ -2,14 +2,20 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 
 use crate::svg::fallback::PREPARED_TEXT_LABEL_DATA_ATTR;
-use crate::svg::pipeline::builtin::util::{SvgTagScanner, next_svg_quoted_attr, start_tag_name};
+use crate::svg::pipeline::builtin::util::{
+    SvgTagScanner, next_svg_quoted_attr_with_checkpoints, start_tag_name,
+};
 use crate::text::{PreparedTextLabelId, PreparedTextLabelLedgerEntry};
 use crate::{Error, Result};
+
+use super::context::SvgPostprocessExecution;
 
 pub(crate) fn strip_prepared_text_label_ids<'a>(
     svg: &'a str,
     ledger: &[PreparedTextLabelLedgerEntry],
+    execution: SvgPostprocessExecution<'_>,
 ) -> Result<Cow<'a, str>> {
+    execution.checkpoint()?;
     let expected = ledger
         .iter()
         .map(PreparedTextLabelLedgerEntry::id)
@@ -26,17 +32,19 @@ pub(crate) fn strip_prepared_text_label_ids<'a>(
     let mut scanner = SvgTagScanner::new(source);
     let mut out = None::<String>;
     let mut copied_until = 0usize;
+    let mut checkpoint = || execution.checkpoint();
 
-    while let Some(tag) = scanner.next() {
+    while let Some(tag) = scanner.next_with_checkpoints(&mut checkpoint)? {
         let Some(element_name) = start_tag_name(tag.raw()) else {
             continue;
         };
-        let stripped = strip_token_from_tag(
+        let stripped = strip_token_from_tag_with_checkpoints(
             tag.raw(),
             element_name,
             &expected,
             &mut seen_labels,
             &mut seen_svg_ids,
+            &mut checkpoint,
         )?;
         let Cow::Owned(stripped) = stripped else {
             continue;
@@ -47,6 +55,7 @@ pub(crate) fn strip_prepared_text_label_ids<'a>(
         output.push_str(&stripped);
         copied_until = scanner.cursor();
     }
+    checkpoint()?;
 
     if seen_labels != expected {
         let missing = expected.len().saturating_sub(seen_labels.len());
@@ -70,25 +79,27 @@ pub(crate) fn strip_prepared_text_label_ids<'a>(
 pub(crate) fn partition_prepared_text_label_ids(
     svg: String,
     ledger: &[PreparedTextLabelLedgerEntry],
+    execution: SvgPostprocessExecution<'_>,
 ) -> Result<(String, Option<String>)> {
-    match strip_prepared_text_label_ids(&svg, ledger)? {
+    match strip_prepared_text_label_ids(&svg, ledger, execution)? {
         Cow::Borrowed(_) => Ok((svg, None)),
         Cow::Owned(public_svg) => Ok((public_svg, Some(svg))),
     }
 }
 
-fn strip_token_from_tag<'a>(
+fn strip_token_from_tag_with_checkpoints<'a>(
     tag: &'a str,
     element_name: &str,
     expected: &HashSet<PreparedTextLabelId>,
     seen_labels: &mut HashSet<PreparedTextLabelId>,
     seen_svg_ids: &mut HashSet<String>,
+    checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<Cow<'a, str>> {
     let mut out = None::<String>;
     let mut copied_until = 0usize;
     let mut cursor = 0usize;
 
-    while let Some(attribute) = next_svg_quoted_attr(tag, cursor) {
+    while let Some(attribute) = next_svg_quoted_attr_with_checkpoints(tag, cursor, checkpoint)? {
         cursor = attribute.full_end;
         let attribute_name = &tag[attribute.name_start..attribute.name_end];
         let is_text_id = attribute_name == "id";
@@ -146,6 +157,24 @@ fn strip_token_from_tag<'a>(
     }
 }
 
+#[cfg(test)]
+fn strip_token_from_tag<'a>(
+    tag: &'a str,
+    element_name: &str,
+    expected: &HashSet<PreparedTextLabelId>,
+    seen_labels: &mut HashSet<PreparedTextLabelId>,
+    seen_svg_ids: &mut HashSet<String>,
+) -> Result<Cow<'a, str>> {
+    strip_token_from_tag_with_checkpoints(
+        tag,
+        element_name,
+        expected,
+        seen_labels,
+        seen_svg_ids,
+        &mut || Ok(()),
+    )
+}
+
 fn token_error(message: impl Into<String>) -> Error {
     Error::svg_postprocess("prepared-text-token", message)
 }
@@ -158,7 +187,13 @@ mod tests {
     #[test]
     fn empty_ledger_leaves_ordinary_svg_unchanged() {
         let svg = r#"<svg><text id="ordinary">label</text></svg>"#;
-        assert_eq!(strip_prepared_text_label_ids(svg, &[]).unwrap(), svg);
+        let environment = crate::environment::RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        assert_eq!(
+            strip_prepared_text_label_ids(svg, &[], SvgPostprocessExecution::new(&session),)
+                .unwrap(),
+            svg
+        );
     }
 
     #[test]

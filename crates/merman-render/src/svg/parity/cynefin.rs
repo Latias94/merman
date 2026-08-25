@@ -9,8 +9,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     typography_theme: &crate::cynefin::CynefinTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("cynefin");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("cynefin");
     let acc_title = model.acc_title.as_deref().filter(|value| !value.is_empty());
     let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
@@ -24,8 +23,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         .as_deref()
         .filter(|value| !value.is_empty())
         .or_else(|| diagram_title.filter(|value| !value.is_empty()));
-    let seed = crate::cynefin::resolve_seed(layout.seed, diagram_id);
-    let marker_id = format!("cynefin-arrow-{diagram_id}");
+    let seed = crate::cynefin::resolve_seed(layout.seed, diagram_id.semantic_str());
     let mut surface_receipt = typography_theme.begin_terminal_receipt(layout, title);
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
@@ -36,12 +34,12 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::CYNEFIN, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{}">{}</title>"#,
-            diagram_id_esc,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml_display(title)
         );
         out.checkpoint()?;
@@ -49,8 +47,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     if let Some(descr) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{}">{}</desc>"#,
-            diagram_id_esc,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml_display(descr)
         );
         out.checkpoint()?;
@@ -91,7 +88,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         push_subtitles(&mut out, layout, &mut surface_receipt)?;
     }
     push_items(&mut out, layout, &theme, &mut surface_receipt)?;
-    push_transitions(&mut out, layout, &marker_id, &mut surface_receipt)?;
+    push_transitions(&mut out, layout, diagram_id, options, &mut surface_receipt)?;
     if let Some(title) = title {
         let _ = write!(
             &mut out,
@@ -113,8 +110,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     if !layout.transitions.is_empty() {
         let _ = write!(
             &mut out,
-            r#"<defs><marker id="{}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="cynefinArrowHead"></path></marker></defs>"#,
-            escape_attr_display(&marker_id)
+            r#"<defs><marker id="cynefin-arrow-{diagram_id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="cynefinArrowHead"></path></marker></defs>"#,
         );
         out.checkpoint()?;
     }
@@ -356,7 +352,8 @@ fn push_items(
 fn push_transitions(
     out: &mut impl SvgOutput,
     layout: &CynefinDiagramLayout,
-    marker_id: &str,
+    diagram_id: SvgDiagramId<'_>,
+    options: &SvgExecution<'_>,
     surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
 ) -> Result<()> {
     if layout.transitions.is_empty() {
@@ -365,6 +362,7 @@ fn push_transitions(
     out.push_str(r#"<g class="cynefin-arrows">"#);
     out.checkpoint()?;
     for transition in &layout.transitions {
+        options.checkpoint_emit()?;
         let d = format!(
             "M{},{} Q{},{} {},{}",
             fmt(transition.x1),
@@ -376,9 +374,8 @@ fn push_transitions(
         );
         let _ = write!(
             out,
-            r#"<path class="cynefinArrowLine" d="{}" fill="none" marker-end="url(#{})"></path>"#,
+            r#"<path class="cynefinArrowLine" d="{}" fill="none" marker-end="url(#cynefin-arrow-{diagram_id})"></path>"#,
             escape_attr_display(&d),
-            escape_attr_display(marker_id)
         );
         out.checkpoint()?;
         if let Some(label) = transition
@@ -400,6 +397,7 @@ fn push_transitions(
                 label,
             );
         }
+        options.checkpoint_emit()?;
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -407,13 +405,13 @@ fn push_transitions(
 
 fn write_cynefin_css(
     out: &mut impl SvgOutput,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     effective_config: &serde_json::Value,
     theme: &crate::cynefin::CynefinTheme,
     typography_theme: &crate::cynefin::CynefinTypographyThemePlan,
     surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
 ) -> Result<()> {
-    let id = crate::svg::escape_css_identifier(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id.semantic_str());
     let parts = info_css_parts_with_font_family(
         diagram_id,
         effective_config,

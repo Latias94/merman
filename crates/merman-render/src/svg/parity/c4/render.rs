@@ -116,10 +116,9 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
 
 fn write_c4_css(
     out: &mut impl SvgOutput,
-    diagram_id: &str,
+    diagram_id: impl std::fmt::Display + Copy,
     effective_config: &serde_json::Value,
 ) -> Result<()> {
-    let id = crate::svg::escape_css_identifier(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     out.push_str(&parts.css_prefix);
     out.checkpoint()?;
@@ -132,7 +131,7 @@ fn write_c4_css(
     let _ = write!(
         out,
         r#"#{} .person{{stroke:{};fill:{};}}"#,
-        id, person_border, person_bkg
+        diagram_id, person_border, person_bkg
     );
     out.checkpoint()?;
     out.push_str(&parts.root_rule);
@@ -206,53 +205,53 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
     Ok(())
 }
 
-fn write_c4_base_defs(out: &mut impl SvgOutput, diagram_id: &str) -> Result<()> {
+fn write_c4_base_defs(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>) -> Result<()> {
     const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!("c4_database_d_11_16_0.txt");
 
     let _ = write!(
         out,
         r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "computer"))
+        escape_attr_display(scoped_svg_id(diagram_id, "computer"))
     );
     out.checkpoint()?;
     let _ = write!(
         out,
         r#"<defs><symbol id="{}" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "database")),
+        escape_attr_display(scoped_svg_id(diagram_id, "database")),
         escape_attr(PINNED_C4_DATABASE_SYMBOL_D.trim())
     );
     out.checkpoint()?;
     let _ = write!(
         out,
         r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "clock"))
+        escape_attr_display(scoped_svg_id(diagram_id, "clock"))
     );
     out.checkpoint()
 }
 
-fn write_c4_relation_defs(out: &mut impl SvgOutput, diagram_id: &str) -> Result<()> {
+fn write_c4_relation_defs(out: &mut impl SvgOutput, diagram_id: SvgDiagramId<'_>) -> Result<()> {
     let _ = write!(
         out,
         r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "arrowhead"))
+        escape_attr_display(scoped_svg_id(diagram_id, "arrowhead"))
     );
     out.checkpoint()?;
     let _ = write!(
         out,
         r#"<defs><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "arrowend"))
+        escape_attr_display(scoped_svg_id(diagram_id, "arrowend"))
     );
     out.checkpoint()?;
     let _ = write!(
         out,
         r##"<defs><marker id="{}" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##,
-        escape_attr(&scoped_svg_id(diagram_id, "crosshead"))
+        escape_attr_display(scoped_svg_id(diagram_id, "crosshead"))
     );
     out.checkpoint()?;
     let _ = write!(
         out,
         r#"<defs><marker id="{}" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "filled-head"))
+        escape_attr_display(scoped_svg_id(diagram_id, "filled-head"))
     );
     out.checkpoint()
 }
@@ -266,8 +265,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     cluster_theme: &crate::c4::C4ClusterThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("merman");
 
     let c4_cfg = C4ConfigView::new(effective_config);
     let diagram_margin_x = c4_cfg.diagram_margin_x();
@@ -326,6 +324,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     root_chrome.dom.trailing_newline = false;
     let root_document = root_svg::RootViewportContext::new(crate::DiagramFamilyId::C4, diagram_id)
         .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = model
         .acc_title
@@ -336,7 +335,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(title)
         );
         out.checkpoint()?;
@@ -350,7 +349,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(descr)
         );
         out.checkpoint()?;
@@ -383,10 +382,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let mut cluster_theme_receipt = cluster_theme.begin_terminal_receipt();
     let mut boundary_emission_ordinal = 0usize;
 
-    const PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
-    const EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
-
     for item in c4_paint_order(layout)? {
+        options.checkpoint_emit()?;
         match item {
             C4PaintItem::Shape(index) => {
                 let s = &layout.shapes[index];
@@ -550,9 +547,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
                 if matches!(s.type_c4_shape.as_str(), "person" | "external_person") {
                     let href = if s.type_c4_shape == "external_person" {
-                        EXTERNAL_PERSON_IMG
+                        C4_EXTERNAL_PERSON_IMG
                     } else {
-                        PERSON_IMG
+                        C4_PERSON_IMG
                     };
                     let _ = write!(
                         &mut out,
@@ -801,14 +798,18 @@ pub(crate) fn render_c4_diagram_svg_typed(
             );
             out.checkpoint()?;
             if rel.rel_type != "rel_b" {
-                let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
+                let _ = write!(
+                    &mut out,
+                    r#" marker-end="{}""#,
+                    escape_attr_display(arrowhead_url)
+                );
                 out.checkpoint()?;
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
                     &mut out,
                     r#" marker-start="{}""#,
-                    escape_attr(&arrowend_url)
+                    escape_attr_display(arrowend_url)
                 );
                 out.checkpoint()?;
             }
@@ -835,20 +836,25 @@ pub(crate) fn render_c4_diagram_svg_typed(
             );
             out.checkpoint()?;
             if rel.rel_type != "rel_b" {
-                let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
+                let _ = write!(
+                    &mut out,
+                    r#" marker-end="{}""#,
+                    escape_attr_display(arrowhead_url)
+                );
                 out.checkpoint()?;
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
                     &mut out,
                     r#" marker-start="{}""#,
-                    escape_attr(&arrowend_url)
+                    escape_attr_display(arrowend_url)
                 );
                 out.checkpoint()?;
             }
             out.push_str("/>");
             out.checkpoint()?;
         }
+        options.checkpoint_emit()?;
 
         let midx = rel.start_point.x.min(rel.end_point.x)
             + (rel.end_point.x - rel.start_point.x).abs() / 2.0
@@ -914,6 +920,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
 
     out.push_str("</svg>");
+    options.checkpoint_emit()?;
     let rooted_svg = root_document.complete(out.finish()?)?;
     if cluster_theme_receipt.is_some_and(|receipt| !cluster_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
@@ -1046,5 +1053,21 @@ mod tests {
         assert!(css.ends_with(
             r#"#c4 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
         ));
+    }
+
+    #[test]
+    fn c4_css_does_not_treat_authored_font_family_as_an_internal_placeholder() {
+        let authored_font_family = "__MERMAN_C4_DIAGRAM_ID_PROJECTION__";
+        let mut css = String::new();
+        write_c4_css(
+            &mut css,
+            "c4",
+            &json!({
+                "fontFamily": authored_font_family,
+            }),
+        )
+        .expect("write C4 CSS");
+
+        assert!(css.contains(authored_font_family));
     }
 }

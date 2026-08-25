@@ -1,0 +1,229 @@
+==================
+complete radar statements stay structured
+==================
+
+radar-beta:
+title Radar comparison
+accTitle: Radar accessibility
+accDescr: Axes: {curves remain free-form}
+axis speed["速度"], quality, speed["Duplicate"]
+curve alpha["Α"]{1, 2, 3}, beta{speed: 3, quality 2, speed: 1}
+showLegend true, ticks 5, ticks 6, max 10, min 0, graticule polygon
+
+---
+
+(source_file
+  (radar_diagram
+    (radar_header
+      (diagram_keyword))
+    (radar_body
+      (radar_title_statement
+        (statement_keyword)
+        (radar_title_text))
+      (radar_accessibility_title_statement
+        (statement_keyword)
+        (radar_accessibility_text))
+      (radar_accessibility_description_statement
+        (statement_keyword)
+        (radar_accessibility_text))
+      (radar_axis_statement
+        (statement_keyword)
+        (radar_axis
+          (radar_identifier)
+          (radar_label
+            (quoted_string)))
+        (radar_axis
+          (radar_identifier))
+        (radar_axis
+          (radar_identifier)
+          (radar_label
+            (quoted_string))))
+      (radar_curve_statement
+        (statement_keyword)
+        (radar_curve
+          (radar_identifier)
+          (radar_label
+            (quoted_string))
+          (radar_curve_entries
+            (radar_number_entry
+              (radar_number))
+            (radar_number_entry
+              (radar_number))
+            (radar_number_entry
+              (radar_number))))
+        (radar_curve
+          (radar_identifier)
+          (radar_curve_entries
+            (radar_detailed_entry
+              (radar_identifier)
+              (radar_number))
+            (radar_detailed_entry
+              (radar_identifier)
+              (radar_number))
+            (radar_detailed_entry
+              (radar_identifier)
+              (radar_number)))))
+      (radar_option_statement
+        (radar_option
+          (radar_option_name)
+          (radar_boolean))
+        (radar_option
+          (radar_option_name)
+          (radar_number))
+        (radar_option
+          (radar_option_name)
+          (radar_number))
+        (radar_option
+          (radar_option_name)
+          (radar_number))
+        (radar_option
+          (radar_option_name)
+          (radar_number))
+        (radar_option
+          (radar_option_name)
+          (radar_graticule))))))
+
+==================
+header only remains a radar root at EOF
+==================
+
+radar-beta
+
+---
+
+(source_file
+  (radar_diagram
+    (radar_header
+      (diagram_keyword))))
+
+==================
+multiline free-form accessibility and curve entries
+==================
+
+radar-beta
+accDescr {
+第一行
+second line
+}
+axis A, B
+curve score {
+  4,
+  3
+}
+
+---
+
+(source_file
+  (radar_diagram
+    (radar_header
+      (diagram_keyword))
+    (radar_body
+      (radar_accessibility_description_statement
+        (statement_keyword)
+        (radar_accessibility_block))
+      (radar_axis_statement
+        (statement_keyword)
+        (radar_axis
+          (radar_identifier))
+        (radar_axis
+          (radar_identifier)))
+      (radar_curve_statement
+        (statement_keyword)
+        (radar_curve
+          (radar_identifier)
+          (radar_curve_entries
+            (radar_number_entry
+              (radar_number))
+            (radar_number_entry
+              (radar_number))))))))
+
+==================
+malformed line preserves valid siblings
+==================
+
+radar-beta
+axis A, B
+not@@valid
+curve score{1, 2}
+ticks 4
+
+---
+
+(source_file
+  (radar_diagram
+    (radar_header
+      (diagram_keyword))
+    (radar_body
+      (radar_axis_statement
+        (statement_keyword)
+        (radar_axis
+          (radar_identifier))
+        (radar_axis
+          (radar_identifier)))
+      (radar_malformed_statement
+        (radar_unknown_keyword)
+        (radar_malformed_tail))
+      (radar_curve_statement
+        (statement_keyword)
+        (radar_curve
+          (radar_identifier)
+          (radar_curve_entries
+            (radar_number_entry
+              (radar_number))
+            (radar_number_entry
+              (radar_number)))))
+      (radar_option_statement
+        (radar_option
+          (radar_option_name)
+          (radar_number))))))
+
+==================
+incomplete declarations remain local
+==================
+
+radar-beta
+axis A
+axis
+curve draft
+curve complete{1}
+
+---
+
+(source_file
+  (radar_diagram
+    (radar_header
+      (diagram_keyword))
+    (radar_body
+      (radar_axis_statement
+        (statement_keyword)
+        (radar_axis
+          (radar_identifier)))
+      (radar_incomplete_axis_statement
+        (statement_keyword))
+      (radar_incomplete_curve_statement
+        (statement_keyword)
+        (radar_identifier))
+      (radar_curve_statement
+        (statement_keyword)
+        (radar_curve
+          (radar_identifier)
+          (radar_curve_entries
+            (radar_number_entry
+              (radar_number))))))))
+
+==================
+same-line statement follows a colon header
+==================
+
+radar-beta: title Inline radar
+
+---
+
+(source_file
+  (radar_diagram
+    (radar_header
+      (diagram_keyword))
+    (radar_body
+      (radar_title_statement
+        (statement_keyword)
+        (radar_title_text)))))

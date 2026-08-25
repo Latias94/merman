@@ -12,6 +12,7 @@ owners rather than being duplicated across Markdown files.
 | Choose Rust features, outputs, or artifact profiles | [Capability guide](FEATURES.md) |
 | Choose a registry package or delivery channel | [Package surface guide](release/PACKAGE_SURFACES.md) |
 | Integrate a browser, Node.js, editor, linter, or Rust host | [Integration guide](integrations/README.md) |
+| Develop or release the Tree-sitter grammar | [Tree-sitter development guide](development/TREE_SITTER_MERMAID.md) and [release guide](release/TREE_SITTER_MERMAID.md) |
 | Check diagram coverage and parity evidence | [Alignment dashboard](alignment/STATUS.md) |
 | Embed or export SVG safely | [SVG output pipeline](rendering/SVG_OUTPUT_PIPELINE.md) and [rendering security](security/RENDERING_SECURITY.md) |
 | Understand architecture decisions | [Architecture decision records](adr/) and [alignment authority map](alignment/README.md) |
