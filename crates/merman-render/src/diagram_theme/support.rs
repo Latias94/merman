@@ -10,10 +10,7 @@ use crate::DiagramFamilyId;
 use super::semantic::ThemeTarget;
 use super::support_manifest::{self, SupportClaimKind};
 
-const THEME_SUPPORT_CLAIM_REVISION_V1: u32 =
-    super::support_manifest::SUPPORT_CLAIM_MANIFEST_REVISION;
-const THEME_SUPPORT_CLAIM_REVISION_V2: u32 =
-    super::support_manifest::SUPPORT_CLAIM_MANIFEST_REVISION;
+const THEME_SUPPORT_CLAIM_REVISION: u32 = super::support_manifest::SUPPORT_CLAIM_MANIFEST_REVISION;
 
 /// Describes the current build's coarse static support for one theme capability.
 ///
@@ -60,11 +57,7 @@ pub fn describe_theme_support(query: &ThemeSupportQueryV1) -> ThemeCapabilityDes
         return descriptor(query, state, [reason_id]);
     }
 
-    let claim = match facet {
-        ThemeSupportFacetV1::Rule(facet) => support_manifest::rule_claim(family, target, facet),
-        ThemeSupportFacetV1::OrdinalPalette => support_manifest::ordinal_claim(family, target),
-        _ => SupportClaimKind::Missing,
-    };
+    let claim = target_claim(family, target, facet);
     descriptor_from_claim(query, claim)
 }
 
@@ -175,16 +168,24 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
     }
 
     let claim = match subject {
-        ResolvedSubject::Target { target, facet } => match facet {
-            ThemeSupportFacetV1::Rule(facet) => support_manifest::rule_claim(family, target, facet),
-            ThemeSupportFacetV1::OrdinalPalette => support_manifest::ordinal_claim(family, target),
-            _ => SupportClaimKind::Missing,
-        },
+        ResolvedSubject::Target { target, facet } => target_claim(family, target, facet),
         ResolvedSubject::BaseTypography(property) => {
             support_manifest::base_typography_claim(family, property)
         }
     };
     descriptor_v2_from_claim(query, claim)
+}
+
+fn target_claim(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+    facet: ThemeSupportFacetV1,
+) -> SupportClaimKind {
+    match facet {
+        ThemeSupportFacetV1::Rule(facet) => support_manifest::rule_claim(family, target, facet),
+        ThemeSupportFacetV1::OrdinalPalette => support_manifest::ordinal_claim(family, target),
+        _ => SupportClaimKind::Missing,
+    }
 }
 
 struct SupportRejection {
@@ -349,7 +350,7 @@ fn descriptor<const N: usize>(
     reason_ids: [&'static str; N],
 ) -> ThemeCapabilityDescriptorV1 {
     ThemeCapabilityDescriptorV1::from_renderer_claim(
-        THEME_SUPPORT_CLAIM_REVISION_V1,
+        THEME_SUPPORT_CLAIM_REVISION,
         query.clone(),
         state,
         reason_ids,
@@ -362,7 +363,7 @@ fn descriptor_v2<const N: usize>(
     reason_ids: [&'static str; N],
 ) -> ThemeCapabilityDescriptorV2 {
     ThemeCapabilityDescriptorV2::from_renderer_claim(
-        THEME_SUPPORT_CLAIM_REVISION_V2,
+        THEME_SUPPORT_CLAIM_REVISION,
         query.clone(),
         state,
         reason_ids,
