@@ -67,7 +67,6 @@ fn issue_53_width_matrix_preserves_semantics_and_terminal_extent() {
             .unwrap_or_else(|error| panic!("{profile_name} Issue #53 render failed: {error}"));
         let (width, height) =
             terminal_extent_with_profile(&rendered, options.terminal_width_profile);
-        eprintln!("{profile_name}: width={width}, height={height}");
 
         assert_issue_53_semantics(&rendered);
         assert!(
