@@ -726,7 +726,7 @@ fn typed_relation_stroke_expectation(
     let origin = style.stroke_resolution().winner()?;
     let facet = FamilyThemeRuleFacet::stroke(style.stroke_resolution().specified())?;
     if origin.target() != ThemeTarget::Relation
-        || origin.variant().is_some()
+        || !matches!(origin.variant(), None | Some(ThemeVariant::Default))
         || origin.ordinal().is_some()
         || theme.rule_facet_disposition(origin.rule_index(), facet)
             != Some(FamilyThemeDisposition::TypedAdapter)

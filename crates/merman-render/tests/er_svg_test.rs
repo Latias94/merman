@@ -1002,6 +1002,51 @@ fn er_static_relation_stroke_reaches_path_referenced_markers_and_evidence() {
 }
 
 #[test]
+fn er_explicit_default_relation_stroke_reaches_path_referenced_markers_and_evidence() {
+    for (stroke, expected_css) in [
+        (
+            CanvasPaint::solid("#123456").expect("valid ER relation stroke"),
+            "#123456",
+        ),
+        (CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = er_relation_rules_theme([ThemeRule::new(
+            ThemeTarget::Relation,
+            ThemeStylePatch::default().with_stroke(stroke),
+        )
+        .with_variant(ThemeVariant::Default)]);
+        let artifact = prepare_er_family_with_theme_and_engine(
+            "erDiagram\n  A ||--o{ B : owns\n",
+            &theme,
+            Engine::new(),
+        );
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render explicit default ER relation stroke");
+        let paths = relationship_path_tags(rendered.svg());
+        assert_eq!(paths.len(), 1, "{}", rendered.svg());
+        assert!(
+            paths[0].contains(&format!("stroke:{expected_css}")),
+            "{}",
+            paths[0]
+        );
+        for marker_id in referenced_marker_ids(&paths) {
+            let marker = marker_opening_tag(rendered.svg(), &marker_id);
+            assert!(
+                marker.contains(&format!("stroke:{expected_css} !important")),
+                "{marker_id}: {marker}"
+            );
+        }
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn er_static_relation_stroke_binds_all_recursive_segments_and_terminal_markers() {
     let theme = er_relation_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid recursive ER relation stroke"),
@@ -1125,7 +1170,6 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
         ),
     ];
     let legacy_cases = [
-        ThemeRule::new(ThemeTarget::Relation, solid()).with_variant(ThemeVariant::Default),
         ThemeRule::new(ThemeTarget::Relation, fill()),
         ThemeRule::new(ThemeTarget::Title, fill()),
     ];

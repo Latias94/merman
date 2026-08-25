@@ -2116,6 +2116,26 @@ mod tests {
         assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.er.edge.stroke"));
     }
 
+    #[test]
+    fn direct_er_default_relation_stroke_has_no_legacy_projection() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Relation,
+                    ThemeStylePatch::default().with_stroke(solid("#334155")),
+                )
+                .with_variant(ThemeVariant::Default)
+                .for_family(DiagramFamilyId::ER),
+            ),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::ER);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.er.edge.stroke"));
+    }
+
     fn fallback_contribution_count(metadata: &merman_core::ParseMetadata) -> usize {
         theme_parse_evidence(metadata).fallback_contribution_count()
     }

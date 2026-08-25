@@ -457,6 +457,11 @@ fn legacy_route_selectors(
                 ThemeVariant::Default,
             ));
         }
+        (DiagramFamilyId::ER, ThemeTarget::Relation) => {
+            selectors.push(ThemeRouteCutoverSelector::StaticVariant(
+                ThemeVariant::Default,
+            ));
+        }
         _ => {}
     }
     selectors
@@ -1678,7 +1683,12 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::ER
         && target == ThemeTarget::Relation
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Stroke(
@@ -2668,6 +2678,17 @@ mod tests {
                         variant: Some(ThemeVariant::Default),
                     },
                     FamilyThemeRuleFacet::Stroke(paint_kind),
+                ),
+                FamilyThemeDisposition::TypedAdapter
+            );
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::ER,
+                    ThemeTarget::Relation,
+                    FamilyThemeSelectorShape::Static {
+                        variant: Some(ThemeVariant::Default),
+                    },
+                    FamilyThemeRuleFacet::Fill(paint_kind),
                 ),
                 FamilyThemeDisposition::LegacyCompatibility
             );
@@ -5040,7 +5061,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 24);
+        assert_eq!(qualified.len(), 26);
         assert_eq!(
             qualified
                 .iter()
@@ -5061,6 +5082,13 @@ mod tests {
                 .filter(|route| route.family_id() == DiagramFamilyId::BLOCK)
                 .count(),
             4
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::ER)
+                .count(),
+            2
         );
 
         for route in qualified {
@@ -5103,6 +5131,12 @@ mod tests {
                     _ => panic!("unexpected Gantt qualified route: {route:?}"),
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
+            } else if route.family_id() == DiagramFamilyId::ER {
+                assert_eq!(
+                    projections,
+                    vec![ThemeRouteCutoverProjection::EdgeStroke],
+                    "route={route:?}"
+                );
             }
         }
     }
