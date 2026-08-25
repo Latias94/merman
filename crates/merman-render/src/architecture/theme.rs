@@ -8,8 +8,9 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -168,22 +169,16 @@ impl ArchitectureGroupThemePlan {
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Cluster,
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
+                    // Unsupported fallback mechanisms are reconciled from the actual
+                    // per-group resolution below. A static occurrence count is not enough:
+                    // an explicit typed Cluster.fill winner suppresses the palette.
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Cluster,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // See the fallback reconciliation below; only an effect that remains
+                    // selected by a real group terminal is residual.
                 }
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
@@ -209,6 +204,16 @@ impl ArchitectureGroupThemePlan {
                 evidence.mark_not_applicable(key);
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Cluster,
+                TerminalVariantDomain::uniform(group_count, ThemeVariant::Default),
+            )],
+            work_meter,
+        )?;
 
         Ok(Self {
             group_count,

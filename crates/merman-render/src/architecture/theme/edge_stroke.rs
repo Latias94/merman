@@ -9,8 +9,9 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -157,26 +158,13 @@ impl ArchitectureEdgeStrokePlan {
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Edge,
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if expected_edge_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
+                    // Reconciled below from the final style of each actual edge occurrence.
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Edge,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if expected_edge_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // Reconciled below from the final style of each actual edge occurrence.
                 }
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
@@ -184,6 +172,16 @@ impl ArchitectureEdgeStrokePlan {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Edge,
+                TerminalVariantDomain::uniform(expected_edge_count, ThemeVariant::Default),
+            )],
+            work_meter,
+        )?;
 
         for (rule_index, observation) in observations {
             let key = FamilyThemeMechanismKey::Rule {

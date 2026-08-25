@@ -5,8 +5,8 @@ use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
-    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, RadialGradient, Specified,
-    ThemeColorValue, ThemeLength, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient,
+    Specified, ThemeColorValue, ThemeLength, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::{
@@ -188,6 +188,26 @@ fn architecture_terminal_surface_theme() -> DiagramTheme {
         )
         .for_family(DiagramFamilyId::ARCHITECTURE),
     ])
+}
+
+fn architecture_group_fill_with_ordinal_palette_theme(fill: CanvasPaint) -> DiagramTheme {
+    let styles = ThemeRuleSet::default()
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default().with_fill(fill),
+            )
+            .for_family(DiagramFamilyId::ARCHITECTURE),
+        )
+        .with_ordinal_palette(
+            ThemeTarget::Cluster,
+            OrdinalPalette::new([ThemeColorValue::parse("#123456")
+                .expect("valid Architecture Cluster palette color")])
+            .expect("non-empty Architecture Cluster palette"),
+        );
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Architecture Cluster fill and ordinal palette theme")
 }
 
 fn try_render_architecture_with_theme_and_engine(
@@ -685,6 +705,38 @@ fn architecture_edge_stroke_reaches_every_edge_segment_without_recoloring_arrows
 }
 
 #[test]
+fn architecture_group_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
+    let source = r#"architecture-beta
+  group core(cloud)[Core]
+  service api[API] in core
+"#;
+    let theme = architecture_group_fill_with_ordinal_palette_theme(
+        CanvasPaint::solid("#ef4444").expect("valid Architecture Cluster fill"),
+    );
+    let rendered = render_architecture_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        "architecture-group-palette",
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid themed Architecture Cluster SVG");
+    let group = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("architecture-group-palette-group-core"))
+        .expect("Architecture group terminal");
+    assert_eq!(
+        group.attribute("style"),
+        Some("fill:#ef4444;"),
+        "typed Cluster.fill must remain the final group paint owner",
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn architecture_service_text_and_arrow_surfaces_have_independent_terminal_owners() {
     let source = r#"architecture-beta
   group core(cloud)[Core]
@@ -974,24 +1026,48 @@ fn architecture_edge_stroke_respects_source_and_site_mermaid_owners() {
             let css = stylesheet(rendered.svg());
 
             assert_eq!(edges.len(), 2, "{source_name}/{owner}");
-            assert!(
-                edges.iter().all(|edge| edge
-                    .attribute("style")
-                    .is_none_or(|style| !style.contains("#123456"))),
-                "{source_name}/{owner}: typed Edge.stroke must not overwrite the Mermaid owner",
-            );
-            assert!(
-                css.contains(&format!(
-                    "#{diagram_id} .edge{{stroke-width:3;stroke:#fedcba;fill:none;}}"
-                )),
-                "{source_name}/{owner}: Mermaid's resolved archEdgeColor must remain terminal",
-            );
+            let mermaid_owns_edge = source_name == "arch-edge" || owner == "site";
+            if mermaid_owns_edge {
+                assert!(
+                    edges.iter().all(|edge| edge
+                        .attribute("style")
+                        .is_none_or(|style| !style.contains("#123456"))),
+                    "{source_name}/{owner}: typed Edge.stroke must not overwrite the Mermaid owner",
+                );
+                assert!(
+                    css.contains(&format!(
+                        "#{diagram_id} .edge{{stroke-width:3;stroke:#fedcba;fill:none;}}"
+                    )),
+                    "{source_name}/{owner}: Mermaid's resolved archEdgeColor must remain terminal",
+                );
+            } else {
+                assert!(
+                    edges.iter().all(|edge| edge
+                        .attribute("style")
+                        .is_some_and(|style| style.contains("#123456"))),
+                    "{source_name}/{owner}: source lineColor must not claim Architecture archEdgeColor",
+                );
+                assert!(
+                    css.contains(&format!(
+                        "#{diagram_id} .edge{{stroke-width:3;stroke:#333333;fill:none;}}"
+                    )),
+                    "{source_name}/{owner}: source lineColor must leave Mermaid's archEdgeColor snapshot intact",
+                );
+            }
 
             let completion = rendered.into_completion();
             let evidence = merman_render::__private::family_evidence(completion.report());
             assert_eq!(evidence.required_count(), 1, "{source_name}/{owner}");
-            assert_eq!(evidence.applied_count(), 0, "{source_name}/{owner}");
-            assert_eq!(evidence.not_applicable_count(), 1, "{source_name}/{owner}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!mermaid_owns_edge),
+                "{source_name}/{owner}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(mermaid_owns_edge),
+                "{source_name}/{owner}"
+            );
             assert_eq!(evidence.theme_residual_count(), 0, "{source_name}/{owner}");
         }
     }
@@ -1092,6 +1168,47 @@ fn architecture_edge_stroke_rejects_ordinal_variant_clear_gradient_and_pattern_r
             Some((DiagramFamilyId::ARCHITECTURE, 1))
         );
     }
+}
+
+#[test]
+fn architecture_edge_ordinal_palette_is_suppressed_by_an_explicit_fill_winner() {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#123456").expect("valid Architecture Edge palette color")
+    ])
+    .expect("non-empty Architecture Edge palette");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#ef4444")
+                                    .expect("valid unsupported Architecture Edge fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::ARCHITECTURE),
+                    )
+                    .with_ordinal_palette(ThemeTarget::Edge, palette),
+            ),
+        )
+        .expect("compile Architecture Edge fill and ordinal palette theme");
+
+    let error = match try_render_architecture_with_theme_and_engine(
+        TWO_ARCHITECTURE_EDGES,
+        &theme,
+        Engine::new(),
+        "architecture-edge-palette-shadowed",
+    ) {
+        Ok(_) => panic!("unsupported Edge.fill must remain fail-closed"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::ARCHITECTURE, 1)),
+        "the explicit unsupported fill is the only residual; the palette is shadowed",
+    );
 }
 
 #[test]
