@@ -1,51 +1,12 @@
 use crate::DiagramFamilyId;
 
+use super::legacy_tombstones::{
+    ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector,
+};
 use super::semantic::{ThemeTarget, ThemeVariant};
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use sha2::{Digest as _, Sha256};
-
-/// One static selector in the historical Mermaid compatibility projection domain.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ThemeLegacyRouteSelector {
-    StaticUnqualified,
-    StaticVariant(ThemeVariant),
-}
-
-impl ThemeLegacyRouteSelector {
-    pub const fn variant(self) -> Option<ThemeVariant> {
-        match self {
-            Self::StaticUnqualified => None,
-            Self::StaticVariant(variant) => Some(variant),
-        }
-    }
-
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::StaticUnqualified => "static-unqualified",
-            Self::StaticVariant(ThemeVariant::Default) => "static-default",
-            Self::StaticVariant(ThemeVariant::Odd) => "static-odd",
-            Self::StaticVariant(ThemeVariant::Even) => "static-even",
-            Self::StaticVariant(_) => "static-qualified",
-        }
-    }
-}
-
-/// Paint facet probed against the current compatibility bridge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ThemeLegacyRouteFacet {
-    Fill,
-    Stroke,
-}
-
-impl ThemeLegacyRouteFacet {
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::Fill => "fill",
-            Self::Stroke => "stroke",
-        }
-    }
-}
 
 /// Atomic scalar paint value classes used by the historical transition witness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -62,47 +23,6 @@ impl ThemeLegacyRouteValue {
             Self::Transparent => "transparent",
             Self::Solid => "solid",
         }
-    }
-}
-
-/// Canonical identity for one current-state compatibility probe.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ThemeLegacyRouteId {
-    family_id: DiagramFamilyId,
-    target: ThemeTarget,
-    selector: ThemeLegacyRouteSelector,
-    facet: ThemeLegacyRouteFacet,
-}
-
-impl ThemeLegacyRouteId {
-    pub const fn new(
-        family_id: DiagramFamilyId,
-        target: ThemeTarget,
-        selector: ThemeLegacyRouteSelector,
-        facet: ThemeLegacyRouteFacet,
-    ) -> Self {
-        Self {
-            family_id,
-            target,
-            selector,
-            facet,
-        }
-    }
-
-    pub const fn family_id(self) -> DiagramFamilyId {
-        self.family_id
-    }
-
-    pub const fn target(self) -> ThemeTarget {
-        self.target
-    }
-
-    pub const fn selector(self) -> ThemeLegacyRouteSelector {
-        self.selector
-    }
-
-    pub const fn facet(self) -> ThemeLegacyRouteFacet {
-        self.facet
     }
 }
 
@@ -130,7 +50,10 @@ impl ThemeLegacyProjectionKey {
     }
 }
 
-/// Production-owned KTD23 inventory row, including the complete historical projection set.
+/// Historical projection witness paired with one renderer-owned KTD23 tombstone identity.
+///
+/// The route identity lives in [`super::legacy_tombstones`]. The projection set is retained only
+/// for historical acceptance reconciliation and is not consumed by the compatibility bridge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThemeLegacyProjectionRetirementDescriptor {
     id: ThemeLegacyRouteId,
@@ -754,7 +677,7 @@ const fn pattern(
     }
 }
 
-/// Returns the production-owned fixed KTD23 inventory.
+/// Returns historical projection rows aligned to the renderer-owned KTD23 tombstone identities.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 pub(crate) fn legacy_projection_retirement_inventory() -> Result<
     Vec<ThemeLegacyProjectionRetirementDescriptor>,
@@ -800,6 +723,18 @@ pub(crate) fn legacy_projection_retirement_inventory() -> Result<
     {
         return Err(ThemeLegacyProjectionRetirementInventoryError::inventory(
             "retired routes must bind a non-empty historical projection set",
+        ));
+    }
+    let tombstones = super::legacy_tombstones::ktd23_tombstone_inventory().map_err(|error| {
+        ThemeLegacyProjectionRetirementInventoryError::inventory(error.to_string())
+    })?;
+    let descriptor_ids = descriptors
+        .iter()
+        .map(|descriptor| descriptor.id())
+        .collect::<Vec<_>>();
+    if descriptor_ids != tombstones {
+        return Err(ThemeLegacyProjectionRetirementInventoryError::inventory(
+            "historical projection rows drifted from renderer-owned tombstone identities",
         ));
     }
     Ok(descriptors)

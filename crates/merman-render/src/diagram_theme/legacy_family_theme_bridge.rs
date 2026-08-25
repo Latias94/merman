@@ -26,9 +26,11 @@ use super::family_mechanism_matrix::{
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::legacy_projection_retirement::{
     ThemeLegacyProjectionDisposition, ThemeLegacyProjectionObservation,
-    ThemeLegacyProjectionProbeError, ThemeLegacyProjectionProbeReceipt, ThemeLegacyRouteFacet,
-    ThemeLegacyRouteSelector, ThemeLegacyRouteValue, value_digest,
+    ThemeLegacyProjectionProbeError, ThemeLegacyProjectionProbeReceipt, ThemeLegacyRouteValue,
+    value_digest,
 };
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use super::legacy_tombstones::{ThemeLegacyRouteFacet, ThemeLegacyRouteSelector};
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::{DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch};
 
@@ -247,7 +249,7 @@ fn compile_selected_family(
 /// change the runtime matrix or suppress a bridge projection.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 pub(crate) fn legacy_projection_probe(
-    id: super::legacy_projection_retirement::ThemeLegacyRouteId,
+    id: super::legacy_tombstones::ThemeLegacyRouteId,
     value: ThemeLegacyRouteValue,
 ) -> Result<ThemeLegacyProjectionProbeReceipt, ThemeLegacyProjectionProbeError> {
     let selector = FamilyThemeSelectorShape::Static {
@@ -1489,7 +1491,7 @@ mod tests {
     #[test]
     fn legacy_projection_probe_reports_current_facts_without_retirement_policy() {
         let unsupported = legacy_projection_probe(
-            super::super::legacy_projection_retirement::ThemeLegacyRouteId::new(
+            super::super::legacy_tombstones::ThemeLegacyRouteId::new(
                 DiagramFamilyId::CLASS,
                 ThemeTarget::Marker,
                 ThemeLegacyRouteSelector::StaticUnqualified,
@@ -1505,7 +1507,7 @@ mod tests {
         assert!(unsupported.projections().is_empty());
 
         let partial = legacy_projection_probe(
-            super::super::legacy_projection_retirement::ThemeLegacyRouteId::new(
+            super::super::legacy_tombstones::ThemeLegacyRouteId::new(
                 DiagramFamilyId::MINDMAP,
                 ThemeTarget::Node,
                 ThemeLegacyRouteSelector::StaticUnqualified,

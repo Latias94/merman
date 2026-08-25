@@ -107,8 +107,17 @@ pub mod __private {
     pub use crate::diagram_theme::{
         ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
         ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
-        ThemeLegacyRouteFacet, ThemeLegacyRouteSelector,
+        ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector,
+        ThemeLegacyTombstoneInventoryError,
     };
+
+    /// Returns the renderer-owned KTD23 tombstone identities without consulting the compatibility
+    /// bridge or historical projection witness.
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub fn ktd23_tombstone_theme_routes()
+    -> Result<Vec<ThemeLegacyRouteId>, ThemeLegacyTombstoneInventoryError> {
+        crate::diagram_theme::ktd23_tombstone_inventory()
+    }
 
     /// Returns every currently typed route that replaces a concrete legacy bridge projection.
     #[cfg(feature = "internal-theme-acceptance")]

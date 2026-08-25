@@ -27,6 +27,9 @@ mod family_program;
 mod legacy_family_theme_bridge;
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 mod legacy_projection_retirement;
+// KTD23 route identities are renderer-owned and intentionally independent of the bridge.
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+mod legacy_tombstones;
 mod materializer;
 mod mechanisms;
 mod mermaid_compatibility;
@@ -95,11 +98,17 @@ pub(crate) use family_mechanism_matrix::{
 pub use legacy_projection_retirement::{
     ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
     ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
-    ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector, ThemeLegacyRouteValue,
+    ThemeLegacyRouteValue,
 };
 #[cfg(feature = "internal-theme-acceptance")]
 pub(crate) use legacy_projection_retirement::{
     legacy_projection_retirement_inventory, legacy_projection_retirement_receipts,
+};
+#[cfg(feature = "internal-theme-acceptance")]
+#[doc(hidden)]
+pub use legacy_tombstones::{
+    ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector,
+    ThemeLegacyTombstoneInventoryError, ktd23_tombstone_inventory,
 };
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
