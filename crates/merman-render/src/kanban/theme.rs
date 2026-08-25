@@ -10,6 +10,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -411,12 +412,9 @@ impl KanbanTaskTheme {
                     target: ThemeTarget::Task,
                     ..
                 } => {
-                    let key = theme.family_mechanism_key(route);
-                    if item_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
+                    // Effect bindings are selected by the final terminal winner. Reconcile
+                    // them after all route metadata is collected so an explicit rule or Clear
+                    // can suppress the fallback binding without a false residual.
                 }
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
@@ -424,6 +422,16 @@ impl KanbanTaskTheme {
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
+
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Task,
+                TerminalVariantDomain::uniform(item_count, ThemeVariant::Default),
+            )],
+            work_meter,
+        )?;
 
         let mut pending_radius_key = None;
         for ((rule_index, target), observation) in observations {
@@ -965,9 +973,17 @@ struct KanbanTaskRuleObservation {
 mod tests {
     use super::{
         KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskResolvedItem,
-        KanbanTaskTerminalDecision, KanbanTaskThemeReceipt, MERMAID_TASK_RADIUS_PX,
+        KanbanTaskTerminalDecision, KanbanTaskTheme, KanbanTaskThemeReceipt,
+        MERMAID_TASK_RADIUS_PX,
     };
-    use crate::diagram_theme::ThemeCapability;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
+        EffectInput, EffectPrimitive, FamilyThemeMechanismKey, ThemeCapability, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    };
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use merman_core::MermaidConfig;
 
     fn label_decision() -> KanbanTaskTerminalDecision {
         KanbanTaskTerminalDecision {
@@ -1099,5 +1115,78 @@ mod tests {
             [ThemeCapability::SolidPaint].into_iter().collect()
         );
         assert!(!receipt.proves_label_rule(7));
+    }
+
+    #[test]
+    fn task_effect_binding_yields_to_an_explicit_effect_winner() {
+        let bound_effect_id = "kanban-task-bound";
+        let explicit_effect_id = "kanban-task-explicit";
+        let effects = DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    bound_effect_id,
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 1.0,
+                    }],
+                )
+                .expect("valid bound Kanban effect graph"),
+            )
+            .expect("unique bound Kanban effect graph")
+            .with_graph(
+                EffectGraph::new(
+                    explicit_effect_id,
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 2.0,
+                    }],
+                )
+                .expect("valid explicit Kanban effect graph"),
+            )
+            .expect("unique explicit Kanban effect graph")
+            .with_binding(
+                EffectBinding::new(ThemeTarget::Task, bound_effect_id)
+                    .expect("valid Kanban task effect binding"),
+            )
+            .expect("unique Kanban task effect binding");
+        let explicit_rule = ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default()
+                .with_effect(explicit_effect_id)
+                .expect("valid explicit Kanban task effect"),
+        )
+        .for_family(DiagramFamilyId::KANBAN);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_styles(ThemeRuleSet::default().with_rule(explicit_rule))
+                    .with_effects(effects),
+            )
+            .expect("compile Kanban effect evidence fixture")
+            .resolve(DiagramFamilyId::KANBAN);
+        let binding_key = FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::Task,
+            effect_id: bound_effect_id.to_string(),
+        };
+
+        let task_theme = KanbanTaskTheme::resolve(
+            Some(&theme),
+            vec![KanbanTaskOccurrence::new("task", [])],
+            &MermaidConfig::default(),
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .expect("resolve Kanban task effect evidence fixture");
+        let evidence = task_theme.finish_evidence();
+
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            std::slice::from_ref(&binding_key)
+        );
+        assert!(
+            evidence
+                .residuals()
+                .iter()
+                .all(|residual| residual.key() != &binding_key)
+        );
     }
 }
