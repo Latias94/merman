@@ -704,7 +704,47 @@ fn ishikawa_theme_font_family_keeps_precedence_over_root_font_family() {
 }
 
 #[test]
-fn ishikawa_mixed_font_stack_and_legacy_font_size_fails_closed() {
+fn ishikawa_font_size_only_remains_legacy_and_reaches_css() {
+    let theme = ishikawa_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Ishikawa font size"),
+    );
+    let source = ishikawa_theme_source("classic");
+    let rendered = try_render_ishikawa_with_theme_requirement(
+        &source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders Ishikawa legacy font size");
+    let stylesheet = ishikawa_stylesheet(rendered.svg());
+    assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let error = try_render_ishikawa_with_theme_requirement(
+        &source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .err()
+    .expect("RequirePortable rejects Ishikawa legacy font size");
+    assert!(matches!(
+        error,
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id: DiagramFamilyId::ISHIKAWA,
+            residual_count: 1,
+        }
+    ));
+}
+
+#[test]
+fn ishikawa_mixed_typography_composes_in_best_effort_but_remains_nonportable() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(
             FontStack::single("IshikawaMixed").expect("valid mixed Ishikawa font stack"),
@@ -713,6 +753,21 @@ fn ishikawa_mixed_font_stack_and_legacy_font_size_fails_closed() {
         .expect("valid mixed Ishikawa font size");
     let theme = ishikawa_typography_theme(typography);
     let source = ishikawa_theme_source("classic");
+    let metadata = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_metadata_sync(&source)
+        .expect("parse Ishikawa compatibility metadata");
+    assert!(merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "themeVariables.fontSize"
+    ));
+    assert!(!merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "themeVariables.fontFamily"
+    ));
+    assert!(!merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "fontFamily"
+    ));
     let rendered = try_render_ishikawa_with_theme_requirement(
         &source,
         &theme,

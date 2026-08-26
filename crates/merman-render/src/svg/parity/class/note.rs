@@ -45,6 +45,7 @@ pub(super) struct ClassNoteRenderStats {
     pub notes_sanitize: Duration,
     pub path_bounds: Duration,
     pub path_bounds_calls: usize,
+    pub typography: crate::class::ClassTypographyTerminalFacts,
 }
 
 pub(super) fn render_class_note_node<O: SvgOutput>(
@@ -234,11 +235,20 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             sanitize_config,
             ctx.effective_config,
         );
-        let note_html = class_math_html_label(note_src, ctx.mermaid_config, ctx.math_renderer)
-            .unwrap_or_else(|| {
-                let html = crate::class::class_note_html_fragment(note_src, note_html_config);
-                format!("<p>{html}</p>")
-            });
+        let note_html = if let Some(math_html) =
+            class_math_html_label(note_src, ctx.mermaid_config, ctx.math_renderer)
+        {
+            stats.typography =
+                crate::class::ClassTypographyTerminalFacts::unverified_text(note_src);
+            math_html
+        } else {
+            let html = crate::class::class_note_html_fragment(note_src, note_html_config);
+            let note_html = format!("<p>{html}</p>");
+            let facts = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&note_html);
+            stats.typography =
+                crate::class::ClassTypographyTerminalFacts::from_visible_style_facts(&facts);
+            note_html
+        };
         if let Some(s) = sanitize_start {
             stats.notes_sanitize += s.elapsed();
         }
@@ -264,6 +274,9 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         );
         write_class_svg_text_markdown_with_style(out, note_text.as_ref(), note_label_style);
         out.push_str("</g></g></g>");
+        let facts = crate::class::class_svg_label_visible_style_facts(note_text.as_ref());
+        stats.typography =
+            crate::class::ClassTypographyTerminalFacts::from_visible_style_facts(&facts);
     }
 
     Ok(stats)

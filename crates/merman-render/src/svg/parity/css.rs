@@ -55,11 +55,49 @@ struct MermaidBaseCss<'a> {
     error_text: &'a str,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct MermaidBaseFontCssEmission<'a> {
+    diagram_root_font_family_css: &'a str,
+    nested_svg_font_family_css: &'a str,
+}
+
+impl<'a> MermaidBaseFontCssEmission<'a> {
+    pub(super) const fn diagram_root_font_family_css(self) -> &'a str {
+        self.diagram_root_font_family_css
+    }
+
+    pub(super) const fn nested_svg_font_family_css(self) -> &'a str {
+        self.nested_svg_font_family_css
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct MermaidRootVariableFontCssEmission<'a> {
+    font_family_css: &'a str,
+}
+
+impl<'a> MermaidRootVariableFontCssEmission<'a> {
+    pub(super) const fn font_family_css(self) -> &'a str {
+        self.font_family_css
+    }
+}
+
 fn write_mermaid_base_css_prefix<I>(
     out: &mut impl SvgOutput,
     id: I,
     css: MermaidBaseCss<'_>,
 ) -> Result<()>
+where
+    I: Copy + std::fmt::Display,
+{
+    write_mermaid_base_css_prefix_with_font_emission(out, id, css).map(drop)
+}
+
+fn write_mermaid_base_css_prefix_with_font_emission<'a, I>(
+    out: &mut impl SvgOutput,
+    id: I,
+    css: MermaidBaseCss<'a>,
+) -> Result<MermaidBaseFontCssEmission<'a>>
 where
     I: Copy + std::fmt::Display,
 {
@@ -102,7 +140,11 @@ where
         r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
         id, css.font_family, css.font_size_css, id
     );
-    out.checkpoint()
+    out.checkpoint()?;
+    Ok(MermaidBaseFontCssEmission {
+        diagram_root_font_family_css: css.font_family,
+        nested_svg_font_family_css: css.font_family,
+    })
 }
 
 pub(super) fn write_mermaid_default_base_css_prefix<I>(
@@ -266,12 +308,26 @@ fn write_mermaid_base_css_root_rule<I>(
 where
     I: Copy + std::fmt::Display,
 {
+    write_mermaid_base_css_root_rule_with_font_emission(out, id, font_family).map(drop)
+}
+
+fn write_mermaid_base_css_root_rule_with_font_emission<'a, I>(
+    out: &mut impl SvgOutput,
+    id: I,
+    font_family: &'a str,
+) -> Result<MermaidRootVariableFontCssEmission<'a>>
+where
+    I: Copy + std::fmt::Display,
+{
     let _ = write!(
         out,
         r#"#{} :root{{--mermaid-font-family:{};}}"#,
         id, font_family
     );
-    out.checkpoint()
+    out.checkpoint()?;
+    Ok(MermaidRootVariableFontCssEmission {
+        font_family_css: font_family,
+    })
 }
 
 pub(super) fn info_css_into<I>(out: &mut String, diagram_id: I)
@@ -360,7 +416,19 @@ impl InfoCssValues {
     where
         I: Copy + std::fmt::Display,
     {
-        write_mermaid_base_css_prefix(
+        self.write_prefix_with_font_emission(out, selector_id)
+            .map(drop)
+    }
+
+    fn write_prefix_with_font_emission<I>(
+        &self,
+        out: &mut impl SvgOutput,
+        selector_id: I,
+    ) -> Result<MermaidBaseFontCssEmission<'_>>
+    where
+        I: Copy + std::fmt::Display,
+    {
+        write_mermaid_base_css_prefix_with_font_emission(
             out,
             selector_id,
             MermaidBaseCss {
@@ -385,8 +453,22 @@ impl InfoCssValues {
         SelectorId: Copy + std::fmt::Display,
         FragmentId: Copy + std::fmt::Display,
     {
+        self.write_root_with_font_emission(out, selector_id, fragment_id)
+            .map(drop)
+    }
+
+    fn write_root_with_font_emission<SelectorId, FragmentId>(
+        &self,
+        out: &mut impl SvgOutput,
+        selector_id: SelectorId,
+        fragment_id: FragmentId,
+    ) -> Result<MermaidRootVariableFontCssEmission<'_>>
+    where
+        SelectorId: Copy + std::fmt::Display,
+        FragmentId: Copy + std::fmt::Display,
+    {
         write_mermaid_common_neo_css(out, selector_id, fragment_id, &self.neo)?;
-        write_mermaid_base_css_root_rule(out, selector_id, &self.font_family)
+        write_mermaid_base_css_root_rule_with_font_emission(out, selector_id, &self.font_family)
     }
 
     fn write_all<SelectorId, FragmentId>(
@@ -401,6 +483,55 @@ impl InfoCssValues {
     {
         self.write_prefix(out, selector_id)?;
         self.write_root(out, selector_id, fragment_id)
+    }
+}
+
+pub(super) struct InfoCssWriter {
+    values: InfoCssValues,
+}
+
+impl InfoCssWriter {
+    pub(super) fn raw_theme_font_size_with_font_family(
+        effective_config: &serde_json::Value,
+        font_family: &str,
+    ) -> Self {
+        Self {
+            values: InfoCssValues::new(
+                effective_config,
+                InfoCssFontSizeSource::RawTheme,
+                Some(font_family),
+            ),
+        }
+    }
+
+    pub(super) fn font_family(&self) -> &str {
+        &self.values.font_family
+    }
+
+    pub(super) fn write_prefix<I>(
+        &self,
+        out: &mut impl SvgOutput,
+        selector_id: I,
+    ) -> Result<MermaidBaseFontCssEmission<'_>>
+    where
+        I: Copy + std::fmt::Display,
+    {
+        self.values
+            .write_prefix_with_font_emission(out, selector_id)
+    }
+
+    pub(super) fn write_root<SelectorId, FragmentId>(
+        &self,
+        out: &mut impl SvgOutput,
+        selector_id: SelectorId,
+        fragment_id: FragmentId,
+    ) -> Result<MermaidRootVariableFontCssEmission<'_>>
+    where
+        SelectorId: Copy + std::fmt::Display,
+        FragmentId: Copy + std::fmt::Display,
+    {
+        self.values
+            .write_root_with_font_emission(out, selector_id, fragment_id)
     }
 }
 
@@ -446,21 +577,6 @@ where
         diagram_id,
         effective_config,
         InfoCssFontSizeSource::ThemeOnly,
-        None,
-    )
-}
-
-pub(super) fn info_css_parts_with_raw_theme_font_size<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-) -> InfoCssParts
-where
-    I: Copy + std::fmt::Display,
-{
-    info_css_parts_with_font_size_source(
-        diagram_id,
-        effective_config,
-        InfoCssFontSizeSource::RawTheme,
         None,
     )
 }

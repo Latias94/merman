@@ -29,13 +29,17 @@ pub(super) fn render_class_namespace_cluster_group(
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
+    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
 ) -> crate::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;
     for c in clusters {
-        render_class_namespace_cluster(out, content_bounds, c, ctx)?;
+        let typography = render_class_namespace_cluster(out, content_bounds, c, ctx)?;
         out.checkpoint()?;
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_namespace(&c.id, typography);
+        }
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -49,15 +53,19 @@ pub(super) fn render_class_elk_subgraphs(
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
+    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
 ) -> crate::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="subgraphs">"#);
     out.checkpoint()?;
     for cluster in clusters {
         out.push_str(r#"<g class="subgraph">"#);
-        render_class_namespace_cluster(out, content_bounds, cluster, ctx)?;
+        let typography = render_class_namespace_cluster(out, content_bounds, cluster, ctx)?;
         out.push_str("</g>");
         out.checkpoint()?;
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_namespace(&cluster.id, typography);
+        }
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -71,7 +79,7 @@ fn render_class_namespace_cluster(
     content_bounds: &mut Option<Bounds>,
     cluster: &LayoutCluster,
     ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> Result<()> {
+) -> Result<crate::class::ClassTypographyTerminalFacts> {
     let w = cluster.width.max(1.0);
     let h = cluster.height.max(1.0);
     let left = cluster.x - w / 2.0 + ctx.content_tx;
@@ -96,7 +104,7 @@ fn render_class_namespace_cluster(
         label_h,
     );
 
-    let title_html = class_namespace_title_html(&cluster.title, ctx);
+    let (title_html, typography) = class_namespace_title_html(&cluster.title, ctx);
     out.push_str(r#"<g class="cluster undefined" id=""#);
     let _ = write!(out, "{}", ctx.diagram_id);
     ctx.emit.checkpoint()?;
@@ -115,12 +123,23 @@ fn render_class_namespace_cluster(
         MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
         title_html
     );
-    Ok(())
+    Ok(typography)
 }
 
-fn class_namespace_title_html(title: &str, ctx: ClassNamespaceClusterGroupContext<'_>) -> String {
-    class_math_html_label(title, ctx.mermaid_config, ctx.math_renderer)
-        .unwrap_or_else(|| format!("<p>{}</p>", escape_xml_display(title)))
+fn class_namespace_title_html(
+    title: &str,
+    ctx: ClassNamespaceClusterGroupContext<'_>,
+) -> (String, crate::class::ClassTypographyTerminalFacts) {
+    if let Some(math_html) = class_math_html_label(title, ctx.mermaid_config, ctx.math_renderer) {
+        return (
+            math_html,
+            crate::class::ClassTypographyTerminalFacts::unverified_text(title),
+        );
+    }
+    (
+        format!("<p>{}</p>", escape_xml_display(title)),
+        crate::class::ClassTypographyTerminalFacts::inherited_text(title),
+    )
 }
 
 pub(super) fn class_namespace_root_offset(c: &LayoutCluster) -> (f64, f64) {
@@ -139,6 +158,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
     root_ns_id: &str,
     root_dx: f64,
     root_dy: f64,
+    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
 ) -> crate::Result<()> {
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;
@@ -178,7 +198,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
             label_h,
         );
 
-        let title_html = class_namespace_title_html(&c.title, ctx);
+        let (title_html, typography) = class_namespace_title_html(&c.title, ctx);
         out.push_str(r#"<g class="cluster undefined" id=""#);
         let _ = write!(out, "{}", ctx.diagram_id);
         ctx.emit.checkpoint()?;
@@ -198,6 +218,9 @@ pub(super) fn render_class_namespace_clusters_in_root(
             title_html
         );
         out.checkpoint()?;
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_namespace(&c.id, typography);
+        }
     }
     out.push_str("</g>");
     out.checkpoint()

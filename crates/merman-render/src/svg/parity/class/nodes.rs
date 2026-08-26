@@ -36,6 +36,12 @@ struct ClassNodeRootOffsets {
     in_namespace_root: bool,
 }
 
+#[derive(Default)]
+struct ClassNodeRenderOutcome {
+    theme_emission: Option<crate::class::ClassNodeTerminalEmission>,
+    typography: crate::class::ClassTypographyTerminalFacts,
+}
+
 pub(super) struct ClassNodesRenderState<'a, O: SvgOutput> {
     pub(super) out: &'a mut O,
     pub(super) content_bounds: &'a mut Option<Bounds>,
@@ -57,6 +63,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) node_theme_expectations:
         &'a FxHashMap<&'a str, &'a crate::class::ClassNodeTerminalExpectation>,
+    pub(super) typography_theme: &'a crate::class::ClassTypographyThemePlan,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) timing: RenderTiming,
@@ -68,6 +75,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
 ) -> Result<()> {
     let ClassNodesRenderState {
         out,
@@ -116,7 +124,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
         parent_origin: (0.0, 0.0),
     }];
     while let Some(frame) = stack.pop() {
-        let node_emission = match frame {
+        let (outcome, typography_node_id) = match frame {
             RenderFrame::Enter {
                 root_id,
                 parent_origin,
@@ -171,6 +179,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                         namespace_id,
                         origin.0,
                         origin.1,
+                        typography_receipt,
                     )?;
                 } else {
                     let clusters = root
@@ -200,6 +209,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             timing: ctx.timing,
                             emit: ctx.emit,
                         },
+                        typography_receipt,
                     )?;
                 }
 
@@ -224,6 +234,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                     origin.0,
                     origin.1,
                     in_namespace_root,
+                    typography_receipt,
                 )?;
                 out.push_str(r#"<g class="nodes">"#);
 
@@ -241,39 +252,45 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                         }),
                     }
                 }
-                None
+                (ClassNodeRenderOutcome::default(), None)
             }
             RenderFrame::Node {
                 id,
                 origin,
                 in_namespace_root,
-            } => render_class_node_id(
-                ClassNodesRenderState {
-                    out,
-                    content_bounds,
-                    detail,
-                    sanitize_config,
-                    borrowed_sanitize_config,
-                },
-                ctx,
-                &layout_nodes_by_id,
-                id,
-                ClassNodeRootOffsets {
-                    namespace_root_dx: origin.0,
-                    namespace_root_dy: origin.1,
-                    in_namespace_root,
-                },
-            )?,
+            } => (
+                render_class_node_id(
+                    ClassNodesRenderState {
+                        out,
+                        content_bounds,
+                        detail,
+                        sanitize_config,
+                        borrowed_sanitize_config,
+                    },
+                    ctx,
+                    &layout_nodes_by_id,
+                    id,
+                    ClassNodeRootOffsets {
+                        namespace_root_dx: origin.0,
+                        namespace_root_dy: origin.1,
+                        in_namespace_root,
+                    },
+                )?,
+                Some(id),
+            ),
             RenderFrame::Close { in_namespace_root } => {
                 out.push_str("</g>");
                 if in_namespace_root {
                     out.push_str("</g>");
                 }
-                None
+                (ClassNodeRenderOutcome::default(), None)
             }
         };
         out.checkpoint()?;
-        if let Some(emission) = node_emission {
+        if let (Some(receipt), Some(id)) = (typography_receipt.as_mut(), typography_node_id) {
+            receipt.record_node(id, outcome.typography);
+        }
+        if let Some(emission) = outcome.theme_emission {
             theme_receipt.record_node(emission);
         }
     }
@@ -285,6 +302,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
 ) -> Result<()> {
     let ClassNodesRenderState {
         out,
@@ -346,6 +364,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             timing: ctx.timing,
             emit: ctx.emit,
         },
+        typography_receipt,
     )?;
 
     out.push_str(r#"<g class="nodes">"#);
@@ -354,7 +373,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         let ClassRenderItem::Node(id) = item else {
             unreachable!("Class ELK render root was validated as flat")
         };
-        let node_emission = render_class_node_id(
+        let outcome = render_class_node_id(
             ClassNodesRenderState {
                 out,
                 content_bounds,
@@ -372,7 +391,10 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             },
         )?;
         out.checkpoint()?;
-        if let Some(emission) = node_emission {
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_node(id, outcome.typography);
+        }
+        if let Some(emission) = outcome.theme_emission {
             theme_receipt.record_node(emission);
         }
     }
@@ -400,6 +422,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         0.0,
         0.0,
         false,
+        typography_receipt,
     )?;
     Ok(())
 }
@@ -599,6 +622,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
     root_dx: f64,
     root_dy: f64,
     in_namespace_root: bool,
+    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
 ) -> Result<()> {
     let local_ctx = ClassSplitEdgeGroupsRenderContext {
         edges,
@@ -637,6 +661,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
             content_bounds,
             detail,
             theme_receipt,
+            typography_receipt,
         },
         &local_ctx,
         if in_namespace_root { root_dx } else { 0.0 },
@@ -650,7 +675,7 @@ fn render_class_node_id<O: SvgOutput>(
     layout_nodes_by_id: &FxHashMap<&str, &crate::model::LayoutNode>,
     id: &str,
     offsets: ClassNodeRootOffsets,
-) -> Result<Option<crate::class::ClassNodeTerminalEmission>> {
+) -> Result<ClassNodeRenderOutcome> {
     let ClassNodesRenderState {
         out,
         content_bounds,
@@ -716,12 +741,15 @@ fn render_class_node_id<O: SvgOutput>(
         detail.notes_sanitize += stats.notes_sanitize;
         detail.path_bounds += stats.path_bounds;
         detail.path_bounds_calls += stats.path_bounds_calls;
-        return Ok(None);
+        return Ok(ClassNodeRenderOutcome {
+            theme_emission: None,
+            typography: stats.typography,
+        });
     }
 
     if let Some(iface) = ctx.iface_by_id.get(n.id.as_str()).copied() {
         let expectation = node_theme_expectation.expect("validated Class interface theme owner");
-        let emission = render_class_interface_node(
+        let result = render_class_interface_node(
             ClassInterfaceRenderState {
                 out,
                 content_bounds,
@@ -741,7 +769,10 @@ fn render_class_node_id<O: SvgOutput>(
                 emit: ctx.emit,
             },
         )?;
-        return Ok(Some(emission));
+        return Ok(ClassNodeRenderOutcome {
+            theme_emission: Some(result.theme_emission),
+            typography: result.typography,
+        });
     }
 
     let node = ctx
@@ -757,14 +788,13 @@ fn render_class_node_id<O: SvgOutput>(
         .class_label_plans_by_id
         .get(n.id.as_str())
         .map(|plan| plan.as_ref());
+    let node_style_facts = ctx
+        .typography_theme
+        .require_node_style_facts(n.id.as_str())?;
     let node_style_attr = node_inline_styles.style_attr.as_str();
     let source_owns_fill = node_inline_styles.fill.is_some();
     let source_owns_stroke = node_inline_styles.stroke.is_some();
-    let label_terminal_truth = class_node_label_terminal_truth(
-        node,
-        &node_inline_styles,
-        node_label_plan.map(crate::model::ClassNodeLabelPlan::paint_facts),
-    );
+    let label_terminal_truth = class_node_label_terminal_truth(node_style_facts);
     let source_owns_label_fill = label_terminal_truth.source_owns_paint();
     let emitted_fill = expectation.typed_fill(source_owns_fill);
     let emitted_stroke = expectation.typed_stroke(source_owns_stroke);
@@ -903,30 +933,35 @@ fn render_class_node_id<O: SvgOutput>(
     if node_link_open {
         out.push_str("</a>");
     }
-    Ok(Some(crate::class::ClassNodeTerminalEmission::new(
-        id,
-        crate::class::ClassNodePaintTerminalEmission::new(
-            source_owns_fill,
-            emitted_fill,
-            node_fill,
-        )
-        .with_source_value(node_inline_styles.fill),
-        crate::class::ClassNodePaintTerminalEmission::new(
-            source_owns_stroke,
-            emitted_stroke,
-            node_stroke,
-        )
-        .with_source_value(node_inline_styles.stroke),
-        crate::class::ClassNodePaintTerminalEmission::new(
-            source_owns_label_fill,
-            emitted_label_fill,
-            if use_html_labels {
-                html_node_label_style_attr.as_str()
-            } else {
-                svg_node_label_style_attr.as_str()
-            },
-        )
-        .with_source_value(node_inline_styles.color)
-        .with_terminal_verified(label_terminal_truth.typed_fill_verified()),
-    )))
+    Ok(ClassNodeRenderOutcome {
+        theme_emission: Some(crate::class::ClassNodeTerminalEmission::new(
+            id,
+            crate::class::ClassNodePaintTerminalEmission::new(
+                source_owns_fill,
+                emitted_fill,
+                node_fill,
+            )
+            .with_source_value(node_inline_styles.fill),
+            crate::class::ClassNodePaintTerminalEmission::new(
+                source_owns_stroke,
+                emitted_stroke,
+                node_stroke,
+            )
+            .with_source_value(node_inline_styles.stroke),
+            crate::class::ClassNodePaintTerminalEmission::new(
+                source_owns_label_fill,
+                emitted_label_fill,
+                if use_html_labels {
+                    html_node_label_style_attr.as_str()
+                } else {
+                    svg_node_label_style_attr.as_str()
+                },
+            )
+            .with_source_value(node_inline_styles.color)
+            .with_terminal_verified(label_terminal_truth.typed_fill_verified()),
+        )),
+        typography: crate::class::ClassTypographyTerminalFacts::from_node_style_facts(
+            node_style_facts,
+        ),
+    })
 }

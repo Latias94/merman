@@ -26,13 +26,18 @@ pub(super) struct ClassInterfaceRenderState<'a, O: SvgOutput> {
     pub content_bounds: &'a mut Option<Bounds>,
 }
 
+pub(super) struct ClassInterfaceRenderResult {
+    pub theme_emission: crate::class::ClassNodeTerminalEmission,
+    pub typography: crate::class::ClassTypographyTerminalFacts,
+}
+
 pub(super) fn render_class_interface_node<O: SvgOutput>(
     state: ClassInterfaceRenderState<'_, O>,
     iface: &ClassSvgInterface,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassInterfaceRenderContext<'_>,
-) -> crate::Result<crate::class::ClassNodeTerminalEmission> {
+) -> crate::Result<ClassInterfaceRenderResult> {
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
 
@@ -100,10 +105,10 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
         MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
         label_style_attr,
     );
-    if let Some(math_html) =
-        class_math_html_label(label_text.as_ref(), ctx.mermaid_config, ctx.math_renderer)
-    {
-        out.push_str(&math_html);
+    let math_html =
+        class_math_html_label(label_text.as_ref(), ctx.mermaid_config, ctx.math_renderer);
+    if let Some(math_html) = math_html.as_deref() {
+        out.push_str(math_html);
     } else {
         out.push_str("<p>");
         for (idx, line) in label_text.split('\n').enumerate() {
@@ -115,15 +120,22 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
         out.push_str("</p>");
     }
     out.push_str("</span></div></foreignObject></g></g>");
-    Ok(crate::class::ClassNodeTerminalEmission::new(
-        &iface.id,
-        crate::class::ClassNodePaintTerminalEmission::not_applicable(),
-        crate::class::ClassNodePaintTerminalEmission::not_applicable(),
-        crate::class::ClassNodePaintTerminalEmission::new(
-            label_source_owned,
-            emitted_label_fill,
-            &label_style,
-        )
-        .with_terminal_verified(label_fill_verified),
-    ))
+    Ok(ClassInterfaceRenderResult {
+        theme_emission: crate::class::ClassNodeTerminalEmission::new(
+            &iface.id,
+            crate::class::ClassNodePaintTerminalEmission::not_applicable(),
+            crate::class::ClassNodePaintTerminalEmission::not_applicable(),
+            crate::class::ClassNodePaintTerminalEmission::new(
+                label_source_owned,
+                emitted_label_fill,
+                &label_style,
+            )
+            .with_terminal_verified(label_fill_verified),
+        ),
+        typography: if math_html.is_some() {
+            crate::class::ClassTypographyTerminalFacts::unverified_text(label_text.as_ref())
+        } else {
+            crate::class::ClassTypographyTerminalFacts::inherited_text(label_text.as_ref())
+        },
+    })
 }

@@ -111,6 +111,59 @@ pub(crate) fn is_safe_css_font_family_value(value: &str) -> bool {
     css_value_is_safe(value, CssValuePolicy::MermaidSourceStyle) && !value.contains(':')
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CssFontFamilyOwnership {
+    Inherited,
+    SourceOwned,
+    Unverified,
+}
+
+pub(crate) fn css_font_family_ownership<'a>(
+    declarations: impl IntoIterator<Item = &'a str>,
+) -> CssFontFamilyOwnership {
+    css_font_family_ownership_from_parsed(
+        declarations
+            .into_iter()
+            .flat_map(|declaration| declaration.split(';'))
+            .filter_map(parse_style_declaration),
+    )
+}
+
+/// Resolves a sequence whose items are already individual CSS declarations.
+///
+/// Unlike [`css_font_family_ownership`], this preserves the writer's fail-closed behavior for a
+/// malformed item that smuggles in an extra semicolon-delimited declaration.
+pub(crate) fn css_font_family_declaration_ownership<'a>(
+    declarations: impl IntoIterator<Item = &'a str>,
+) -> CssFontFamilyOwnership {
+    css_font_family_ownership_from_parsed(
+        declarations.into_iter().filter_map(parse_style_declaration),
+    )
+}
+
+fn css_font_family_ownership_from_parsed<'a>(
+    declarations: impl IntoIterator<Item = ParsedStyleDeclaration<'a>>,
+) -> CssFontFamilyOwnership {
+    let mut winner: Option<(bool, CssFontFamilyOwnership)> = None;
+    for declaration in declarations
+        .into_iter()
+        .filter(|declaration| declaration.property() == "font-family")
+    {
+        if winner.is_none_or(|(important, _)| declaration.important() || !important) {
+            let normalized = declaration.value().trim().to_ascii_lowercase();
+            let ownership = if matches!(normalized.as_str(), "inherit" | "unset") {
+                CssFontFamilyOwnership::Inherited
+            } else if declaration.analysis().has_dynamic_reference_function() {
+                CssFontFamilyOwnership::Unverified
+            } else {
+                CssFontFamilyOwnership::SourceOwned
+            };
+            winner = Some((declaration.important(), ownership));
+        }
+    }
+    winner.map_or(CssFontFamilyOwnership::Inherited, |(_, owner)| owner)
+}
+
 pub(crate) fn is_resource_free_css_value(value: &str) -> bool {
     css_value_is_safe(value, CssValuePolicy::PortableTheme)
 }
@@ -309,11 +362,16 @@ enum CssScalar {
 pub(crate) struct CssValueAnalysis {
     scalar: Option<CssScalar>,
     component_count: usize,
+    has_dynamic_reference_function: bool,
 }
 
 impl CssValueAnalysis {
     pub(crate) const fn is_single_component(&self) -> bool {
         self.component_count == 1
+    }
+
+    pub(crate) const fn has_dynamic_reference_function(&self) -> bool {
+        self.has_dynamic_reference_function
     }
 
     pub(crate) fn svg_number_or_px(&self) -> Option<f64> {
@@ -384,6 +442,7 @@ fn parse_css_value_from_parser<'i, 't>(
 ) -> Result<(SourcePosition, CssValueAnalysis, bool), ParseError<'i, ()>> {
     let mut component_count = 0;
     let mut scalar = None;
+    let mut has_dynamic_reference_function = false;
     loop {
         let token_start = parser.position();
         let state = parser.state();
@@ -397,6 +456,7 @@ fn parse_css_value_from_parser<'i, 't>(
                     CssValueAnalysis {
                         scalar,
                         component_count,
+                        has_dynamic_reference_function,
                     },
                     false,
                 );
@@ -420,6 +480,7 @@ fn parse_css_value_from_parser<'i, 't>(
                         CssValueAnalysis {
                             scalar,
                             component_count,
+                            has_dynamic_reference_function,
                         },
                         true,
                     );
@@ -433,7 +494,14 @@ fn parse_css_value_from_parser<'i, 't>(
         let scalar_candidate = (component_count == 0)
             .then(|| parse_css_scalar(&token, token_source))
             .flatten();
-        validate_css_component(parser, token_start, token, policy, 0)?;
+        validate_css_component(
+            parser,
+            token_start,
+            token,
+            policy,
+            0,
+            &mut has_dynamic_reference_function,
+        )?;
         component_count += 1;
         if component_count == 1 {
             scalar = scalar_candidate;
@@ -555,6 +623,7 @@ fn validate_css_component<'i, 't>(
     token: Token<'i>,
     policy: CssValuePolicy,
     depth: u8,
+    has_dynamic_reference_function: &mut bool,
 ) -> Result<(), ParseError<'i, ()>> {
     const MAX_NESTING: u8 = 32;
 
@@ -573,11 +642,18 @@ fn validate_css_component<'i, 't>(
         | Token::CDC
         | Token::Delim('!') => Err(parser.new_custom_error(())),
         Token::Function(name) => {
+            *has_dynamic_reference_function |=
+                matches!(name.to_ascii_lowercase().as_str(), "var" | "env");
             if function_is_forbidden(&name, policy) || depth >= MAX_NESTING {
                 return Err(parser.new_custom_error(()));
             }
             parser.parse_nested_block(|nested| {
-                consume_safe_component_values(nested, policy, depth + 1)
+                consume_safe_component_values(
+                    nested,
+                    policy,
+                    depth + 1,
+                    has_dynamic_reference_function,
+                )
             })?;
             ensure_source_closed_block(parser, token_start, ')')
         }
@@ -591,7 +667,12 @@ fn validate_css_component<'i, 't>(
                 ']'
             };
             parser.parse_nested_block(|nested| {
-                consume_safe_component_values(nested, policy, depth + 1)
+                consume_safe_component_values(
+                    nested,
+                    policy,
+                    depth + 1,
+                    has_dynamic_reference_function,
+                )
             })?;
             ensure_source_closed_block(parser, token_start, close)
         }
@@ -603,6 +684,7 @@ fn consume_safe_component_values<'i, 't>(
     parser: &mut Parser<'i, 't>,
     policy: CssValuePolicy,
     depth: u8,
+    has_dynamic_reference_function: &mut bool,
 ) -> Result<(), ParseError<'i, ()>> {
     loop {
         let token_start = parser.position();
@@ -612,7 +694,14 @@ fn consume_safe_component_values<'i, 't>(
             Err(error) => return Err(error.into()),
         };
 
-        validate_css_component(parser, token_start, token, policy, depth)?;
+        validate_css_component(
+            parser,
+            token_start,
+            token,
+            policy,
+            depth,
+            has_dynamic_reference_function,
+        )?;
     }
 }
 
@@ -762,6 +851,53 @@ mod tests {
             let parsed = parse_style_declaration(raw).expect("ordinary declaration");
             assert!(!parsed.important(), "raw={raw}");
         }
+    }
+
+    #[test]
+    fn font_family_ownership_follows_css_winner_priority() {
+        assert_eq!(
+            css_font_family_ownership(["font-family:First;font-family:inherit"]),
+            CssFontFamilyOwnership::Inherited
+        );
+        assert_eq!(
+            css_font_family_ownership(["font-family:First !important;font-family:inherit"]),
+            CssFontFamilyOwnership::SourceOwned
+        );
+        assert_eq!(
+            css_font_family_ownership([
+                "font-family:First !important;font-family:unset !important"
+            ]),
+            CssFontFamilyOwnership::Inherited
+        );
+        assert_eq!(
+            css_font_family_ownership(["font-family:var(--class-font)"]),
+            CssFontFamilyOwnership::Unverified
+        );
+        assert_eq!(
+            css_font_family_ownership(["font-family:env(class-font)"]),
+            CssFontFamilyOwnership::Unverified
+        );
+        assert_eq!(
+            css_font_family_ownership([r"font-family:v\61r(--class-font)"]),
+            CssFontFamilyOwnership::Unverified
+        );
+        assert_eq!(
+            css_font_family_ownership([r"font-family:e\6ev(class-font)"]),
+            CssFontFamilyOwnership::Unverified
+        );
+    }
+
+    #[test]
+    fn pre_split_font_declarations_reject_embedded_extra_declarations() {
+        let malformed = ["font-family:inherit;font-family:Source"];
+        assert_eq!(
+            css_font_family_ownership(malformed),
+            CssFontFamilyOwnership::SourceOwned
+        );
+        assert_eq!(
+            css_font_family_declaration_ownership(malformed),
+            CssFontFamilyOwnership::Inherited
+        );
     }
 
     #[test]

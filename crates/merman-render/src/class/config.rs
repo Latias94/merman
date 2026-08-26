@@ -1,6 +1,6 @@
 use crate::config::{
-    config_bool, config_css_number_or_string, config_diagram_look, config_f64, config_f64_css_px,
-    config_f64_explicit_css_px, config_string,
+    config_bool, config_diagram_look, config_f64, config_f64_css_px, config_f64_explicit_css_px,
+    config_string,
 };
 use crate::text::{TextStyle, WrapMode};
 use serde_json::Value;
@@ -147,11 +147,6 @@ impl<'a> ClassConfigView<'a> {
             .max(1.0)
     }
 
-    pub(crate) fn render_font_size_css(&self) -> String {
-        config_css_number_or_string(self.effective_config, &["themeVariables", "fontSize"])
-            .unwrap_or_else(|| "16px".to_string())
-    }
-
     pub(crate) fn wrap_probe_font_size(&self) -> f64 {
         self.root_compat_f64("fontSize").unwrap_or(16.0).max(1.0)
     }
@@ -207,6 +202,17 @@ impl<'a> ClassConfigView<'a> {
         config_string(self.effective_config, &["fontFamily"])
             .or_else(|| self.theme_string("fontFamily"))
             .or_else(|| Some(DEFAULT_CLASS_FONT_FAMILY.to_string()))
+    }
+
+    pub(crate) fn layout_font_family_css(&self) -> String {
+        let font_family = crate::config::normalize_css_font_family(
+            self.text_font_family().unwrap_or_default().as_str(),
+        );
+        if font_family.is_empty() {
+            DEFAULT_CLASS_FONT_FAMILY.to_string()
+        } else {
+            font_family
+        }
     }
 
     fn font_size_for_wrap_mode(&self, wrap_mode: WrapMode) -> f64 {
@@ -301,6 +307,18 @@ mod tests {
     }
 
     #[test]
+    fn class_layout_font_family_rejects_empty_or_unsafe_config_values() {
+        for font_family in ["", " ; ", "url(javascript:alert(1))"] {
+            let cfg = json!({ "fontFamily": font_family });
+            assert_eq!(
+                ClassConfigView::new(&cfg).layout_font_family_css(),
+                DEFAULT_CLASS_FONT_FAMILY,
+                "fontFamily={font_family:?}"
+            );
+        }
+    }
+
+    #[test]
     fn class_render_settings_preserve_svg_numeric_boundaries() {
         let cfg = json!({
             "htmlLabels": false,
@@ -324,7 +342,6 @@ mod tests {
         assert!(!config.render_diagram_html_labels());
         assert!(!config.render_edge_html_labels());
         assert_eq!(config.render_font_size(false), 24.0);
-        assert_eq!(config.render_font_size_css(), "24px");
         assert_eq!(config.wrap_probe_font_size(), 18.0);
         assert_eq!(config.render_class_padding(), 12.0);
         assert_eq!(config.render_viewport_padding(), 20.0);

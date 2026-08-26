@@ -2416,17 +2416,20 @@ mod tests {
         );
 
         let class = parse(&spec, "classDiagram\nclass Alpha\n");
+        let class_baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nclass Alpha\n");
         let flowchart = parse(&spec, "flowchart LR\nA --> B\n");
 
         assert_eq!(fallback_contribution_count(&class), 1);
         assert_ne!(class.effective_config.get_str("theme"), Some("base"));
         assert_eq!(
             class.effective_config.get_str("fontFamily"),
-            Some("Inter, sans-serif")
+            class_baseline.effective_config.get_str("fontFamily")
         );
         assert_eq!(
             class.effective_config.get_str("themeVariables.fontFamily"),
-            Some("Inter, sans-serif")
+            class_baseline
+                .effective_config
+                .get_str("themeVariables.fontFamily")
         );
         assert_eq!(
             class.effective_config.get_str("themeVariables.fontSize"),

@@ -1449,6 +1449,7 @@ fn flowchart_artifact_theme_evidence<L>(
 pub(crate) struct ClassFamilyArtifact {
     pair: FamilyPair<ClassDiagram, ClassDiagramLayout>,
     relation_theme: crate::class::ClassRelationThemePlan,
+    typography_theme: crate::class::ClassTypographyThemePlan,
     theme_evidence: crate::class::ClassThemeEvidenceRecorder,
 }
 
@@ -1477,6 +1478,10 @@ impl ClassFamilyArtifact {
 
     pub(crate) const fn relation_theme(&self) -> &crate::class::ClassRelationThemePlan {
         &self.relation_theme
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::class::ClassTypographyThemePlan {
+        &self.typography_theme
     }
 
     pub(crate) const fn theme_evidence(&self) -> &crate::class::ClassThemeEvidenceRecorder {
@@ -2298,11 +2303,15 @@ impl BuiltinFamilyArtifact {
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<Option<FamilyThemeEvidence>> {
         match self {
-            Self::Class(artifact) => Ok(Some(artifact.theme_evidence().finish(
-                theme,
-                artifact.relation_theme(),
-                work_meter,
-            )?)),
+            Self::Class(artifact) => {
+                let mut evidence = artifact.theme_evidence().finish(
+                    theme,
+                    artifact.relation_theme(),
+                    work_meter,
+                )?;
+                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
+                Ok(Some(evidence))
+            }
             _ => Ok(None),
         }
     }

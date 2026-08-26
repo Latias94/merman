@@ -22,6 +22,7 @@ pub(crate) struct InheritedFontStackPlan {
     font_family_css: Box<str>,
     outcome: InheritedFontStackOutcome,
     typed_font_stack_requested: bool,
+    typed_font_stack_active: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -194,11 +195,20 @@ impl InheritedFontStackPlan {
         effective_config: &MermaidConfig,
     ) -> Self {
         let configured_font = crate::config::config_font_family_css(effective_config.as_value());
+        Self::resolve_with_configured_font(theme, effective_config, configured_font)
+    }
+
+    pub(crate) fn resolve_with_configured_font(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+        configured_font: String,
+    ) -> Self {
         let Some(theme) = theme else {
             return Self {
                 font_family_css: configured_font.into_boxed_str(),
                 outcome: InheritedFontStackOutcome::Inactive,
                 typed_font_stack_requested: false,
+                typed_font_stack_active: false,
             };
         };
 
@@ -212,7 +222,8 @@ impl InheritedFontStackPlan {
                     )
                 });
         let mut typed_font_stack = false;
-        let mut unsupported_typography = false;
+        let mut residual_typography = false;
+        let mut unsupported_sibling_typography = false;
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
@@ -220,22 +231,28 @@ impl InheritedFontStackPlan {
                 {
                     typed_font_stack = true;
                 }
-                FamilyThemeMechanism::BaseTypography(_) => unsupported_typography = true,
+                FamilyThemeMechanism::BaseTypography(_) => {
+                    residual_typography = true;
+                    unsupported_sibling_typography |=
+                        route.disposition() == FamilyThemeDisposition::Unsupported;
+                }
                 FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
 
-        // A sibling unsupported typography route invalidates the combined typed request. Keep the
-        // terminal on the configured fallback so evidence and emitted CSS remain fail-closed.
-        let font_family_css =
-            if typed_font_stack && !config_owns_font_stack && !unsupported_typography {
-                theme.typography().font_stack().as_css()
-            } else {
-                configured_font
-            };
-        let outcome = if unsupported_typography {
+        // A legacy sibling remains non-portable, but it does not own the font-family assignment.
+        // Best-effort rendering therefore composes the typed stack with that compatibility value.
+        // A genuinely unsupported sibling still suppresses the aggregate typography request.
+        let typed_font_stack_active =
+            typed_font_stack && !config_owns_font_stack && !unsupported_sibling_typography;
+        let font_family_css = if typed_font_stack_active {
+            theme.typography().font_stack().as_css()
+        } else {
+            configured_font
+        };
+        let outcome = if residual_typography {
             InheritedFontStackOutcome::Unsupported
         } else if typed_font_stack && config_owns_font_stack {
             InheritedFontStackOutcome::ConfigOwned
@@ -249,6 +266,7 @@ impl InheritedFontStackPlan {
             font_family_css: font_family_css.into_boxed_str(),
             outcome,
             typed_font_stack_requested: typed_font_stack,
+            typed_font_stack_active,
         }
     }
 
@@ -268,5 +286,13 @@ impl InheritedFontStackPlan {
     /// mechanism fail closed.
     pub(crate) const fn typed_font_stack_requested(&self) -> bool {
         self.typed_font_stack_requested
+    }
+
+    /// Whether the typed font stack owns the emitted and measured font-family value.
+    ///
+    /// This remains true when a sibling typography property is legacy-compatible. The aggregate
+    /// outcome is still `Unsupported` in that case so portability evidence remains fail-closed.
+    pub(crate) const fn typed_font_stack_active(&self) -> bool {
+        self.typed_font_stack_active
     }
 }

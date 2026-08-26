@@ -381,7 +381,7 @@ fn eventmodeling_materialized_theme_font_size_reaches_css_without_explicit_owner
 }
 
 #[test]
-fn eventmodeling_mixed_font_stack_and_legacy_font_size_fails_closed() {
+fn eventmodeling_mixed_typography_composes_in_best_effort_but_remains_nonportable() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(
             FontStack::single("EventModelingMixed").expect("valid mixed Event Modeling font stack"),
@@ -399,6 +399,14 @@ fn eventmodeling_mixed_font_stack_and_legacy_font_size_fails_closed() {
     assert!(merman_core::__private::fallback_overlay_owns_path(
         &metadata.effective_config,
         "themeVariables.fontSize"
+    ));
+    assert!(!merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "themeVariables.fontFamily"
+    ));
+    assert!(!merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "fontFamily"
     ));
     let rendered = render_eventmodeling_with_theme_requirement(
         THEME_TEXT_SOURCE,

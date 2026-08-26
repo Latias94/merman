@@ -843,17 +843,23 @@ fn prepare_class_family(
         node_count,
         execution.work_meter_ref(),
     )?;
+    let typography_theme = crate::class::ClassTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
     let layout = crate::layout_class_typed_by_engine(
         diagram_type,
         &model,
         &meta.effective_config,
         execution,
+        &typography_theme,
     )?;
     let cluster_label_count = layout.clusters.len();
     Ok(BuiltinFamilyArtifact::Class(Box::new(
         ClassFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             relation_theme,
+            typography_theme,
             theme_evidence: crate::class::ClassThemeEvidenceRecorder::new(
                 relation_count,
                 node_count,

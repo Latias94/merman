@@ -10,6 +10,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 mod evidence;
 mod node;
 mod terminal;
+mod typography;
 
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
 use node::ClassNodeThemePlan;
@@ -18,6 +19,10 @@ use terminal::ExpectedStroke;
 pub(crate) use terminal::{
     ClassMarkerTerminalExpectation, ClassNodePaintTerminalEmission, ClassNodeTerminalEmission,
     ClassNodeTerminalExpectation, ClassRelationTerminalExpectation, ClassRelationThemeReceipt,
+};
+pub(crate) use typography::{
+    ClassNodeLabelStyleFacts, ClassTypographyCssEmission, ClassTypographyTerminalFacts,
+    ClassTypographyThemePlan, ClassTypographyThemeReceipt,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]

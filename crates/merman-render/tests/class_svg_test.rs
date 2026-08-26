@@ -2,13 +2,12 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
-use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
-    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, GradientStop, LinearGradient,
-    OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, Specified, ThemeColorValue,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeVariant,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FontStack, GradientStop,
+    LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, Specified,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
@@ -16,6 +15,7 @@ use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
+use merman_render::{DiagramFamilyId, LayoutOptions};
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -229,6 +229,14 @@ fn class_table_effect_theme() -> DiagramTheme {
         .expect("compile Class table effect theme")
 }
 
+fn class_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::CLASS, typography),
+        ))
+        .expect("compile Class typography theme")
+}
+
 fn try_render_class_svg_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
@@ -299,6 +307,444 @@ fn try_render_class_svg_with_resource_policy(
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
+}
+
+#[test]
+fn class_typed_font_stack_reaches_scoped_css_and_strict_receipt() {
+    let font_stack =
+        FontStack::new(["ClassTyped", "monospace"]).expect("valid Class typed font stack");
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\n  class Alpha {\n    +value: String\n  }\n",
+        &theme,
+        Engine::new(),
+    )
+    .expect("render strict portable Class font stack");
+
+    assert!(
+        rendered
+            .svg()
+            .contains("#merman{font-family:ClassTyped,monospace;"),
+        "typed Class font stack must reach root CSS: {}",
+        rendered.svg()
+    );
+    assert!(
+        rendered.svg().contains("g.classGroup text{fill:")
+            && rendered
+                .svg()
+                .contains("font-family:ClassTyped,monospace;font-size:10px;"),
+        "typed Class font stack must reach the class-group CSS seam: {}",
+        rendered.svg()
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn class_mixed_typography_composes_in_best_effort_but_remains_nonportable() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("ClassMixed").expect("valid Class mixed font stack"))
+        .with_font_size_px(24.0)
+        .expect("valid Class mixed font size");
+    let theme = class_typography_theme(typography);
+    let source = "classDiagram\n  class Alpha\n";
+    let metadata = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_metadata_sync(source)
+        .expect("parse Class compatibility metadata");
+    assert_eq!(
+        metadata.effective_config.get_str("themeVariables.fontSize"),
+        Some("24px")
+    );
+    assert!(merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "themeVariables.fontSize"
+    ));
+    assert!(!merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "themeVariables.fontFamily"
+    ));
+    assert!(!merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "fontFamily"
+    ));
+
+    let rendered = try_render_class_svg_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders mixed Class typography");
+    assert!(rendered.svg().contains("ClassMixed"));
+    assert!(rendered.svg().contains("font-size:24px;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let error = try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new())
+        .err()
+        .expect("RequirePortable rejects mixed Class typography");
+    assert!(matches!(
+        error,
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id: DiagramFamilyId::CLASS,
+            residual_count: 1,
+        }
+    ));
+}
+
+#[test]
+fn class_explicit_font_family_ownership_outranks_typed_font_stack() {
+    let theme = class_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("ClassTyped").expect("valid Class typed font")),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "fontFamily": "ClassConfigOwned"
+    })));
+    let rendered =
+        try_render_class_svg_with_theme_and_engine("classDiagram\n  class Alpha\n", &theme, engine)
+            .expect("render config-owned Class font stack");
+
+    assert!(rendered.svg().contains("font-family:ClassConfigOwned;"));
+    assert!(!rendered.svg().contains("ClassTyped"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_font_stack_without_inherited_text_is_not_applicable() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassTerminalFree").expect("valid Class terminal-free font"),
+    ));
+    let rendered =
+        try_render_class_svg_with_theme_and_engine("classDiagram\n", &theme, Engine::new())
+            .expect("render terminal-free Class diagram");
+
+    assert!(rendered.svg().contains("ClassTerminalFree"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_relation_text_keeps_font_stack_applied_when_node_text_is_source_owned() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassRelationTyped").expect("valid Class relation font"),
+    ));
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        r#"%%{init: {"htmlLabels": true}}%%
+classDiagram
+  class Alpha
+  class Beta
+  Alpha "1" --> "many" Beta : relates
+  style Alpha font-family:AlphaOwned
+  style Beta font-family:BetaOwned
+"#,
+        &theme,
+        Engine::new(),
+    )
+    .expect("render Class relation typography receipt");
+
+    assert!(rendered.svg().contains("font-family:ClassRelationTyped;"));
+    assert!(rendered.svg().contains("font-family:AlphaOwned"));
+    assert!(rendered.svg().contains("font-family:BetaOwned"));
+    assert!(rendered.svg().contains("<p>relates</p>"));
+    assert!(rendered.svg().contains("<p>many</p>"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_node_font_ownership_matches_html_and_svg_writer_semantics() {
+    let theme =
+        class_typography_theme(ThemeTextStyle::default().with_font_stack(
+            FontStack::single("ClassWriterTyped").expect("valid Class writer font"),
+        ));
+    for html_labels in [true, false] {
+        let source = format!(
+            r#"%%{{init: {{"htmlLabels": {html_labels}}}}}%%
+classDiagram
+  class Alpha
+  style Alpha font-family:ClassSourceOwned
+"#
+        );
+        let rendered = try_render_class_svg_with_theme_and_engine(&source, &theme, Engine::new())
+            .expect("render Class node font ownership");
+
+        assert!(rendered.svg().contains("font-family:ClassWriterTyped;"));
+        if html_labels {
+            assert!(
+                rendered.svg().contains(
+                    r#"class="nodeLabel markdown-node-label" style="font-family:ClassSourceOwned">"#
+                ),
+                "node-level font-family must reach the HTML label writer: {}",
+                rendered.svg()
+            );
+        } else {
+            for text_start in rendered
+                .svg()
+                .match_indices("<text")
+                .map(|(index, _)| index)
+            {
+                let text_opening = &rendered.svg()[text_start..];
+                let text_opening = &text_opening[..text_opening
+                    .find('>')
+                    .expect("complete Class SVG text opening tag")];
+                assert!(
+                    !text_opening.contains("font-family:ClassSourceOwned"),
+                    "node-level font-family must not reach the SVG text writer: {text_opening}"
+                );
+            }
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "htmlLabels={html_labels}");
+        assert_eq!(evidence.applied_count(), 1, "htmlLabels={html_labels}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            0,
+            "htmlLabels={html_labels}"
+        );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "htmlLabels={html_labels}"
+        );
+    }
+}
+
+#[test]
+fn class_unverified_font_ownership_is_a_portability_residual_not_an_invalid_model() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassFallbackTyped").expect("valid Class fallback font"),
+    ));
+    let source = r#"%%{init: {"htmlLabels": true}}%%
+classDiagram
+  class Alpha
+  style Alpha font-family:var(--class-font)
+"#;
+
+    let rendered = try_render_class_svg_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort preserves browser-resolved Class font ownership");
+    assert!(rendered.svg().contains("ClassFallbackTyped"));
+    assert!(rendered.svg().contains("font-family:var(--class-font)"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let error = try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new())
+        .err()
+        .expect("RequirePortable rejects browser-resolved Class font ownership");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::CLASS, 1))
+    );
+}
+
+#[test]
+fn class_svg_inline_html_font_style_remains_literal_inherited_text() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassSvgLiteralTyped").expect("valid Class SVG literal font"),
+    ));
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        r#"%%{init: {"htmlLabels": false}}%%
+classDiagram
+  class Literal["<span style='font-family:SourceOwned'>Visible</span>"]
+"#,
+        &theme,
+        Engine::new(),
+    )
+    .expect("render Class SVG literal inline HTML font");
+
+    assert!(rendered.svg().contains("ClassSvgLiteralTyped"));
+    assert!(rendered.svg().contains("&lt;span"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_svg_relation_inline_html_font_style_cannot_steal_writer_ownership() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassSvgEdgeTyped").expect("valid Class SVG edge font"),
+    ));
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        r#"%%{init: {"flowchart": {"htmlLabels": false}, "securityLevel": "loose"}}%%
+classDiagram
+  class Alpha
+  class Beta
+  Alpha "1" --> "many" Beta : <span style='font-family:EdgeOwned'>relates</span>
+  style Alpha font-family:AlphaOwned
+  style Beta font-family:BetaOwned
+"#,
+        &theme,
+        Engine::new(),
+    )
+    .expect("render Class SVG relation literal inline HTML font");
+
+    assert!(rendered.svg().contains("ClassSvgEdgeTyped"));
+    assert!(rendered.svg().contains("&lt;span"));
+    assert!(rendered.svg().contains("font-family:AlphaOwned"));
+    assert!(rendered.svg().contains("font-family:BetaOwned"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_svg_note_inline_html_font_style_remains_literal_inherited_text() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassSvgNoteTyped").expect("valid Class SVG note font"),
+    ));
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        r#"%%{init: {"htmlLabels": false}}%%
+classDiagram
+  note "<span style='font-family:NoteOwned'>Visible</span>"
+"#,
+        &theme,
+        Engine::new(),
+    )
+    .expect("render Class SVG note literal inline HTML font");
+
+    assert!(rendered.svg().contains("ClassSvgNoteTyped"));
+    assert!(rendered.svg().contains("&lt;span"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_attached_note_edge_is_not_a_relation_typography_terminal() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassAttachedNoteTyped").expect("valid Class attached-note font"),
+    ));
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\n  class Alpha\n  note for Alpha \"attached note\"\n",
+        &theme,
+        Engine::new(),
+    )
+    .expect("render strict portable Class attached-note typography");
+
+    assert!(rendered.svg().contains("ClassAttachedNoteTyped"));
+    assert!(rendered.svg().contains("attached note"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_typed_font_stack_reaches_layout_and_terminal_receipt() {
+    let theme = class_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("ClassElkTyped").expect("valid Class ELK font")),
+    );
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        r#"---
+config:
+  layout: elk
+---
+classDiagram
+  class Alpha
+  class Beta
+  Alpha "1" --> "many" Beta : relates
+"#,
+        &theme,
+        Engine::new(),
+    )
+    .expect("render strict portable Class ELK font stack");
+
+    assert!(rendered.svg().contains("font-family:ClassElkTyped;"));
+    assert!(rendered.svg().contains("<p>relates</p>"));
+    assert!(rendered.svg().contains("<p>many</p>"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_svg_relation_inventory_survives_source_owned_html_nodes() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassElkEdgeTyped").expect("valid Class ELK edge font"),
+    ));
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        r#"---
+config:
+  layout: elk
+  flowchart:
+    htmlLabels: false
+---
+classDiagram
+  class Alpha
+  class Beta
+  Alpha "1" --> "many" Beta : <span style='font-family:EdgeOwned'>relates</span>
+  style Alpha font-family:AlphaOwned
+  style Beta font-family:BetaOwned
+"#,
+        &theme,
+        Engine::new(),
+    )
+    .expect("render strict portable Class ELK relation inventory");
+
+    assert!(rendered.svg().contains("ClassElkEdgeTyped"));
+    assert!(rendered.svg().contains("&lt;span"));
+    assert!(rendered.svg().contains("<p>many</p>"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_attached_note_edge_is_not_a_relation_typography_terminal() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassElkAttachedNoteTyped").expect("valid Class ELK attached-note font"),
+    ));
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        r#"---
+config:
+  layout: elk
+---
+classDiagram
+  class Alpha
+  note for Alpha "attached ELK note"
+"#,
+        &theme,
+        Engine::new(),
+    )
+    .expect("render strict portable Class ELK attached-note typography");
+
+    assert!(rendered.svg().contains("ClassElkAttachedNoteTyped"));
+    assert!(rendered.svg().contains("attached ELK note"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -678,6 +1124,10 @@ classDiagram
     assert!(
         svg.contains(r#"#merman .label text{fill:#123456;}"#),
         "expected classText theme variable to drive SVG text fill"
+    );
+    assert!(
+        svg.contains(r#"#merman .classTitleText{text-anchor:middle;font-size:18px;fill:#333;}"#),
+        "expected Mermaid's distinct textColor token to remain the legacy Class title owner"
     );
 }
 

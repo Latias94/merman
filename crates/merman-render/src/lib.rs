@@ -953,9 +953,16 @@ pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
+    typography_theme: &crate::class::ClassTypographyThemePlan,
 ) -> Result<model::ClassDiagramLayout> {
     if uses_elk_layout(effective_config) {
-        return layout_class_elk_typed_by_feature(diagram_type, model, effective_config, options);
+        return layout_class_elk_typed_by_feature(
+            diagram_type,
+            model,
+            effective_config,
+            options,
+            typography_theme,
+        );
     }
 
     options
@@ -969,6 +976,7 @@ pub(crate) fn layout_class_typed_by_engine(
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
+        typography_theme,
         &mut work_control,
     )
 }
@@ -979,6 +987,7 @@ fn layout_class_elk_typed_by_feature(
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
+    typography_theme: &crate::class::ClassTypographyThemePlan,
 ) -> Result<model::ClassDiagramLayout> {
     options
         .work_meter_ref()
@@ -992,6 +1001,7 @@ fn layout_class_elk_typed_by_feature(
         options.text_measurer(),
         options.math_renderer(),
         options.elk_operation_seed(),
+        typography_theme,
         &mut work_control,
     )
 }
@@ -1002,6 +1012,7 @@ fn layout_class_elk_typed_by_feature(
     _model: &ClassDiagram,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
+    _typography_theme: &crate::class::ClassTypographyThemePlan,
 ) -> Result<model::ClassDiagramLayout> {
     Err(Error::MissingCapability {
         capability: RenderCapability::LayoutElk,
@@ -1189,11 +1200,16 @@ mod tests {
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected class render model");
         };
+        let typography_theme = crate::class::ClassTypographyThemePlan::resolve(
+            None,
+            &parsed.metadata().effective_config,
+        );
         layout_class_typed_by_engine(
             &parsed.metadata().diagram_type,
             model,
             &parsed.metadata().effective_config,
             &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::CLASS),
+            &typography_theme,
         )
         .expect("class layout")
     }

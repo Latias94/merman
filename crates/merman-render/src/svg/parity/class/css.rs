@@ -26,21 +26,17 @@ pub(super) fn write_class_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config: &serde_json::Value,
-    render_font_family: &str,
-    _render_font_size_css: &str,
-) -> Result<()> {
+    stylesheet_font_family: &str,
+    seal_typography_emission: bool,
+) -> Result<Option<crate::class::ClassTypographyCssEmission>> {
     let id = crate::svg::escape_css_identifier(diagram_id);
-    // Mermaid compiles this stylesheet from resolved theme variables; render metrics have a
-    // separate legacy precedence and must not replace the CSS font-size spelling.
-    let parts =
-        super::super::css::info_css_parts_with_raw_theme_font_size(diagram_id, effective_config);
+    let resolved_font_family = normalize_css_font_family(stylesheet_font_family);
+    let info_css = super::super::css::InfoCssWriter::raw_theme_font_size_with_font_family(
+        effective_config,
+        resolved_font_family.as_str(),
+    );
     let theme = MermaidThemeAdapter::new(effective_config).class_diagram();
-    let fallback_font_family = normalize_css_font_family(render_font_family);
-    let font_family = if parts.font_family.is_empty() {
-        fallback_font_family.as_str()
-    } else {
-        parts.font_family.as_str()
-    };
+    let font_family = info_css.font_family();
     let class_text = theme.class_text.as_str();
     let note_text = theme.note_text.as_str();
     let line_color = theme.common.line_color.as_str();
@@ -58,8 +54,7 @@ pub(super) fn write_class_css(
         "rgba(232,232,232, 0.8)",
     );
 
-    out.push_str(&parts.css_prefix);
-    out.checkpoint()?;
+    let base_font_emission = info_css.write_prefix(out, diagram_id)?;
 
     let _ = write!(
         out,
@@ -97,6 +92,7 @@ pub(super) fn write_class_css(
         id.as_str()
     );
     out.checkpoint()?;
+    let class_group_font_family_css = font_family;
     let _ = write!(
         out,
         r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:{};}}#{} .divider{{stroke:{};stroke-width:1;}}#{} g.clickable{{cursor:pointer;}}#{} g.classGroup rect{{fill:{};stroke:{};}}#{} g.classGroup line{{stroke:{};stroke-width:1;}}#{} .classLabel .box{{stroke:none;stroke-width:0;fill:{};opacity:0.5;}}#{} .classLabel .label{{fill:{};font-size:10px;}}#{} .relation{{stroke:{};stroke-width:{};fill:none;}}#{} .dashed-line{{stroke-dasharray:3;}}#{} .dotted-line{{stroke-dasharray:1 2;}}"#,
@@ -161,6 +157,106 @@ pub(super) fn write_class_css(
     out.checkpoint()?;
 
     write_class_icon_css(out, &id);
-    out.push_str(&parts.root_rule);
-    out.checkpoint()
+    out.checkpoint()?;
+    let root_font_emission = info_css.write_root(out, diagram_id, diagram_id)?;
+
+    Ok(seal_typography_emission.then(|| {
+        crate::class::ClassTypographyCssEmission::from_successful_writes(
+            base_font_emission.diagram_root_font_family_css(),
+            base_font_emission.nested_svg_font_family_css(),
+            class_group_font_family_css,
+            root_font_emission.font_family_css(),
+        )
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct CheckpointSink {
+        reject_at: Option<usize>,
+        checkpoint_count: usize,
+        retained: String,
+    }
+
+    impl CheckpointSink {
+        fn rejecting(checkpoint: usize) -> Self {
+            Self {
+                reject_at: Some(checkpoint),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl fmt::Write for CheckpointSink {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl SvgOutput for CheckpointSink {
+        fn push_str(&mut self, value: &str) {
+            self.retained.push_str(value);
+        }
+
+        fn push(&mut self, value: char) {
+            self.retained.push(value);
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            self.checkpoint_count += 1;
+            if self.reject_at == Some(self.checkpoint_count) {
+                return Err(crate::Error::InvalidModel {
+                    message: "test Class CSS sink rejected a checkpoint".to_string(),
+                });
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn class_css_emission_requires_every_writer_checkpoint() {
+        let config = serde_json::json!({});
+        let mut successful = CheckpointSink::default();
+        let emission = write_class_css(
+            &mut successful,
+            "class-css-receipt",
+            &config,
+            "Inter,sans-serif",
+            true,
+        )
+        .expect("write complete Class CSS");
+        assert!(emission.is_some());
+
+        for checkpoint in 1..=successful.checkpoint_count {
+            let mut rejecting = CheckpointSink::rejecting(checkpoint);
+            let error = write_class_css(
+                &mut rejecting,
+                "class-css-receipt",
+                &config,
+                "Inter,sans-serif",
+                true,
+            )
+            .expect_err("a failed Class CSS checkpoint must prevent receipt emission");
+            assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        }
+    }
 }

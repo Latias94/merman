@@ -1047,6 +1047,22 @@ fn classify_base_typography(
     if family == DiagramFamilyId::ZENUML {
         return FamilyThemeDisposition::Unsupported;
     }
+    if family == DiagramFamilyId::CLASS {
+        return match property {
+            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
+            ThemeTypographyProperty::FontSize => FamilyThemeDisposition::LegacyCompatibility,
+            ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
+    }
     if family == DiagramFamilyId::EVENT_MODELING {
         return match property {
             ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
@@ -5903,7 +5919,7 @@ mod tests {
             .with_font_stack(super::super::FontStack::new(families).expect("valid font stack"))
             .with_font_size_px(18.0)
             .expect("valid font size");
-        let routes = compile_base_typography_routes(DiagramFamilyId::CLASS, &typography);
+        let routes = compile_base_typography_routes(DiagramFamilyId::C4, &typography);
 
         assert_eq!(routes.len(), 2);
         assert!(routes.iter().any(|route| {

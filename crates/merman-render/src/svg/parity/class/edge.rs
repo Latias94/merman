@@ -32,6 +32,7 @@ pub(super) struct ClassEdgeGroupsRenderState<'a, O: SvgOutput> {
     pub content_bounds: &'a mut Option<Bounds>,
     pub detail: &'a mut ClassRenderDetails,
     pub theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt,
+    pub typography_receipt: &'a mut Option<crate::class::ClassTypographyThemeReceipt>,
 }
 
 pub(super) struct ClassEdgeGroupsRenderContext<'a> {
@@ -181,6 +182,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
         content_bounds,
         detail,
         theme_receipt,
+        typography_receipt,
     } = state;
 
     let mut edge_points_json_buf = String::new();
@@ -470,14 +472,10 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
     for e in ordered_edges.iter().copied() {
         ctx.emit.checkpoint()?;
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
-        let label_text = if e.id.starts_with("edgeNote") {
-            ""
-        } else {
-            ctx.relations_by_id
-                .get(e.id.as_str())
-                .map(|r| r.title.as_str())
-                .unwrap_or("")
-        };
+        let relation = ctx.relations_by_id.get(e.id.as_str()).copied();
+        let label_text = relation
+            .map(|relation| relation.title.as_str())
+            .unwrap_or("");
 
         let label_center = e.label.as_ref().map(|lbl| {
             edge_label_centers
@@ -499,7 +497,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
                 lbl.height.max(0.0),
             );
         }
-        render_class_edge_label_group(
+        let typography = render_class_edge_label_group(
             out,
             edge_dom_id_buf.as_str(),
             label_text,
@@ -509,14 +507,23 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
             ctx,
         );
         out.checkpoint()?;
+        if relation.is_some()
+            && let Some(receipt) = typography_receipt.as_mut()
+        {
+            receipt.record_edge_label(e.id.as_str(), typography);
+        }
     }
     for e in ordered_edges.iter().copied() {
         ctx.emit.checkpoint()?;
-        let Some(rel) = ctx.relations_by_id.get(e.id.as_str()).copied() else {
-            continue;
-        };
-        let start_text = rel.relation_title_1.as_deref().unwrap_or_default();
-        for lbl in [&e.start_label_left, &e.start_label_right] {
+        let relation = ctx.relations_by_id.get(e.id.as_str()).copied();
+        let start_text = relation
+            .and_then(|rel| rel.relation_title_1.as_deref())
+            .unwrap_or_default();
+        for (slot, lbl) in [&e.start_label_left, &e.start_label_right]
+            .into_iter()
+            .enumerate()
+        {
+            let mut typography = crate::class::ClassTypographyTerminalFacts::default();
             if let Some(lbl) = lbl.as_ref() {
                 let (terminal_w, terminal_h) = class_terminal_box_size(start_text);
                 if terminal_w > 0.0 && terminal_h > 0.0 {
@@ -527,7 +534,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
                         terminal_w,
                         terminal_h,
                     );
-                    render_class_edge_terminal_group(
+                    typography = render_class_edge_terminal_group(
                         out,
                         lbl.x + ctx.content_tx,
                         lbl.y + ctx.content_ty,
@@ -537,6 +544,11 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
                     );
                     out.checkpoint()?;
                 }
+            }
+            if relation.is_some()
+                && let Some(receipt) = typography_receipt.as_mut()
+            {
+                receipt.record_cardinality(e.id.as_str(), slot, typography);
             }
         }
     }
@@ -556,11 +568,15 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
     });
     for (_, e) in ordered_end_edges {
         ctx.emit.checkpoint()?;
-        let Some(rel) = ctx.relations_by_id.get(e.id.as_str()).copied() else {
-            continue;
-        };
-        let end_text = rel.relation_title_2.as_deref().unwrap_or_default();
-        for lbl in [&e.end_label_left, &e.end_label_right] {
+        let relation = ctx.relations_by_id.get(e.id.as_str()).copied();
+        let end_text = relation
+            .and_then(|rel| rel.relation_title_2.as_deref())
+            .unwrap_or_default();
+        for (slot, lbl) in [&e.end_label_left, &e.end_label_right]
+            .into_iter()
+            .enumerate()
+        {
+            let mut typography = crate::class::ClassTypographyTerminalFacts::default();
             if let Some(lbl) = lbl.as_ref() {
                 let (terminal_w, terminal_h) = class_terminal_box_size(end_text);
                 if terminal_w > 0.0 && terminal_h > 0.0 {
@@ -571,7 +587,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
                         terminal_w,
                         terminal_h,
                     );
-                    render_class_edge_terminal_group(
+                    typography = render_class_edge_terminal_group(
                         out,
                         lbl.x + ctx.content_tx,
                         lbl.y + ctx.content_ty,
@@ -581,6 +597,11 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
                     );
                     out.checkpoint()?;
                 }
+            }
+            if relation.is_some()
+                && let Some(receipt) = typography_receipt.as_mut()
+            {
+                receipt.record_cardinality(e.id.as_str(), slot + 2, typography);
             }
         }
     }
@@ -619,7 +640,7 @@ fn render_class_edge_label_group(
     center_x: f64,
     center_y: f64,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) {
+) -> crate::class::ClassTypographyTerminalFacts {
     let decoded = decode_entities_minimal_cow(label_text);
     let trimmed = decoded.trim();
     let use_html_labels = ctx.edge_use_html_labels || crate::math::contains_delimited_math(trimmed);
@@ -672,7 +693,14 @@ fn render_class_edge_label_group(
                 escape_attr_display(empty_div_style.as_str())
             );
         }
-        return;
+        return if trimmed.is_empty() || label.is_none() {
+            crate::class::ClassTypographyTerminalFacts::default()
+        } else if crate::math::contains_delimited_math(trimmed) {
+            crate::class::ClassTypographyTerminalFacts::unverified_text(trimmed)
+        } else {
+            let facts = crate::class::class_html_label_visible_style_facts(trimmed);
+            crate::class::ClassTypographyTerminalFacts::from_visible_style_facts(&facts)
+        };
     }
 
     if trimmed.is_empty() {
@@ -708,6 +736,12 @@ fn render_class_edge_label_group(
         write_class_svg_edge_text(out, trimmed, false);
         out.push_str("</g></g>");
     }
+    if trimmed.is_empty() {
+        crate::class::ClassTypographyTerminalFacts::default()
+    } else {
+        let facts = crate::class::class_svg_label_visible_style_facts(trimmed);
+        crate::class::ClassTypographyTerminalFacts::from_visible_style_facts(&facts)
+    }
 }
 
 pub(super) fn class_terminal_box_size(text: &str) -> (f64, f64) {
@@ -726,11 +760,11 @@ fn render_class_edge_terminal_group(
     text: &str,
     is_start_terminal: bool,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) {
+) -> crate::class::ClassTypographyTerminalFacts {
     let decoded = decode_entities_minimal_cow(text);
     let trimmed = decoded.trim();
     if trimmed.is_empty() {
-        return;
+        return crate::class::ClassTypographyTerminalFacts::default();
     }
     let (style_width, style_height) = class_terminal_box_size(trimmed);
     let measured = match (ctx.mermaid_config, ctx.math_renderer) {
@@ -795,6 +829,11 @@ fn render_class_edge_terminal_group(
         );
         render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
         out.push_str("</span></div></foreignObject></g>");
+    }
+    if crate::math::contains_delimited_math(trimmed) {
+        crate::class::ClassTypographyTerminalFacts::unverified_text(trimmed)
+    } else {
+        crate::class::ClassTypographyTerminalFacts::inherited_text(trimmed)
     }
 }
 

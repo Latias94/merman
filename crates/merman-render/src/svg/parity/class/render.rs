@@ -15,6 +15,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
     model: &ClassSvgModel,
     relation_theme: &crate::class::ClassRelationThemePlan,
+    typography_theme: &crate::class::ClassTypographyThemePlan,
     theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
@@ -25,6 +26,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         layout,
         model,
         relation_theme,
+        typography_theme,
         theme_evidence,
         effective_config.as_value(),
         Some(effective_config),
@@ -38,6 +40,7 @@ fn render_class_diagram_svg_model_inner(
     layout: &ClassDiagramLayout,
     model: &ClassSvgModel,
     relation_theme: &crate::class::ClassRelationThemePlan,
+    typography_theme: &crate::class::ClassTypographyThemePlan,
     theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
     effective_config: &serde_json::Value,
     borrowed_sanitize_config: Option<&merman_core::MermaidConfig>,
@@ -64,7 +67,15 @@ fn render_class_diagram_svg_model_inner(
             .unwrap_or(options.seed() as f64),
         "render.class.roughjs",
     );
-    let settings = ClassRenderSettings::from_config(effective_config, hand_drawn_seed);
+    let settings =
+        ClassRenderSettings::from_config(effective_config, hand_drawn_seed, typography_theme);
+    let mut typography_receipt = typography_theme.begin_terminal_receipt(
+        model,
+        diagram_title,
+        settings.diagram_use_html_labels,
+        settings.edge_use_html_labels,
+        borrowed_sanitize_config,
+    );
     let node_expectations = relation_theme.resolve_node_expectations(
         model.classes.keys().cloned().chain(
             model
@@ -127,17 +138,17 @@ fn render_class_diagram_svg_model_inner(
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style>");
-    write_class_css(
+    let typography_css_emission = write_class_css(
         &mut out,
         diagram_id.semantic_str(),
         effective_config,
-        settings
-            .text_style
-            .font_family
-            .as_deref()
-            .unwrap_or("\"trebuchet ms\", verdana, arial, sans-serif"),
-        settings.font_size_css.as_str(),
+        typography_theme.stylesheet_font_family_css(),
+        typography_receipt.is_some(),
     )?;
+    if let (Some(receipt), Some(emission)) = (typography_receipt.as_mut(), typography_css_emission)
+    {
+        receipt.record_css_emission(emission);
+    }
     out.push_str("</style>");
     out.checkpoint()?;
     emit.checkpoint()?;
@@ -221,6 +232,7 @@ fn render_class_diagram_svg_model_inner(
         mermaid_config: borrowed_sanitize_config,
         math_renderer: options.math_renderer(),
         node_theme_expectations: &node_expectations_by_id,
+        typography_theme,
         content_tx,
         content_ty,
         timing,
@@ -238,6 +250,7 @@ fn render_class_diagram_svg_model_inner(
             &nodes_ctx,
             &group_ctx,
             &mut relation_theme_receipt,
+            &mut typography_receipt,
         )?;
     } else {
         out.push_str(r#"<g class="root">"#);
@@ -253,6 +266,7 @@ fn render_class_diagram_svg_model_inner(
             &nodes_ctx,
             &group_ctx,
             &mut relation_theme_receipt,
+            &mut typography_receipt,
         )?;
         out.push_str("</g>"); // root
         out.push_str("</g>"); // wrapper
@@ -306,6 +320,13 @@ fn render_class_diagram_svg_model_inner(
         );
         out.checkpoint()?;
     }
+    if let Some(receipt) = typography_receipt.as_mut() {
+        let facts = view_box.title.as_ref().map_or_else(
+            crate::class::ClassTypographyTerminalFacts::default,
+            |title| crate::class::ClassTypographyTerminalFacts::inherited_text(title.text),
+        );
+        receipt.record_diagram_title(facts);
+    }
 
     drop(viewbox_guard);
     let finalize_guard = timing.section(&mut timings.finalize_svg);
@@ -332,6 +353,11 @@ fn render_class_diagram_svg_model_inner(
     if !theme_evidence.record_terminal(relation_theme_receipt) {
         return Err(crate::Error::InvalidModel {
             message: "Class theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if !typography_theme.record_terminal(typography_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Class typography receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted_svg)
