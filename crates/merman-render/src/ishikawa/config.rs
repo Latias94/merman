@@ -35,7 +35,15 @@ impl<'a> IshikawaConfigView<'a> {
 
     pub(crate) fn render_settings(&self) -> IshikawaRenderSettings {
         IshikawaRenderSettings {
-            font_size_css: config_css_number_or_string(self.effective_config, &["fontSize"]),
+            // Mermaid's diagram stylesheet receives `themeVariables` as its style options,
+            // while the renderer's deterministic layout still reads the root `fontSize`.
+            // Preserve that split so the legacy bridge's themeVariables.fontSize remains an
+            // actual CSS compatibility route without inventing a new layout owner.
+            font_size_css: config_css_number_or_string(
+                self.effective_config,
+                &["themeVariables", "fontSize"],
+            )
+            .or_else(|| config_css_number_or_string(self.effective_config, &["fontSize"])),
         }
     }
 
@@ -106,6 +114,19 @@ mod tests {
 
     #[test]
     fn ishikawa_render_settings_preserve_css_font_size_spelling() {
+        let cfg = json!({
+            "fontSize": "18px !important;",
+            "themeVariables": {
+                "fontSize": "24px"
+            }
+        });
+        let settings = IshikawaConfigView::new(&cfg).render_settings();
+
+        assert_eq!(settings.font_size_css.as_deref(), Some("24px"));
+    }
+
+    #[test]
+    fn ishikawa_render_settings_fall_back_to_root_font_size() {
         let cfg = json!({
             "fontSize": "18px !important;"
         });

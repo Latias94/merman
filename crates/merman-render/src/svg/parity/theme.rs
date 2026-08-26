@@ -240,7 +240,6 @@ impl TreemapTheme {
 
 #[derive(Debug, Clone)]
 pub(crate) struct EventModelingTheme {
-    pub(crate) font_family_css: String,
     pub(crate) text_color: String,
     pub(crate) ui_fill: String,
     pub(crate) ui_stroke: String,
@@ -263,7 +262,6 @@ pub(crate) struct IshikawaTheme {
     pub(crate) line_color: String,
     pub(crate) main_bkg: String,
     pub(crate) text_color: String,
-    pub(crate) font_family: String,
 }
 
 #[derive(Debug, Clone)]

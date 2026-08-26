@@ -126,12 +126,6 @@ impl<'a> SvgTheme<'a> {
         crate::config::config_css_number_or_string(self.effective_config, &[scope, key])
     }
 
-    pub(super) fn root_or_theme_string(&self, key: &str, fallback: &str) -> String {
-        config_string(self.effective_config, &[key])
-            .or_else(|| config_string(self.effective_config, &["themeVariables", key]))
-            .unwrap_or_else(|| fallback.to_string())
-    }
-
     pub(super) fn optional_scoped_f64(&self, scope: &str, key: &str) -> Option<f64> {
         crate::config::config_f64(self.effective_config, &[scope, key]).or_else(|| {
             crate::config::config_f64(self.effective_config, &["themeVariables", scope, key])
@@ -183,10 +177,7 @@ impl<'a> SvgTheme<'a> {
     }
 
     pub(super) fn font_family_css_root_first(&self) -> String {
-        let font_family = config_string(self.effective_config, &["fontFamily"])
-            .or_else(|| config_string(self.effective_config, &["themeVariables", "fontFamily"]))
-            .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
-        normalize_css_font_family(font_family.as_str())
+        crate::config::config_font_family_css_root_first(self.effective_config)
     }
 
     pub(super) fn font_size_px(&self) -> f64 {

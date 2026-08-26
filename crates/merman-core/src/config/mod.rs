@@ -592,6 +592,21 @@ impl MermaidConfig {
             .any(|candidate| dotted_paths_overlap(candidate, dotted_path))
     }
 
+    /// Reports whether a surviving compatibility fallback assignment owns this exact path.
+    ///
+    /// Fallback ownership is deliberately kept separate from typed/default ownership: the
+    /// assignment may be consumed by a legacy-compatible terminal writer, but it must not be
+    /// reported as a typed theme winner.
+    pub(crate) fn fallback_overlay_owns_path(&self, dotted_path: &str) -> bool {
+        self.overlay_provenance
+            .fallback_contributions()
+            .any(|contribution| {
+                contribution
+                    .surviving_assignment_paths()
+                    .any(|path| path == dotted_path)
+            })
+    }
+
     pub(crate) fn config_path_overrides_typed_default(&self, dotted_path: &str) -> bool {
         self.explicit_config_owns_path(dotted_path)
             || matches!(

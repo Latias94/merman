@@ -812,8 +812,6 @@ fn classify_ordinal_palette(
         || (family == DiagramFamilyId::RADAR && target == ThemeTarget::ChartSeries)
     {
         FamilyThemeDisposition::TypedAdapter
-    } else if legacy_palette_supported(family, target) {
-        FamilyThemeDisposition::LegacyCompatibility
     } else {
         FamilyThemeDisposition::Unsupported
     }
@@ -1049,6 +1047,22 @@ fn classify_base_typography(
     if family == DiagramFamilyId::ZENUML {
         return FamilyThemeDisposition::Unsupported;
     }
+    if family == DiagramFamilyId::EVENT_MODELING {
+        return match property {
+            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
+            ThemeTypographyProperty::FontSize => FamilyThemeDisposition::LegacyCompatibility,
+            ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
+    }
     if family == DiagramFamilyId::PACKET {
         return match property {
             ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
@@ -1109,6 +1123,22 @@ fn classify_base_typography(
             ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
             ThemeTypographyProperty::FontSize
             | ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
+    }
+    if family == DiagramFamilyId::ISHIKAWA {
+        return match property {
+            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
+            ThemeTypographyProperty::FontSize => FamilyThemeDisposition::LegacyCompatibility,
+            ThemeTypographyProperty::FontWeight
             | ThemeTypographyProperty::FontStyle
             | ThemeTypographyProperty::LineHeight
             | ThemeTypographyProperty::LetterSpacing
@@ -1501,12 +1531,7 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::TREE_VIEW
-        && matches!(
-            selector,
-            FamilyThemeSelectorShape::Static {
-                variant: None | Some(ThemeVariant::Default)
-            }
-        )
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             (target, facet),
             (
@@ -2197,39 +2222,6 @@ fn legacy_paint_variants(
     }
 }
 
-fn legacy_palette_supported(family: DiagramFamilyId, _target: ThemeTarget) -> bool {
-    match family {
-        DiagramFamilyId::ERROR
-        | DiagramFamilyId::STATE
-        | DiagramFamilyId::SEQUENCE
-        | DiagramFamilyId::ZENUML
-        | DiagramFamilyId::FLOWCHART
-        | DiagramFamilyId::SWIMLANE
-        | DiagramFamilyId::ARCHITECTURE
-        | DiagramFamilyId::CLASS
-        | DiagramFamilyId::C4
-        | DiagramFamilyId::CYNEFIN
-        | DiagramFamilyId::WARDLEY
-        | DiagramFamilyId::RAILROAD
-        | DiagramFamilyId::GANTT
-        | DiagramFamilyId::KANBAN
-        | DiagramFamilyId::PACKET
-        | DiagramFamilyId::REQUIREMENT
-        | DiagramFamilyId::SANKEY
-        | DiagramFamilyId::INFO
-        | DiagramFamilyId::TREEMAP
-        | DiagramFamilyId::BLOCK
-        | DiagramFamilyId::GIT_GRAPH
-        | DiagramFamilyId::ER
-        | DiagramFamilyId::QUADRANT_CHART
-        | DiagramFamilyId::TREE_VIEW
-        | DiagramFamilyId::ISHIKAWA
-        | DiagramFamilyId::EVENT_MODELING
-        | DiagramFamilyId::VENN => false,
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2456,10 +2448,6 @@ mod tests {
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
-        assert!(!legacy_palette_supported(
-            DiagramFamilyId::MINDMAP,
-            ThemeTarget::Node
-        ));
     }
 
     #[test]
@@ -2650,10 +2638,6 @@ mod tests {
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
-        assert!(!legacy_palette_supported(
-            DiagramFamilyId::GIT_GRAPH,
-            ThemeTarget::Node
-        ));
     }
 
     #[test]
@@ -2662,10 +2646,6 @@ mod tests {
             compile_ordinal_palette_route(DiagramFamilyId::SANKEY, ThemeTarget::Node).disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
-        assert!(!legacy_palette_supported(
-            DiagramFamilyId::SANKEY,
-            ThemeTarget::Node
-        ));
     }
 
     #[test]
@@ -3445,10 +3425,6 @@ mod tests {
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
-        assert!(!legacy_palette_supported(
-            DiagramFamilyId::JOURNEY,
-            ThemeTarget::JourneyTask
-        ));
     }
 
     #[test]
@@ -3458,10 +3434,6 @@ mod tests {
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
-        assert!(!legacy_palette_supported(
-            DiagramFamilyId::TIMELINE,
-            ThemeTarget::TimelineEvent
-        ));
     }
 
     #[test]
@@ -3489,10 +3461,6 @@ mod tests {
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
-        assert!(!legacy_palette_supported(
-            DiagramFamilyId::XY_CHART,
-            ThemeTarget::ChartSeries
-        ));
     }
 
     #[test]
@@ -3502,10 +3470,6 @@ mod tests {
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
-        assert!(!legacy_palette_supported(
-            DiagramFamilyId::RADAR,
-            ThemeTarget::ChartSeries
-        ));
     }
 
     #[test]
@@ -3574,6 +3538,54 @@ mod tests {
                 compile_rule_routes(DiagramFamilyId::TREE_VIEW, 0, &rule)
                     .iter()
                     .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+            );
+        }
+    }
+
+    #[test]
+    fn tree_view_scalar_paint_keeps_explicit_default_on_the_compatibility_route() {
+        let fill = CanvasPaint::solid("#123456").expect("valid Tree View fill");
+        let stroke = CanvasPaint::solid("#654321").expect("valid Tree View stroke");
+        for (target, style) in [
+            (
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(fill.clone()),
+            ),
+            (
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(fill.clone()),
+            ),
+            (
+                ThemeTarget::Edge,
+                ThemeStylePatch::default().with_fill(fill),
+            ),
+            (
+                ThemeTarget::Edge,
+                ThemeStylePatch::default().with_stroke(stroke),
+            ),
+        ] {
+            let unqualified = compile_rule_routes(
+                DiagramFamilyId::TREE_VIEW,
+                0,
+                &ThemeRule::new(target, style.clone()),
+            );
+            assert_eq!(unqualified.len(), 1, "target={target:?}");
+            assert_eq!(
+                unqualified[0].disposition(),
+                FamilyThemeDisposition::TypedAdapter,
+                "target={target:?}"
+            );
+
+            let default = compile_rule_routes(
+                DiagramFamilyId::TREE_VIEW,
+                0,
+                &ThemeRule::new(target, style).with_variant(ThemeVariant::Default),
+            );
+            assert_eq!(default.len(), 1, "target={target:?}");
+            assert_eq!(
+                default[0].disposition(),
+                FamilyThemeDisposition::LegacyCompatibility,
+                "target={target:?}"
             );
         }
     }

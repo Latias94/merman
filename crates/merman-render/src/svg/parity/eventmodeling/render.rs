@@ -1,24 +1,7 @@
-use super::super::theme::EventModelingTheme;
 use super::super::*;
 use merman_core::diagrams::eventmodeling::EventModelingDiagramRenderModel;
 
 const BOX_TEXT_PADDING: f64 = 10.0;
-
-pub(crate) fn render_eventmodeling_diagram_svg(
-    layout: &EventModelingDiagramLayout,
-    model: &EventModelingDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let text_theme = crate::eventmodeling::EventModelingTextThemePlan::baseline(layout);
-    render_eventmodeling_diagram_svg_with_text_theme(
-        layout,
-        model,
-        &text_theme,
-        effective_config,
-        options,
-    )
-}
 
 pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     layout: &EventModelingDiagramLayout,
@@ -76,7 +59,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     }
     out.checkpoint()?;
 
-    let css = eventmodeling_css(&theme, terminal_text_fill);
+    let css = text_theme_receipt.stylesheet();
     let _ = write!(&mut out, "<style>{css}</style>");
     drop(css);
     out.push_str("<g/>");
@@ -185,12 +168,4 @@ fn normalize_eventmodeling_code_text(raw: &str) -> String {
         .and_then(|s| s.strip_suffix('}'))
         .unwrap_or(trimmed);
     without_outer_braces.trim().to_string()
-}
-
-fn eventmodeling_css(theme: &EventModelingTheme, terminal_text_fill: &str) -> String {
-    format!(
-        ".em-swimlane text,.em-box span {{ font-family: {}; color: {}; }}\
-.em-relation {{ fill: none; }}",
-        theme.font_family_css, terminal_text_fill
-    )
 }

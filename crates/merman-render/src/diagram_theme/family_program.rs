@@ -11,7 +11,7 @@ use super::family_mechanism_matrix::{
     compile_rule_routes,
 };
 use super::resolved::{ResolvedThemeStyle, ThemeRuleOrigin};
-use super::semantic::{OrdinalPalette, ThemeTarget, ThemeVariant};
+use super::semantic::{ThemeTarget, ThemeVariant};
 use super::typography::TextStyle;
 
 /// One immutable, family-local interpretation of a validated theme recipe.
@@ -180,11 +180,6 @@ impl FamilyThemeProgram {
         self.ordinal_palette_indices.get(&target).copied()
     }
 
-    pub(super) fn ordinal_palette(&self, target: ThemeTarget) -> Option<&OrdinalPalette> {
-        let index = self.ordinal_palette_index(target)?;
-        Some(&self.spec.styles().ordinal_palettes()[index].1)
-    }
-
     pub(super) fn ordinal_palette_disposition(
         &self,
         target: ThemeTarget,
@@ -228,11 +223,6 @@ impl FamilyThemeProgram {
 
     pub(super) fn mechanism_routes(&self) -> &[FamilyThemeRoute] {
         &self.mechanism_routes
-    }
-
-    pub(super) fn has_legacy_ordinal_palette(&self, target: ThemeTarget) -> bool {
-        self.ordinal_palette_disposition(target)
-            == Some(FamilyThemeDisposition::LegacyCompatibility)
     }
 
     fn has_route(

@@ -1019,6 +1019,46 @@ mod tests {
             ["fontFamily", "themeVariables.fontFamily"]
         );
         assert_eq!(provenance.fallback_contributions().len(), 1);
+
+        effective.set_overlay_provenance(provenance);
+        assert!(effective.fallback_overlay_owns_path("fontFamily"));
+        assert!(effective.fallback_overlay_owns_path("themeVariables.fontFamily"));
+        assert!(!effective.fallback_overlay_owns_path("themeVariables.fontSize"));
+        assert!(!effective.fallback_overlay_owns_path("themeVariables"));
+        assert!(!effective.config_path_overrides_typed_default("fontFamily"));
+        assert!(!effective.config_path_overrides_typed_default("themeVariables.fontFamily"));
+    }
+
+    #[test]
+    fn fallback_ownership_excludes_host_overlay_assignments() {
+        let overlay = PostDetectionConfigOverlay::new()
+            .with_family_contribution(
+                "flowchart",
+                contribution(
+                    "host.flowchart.typography",
+                    json!({"themeVariables": {"fontFamily": "HostFont,sans-serif"}}),
+                ),
+            )
+            .unwrap();
+        let explicit = MermaidConfig::empty_object();
+        let before_detect = MermaidConfig::empty_object();
+        let mut effective = before_detect.clone();
+        let mut application = ConfigOverlayApplication::default();
+        overlay
+            .apply_family_controlled(
+                "flowchart",
+                &explicit,
+                &explicit,
+                &before_detect,
+                &mut effective,
+                &mut application,
+                &OperationControl::new(),
+            )
+            .unwrap();
+
+        effective.set_overlay_provenance(application.finalize(&effective));
+        assert!(!effective.fallback_overlay_owns_path("themeVariables.fontFamily"));
+        assert!(effective.config_path_overrides_typed_default("themeVariables.fontFamily"));
     }
 
     #[test]

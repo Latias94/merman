@@ -3,9 +3,9 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     OrdinalSelector, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -38,17 +38,52 @@ fn eventmodeling_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
         .expect("compile Event Modeling text fill theme")
 }
 
+fn eventmodeling_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default()
+                    .with_family_style(DiagramFamilyId::EVENT_MODELING, typography),
+            ),
+        )
+        .expect("compile Event Modeling typography theme")
+}
+
+fn eventmodeling_stylesheet(svg: &str) -> String {
+    roxmltree::Document::parse(svg)
+        .expect("valid Event Modeling SVG")
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Event Modeling stylesheet")
+        .to_string()
+}
+
 fn render_eventmodeling_with_theme(
     source: &str,
     theme: &DiagramTheme,
     engine: Engine,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    render_eventmodeling_with_theme_requirement(
+        source,
+        theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn render_eventmodeling_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Event Modeling")
         .expect("detect themed Event Modeling");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin strict portable Event Modeling session");
 
@@ -233,6 +268,166 @@ fn eventmodeling_explicit_text_color_outranks_typed_text_fill() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn eventmodeling_typed_font_stack_reaches_both_text_selectors_and_strict_receipt() {
+    let font_stack = FontStack::new(["EventModelingTyped", "monospace"])
+        .expect("valid Event Modeling typed font stack");
+    let expected_font = font_stack.as_css().to_string();
+    let theme =
+        eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
+        .expect("render typed Event Modeling font stack");
+    let stylesheet = eventmodeling_stylesheet(rendered.svg());
+
+    assert!(stylesheet.contains(&format!(
+        ".em-swimlane text,.em-box span {{ font-family: {expected_font};"
+    )));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn eventmodeling_theme_font_family_keeps_precedence_over_root_font_family() {
+    let theme = eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
+    ));
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "fontFamily": "EventRootFont",
+        "themeVariables": { "fontFamily": "EventThemeFont" }
+    })));
+    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
+        .expect("render config-owned Event Modeling font stack");
+    let stylesheet = eventmodeling_stylesheet(rendered.svg());
+
+    assert!(stylesheet.contains("font-family: EventThemeFont;"));
+    assert!(!stylesheet.contains("EventRootFont"));
+    assert!(!stylesheet.contains("EventModelingTyped"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn eventmodeling_font_size_only_remains_legacy_and_reaches_css() {
+    let theme = eventmodeling_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Event Modeling font size"),
+    );
+    let rendered = render_eventmodeling_with_theme_requirement(
+        THEME_TEXT_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders Event Modeling legacy font size");
+    let stylesheet = eventmodeling_stylesheet(rendered.svg());
+    assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let error = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
+        .err()
+        .expect("RequirePortable rejects Event Modeling legacy font size");
+    assert!(matches!(
+        error,
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id: DiagramFamilyId::EVENT_MODELING,
+            residual_count: 1,
+        }
+    ));
+}
+
+#[test]
+fn eventmodeling_css_font_size_uses_theme_variable_not_root_layout_size() {
+    let theme = eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("EventModelingTyped").expect("valid Event Modeling typed font"),
+    ));
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "fontSize": "31px",
+        "themeVariables": { "fontSize": "22px" }
+    })));
+    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
+        .expect("render Event Modeling split font-size configuration");
+    let stylesheet = eventmodeling_stylesheet(rendered.svg());
+
+    assert!(stylesheet.contains("font-size: 22px;"), "{stylesheet}");
+    assert!(!stylesheet.contains("font-size: 31px;"), "{stylesheet}");
+}
+
+#[test]
+fn eventmodeling_materialized_theme_font_size_reaches_css_without_explicit_ownership() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile empty Event Modeling theme");
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "theme": "redux"
+    })));
+    let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
+        .expect("render Redux Event Modeling font size");
+    let stylesheet = eventmodeling_stylesheet(rendered.svg());
+
+    assert!(stylesheet.contains("font-size: 14px;"), "{stylesheet}");
+}
+
+#[test]
+fn eventmodeling_mixed_font_stack_and_legacy_font_size_fails_closed() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(
+            FontStack::single("EventModelingMixed").expect("valid mixed Event Modeling font stack"),
+        )
+        .with_font_size_px(24.0)
+        .expect("valid mixed Event Modeling font size");
+    let theme = eventmodeling_typography_theme(typography);
+    let metadata = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_metadata_sync(THEME_TEXT_SOURCE)
+        .expect("parse Event Modeling compatibility metadata");
+    assert_eq!(
+        metadata.effective_config.get_str("themeVariables.fontSize"),
+        Some("24px")
+    );
+    assert!(merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "themeVariables.fontSize"
+    ));
+    let rendered = render_eventmodeling_with_theme_requirement(
+        THEME_TEXT_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders mixed Event Modeling typography");
+    let stylesheet = eventmodeling_stylesheet(rendered.svg());
+    assert!(stylesheet.contains("EventModelingMixed"));
+    assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let error = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
+        .err()
+        .expect("RequirePortable rejects mixed Event Modeling typography");
+    match error {
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id,
+            residual_count,
+        } => {
+            assert_eq!(family_id, DiagramFamilyId::EVENT_MODELING);
+            assert_eq!(residual_count, 1);
+        }
+        other => panic!("expected Event Modeling FontSize compatibility residual, got {other}"),
+    }
 }
 
 #[test]

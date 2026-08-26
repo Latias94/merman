@@ -6,9 +6,9 @@ use merman_core::{
 };
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector, Specified,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStrokePatch, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector,
+    Specified, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStrokePatch,
+    ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -86,7 +86,21 @@ fn try_render_tree_view_svg_with_theme_requirement(
     theme: &DiagramTheme,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+    try_render_tree_view_svg_with_theme_requirement_and_engine(
+        source,
+        theme,
+        Engine::new(),
+        portability,
+    )
+}
+
+fn try_render_tree_view_svg_with_theme_requirement_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Tree View")
         .expect("detect themed Tree View");
@@ -485,6 +499,53 @@ Root/
             .descendants()
             .filter(|node| node.attribute("class") == Some("treeView-node-line"))
             .all(|line| line.attribute("stroke-width") == Some("7"))
+    );
+}
+
+#[test]
+fn tree_view_legacy_marker_winner_outranks_typed_edge_icon_fallback() {
+    let edge = CanvasPaint::solid("#00ff00").expect("valid Tree View edge color");
+    let marker = CanvasPaint::solid("#0000ff").expect("valid Tree View marker color");
+    let theme = tree_view_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(edge),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_stroke(marker),
+        ),
+    ]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "securityLevel": "loose"
+    })));
+    let (_, svg) = try_render_tree_view_svg_with_theme_requirement_and_engine(
+        "treeView-beta\nRoot icon(folder)\n",
+        &theme,
+        engine,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render mixed Tree View edge and marker paint");
+    let document = roxmltree::Document::parse(&svg).expect("valid mixed Tree View SVG XML");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Tree View stylesheet");
+
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("use") && node.attribute("class") == Some("treeView-node-icon")
+        }),
+        "the fixture must exercise a real icon terminal"
+    );
+    assert!(
+        stylesheet.contains(".treeView-node-line { stroke: #00ff00; }"),
+        "{stylesheet}"
+    );
+    assert!(
+        stylesheet.contains(".treeView-node-icon { color: #0000ff; }"),
+        "{stylesheet}"
     );
 }
 

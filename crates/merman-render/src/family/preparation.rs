@@ -957,6 +957,10 @@ fn prepare_ishikawa_family(
         meta.effective_config.as_value(),
         execution.text_measurer(),
     )?;
+    let typography_theme = crate::ishikawa::IshikawaTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
     let text_theme = crate::ishikawa::IshikawaTextThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -967,6 +971,7 @@ fn prepare_ishikawa_family(
         IshikawaFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             text_theme,
+            typography_theme,
         },
     )))
 }

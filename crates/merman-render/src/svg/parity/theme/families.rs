@@ -290,7 +290,6 @@ impl<'a> MermaidThemeAdapter<'a> {
 
     pub(crate) fn eventmodeling(&self) -> EventModelingTheme {
         EventModelingTheme {
-            font_family_css: self.raw.font_family_css_root_first(),
             text_color: self.raw.color("textColor", "#333"),
             ui_fill: self.raw.color("emUiFill", "white"),
             ui_stroke: self.raw.color("emUiStroke", "#dbdada"),
@@ -322,9 +321,6 @@ impl<'a> MermaidThemeAdapter<'a> {
             line_color: self.raw.color("lineColor", "#333"),
             main_bkg: self.raw.color("mainBkg", "#fff"),
             text_color: self.raw.color("textColor", "#333"),
-            font_family: self
-                .raw
-                .root_or_theme_string("fontFamily", "trebuchet ms, verdana, arial, sans-serif"),
         }
     }
 

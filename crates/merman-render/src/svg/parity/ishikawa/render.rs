@@ -1,6 +1,9 @@
 use super::super::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
 use super::super::*;
-use crate::ishikawa::{IshikawaTextThemePlan, IshikawaTextThemeReceipt};
+use crate::ishikawa::{
+    IshikawaTextThemePlan, IshikawaTextThemeReceipt, IshikawaTypographyReceipt,
+    IshikawaTypographyThemePlan,
+};
 use crate::model::{
     IshikawaBranchLayout, IshikawaCauseLabelGroupLayout, IshikawaLabelBoxLayout,
     IshikawaLineLayout, IshikawaSubGroupLayout, IshikawaTextLayout,
@@ -20,24 +23,16 @@ struct RoughPaint<'a> {
     fill_weight: f32,
 }
 
-pub(crate) fn render_ishikawa_diagram_svg(
-    layout: &IshikawaDiagramLayout,
-    effective_config: &serde_json::Value,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let text_theme = IshikawaTextThemePlan::baseline(layout);
-    render_ishikawa_diagram_svg_with_theme(layout, &text_theme, effective_config, options)
-}
-
 pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     layout: &IshikawaDiagramLayout,
     text_theme: &IshikawaTextThemePlan,
+    typography_theme: &IshikawaTypographyThemePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("ishikawa");
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let mut text_terminals = IshikawaTextTerminalWriter::new(text_theme);
+    let mut text_terminals = IshikawaTextTerminalWriter::new(text_theme, typography_theme);
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
         layout.viewbox_y,
@@ -52,7 +47,11 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
             .write_open(&mut out, root_spec, root_chrome)?;
     options.checkpoint_emit()?;
 
-    let css = ishikawa_css(layout, effective_config);
+    let css = ishikawa_css(
+        layout,
+        effective_config,
+        &mut text_terminals.typography_receipt,
+    );
     let _ = write!(&mut out, "<style>{css}</style>");
     drop(css);
     out.push_str(r#"<g/><g class="ishikawa">"#);
@@ -79,9 +78,15 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     out.push_str("</g></svg>\n");
     out.checkpoint()?;
     let rooted = root_document.complete(out.finish()?)?;
-    if !text_theme.record_terminal(text_terminals.into_receipt()) {
+    let (text_receipt, typography_receipt) = text_terminals.into_receipts();
+    if !text_theme.record_terminal(text_receipt) {
         return Err(Error::InvalidModel {
             message: "Ishikawa text receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if !typography_theme.record_terminal(typography_receipt) {
+        return Err(Error::InvalidModel {
+            message: "Ishikawa typography receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted)
@@ -460,20 +465,25 @@ fn push_rough_group(
 struct IshikawaTextTerminalWriter<'a> {
     plan: &'a IshikawaTextThemePlan,
     receipt: IshikawaTextThemeReceipt,
+    typography_receipt: IshikawaTypographyReceipt,
     next_visible_index: usize,
 }
 
 impl<'a> IshikawaTextTerminalWriter<'a> {
-    fn new(plan: &'a IshikawaTextThemePlan) -> Self {
+    fn new(
+        plan: &'a IshikawaTextThemePlan,
+        typography_theme: &'a IshikawaTypographyThemePlan,
+    ) -> Self {
         Self {
             plan,
             receipt: plan.begin_terminal_receipt(),
+            typography_receipt: typography_theme.begin_terminal_receipt(plan.visible_text_count()),
             next_visible_index: 0,
         }
     }
 
-    fn into_receipt(self) -> IshikawaTextThemeReceipt {
-        self.receipt
+    fn into_receipts(self) -> (IshikawaTextThemeReceipt, IshikawaTypographyReceipt) {
+        (self.receipt, self.typography_receipt)
     }
 
     fn push_head_text(
@@ -597,33 +607,39 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
         let emitted_fill = self.plan.typed_fill(emitted_index);
         self.receipt
             .record_checkpointed_text(emitted_index, &text.class_name, emitted_fill);
+        self.typography_receipt.record_visible_text();
         self.next_visible_index = self.next_visible_index.saturating_add(1);
     }
 }
 
-fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::Value) -> String {
+fn ishikawa_css(
+    layout: &IshikawaDiagramLayout,
+    effective_config: &serde_json::Value,
+    typography_receipt: &mut IshikawaTypographyReceipt,
+) -> String {
     let theme = MermaidThemeAdapter::new(effective_config).ishikawa();
     let font_size = crate::ishikawa::IshikawaConfigView::new(effective_config)
         .render_settings()
         .font_size_css
         .unwrap_or_else(|| format!("{}px", fmt_string(layout.font_size)));
 
-    format!(
+    let mut css = format!(
         ".ishikawa .ishikawa-spine,.ishikawa .ishikawa-branch,.ishikawa .ishikawa-sub-branch {{ stroke: {line_color}; stroke-width: 2; fill: none; }}\
 .ishikawa .ishikawa-sub-branch {{ stroke-width: 1; }}\
 .ishikawa .ishikawa-arrow {{ fill: {line_color}; }}\
 .ishikawa .ishikawa-head {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
-.ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
-.ishikawa text {{ font-family: {font_family}; font-size: {font_size}; fill: {text_color}; }}\
-.ishikawa .ishikawa-head-label {{ font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }}\
-.ishikawa .ishikawa-label {{ text-anchor: end; }}\
-.ishikawa .ishikawa-label.cause {{ text-anchor: middle; dominant-baseline: middle; }}\
-.ishikawa .ishikawa-label.align {{ text-anchor: end; dominant-baseline: middle; }}\
-.ishikawa .ishikawa-label.up {{ dominant-baseline: baseline; }}\
-.ishikawa .ishikawa-label.down {{ dominant-baseline: hanging; }}",
+.ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}",
         line_color = theme.line_color,
         main_bkg = theme.main_bkg,
-        font_family = theme.font_family,
-        text_color = theme.text_color
-    )
+    );
+    typography_receipt.write_text_rule(&mut css, &font_size, &theme.text_color);
+    css.push_str(
+        ".ishikawa .ishikawa-head-label { font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }\
+.ishikawa .ishikawa-label { text-anchor: end; }\
+.ishikawa .ishikawa-label.cause { text-anchor: middle; dominant-baseline: middle; }\
+.ishikawa .ishikawa-label.align { text-anchor: end; dominant-baseline: middle; }\
+.ishikawa .ishikawa-label.up { dominant-baseline: baseline; }\
+.ishikawa .ishikawa-label.down { dominant-baseline: hanging; }",
+    );
+    css
 }

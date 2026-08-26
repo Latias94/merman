@@ -432,10 +432,11 @@ fn compile_mindmap_family(builder: &mut OverlayBuilder, family_programs: &Family
     contributions.finish_into(builder);
 }
 
-/// 仅投影 Tree View writer 使用的三个嵌套 Mermaid 变量。
+/// Projects only Tree View paint routes that still require compatibility.
 ///
-/// 每条 route 保留独立 contribution provenance，同时删除 node-family compiler 过去生成的
-/// 无效 `textColor`、`lineColor` 和 `arrowheadColor` 全局赋值。
+/// Unqualified label and line paint are owned by the family terminal writer and are suppressed by
+/// the matrix-aware reader. Explicit `Default` label/line routes and Marker paint retain their
+/// historical nested Mermaid variables until their own terminal cutovers are authorized.
 fn compile_tree_view_family(
     builder: &mut OverlayBuilder,
     family_programs: &FamilyThemeProgramCache,
@@ -446,54 +447,28 @@ fn compile_tree_view_family(
 
     contributions.add_typography(&reader);
 
-    let mut label = Map::new();
-    if let Some(value) = reader.text_fill(ThemeTarget::NodeLabel) {
-        label.insert(
-            "treeView".to_string(),
-            Value::Object(Map::from_iter([(
-                "labelColor".to_string(),
-                Value::String(value),
-            )])),
-        );
-    }
-    if !label.is_empty() {
-        contributions.add_root_object(
-            ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
-            "themeVariables",
-            label,
-        );
-    }
-
-    let mut line = Map::new();
-    if let Some(value) = reader.stroke_or_fill(ThemeTarget::Edge) {
-        line.insert(
-            "treeView".to_string(),
-            Value::Object(Map::from_iter([(
-                "lineColor".to_string(),
-                Value::String(value),
-            )])),
-        );
-    }
-    if !line.is_empty() {
-        contributions.add_root_object(
-            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-            "themeVariables",
-            line,
-        );
-    }
+    let mut add_tree_view_color =
+        |mapping: &'static str, key: &'static str, value: Option<String>| {
+            let Some(value) = value else {
+                return;
+            };
+            let tree_view = Map::from_iter([(key.to_string(), Value::String(value))]);
+            let variables = Map::from_iter([("treeView".to_string(), Value::Object(tree_view))]);
+            contributions.add_root_object(mapping, "themeVariables", variables);
+        };
+    add_tree_view_color(
+        ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
+        "labelColor",
+        reader.text_fill(ThemeTarget::NodeLabel),
+    );
+    add_tree_view_color(
+        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+        "lineColor",
+        reader.stroke_or_fill(ThemeTarget::Edge),
+    );
 
     let marker = reader.marker_paint_contribution();
-    if let Some(value) = marker.value {
-        let mut icon = Map::new();
-        icon.insert(
-            "treeView".to_string(),
-            Value::Object(Map::from_iter([(
-                "iconColor".to_string(),
-                Value::String(value),
-            )])),
-        );
-        contributions.add_root_object(marker.contribution_id, "themeVariables", icon);
-    }
+    add_tree_view_color(marker.contribution_id, "iconColor", marker.value);
 
     contributions.finish_into(builder);
 }
@@ -790,27 +765,6 @@ fn compile_pie_family(builder: &mut OverlayBuilder, family_programs: &FamilyThem
             ("pieSectionTextColor", reader.text_fill(ThemeTarget::Text)),
         ],
     );
-    contributions.add_theme_variables(
-        "slice.stroke",
-        [
-            ("pieStrokeColor", reader.stroke(ThemeTarget::PieSlice)),
-            ("pieOuterStrokeColor", reader.stroke(ThemeTarget::PieSlice)),
-        ],
-    );
-    contributions.add_palette(
-        "slice.fill",
-        reader
-            .fill(ThemeTarget::PieSlice)
-            .map(|color| vec![color; 12]),
-        PaletteProjection::Pie { limit: 12 },
-    );
-    if !reader.has_typed_ordinal_palette(ThemeTarget::PieSlice) {
-        contributions.add_palette(
-            "slice.palette",
-            reader.palette(ThemeTarget::PieSlice),
-            PaletteProjection::Pie { limit: 12 },
-        );
-    }
     contributions.finish_into(builder);
 }
 
@@ -1057,25 +1011,6 @@ impl FamilyStyleReader {
         )
     }
 
-    fn palette(&self, target: ThemeTarget) -> Option<Vec<String>> {
-        if !self.program.has_legacy_ordinal_palette(target) {
-            return None;
-        }
-        Some(
-            self.program
-                .ordinal_palette(target)?
-                .colors()
-                .iter()
-                .map(super::canvas::ThemeColorValue::as_css)
-                .collect(),
-        )
-    }
-
-    fn has_typed_ordinal_palette(&self, target: ThemeTarget) -> bool {
-        self.program.ordinal_palette_disposition(target)
-            == Some(super::family_mechanism_matrix::FamilyThemeDisposition::TypedAdapter)
-    }
-
     fn stroke_or_fill_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
         let style = self.style(target);
         match self.paint_resolution(style.stroke_resolution(), FamilyThemeRuleFacet::stroke) {
@@ -1113,11 +1048,6 @@ impl FamilyStyleReader {
 struct MarkerPaintContribution {
     contribution_id: &'static str,
     value: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum PaletteProjection {
-    Pie { limit: usize },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1241,28 +1171,6 @@ impl FamilyContributions {
         }
         let mut root = Map::new();
         root.insert(key.to_string(), Value::Object(object));
-        self.add_patch(mapping, root);
-    }
-
-    fn add_palette(
-        &mut self,
-        mapping: &'static str,
-        palette: Option<Vec<String>>,
-        projection: PaletteProjection,
-    ) {
-        let Some(palette) = palette.filter(|palette| !palette.is_empty()) else {
-            return;
-        };
-        let mut variables = Map::new();
-        match projection {
-            PaletteProjection::Pie { limit } => {
-                for (index, color) in palette.iter().take(limit).enumerate() {
-                    variables.insert(format!("pie{}", index + 1), Value::String(color.clone()));
-                }
-            }
-        }
-        let mut root = Map::new();
-        root.insert("themeVariables".to_string(), Value::Object(variables));
         self.add_patch(mapping, root);
     }
 
@@ -1796,7 +1704,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_view_legacy_paint_keeps_its_historical_projection_shape() {
+    fn tree_view_bridge_keeps_only_explicit_marker_paint() {
         let source = "treeView-beta\nroot\n  child\n";
         let label = "#123456";
         let line = "#654321";
@@ -1828,6 +1736,73 @@ mod tests {
 
         let parsed = parse(&spec, source);
 
+        assert_ne!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.treeView.labelColor"),
+            Some(label),
+            "the retired label projection must not be recreated"
+        );
+        assert_ne!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.treeView.lineColor"),
+            Some(line),
+            "the retired line projection must not be recreated"
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.treeView.iconColor"),
+            Some(icon)
+        );
+
+        let evidence = theme_parse_evidence(&parsed);
+        let contributions = evidence.fallback_contributions().collect::<Vec<_>>();
+        assert_eq!(
+            contributions
+                .iter()
+                .flat_map(|contribution| contribution.surviving_assignment_paths())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["themeVariables.treeView.iconColor"])
+        );
+        assert_eq!(
+            contributions
+                .iter()
+                .find_map(|contribution| contribution
+                    .surviving_assignment_value("themeVariables.treeView.iconColor"))
+                .and_then(Value::as_str),
+            Some(icon)
+        );
+    }
+
+    #[test]
+    fn tree_view_bridge_keeps_explicit_default_label_line_and_edge_icon_fallback() {
+        let source = "treeView-beta\nroot\n  child\n";
+        let label = "#123456";
+        let line = "#654321";
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default().with_fill(solid(label)),
+                    )
+                    .for_family(DiagramFamilyId::TREE_VIEW)
+                    .with_variant(ThemeVariant::Default),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_stroke(solid(line)),
+                    )
+                    .for_family(DiagramFamilyId::TREE_VIEW)
+                    .with_variant(ThemeVariant::Default),
+                ),
+        );
+
+        let parsed = parse(&spec, source);
+
         assert_eq!(
             parsed
                 .effective_config
@@ -1844,9 +1819,8 @@ mod tests {
             parsed
                 .effective_config
                 .get_str("themeVariables.treeView.iconColor"),
-            Some(icon)
+            Some(line)
         );
-
         let evidence = theme_parse_evidence(&parsed);
         let contributions = evidence.fallback_contributions().collect::<Vec<_>>();
         assert_eq!(
@@ -1860,20 +1834,6 @@ mod tests {
                 "themeVariables.treeView.lineColor",
             ])
         );
-        for (path, value) in [
-            ("themeVariables.treeView.labelColor", label),
-            ("themeVariables.treeView.lineColor", line),
-            ("themeVariables.treeView.iconColor", icon),
-        ] {
-            assert_eq!(
-                contributions
-                    .iter()
-                    .find_map(|contribution| contribution.surviving_assignment_value(path))
-                    .and_then(Value::as_str),
-                Some(value),
-                "path={path}"
-            );
-        }
     }
 
     #[test]
@@ -2473,6 +2433,100 @@ mod tests {
             Some("18px")
         );
         assert_eq!(fallback_contribution_count(&flowchart), 0);
+    }
+
+    #[test]
+    fn eventmodeling_and_ishikawa_retire_only_the_font_stack_projection() {
+        for (family, source) in [
+            (
+                DiagramFamilyId::EVENT_MODELING,
+                "eventmodeling\ntf 01 ui View\n",
+            ),
+            (DiagramFamilyId::ISHIKAWA, "ishikawa-beta\n Root cause\n"),
+        ] {
+            let contribution_id = format!(
+                "merman.legacy-family-theme.v1.{}.typography",
+                family.as_str()
+            );
+            let font_stack = super::super::FontStack::new(["Inter", "sans-serif"])
+                .expect("valid property-local font stack");
+
+            let stack_spec = DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    family,
+                    TextStyle::default().with_font_stack(font_stack.clone()),
+                ),
+            );
+            let stack_bridge = bridge(&stack_spec);
+            let stack_artifact = stack_bridge.compile_for_family(family);
+            assert!(stack_artifact.overlay.is_empty(), "family={family}");
+            assert!(
+                stack_artifact.contribution_ids.is_empty(),
+                "family={family}"
+            );
+            assert!(
+                !stack_bridge.owns_contribution_id(&contribution_id),
+                "family={family}"
+            );
+
+            let size_style = TextStyle::default()
+                .with_font_size_px(18.0)
+                .expect("valid property-local font size");
+            let size_spec = DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(family, size_style.clone()),
+            );
+            let size_artifact = bridge(&size_spec).compile_for_family(family);
+            assert_eq!(
+                size_artifact.contribution_ids,
+                [contribution_id.clone()].into_iter().collect(),
+                "family={family}"
+            );
+            let size_parsed = parse(&size_spec, source);
+            let baseline = parse(&DiagramThemeSpec::default(), source);
+            assert_eq!(
+                fallback_contribution_count(&size_parsed),
+                1,
+                "family={family}"
+            );
+            assert_eq!(
+                size_parsed
+                    .effective_config
+                    .get_str("themeVariables.fontSize"),
+                Some("18px"),
+                "family={family}"
+            );
+            for path in ["fontFamily", "themeVariables.fontFamily"] {
+                assert_eq!(
+                    size_parsed.effective_config.get_str(path),
+                    baseline.effective_config.get_str(path),
+                    "FontSize-only {family} compatibility must not write `{path}`"
+                );
+            }
+
+            let mixed_style = size_style.with_font_stack(font_stack);
+            let mixed_spec = DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_family_style(family, mixed_style));
+            let mixed_parsed = parse(&mixed_spec, source);
+            assert_eq!(
+                fallback_contribution_count(&mixed_parsed),
+                1,
+                "family={family}"
+            );
+            assert_eq!(
+                mixed_parsed
+                    .effective_config
+                    .get_str("themeVariables.fontSize"),
+                Some("18px"),
+                "family={family}"
+            );
+            for path in ["fontFamily", "themeVariables.fontFamily"] {
+                assert_eq!(
+                    mixed_parsed.effective_config.get_str(path),
+                    baseline.effective_config.get_str(path),
+                    "mixed {family} typography must not recreate the retired `{path}` projection"
+                );
+            }
+        }
     }
 
     #[test]

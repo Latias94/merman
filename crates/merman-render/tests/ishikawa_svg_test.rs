@@ -3,9 +3,9 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget,
+    ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -34,30 +34,50 @@ fn ishikawa_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
         .expect("compile Ishikawa text fill theme")
 }
 
+fn ishikawa_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::ISHIKAWA, typography),
+        ))
+        .expect("compile Ishikawa typography theme")
+}
+
 fn render_ishikawa_with_theme(
     source: &str,
     theme: &DiagramTheme,
     engine: Engine,
 ) -> family::RenderedFamilySvg {
+    try_render_ishikawa_with_theme_requirement(
+        source,
+        theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render themed Ishikawa")
+}
+
+fn try_render_ishikawa_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Ishikawa")
         .expect("detect themed Ishikawa");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin strict portable Ishikawa session");
 
-    family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed Ishikawa")
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("ishikawa-theme".to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("render themed Ishikawa")
+    family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("ishikawa-theme".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
 }
 
 fn ishikawa_theme_source(look: &str) -> String {
@@ -93,6 +113,16 @@ fn ishikawa_visible_text_nodes<'a, 'input>(
                     .any(|text| !text.trim().is_empty())
         })
         .collect()
+}
+
+fn ishikawa_stylesheet(svg: &str) -> String {
+    roxmltree::Document::parse(svg)
+        .expect("valid Ishikawa SVG")
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Ishikawa stylesheet")
+        .to_string()
 }
 
 fn try_render_ishikawa_svg_with_resource_policy(
@@ -201,6 +231,7 @@ ishikawa-beta
     let projection = artifact.layout_json().unwrap();
     let ishikawa_layout: IshikawaDiagramLayout =
         serde_json::from_value(projection["layout"]["IshikawaDiagram"].clone()).unwrap();
+    assert_eq!(ishikawa_layout.font_size, 18.0);
     assert!(ishikawa_layout.spine.is_some());
     assert_eq!(ishikawa_layout.pairs.len(), 1);
     assert_eq!(ishikawa_layout.pairs[0].upper.sub_groups.len(), 2);
@@ -240,7 +271,9 @@ ishikawa-beta
     assert!(svg.contains(r#"class="ishikawa-head""#));
     assert!(svg.contains(r#"class="ishikawa-label-box""#));
     assert!(svg.contains(r#"id="ishikawa-arrow-ishikawa-test""#));
-    assert!(svg.contains(r#"font-size: 18px"#));
+    // Mermaid keeps root `fontSize` for deterministic layout but uses the selected
+    // theme variable (16px here) for the diagram stylesheet.
+    assert!(svg.contains(r##".ishikawa text { font-family: "trebuchet ms",verdana,arial,sans-serif; font-size: 16px;"##));
     assert!(svg.contains(r#"stroke: #008800"#));
 
     let document = roxmltree::Document::parse(&svg).expect("valid Ishikawa SVG");
@@ -619,6 +652,99 @@ fn ishikawa_text_fill_reaches_every_visible_terminal_in_classic_and_hand_drawn()
             assert_eq!(evidence.not_applicable_count(), 0, "{look}");
             assert_eq!(evidence.theme_residual_count(), 0, "{look}");
         }
+    }
+}
+
+#[test]
+fn ishikawa_typed_font_stack_reaches_classic_and_hand_drawn_text_receipts() {
+    for look in ["classic", "handDrawn"] {
+        let font_stack = FontStack::new(["IshikawaTyped", "monospace"])
+            .expect("valid Ishikawa typed font stack");
+        let expected_font = font_stack.as_css().to_string();
+        let theme =
+            ishikawa_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+        let rendered =
+            render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, Engine::new());
+        let stylesheet = ishikawa_stylesheet(rendered.svg());
+
+        assert!(
+            stylesheet.contains(&format!(".ishikawa text {{ font-family: {expected_font};")),
+            "look={look} stylesheet={stylesheet}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "look={look}");
+        assert_eq!(evidence.applied_count(), 1, "look={look}");
+        assert_eq!(evidence.not_applicable_count(), 0, "look={look}");
+        assert_eq!(evidence.theme_residual_count(), 0, "look={look}");
+    }
+}
+
+#[test]
+fn ishikawa_theme_font_family_keeps_precedence_over_root_font_family() {
+    let theme =
+        ishikawa_typography_theme(ThemeTextStyle::default().with_font_stack(
+            FontStack::single("IshikawaTyped").expect("valid Ishikawa typed font"),
+        ));
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "fontFamily": "IshikawaRootFont",
+        "themeVariables": { "fontFamily": "IshikawaThemeFont" }
+    })));
+    let rendered = render_ishikawa_with_theme(&ishikawa_theme_source("classic"), &theme, engine);
+    let stylesheet = ishikawa_stylesheet(rendered.svg());
+
+    assert!(stylesheet.contains("font-family: IshikawaThemeFont;"));
+    assert!(!stylesheet.contains("IshikawaRootFont"));
+    assert!(!stylesheet.contains("IshikawaTyped"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn ishikawa_mixed_font_stack_and_legacy_font_size_fails_closed() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(
+            FontStack::single("IshikawaMixed").expect("valid mixed Ishikawa font stack"),
+        )
+        .with_font_size_px(24.0)
+        .expect("valid mixed Ishikawa font size");
+    let theme = ishikawa_typography_theme(typography);
+    let source = ishikawa_theme_source("classic");
+    let rendered = try_render_ishikawa_with_theme_requirement(
+        &source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders mixed Ishikawa typography");
+    let stylesheet = ishikawa_stylesheet(rendered.svg());
+    assert!(stylesheet.contains("font-family: IshikawaMixed;"));
+    assert!(stylesheet.contains("font-size: 24px;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let error = try_render_ishikawa_with_theme_requirement(
+        &source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .err()
+    .expect("RequirePortable rejects mixed Ishikawa typography");
+    match error {
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id,
+            residual_count,
+        } => {
+            assert_eq!(family_id, DiagramFamilyId::ISHIKAWA);
+            assert_eq!(residual_count, 1);
+        }
+        other => panic!("expected Ishikawa FontSize compatibility residual, got {other}"),
     }
 }
 

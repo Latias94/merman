@@ -150,6 +150,15 @@ pub(crate) fn config_font_family_css(cfg: &Value) -> String {
     font_family_css(font_family)
 }
 
+/// Resolve the inherited Mermaid font stack for diagram families whose upstream stylesheet reads
+/// the root configuration before the legacy `themeVariables` fallback.
+pub(crate) fn config_font_family_css_root_first(cfg: &Value) -> String {
+    let font_family = config_string(cfg, &["fontFamily"])
+        .or_else(|| config_string(cfg, &["themeVariables", "fontFamily"]))
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+    font_family_css(font_family)
+}
+
 pub(crate) fn config_font_family_or_first_array_css(cfg: &Value) -> String {
     let font_family = config_string_or_first_array(cfg, &["themeVariables", "fontFamily"])
         .or_else(|| config_string_or_first_array(cfg, &["fontFamily"]))
@@ -451,6 +460,33 @@ mod tests {
                 "themeVariables": {
                     "fontFamily": " ; "
                 }
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+    }
+
+    #[test]
+    fn config_font_family_css_root_first_uses_root_then_theme_then_default() {
+        assert_eq!(
+            config_font_family_css_root_first(&json!({
+                "fontFamily": "Courier, monospace",
+                "themeVariables": {
+                    "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
+                }
+            })),
+            "Courier,monospace"
+        );
+        assert_eq!(
+            config_font_family_css_root_first(&json!({
+                "themeVariables": {
+                    "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
+                }
+            })),
+            r#""IBM Plex Sans",Arial,sans-serif"#
+        );
+        assert_eq!(
+            config_font_family_css_root_first(&json!({
+                "fontFamily": " ; "
             })),
             MERMAID_DEFAULT_FONT_FAMILY_CSS
         );

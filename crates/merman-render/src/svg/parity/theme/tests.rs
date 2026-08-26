@@ -481,7 +481,6 @@ fn mermaid_theme_adapter_timeline_uses_default_timeline_roles() {
 #[test]
 fn mermaid_theme_adapter_eventmodeling_resolves_eventmodeling_roles() {
     let cfg = json!({
-        "fontFamily": "Inter, sans-serif",
         "themeVariables": {
             "textColor": "#111111",
             "emUiFill": "#fefefe",
@@ -497,7 +496,6 @@ fn mermaid_theme_adapter_eventmodeling_resolves_eventmodeling_roles() {
 
     let eventmodeling = MermaidThemeAdapter::new(&cfg).eventmodeling();
 
-    assert_eq!(eventmodeling.font_family_css, "Inter,sans-serif");
     assert_eq!(eventmodeling.text_color, "#111111");
     assert_eq!(eventmodeling.ui_fill, "#fefefe");
     assert_eq!(eventmodeling.ui_stroke, "#222222");
@@ -515,10 +513,6 @@ fn mermaid_theme_adapter_eventmodeling_uses_default_eventmodeling_roles() {
 
     let eventmodeling = MermaidThemeAdapter::new(&cfg).eventmodeling();
 
-    assert_eq!(
-        eventmodeling.font_family_css,
-        "\"trebuchet ms\",verdana,arial,sans-serif"
-    );
     assert_eq!(eventmodeling.text_color, "#333");
     assert_eq!(eventmodeling.ui_fill, "white");
     assert_eq!(eventmodeling.ui_stroke, "#dbdada");
@@ -531,12 +525,10 @@ fn mermaid_theme_adapter_eventmodeling_uses_default_eventmodeling_roles() {
 #[test]
 fn mermaid_theme_adapter_ishikawa_resolves_ishikawa_roles() {
     let cfg = json!({
-        "fontFamily": "Inter, sans-serif",
         "themeVariables": {
             "lineColor": "#008800",
             "mainBkg": "#FFFFFF",
-            "textColor": "#111111",
-            "fontFamily": "Ignored, sans-serif"
+            "textColor": "#111111"
         }
     });
 
@@ -545,7 +537,6 @@ fn mermaid_theme_adapter_ishikawa_resolves_ishikawa_roles() {
     assert_eq!(ishikawa.line_color, "#008800");
     assert_eq!(ishikawa.main_bkg, "#FFFFFF");
     assert_eq!(ishikawa.text_color, "#111111");
-    assert_eq!(ishikawa.font_family, "Inter, sans-serif");
 }
 
 #[test]
@@ -557,10 +548,6 @@ fn mermaid_theme_adapter_ishikawa_uses_default_ishikawa_roles() {
     assert_eq!(ishikawa.line_color, "#333");
     assert_eq!(ishikawa.main_bkg, "#fff");
     assert_eq!(ishikawa.text_color, "#333");
-    assert_eq!(
-        ishikawa.font_family,
-        "trebuchet ms, verdana, arial, sans-serif"
-    );
 }
 
 #[test]
