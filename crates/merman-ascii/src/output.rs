@@ -493,6 +493,11 @@ fn measure_text(
         resources.charge_layout_work(grapheme_work)?;
         execution.checkpoint_loop(OperationPhase::Emit, line_index)?;
     }
+    if text.ends_with('\n') {
+        // The final line terminator is encoded work, but it is not another logical content row.
+        execution.checkpoint(OperationPhase::Emit)?;
+        resources.charge_layout_work(1)?;
+    }
     Ok(OutputMetrics {
         extent,
         document_cells,
@@ -1551,6 +1556,39 @@ mod tests {
                 encoded_bytes: "a\n超".len(),
             }
         );
+    }
+
+    #[test]
+    fn measured_candidate_counts_terminal_terminator_work_without_counting_an_extra_row() {
+        let exact_resources = crate::AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 3)
+            .expect("positive layout-work limit");
+        let candidate = MeasuredOutput::measure(
+            "a\n".to_string(),
+            AsciiColorMode::Plain,
+            TerminalWidthProfile::Unicode,
+            crate::operation::AsciiExecution::for_test(&exact_resources),
+        )
+        .expect("the exact terminator-work boundary should succeed");
+        assert_eq!(candidate.metrics().extent, AsciiExtent::new(1, 1));
+
+        let below_resources = crate::AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+            .expect("positive layout-work limit");
+        let error = MeasuredOutput::measure(
+            "a\n".to_string(),
+            AsciiColorMode::Plain,
+            TerminalWidthProfile::Unicode,
+            crate::operation::AsciiExecution::for_test(&below_resources),
+        )
+        .expect_err("the N-1 terminator-work boundary should fail");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == 3
+                    && details.max == 2
+        ));
     }
 
     #[test]
