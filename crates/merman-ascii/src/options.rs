@@ -217,6 +217,8 @@ const OVERRIDE_GRAPH_PADDING_X: u8 = 1 << 0;
 const OVERRIDE_GRAPH_PADDING_Y: u8 = 1 << 1;
 const OVERRIDE_FLOWCHART_WRAP_WIDTH: u8 = 1 << 2;
 const OVERRIDE_SEQUENCE_PARTICIPANT_SPACING: u8 = 1 << 3;
+const COMPACT_FLOWCHART_WRAP_WIDTH: usize = 24;
+const COMPACT_SEQUENCE_PARTICIPANT_SPACING: usize = 3;
 
 impl Default for AsciiRenderOptions {
     fn default() -> Self {
@@ -329,69 +331,40 @@ impl AsciiRenderOptions {
         self
     }
 
-    /// Applies the selected layout profile while preserving explicit caller overrides.
-    pub(crate) fn effective_layout(self) -> Self {
-        if self.layout_profile != AsciiLayoutProfile::Compact {
-            return self;
-        }
-        Self {
-            flowchart_node_label_wrap_width: if self.layout_overrides
-                & OVERRIDE_FLOWCHART_WRAP_WIDTH
-                == 0
-            {
-                24
-            } else {
-                self.flowchart_node_label_wrap_width
-            },
-            sequence_participant_spacing: if self.layout_overrides
-                & OVERRIDE_SEQUENCE_PARTICIPANT_SPACING
-                == 0
-            {
-                3
-            } else {
-                self.sequence_participant_spacing
-            },
-            layout_overrides: self.layout_overrides,
-            ..self
-        }
-    }
-
     pub(crate) fn resolve_policies(self) -> ResolvedAsciiPolicies {
-        let requested_options = self;
-        let options = self.effective_layout();
-        let structural_charset = options.structural_charset();
+        let structural_charset = self.structural_charset();
         ResolvedAsciiPolicies {
-            options,
+            options: self,
             host: AsciiHostPolicy {
-                charset: options.charset,
+                charset: self.charset,
                 structural_charset,
-                terminal_width_profile: options.terminal_width_profile,
-                color_mode: options.color_mode,
-                color_theme: options.color_theme,
+                terminal_width_profile: self.terminal_width_profile,
+                color_mode: self.color_mode,
+                color_theme: self.color_theme,
             },
             layout: AsciiLayoutPolicies {
-                profile: options.layout_profile,
+                profile: self.layout_profile,
                 flowchart: FlowchartLayoutPolicy {
-                    node_border_padding: options.box_border_padding,
-                    rank_gap_x: options.graph_padding_x,
-                    rank_gap_y: options.graph_padding_y,
-                    node_label_wrap_width: options.flowchart_node_label_wrap_width,
+                    node_border_padding: self.box_border_padding,
+                    rank_gap_x: self.graph_padding_x,
+                    rank_gap_y: self.graph_padding_y,
+                    node_label_wrap_width: self.resolved_flowchart_wrap_width(),
                     group_padding_x: 2,
                     group_padding_y: 2,
                     group_title_clearance: 3,
                     edge_label_lane_radius: FlowchartLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
-                    default_direction: options.default_direction,
+                    default_direction: self.default_direction,
                     structural_charset,
-                    terminal_width_profile: options.terminal_width_profile,
+                    terminal_width_profile: self.terminal_width_profile,
                 },
-                state: graph_layout_policy(requested_options),
+                state: graph_layout_policy(self),
                 sequence: SequenceLayoutPolicy {
                     participant_label_wrap_width: 12,
-                    participant_spacing: options.sequence_participant_spacing,
-                    message_spacing: options.sequence_message_spacing,
+                    participant_spacing: self.resolved_sequence_participant_spacing(),
+                    message_spacing: self.sequence_message_spacing,
                     message_label_left_margin: 2,
                     message_label_overflow_buffer: 10,
-                    self_message_width: options.sequence_self_message_width,
+                    self_message_width: self.sequence_self_message_width,
                     note_side_gutter: 2,
                     note_wrap_width: 24,
                     box_content_gutter: 2,
@@ -402,22 +375,42 @@ impl AsciiRenderOptions {
                     control_nested_gutter: 2,
                     control_depth_gutter: 2,
                     title_bottom_spacing: 0,
-                    mirror_actors: options.sequence_mirror_actors,
+                    mirror_actors: self.sequence_mirror_actors,
                     structural_charset,
-                    terminal_width_profile: options.terminal_width_profile,
+                    terminal_width_profile: self.terminal_width_profile,
                 },
                 xychart: XyChartLayoutPolicy {
-                    vertical_plot_height: options.xychart_vertical_plot_height,
-                    category_band_width: options.xychart_category_band_width,
-                    horizontal_plot_width: options.xychart_horizontal_plot_width,
+                    vertical_plot_height: self.xychart_vertical_plot_height,
+                    category_band_width: self.xychart_category_band_width,
+                    horizontal_plot_width: self.xychart_horizontal_plot_width,
                     structural_charset,
-                    terminal_width_profile: options.terminal_width_profile,
+                    terminal_width_profile: self.terminal_width_profile,
                 },
             },
             output: AsciiOutputPolicy {
-                terminal_width_profile: options.terminal_width_profile,
-                color_mode: options.color_mode,
+                terminal_width_profile: self.terminal_width_profile,
+                color_mode: self.color_mode,
             },
+        }
+    }
+
+    fn resolved_flowchart_wrap_width(self) -> usize {
+        if self.layout_profile == AsciiLayoutProfile::Compact
+            && self.layout_overrides & OVERRIDE_FLOWCHART_WRAP_WIDTH == 0
+        {
+            COMPACT_FLOWCHART_WRAP_WIDTH
+        } else {
+            self.flowchart_node_label_wrap_width
+        }
+    }
+
+    fn resolved_sequence_participant_spacing(self) -> usize {
+        if self.layout_profile == AsciiLayoutProfile::Compact
+            && self.layout_overrides & OVERRIDE_SEQUENCE_PARTICIPANT_SPACING == 0
+        {
+            COMPACT_SEQUENCE_PARTICIPANT_SPACING
+        } else {
+            self.sequence_participant_spacing
         }
     }
 
@@ -523,6 +516,10 @@ mod tests {
 
         assert_eq!(canonical.host, compact.host);
         assert_eq!(canonical.output, compact.output);
+        assert_eq!(canonical.options.flowchart_node_label_wrap_width, 40);
+        assert_eq!(compact.options.flowchart_node_label_wrap_width, 40);
+        assert_eq!(canonical.options.sequence_participant_spacing, 5);
+        assert_eq!(compact.options.sequence_participant_spacing, 5);
         assert_eq!(
             canonical.layout.flowchart.rank_gap_x,
             compact.layout.flowchart.rank_gap_x

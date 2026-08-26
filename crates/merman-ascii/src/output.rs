@@ -174,7 +174,7 @@ impl AsciiExtent {
             return Self::default();
         }
         let mut extent = Self::default();
-        for line in text.split('\n') {
+        for line in text.lines() {
             extent.width = extent.width.max(display_width_with_profile(line, profile));
             extent.height = extent.height.saturating_add(1);
         }
@@ -457,7 +457,7 @@ fn measure_text(
     let mut extent = AsciiExtent::default();
     let mut document_cells = 0usize;
     let mut grapheme_bytes = 0usize;
-    for (line_index, line) in text.split('\n').enumerate() {
+    for (line_index, line) in text.lines().enumerate() {
         execution.checkpoint(OperationPhase::Emit)?;
         resources.charge_layout_work(1)?;
         let visible = match color_mode {
@@ -1468,10 +1468,10 @@ mod tests {
     }
 
     #[test]
-    fn extent_preserves_trailing_empty_rows() {
+    fn extent_preserves_authored_empty_rows_without_counting_the_line_terminator() {
         assert_eq!(
             AsciiExtent::measure("alpha\n\n", TerminalWidthProfile::Unicode),
-            AsciiExtent::new(5, 3)
+            AsciiExtent::new(5, 2)
         );
     }
 

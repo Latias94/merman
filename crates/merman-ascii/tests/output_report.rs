@@ -68,7 +68,7 @@ fn default_report_preserves_text_projection_and_records_extent() {
     assert_eq!(report.projection, AsciiProjection::Diagrammatic);
     assert_eq!(report.primary_extent, report.emitted_extent);
     assert_eq!(report.primary_extent.width, 15);
-    assert_eq!(report.primary_extent.height, 6);
+    assert_eq!(report.primary_extent.height, 5);
     assert!(!report.overflowed);
     assert!(!report.fallback.attempted);
     assert_eq!(report.schema_version, ASCII_OUTPUT_SCHEMA_VERSION);

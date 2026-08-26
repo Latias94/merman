@@ -1,4 +1,7 @@
-use merman_ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy, TerminalWidthProfile};
+use merman_ascii::{
+    AsciiOutput, AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy, AsciiViewportPolicy,
+    TerminalWidthProfile,
+};
 use merman_core::diagram::{ParsedDiagramRender, RenderSemanticModel};
 use merman_core::{Engine, OperationControl, ParseOptions, runtime::OperationContext};
 use std::path::Path;
@@ -102,6 +105,24 @@ pub(crate) fn render_model_with_resources(
         &OperationControl::new(),
         &context,
         resources,
+    )
+}
+
+#[allow(dead_code)]
+pub(crate) fn render_model_report(
+    model: &RenderSemanticModel,
+    options: &AsciiRenderOptions,
+    viewport: AsciiViewportPolicy,
+) -> merman_ascii::Result<AsciiOutput> {
+    let context = merman_core::runtime::RuntimePolicy::deterministic()
+        .begin_operation()
+        .expect("deterministic test operation context");
+    AsciiRenderer::new(*options)?.render_model_report(
+        model,
+        viewport,
+        &OperationControl::new(),
+        &context,
+        AsciiResourcePolicy::default(),
     )
 }
 

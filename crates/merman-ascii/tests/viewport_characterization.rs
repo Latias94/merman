@@ -1,17 +1,117 @@
 mod support;
 
 use merman_ascii::{
-    AsciiError, AsciiLayoutProfile, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy,
-    TerminalWidthProfile,
+    AsciiColorMode, AsciiError, AsciiLayoutProfile, AsciiOutputEncoding, AsciiOutputOutcome,
+    AsciiProjection, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy,
+    AsciiViewportPolicy, OverflowPolicy, TerminalWidthProfile,
 };
 use merman_core::resources::ResourceProfile;
 use support::{
     assert_rectangular_terminal_grid, assert_rectangular_terminal_grid_with_profile,
-    local_semantic_input, parse_model, render_model, render_model_with_resources, terminal_extent,
-    terminal_extent_with_profile,
+    local_semantic_input, parse_model, render_model, render_model_report,
+    render_model_with_resources, terminal_extent, terminal_extent_with_profile,
 };
 
 const WIDTH_MATRIX: [usize; 4] = [60, 80, 100, 120];
+const ENCODING_MATRIX: [(AsciiColorMode, AsciiOutputEncoding); 5] = [
+    (AsciiColorMode::Plain, AsciiOutputEncoding::Plain),
+    (AsciiColorMode::Ansi16, AsciiOutputEncoding::Ansi16),
+    (AsciiColorMode::Ansi256, AsciiOutputEncoding::Ansi256),
+    (AsciiColorMode::TrueColor, AsciiOutputEncoding::TrueColor),
+    (AsciiColorMode::Html, AsciiOutputEncoding::Html),
+];
+
+fn option_matrix() -> [AsciiRenderOptions; 4] {
+    [
+        AsciiRenderOptions::ascii(),
+        AsciiRenderOptions::unicode(),
+        AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Cjk),
+        AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk),
+    ]
+}
+
+fn strip_ansi(input: &str) -> String {
+    let mut output = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for escaped in chars.by_ref() {
+                if escaped == 'm' {
+                    break;
+                }
+            }
+            continue;
+        }
+        output.push(ch);
+    }
+    output
+}
+
+fn strip_html_spans(input: &str) -> String {
+    let mut output = String::new();
+    let mut index = 0;
+    while index < input.len() {
+        let rest = &input[index..];
+        if rest.starts_with("<span ") {
+            index += rest.find('>').expect("span start tag should be closed") + 1;
+            continue;
+        }
+        if rest.starts_with("</span>") {
+            index += "</span>".len();
+            continue;
+        }
+        let entities = [
+            ("&gt;", '>'),
+            ("&lt;", '<'),
+            ("&amp;", '&'),
+            ("&quot;", '"'),
+            ("&#39;", '\''),
+        ];
+        if let Some((entity, decoded)) =
+            entities.iter().find(|(entity, _)| rest.starts_with(entity))
+        {
+            output.push(*decoded);
+            index += entity.len();
+            continue;
+        }
+        let ch = rest
+            .chars()
+            .next()
+            .expect("index should be on a char boundary");
+        output.push(ch);
+        index += ch.len_utf8();
+    }
+    output
+}
+
+fn plain_text_for_encoding(text: &str, encoding: AsciiOutputEncoding) -> String {
+    match encoding {
+        AsciiOutputEncoding::Plain => text.to_string(),
+        AsciiOutputEncoding::Ansi16
+        | AsciiOutputEncoding::Ansi256
+        | AsciiOutputEncoding::TrueColor => strip_ansi(text),
+        AsciiOutputEncoding::Html => strip_html_spans(text),
+        _ => panic!("unexpected output encoding: {encoding:?}"),
+    }
+}
+
+fn collapsed_authored_text(text: &str) -> String {
+    text.chars()
+        .filter(|ch| !ch.is_whitespace() && *ch != '"')
+        .collect()
+}
+
+fn blank_cell_metrics(rendered: &str) -> (usize, usize) {
+    let blank_cells = rendered.bytes().filter(|byte| *byte == b' ').count();
+    let longest_run = rendered
+        .lines()
+        .flat_map(|line| line.split(|ch| ch != ' '))
+        .map(str::len)
+        .max()
+        .unwrap_or_default();
+    (blank_cells, longest_run)
+}
 
 fn assert_issue_53_semantics(rendered: &str) {
     for expected in [
@@ -117,17 +217,280 @@ fn issue_53_compact_candidate_reduces_width_and_total_blank_cells() {
 
     let canonical_extent = terminal_extent(&canonical);
     let compact_extent = terminal_extent(&compact);
-    let canonical_blank_cells = canonical.bytes().filter(|byte| *byte == b' ').count();
-    let compact_blank_cells = compact.bytes().filter(|byte| *byte == b' ').count();
+    let (canonical_blank_cells, canonical_longest_blank_run) = blank_cell_metrics(&canonical);
+    let (compact_blank_cells, compact_longest_blank_run) = blank_cell_metrics(&compact);
 
     assert_eq!(canonical_extent, (74, 57));
     assert_eq!(compact_extent, (58, 67));
     assert_eq!(canonical_blank_cells, 3_220);
     assert_eq!(compact_blank_cells, 3_006);
+    assert_eq!(canonical_longest_blank_run, 51);
+    assert_eq!(compact_longest_blank_run, 43);
     assert!(compact_extent.0 < canonical_extent.0);
     assert!(compact_extent.1 > canonical_extent.1);
     assert!(compact_extent.0 * compact_extent.1 < canonical_extent.0 * canonical_extent.1);
     assert!(compact_blank_cells < canonical_blank_cells);
+    assert!(compact_longest_blank_run < canonical_longest_blank_run);
+}
+
+#[test]
+fn sequence_compact_candidate_reduces_width_area_and_blank_cells() {
+    let source = local_semantic_input("sequence/self_messages_with_notes.mmd");
+    let model = parse_model(&source);
+    let canonical = render_model(&model, &AsciiRenderOptions::ascii())
+        .expect("canonical Sequence evidence fixture should render");
+    let compact = render_model(
+        &model,
+        &AsciiRenderOptions::ascii().with_layout_profile(AsciiLayoutProfile::Compact),
+    )
+    .expect("compact Sequence evidence fixture should render");
+
+    let canonical_extent = terminal_extent(&canonical);
+    let compact_extent = terminal_extent(&compact);
+    let (canonical_blank_cells, canonical_longest_blank_run) = blank_cell_metrics(&canonical);
+    let (compact_blank_cells, compact_longest_blank_run) = blank_cell_metrics(&compact);
+
+    assert_eq!(canonical_extent, (82, 58));
+    assert_eq!(compact_extent, (78, 58));
+    assert_eq!(canonical_blank_cells, 3_227);
+    assert_eq!(compact_blank_cells, 2_982);
+    assert_eq!(canonical_longest_blank_run, 20);
+    assert_eq!(compact_longest_blank_run, 21);
+    assert!(compact_extent.0 < canonical_extent.0);
+    assert_eq!(compact_extent.1, canonical_extent.1);
+    assert!(compact_extent.0 * compact_extent.1 < canonical_extent.0 * canonical_extent.1);
+    assert!(compact_blank_cells < canonical_blank_cells);
+}
+
+#[test]
+fn flowchart_and_sequence_encoding_matrix_preserves_plain_geometry() {
+    let cases = [
+        (
+            "flowchart/issue_53_long_node_labels.mmd",
+            &[
+                "browser / agent",
+                "CreateInvalidation",
+                "DynamoDB reservations",
+            ][..],
+        ),
+        (
+            "sequence/self_messages_with_notes.mmd",
+            &[
+                "Main Process",
+                "event.preventDefault()",
+                "WINDOW_CLOSE_REQUESTED",
+                "window.destroy()",
+            ][..],
+        ),
+    ];
+
+    for (fixture, required_fields) in cases {
+        let model = parse_model(&local_semantic_input(fixture));
+        for layout_profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+            for base_options in option_matrix() {
+                let plain_options = base_options
+                    .with_layout_profile(layout_profile)
+                    .with_color_mode(AsciiColorMode::Plain);
+                let plain =
+                    render_model_report(&model, &plain_options, AsciiViewportPolicy::default())
+                        .unwrap_or_else(|error| {
+                            panic!("plain {fixture} render failed for {plain_options:?}: {error}")
+                        });
+
+                for field in required_fields {
+                    assert!(
+                        plain.text.contains(field),
+                        "plain {fixture} lost authored field {field:?}:\n{}",
+                        plain.text
+                    );
+                }
+
+                for (color_mode, encoding) in ENCODING_MATRIX {
+                    let options = plain_options.with_color_mode(color_mode);
+                    let report =
+                        render_model_report(&model, &options, AsciiViewportPolicy::default())
+                            .unwrap_or_else(|error| {
+                                panic!(
+                                    "{encoding:?} {fixture} render failed for {options:?}: {error}"
+                                )
+                            });
+
+                    assert_eq!(report.encoding, encoding, "{fixture}/{options:?}");
+                    assert_eq!(
+                        report.primary_extent, plain.primary_extent,
+                        "{fixture}/{options:?} primary extent drifted"
+                    );
+                    assert_eq!(
+                        report.emitted_extent, plain.emitted_extent,
+                        "{fixture}/{options:?} emitted extent drifted"
+                    );
+                    assert_eq!(
+                        plain_text_for_encoding(&report.text, encoding),
+                        plain.text,
+                        "{fixture}/{options:?} styled bytes changed semantic text"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_and_sequence_width_policy_matrix_is_typed_and_complete() {
+    let cases = [
+        (
+            "flowchart/issue_53_long_node_labels.mmd",
+            &[
+                "browser / agent",
+                "CreateInvalidation",
+                "reserve / check owner",
+            ][..],
+        ),
+        (
+            "sequence/self_messages_with_notes.mmd",
+            &[
+                "Main Process",
+                "event.preventDefault()",
+                "WINDOW_CLOSE_REQUESTED",
+                "window.destroy()",
+            ][..],
+        ),
+    ];
+
+    for (fixture, required_fields) in cases {
+        let model = parse_model(&local_semantic_input(fixture));
+        for layout_profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+            for base_options in option_matrix() {
+                let plain_options = base_options
+                    .with_layout_profile(layout_profile)
+                    .with_color_mode(AsciiColorMode::Plain);
+                let baseline =
+                    render_model_report(&model, &plain_options, AsciiViewportPolicy::default())
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "baseline {fixture} render failed for {plain_options:?}: {error}"
+                            )
+                        });
+
+                for max_width in WIDTH_MATRIX {
+                    let overflowed = baseline.primary_extent.width > max_width;
+                    for (color_mode, encoding) in [
+                        (AsciiColorMode::Plain, AsciiOutputEncoding::Plain),
+                        (AsciiColorMode::Ansi16, AsciiOutputEncoding::Ansi16),
+                    ] {
+                        let options = plain_options.with_color_mode(color_mode);
+                        let allow = render_model_report(
+                            &model,
+                            &options,
+                            AsciiViewportPolicy::with_max_width(max_width)
+                                .overflow(OverflowPolicy::Allow),
+                        )
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "Allow {fixture} render failed for {options:?}, width={max_width}: {error}"
+                            )
+                        });
+                        assert_eq!(allow.encoding, encoding);
+                        assert_eq!(allow.primary_extent, baseline.primary_extent);
+                        assert_eq!(allow.emitted_extent, baseline.emitted_extent);
+                        assert_eq!(allow.overflowed, overflowed);
+                        assert_eq!(
+                            allow.outcome,
+                            if overflowed {
+                                AsciiOutputOutcome::WideAllowed
+                            } else {
+                                AsciiOutputOutcome::Primary
+                            }
+                        );
+                        assert_eq!(
+                            plain_text_for_encoding(&allow.text, encoding),
+                            baseline.text
+                        );
+
+                        let error_result = render_model_report(
+                            &model,
+                            &options,
+                            AsciiViewportPolicy::with_max_width(max_width)
+                                .overflow(OverflowPolicy::Error),
+                        );
+                        if overflowed {
+                            assert!(
+                                matches!(
+                                    error_result,
+                                    Err(AsciiError::WidthOverflow {
+                                        max_width: actual_max,
+                                        actual_width,
+                                        ..
+                                    }) if actual_max == max_width
+                                        && actual_width == baseline.primary_extent.width
+                                ),
+                                "Error {fixture}/{options:?}/width={max_width} produced {error_result:?}"
+                            );
+                        } else {
+                            let report = error_result.unwrap_or_else(|error| {
+                                panic!(
+                                    "fitting Error {fixture}/{options:?}/width={max_width} failed: {error}"
+                                )
+                            });
+                            assert_eq!(report.outcome, AsciiOutputOutcome::Primary);
+                            assert_eq!(report.encoding, encoding);
+                            assert_eq!(report.emitted_extent, baseline.emitted_extent);
+                        }
+                    }
+
+                    let fallback = render_model_report(
+                        &model,
+                        &plain_options,
+                        AsciiViewportPolicy::with_max_width(max_width)
+                            .overflow(OverflowPolicy::Fallback),
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "Fallback {fixture} render failed for {plain_options:?}, width={max_width}: {error}"
+                        )
+                    });
+                    assert_eq!(fallback.encoding, AsciiOutputEncoding::Plain);
+                    assert_eq!(fallback.primary_extent, baseline.primary_extent);
+                    if overflowed {
+                        assert_eq!(fallback.outcome, AsciiOutputOutcome::Fallback);
+                        assert_eq!(fallback.projection, AsciiProjection::StructuredText);
+                        assert!(fallback.fallback.attempted);
+                        assert!(fallback.emitted_extent.width <= max_width);
+                        let collapsed = collapsed_authored_text(&fallback.text);
+                        for field in required_fields {
+                            assert!(
+                                collapsed.contains(&collapsed_authored_text(field)),
+                                "fallback {fixture}/width={max_width} lost {field:?}:\n{}",
+                                fallback.text
+                            );
+                        }
+                    } else {
+                        assert_eq!(fallback.outcome, AsciiOutputOutcome::Primary);
+                        assert!(!fallback.fallback.attempted);
+                        assert_eq!(fallback.text, baseline.text);
+                    }
+                }
+
+                for (color_mode, _) in ENCODING_MATRIX.into_iter().skip(1) {
+                    let styled = plain_options.with_color_mode(color_mode);
+                    let error = render_model_report(
+                        &model,
+                        &styled,
+                        AsciiViewportPolicy::with_max_width(WIDTH_MATRIX[0])
+                            .overflow(OverflowPolicy::Fallback),
+                    )
+                    .expect_err("styled fallback must fail capability preflight");
+                    assert_eq!(
+                        error,
+                        AsciiError::InvalidOption {
+                            field: "ascii_viewport.overflow",
+                            message: "fallback is not admitted for the selected output encoding",
+                        }
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]
