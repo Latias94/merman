@@ -45,14 +45,14 @@ fn is_normalized_svg_diagram_id(value: &str) -> bool {
 }
 
 #[derive(Clone, Copy)]
-struct MermaidBaseCss<'a> {
-    font_family: &'a str,
-    font_size_css: &'a str,
-    normal_edge_stroke_width_css: &'a str,
-    text_color: &'a str,
-    line_color: &'a str,
-    error_bkg: &'a str,
-    error_text: &'a str,
+pub(super) struct MermaidBaseCss<'a> {
+    pub(super) font_family: &'a str,
+    pub(super) font_size_css: &'a str,
+    pub(super) normal_edge_stroke_width_css: &'a str,
+    pub(super) text_color: &'a str,
+    pub(super) line_color: &'a str,
+    pub(super) error_bkg: &'a str,
+    pub(super) error_text: &'a str,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -82,7 +82,7 @@ impl<'a> MermaidRootVariableFontCssEmission<'a> {
     }
 }
 
-fn write_mermaid_base_css_prefix<I>(
+pub(super) fn write_mermaid_base_css_prefix<I>(
     out: &mut impl SvgOutput,
     id: I,
     css: MermaidBaseCss<'_>,
@@ -300,7 +300,7 @@ where
     out.checkpoint()
 }
 
-fn write_mermaid_base_css_root_rule<I>(
+pub(super) fn write_mermaid_base_css_root_rule<I>(
     out: &mut impl SvgOutput,
     id: I,
     font_family: &str,

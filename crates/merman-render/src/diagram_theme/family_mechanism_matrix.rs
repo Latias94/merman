@@ -1061,6 +1061,7 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::ISHIKAWA
             | DiagramFamilyId::EVENT_MODELING
             | DiagramFamilyId::VENN
+            | DiagramFamilyId::RADAR
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1074,7 +1075,6 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::PIE
             | DiagramFamilyId::QUADRANT_CHART
-            | DiagramFamilyId::RADAR
             | DiagramFamilyId::REQUIREMENT
             | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::TREEMAP
@@ -1095,6 +1095,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::RAILROAD
             | DiagramFamilyId::ISHIKAWA
             | DiagramFamilyId::EVENT_MODELING
+            | DiagramFamilyId::RADAR
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1109,7 +1110,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::PIE
             | DiagramFamilyId::QUADRANT_CHART
-            | DiagramFamilyId::RADAR
             | DiagramFamilyId::REQUIREMENT
             | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::TREEMAP
@@ -5758,7 +5758,7 @@ mod tests {
     }
 
     #[test]
-    fn eventmodeling_and_ishikawa_mark_font_stack_and_font_size_as_typed() {
+    fn eventmodeling_ishikawa_and_radar_mark_font_stack_and_font_size_as_typed() {
         let typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::single("DirectTypographySans")
@@ -5769,7 +5769,11 @@ mod tests {
             .with_font_weight(700)
             .expect("valid unsupported direct typography font weight");
 
-        for family in [DiagramFamilyId::EVENT_MODELING, DiagramFamilyId::ISHIKAWA] {
+        for family in [
+            DiagramFamilyId::EVENT_MODELING,
+            DiagramFamilyId::ISHIKAWA,
+            DiagramFamilyId::RADAR,
+        ] {
             let routes = compile_base_typography_routes(family, &typography);
             for property in [
                 ThemeTypographyProperty::FontStack,

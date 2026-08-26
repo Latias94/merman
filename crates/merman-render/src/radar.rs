@@ -15,7 +15,9 @@ mod config;
 mod theme;
 
 pub(crate) use config::RadarConfigView;
-pub(crate) use theme::RadarSeriesPaintPlan;
+pub(crate) use theme::{
+    RadarSeriesPaintPlan, RadarTypographyCssEmission, RadarTypographyThemePlan,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RadarLayoutWork {

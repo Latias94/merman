@@ -302,13 +302,10 @@ pub(crate) struct JourneyTheme {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RadarTheme {
-    pub(crate) font_family_css: String,
-    pub(crate) base_font_size_css: String,
     pub(crate) text_color: String,
     pub(crate) line_color: String,
     pub(crate) error_bkg_color: String,
     pub(crate) error_text_color: String,
-    pub(crate) title_font_size_css: String,
     pub(crate) title_color: String,
     pub(crate) axis_color: String,
     pub(crate) axis_stroke_width: f64,
@@ -319,7 +316,6 @@ pub(crate) struct RadarTheme {
     pub(crate) legend_font_size: f64,
     pub(crate) curve_opacity: f64,
     pub(crate) curve_stroke_width: f64,
-    pub(crate) series_colors: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

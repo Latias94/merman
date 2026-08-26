@@ -1555,6 +1555,7 @@ pub(crate) struct XyChartFamilyArtifact {
 pub(crate) struct RadarFamilyArtifact {
     pair: FamilyPair<diagrams::radar::RadarDiagramRenderModel, RadarDiagramLayout>,
     series_paint: crate::radar::RadarSeriesPaintPlan,
+    typography_theme: crate::radar::RadarTypographyThemePlan,
 }
 
 #[derive(Debug)]
@@ -1883,6 +1884,16 @@ impl RadarFamilyArtifact {
 
     pub(crate) const fn series_paint(&self) -> &crate::radar::RadarSeriesPaintPlan {
         &self.series_paint
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::radar::RadarTypographyThemePlan {
+        &self.typography_theme
+    }
+
+    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.series_paint.finish_evidence();
+        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
+        evidence
     }
 }
 
@@ -2367,7 +2378,7 @@ impl BuiltinFamilyArtifact {
 
     fn radar_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Radar(artifact) => Some(artifact.series_paint().finish_evidence()),
+            Self::Radar(artifact) => Some(artifact.finish_theme_evidence()),
             _ => None,
         }
     }

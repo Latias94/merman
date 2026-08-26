@@ -575,10 +575,15 @@ fn prepare_radar_family(
         execution.text_measurer(),
         execution.work_meter_ref(),
     )?;
+    let typography_theme = crate::radar::RadarTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
     Ok(BuiltinFamilyArtifact::Radar(Box::new(
         RadarFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             series_paint,
+            typography_theme,
         },
     )))
 }

@@ -382,15 +382,6 @@ impl<'a> MermaidThemeAdapter<'a> {
     }
 
     pub(crate) fn radar(&self) -> RadarTheme {
-        let font_family_css = self
-            .raw
-            .optional_color("fontFamily")
-            .map(|font_family| crate::config::normalize_css_font_family(&font_family))
-            .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
-        let base_font_size_css = self
-            .raw
-            .optional_value("fontSize")
-            .unwrap_or_else(|| "16px".to_string());
         let scoped_string = |key: &str, fallback: &str| {
             self.raw
                 .optional_scoped_string("radar", key)
@@ -403,13 +394,10 @@ impl<'a> MermaidThemeAdapter<'a> {
         };
 
         RadarTheme {
-            font_family_css,
-            base_font_size_css: base_font_size_css.clone(),
             text_color: self.raw.color("textColor", "#333"),
             line_color: self.raw.color("lineColor", "#333333"),
             error_bkg_color: self.raw.color("errorBkgColor", "#552222"),
             error_text_color: self.raw.color("errorTextColor", "#552222"),
-            title_font_size_css: base_font_size_css,
             title_color: self.raw.color("titleColor", "#333"),
             axis_color: scoped_string("axisColor", "#333333"),
             axis_stroke_width: scoped_f64("axisStrokeWidth", 2.0),
@@ -420,13 +408,14 @@ impl<'a> MermaidThemeAdapter<'a> {
             legend_font_size: scoped_f64("legendFontSize", 12.0),
             curve_opacity: scoped_f64("curveOpacity", 0.5),
             curve_stroke_width: scoped_f64("curveStrokeWidth", 2.0),
-            series_colors: (0..12)
-                .map(|index| {
-                    self.raw
-                        .color(&format!("cScale{index}"), default_c_scale(index))
-                })
-                .collect(),
         }
+    }
+
+    pub(crate) fn radar_series_colors(&self) -> [String; 12] {
+        std::array::from_fn(|index| {
+            self.raw
+                .color(&format!("cScale{index}"), default_c_scale(index))
+        })
     }
 
     pub(crate) fn timeline(&self) -> TimelineTheme {

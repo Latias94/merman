@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 8);
+    assert_eq!(support.claim_revision(), 9);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -810,6 +810,24 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::ISHIKAWA,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::RADAR,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::RADAR,
             ThemeSupportBaseTypographyPropertyV2::FontSize,
             ThemeSupportStateV1::Conditional,
             &[

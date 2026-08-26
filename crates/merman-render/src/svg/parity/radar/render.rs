@@ -4,73 +4,59 @@ use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
-fn radar_css(
-    diagram_id: &str,
+fn write_radar_css<I>(
+    out: &mut impl SvgOutput,
+    diagram_id: I,
     theme: &RadarTheme,
+    typography: &crate::radar::RadarTypographyThemePlan,
     series_colors: &[String],
     mut record_series_rule: impl FnMut(usize, &str),
-) -> String {
+) -> Result<crate::radar::RadarTypographyCssEmission>
+where
+    I: SvgDiagramIdValue,
+{
     // Keep `:root` last (matches upstream Mermaid radar SVG baselines).
-    let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
-        diagram_id, theme.font_family_css, theme.base_font_size_css, theme.text_color
-    );
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        diagram_id, diagram_id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
+    let diagram_id = super::super::util::css_selector_diagram_id(diagram_id);
+    write_mermaid_base_css_prefix(
+        out,
         diagram_id,
-        theme.error_bkg_color,
-        diagram_id,
-        theme.error_text_color,
-        theme.error_text_color
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        diagram_id, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        diagram_id, theme.line_color, theme.line_color, diagram_id, theme.line_color
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
-        diagram_id, theme.font_family_css, theme.base_font_size_css, diagram_id
-    );
+        MermaidBaseCss {
+            font_family: typography.font_family_css(),
+            font_size_css: typography.font_size_css(),
+            normal_edge_stroke_width_css: "1px",
+            text_color: &theme.text_color,
+            line_color: &theme.line_color,
+            error_bkg: &theme.error_bkg_color,
+            error_text: &theme.error_text_color,
+        },
+    )?;
 
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .radarTitle{{font-size:{};color:{};dominant-baseline:hanging;text-anchor:middle;}}"#,
-        diagram_id, theme.title_font_size_css, theme.title_color
+        diagram_id,
+        typography.font_size_css(),
+        theme.title_color
     );
+    out.checkpoint()?;
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .radarAxisLine{{stroke:{};stroke-width:{};}}"#,
         diagram_id,
         theme.axis_color,
         fmt(theme.axis_stroke_width)
     );
+    out.checkpoint()?;
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .radarAxisLabel{{font-size:{}px;color:{};}}"#,
         diagram_id,
         fmt(theme.axis_label_font_size),
         theme.axis_color
     );
+    out.checkpoint()?;
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .radarGraticule{{fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}"#,
         diagram_id,
         theme.graticule_color,
@@ -78,16 +64,18 @@ fn radar_css(
         theme.graticule_color,
         fmt(theme.graticule_stroke_width)
     );
+    out.checkpoint()?;
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .radarLegendText{{text-anchor:start;font-size:{}px;dominant-baseline:hanging;}}"#,
         diagram_id,
         fmt(theme.legend_font_size)
     );
+    out.checkpoint()?;
 
     for (i, c) in series_colors.iter().enumerate() {
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .radarCurve-{}{{color:{};fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}#{} .radarLegendBox-{}{{fill:{};fill-opacity:{};stroke:{};}}"#,
             diagram_id,
             i,
@@ -102,23 +90,21 @@ fn radar_css(
             fmt(theme.curve_opacity),
             c
         );
+        out.checkpoint()?;
         record_series_rule(i, c);
     }
 
-    let _ = write!(
-        &mut out,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        diagram_id, theme.font_family_css
-    );
+    write_mermaid_base_css_root_rule(out, diagram_id, typography.font_family_css())?;
 
-    out
+    Ok(crate::radar::RadarTypographyCssEmission::written())
 }
 
 fn write_radar_axes(
     out: &mut impl SvgOutput,
     axes: &[crate::model::RadarAxisLayout],
+    mut record_axis_label: impl FnMut(usize, &str),
 ) -> Result<()> {
-    for axis in axes {
+    for (axis_index, axis) in axes.iter().enumerate() {
         let cos_a = axis.angle.cos();
         let sin_a = axis.angle.sin();
         let text_anchor = if cos_a > 0.01 {
@@ -146,6 +132,7 @@ fn write_radar_axes(
             label = escape_xml(&axis.label)
         );
         out.checkpoint()?;
+        record_axis_label(axis_index, &axis.label);
     }
     Ok(())
 }
@@ -160,20 +147,23 @@ pub(crate) fn render_radar_diagram_svg_model(
 ) -> Result<root_svg::RootedSvg> {
     let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
     let series_paint = crate::radar::RadarSeriesPaintPlan::baseline(&effective_config, model);
-    render_radar_diagram_svg_model_with_series_paint(
+    let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
+    render_radar_diagram_svg_model_with_theme_plans(
         layout,
         model,
         &series_paint,
+        &typography,
         effective_config.as_value(),
         diagram_title,
         options,
     )
 }
 
-pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
+pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     layout: &RadarDiagramLayout,
     model: &RadarDiagramRenderModel,
     series_paint: &crate::radar::RadarSeriesPaintPlan,
+    typography: &crate::radar::RadarTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
@@ -243,9 +233,13 @@ pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
     out.push_str("<style>");
     out.checkpoint()?;
     let mut series_paint_receipt = series_paint.begin_terminal_receipt();
-    let css = radar_css(
-        diagram_id.semantic_str(),
+    let mut typography_receipt =
+        typography.begin_terminal_receipt(layout.axes.len(), layout.legend_items.len());
+    let typography_css_emission = write_radar_css(
+        &mut out,
+        diagram_id,
         &theme,
+        typography,
         series_paint.colors(),
         |rule_index, color| {
             if rule_index < series_paint.curve_count()
@@ -254,12 +248,12 @@ pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
                 receipt.record_series_rule(series_paint, rule_index, color);
             }
         },
-    );
-    out.push_str(&css);
-    drop(css);
-    out.checkpoint()?;
+    )?;
     out.push_str("</style><g/>");
     out.checkpoint()?;
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_css_emission(typography_css_emission);
+    }
 
     let _ = write!(
         &mut out,
@@ -290,7 +284,11 @@ pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
         }
         out.checkpoint()?;
     }
-    write_radar_axes(&mut out, &layout.axes)?;
+    write_radar_axes(&mut out, &layout.axes, |axis_index, label| {
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_axis_label(axis_index, label);
+        }
+    })?;
 
     let polygon_curves = layout
         .graticules
@@ -352,6 +350,9 @@ pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
         if let Some(receipt) = series_paint_receipt.as_mut() {
             receipt.record_legend(series_paint, legend_index, item.class_index);
         }
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_legend_label(legend_index, label);
+        }
     }
 
     let title = model
@@ -364,7 +365,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
                 .map(str::trim)
                 .filter(|title| !title.is_empty())
         });
-    match title {
+    let title_visible = match title {
         Some(t) => {
             let _ = write!(
                 &mut out,
@@ -372,7 +373,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
                 y = fmt(layout.title_y),
                 text = escape_xml(t)
             );
-            out.checkpoint()?;
+            true
         }
         None => {
             let _ = write!(
@@ -380,8 +381,12 @@ pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
                 r#"<text class="radarTitle" x="0" y="{y}"/>"#,
                 y = fmt(layout.title_y)
             );
-            out.checkpoint()?;
+            false
         }
+    };
+    out.checkpoint()?;
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_title(title_visible);
     }
 
     out.push_str("</g></svg>\n");
@@ -391,6 +396,13 @@ pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
     {
         return Err(crate::Error::InvalidModel {
             message: "Radar series paint receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if let Some(receipt) = typography_receipt
+        && !typography.record_terminal(receipt)
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Radar typography receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted)
@@ -403,6 +415,25 @@ mod tests {
     use crate::model::RadarAxisLayout;
     use std::fmt;
     use std::ops::Range;
+
+    fn radar_css_for_test(config: &serde_json::Value) -> String {
+        let effective_config = merman_core::MermaidConfig::from_value(config.clone());
+        let adapter = MermaidThemeAdapter::new(effective_config.as_value());
+        let theme = adapter.radar();
+        let series_colors = adapter.radar_series_colors();
+        let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
+        let mut css = String::new();
+        write_radar_css(
+            &mut css,
+            "radar",
+            &theme,
+            &typography,
+            &series_colors,
+            |_, _| {},
+        )
+        .expect("String-backed Radar CSS writer");
+        css
+    }
 
     #[derive(Default)]
     struct RejectAfterFirstWrite {
@@ -477,7 +508,7 @@ mod tests {
             .collect::<Vec<_>>();
         let mut out = RejectAfterFirstWrite::default();
 
-        let error = write_radar_axes(&mut out, &axes)
+        let error = write_radar_axes(&mut out, &axes, |_, _| {})
             .expect_err("the rejecting sink must stop Radar axis emission");
 
         assert!(matches!(error, crate::Error::InvalidModel { .. }));
@@ -521,8 +552,7 @@ mod tests {
             }
         });
 
-        let theme = MermaidThemeAdapter::new(&cfg).radar();
-        let css = radar_css("radar", &theme, &theme.series_colors, |_, _| {});
+        let css = radar_css_for_test(&cfg);
 
         assert!(css.contains(r#"#radar .radarTitle{font-size:18px;color:#202020;"#));
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#606060;stroke-width:4;}"#));
@@ -561,8 +591,7 @@ mod tests {
             }
         });
 
-        let theme = MermaidThemeAdapter::new(&cfg).radar();
-        let css = radar_css("radar", &theme, &theme.series_colors, |_, _| {});
+        let css = radar_css_for_test(&cfg);
 
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#404040;stroke-width:2;}"#));
         assert!(css.contains(r#"#radar .radarAxisLabel{font-size:12px;color:#404040;}"#));

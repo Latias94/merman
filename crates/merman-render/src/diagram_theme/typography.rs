@@ -138,11 +138,7 @@ impl FontStack {
             .map(|family| {
                 if is_css_generic_family(family) {
                     family.to_ascii_lowercase()
-                } else if family
-                    .chars()
-                    .all(|character| character.is_ascii_alphanumeric() || character == '-')
-                    && !is_css_wide_keyword(family)
-                {
+                } else if is_unquoted_css_font_family(family) && !is_css_wide_keyword(family) {
                     family.clone()
                 } else {
                     let mut serialized = String::new();
@@ -154,6 +150,20 @@ impl FontStack {
             .collect::<Vec<_>>()
             .join(", ")
     }
+}
+
+fn is_unquoted_css_font_family(value: &str) -> bool {
+    if !value
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '-')
+    {
+        return false;
+    }
+
+    let mut serialized = String::new();
+    cssparser::serialize_identifier(value, &mut serialized)
+        .expect("serializing a CSS identifier into String cannot fail");
+    serialized == value
 }
 
 fn is_css_generic_family(value: &str) -> bool {
@@ -541,5 +551,28 @@ fn apply_specified<T: Clone>(value: &Specified<T>, target: &mut T, base: &T) {
         Specified::Unspecified => {}
         Specified::Clear => *target = base.clone(),
         Specified::Value(value) => *target = value.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FontStack;
+
+    #[test]
+    fn font_stack_quotes_names_that_are_not_valid_unquoted_css_identifiers() {
+        let stack = FontStack::new([
+            "123Radar",
+            "-1Radar",
+            "-",
+            "Radar2",
+            "-apple-system",
+            "--radar",
+        ])
+        .expect("valid bounded font stack");
+
+        assert_eq!(
+            stack.as_css(),
+            "\"123Radar\", \"-1Radar\", \"-\", Radar2, -apple-system, --radar"
+        );
     }
 }

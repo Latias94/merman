@@ -2432,6 +2432,10 @@ mod tests {
                 "eventmodeling\ntf 01 ui View\n",
             ),
             (DiagramFamilyId::ISHIKAWA, "ishikawa-beta\n Root cause\n"),
+            (
+                DiagramFamilyId::RADAR,
+                "radar-beta\ntitle Direct radar\naxis A,B,C\ncurve Current{1,2,3}\n",
+            ),
         ] {
             let baseline = parse(&DiagramThemeSpec::default(), source);
             for typography in [

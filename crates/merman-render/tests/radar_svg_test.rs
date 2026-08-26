@@ -3,8 +3,9 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
-    ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget,
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget, ThemeTextStyle,
+    TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -27,23 +28,51 @@ fn radar_series_palette_theme(colors: &[&str]) -> DiagramTheme {
         .expect("compile Radar series palette theme")
 }
 
-fn render_radar_with_theme_and_engine(
+fn radar_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::RADAR, typography),
+        ))
+        .expect("compile Radar typography theme")
+}
+
+fn render_radar_with_theme_requirement(
     source: &str,
     theme: &DiagramTheme,
     engine: Engine,
-) -> family::RenderedFamilySvg {
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Radar")
         .expect("detect themed Radar");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable Radar session");
-    family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed Radar")
+        .expect("begin themed Radar session");
+    family::prepare(parsed, &LayoutOptions::default(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render themed Radar")
+}
+
+fn render_radar_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> family::RenderedFamilySvg {
+    render_radar_with_theme_requirement(
+        source,
+        theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render strict portable Radar")
+}
+
+fn radar_stylesheet(svg: &str) -> &str {
+    svg.split_once("<style>")
+        .and_then(|(_, tail)| tail.split_once("</style>"))
+        .map(|(stylesheet, _)| stylesheet)
+        .unwrap_or_else(|| panic!("Radar SVG must contain one stylesheet: {svg}"))
 }
 
 fn render_radar_svg_from_text(text: &str) -> String {
@@ -152,6 +181,247 @@ curve score{1,2,3}
     );
     assert!(body_svg.contains(">Body radar</text>"));
     assert!(!body_svg.contains(">Frontmatter radar</text>"));
+}
+
+#[test]
+fn radar_mixed_typography_is_direct_and_portable() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("RadarMixed").expect("valid mixed Radar font stack"))
+        .with_font_size_px(24.0)
+        .expect("valid mixed Radar font size");
+    let theme = radar_typography_theme(typography);
+    let rendered = render_radar_with_theme_and_engine(
+        "radar-beta\ntitle Mixed radar\naxis A,B,C\ncurve Current{3,4,2}\n",
+        &theme,
+        Engine::new(),
+    );
+
+    for path in [
+        "fontFamily",
+        "themeVariables.fontFamily",
+        "themeVariables.fontSize",
+    ] {
+        assert!(
+            !merman_core::__private::fallback_overlay_owns_path(
+                &rendered.metadata().effective_config,
+                path,
+            ),
+            "Radar typed typography must not retain fallback ownership of {path}"
+        );
+    }
+    let stylesheet = radar_stylesheet(rendered.svg());
+    assert!(stylesheet.contains("#radar{font-family:RadarMixed;font-size:24px;"));
+    assert!(stylesheet.contains("#radar svg{font-family:RadarMixed;font-size:24px;}"));
+    assert!(stylesheet.contains("#radar .radarTitle{font-size:24px;"));
+    assert!(stylesheet.contains("#radar .radarAxisLabel{font-size:12px;"));
+    assert!(stylesheet.contains("#radar .radarLegendText{text-anchor:start;font-size:12px;"));
+    assert!(stylesheet.contains("#radar :root{--mermaid-font-family:RadarMixed;}"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn radar_digit_leading_font_family_is_quoted_and_portable() {
+    let theme = radar_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("123Radar").expect("valid digit-leading Radar font stack"),
+    ));
+    let rendered = render_radar_with_theme_and_engine(
+        "radar-beta\ntitle Quoted radar\naxis A,B,C\ncurve Current{3,4,2}\n",
+        &theme,
+        Engine::new(),
+    );
+
+    let stylesheet = radar_stylesheet(rendered.svg());
+    assert!(stylesheet.contains("font-family:\"123Radar\";"));
+    assert!(!stylesheet.contains("font-family:123Radar;"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn radar_typography_config_ownership_is_property_local() {
+    let stack_theme =
+        radar_typography_theme(ThemeTextStyle::default().with_font_stack(
+            FontStack::single("RadarTyped").expect("valid Radar typed font stack"),
+        ));
+    for (source, engine, expected_font) in [
+        (
+            "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontFamily": "RadarThemeOwner" }
+            }))),
+            "RadarThemeOwner",
+        ),
+        (
+            "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "fontFamily": "RadarRootOwner"
+            }))),
+            "RadarRootOwner",
+        ),
+        (
+            concat!(
+                "%%{init: {\"themeVariables\": {\"fontFamily\": \"RadarSourceOwner\"}}}%%\n",
+                "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
+            ),
+            legacy_init_theme_compat_engine(),
+            "RadarSourceOwner",
+        ),
+    ] {
+        let rendered = render_radar_with_theme_and_engine(source, &stack_theme, engine);
+        let stylesheet = radar_stylesheet(rendered.svg());
+        assert!(stylesheet.contains(&format!("font-family:{expected_font};")));
+        assert!(!stylesheet.contains("RadarTyped"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+
+    let size_theme = radar_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Radar typed font size"),
+    );
+    for (source, engine, expected_size, typed_applies) in [
+        (
+            "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": "22px" }
+            }))),
+            "22px",
+            false,
+        ),
+        (
+            concat!(
+                "%%{init: {\"themeVariables\": {\"fontSize\": \"23px\"}}}%%\n",
+                "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
+            ),
+            legacy_init_theme_compat_engine(),
+            "23px",
+            false,
+        ),
+        (
+            "radar-beta\ntitle Owned radar\naxis A,B,C\ncurve Current{3,4,2}\n",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "fontSize": "31px"
+            }))),
+            "24px",
+            true,
+        ),
+    ] {
+        let rendered = render_radar_with_theme_and_engine(source, &size_theme, engine);
+        let stylesheet = radar_stylesheet(rendered.svg());
+        assert!(stylesheet.contains(&format!("font-size:{expected_size};")));
+        assert_eq!(stylesheet.contains("font-size:24px;"), typed_applies);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(typed_applies));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!typed_applies));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn radar_unsupported_typography_sibling_suppresses_the_direct_pair() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(
+            FontStack::single("RadarSuppressed").expect("valid suppressed Radar font stack"),
+        )
+        .with_font_size_px(24.0)
+        .expect("valid suppressed Radar font size")
+        .with_font_weight(700)
+        .expect("valid unsupported Radar font weight");
+    let theme = radar_typography_theme(typography);
+    let source = "radar-beta\ntitle Suppressed radar\naxis A,B,C\ncurve Current{3,4,2}\n";
+
+    let rendered = render_radar_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders unsupported Radar typography");
+    let stylesheet = radar_stylesheet(rendered.svg());
+    assert!(!stylesheet.contains("RadarSuppressed"));
+    assert!(!stylesheet.contains("font-size:24px;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let error = match render_radar_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    ) {
+        Ok(_) => panic!("RequirePortable must reject unsupported Radar typography"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::RADAR, 1))
+    );
+}
+
+#[test]
+fn radar_base_font_size_is_not_applicable_without_a_visual_title() {
+    let size_theme = radar_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Radar applicability font size"),
+    );
+    let rendered = render_radar_with_theme_and_engine(
+        "radar-beta\naccTitle: Accessible only\naxis A,B,C\ncurve VisibleLegend{3,4,2}\n",
+        &size_theme,
+        Engine::new(),
+    );
+    let stylesheet = radar_stylesheet(rendered.svg());
+    assert!(rendered.svg().contains(">Accessible only</title>"));
+    assert!(stylesheet.contains("#radar .radarAxisLabel{font-size:12px;"));
+    assert!(stylesheet.contains("#radar .radarLegendText{text-anchor:start;font-size:12px;"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn radar_direct_font_stack_is_not_limited_by_the_retired_bridge_patch_ceiling() {
+    let families = (0..32)
+        .map(|index| format!("radar-font-{index}-{}", "x".repeat(180)))
+        .collect::<Vec<_>>();
+    let font_stack = FontStack::new(families).expect("valid oversized Radar font stack");
+    let expected_css = font_stack.as_css();
+    assert!(expected_css.len() > 4 * 1024);
+    let theme = radar_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let rendered = render_radar_with_theme_and_engine(
+        "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
+        &theme,
+        Engine::new(),
+    );
+    let stylesheet = radar_stylesheet(rendered.svg());
+
+    assert!(stylesheet.contains(&format!("font-family:{expected_css};")));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

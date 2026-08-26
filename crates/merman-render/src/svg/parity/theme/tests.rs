@@ -742,9 +742,6 @@ fn mermaid_theme_adapter_radar_resolves_style_roles() {
 
     let radar = MermaidThemeAdapter::new(&cfg).radar();
 
-    assert_eq!(radar.font_family_css, "\"ibm plex sans\",arial,sans-serif");
-    assert_eq!(radar.base_font_size_css, "18");
-    assert_eq!(radar.title_font_size_css, "18");
     assert_eq!(radar.text_color, "#101010");
     assert_eq!(radar.line_color, "#111111");
     assert_eq!(radar.error_bkg_color, "#121212");
@@ -759,8 +756,9 @@ fn mermaid_theme_adapter_radar_resolves_style_roles() {
     assert_eq!(radar.legend_font_size, 16.0);
     assert_eq!(radar.curve_opacity, 0.9);
     assert_eq!(radar.curve_stroke_width, 6.0);
-    assert_eq!(radar.series_colors[0], "#303030");
-    assert_eq!(radar.series_colors[11], "hsl(210, 100%, 76.2745098039%)");
+    let series_colors = MermaidThemeAdapter::new(&cfg).radar_series_colors();
+    assert_eq!(series_colors[0], "#303030");
+    assert_eq!(series_colors[11], "hsl(210, 100%, 76.2745098039%)");
 }
 
 #[test]
@@ -769,12 +767,6 @@ fn mermaid_theme_adapter_radar_uses_default_style_roles() {
 
     let radar = MermaidThemeAdapter::new(&cfg).radar();
 
-    assert_eq!(
-        radar.font_family_css,
-        "\"trebuchet ms\",verdana,arial,sans-serif"
-    );
-    assert_eq!(radar.base_font_size_css, "16px");
-    assert_eq!(radar.title_font_size_css, "16px");
     assert_eq!(radar.text_color, "#333");
     assert_eq!(radar.line_color, "#333333");
     assert_eq!(radar.error_bkg_color, "#552222");
@@ -789,6 +781,6 @@ fn mermaid_theme_adapter_radar_uses_default_style_roles() {
     assert_eq!(radar.legend_font_size, 12.0);
     assert_eq!(radar.curve_opacity, 0.5);
     assert_eq!(radar.curve_stroke_width, 2.0);
-    assert_eq!(radar.series_colors.len(), 12);
-    assert_eq!(radar.series_colors[0], "hsl(240, 100%, 76.2745098039%)");
+    let series_colors = MermaidThemeAdapter::new(&cfg).radar_series_colors();
+    assert_eq!(series_colors[0], "hsl(240, 100%, 76.2745098039%)");
 }
