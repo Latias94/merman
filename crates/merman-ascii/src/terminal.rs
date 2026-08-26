@@ -32,6 +32,84 @@ pub(crate) struct SurfaceCellCheckpoints<F> {
     interval: usize,
 }
 
+/// A named ANSI-16 color. Semantic roles use this palette directly so the terminal owns the
+/// foreground/background polarity; authored RGB fills still use the nearest ANSI color.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Ansi16Color {
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    White,
+    BrightBlack,
+    BrightRed,
+    BrightGreen,
+    BrightYellow,
+    BrightBlue,
+    BrightMagenta,
+    BrightCyan,
+    BrightWhite,
+}
+
+impl Ansi16Color {
+    pub(crate) const fn foreground_start(self) -> &'static str {
+        match self {
+            Self::Black => "\u{1b}[30m",
+            Self::Red => "\u{1b}[31m",
+            Self::Green => "\u{1b}[32m",
+            Self::Yellow => "\u{1b}[33m",
+            Self::Blue => "\u{1b}[34m",
+            Self::Magenta => "\u{1b}[35m",
+            Self::Cyan => "\u{1b}[36m",
+            Self::White => "\u{1b}[37m",
+            Self::BrightBlack => "\u{1b}[90m",
+            Self::BrightRed => "\u{1b}[91m",
+            Self::BrightGreen => "\u{1b}[92m",
+            Self::BrightYellow => "\u{1b}[93m",
+            Self::BrightBlue => "\u{1b}[94m",
+            Self::BrightMagenta => "\u{1b}[95m",
+            Self::BrightCyan => "\u{1b}[96m",
+            Self::BrightWhite => "\u{1b}[97m",
+        }
+    }
+
+    pub(crate) const fn background_start(self) -> &'static str {
+        match self {
+            Self::Black => "\u{1b}[40m",
+            Self::Red => "\u{1b}[41m",
+            Self::Green => "\u{1b}[42m",
+            Self::Yellow => "\u{1b}[43m",
+            Self::Blue => "\u{1b}[44m",
+            Self::Magenta => "\u{1b}[45m",
+            Self::Cyan => "\u{1b}[46m",
+            Self::White => "\u{1b}[47m",
+            Self::BrightBlack => "\u{1b}[100m",
+            Self::BrightRed => "\u{1b}[101m",
+            Self::BrightGreen => "\u{1b}[102m",
+            Self::BrightYellow => "\u{1b}[103m",
+            Self::BrightBlue => "\u{1b}[104m",
+            Self::BrightMagenta => "\u{1b}[105m",
+            Self::BrightCyan => "\u{1b}[106m",
+            Self::BrightWhite => "\u{1b}[107m",
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Ansi16Style {
+    pub(crate) foreground: Option<Ansi16Color>,
+    pub(crate) background: Option<Ansi16Color>,
+}
+
+impl Ansi16Style {
+    pub(crate) const fn is_plain(self) -> bool {
+        self.foreground.is_none() && self.background.is_none()
+    }
+}
+
 impl<F> SurfaceCellCheckpoints<F>
 where
     F: FnMut() -> Result<()>,
@@ -85,6 +163,42 @@ impl CanvasColor {
             Self::Direct(color) => color,
         }
     }
+
+    pub(crate) fn resolve_ansi16(self) -> Option<Ansi16Color> {
+        match self {
+            Self::Role(role) => match role {
+                AsciiColorRole::Surface
+                | AsciiColorRole::Text
+                | AsciiColorRole::MutedText
+                | AsciiColorRole::NodeBorder
+                | AsciiColorRole::GroupBorder
+                | AsciiColorRole::EdgeLine
+                | AsciiColorRole::EdgeLabel
+                | AsciiColorRole::Junction
+                | AsciiColorRole::SequenceLifeline
+                | AsciiColorRole::SequenceFrame
+                | AsciiColorRole::ChartAxis => None,
+                AsciiColorRole::Title => Some(Ansi16Color::Cyan),
+                AsciiColorRole::Section => Some(Ansi16Color::Blue),
+                AsciiColorRole::Diagnostic => Some(Ansi16Color::Yellow),
+                AsciiColorRole::StatusEmphasis => Some(Ansi16Color::Green),
+                AsciiColorRole::EdgeArrow => Some(Ansi16Color::Cyan),
+                AsciiColorRole::SequenceActivation => Some(Ansi16Color::Magenta),
+                AsciiColorRole::ChartSeries(index) => {
+                    const SERIES: [Ansi16Color; 6] = [
+                        Ansi16Color::Red,
+                        Ansi16Color::Green,
+                        Ansi16Color::Yellow,
+                        Ansi16Color::Blue,
+                        Ansi16Color::Magenta,
+                        Ansi16Color::Cyan,
+                    ];
+                    Some(SERIES[index % SERIES.len()])
+                }
+            },
+            Self::Direct(color) => Some(ansi16_nearest(color)),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +230,47 @@ impl CanvasStyle {
             background: self.background.map(|color| color.resolve(theme)),
         }
     }
+
+    pub(crate) fn resolve_ansi16(self) -> Ansi16Style {
+        Ansi16Style {
+            foreground: self.foreground.and_then(CanvasColor::resolve_ansi16),
+            background: self.background.and_then(CanvasColor::resolve_ansi16),
+        }
+    }
+}
+
+fn ansi16_nearest(color: AsciiRgb) -> Ansi16Color {
+    const PALETTE: [(AsciiRgb, Ansi16Color); 16] = [
+        (AsciiRgb::new(0x00, 0x00, 0x00), Ansi16Color::Black),
+        (AsciiRgb::new(0x80, 0x00, 0x00), Ansi16Color::Red),
+        (AsciiRgb::new(0x00, 0x80, 0x00), Ansi16Color::Green),
+        (AsciiRgb::new(0x80, 0x80, 0x00), Ansi16Color::Yellow),
+        (AsciiRgb::new(0x00, 0x00, 0x80), Ansi16Color::Blue),
+        (AsciiRgb::new(0x80, 0x00, 0x80), Ansi16Color::Magenta),
+        (AsciiRgb::new(0x00, 0x80, 0x80), Ansi16Color::Cyan),
+        (AsciiRgb::new(0xc0, 0xc0, 0xc0), Ansi16Color::White),
+        (AsciiRgb::new(0x80, 0x80, 0x80), Ansi16Color::BrightBlack),
+        (AsciiRgb::new(0xff, 0x00, 0x00), Ansi16Color::BrightRed),
+        (AsciiRgb::new(0x00, 0xff, 0x00), Ansi16Color::BrightGreen),
+        (AsciiRgb::new(0xff, 0xff, 0x00), Ansi16Color::BrightYellow),
+        (AsciiRgb::new(0x00, 0x00, 0xff), Ansi16Color::BrightBlue),
+        (AsciiRgb::new(0xff, 0x00, 0xff), Ansi16Color::BrightMagenta),
+        (AsciiRgb::new(0x00, 0xff, 0xff), Ansi16Color::BrightCyan),
+        (AsciiRgb::new(0xff, 0xff, 0xff), Ansi16Color::BrightWhite),
+    ];
+
+    PALETTE
+        .iter()
+        .min_by_key(|(candidate, _)| color_distance(*candidate, color))
+        .map(|(_, color)| *color)
+        .unwrap_or(Ansi16Color::White)
+}
+
+fn color_distance(a: AsciiRgb, b: AsciiRgb) -> u32 {
+    let dr = a.r as i32 - b.r as i32;
+    let dg = a.g as i32 - b.g as i32;
+    let db = a.b as i32 - b.b as i32;
+    (dr * dr + dg * dg + db * db) as u32
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -1890,6 +2045,44 @@ mod tests {
     use crate::resource::AsciiResourceLimitExceeded;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
     use std::mem::size_of;
+
+    #[test]
+    fn ansi16_semantic_roles_use_reset_and_sparse_named_accents() {
+        assert_eq!(
+            CanvasStyle::foreground(CanvasColor::Role(AsciiColorRole::Text)).resolve_ansi16(),
+            Ansi16Style::default()
+        );
+        assert_eq!(
+            CanvasStyle::foreground(CanvasColor::Role(AsciiColorRole::Surface)).resolve_ansi16(),
+            Ansi16Style::default()
+        );
+        assert_eq!(
+            CanvasStyle::foreground(CanvasColor::Role(AsciiColorRole::EdgeArrow)).resolve_ansi16(),
+            Ansi16Style {
+                foreground: Some(Ansi16Color::Cyan),
+                background: None,
+            }
+        );
+        assert_eq!(
+            CanvasStyle::foreground(CanvasColor::Role(AsciiColorRole::Diagnostic)).resolve_ansi16(),
+            Ansi16Style {
+                foreground: Some(Ansi16Color::Yellow),
+                background: None,
+            }
+        );
+    }
+
+    #[test]
+    fn ansi16_direct_colors_still_use_nearest_named_color() {
+        assert_eq!(
+            CanvasStyle::foreground(CanvasColor::Direct(AsciiRgb::from_hex24(0xff0000)))
+                .resolve_ansi16(),
+            Ansi16Style {
+                foreground: Some(Ansi16Color::BrightRed),
+                background: None,
+            }
+        );
+    }
 
     #[test]
     fn typed_glyph_keeps_the_complete_cell_at_the_prototype_gate_size() {

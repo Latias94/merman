@@ -641,7 +641,7 @@ fn write_group_title(
     if let Some(color) = style.title {
         canvas.write_text_color(x, y, text, color)
     } else {
-        canvas.write_text_role(x, y, text, AsciiColorRole::MutedText)
+        canvas.write_text_role(x, y, text, AsciiColorRole::Section)
     }
 }
 

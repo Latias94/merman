@@ -398,7 +398,7 @@ fn render_title_line(
             }
             line.try_push_role_text_with_checkpoint(
                 grapheme,
-                AsciiColorRole::Text,
+                AsciiColorRole::Title,
                 resources,
                 || checkpoints.tick(),
             )?;

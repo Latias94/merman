@@ -37,8 +37,20 @@ impl AsciiRgb {
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AsciiColorRole {
+    /// A semantic canvas or filled-surface region.
+    Surface,
+    /// Primary authored and renderer-owned text.
     Text,
+    /// Secondary text that may be de-emphasized by an explicit palette.
     MutedText,
+    /// A diagram or document title.
+    Title,
+    /// A group, section, or control-frame heading.
+    Section,
+    /// A renderer-owned diagnostic or lossiness explanation.
+    Diagnostic,
+    /// A positive or active status emphasis.
+    StatusEmphasis,
     NodeBorder,
     GroupBorder,
     EdgeLine,
@@ -107,8 +119,13 @@ impl AsciiTerminalPalette {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AsciiColorTheme {
+    surface: AsciiRgb,
     text: AsciiRgb,
     muted_text: AsciiRgb,
+    title: AsciiRgb,
+    section: AsciiRgb,
+    diagnostic: AsciiRgb,
+    status_emphasis: AsciiRgb,
     node_border: AsciiRgb,
     group_border: AsciiRgb,
     edge_line: AsciiRgb,
@@ -131,8 +148,13 @@ impl Default for AsciiColorTheme {
 impl AsciiColorTheme {
     pub const fn default_light() -> Self {
         Self {
+            surface: AsciiRgb::from_hex24(0xf4f4f5),
             text: AsciiRgb::from_hex24(0x27272a),
             muted_text: AsciiRgb::from_hex24(0x71717a),
+            title: AsciiRgb::from_hex24(0x1d4ed8),
+            section: AsciiRgb::from_hex24(0x7c3aed),
+            diagnostic: AsciiRgb::from_hex24(0xb45309),
+            status_emphasis: AsciiRgb::from_hex24(0x15803d),
             node_border: AsciiRgb::from_hex24(0xa1a1aa),
             group_border: AsciiRgb::from_hex24(0xa1a1aa),
             edge_line: AsciiRgb::from_hex24(0x71717a),
@@ -158,8 +180,13 @@ impl AsciiColorTheme {
 
     pub const fn default_dark() -> Self {
         Self {
+            surface: AsciiRgb::from_hex24(0x18181b),
             text: AsciiRgb::from_hex24(0xe4e4e7),
             muted_text: AsciiRgb::from_hex24(0xa1a1aa),
+            title: AsciiRgb::from_hex24(0x93c5fd),
+            section: AsciiRgb::from_hex24(0xc4b5fd),
+            diagnostic: AsciiRgb::from_hex24(0xfbbf24),
+            status_emphasis: AsciiRgb::from_hex24(0x86efac),
             node_border: AsciiRgb::from_hex24(0x71717a),
             group_border: AsciiRgb::from_hex24(0x71717a),
             edge_line: AsciiRgb::from_hex24(0xa1a1aa),
@@ -209,8 +236,13 @@ impl AsciiColorTheme {
         let line_soft = mix_rgb(line, palette.background, 75);
 
         Self {
+            surface,
             text: palette.foreground,
             muted_text: muted,
+            title: accent,
+            section: mix_rgb(accent, line, 60),
+            diagnostic: accent,
+            status_emphasis: accent,
             node_border: border,
             group_border: border,
             edge_line: line,
@@ -236,8 +268,13 @@ impl AsciiColorTheme {
 
     pub fn color_for(&self, role: AsciiColorRole) -> AsciiRgb {
         match role {
+            AsciiColorRole::Surface => self.surface,
             AsciiColorRole::Text => self.text,
             AsciiColorRole::MutedText => self.muted_text,
+            AsciiColorRole::Title => self.title,
+            AsciiColorRole::Section => self.section,
+            AsciiColorRole::Diagnostic => self.diagnostic,
+            AsciiColorRole::StatusEmphasis => self.status_emphasis,
             AsciiColorRole::NodeBorder => self.node_border,
             AsciiColorRole::GroupBorder => self.group_border,
             AsciiColorRole::EdgeLine => self.edge_line,
@@ -254,8 +291,13 @@ impl AsciiColorTheme {
 
     pub fn with_role(mut self, role: AsciiColorRole, color: AsciiRgb) -> Self {
         match role {
+            AsciiColorRole::Surface => self.surface = color,
             AsciiColorRole::Text => self.text = color,
             AsciiColorRole::MutedText => self.muted_text = color,
+            AsciiColorRole::Title => self.title = color,
+            AsciiColorRole::Section => self.section = color,
+            AsciiColorRole::Diagnostic => self.diagnostic = color,
+            AsciiColorRole::StatusEmphasis => self.status_emphasis = color,
             AsciiColorRole::NodeBorder => self.node_border = color,
             AsciiColorRole::GroupBorder => self.group_border = color,
             AsciiColorRole::EdgeLine => self.edge_line = color,

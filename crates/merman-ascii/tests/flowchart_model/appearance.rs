@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn flowchart_ansi16_uses_reset_text_and_sparse_named_accents_without_geometry_changes() {
+    let input = "flowchart LR\nA[Client] -->|request| B[Server]";
+    let plain = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
+    let rendered = render_flowchart(
+        input,
+        &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Ansi16),
+    )
+    .unwrap();
+
+    assert_eq!(strip_ansi(&rendered), plain);
+    assert!(
+        rendered.contains("\u{1b}[36m"),
+        "arrow accent is missing: {rendered:?}"
+    );
+    assert!(
+        !rendered.contains("38;") && !rendered.contains("48;"),
+        "ANSI16 must not leak RGB or background guesses: {rendered:?}"
+    );
+}
+
+#[test]
 fn flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
         .with_role(AsciiColorRole::NodeBorder, AsciiRgb::new(1, 1, 1))
@@ -42,7 +63,7 @@ fn flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text() 
 fn flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
         .with_role(AsciiColorRole::GroupBorder, AsciiRgb::from_hex24(0x101010))
-        .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x202020))
+        .with_role(AsciiColorRole::Section, AsciiRgb::from_hex24(0x202020))
         .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x303030))
         .with_role(AsciiColorRole::EdgeLine, AsciiRgb::from_hex24(0x404040))
         .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::from_hex24(0x505050))

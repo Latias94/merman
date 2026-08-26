@@ -659,9 +659,13 @@ fn draw_sequence_box_label(
     let index = resources.checked_grid_add(bounds.left, SEQUENCE_BOX_LABEL_MARGIN)?;
     let available = bounds.right.saturating_sub(index);
     let label = truncate_display_width_with_profile(&label, available, row.width_profile())?;
-    row.try_write_text_role_with_checkpoint(index, &label, AsciiColorRole::Text, resources, || {
-        checkpoints.tick()
-    })
+    row.try_write_text_role_with_checkpoint(
+        index,
+        &label,
+        AsciiColorRole::Section,
+        resources,
+        || checkpoints.tick(),
+    )
 }
 
 fn padded_box_label(label: &str, resources: &ResourceContext) -> Result<String> {
