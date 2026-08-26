@@ -129,9 +129,22 @@ impl FlowchartLayoutPolicy {
 /// Sequence-owned geometry policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SequenceLayoutPolicy {
+    pub participant_label_wrap_width: usize,
     pub participant_spacing: usize,
     pub message_spacing: usize,
+    pub message_label_left_margin: usize,
+    pub message_label_overflow_buffer: usize,
     pub self_message_width: usize,
+    pub note_side_gutter: usize,
+    pub note_wrap_width: usize,
+    pub box_content_gutter: usize,
+    pub section_title_gutter: usize,
+    pub section_title_wrap_width: usize,
+    pub control_participant_gutter: usize,
+    pub control_content_gutter: usize,
+    pub control_nested_gutter: usize,
+    pub control_depth_gutter: usize,
+    pub title_bottom_spacing: usize,
     pub mirror_actors: bool,
     pub structural_charset: AsciiCharset,
     pub terminal_width_profile: TerminalWidthProfile,
@@ -295,6 +308,14 @@ impl AsciiRenderOptions {
             } else {
                 self.flowchart_node_label_wrap_width
             },
+            sequence_participant_spacing: if self.layout_overrides
+                & OVERRIDE_SEQUENCE_PARTICIPANT_SPACING
+                == 0
+            {
+                3
+            } else {
+                self.sequence_participant_spacing
+            },
             layout_overrides: self.layout_overrides,
             ..self
         }
@@ -328,9 +349,22 @@ impl AsciiRenderOptions {
                     terminal_width_profile: options.terminal_width_profile,
                 },
                 sequence: SequenceLayoutPolicy {
+                    participant_label_wrap_width: 12,
                     participant_spacing: options.sequence_participant_spacing,
                     message_spacing: options.sequence_message_spacing,
+                    message_label_left_margin: 2,
+                    message_label_overflow_buffer: 10,
                     self_message_width: options.sequence_self_message_width,
+                    note_side_gutter: 2,
+                    note_wrap_width: 24,
+                    box_content_gutter: 2,
+                    section_title_gutter: 2,
+                    section_title_wrap_width: 12,
+                    control_participant_gutter: 2,
+                    control_content_gutter: 1,
+                    control_nested_gutter: 2,
+                    control_depth_gutter: 2,
+                    title_bottom_spacing: 0,
                     mirror_actors: options.sequence_mirror_actors,
                     structural_charset,
                     terminal_width_profile: options.terminal_width_profile,
@@ -354,6 +388,7 @@ impl AsciiRenderOptions {
         self.resolve_policies().layout.flowchart
     }
 
+    #[cfg(test)]
     pub(crate) fn sequence_layout(self) -> SequenceLayoutPolicy {
         self.resolve_policies().layout.sequence
     }
@@ -468,7 +503,7 @@ mod tests {
             canonical.layout.flowchart.edge_label_lane_radius,
             compact.layout.flowchart.edge_label_lane_radius
         );
-        assert_eq!(
+        assert_ne!(
             canonical.layout.sequence.participant_spacing,
             compact.layout.sequence.participant_spacing
         );
@@ -476,7 +511,73 @@ mod tests {
             canonical.layout.sequence.message_spacing,
             compact.layout.sequence.message_spacing
         );
+        assert_eq!(
+            canonical.layout.sequence.participant_label_wrap_width,
+            compact.layout.sequence.participant_label_wrap_width
+        );
+        assert_eq!(
+            canonical.layout.sequence.message_label_left_margin,
+            compact.layout.sequence.message_label_left_margin
+        );
+        assert_eq!(
+            canonical.layout.sequence.message_label_overflow_buffer,
+            compact.layout.sequence.message_label_overflow_buffer
+        );
+        assert_eq!(
+            canonical.layout.sequence.self_message_width,
+            compact.layout.sequence.self_message_width
+        );
+        assert_eq!(
+            canonical.layout.sequence.note_side_gutter,
+            compact.layout.sequence.note_side_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.note_wrap_width,
+            compact.layout.sequence.note_wrap_width
+        );
+        assert_eq!(
+            canonical.layout.sequence.box_content_gutter,
+            compact.layout.sequence.box_content_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.section_title_gutter,
+            compact.layout.sequence.section_title_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.section_title_wrap_width,
+            compact.layout.sequence.section_title_wrap_width
+        );
+        assert_eq!(
+            canonical.layout.sequence.control_participant_gutter,
+            compact.layout.sequence.control_participant_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.control_content_gutter,
+            compact.layout.sequence.control_content_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.control_nested_gutter,
+            compact.layout.sequence.control_nested_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.control_depth_gutter,
+            compact.layout.sequence.control_depth_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.title_bottom_spacing,
+            compact.layout.sequence.title_bottom_spacing
+        );
         assert_eq!(canonical.layout.xychart, compact.layout.xychart);
+    }
+
+    #[test]
+    fn explicit_sequence_spacing_override_wins_over_compact_profile() {
+        let policies = AsciiRenderOptions::unicode()
+            .with_layout_profile(AsciiLayoutProfile::Compact)
+            .with_sequence_participant_spacing(7)
+            .resolve_policies();
+
+        assert_eq!(policies.layout.sequence.participant_spacing, 7);
     }
 
     #[test]

@@ -172,14 +172,6 @@ fn try_plan_sequence_label_impl(
 const BOX_PADDING_LEFT_RIGHT: usize = 2;
 const MIN_BOX_WIDTH: usize = 3;
 const BOX_BORDER_WIDTH: usize = 2;
-const LABEL_LEFT_MARGIN: usize = 2;
-const LABEL_BUFFER_SPACE: usize = 10;
-const NOTE_SIDE_GAP: usize = 2;
-const NOTE_WRAP_TEXT_WIDTH: usize = 24;
-const SEQUENCE_ACTOR_WRAP_TEXT_WIDTH: usize = 12;
-const SEQUENCE_BOX_WRAP_TEXT_WIDTH: usize = 12;
-const SEQUENCE_BOX_CONTENT_OFFSET: usize = BOX_BORDER_WIDTH;
-const SEQUENCE_BOX_LABEL_MARGIN: usize = 2;
 
 fn projection_allocation_failed() -> crate::error::AsciiError {
     crate::error::AsciiError::AllocationFailed {

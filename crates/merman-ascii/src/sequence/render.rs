@@ -126,7 +126,6 @@ fn render_sequence_diagram_transactional(
         diagram,
         &layout,
         &chars,
-        layout_policy.mirror_actors,
         &mut layout_resources,
         &mut layout_checkpoints,
     )?;
@@ -429,7 +428,6 @@ mod tests {
             diagram,
             &layout,
             &chars,
-            options.sequence_layout().mirror_actors,
             &mut layout_resources,
             &mut checkpoints,
         )?;

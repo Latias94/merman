@@ -1,6 +1,4 @@
-use super::{
-    LABEL_BUFFER_SPACE, LABEL_LEFT_MARGIN, SequenceCheckpointCursor, try_plan_sequence_label,
-};
+use super::{SequenceCheckpointCursor, try_plan_sequence_label};
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
@@ -267,8 +265,9 @@ fn prepare_message_rows_transactional(
     let to = layout.participant_centers[message.to];
     let label_plan = message_label_plan(
         message,
-        from.abs_diff(to).saturating_sub(LABEL_LEFT_MARGIN),
-        layout.width_profile,
+        from.abs_diff(to)
+            .saturating_sub(layout.policy.message_label_left_margin),
+        layout.policy.terminal_width_profile,
         resources,
         checkpoints,
     )?;
@@ -279,12 +278,15 @@ fn prepare_message_rows_transactional(
     let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
     let row_count =
         resources.checked_grid_add(label_metrics.map_or(0, |metrics| metrics.line_count), 1)?;
-    let start = resources.checked_grid_add(from.min(to), LABEL_LEFT_MARGIN)?;
+    let start =
+        resources.checked_grid_add(from.min(to), layout.policy.message_label_left_margin)?;
     let mut max_width = resources.checked_grid_add(layout.total_width, 1)?;
     if let Some(metrics) = label_metrics {
         let label_right = resources.checked_grid_add(start, metrics.max_width)?;
-        let label_width =
-            resources.checked_grid_add(layout.total_width.max(label_right), LABEL_BUFFER_SPACE)?;
+        let label_width = resources.checked_grid_add(
+            layout.total_width.max(label_right),
+            layout.policy.message_label_overflow_buffer,
+        )?;
         max_width = max_width.max(label_width);
     }
     checkpoints.before_charge()?;
@@ -353,11 +355,12 @@ fn prepare_self_message_rows_transactional(
 ) -> Result<PreparedSelfMessageRows> {
     let center = layout.participant_centers[message.from];
     let geometry = SelfMessageGeometry::try_new(message, layout, chars, resources)?;
-    let label_wrap_width = resources.checked_grid_add(geometry.width, LABEL_BUFFER_SPACE)?;
+    let label_wrap_width =
+        resources.checked_grid_add(geometry.width, layout.policy.message_label_overflow_buffer)?;
     let label_plan = message_label_plan(
         message,
         label_wrap_width,
-        layout.width_profile,
+        layout.policy.terminal_width_profile,
         resources,
         checkpoints,
     )?;
@@ -368,11 +371,13 @@ fn prepare_self_message_rows_transactional(
     let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
     let row_count =
         resources.checked_grid_add(label_metrics.map_or(0, |metrics| metrics.line_count), 3)?;
-    let start = resources.checked_grid_add(center, LABEL_LEFT_MARGIN)?;
+    let start = resources.checked_grid_add(center, layout.policy.message_label_left_margin)?;
     let mut max_width = geometry.materialized_width;
     if let Some(metrics) = label_metrics {
         let label_right = resources.checked_grid_add(start, metrics.max_width)?;
-        max_width = max_width.max(resources.checked_grid_add(label_right, LABEL_BUFFER_SPACE)?);
+        max_width = max_width.max(
+            resources.checked_grid_add(label_right, layout.policy.message_label_overflow_buffer)?,
+        );
     }
     checkpoints.before_charge()?;
     resources.grid_extent(max_width, row_count)?;
@@ -424,9 +429,9 @@ fn effective_self_message_width(
         .filter_map(|marker| chars.arrow_left(marker))
         .any(|glyph| glyph.lineward_stem.is_some());
     if has_filled_half_stem {
-        layout.self_message_width.max(4)
+        layout.policy.self_message_width.max(4)
     } else {
-        layout.self_message_width
+        layout.policy.self_message_width
     }
 }
 
@@ -460,13 +465,14 @@ mod tests {
     use merman_core::OperationPhase;
 
     fn narrow_self_layout() -> SequenceLayout {
+        let mut policy = AsciiRenderOptions::unicode().sequence_layout();
+        policy.message_spacing = 5;
+        policy.self_message_width = 2;
         SequenceLayout {
             participant_widths: vec![3],
             participant_centers: vec![2],
             total_width: 5,
-            message_spacing: 5,
-            self_message_width: 2,
-            width_profile: TerminalWidthProfile::Unicode,
+            policy,
         }
     }
 
@@ -515,7 +521,7 @@ mod tests {
         let padded = prepared
             .geometry
             .pad_line(
-                blank_line(6, layout.width_profile, &resources).unwrap(),
+                blank_line(6, layout.policy.terminal_width_profile, &resources).unwrap(),
                 prepared.geometry.loop_needed,
                 &mut checkpoints,
             )

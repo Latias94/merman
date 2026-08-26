@@ -7,10 +7,6 @@ use super::super::tree::SequenceParticipantSpan;
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 
-const PARTICIPANT_FRAME_MARGIN: usize = 2;
-const CONTENT_FRAME_MARGIN: usize = 1;
-const NESTED_FRAME_MARGIN: usize = 2;
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(in crate::sequence) struct SequenceControlBoundaryState {
     active_counts: Vec<usize>,
@@ -80,8 +76,8 @@ impl SequenceFrameBounds {
             .copied()
             .ok_or_else(invalid_control_geometry)?;
         Ok(Self {
-            left: first.saturating_sub(PARTICIPANT_FRAME_MARGIN),
-            right: resources.checked_grid_add(last, PARTICIPANT_FRAME_MARGIN)?,
+            left: first.saturating_sub(layout.policy.control_participant_gutter),
+            right: resources.checked_grid_add(last, layout.policy.control_participant_gutter)?,
         })
     }
 
@@ -123,10 +119,12 @@ impl SequenceFrameBounds {
             if ch == ' ' || is_unrelated_lifeline(index, ch, participant_span, layout, chars) {
                 continue;
             }
-            self.left = self.left.min(index.saturating_sub(CONTENT_FRAME_MARGIN));
+            self.left = self
+                .left
+                .min(index.saturating_sub(layout.policy.control_content_gutter));
             self.right = self
                 .right
-                .max(resources.checked_grid_add(index, CONTENT_FRAME_MARGIN)?);
+                .max(resources.checked_grid_add(index, layout.policy.control_content_gutter)?);
         }
         Ok(())
     }
@@ -134,27 +132,37 @@ impl SequenceFrameBounds {
     pub(super) fn include_footprint_content(
         &mut self,
         footprint: SequenceRowFootprint,
+        layout: &SequenceLayout,
         resources: &ResourceContext,
     ) -> Result<()> {
         let Some(content) = footprint.content() else {
             return Ok(());
         };
-        self.left = self
-            .left
-            .min(content.left().saturating_sub(CONTENT_FRAME_MARGIN));
-        self.right = self
-            .right
-            .max(resources.checked_grid_add(content.right(), CONTENT_FRAME_MARGIN)?);
+        self.left = self.left.min(
+            content
+                .left()
+                .saturating_sub(layout.policy.control_content_gutter),
+        );
+        self.right = self.right.max(
+            resources.checked_grid_add(content.right(), layout.policy.control_content_gutter)?,
+        );
         Ok(())
     }
 
-    pub(super) fn include_child(&mut self, child: Self, resources: &ResourceContext) -> Result<()> {
-        self.left = self
-            .left
-            .min(child.left.saturating_sub(NESTED_FRAME_MARGIN));
+    pub(super) fn include_child(
+        &mut self,
+        child: Self,
+        layout: &SequenceLayout,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.left = self.left.min(
+            child
+                .left
+                .saturating_sub(layout.policy.control_nested_gutter),
+        );
         self.right = self
             .right
-            .max(resources.checked_grid_add(child.right, NESTED_FRAME_MARGIN)?);
+            .max(resources.checked_grid_add(child.right, layout.policy.control_nested_gutter)?);
         Ok(())
     }
 
@@ -305,9 +313,7 @@ mod tests {
             participant_widths: vec![3, 3],
             participant_centers: vec![0, 4],
             total_width: 5,
-            message_spacing: 1,
-            self_message_width: 4,
-            width_profile: TerminalWidthProfile::Unicode,
+            policy: AsciiRenderOptions::unicode().sequence_layout(),
         }
     }
 }

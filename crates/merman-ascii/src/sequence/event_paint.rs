@@ -1,3 +1,4 @@
+use super::SequenceCheckpointCursor;
 use super::chars::SequenceChars;
 use super::event_plan::{PreparedMessageRows, PreparedSelfMessageRows, invalid_message_geometry};
 use super::layout::SequenceLayout;
@@ -7,7 +8,6 @@ use super::model::{
     SequenceMessageDirection,
 };
 use super::text::{SequenceLine, padded_line_with_checkpoints, trim_right, write_text_role};
-use super::{LABEL_BUFFER_SPACE, LABEL_LEFT_MARGIN, SequenceCheckpointCursor};
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
@@ -64,7 +64,8 @@ pub(super) fn render_message(
     let row_count = extent.height();
     let from = layout.participant_centers[message.from];
     let to = layout.participant_centers[message.to];
-    let start = resources.checked_grid_add(from.min(to), LABEL_LEFT_MARGIN)?;
+    let start =
+        resources.checked_grid_add(from.min(to), layout.policy.message_label_left_margin)?;
 
     let mut lines = Vec::new();
     lines
@@ -73,10 +74,12 @@ pub(super) fn render_message(
 
     for label in label_lines {
         checkpoints.tick()?;
-        let label_width = display_width_with_profile(&label, layout.width_profile);
+        let label_width = display_width_with_profile(&label, layout.policy.terminal_width_profile);
         let label_right = resources.checked_grid_add(start, label_width)?;
-        let width =
-            resources.checked_grid_add(layout.total_width.max(label_right), LABEL_BUFFER_SPACE)?;
+        let width = resources.checked_grid_add(
+            layout.total_width.max(label_right),
+            layout.policy.message_label_overflow_buffer,
+        )?;
         let mut line = padded_line_with_checkpoints(
             build_lifeline_line(
                 layout,
@@ -231,7 +234,7 @@ pub(super) fn render_self_message(
     };
     let row_count = extent.height();
     let center = layout.participant_centers[message.from];
-    let start = resources.checked_grid_add(center, LABEL_LEFT_MARGIN)?;
+    let start = resources.checked_grid_add(center, layout.policy.message_label_left_margin)?;
 
     let mut lines = Vec::new();
     lines
@@ -242,9 +245,10 @@ pub(super) fn render_self_message(
         checkpoints.tick()?;
         let label_right = resources.checked_grid_add(
             start,
-            display_width_with_profile(&label, layout.width_profile),
+            display_width_with_profile(&label, layout.policy.terminal_width_profile),
         )?;
-        let needed = resources.checked_grid_add(label_right, LABEL_BUFFER_SPACE)?;
+        let needed =
+            resources.checked_grid_add(label_right, layout.policy.message_label_overflow_buffer)?;
         let mut line = geometry.pad_line(
             build_lifeline_line(
                 layout,

@@ -367,25 +367,16 @@ pub(super) fn prepare_sequence_row_document<'diagram>(
     diagram: &'diagram AsciiSequenceDiagram,
     layout: &SequenceLayout,
     chars: &SequenceChars,
-    mirror_actors: bool,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedSequenceRowPlan<'diagram>> {
-    prepare_sequence_row_plan(
-        diagram,
-        layout,
-        chars,
-        mirror_actors,
-        resources,
-        checkpoints,
-    )
+    prepare_sequence_row_plan(diagram, layout, chars, resources, checkpoints)
 }
 
 fn prepare_sequence_row_plan<'diagram>(
     diagram: &'diagram AsciiSequenceDiagram,
     layout: &SequenceLayout,
     chars: &SequenceChars,
-    mirror_actors: bool,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedSequenceRowPlan<'diagram>> {
@@ -506,7 +497,6 @@ fn prepare_sequence_row_plan<'diagram>(
         SequenceActorRenderState::new(planner.active_counts(), planner.visible_actors()),
         diagram,
         layout,
-        mirror_actors,
         resources,
         checkpoints,
     )?;
@@ -613,18 +603,11 @@ mod tests {
         title: Option<PreparedSequenceTitle<'diagram>>,
         layout: &SequenceLayout,
         chars: &SequenceChars,
-        mirror_actors: bool,
         resources: &mut ResourceContext,
         checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<(SequenceRowDocument, PreparedSequenceDocument<'diagram>)> {
-        let prepared = prepare_sequence_row_document(
-            diagram,
-            layout,
-            chars,
-            mirror_actors,
-            resources,
-            checkpoints,
-        )?;
+        let prepared =
+            prepare_sequence_row_document(diagram, layout, chars, resources, checkpoints)?;
         let document = prepare_sequence_document(
             diagram,
             title,
@@ -794,9 +777,11 @@ mod tests {
             participant_widths: vec![3, 3],
             participant_centers: vec![2, 98],
             total_width: MATERIALIZED_WIDTH - 1,
-            message_spacing: 1,
-            self_message_width: 5,
-            width_profile: TerminalWidthProfile::Unicode,
+            policy: {
+                let mut policy = AsciiRenderOptions::unicode().sequence_layout();
+                policy.self_message_width = 5;
+                policy
+            },
         };
         let visible_actors = [true, false];
 
@@ -850,7 +835,7 @@ mod tests {
         let options = AsciiRenderOptions::ascii();
         let base_policy = AsciiResourcePolicy::default();
         let mut layout = calculate_layout(&diagram, &options, &base_policy).unwrap();
-        layout.message_spacing = 0;
+        layout.policy.message_spacing = 0;
         let event = SequenceEvent::Message(SequenceMessage {
             model_index: 0,
             from: 0,
@@ -1167,14 +1152,7 @@ mod tests {
         let layout =
             calculate_layout_with_resources(diagram, options, &mut resources, &mut checkpoints)?;
         let chars = ascii_chars();
-        prepare_sequence_row_document(
-            diagram,
-            &layout,
-            &chars,
-            false,
-            &mut resources,
-            &mut checkpoints,
-        )?;
+        prepare_sequence_row_document(diagram, &layout, &chars, &mut resources, &mut checkpoints)?;
         Ok(())
     }
 
@@ -1211,7 +1189,6 @@ mod tests {
             diagram,
             &layout,
             &chars,
-            options.sequence_layout().mirror_actors,
             &mut layout_resources,
             &mut checkpoints,
         )?;
@@ -1243,7 +1220,6 @@ mod tests {
             diagram,
             &layout,
             &ascii_chars(),
-            false,
             &mut resources,
             &mut checkpoints,
         )?;
@@ -1399,7 +1375,6 @@ mod tests {
             None,
             &layout,
             &chars,
-            options.sequence_layout().mirror_actors,
             &mut resources,
             &mut layout_cursor,
         )
@@ -1430,12 +1405,13 @@ mod tests {
         let diagram = diagram(1);
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();
-        let layout = calculate_layout(&diagram, &options, &policy).unwrap();
+        let mut layout = calculate_layout(&diagram, &options, &policy).unwrap();
+        layout.policy.title_bottom_spacing = 1;
         let mut resources = ResourceContext::new(policy);
         let mut layout_cursor = layout_checkpoints(&policy);
         let title = crate::sequence::row_document::prepare_sequence_title(
             Some("Timeline"),
-            options.sequence_layout().terminal_width_profile,
+            layout.policy.terminal_width_profile,
             &mut resources,
             &mut layout_cursor,
         )
@@ -1446,7 +1422,6 @@ mod tests {
             title,
             &layout,
             &chars,
-            false,
             &mut resources,
             &mut layout_cursor,
         )
@@ -1463,7 +1438,10 @@ mod tests {
             )
             .unwrap();
 
-        assert!(rendered.lines().next().unwrap_or("").contains("Timeline"));
+        let lines = rendered.lines().collect::<Vec<_>>();
+        assert!(lines.first().is_some_and(|line| line.contains("Timeline")));
+        assert_eq!(lines.get(1), Some(&""));
+        assert!(lines.get(2).is_some_and(|line| line.starts_with('+')));
     }
 
     #[test]
@@ -1480,7 +1458,6 @@ mod tests {
             None,
             &layout,
             &chars,
-            false,
             &mut resources,
             &mut layout_cursor,
         )
@@ -1512,7 +1489,6 @@ mod tests {
             None,
             &exact_layout,
             &exact_chars,
-            false,
             &mut exact_resources,
             &mut exact_layout_checkpoints,
         )
@@ -1544,7 +1520,6 @@ mod tests {
             None,
             &below_layout,
             &below_chars,
-            false,
             &mut below_resources,
             &mut below_layout_checkpoints,
         )

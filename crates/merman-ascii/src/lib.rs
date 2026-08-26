@@ -507,12 +507,7 @@ fn render_sequence_model(
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     let mut resources = execution.new_resource_context(merman_core::OperationPhase::Semantic);
-    let diagram = sequence::from_sequence_model(
-        model,
-        layout.terminal_width_profile,
-        &mut resources,
-        *execution,
-    )?;
+    let diagram = sequence::from_sequence_model(model, layout, &mut resources, *execution)?;
     sequence::render_sequence_diagram_with_resolved_policy(
         &diagram,
         model.title.as_deref().filter(|title| !title.is_empty()),

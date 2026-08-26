@@ -1,6 +1,6 @@
 use super::{
-    BOX_BORDER_WIDTH, BOX_PADDING_LEFT_RIGHT, MIN_BOX_WIDTH, NOTE_SIDE_GAP, NOTE_WRAP_TEXT_WIDTH,
-    SequenceActorRenderState, SequenceCheckpointCursor, try_plan_sequence_label,
+    BOX_BORDER_WIDTH, BOX_PADDING_LEFT_RIGHT, MIN_BOX_WIDTH, SequenceActorRenderState,
+    SequenceCheckpointCursor, try_plan_sequence_label,
 };
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
@@ -85,7 +85,7 @@ pub(super) fn apply_note_gutters(
             let note_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
             let required_anchor_offset = match note.placement {
                 SequenceNotePlacement::LeftOf => {
-                    resources.checked_grid_add(note_width, NOTE_SIDE_GAP)?
+                    resources.checked_grid_add(note_width, layout.policy.note_side_gutter)?
                 }
                 SequenceNotePlacement::Over if note.from == note.to => note_width / 2,
                 SequenceNotePlacement::Over => 1,
@@ -153,10 +153,14 @@ fn prepare_note_rows_transactional(
     let left = match note.placement {
         SequenceNotePlacement::LeftOf => {
             let total_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
-            from.checked_sub(resources.checked_grid_add(total_width, NOTE_SIDE_GAP)?)
-                .ok_or_else(invalid_note_geometry)?
+            from.checked_sub(
+                resources.checked_grid_add(total_width, layout.policy.note_side_gutter)?,
+            )
+            .ok_or_else(invalid_note_geometry)?
         }
-        SequenceNotePlacement::RightOf => resources.checked_grid_add(from, NOTE_SIDE_GAP)?,
+        SequenceNotePlacement::RightOf => {
+            resources.checked_grid_add(from, layout.policy.note_side_gutter)?
+        }
         SequenceNotePlacement::Over => {
             if from == to {
                 let total_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
@@ -233,19 +237,23 @@ pub(super) fn render_note(
         chars.top_right,
         chars.horizontal,
         inner_width,
-        layout.width_profile,
+        layout.policy.terminal_width_profile,
         resources,
         checkpoints,
     )?);
     for line in label_lines {
         checkpoints.tick()?;
-        let line_width = display_width_with_profile(&line, layout.width_profile);
+        let line_width = display_width_with_profile(&line, layout.policy.terminal_width_profile);
         let left_padding = inner_width
             .checked_sub(line_width)
             .ok_or_else(invalid_note_geometry)?
             / 2;
-        let mut row =
-            blank_line_with_checkpoints(note_width, layout.width_profile, resources, checkpoints)?;
+        let mut row = blank_line_with_checkpoints(
+            note_width,
+            layout.policy.terminal_width_profile,
+            resources,
+            checkpoints,
+        )?;
         row.try_set_role(0, chars.vertical, AsciiColorRole::SequenceFrame)?;
         row.try_write_text_role_with_checkpoint(
             resources.checked_grid_add(1, left_padding)?,
@@ -266,7 +274,7 @@ pub(super) fn render_note(
         chars.bottom_right,
         chars.horizontal,
         inner_width,
-        layout.width_profile,
+        layout.policy.terminal_width_profile,
         resources,
         checkpoints,
     )?);
@@ -376,13 +384,13 @@ fn note_label_plan(
             .get(note.to)
             .copied()
             .ok_or_else(invalid_note_geometry)?;
-        Some(from.abs_diff(to).max(NOTE_WRAP_TEXT_WIDTH))
+        Some(from.abs_diff(to).max(layout.policy.note_wrap_width))
     } else {
         None
     };
     try_plan_sequence_label(
         &note.label,
-        layout.width_profile,
+        layout.policy.terminal_width_profile,
         false,
         wrap_width,
         LabelBreakPolicy::MermaidLabelBreaks,

@@ -6,7 +6,7 @@ use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 #[cfg(test)]
 use crate::options::AsciiRenderOptions;
-use crate::options::{SequenceLayoutPolicy, TerminalWidthProfile};
+use crate::options::SequenceLayoutPolicy;
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
@@ -18,9 +18,7 @@ pub(super) struct SequenceLayout {
     pub(super) participant_widths: Vec<usize>,
     pub(super) participant_centers: Vec<usize>,
     pub(super) total_width: usize,
-    pub(super) message_spacing: usize,
-    pub(super) self_message_width: usize,
-    pub(super) width_profile: TerminalWidthProfile,
+    pub(super) policy: SequenceLayoutPolicy,
 }
 
 #[cfg(test)]
@@ -47,7 +45,7 @@ pub(super) fn calculate_layout_with_resources(
 
 pub(super) fn calculate_layout_with_policy(
     diagram: &AsciiSequenceDiagram,
-    layout: SequenceLayoutPolicy,
+    mut policy: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLayout> {
@@ -83,7 +81,7 @@ pub(super) fn calculate_layout_with_policy(
             participant_centers.push(box_width / 2);
             current_x = box_width;
         } else {
-            current_x = resources.checked_grid_add(current_x, layout.participant_spacing)?;
+            current_x = resources.checked_grid_add(current_x, policy.participant_spacing)?;
             participant_centers.push(resources.checked_grid_add(current_x, box_width / 2)?);
             current_x = resources.checked_grid_add(current_x, box_width)?;
         }
@@ -101,13 +99,12 @@ pub(super) fn calculate_layout_with_policy(
     let total_width = resources.checked_grid_add(last_center, last_box_width / 2)?;
     resources.grid_extent(resources.checked_grid_add(total_width, 1)?, 1)?;
 
+    policy.message_spacing = policy.message_spacing.max(1);
     Ok(SequenceLayout {
         participant_widths,
         participant_centers,
         total_width,
-        message_spacing: layout.message_spacing.max(1),
-        self_message_width: layout.self_message_width,
-        width_profile: layout.terminal_width_profile,
+        policy,
     })
 }
 

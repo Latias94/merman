@@ -1,13 +1,13 @@
 use super::tree::{SequenceBody, SequenceTreeBuilder};
 use super::{
-    SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, SequenceCheckpointCursor, charge_sequence_projection_text,
-    lifecycle::resolve_actor_lifecycles, projection_allocation_failed, try_plan_sequence_label,
-    try_plan_sequence_projection_label, validate::validate_supported_sequence_model,
+    SequenceCheckpointCursor, charge_sequence_projection_text, lifecycle::resolve_actor_lifecycles,
+    projection_allocation_failed, try_plan_sequence_label, try_plan_sequence_projection_label,
+    validate::validate_supported_sequence_model,
 };
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
-use crate::options::TerminalWidthProfile;
+use crate::options::{SequenceLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use crate::safe_text::LabelBreakPolicy;
 use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
@@ -70,13 +70,14 @@ impl SequenceParticipantLabel {
     pub(super) fn try_from_raw(
         raw: &str,
         wrap: bool,
+        wrap_width: usize,
         width_profile: TerminalWidthProfile,
         resources: &mut ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         let transaction = resources.clone();
         transaction.transaction(|_| {
-            let wrap_width = wrap.then_some(SEQUENCE_ACTOR_WRAP_TEXT_WIDTH);
+            let wrap_width = wrap.then_some(wrap_width);
             let plan = try_plan_sequence_projection_label(
                 raw,
                 width_profile,
@@ -120,7 +121,7 @@ impl SequenceParticipantLabel {
         );
         let mut resources = ResourceContext::new(policy);
         let execution = AsciiExecution::for_test(&policy);
-        Self::try_from_raw(raw, wrap, width_profile, &mut resources, execution)
+        Self::try_from_raw(raw, wrap, 12, width_profile, &mut resources, execution)
             .expect("test participant label should fit the unbounded resource policy")
     }
 
@@ -336,7 +337,7 @@ fn preflight_sequence_projection(
 
 pub(crate) fn from_sequence_model(
     model: &SequenceDiagramRenderModel,
-    width_profile: TerminalWidthProfile,
+    layout: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiSequenceDiagram> {
@@ -346,20 +347,20 @@ pub(crate) fn from_sequence_model(
     let semantic_resources = execution.resource_context(resources, OperationPhase::Semantic);
     semantic_resources.transaction(|semantic_resources| {
         let mut semantic_resources = semantic_resources.clone();
-        from_sequence_model_transactional(model, width_profile, &mut semantic_resources, execution)
+        from_sequence_model_transactional(model, layout, &mut semantic_resources, execution)
     })
 }
 
 fn from_sequence_model_transactional(
     model: &SequenceDiagramRenderModel,
-    width_profile: TerminalWidthProfile,
+    layout: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiSequenceDiagram> {
     preflight_sequence_projection(model, resources, execution)?;
     validate_supported_sequence_model(model, execution)?;
 
-    let participants = sequence_participants(model, width_profile, resources, execution)?;
+    let participants = sequence_participants(model, layout, resources, execution)?;
     if participants.is_empty() {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
@@ -603,7 +604,7 @@ fn ensure_endpointless_control_message(message: &CoreSequenceMessage) -> Result<
 
 fn sequence_participants(
     model: &SequenceDiagramRenderModel,
-    width_profile: TerminalWidthProfile,
+    layout: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Vec<SequenceParticipant>> {
@@ -621,26 +622,12 @@ fn sequence_participants(
     if model.actor_order.is_empty() {
         for id in model.actors.keys() {
             execution.checkpoint(OperationPhase::Semantic)?;
-            push_sequence_participant(
-                &mut participants,
-                model,
-                id,
-                width_profile,
-                resources,
-                execution,
-            )?;
+            push_sequence_participant(&mut participants, model, id, layout, resources, execution)?;
         }
     } else {
         for id in &model.actor_order {
             execution.checkpoint(OperationPhase::Semantic)?;
-            push_sequence_participant(
-                &mut participants,
-                model,
-                id,
-                width_profile,
-                resources,
-                execution,
-            )?;
+            push_sequence_participant(&mut participants, model, id, layout, resources, execution)?;
         }
     }
 
@@ -651,7 +638,7 @@ fn push_sequence_participant(
     participants: &mut Vec<SequenceParticipant>,
     model: &SequenceDiagramRenderModel,
     id: &str,
-    width_profile: TerminalWidthProfile,
+    layout: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
@@ -671,7 +658,8 @@ fn push_sequence_participant(
     let label = SequenceParticipantLabel::try_from_raw(
         raw_label,
         actor.wrap,
-        width_profile,
+        layout.participant_label_wrap_width,
+        layout.terminal_width_profile,
         resources,
         execution,
     )?;
@@ -819,7 +807,7 @@ mod tests {
     use super::{SequenceParticipantLabel, from_sequence_model};
     use crate::error::AsciiError;
     use crate::operation::AsciiExecution;
-    use crate::options::TerminalWidthProfile;
+    use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use merman_core::resources::ResourceProfile;
     use merman_core::{
@@ -851,7 +839,7 @@ mod tests {
 
         let error = from_sequence_model(
             &model,
-            TerminalWidthProfile::Unicode,
+            AsciiRenderOptions::unicode().sequence_layout(),
             &mut resources,
             AsciiExecution::new(&control, &policy),
         )
@@ -883,7 +871,7 @@ mod tests {
 
         let error = from_sequence_model(
             &model,
-            TerminalWidthProfile::Unicode,
+            AsciiRenderOptions::unicode().sequence_layout(),
             &mut resources,
             AsciiExecution::new(&control, &policy),
         )
@@ -908,6 +896,7 @@ mod tests {
         let measured = SequenceParticipantLabel::try_from_raw(
             raw,
             true,
+            12,
             TerminalWidthProfile::Unicode,
             &mut measured_resources,
             AsciiExecution::for_test(&unbounded),
@@ -923,6 +912,7 @@ mod tests {
         SequenceParticipantLabel::try_from_raw(
             raw,
             true,
+            12,
             TerminalWidthProfile::Unicode,
             &mut exact_resources,
             AsciiExecution::for_test(&exact_policy),
@@ -936,6 +926,7 @@ mod tests {
         let error = SequenceParticipantLabel::try_from_raw(
             raw,
             true,
+            12,
             TerminalWidthProfile::Unicode,
             &mut below_resources,
             AsciiExecution::for_test(&below_policy),
@@ -970,6 +961,7 @@ mod tests {
         let error = SequenceParticipantLabel::try_from_raw(
             "AB",
             false,
+            12,
             TerminalWidthProfile::Unicode,
             &mut resources,
             execution,
