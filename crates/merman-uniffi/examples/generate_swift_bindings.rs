@@ -226,10 +226,10 @@ after"#;
         .expect("read checked-in Swift binding");
 
         assert!(generated.contains("MermanOperationRequestV4"));
-        assert!(generated.contains("bindingApiVersionV5"));
+        assert!(generated.contains("bindingApiVersionV6"));
         assert!(
             generated
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5()")
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6()")
         );
         assert!(
             !generated

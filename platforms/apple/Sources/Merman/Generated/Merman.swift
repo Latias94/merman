@@ -651,7 +651,7 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func asciiCapabilities()  -> [MermanAsciiCapability]
 
-    func bindingApiVersionV5()  -> UInt32
+    func bindingApiVersionV6()  -> UInt32
 
     func configurableLintRuleCatalog() throws  -> [MermanLintRuleCatalogEntry]
 
@@ -832,10 +832,10 @@ open func asciiCapabilities() -> [MermanAsciiCapability]  {
 })
 }
 
-open func bindingApiVersionV5() -> UInt32  {
+open func bindingApiVersionV6() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v5(
+    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -2361,6 +2361,10 @@ public struct MermanAsciiCapability: Equatable, Hashable {
     public var semanticCoverage: String?
     public var primaryProjection: String
     public var structuredTextFallback: Bool
+    public var layoutProfiles: [String]
+    public var widthProfiles: [String]
+    public var encodings: [String]
+    public var fallbackEncodings: [String]
     /**
      * Compatibility view derived from semantic coverage and the primary projection.
      */
@@ -2371,7 +2375,7 @@ public struct MermanAsciiCapability: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(diagramType: String, displayName: String, semanticCoverage: String?, primaryProjection: String, structuredTextFallback: Bool,
+    public init(diagramType: String, displayName: String, semanticCoverage: String?, primaryProjection: String, structuredTextFallback: Bool, layoutProfiles: [String], widthProfiles: [String], encodings: [String], fallbackEncodings: [String],
         /**
          * Compatibility view derived from semantic coverage and the primary projection.
          */supportLevel: String, supportedSemantics: [String], limits: [String], evidence: [MermanAsciiCapabilityEvidence]) {
@@ -2380,6 +2384,10 @@ public struct MermanAsciiCapability: Equatable, Hashable {
         self.semanticCoverage = semanticCoverage
         self.primaryProjection = primaryProjection
         self.structuredTextFallback = structuredTextFallback
+        self.layoutProfiles = layoutProfiles
+        self.widthProfiles = widthProfiles
+        self.encodings = encodings
+        self.fallbackEncodings = fallbackEncodings
         self.supportLevel = supportLevel
         self.supportedSemantics = supportedSemantics
         self.limits = limits
@@ -2407,6 +2415,10 @@ public struct FfiConverterTypeMermanAsciiCapability: FfiConverterRustBuffer {
                 semanticCoverage: FfiConverterOptionString.read(from: &buf),
                 primaryProjection: FfiConverterString.read(from: &buf),
                 structuredTextFallback: FfiConverterBool.read(from: &buf),
+                layoutProfiles: FfiConverterSequenceString.read(from: &buf),
+                widthProfiles: FfiConverterSequenceString.read(from: &buf),
+                encodings: FfiConverterSequenceString.read(from: &buf),
+                fallbackEncodings: FfiConverterSequenceString.read(from: &buf),
                 supportLevel: FfiConverterString.read(from: &buf),
                 supportedSemantics: FfiConverterSequenceString.read(from: &buf),
                 limits: FfiConverterSequenceString.read(from: &buf),
@@ -2420,6 +2432,10 @@ public struct FfiConverterTypeMermanAsciiCapability: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.semanticCoverage, into: &buf)
         FfiConverterString.write(value.primaryProjection, into: &buf)
         FfiConverterBool.write(value.structuredTextFallback, into: &buf)
+        FfiConverterSequenceString.write(value.layoutProfiles, into: &buf)
+        FfiConverterSequenceString.write(value.widthProfiles, into: &buf)
+        FfiConverterSequenceString.write(value.encodings, into: &buf)
+        FfiConverterSequenceString.write(value.fallbackEncodings, into: &buf)
         FfiConverterString.write(value.supportLevel, into: &buf)
         FfiConverterSequenceString.write(value.supportedSemantics, into: &buf)
         FfiConverterSequenceString.write(value.limits, into: &buf)
@@ -2505,6 +2521,7 @@ public struct MermanAsciiOutputPlan: Equatable, Hashable {
     public var schemaVersion: UInt16
     public var family: String
     public var projection: String
+    public var encoding: String
     public var primaryWidth: UInt64
     public var primaryHeight: UInt64
     public var emittedWidth: UInt64
@@ -2522,10 +2539,11 @@ public struct MermanAsciiOutputPlan: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(schemaVersion: UInt16, family: String, projection: String, primaryWidth: UInt64, primaryHeight: UInt64, emittedWidth: UInt64, emittedHeight: UInt64, widthProfile: String, layoutProfile: String, requestedMaxWidth: UInt64?, overflowed: Bool, outcome: String, fallbackCapability: String, fallbackAttempted: Bool, fallbackReason: String?, trimmed: Bool, lossiness: String) {
+    public init(schemaVersion: UInt16, family: String, projection: String, encoding: String, primaryWidth: UInt64, primaryHeight: UInt64, emittedWidth: UInt64, emittedHeight: UInt64, widthProfile: String, layoutProfile: String, requestedMaxWidth: UInt64?, overflowed: Bool, outcome: String, fallbackCapability: String, fallbackAttempted: Bool, fallbackReason: String?, trimmed: Bool, lossiness: String) {
         self.schemaVersion = schemaVersion
         self.family = family
         self.projection = projection
+        self.encoding = encoding
         self.primaryWidth = primaryWidth
         self.primaryHeight = primaryHeight
         self.emittedWidth = emittedWidth
@@ -2561,6 +2579,7 @@ public struct FfiConverterTypeMermanAsciiOutputPlan: FfiConverterRustBuffer {
                 schemaVersion: FfiConverterUInt16.read(from: &buf),
                 family: FfiConverterString.read(from: &buf),
                 projection: FfiConverterString.read(from: &buf),
+                encoding: FfiConverterString.read(from: &buf),
                 primaryWidth: FfiConverterUInt64.read(from: &buf),
                 primaryHeight: FfiConverterUInt64.read(from: &buf),
                 emittedWidth: FfiConverterUInt64.read(from: &buf),
@@ -2582,6 +2601,7 @@ public struct FfiConverterTypeMermanAsciiOutputPlan: FfiConverterRustBuffer {
         FfiConverterUInt16.write(value.schemaVersion, into: &buf)
         FfiConverterString.write(value.family, into: &buf)
         FfiConverterString.write(value.projection, into: &buf)
+        FfiConverterString.write(value.encoding, into: &buf)
         FfiConverterUInt64.write(value.primaryWidth, into: &buf)
         FfiConverterUInt64.write(value.primaryHeight, into: &buf)
         FfiConverterUInt64.write(value.emittedWidth, into: &buf)
@@ -5455,7 +5475,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_ascii_capabilities() != 15855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5() != 32101) {
+    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6() != 60120) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_configurable_lint_rule_catalog() != 46751) {

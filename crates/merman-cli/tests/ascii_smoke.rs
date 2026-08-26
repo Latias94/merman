@@ -45,6 +45,21 @@ fn run_ascii_with_resource_limit(limit_id: &str, max: u64, source: &str) -> Outp
     )
 }
 
+fn assert_plain_ascii_report(bytes: &[u8]) -> serde_json::Value {
+    assert!(
+        !bytes.windows(2).any(|window| window == b"\x1b["),
+        "report bytes must not contain ANSI escapes: {bytes:?}"
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(bytes).expect("ASCII report should be one JSON artifact");
+    assert_eq!(report["kind"], "ascii");
+    assert_eq!(report["encoding"], "plain");
+    assert_eq!(report["schema_version"], 2);
+    let text = report["text"].as_str().expect("report text");
+    assert!(!text.contains('\u{1b}'), "report text must be escape-free");
+    report
+}
+
 #[cfg(unix)]
 fn open_pty() -> (fs::File, fs::File) {
     let mut master = -1;
@@ -245,6 +260,132 @@ fn cli_renders_plain_ascii_output_to_file() {
     assert!(text.contains("go"));
     assert!(text.contains("DB"));
     assert!(text.contains("/"));
+}
+
+#[test]
+fn ascii_report_is_plain_for_pipe_file_and_host_color_overrides() {
+    let source = "flowchart LR\nA[Hello] --> B[World]";
+    let piped = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "unicode",
+            "--ascii-report",
+            "--ascii-color",
+            "auto",
+            "-",
+        ],
+        source,
+    );
+    assert!(piped.status.success(), "stderr: {:?}", piped.stderr);
+    assert_plain_ascii_report(&piped.stdout);
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let report_path = tmp.path().join("report.txt");
+    let report_arg = report_path.to_string_lossy().into_owned();
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut child = Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "ascii",
+            "--ascii-report",
+            "--ascii-color",
+            "auto",
+            "--output",
+            report_arg.as_str(),
+            "-",
+        ])
+        .env("CLICOLOR_FORCE", "1")
+        .env("COLORTERM", "truecolor")
+        .env("TERM", "xterm-256color")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn CLI");
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(source.as_bytes())
+        .expect("write stdin");
+    let file_output = child.wait_with_output().expect("wait for CLI");
+    assert!(
+        file_output.status.success(),
+        "stderr: {:?}",
+        file_output.stderr
+    );
+    assert_plain_ascii_report(&fs::read(report_path).expect("read report file"));
+}
+
+#[test]
+fn ascii_report_rejects_explicit_styled_output() {
+    for color in ["ansi16", "ansi256", "truecolor", "html"] {
+        let output = run_with_stdin(
+            &[
+                "render",
+                "--format",
+                "unicode",
+                "--ascii-report",
+                "--ascii-color",
+                color,
+                "-",
+            ],
+            "flowchart LR\nA[Hello] --> B[World]",
+        );
+
+        assert!(
+            !output.status.success(),
+            "{color} report unexpectedly succeeded"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "failed report must emit no payload"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains("--ascii-report requires plain output"),
+            "{stderr}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn ascii_report_is_plain_on_a_real_terminal_stdout() {
+    let (master, slave) = open_pty();
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut child = Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "unicode",
+            "--ascii-report",
+            "--ascii-color",
+            "auto",
+            "-",
+        ])
+        .env("COLORTERM", "truecolor")
+        .env("TERM", "xterm-256color")
+        .env_remove("NO_COLOR")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(slave))
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn CLI with PTY stdout");
+    let reader = std::thread::spawn(move || read_pty(master));
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(b"flowchart LR\nA[Hello] --> B[World]")
+        .expect("write stdin");
+
+    let output = child.wait_with_output().expect("wait for CLI");
+    let stdout = reader.join().expect("join PTY reader");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    assert_plain_ascii_report(&stdout);
 }
 
 #[test]

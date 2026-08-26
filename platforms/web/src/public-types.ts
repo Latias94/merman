@@ -303,6 +303,7 @@ export type CommonBindingOptions = BindingVersionOptions &
 
 export type AsciiCharsetOption = "ascii" | "unicode";
 export type AsciiWidthProfileOption = "unicode" | "cjk";
+export type AsciiLayoutProfileOption = "canonical" | "compact";
 export type AsciiDirectionOption =
   | "lr"
   | "leftRight"
@@ -341,6 +342,8 @@ export interface AsciiThemeOptions {
 
 export interface AsciiRenderOptions {
   charset?: AsciiCharsetOption;
+  layout_profile?: AsciiLayoutProfileOption;
+  layoutProfile?: AsciiLayoutProfileOption;
   width_profile?: AsciiWidthProfileOption;
   widthProfile?: AsciiWidthProfileOption;
   default_direction?: AsciiDirectionOption;

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::io::{self, Write as IoWrite};
 use unicode_segmentation::UnicodeSegmentation;
 
-pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 1;
+pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 2;
 const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
 
 /// 宽度超限时的输出策略。
@@ -40,6 +40,45 @@ impl OverflowPolicy {
 
 /// `OverflowPolicy` 的 ASCII 命名别名，便于调用方表达目标边界。
 pub type AsciiOverflowPolicy = OverflowPolicy;
+
+/// Encoded representation carried by the emitted output bytes.
+///
+/// This is intentionally distinct from [`AsciiColorMode`]: color mode is a render request,
+/// while output encoding is stable result metadata that transport consumers can inspect without
+/// scanning the returned bytes.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AsciiOutputEncoding {
+    Plain,
+    Ansi16,
+    Ansi256,
+    TrueColor,
+    Html,
+}
+
+impl AsciiOutputEncoding {
+    #[must_use]
+    pub const fn from_color_mode(color_mode: AsciiColorMode) -> Self {
+        match color_mode {
+            AsciiColorMode::Plain => Self::Plain,
+            AsciiColorMode::Ansi16 => Self::Ansi16,
+            AsciiColorMode::Ansi256 => Self::Ansi256,
+            AsciiColorMode::TrueColor => Self::TrueColor,
+            AsciiColorMode::Html => Self::Html,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Plain => "plain",
+            Self::Ansi16 => "ansi16",
+            Self::Ansi256 => "ansi256",
+            Self::TrueColor => "truecolor",
+            Self::Html => "html",
+        }
+    }
+}
 
 /// 输出尾部空格处理策略。
 #[non_exhaustive]
@@ -251,6 +290,7 @@ pub struct AsciiOutput {
     pub schema_version: u16,
     pub family: String,
     pub projection: AsciiProjection,
+    pub encoding: AsciiOutputEncoding,
     pub text: String,
     pub primary_extent: AsciiExtent,
     pub emitted_extent: AsciiExtent,
@@ -369,6 +409,7 @@ pub struct AsciiOutputMetadata {
     pub schema_version: u16,
     pub family: String,
     pub projection: String,
+    pub encoding: String,
     pub primary_width: u64,
     pub primary_height: u64,
     pub emitted_width: u64,
@@ -483,6 +524,7 @@ impl AsciiOutput {
             schema_version: self.schema_version,
             family: self.family.clone(),
             projection: self.projection.as_str().to_owned(),
+            encoding: self.encoding.as_str().to_owned(),
             primary_width: self.primary_extent.width as u64,
             primary_height: self.primary_extent.height as u64,
             emitted_width: self.emitted_extent.width as u64,
@@ -663,10 +705,11 @@ struct OutputAssembly<'a> {
 
 fn assemble_output(assembly: OutputAssembly<'_>, context: OutputBuildContext<'_>) -> AsciiOutput {
     let OutputBuildContext {
+        color_mode,
         profile,
         layout_profile,
         policy,
-        ..
+        execution: _,
     } = context;
     let OutputAssembly {
         family,
@@ -684,6 +727,7 @@ fn assemble_output(assembly: OutputAssembly<'_>, context: OutputBuildContext<'_>
         schema_version: crate::ASCII_OUTPUT_SCHEMA_VERSION,
         family: family.to_string(),
         projection,
+        encoding: AsciiOutputEncoding::from_color_mode(color_mode),
         text,
         primary_extent,
         emitted_extent,

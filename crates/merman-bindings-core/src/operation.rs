@@ -367,6 +367,7 @@ pub struct BindingAsciiOutputPlan {
     schema_version: u16,
     family: String,
     projection: String,
+    encoding: String,
     primary_width: u64,
     primary_height: u64,
     emitted_width: u64,
@@ -402,6 +403,7 @@ impl BindingAsciiOutputPlan {
             schema_version: metadata.schema_version,
             family: metadata.family,
             projection: metadata.projection,
+            encoding: metadata.encoding,
             primary_width: metadata.primary_width,
             primary_height: metadata.primary_height,
             emitted_width: metadata.emitted_width,
@@ -432,6 +434,11 @@ impl BindingAsciiOutputPlan {
     #[must_use]
     pub fn projection(&self) -> &str {
         &self.projection
+    }
+
+    #[must_use]
+    pub fn encoding(&self) -> &str {
+        &self.encoding
     }
 
     #[must_use]
@@ -835,6 +842,7 @@ fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
             schema_version: required_u16(object, "schema_version")?,
             family: required_string(object, "family")?.to_owned(),
             projection: required_string(object, "projection")?.to_owned(),
+            encoding: required_string(object, "encoding")?.to_owned(),
             primary_width: required_u64(object, "primary_width")?,
             primary_height: required_u64(object, "primary_height")?,
             emitted_width: required_u64(object, "emitted_width")?,

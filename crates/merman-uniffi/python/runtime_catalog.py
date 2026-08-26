@@ -175,7 +175,7 @@ class _RuntimeCatalogEngine(Protocol):
     def runtime_catalog_json(self) -> str:
         ...
 
-    def binding_api_version_v5(self) -> int:
+    def binding_api_version_v6(self) -> int:
         ...
 
     def package_version(self) -> str:
@@ -219,7 +219,7 @@ def get_runtime_catalog(engine: _RuntimeCatalogEngine) -> MermanRuntimeCatalog:
     transport_api_version = _expect_positive_integer(
         catalog["transport_api_version"], "runtime catalog transport_api_version"
     )
-    if transport_api_version != engine.binding_api_version_v5():
+    if transport_api_version != engine.binding_api_version_v6():
         raise MermanRuntimeCatalogError(
             "runtime catalog transport_api_version does not match the loaded library"
         )

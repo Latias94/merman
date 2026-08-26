@@ -39,7 +39,7 @@ pub(crate) fn execute_render(
                         return Err(CliError::NoDiagram);
                     };
                     let bytes = if text.report {
-                        ascii_report_json(&rendered).map_err(CliError::json_output)?
+                        ascii_report_json(&rendered)?
                     } else {
                         rendered.into_bytes()
                     };
@@ -71,8 +71,13 @@ pub(crate) fn execute_render(
 }
 
 #[cfg(feature = "ascii")]
-fn ascii_report_json(output: &merman::ascii::AsciiOutput) -> Result<Vec<u8>, serde_json::Error> {
-    serde_json::to_vec(&output.report())
+fn ascii_report_json(output: &merman::ascii::AsciiOutput) -> Result<Vec<u8>, CliError> {
+    if output.encoding != merman::ascii::AsciiOutputEncoding::Plain {
+        return Err(CliError::InvalidInput(
+            "--ascii-report requires a plain ASCII output encoding".to_string(),
+        ));
+    }
+    serde_json::to_vec(&output.report()).map_err(CliError::json_output)
 }
 
 #[cfg(feature = "ascii")]

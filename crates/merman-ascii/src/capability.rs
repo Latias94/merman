@@ -1,4 +1,20 @@
+use crate::options::{AsciiLayoutProfile, TerminalWidthProfile};
+use crate::output::AsciiOutputEncoding;
 use std::sync::OnceLock;
+
+const CANONICAL_LAYOUT_PROFILES: &[AsciiLayoutProfile] = &[AsciiLayoutProfile::Canonical];
+const FLOWCHART_SEQUENCE_LAYOUT_PROFILES: &[AsciiLayoutProfile] =
+    &[AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact];
+const TERMINAL_WIDTH_PROFILES: &[TerminalWidthProfile] =
+    &[TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk];
+const OUTPUT_ENCODINGS: &[AsciiOutputEncoding] = &[
+    AsciiOutputEncoding::Plain,
+    AsciiOutputEncoding::Ansi16,
+    AsciiOutputEncoding::Ansi256,
+    AsciiOutputEncoding::TrueColor,
+    AsciiOutputEncoding::Html,
+];
+const PLAIN_FALLBACK_ENCODINGS: &[AsciiOutputEncoding] = &[AsciiOutputEncoding::Plain];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -97,6 +113,14 @@ pub struct AsciiCapability {
     pub semantic_coverage: Option<AsciiSemanticCoverage>,
     pub primary_projection: AsciiPrimaryProjection,
     pub structured_text_fallback: bool,
+    /// Layout profiles admitted for this diagram family.
+    pub layout_profiles: &'static [AsciiLayoutProfile],
+    /// Terminal display-width conventions admitted for this diagram family.
+    pub width_profiles: &'static [TerminalWidthProfile],
+    /// Encoded output representations admitted for primary output.
+    pub encodings: &'static [AsciiOutputEncoding],
+    /// Encoded representations that can carry a complete overflow fallback.
+    pub fallback_encodings: &'static [AsciiOutputEncoding],
     /// Compatibility view derived from semantic coverage and the primary projection.
     pub support_level: AsciiSupportLevel,
     pub supported_semantics: &'static [&'static str],
@@ -105,15 +129,39 @@ pub struct AsciiCapability {
 }
 
 impl AsciiCapability {
-    const fn from_definition(definition: AsciiCapabilityDefinition) -> Self {
+    fn from_definition(definition: AsciiCapabilityDefinition) -> Self {
         let support_level =
             derive_support_level(definition.semantic_coverage, definition.primary_projection);
+        let supported = definition.semantic_coverage.is_some();
+        let layout_profiles = if !supported {
+            &[]
+        } else {
+            match definition.diagram_type {
+                "flowchart" | "sequence" => FLOWCHART_SEQUENCE_LAYOUT_PROFILES,
+                _ => CANONICAL_LAYOUT_PROFILES,
+            }
+        };
+        let width_profiles = if supported {
+            TERMINAL_WIDTH_PROFILES
+        } else {
+            &[]
+        };
+        let encodings = if supported { OUTPUT_ENCODINGS } else { &[] };
+        let fallback_encodings = if supported && definition.structured_text_fallback {
+            PLAIN_FALLBACK_ENCODINGS
+        } else {
+            &[]
+        };
         Self {
             diagram_type: definition.diagram_type,
             display_name: definition.display_name,
             semantic_coverage: definition.semantic_coverage,
             primary_projection: definition.primary_projection,
             structured_text_fallback: definition.structured_text_fallback,
+            layout_profiles,
+            width_profiles,
+            encodings,
+            fallback_encodings,
             support_level,
             supported_semantics: definition.supported_semantics,
             limits: definition.limits,
@@ -121,7 +169,7 @@ impl AsciiCapability {
         }
     }
 
-    const fn unsupported(diagram_type: &'static str) -> Self {
+    fn unsupported(diagram_type: &'static str) -> Self {
         Self::from_definition(AsciiCapabilityDefinition {
             diagram_type,
             display_name: diagram_type,
@@ -144,6 +192,39 @@ impl AsciiCapability {
 
     pub const fn is_supported(self) -> bool {
         self.semantic_coverage.is_some()
+    }
+
+    #[must_use]
+    pub fn supports_layout_profile(self, profile: AsciiLayoutProfile) -> bool {
+        self.layout_profiles.contains(&profile)
+    }
+
+    #[must_use]
+    pub fn supports_width_profile(self, profile: TerminalWidthProfile) -> bool {
+        self.width_profiles.contains(&profile)
+    }
+
+    #[must_use]
+    pub fn supports_encoding(self, encoding: AsciiOutputEncoding) -> bool {
+        self.encodings.contains(&encoding)
+    }
+
+    #[must_use]
+    pub fn supports_fallback_encoding(self, encoding: AsciiOutputEncoding) -> bool {
+        self.fallback_encodings.contains(&encoding)
+    }
+
+    /// Returns whether the independent primary-output axes form an admitted request.
+    #[must_use]
+    pub fn supports_output(
+        self,
+        layout_profile: AsciiLayoutProfile,
+        width_profile: TerminalWidthProfile,
+        encoding: AsciiOutputEncoding,
+    ) -> bool {
+        self.supports_layout_profile(layout_profile)
+            && self.supports_width_profile(width_profile)
+            && self.supports_encoding(encoding)
     }
 }
 
@@ -852,6 +933,36 @@ mod tests {
             ascii_diagrammatic_diagram_types(),
             &["class", "er", "flowchart", "sequence", "state", "xychart",]
         );
+    }
+
+    #[test]
+    fn capability_axes_admit_only_proven_layout_and_fallback_combinations() {
+        for diagram_type in ["flowchart", "sequence"] {
+            let capability = find(diagram_type);
+            assert_eq!(
+                capability.layout_profiles,
+                &[AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact]
+            );
+            assert_eq!(capability.width_profiles, TERMINAL_WIDTH_PROFILES);
+            assert_eq!(capability.encodings, OUTPUT_ENCODINGS);
+            assert_eq!(capability.fallback_encodings, &[AsciiOutputEncoding::Plain]);
+            assert!(capability.supports_output(
+                AsciiLayoutProfile::Compact,
+                TerminalWidthProfile::Cjk,
+                AsciiOutputEncoding::Ansi16,
+            ));
+            assert!(!capability.supports_fallback_encoding(AsciiOutputEncoding::Ansi16));
+        }
+
+        let state = find("state");
+        assert_eq!(state.layout_profiles, &[AsciiLayoutProfile::Canonical]);
+        assert!(!state.supports_layout_profile(AsciiLayoutProfile::Compact));
+
+        let unsupported = find("zenuml");
+        assert!(unsupported.layout_profiles.is_empty());
+        assert!(unsupported.width_profiles.is_empty());
+        assert!(unsupported.encodings.is_empty());
+        assert!(unsupported.fallback_encodings.is_empty());
     }
 
     #[test]

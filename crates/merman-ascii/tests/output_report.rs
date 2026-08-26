@@ -1,5 +1,6 @@
 use merman_ascii::{
-    AsciiError, AsciiLayoutProfile, AsciiOutputOutcome, AsciiOverflowPolicy, AsciiProjection,
+    ASCII_OUTPUT_SCHEMA_VERSION, AsciiColorMode, AsciiError, AsciiLayoutProfile,
+    AsciiOutputEncoding, AsciiOutputOutcome, AsciiOverflowPolicy, AsciiProjection,
     AsciiRenderOptions, AsciiRenderer, AsciiViewportPolicy, OverflowPolicy,
 };
 use merman_core::diagram::RenderSemanticModel;
@@ -24,11 +25,33 @@ fn render_report_with_resources(
     policy: AsciiViewportPolicy,
     resources: merman_ascii::AsciiResourcePolicy,
 ) -> merman_ascii::Result<merman_ascii::AsciiOutput> {
+    render_report_with_options_and_resources(source, AsciiRenderOptions::ascii(), policy, resources)
+}
+
+fn render_report_with_options(
+    source: &str,
+    options: AsciiRenderOptions,
+    policy: AsciiViewportPolicy,
+) -> merman_ascii::Result<merman_ascii::AsciiOutput> {
+    render_report_with_options_and_resources(
+        source,
+        options,
+        policy,
+        merman_ascii::AsciiResourcePolicy::default(),
+    )
+}
+
+fn render_report_with_options_and_resources(
+    source: &str,
+    options: AsciiRenderOptions,
+    policy: AsciiViewportPolicy,
+    resources: merman_ascii::AsciiResourcePolicy,
+) -> merman_ascii::Result<merman_ascii::AsciiOutput> {
     let parsed = parsed_model(source);
     let operation = Engine::new()
         .begin_operation()
         .expect("operation context should be available");
-    AsciiRenderer::new(AsciiRenderOptions::ascii())?.render_parsed_report(
+    AsciiRenderer::new(options)?.render_parsed_report(
         &parsed,
         policy,
         &OperationControl::new(),
@@ -48,7 +71,52 @@ fn default_report_preserves_text_projection_and_records_extent() {
     assert_eq!(report.primary_extent.height, 6);
     assert!(!report.overflowed);
     assert!(!report.fallback.attempted);
+    assert_eq!(report.schema_version, ASCII_OUTPUT_SCHEMA_VERSION);
+    assert_eq!(report.encoding, AsciiOutputEncoding::Plain);
     assert_eq!(report.as_text(), report.text);
+}
+
+#[test]
+fn report_metadata_identifies_the_exact_output_encoding() {
+    for (color_mode, expected) in [
+        (AsciiColorMode::Plain, AsciiOutputEncoding::Plain),
+        (AsciiColorMode::Ansi16, AsciiOutputEncoding::Ansi16),
+        (AsciiColorMode::Ansi256, AsciiOutputEncoding::Ansi256),
+        (AsciiColorMode::TrueColor, AsciiOutputEncoding::TrueColor),
+        (AsciiColorMode::Html, AsciiOutputEncoding::Html),
+    ] {
+        let mut options = AsciiRenderOptions::unicode();
+        options.color_mode = color_mode;
+        let report = render_report_with_options(
+            "flowchart LR\nA[Alpha] --> B[Beta]",
+            options,
+            AsciiViewportPolicy::default(),
+        )
+        .unwrap_or_else(|error| panic!("{color_mode:?} report should render: {error}"));
+
+        assert_eq!(report.encoding, expected);
+        assert_eq!(report.metadata().encoding, expected.as_str());
+    }
+}
+
+#[test]
+fn styled_output_rejects_a_plain_only_fallback_request_before_rendering() {
+    let mut options = AsciiRenderOptions::unicode();
+    options.color_mode = AsciiColorMode::Ansi16;
+    let error = render_report_with_options(
+        "flowchart LR\nA[Alpha] --> B[Beta]",
+        options,
+        AsciiViewportPolicy::with_max_width(5).overflow(OverflowPolicy::Fallback),
+    )
+    .expect_err("styled output cannot promise the plain-only complete fallback");
+
+    assert_eq!(
+        error,
+        AsciiError::InvalidOption {
+            field: "ascii_viewport.overflow",
+            message: "fallback is not admitted for the selected output encoding",
+        }
+    );
 }
 
 #[test]
@@ -244,6 +312,7 @@ fn canonical_report_payload_contains_the_binding_metadata_subset() {
     assert_eq!(json["schema_version"], metadata.schema_version);
     assert_eq!(json["family"], metadata.family);
     assert_eq!(json["projection"], metadata.projection);
+    assert_eq!(json["encoding"], metadata.encoding);
     assert_eq!(json["primary_width"], metadata.primary_width);
     assert_eq!(json["emitted_height"], metadata.emitted_height);
     assert_eq!(json["text"], report.as_text());

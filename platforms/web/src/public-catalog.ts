@@ -263,6 +263,14 @@ export type AsciiPrimaryProjection =
   | "diagrammatic"
   | "structured_text"
   | "none";
+export type AsciiLayoutProfile = "canonical" | "compact";
+export type AsciiWidthProfile = "unicode" | "cjk";
+export type AsciiOutputEncoding =
+  | "plain"
+  | "ansi16"
+  | "ansi256"
+  | "truecolor"
+  | "html";
 
 export type AsciiEvidenceKind =
   | "mermaid_ascii_oracle"
@@ -284,6 +292,10 @@ export interface AsciiCapability {
   semantic_coverage: AsciiSemanticCoverage;
   primary_projection: AsciiPrimaryProjection;
   structured_text_fallback: boolean;
+  layout_profiles: AsciiLayoutProfile[];
+  width_profiles: AsciiWidthProfile[];
+  encodings: AsciiOutputEncoding[];
+  fallback_encodings: AsciiOutputEncoding[];
   /** Compatibility view derived from semantic coverage and the primary projection. */
   support_level: AsciiSupportLevel;
   supported_semantics: string[];

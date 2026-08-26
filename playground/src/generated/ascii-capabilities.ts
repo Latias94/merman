@@ -10,6 +10,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -29,6 +33,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -48,6 +56,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -67,6 +79,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "partial",
     "supported_semantics": [
       "class boxes",
@@ -128,6 +157,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -147,6 +180,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "partial",
     "supported_semantics": [
       "entity boxes",
@@ -205,6 +255,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -224,6 +278,24 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical",
+      "compact"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "partial",
     "supported_semantics": [
       "root directions",
@@ -269,6 +341,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "summary",
     "supported_semantics": [
       "titles",
@@ -308,6 +397,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "summary",
     "supported_semantics": [
       "commits",
@@ -343,6 +449,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -362,6 +472,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -381,6 +495,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "summary",
     "supported_semantics": [
       "sections",
@@ -411,6 +542,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "summary",
     "supported_semantics": [
       "columns",
@@ -446,6 +594,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "summary",
     "supported_semantics": [
       "hierarchical nodes",
@@ -482,6 +647,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "summary",
     "supported_semantics": [
       "bit ranges",
@@ -512,6 +694,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -531,6 +717,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -550,6 +740,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -569,6 +763,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -588,6 +786,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -607,6 +809,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -626,6 +832,24 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical",
+      "compact"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "partial",
     "supported_semantics": [
       "participants",
@@ -669,6 +893,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "partial",
     "supported_semantics": [
       "states",
@@ -707,6 +948,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "summary",
     "supported_semantics": [
       "sections",
@@ -738,6 +996,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "structured_text",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "summary",
     "supported_semantics": [
       "hierarchical outline order",
@@ -772,6 +1047,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -791,6 +1070,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -810,6 +1093,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
@@ -829,6 +1116,23 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": "partial",
     "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
     "support_level": "partial",
     "supported_semantics": [
       "model-owned x/y sample coordinates and point labels",
@@ -873,6 +1177,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
     "support_level": "unsupported",
     "supported_semantics": [],
     "limits": [
