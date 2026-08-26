@@ -1,5 +1,10 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
+    ThemeTextStyle, TypographySpec,
+};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::VennDiagramLayout;
@@ -7,6 +12,47 @@ use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+
+const THEME_TYPOGRAPHY_SOURCE: &str = r#"venn-beta
+title Typography Surface
+set A["Alpha"]:20
+  text A1["Nested Alpha"]
+set B["Beta"]:12
+union A,B["Shared"]:3
+  text AB1["Nested Shared"]
+"#;
+
+fn venn_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::VENN, typography),
+        ))
+        .expect("compile Venn typography theme")
+}
+
+fn render_venn_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Venn")
+        .expect("detect themed Venn");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Venn session");
+
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("venn-theme".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
+}
 
 fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
     render_typed_venn_with_engine(input, Engine::new())
@@ -99,6 +145,159 @@ fn venn_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
         resource_override.id == ResourceLimitId::MaxSvgBytes
             && resource_override.value == below_exact
     }));
+}
+
+#[test]
+fn venn_typed_font_stack_reaches_every_local_text_selector_and_strict_receipt() {
+    let font_stack =
+        FontStack::new(["VennTyped", "monospace"]).expect("valid Venn typed font stack");
+    let expected_font = font_stack.as_css().to_string();
+    let theme = venn_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let rendered = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render strict portable Venn font stack");
+
+    for selector in [
+        ".venn-title{",
+        ".venn-circle text{",
+        ".venn-intersection text{",
+        ".venn-text-node{",
+    ] {
+        assert!(
+            rendered
+                .svg()
+                .contains(&format!("{selector}font-family:{expected_font};"))
+                || rendered.svg().contains(&format!(
+                    "{selector}font-size:32px;fill:#333;font-family:{expected_font};"
+                ))
+                || rendered.svg().contains(&format!(
+                    "{selector}font-size:48px;font-family:{expected_font};"
+                ))
+                || rendered.svg().contains(&format!(
+                    "{selector}font-size:48px;fill:#333;font-family:{expected_font};"
+                )),
+            "Venn selector `{selector}` must use the typed font stack: {}",
+            rendered.svg()
+        );
+    }
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn venn_theme_font_family_outranks_root_and_typed_font_family() {
+    let theme = venn_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("VennTyped").expect("valid Venn typed font")),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "fontFamily": "VennRootFont",
+        "themeVariables": { "fontFamily": "VennThemeFont" }
+    })));
+    let rendered = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render config-owned Venn font stack");
+
+    assert!(rendered.svg().contains("font-family:VennThemeFont;"));
+    assert!(!rendered.svg().contains("VennRootFont"));
+    assert!(!rendered.svg().contains("VennTyped"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn venn_font_size_is_a_structured_unsupported_residual_without_a_legacy_projection() {
+    let typography = ThemeTextStyle::default()
+        .with_font_size_px(24.0)
+        .expect("valid unsupported Venn font size");
+    let theme = venn_typography_theme(typography);
+    let rendered = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders the structured Venn font-size residual");
+
+    assert!(!rendered.svg().contains("font-size:24px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let error = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .err()
+    .expect("RequirePortable rejects unsupported Venn font size");
+    assert!(matches!(
+        error,
+        merman_render::Error::UnverifiedFamilyTheme {
+            family_id: DiagramFamilyId::VENN,
+            residual_count: 1,
+        }
+    ));
+}
+
+#[test]
+fn venn_mixed_font_stack_and_size_fails_closed_without_legacy_projection() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("VennMixed").expect("valid Venn mixed font stack"))
+        .with_font_size_px(24.0)
+        .expect("valid unsupported Venn mixed font size");
+    let theme = venn_typography_theme(typography);
+    let rendered = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders the mixed Venn typography residual");
+
+    assert!(!rendered.svg().contains("VennMixed"));
+    assert!(!rendered.svg().contains("font-size:24px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let error = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .err()
+    .expect("RequirePortable rejects mixed unsupported Venn typography");
+    assert!(matches!(
+        error,
+        merman_render::Error::UnverifiedFamilyTheme {
+            family_id: DiagramFamilyId::VENN,
+            residual_count: 1,
+        }
+    ));
 }
 
 fn find_venn_area<'a, 'input>(

@@ -549,7 +549,7 @@ fn resolve_gantt_font_stack(
     }
 
     let config_owned = gantt_config_owns_font_stack(effective_config);
-    let font_family = if typed_font_stack && !config_owned {
+    let font_family = if typed_font_stack && !config_owned && !unsupported_typography {
         theme.typography().font_stack().as_css()
     } else {
         configured_font

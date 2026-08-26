@@ -329,7 +329,6 @@ impl<'a> MermaidThemeAdapter<'a> {
         let is_dark_theme = is_dark(&background)?;
 
         Ok(VennTheme {
-            font_family_css: self.raw.font_family_css_root_first(),
             title_color: self
                 .raw
                 .optional_color("vennTitleTextColor")

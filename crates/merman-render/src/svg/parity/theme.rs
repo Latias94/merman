@@ -266,7 +266,6 @@ pub(crate) struct IshikawaTheme {
 
 #[derive(Debug, Clone)]
 pub(crate) struct VennTheme {
-    pub(crate) font_family_css: String,
     pub(crate) title_color: String,
     pub(crate) set_text_color: String,
     pub(crate) circle_colors: Vec<String>,

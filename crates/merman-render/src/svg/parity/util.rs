@@ -176,10 +176,6 @@ impl<'a> SvgTheme<'a> {
         crate::config::config_font_family_css(self.effective_config)
     }
 
-    pub(super) fn font_family_css_root_first(&self) -> String {
-        crate::config::config_font_family_css_root_first(self.effective_config)
-    }
-
     pub(super) fn font_size_px(&self) -> f64 {
         crate::config::config_theme_font_size_css_or_root_number_px(self.effective_config, 16.0)
             .max(1.0)

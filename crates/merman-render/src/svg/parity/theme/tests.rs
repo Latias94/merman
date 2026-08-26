@@ -569,7 +569,6 @@ fn mermaid_theme_adapter_venn_resolves_venn_roles() {
 
     let venn = MermaidThemeAdapter::new(&cfg).venn().unwrap();
 
-    assert_eq!(venn.font_family_css, "Inter,sans-serif");
     assert_eq!(venn.title_color, "#f43f5e");
     assert_eq!(venn.set_text_color, "#22c55e");
     assert_eq!(venn.circle_colors, vec!["#123456", "#abcdef"]);
@@ -587,10 +586,6 @@ fn mermaid_theme_adapter_venn_uses_default_venn_roles() {
 
     let venn = MermaidThemeAdapter::new(&cfg).venn().unwrap();
 
-    assert_eq!(
-        venn.font_family_css,
-        "\"trebuchet ms\",verdana,arial,sans-serif"
-    );
     assert_eq!(venn.title_color, "#333");
     assert_eq!(venn.set_text_color, "#333");
     assert!(venn.circle_colors.is_empty());

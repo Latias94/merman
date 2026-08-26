@@ -1,5 +1,4 @@
 use super::super::roughjs_common::ops_to_svg_path_d;
-use super::super::theme::VennTheme;
 use super::super::*;
 use merman_core::diagrams::venn::VennDiagramRenderModel;
 use merman_core::theme_color::transparentize;
@@ -34,16 +33,6 @@ fn style_value<'a>(styles: Option<&'a BTreeMap<String, String>>, key: &str) -> O
         .and_then(|styles| styles.get(key))
         .map(String::as_str)
         .filter(|value| !value.trim().is_empty())
-}
-
-fn render_label(area: &crate::model::VennAreaLayout) -> &str {
-    if let Some(label) = area.label.as_deref().filter(|label| !label.is_empty()) {
-        label
-    } else if area.sets.len() == 1 {
-        area.sets[0].as_str()
-    } else {
-        ""
-    }
 }
 
 fn invalid_rough_options(context: &str, error: impl std::fmt::Display) -> Error {
@@ -173,7 +162,7 @@ fn write_area_label(
         y = fmt(area.text_y),
         font_size = fmt(font_size),
         text_fill = escape_css_attr(text_color),
-        label = escape_xml(render_label(area)),
+        label = escape_xml(crate::venn::rendered_area_label(area)),
     );
     out.checkpoint()
 }
@@ -204,41 +193,11 @@ fn root_open(
     )
 }
 
-fn venn_css(diagram_id: &str, theme: &VennTheme, title_fill: &str) -> String {
-    let id = crate::svg::escape_css_identifier(diagram_id);
-    format!(
-        "#{id} .venn-title{{font-size:32px;fill:{title_color};font-family:{font_family};}}\
-#{id} .venn-circle text{{font-size:48px;font-family:{font_family};}}\
-#{id} .venn-intersection text{{font-size:48px;fill:{set_text_color};font-family:{font_family};}}\
-#{id} .venn-text-node{{font-family:{font_family};color:{set_text_color};}}",
-        title_color = title_fill,
-        font_family = theme.font_family_css,
-        set_text_color = theme.set_text_color,
-    )
-}
-
-pub(crate) fn render_venn_diagram_svg_model(
-    layout: &VennDiagramLayout,
-    model: &VennDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let title_theme = crate::venn::VennTitleThemePlan::baseline();
-    render_venn_diagram_svg_model_with_title_theme(
-        layout,
-        model,
-        &title_theme,
-        effective_config,
-        diagram_title,
-        options,
-    )
-}
-
 pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     layout: &VennDiagramLayout,
     model: &VennDiagramRenderModel,
     title_theme: &crate::venn::VennTitleThemePlan,
+    typography_theme: &crate::venn::VennTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
@@ -297,7 +256,12 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     let theme = MermaidThemeAdapter::new(effective_config).venn()?;
     let title_fill = title_theme.fill_css().unwrap_or(theme.title_color.as_str());
     let mut title_theme_receipt = title_theme.begin_terminal_receipt();
-    let css = venn_css(diagram_id.semantic_str(), &theme, title_fill);
+    let mut typography_theme_receipt = typography_theme.begin_terminal_receipt();
+    let css = typography_theme_receipt.stylesheet(
+        diagram_id.semantic_str(),
+        title_fill,
+        &theme.set_text_color,
+    );
     if let Some(receipt) = title_theme_receipt.as_mut() {
         receipt.record_stylesheet(crate::venn::VENN_TITLE_CLASS, title_fill);
     }
@@ -321,6 +285,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
         if let Some(receipt) = title_theme_receipt.as_mut() {
             receipt.record_title_text(crate::venn::VENN_TITLE_CLASS, title_fill);
         }
+        typography_theme_receipt.record_title_text(crate::venn::VENN_TITLE_CLASS, title);
     }
 
     let _ = write!(
@@ -414,6 +379,11 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                 out.checkpoint()?;
             }
             write_area_label(&mut out, area, 48.0 * layout.scale, text_color.as_str())?;
+            typography_theme_receipt.record_circle_label(
+                crate::venn::VENN_CIRCLE_CLASS,
+                crate::venn::VENN_AREA_LABEL_CLASS,
+                crate::venn::rendered_area_label(area),
+            );
             out.push_str("</g>");
             out.checkpoint()?;
             circle_index += 1;
@@ -459,6 +429,11 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                 out.checkpoint()?;
             }
             write_area_label(&mut out, area, 48.0 * layout.scale, text_color)?;
+            typography_theme_receipt.record_intersection_label(
+                crate::venn::VENN_INTERSECTION_CLASS,
+                crate::venn::VENN_AREA_LABEL_CLASS,
+                crate::venn::rendered_area_label(area),
+            );
             out.push_str("</g>");
             out.checkpoint()?;
         }
@@ -523,7 +498,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                     span_style.push_str(text_color);
                     span_style.push(';');
                 }
-                let label = node.label.as_deref().unwrap_or(node.id.as_str());
+                let label = crate::venn::rendered_text_node_label(node);
                 let _ = write!(
                     &mut out,
                     r#"<foreignObject class="venn-text-node-fo" width="{width}" height="{height}" x="{x}" y="{y}" overflow="visible"><span xmlns="http://www.w3.org/1999/xhtml" class="venn-text-node" style="{style}">{label}</span></foreignObject>"#,
@@ -535,6 +510,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                     label = escape_xml(label)
                 );
                 out.checkpoint()?;
+                typography_theme_receipt.record_text_node(crate::venn::VENN_TEXT_NODE_CLASS, label);
             }
             out.push_str("</g>");
             out.checkpoint()?;
@@ -548,6 +524,11 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     if title_theme_receipt.is_some_and(|receipt| !title_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
             message: "Venn title theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if !typography_theme.record_terminal(typography_theme_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Venn typography theme receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted)

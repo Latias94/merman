@@ -181,8 +181,10 @@ impl FlowchartBaseTypographyPlan {
             }
         }
 
-        let typed_font_stack_applied = typed_font_stack && !ownership.font_stack;
-        let typed_font_size_applied = typed_font_size && !ownership.font_size;
+        let typed_font_stack_applied =
+            typed_font_stack && !ownership.font_stack && !unsupported_typography;
+        let typed_font_size_applied =
+            typed_font_size && !ownership.font_size && !unsupported_typography;
         let font_family = if typed_font_stack_applied {
             theme.typography().font_stack().as_css()
         } else {

@@ -881,21 +881,28 @@ fn prepare_venn_family(
                 .map(str::trim)
                 .filter(|title| !title.is_empty())
         });
-    let title_theme = crate::venn::VennTitleThemePlan::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        effective_title,
-        execution.work_meter_ref(),
-    )?;
     let layout = crate::venn::layout_venn_diagram_typed_with_work_meter(
         &model,
         meta.title.as_deref(),
         meta.effective_config.as_value(),
         execution.work_meter_ref(),
     )?;
+    let title_theme = crate::venn::VennTitleThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        effective_title,
+        execution.work_meter_ref(),
+    )?;
+    let typography_theme = crate::venn::VennTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        effective_title,
+        &layout,
+    );
     Ok(BuiltinFamilyArtifact::Venn(Box::new(VennFamilyArtifact {
         pair: FamilyPair::new(model, layout),
         title_theme,
+        typography_theme,
     })))
 }
 

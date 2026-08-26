@@ -27,9 +27,27 @@ mod config;
 mod theme;
 
 use config::VennConfigView;
-pub(crate) use theme::VennTitleThemePlan;
+pub(crate) use theme::{VennTitleThemePlan, VennTypographyThemePlan};
 
 pub(crate) const VENN_TITLE_CLASS: &str = "venn-title";
+pub(crate) const VENN_CIRCLE_CLASS: &str = "venn-circle";
+pub(crate) const VENN_INTERSECTION_CLASS: &str = "venn-intersection";
+pub(crate) const VENN_AREA_LABEL_CLASS: &str = "label";
+pub(crate) const VENN_TEXT_NODE_CLASS: &str = "venn-text-node";
+
+pub(crate) fn rendered_area_label(area: &VennAreaLayout) -> &str {
+    if let Some(label) = area.label.as_deref().filter(|label| !label.is_empty()) {
+        label
+    } else if area.sets.len() == 1 {
+        area.sets[0].as_str()
+    } else {
+        ""
+    }
+}
+
+pub(crate) fn rendered_text_node_label(node: &VennTextNodeLayout) -> &str {
+    node.label.as_deref().unwrap_or(node.id.as_str())
+}
 
 #[cfg(test)]
 pub(crate) fn layout_venn_diagram_typed(

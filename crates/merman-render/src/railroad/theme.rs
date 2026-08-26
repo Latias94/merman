@@ -315,16 +315,19 @@ impl RailroadTypographyThemePlan {
             }
         }
 
-        if typed_font_stack && !config_owns_font_stack {
+        let typed_font_stack_applied =
+            typed_font_stack && !config_owns_font_stack && !unsupported_typography;
+        let typed_font_size_applied =
+            typed_font_size && !config_owns_font_size && !unsupported_typography;
+        if typed_font_stack_applied {
             style.font_family = theme.typography().font_stack().as_css();
         }
-        if typed_font_size && !config_owns_font_size {
+        if typed_font_size_applied {
             style.font_size = f64::from(theme.typography().font_size_px());
         }
 
         let requested_typed_typography = typed_font_stack || typed_font_size;
-        let applied_typed_typography = (typed_font_stack && !config_owns_font_stack)
-            || (typed_font_size && !config_owns_font_size);
+        let applied_typed_typography = typed_font_stack_applied || typed_font_size_applied;
         let outcome = if unsupported_typography {
             RailroadTypographyOutcome::Unsupported
         } else if applied_typed_typography {

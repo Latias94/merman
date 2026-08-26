@@ -1562,6 +1562,7 @@ pub(crate) struct SankeyFamilyArtifact {
 pub(crate) struct VennFamilyArtifact {
     pair: FamilyPair<diagrams::venn::VennDiagramRenderModel, VennDiagramLayout>,
     title_theme: crate::venn::VennTitleThemePlan,
+    typography_theme: crate::venn::VennTypographyThemePlan,
 }
 
 #[derive(Debug)]
@@ -1646,6 +1647,16 @@ impl VennFamilyArtifact {
 
     pub(crate) const fn title_theme(&self) -> &crate::venn::VennTitleThemePlan {
         &self.title_theme
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::venn::VennTypographyThemePlan {
+        &self.typography_theme
+    }
+
+    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.title_theme.finish_evidence();
+        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
+        evidence
     }
 }
 
@@ -2459,7 +2470,7 @@ impl BuiltinFamilyArtifact {
 
     fn venn_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Venn(artifact) => Some(artifact.title_theme().finish_evidence()),
+            Self::Venn(artifact) => Some(artifact.finish_theme_evidence()),
             _ => None,
         }
     }

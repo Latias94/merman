@@ -219,11 +219,12 @@ impl PacketTypographyThemePlan {
             }
         }
 
-        let font_family_css = if typed_font_stack && !config_owns_font_stack {
-            theme.typography().font_stack().as_css()
-        } else {
-            configured_font
-        };
+        let font_family_css =
+            if typed_font_stack && !config_owns_font_stack && !unsupported_typography {
+                theme.typography().font_stack().as_css()
+            } else {
+                configured_font
+            };
         let outcome = if unsupported_typography {
             PacketTypographyOutcome::Unsupported
         } else if typed_font_stack && config_owns_font_stack {

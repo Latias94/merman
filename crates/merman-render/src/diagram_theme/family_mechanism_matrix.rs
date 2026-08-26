@@ -1184,6 +1184,22 @@ fn classify_base_typography(
             | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
         };
     }
+    if family == DiagramFamilyId::VENN {
+        return match property {
+            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
+            ThemeTypographyProperty::FontSize
+            | ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
+    }
     match property {
         ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
             FamilyThemeDisposition::LegacyCompatibility
@@ -5849,6 +5865,33 @@ mod tests {
                     && route.disposition() == FamilyThemeDisposition::Unsupported
             }));
         }
+    }
+
+    #[test]
+    fn venn_owns_only_the_base_font_stack_and_fails_closed_for_font_size() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("VennSans").expect("valid Venn font stack"),
+            )
+            .with_font_size_px(24.0)
+            .expect("valid Venn font size");
+        let routes = compile_base_typography_routes(DiagramFamilyId::VENN, &typography);
+
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
+        assert!(
+            routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        );
     }
 
     #[test]

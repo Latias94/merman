@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 use std::sync::OnceLock;
 
 use merman_core::MermaidConfig;
@@ -9,10 +10,229 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    InheritedFontStackOutcome, InheritedFontStackPlan, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
+use crate::model::VennDiagramLayout;
 use crate::resources::OperationWorkMeter;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct VennTypographyOccurrences {
+    titles: usize,
+    circle_labels: usize,
+    intersection_labels: usize,
+    text_nodes: usize,
+}
+
+impl VennTypographyOccurrences {
+    fn from_layout(title: Option<&str>, layout: &VennDiagramLayout) -> Self {
+        let titles = usize::from(title.is_some_and(|title| !title.trim().is_empty()));
+        let circle_labels = layout
+            .areas
+            .iter()
+            .filter(|area| {
+                area.sets.len() == 1 && !super::rendered_area_label(area).trim().is_empty()
+            })
+            .count();
+        let intersection_labels = layout
+            .areas
+            .iter()
+            .filter(|area| {
+                area.sets.len() > 1 && !super::rendered_area_label(area).trim().is_empty()
+            })
+            .count();
+        let text_nodes = layout
+            .text_nodes
+            .iter()
+            .filter(|node| !super::rendered_text_node_label(node).trim().is_empty())
+            .count();
+        Self {
+            titles,
+            circle_labels,
+            intersection_labels,
+            text_nodes,
+        }
+    }
+
+    const fn total(self) -> usize {
+        self.titles
+            .saturating_add(self.circle_labels)
+            .saturating_add(self.intersection_labels)
+            .saturating_add(self.text_nodes)
+    }
+}
+
+/// Final Venn inherited font stack shared by its four local stylesheet selectors and evidence.
+#[derive(Debug)]
+pub(crate) struct VennTypographyThemePlan {
+    inherited_font_stack: InheritedFontStackPlan,
+    occurrences: VennTypographyOccurrences,
+    evidence: FamilyThemeEvidence,
+    terminal_receipt: OnceLock<VennTypographyThemeReceipt>,
+}
+
+impl VennTypographyThemePlan {
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+        title: Option<&str>,
+        layout: &VennDiagramLayout,
+    ) -> Self {
+        Self {
+            inherited_font_stack: InheritedFontStackPlan::resolve(theme, effective_config),
+            occurrences: VennTypographyOccurrences::from_layout(title, layout),
+            evidence: theme.map_or_else(FamilyThemeEvidence::default, |theme| {
+                FamilyThemeEvidence::from_theme(Some(theme))
+            }),
+            terminal_receipt: OnceLock::new(),
+        }
+    }
+
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn begin_terminal_receipt(&self) -> VennTypographyThemeReceipt {
+        VennTypographyThemeReceipt::new(self.occurrences, self.font_family_css())
+    }
+
+    pub(crate) fn record_terminal(&self, receipt: VennTypographyThemeReceipt) -> bool {
+        receipt.proves() && self.terminal_receipt.set(receipt).is_ok()
+    }
+
+    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.evidence.clone();
+        let key = FamilyThemeMechanismKey::Typography;
+        let Some(receipt) = self.terminal_receipt.get() else {
+            return evidence;
+        };
+        if self.occurrences.total() == 0 {
+            evidence.mark_not_applicable(key);
+            return evidence;
+        }
+        match self.inherited_font_stack.outcome() {
+            InheritedFontStackOutcome::Typed if receipt.proves() => {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            }
+            InheritedFontStackOutcome::ConfigOwned if receipt.proves() => {
+                evidence.mark_not_applicable(key);
+            }
+            InheritedFontStackOutcome::Typed
+            | InheritedFontStackOutcome::ConfigOwned
+            | InheritedFontStackOutcome::Unsupported => {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            }
+            InheritedFontStackOutcome::Inactive => {}
+        }
+        evidence
+    }
+}
+
+/// Writer-owned proof for the Venn font stack and every visible local text role.
+#[derive(Debug)]
+pub(crate) struct VennTypographyThemeReceipt {
+    expected: VennTypographyOccurrences,
+    emitted: VennTypographyOccurrences,
+    expected_font_family_css: Box<str>,
+    emitted_font_family_css: Option<Box<str>>,
+    stylesheet_selector_mask: u8,
+    terminal_matches: bool,
+}
+
+impl VennTypographyThemeReceipt {
+    fn new(expected: VennTypographyOccurrences, expected_font_family_css: &str) -> Self {
+        Self {
+            expected,
+            emitted: VennTypographyOccurrences::default(),
+            expected_font_family_css: expected_font_family_css.into(),
+            emitted_font_family_css: None,
+            stylesheet_selector_mask: 0,
+            terminal_matches: true,
+        }
+    }
+
+    /// Build the exact Venn stylesheet and seal the single local font-stack writer event.
+    pub(crate) fn stylesheet(
+        &mut self,
+        diagram_id: &str,
+        title_fill: &str,
+        set_text_color: &str,
+    ) -> String {
+        if self.emitted_font_family_css.is_some() {
+            self.terminal_matches = false;
+        }
+        self.emitted_font_family_css = Some(self.expected_font_family_css.clone());
+        self.stylesheet_selector_mask = 0b1111;
+        let id = crate::svg::escape_css_identifier(diagram_id);
+        let mut css = String::new();
+        let _ = write!(
+            css,
+            "#{id} .{title_class}{{font-size:32px;fill:{title_fill};font-family:{font_family};}}\
+#{id} .{circle_class} text{{font-size:48px;font-family:{font_family};}}\
+#{id} .{intersection_class} text{{font-size:48px;fill:{set_text_color};font-family:{font_family};}}\
+#{id} .{text_node_class}{{font-family:{font_family};color:{set_text_color};}}",
+            title_class = super::VENN_TITLE_CLASS,
+            circle_class = super::VENN_CIRCLE_CLASS,
+            intersection_class = super::VENN_INTERSECTION_CLASS,
+            text_node_class = super::VENN_TEXT_NODE_CLASS,
+            font_family = self.expected_font_family_css,
+        );
+        css
+    }
+
+    pub(crate) fn record_title_text(&mut self, emitted_class: &str, text: &str) {
+        if text.trim().is_empty() {
+            return;
+        }
+        self.emitted.titles = self.emitted.titles.saturating_add(1);
+        self.terminal_matches &= emitted_class == super::VENN_TITLE_CLASS;
+    }
+
+    pub(crate) fn record_circle_label(
+        &mut self,
+        emitted_parent_class: &str,
+        emitted_text_class: &str,
+        text: &str,
+    ) {
+        if text.trim().is_empty() {
+            return;
+        }
+        self.emitted.circle_labels = self.emitted.circle_labels.saturating_add(1);
+        self.terminal_matches &= emitted_parent_class == super::VENN_CIRCLE_CLASS;
+        self.terminal_matches &= emitted_text_class == super::VENN_AREA_LABEL_CLASS;
+    }
+
+    pub(crate) fn record_intersection_label(
+        &mut self,
+        emitted_parent_class: &str,
+        emitted_text_class: &str,
+        text: &str,
+    ) {
+        if text.trim().is_empty() {
+            return;
+        }
+        self.emitted.intersection_labels = self.emitted.intersection_labels.saturating_add(1);
+        self.terminal_matches &= emitted_parent_class == super::VENN_INTERSECTION_CLASS;
+        self.terminal_matches &= emitted_text_class == super::VENN_AREA_LABEL_CLASS;
+    }
+
+    pub(crate) fn record_text_node(&mut self, emitted_class: &str, text: &str) {
+        if text.trim().is_empty() {
+            return;
+        }
+        self.emitted.text_nodes = self.emitted.text_nodes.saturating_add(1);
+        self.terminal_matches &= emitted_class == super::VENN_TEXT_NODE_CLASS;
+    }
+
+    fn proves(&self) -> bool {
+        self.emitted == self.expected
+            && self.emitted_font_family_css.as_deref()
+                == Some(self.expected_font_family_css.as_ref())
+            && self.stylesheet_selector_mask == 0b1111
+            && self.terminal_matches
+    }
+}
 
 /// Final Venn title fill shared by stylesheet emission, the title terminal, and evidence.
 #[derive(Debug)]
@@ -296,7 +516,10 @@ struct VennTitleRuleObservation {
 
 #[cfg(test)]
 mod tests {
-    use super::{VennTitleThemePlan, VennTitleThemeReceipt};
+    use super::{
+        VennTitleThemePlan, VennTitleThemeReceipt, VennTypographyOccurrences,
+        VennTypographyThemeReceipt,
+    };
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
@@ -332,6 +555,69 @@ mod tests {
         duplicate_inline.record_title_text(super::super::VENN_TITLE_CLASS, "#123456");
         duplicate_inline.record_title_text(super::super::VENN_TITLE_CLASS, "#123456");
         assert!(!duplicate_inline.proves("#123456"));
+    }
+
+    #[test]
+    fn typography_receipt_requires_all_local_selectors_and_visible_roles() {
+        let expected = VennTypographyOccurrences {
+            titles: 1,
+            circle_labels: 2,
+            intersection_labels: 1,
+            text_nodes: 2,
+        };
+        let mut complete = VennTypographyThemeReceipt::new(expected, "VennSans");
+        let stylesheet = complete.stylesheet("venn-test", "#123456", "#abcdef");
+        for selector in [
+            "#venn-test .venn-title{",
+            "#venn-test .venn-circle text{",
+            "#venn-test .venn-intersection text{",
+            "#venn-test .venn-text-node{",
+        ] {
+            assert!(
+                stylesheet.contains(selector),
+                "missing Venn selector `{selector}`"
+            );
+        }
+        complete.record_title_text(super::super::VENN_TITLE_CLASS, "Title");
+        for _ in 0..2 {
+            complete.record_circle_label(
+                super::super::VENN_CIRCLE_CLASS,
+                super::super::VENN_AREA_LABEL_CLASS,
+                "Set",
+            );
+        }
+        complete.record_intersection_label(
+            super::super::VENN_INTERSECTION_CLASS,
+            super::super::VENN_AREA_LABEL_CLASS,
+            "Shared",
+        );
+        for _ in 0..2 {
+            complete.record_text_node(super::super::VENN_TEXT_NODE_CLASS, "Nested");
+        }
+        assert!(complete.proves());
+
+        let mut missing_role = VennTypographyThemeReceipt::new(expected, "VennSans");
+        missing_role.stylesheet("venn-test", "#123456", "#abcdef");
+        missing_role.record_title_text(super::super::VENN_TITLE_CLASS, "Title");
+        missing_role.record_circle_label(
+            super::super::VENN_CIRCLE_CLASS,
+            super::super::VENN_AREA_LABEL_CLASS,
+            "Set",
+        );
+        missing_role.record_intersection_label(
+            super::super::VENN_INTERSECTION_CLASS,
+            super::super::VENN_AREA_LABEL_CLASS,
+            "Shared",
+        );
+        for _ in 0..2 {
+            missing_role.record_text_node(super::super::VENN_TEXT_NODE_CLASS, "Nested");
+        }
+        assert!(!missing_role.proves());
+
+        let mut duplicate_stylesheet = VennTypographyThemeReceipt::new(expected, "VennSans");
+        duplicate_stylesheet.stylesheet("venn-test", "#123456", "#abcdef");
+        duplicate_stylesheet.stylesheet("venn-test", "#123456", "#abcdef");
+        assert!(!duplicate_stylesheet.proves());
     }
 
     #[test]
