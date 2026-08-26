@@ -73,8 +73,8 @@ impl<'a> ClassConfigView<'a> {
 
         let node_html_labels = self.root_bool("htmlLabels").unwrap_or(true);
         let edge_html_labels = self
-            .flowchart_bool("htmlLabels")
-            .or_else(|| self.root_bool("htmlLabels"))
+            .root_bool("htmlLabels")
+            .or_else(|| self.flowchart_bool("htmlLabels"))
             .unwrap_or(true);
         let wrap_mode_node = class_wrap_mode(node_html_labels);
         let wrap_mode_label = class_wrap_mode(edge_html_labels);
@@ -286,7 +286,7 @@ mod tests {
         assert_eq!(settings.nodesep, 70.0);
         assert_eq!(settings.ranksep, 80.0);
         assert_eq!(settings.wrap_mode_node, WrapMode::SvgLike);
-        assert_eq!(settings.wrap_mode_label, WrapMode::HtmlLike);
+        assert_eq!(settings.wrap_mode_label, WrapMode::SvgLike);
         assert_eq!(settings.wrap_mode_note, WrapMode::SvgLike);
         assert_eq!(settings.class_padding, 30.0);
         assert_eq!(settings.namespace_padding, 17.0);
@@ -304,6 +304,33 @@ mod tests {
         assert_eq!(settings.wrap_probe_font_size, 18.0);
         assert_eq!(settings.title_margin_top, 3.0);
         assert_eq!(settings.title_margin_bottom, 4.0);
+    }
+
+    #[test]
+    fn class_edge_html_labels_use_root_config_before_deprecated_flowchart_fallback() {
+        for (cfg, expected) in [
+            (
+                json!({
+                    "htmlLabels": false,
+                    "flowchart": { "htmlLabels": true }
+                }),
+                false,
+            ),
+            (
+                json!({
+                    "htmlLabels": true,
+                    "flowchart": { "htmlLabels": false }
+                }),
+                true,
+            ),
+            (json!({ "flowchart": { "htmlLabels": false } }), false),
+        ] {
+            let config = ClassConfigView::new(&cfg);
+            let expected_wrap_mode = class_wrap_mode(expected);
+
+            assert_eq!(config.layout_settings().wrap_mode_label, expected_wrap_mode);
+            assert_eq!(config.render_edge_html_labels(), expected);
+        }
     }
 
     #[test]

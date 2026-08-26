@@ -150,8 +150,10 @@ fn css_font_family_ownership_from_parsed<'a>(
         .filter(|declaration| declaration.property() == "font-family")
     {
         if winner.is_none_or(|(important, _)| declaration.important() || !important) {
-            let normalized = declaration.value().trim().to_ascii_lowercase();
-            let ownership = if matches!(normalized.as_str(), "inherit" | "unset") {
+            let ownership = if matches!(
+                declaration.analysis().single_ident(),
+                Some("inherit" | "unset")
+            ) {
                 CssFontFamilyOwnership::Inherited
             } else if declaration.analysis().has_dynamic_reference_function() {
                 CssFontFamilyOwnership::Unverified
@@ -368,6 +370,20 @@ pub(crate) struct CssValueAnalysis {
 impl CssValueAnalysis {
     pub(crate) const fn is_single_component(&self) -> bool {
         self.component_count == 1
+    }
+
+    fn single_ident(&self) -> Option<&str> {
+        if !self.is_single_component() {
+            return None;
+        }
+        match self.scalar.as_ref()? {
+            CssScalar::Ident(value) => Some(value.as_str()),
+            CssScalar::Number(_)
+            | CssScalar::Percentage(_)
+            | CssScalar::Px(_)
+            | CssScalar::Em(_)
+            | CssScalar::Rem(_) => None,
+        }
     }
 
     pub(crate) const fn has_dynamic_reference_function(&self) -> bool {
@@ -884,6 +900,14 @@ mod tests {
         assert_eq!(
             css_font_family_ownership([r"font-family:e\6ev(class-font)"]),
             CssFontFamilyOwnership::Unverified
+        );
+        assert_eq!(
+            css_font_family_ownership([r"font-family:i\6eherit"]),
+            CssFontFamilyOwnership::Inherited
+        );
+        assert_eq!(
+            css_font_family_ownership([r"font-family:u\6eset"]),
+            CssFontFamilyOwnership::Inherited
         );
     }
 

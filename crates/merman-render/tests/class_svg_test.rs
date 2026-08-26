@@ -528,6 +528,45 @@ classDiagram
 }
 
 #[test]
+fn class_edge_label_layout_and_writer_share_html_labels_precedence() {
+    for (config, expected_html) in [
+        (
+            r#"{"htmlLabels": false, "flowchart": {"htmlLabels": true}}"#,
+            false,
+        ),
+        (
+            r#"{"htmlLabels": true, "flowchart": {"htmlLabels": false}}"#,
+            true,
+        ),
+        (r#"{"flowchart": {"htmlLabels": false}}"#, false),
+    ] {
+        let svg = render_class_svg_from_text(&format!(
+            "%%{{init: {config}}}%%\nclassDiagram\n  Alpha --> Beta : relates\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let label = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class") == Some("edgeLabel")
+                    && node
+                        .descendants()
+                        .filter_map(|descendant| descendant.text())
+                        .any(|text| text.contains("relates"))
+            })
+            .expect("visible Class relation label");
+
+        assert_eq!(
+            label
+                .descendants()
+                .any(|descendant| descendant.has_tag_name("foreignObject")),
+            expected_html,
+            "config={config}: {svg}"
+        );
+    }
+}
+
+#[test]
 fn class_unverified_font_ownership_is_a_portability_residual_not_an_invalid_model() {
     let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
         FontStack::single("ClassFallbackTyped").expect("valid Class fallback font"),
