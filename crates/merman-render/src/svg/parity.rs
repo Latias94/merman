@@ -74,8 +74,8 @@ mod zenuml;
 use css::{
     er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_font_family,
     info_css_parts_with_theme_font_size_only, info_css_with_config, pie_css_with_stroke_overrides,
-    push_xychart_css, requirement_css, sankey_css, write_info_css_with_font_family,
-    write_mermaid_default_base_css_prefix,
+    push_xychart_css, requirement_css, write_info_css_with_font_family,
+    write_mermaid_default_base_css_prefix, write_sankey_css_with_font_family,
 };
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
@@ -1143,6 +1143,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Sankey(artifact) => sankey::render_sankey_diagram_svg(
             artifact.pair().layout(),
             artifact.node_palette(),
+            artifact.typography_theme(),
             effective_config_value,
             options,
         ),

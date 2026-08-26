@@ -1024,204 +1024,9 @@ fn classify_base_typography(
             | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
         };
     }
-    if matches!(
-        family,
-        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::SEQUENCE
-    ) {
-        return match property {
-            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
-                FamilyThemeDisposition::TypedAdapter
-            }
-            ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if family == DiagramFamilyId::ZENUML {
-        return FamilyThemeDisposition::Unsupported;
-    }
-    if family == DiagramFamilyId::CLASS {
-        return match property {
-            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
-            ThemeTypographyProperty::FontSize => FamilyThemeDisposition::LegacyCompatibility,
-            ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if family == DiagramFamilyId::EVENT_MODELING {
-        return match property {
-            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
-                FamilyThemeDisposition::TypedAdapter
-            }
-            ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if family == DiagramFamilyId::PACKET {
-        return match property {
-            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
-            ThemeTypographyProperty::FontSize
-            | ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if matches!(
-        family,
-        DiagramFamilyId::INFO
-            | DiagramFamilyId::ERROR
-            | DiagramFamilyId::CYNEFIN
-            | DiagramFamilyId::WARDLEY
-            | DiagramFamilyId::MINDMAP
-    ) {
-        return match property {
-            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
-            ThemeTypographyProperty::FontSize
-            | ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if family == DiagramFamilyId::TREE_VIEW {
-        return match property {
-            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
-            ThemeTypographyProperty::FontSize
-            | ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if family == DiagramFamilyId::GANTT {
-        return match property {
-            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
-            ThemeTypographyProperty::FontSize
-            | ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if family == DiagramFamilyId::ISHIKAWA {
-        return match property {
-            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
-                FamilyThemeDisposition::TypedAdapter
-            }
-            ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if family == DiagramFamilyId::BLOCK {
-        return match property {
-            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
-                FamilyThemeDisposition::TypedAdapter
-            }
-            ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if family == DiagramFamilyId::RAILROAD {
-        return match property {
-            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
-                FamilyThemeDisposition::TypedAdapter
-            }
-            ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
-    if family == DiagramFamilyId::VENN {
-        return match property {
-            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
-            ThemeTypographyProperty::FontSize
-            | ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
-        };
-    }
     match property {
-        ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
-            FamilyThemeDisposition::LegacyCompatibility
-        }
+        ThemeTypographyProperty::FontStack => classify_font_stack(family),
+        ThemeTypographyProperty::FontSize => classify_font_size(family),
         ThemeTypographyProperty::FontWeight
         | ThemeTypographyProperty::FontStyle
         | ThemeTypographyProperty::LineHeight
@@ -1233,6 +1038,86 @@ fn classify_base_typography(
         | ThemeTypographyProperty::WhiteSpace
         | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
     }
+}
+
+fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::SWIMLANE
+            | DiagramFamilyId::SEQUENCE
+            | DiagramFamilyId::CLASS
+            | DiagramFamilyId::GANTT
+            | DiagramFamilyId::MINDMAP
+            | DiagramFamilyId::TREE_VIEW
+            | DiagramFamilyId::PACKET
+            | DiagramFamilyId::BLOCK
+            | DiagramFamilyId::SANKEY
+            | DiagramFamilyId::RAILROAD
+            | DiagramFamilyId::INFO
+            | DiagramFamilyId::ERROR
+            | DiagramFamilyId::CYNEFIN
+            | DiagramFamilyId::WARDLEY
+            | DiagramFamilyId::ISHIKAWA
+            | DiagramFamilyId::EVENT_MODELING
+            | DiagramFamilyId::VENN
+    ) {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(
+        family,
+        DiagramFamilyId::ARCHITECTURE
+            | DiagramFamilyId::C4
+            | DiagramFamilyId::ER
+            | DiagramFamilyId::GIT_GRAPH
+            | DiagramFamilyId::JOURNEY
+            | DiagramFamilyId::KANBAN
+            | DiagramFamilyId::PIE
+            | DiagramFamilyId::QUADRANT_CHART
+            | DiagramFamilyId::RADAR
+            | DiagramFamilyId::REQUIREMENT
+            | DiagramFamilyId::TIMELINE
+            | DiagramFamilyId::TREEMAP
+            | DiagramFamilyId::XY_CHART
+    ) {
+        return FamilyThemeDisposition::LegacyCompatibility;
+    }
+    FamilyThemeDisposition::Unsupported
+}
+
+fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::SWIMLANE
+            | DiagramFamilyId::SEQUENCE
+            | DiagramFamilyId::BLOCK
+            | DiagramFamilyId::RAILROAD
+            | DiagramFamilyId::ISHIKAWA
+            | DiagramFamilyId::EVENT_MODELING
+    ) {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(
+        family,
+        DiagramFamilyId::CLASS
+            | DiagramFamilyId::ARCHITECTURE
+            | DiagramFamilyId::C4
+            | DiagramFamilyId::ER
+            | DiagramFamilyId::GIT_GRAPH
+            | DiagramFamilyId::JOURNEY
+            | DiagramFamilyId::KANBAN
+            | DiagramFamilyId::PIE
+            | DiagramFamilyId::QUADRANT_CHART
+            | DiagramFamilyId::RADAR
+            | DiagramFamilyId::REQUIREMENT
+            | DiagramFamilyId::TIMELINE
+            | DiagramFamilyId::TREEMAP
+            | DiagramFamilyId::XY_CHART
+    ) {
+        return FamilyThemeDisposition::LegacyCompatibility;
+    }
+    FamilyThemeDisposition::Unsupported
 }
 
 /// Current terminal ownership for scalar paint routes that have no Mermaid writer consumer.
@@ -5615,57 +5500,44 @@ mod tests {
     }
 
     #[test]
-    fn packet_directly_owns_only_the_base_font_stack() {
+    fn inherited_font_families_directly_own_only_the_base_font_stack() {
         let typography = TextStyle::default()
             .with_font_stack(
-                super::super::FontStack::single("monospace").expect("valid Packet font stack"),
+                super::super::FontStack::single("monospace").expect("valid inherited font stack"),
             )
             .with_font_size_px(18.0)
-            .expect("valid Packet font size");
-        let routes = compile_base_typography_routes(DiagramFamilyId::PACKET, &typography);
+            .expect("valid unsupported inherited font size");
 
-        assert!(routes.iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
-                && route.disposition() == FamilyThemeDisposition::TypedAdapter
-        }));
-        assert!(routes.iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                && route.disposition() == FamilyThemeDisposition::Unsupported
-        }));
-        assert!(
-            routes
-                .iter()
-                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
-        );
-    }
-
-    #[test]
-    fn mindmap_directly_owns_only_the_base_font_stack() {
-        let typography = TextStyle::default()
-            .with_font_stack(
-                super::super::FontStack::single("monospace").expect("valid Mindmap font stack"),
-            )
-            .with_font_size_px(18.0)
-            .expect("valid Mindmap font size");
-        let routes = compile_base_typography_routes(DiagramFamilyId::MINDMAP, &typography);
-
-        assert!(routes.iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
-                && route.disposition() == FamilyThemeDisposition::TypedAdapter
-        }));
-        assert!(routes.iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                && route.disposition() == FamilyThemeDisposition::Unsupported
-        }));
-        assert!(
-            routes
-                .iter()
-                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
-        );
+        for family in [
+            DiagramFamilyId::PACKET,
+            DiagramFamilyId::MINDMAP,
+            DiagramFamilyId::SANKEY,
+            DiagramFamilyId::VENN,
+        ] {
+            let routes = compile_base_typography_routes(family, &typography);
+            assert!(
+                routes.iter().any(|route| {
+                    route.mechanism()
+                        == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                        && route.disposition() == FamilyThemeDisposition::TypedAdapter
+                }),
+                "{family} must directly own FontStack"
+            );
+            assert!(
+                routes.iter().any(|route| {
+                    route.mechanism()
+                        == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                        && route.disposition() == FamilyThemeDisposition::Unsupported
+                }),
+                "{family} must reject FontSize without inventing a terminal"
+            );
+            assert!(
+                routes.iter().all(|route| {
+                    route.disposition() != FamilyThemeDisposition::LegacyCompatibility
+                }),
+                "{family} must not retain a typography compatibility route"
+            );
+        }
     }
 
     #[test]
@@ -5926,33 +5798,6 @@ mod tests {
                 "{family} must not retain a typography compatibility route"
             );
         }
-    }
-
-    #[test]
-    fn venn_owns_only_the_base_font_stack_and_fails_closed_for_font_size() {
-        let typography = TextStyle::default()
-            .with_font_stack(
-                super::super::FontStack::single("VennSans").expect("valid Venn font stack"),
-            )
-            .with_font_size_px(24.0)
-            .expect("valid Venn font size");
-        let routes = compile_base_typography_routes(DiagramFamilyId::VENN, &typography);
-
-        assert!(routes.iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
-                && route.disposition() == FamilyThemeDisposition::TypedAdapter
-        }));
-        assert!(routes.iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                && route.disposition() == FamilyThemeDisposition::Unsupported
-        }));
-        assert!(
-            routes
-                .iter()
-                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
-        );
     }
 
     #[test]

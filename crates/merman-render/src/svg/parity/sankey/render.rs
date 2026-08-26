@@ -275,6 +275,7 @@ fn write_sankey_links(
 pub(crate) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
     node_palette: &crate::sankey::SankeyNodePalettePlan,
+    typography_theme: &crate::sankey::SankeyTypographyThemePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -285,6 +286,8 @@ pub(crate) fn render_sankey_diagram_svg(
     let suffix = render_settings.suffix;
     let link_color = render_settings.link_color;
     let outlined_labels = render_settings.outlined_labels;
+    let mut typography_receipt =
+        typography_theme.begin_terminal_receipt(layout.nodes.len(), outlined_labels);
 
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
@@ -355,10 +358,15 @@ pub(crate) fn render_sankey_diagram_svg(
         )?;
     out.push_str("<style>");
     out.checkpoint()?;
-    let css = sankey_css(diagram_id, effective_config);
-    out.push_str(&css);
-    drop(css);
-    out.checkpoint()?;
+    let typography_css_emission = write_sankey_css_with_font_family(
+        &mut out,
+        diagram_id,
+        effective_config,
+        typography_theme.font_family_css(),
+    )?;
+    if let Some(receipt) = &mut typography_receipt {
+        receipt.record_css_emission(typography_css_emission);
+    }
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
@@ -408,7 +416,10 @@ pub(crate) fn render_sankey_diagram_svg(
         }
     }
 
-    let append_labels = |out: &mut BoundedSvgOutput<'_>, class_name: Option<&str>| -> Result<()> {
+    let mut append_labels = |out: &mut BoundedSvgOutput<'_>,
+                             surface: crate::sankey::SankeyLabelSurface|
+     -> Result<()> {
+        let class_name = surface.class_name();
         for n in &layout.nodes {
             options.checkpoint_emit()?;
             let y = (n.y0 + n.y1) / 2.0;
@@ -448,17 +459,33 @@ pub(crate) fn render_sankey_diagram_svg(
                 text = escape_xml(&text),
             );
             out.checkpoint()?;
+            if let Some(receipt) = &mut typography_receipt {
+                receipt.record_label(surface, !text.trim().is_empty());
+            }
         }
         Ok(())
     };
     if outlined_labels {
-        append_labels(&mut out, Some("sankey-label-bg"))?;
-        append_labels(&mut out, Some("sankey-label-fg"))?;
+        append_labels(
+            &mut out,
+            crate::sankey::SankeyLabelSurface::OutlineBackground,
+        )?;
+        append_labels(
+            &mut out,
+            crate::sankey::SankeyLabelSurface::OutlineForeground,
+        )?;
     } else {
-        append_labels(&mut out, None)?;
+        append_labels(&mut out, crate::sankey::SankeyLabelSurface::Plain)?;
     }
     out.push_str("</g>");
     out.checkpoint()?;
+    if let Some(receipt) = typography_receipt {
+        if !typography_theme.record_terminal(receipt) {
+            return Err(Error::InvalidModel {
+                message: "Sankey typography receipt did not match the terminal SVG".to_string(),
+            });
+        }
+    }
 
     out.push_str(r#"<g class="links" fill="none" stroke-opacity="0.5">"#);
     out.checkpoint()?;

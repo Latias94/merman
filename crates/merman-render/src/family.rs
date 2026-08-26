@@ -1561,6 +1561,7 @@ pub(crate) struct RadarFamilyArtifact {
 pub(crate) struct SankeyFamilyArtifact {
     pair: FamilyPair<diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout>,
     node_palette: crate::sankey::SankeyNodePalettePlan,
+    typography_theme: crate::sankey::SankeyTypographyThemePlan,
 }
 
 #[derive(Debug)]
@@ -1782,6 +1783,16 @@ impl SankeyFamilyArtifact {
 
     pub(crate) const fn node_palette(&self) -> &crate::sankey::SankeyNodePalettePlan {
         &self.node_palette
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::sankey::SankeyTypographyThemePlan {
+        &self.typography_theme
+    }
+
+    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.node_palette.finish_evidence();
+        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
+        evidence
     }
 }
 
@@ -2363,7 +2374,7 @@ impl BuiltinFamilyArtifact {
 
     fn sankey_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Sankey(artifact) => Some(artifact.node_palette().finish_evidence()),
+            Self::Sankey(artifact) => Some(artifact.finish_theme_evidence()),
             _ => None,
         }
     }

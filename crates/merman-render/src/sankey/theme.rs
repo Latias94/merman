@@ -7,7 +7,10 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability,
     ThemeTarget, ThemeVariant,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
+use crate::family::{
+    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    InheritedFontStackPlan,
+};
 use crate::model::SankeyDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -17,6 +20,190 @@ const TABLEAU10: [&str; 10] = [
     "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7",
     "#9c755f", "#bab0ab",
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SankeyLabelSurface {
+    Plain,
+    OutlineBackground,
+    OutlineForeground,
+}
+
+impl SankeyLabelSurface {
+    pub(crate) const fn class_name(self) -> Option<&'static str> {
+        match self {
+            Self::Plain => None,
+            Self::OutlineBackground => Some("sankey-label-bg"),
+            Self::OutlineForeground => Some("sankey-label-fg"),
+        }
+    }
+}
+
+/// Final inherited Sankey font stack shared by base CSS, label CSS, and terminal evidence.
+#[derive(Debug)]
+pub(crate) struct SankeyTypographyThemePlan {
+    inherited_font_stack: InheritedFontStackPlan,
+    evidence: FamilyThemeEvidence,
+    terminal_receipt: OnceLock<SankeyTypographyTerminalSeal>,
+}
+
+impl SankeyTypographyThemePlan {
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+    ) -> Self {
+        Self {
+            inherited_font_stack: InheritedFontStackPlan::resolve(theme, effective_config),
+            evidence: FamilyThemeEvidence::from_theme(theme),
+            terminal_receipt: OnceLock::new(),
+        }
+    }
+
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn begin_terminal_receipt(
+        &self,
+        label_count: usize,
+        outlined_labels: bool,
+    ) -> Option<SankeyTypographyThemeReceipt> {
+        match self.inherited_font_stack.outcome() {
+            InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::ConfigOwned => Some(
+                SankeyTypographyThemeReceipt::new(label_count, outlined_labels),
+            ),
+            InheritedFontStackOutcome::Inactive | InheritedFontStackOutcome::Unsupported => None,
+        }
+    }
+
+    pub(crate) fn record_terminal(&self, receipt: SankeyTypographyThemeReceipt) -> bool {
+        receipt
+            .seal()
+            .is_some_and(|seal| self.terminal_receipt.set(seal).is_ok())
+    }
+
+    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.evidence.clone();
+        if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Inactive {
+            return evidence;
+        }
+        let key = FamilyThemeMechanismKey::Typography;
+        if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported {
+            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            return evidence;
+        }
+        let Some(receipt) = self.terminal_receipt.get() else {
+            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            return evidence;
+        };
+        if !receipt.has_visible_label {
+            evidence.mark_not_applicable(key);
+            return evidence;
+        }
+        match self.inherited_font_stack.outcome() {
+            InheritedFontStackOutcome::Typed => {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            }
+            InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
+            InheritedFontStackOutcome::Unsupported => {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            }
+            InheritedFontStackOutcome::Inactive => {}
+        }
+        evidence
+    }
+}
+
+/// Milestone issued only after the final Sankey stylesheet writer completes successfully.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SankeyTypographyCssEmission(());
+
+impl SankeyTypographyCssEmission {
+    pub(crate) const fn written() -> Self {
+        Self(())
+    }
+}
+
+/// Writer-owned proof that the stylesheet and expected label passes reached the final SVG sink.
+#[derive(Debug)]
+pub(crate) struct SankeyTypographyThemeReceipt {
+    expected_labels_per_pass: usize,
+    outlined_labels: bool,
+    css_emitted: bool,
+    next_pass: usize,
+    labels_in_pass: usize,
+    has_visible_label: bool,
+    valid: bool,
+}
+
+#[derive(Debug)]
+struct SankeyTypographyTerminalSeal {
+    has_visible_label: bool,
+}
+
+impl SankeyTypographyThemeReceipt {
+    fn new(expected_labels_per_pass: usize, outlined_labels: bool) -> Self {
+        let expected_pass_count = if outlined_labels { 2 } else { 1 };
+        Self {
+            expected_labels_per_pass,
+            outlined_labels,
+            css_emitted: false,
+            next_pass: if expected_labels_per_pass == 0 {
+                expected_pass_count
+            } else {
+                0
+            },
+            labels_in_pass: 0,
+            has_visible_label: false,
+            valid: true,
+        }
+    }
+
+    pub(crate) fn record_css_emission(&mut self, _emission: SankeyTypographyCssEmission) {
+        self.valid &= !self.css_emitted;
+        self.css_emitted = true;
+    }
+
+    pub(crate) fn record_label(&mut self, surface: SankeyLabelSurface, visible: bool) {
+        if self.next_pass >= self.expected_pass_count() || self.expected_labels_per_pass == 0 {
+            self.valid = false;
+            return;
+        }
+        self.valid &= surface == self.expected_surface();
+        self.has_visible_label |= visible;
+        self.labels_in_pass = self.labels_in_pass.saturating_add(1);
+        if self.labels_in_pass == self.expected_labels_per_pass {
+            self.labels_in_pass = 0;
+            self.next_pass = self.next_pass.saturating_add(1);
+        } else if self.labels_in_pass > self.expected_labels_per_pass {
+            self.valid = false;
+        }
+    }
+
+    fn expected_surface(&self) -> SankeyLabelSurface {
+        if !self.outlined_labels {
+            return SankeyLabelSurface::Plain;
+        }
+        if self.next_pass == 0 {
+            SankeyLabelSurface::OutlineBackground
+        } else {
+            SankeyLabelSurface::OutlineForeground
+        }
+    }
+
+    fn expected_pass_count(&self) -> usize {
+        if self.outlined_labels { 2 } else { 1 }
+    }
+
+    fn seal(self) -> Option<SankeyTypographyTerminalSeal> {
+        (self.css_emitted
+            && self.valid
+            && self.next_pass == self.expected_pass_count()
+            && self.labels_in_pass == 0)
+            .then_some(SankeyTypographyTerminalSeal {
+                has_visible_label: self.has_visible_label,
+            })
+    }
+}
 
 #[derive(Debug)]
 struct SankeyNodePaint {
@@ -233,7 +420,8 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue, ThemeRuleSet,
+        DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette, ThemeColorValue,
+        ThemeRuleSet, ThemeTextStyle, TypographySpec,
     };
     use crate::model::SankeyNodeLayout;
     use crate::resources::RenderResourcePolicy;
@@ -279,6 +467,40 @@ mod tests {
             ))
             .expect("compile Sankey test palette")
             .resolve(DiagramFamilyId::SANKEY)
+    }
+
+    fn resolved_typography(typography: ThemeTextStyle) -> ResolvedDiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::SANKEY, typography),
+            ))
+            .expect("compile Sankey test typography")
+            .resolve(DiagramFamilyId::SANKEY)
+    }
+
+    fn complete_typography_receipt(
+        plan: &SankeyTypographyThemePlan,
+        label_count: usize,
+        outlined_labels: bool,
+    ) -> SankeyTypographyThemeReceipt {
+        let mut receipt = plan
+            .begin_terminal_receipt(label_count, outlined_labels)
+            .expect("typed Sankey typography receipt");
+        receipt.record_css_emission(SankeyTypographyCssEmission::written());
+        let surfaces = if outlined_labels {
+            &[
+                SankeyLabelSurface::OutlineBackground,
+                SankeyLabelSurface::OutlineForeground,
+            ][..]
+        } else {
+            &[SankeyLabelSurface::Plain][..]
+        };
+        for surface in surfaces {
+            for _ in 0..label_count {
+                receipt.record_label(*surface, true);
+            }
+        }
+        receipt
     }
 
     fn palette_plan(config: serde_json::Value) -> SankeyNodePalettePlan {
@@ -334,5 +556,89 @@ mod tests {
             assert!(evidence.applied().is_empty());
             assert_eq!(evidence.residuals().len(), 1);
         }
+    }
+
+    #[test]
+    fn typography_receipt_accepts_plain_and_outlined_label_passes() {
+        for outlined_labels in [false, true] {
+            let layout = layout(&["A", "B"]);
+            let theme = resolved_typography(ThemeTextStyle::default().with_font_stack(
+                FontStack::new(["SankeySans", "sans-serif"]).expect("valid Sankey test font stack"),
+            ));
+            let plan = SankeyTypographyThemePlan::resolve(
+                Some(&theme),
+                &MermaidConfig::from_value(json!({})),
+            );
+
+            assert!(plan.record_terminal(complete_typography_receipt(
+                &plan,
+                layout.nodes.len(),
+                outlined_labels,
+            )));
+            let evidence = plan.finish_evidence();
+            assert_eq!(evidence.applied().len(), 1);
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn typography_receipt_rejects_missing_duplicate_and_reordered_milestones() {
+        let theme = resolved_typography(ThemeTextStyle::default().with_font_stack(
+            FontStack::single("SankeySans").expect("valid Sankey test font stack"),
+        ));
+
+        let missing_css =
+            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let mut receipt = missing_css
+            .begin_terminal_receipt(2, false)
+            .expect("typed Sankey typography receipt");
+        for _ in 0..2 {
+            receipt.record_label(SankeyLabelSurface::Plain, true);
+        }
+        assert!(!missing_css.record_terminal(receipt));
+        assert_eq!(missing_css.finish_evidence().residuals().len(), 1);
+
+        let duplicate_css =
+            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let mut receipt = duplicate_css
+            .begin_terminal_receipt(1, false)
+            .expect("typed Sankey typography receipt");
+        receipt.record_css_emission(SankeyTypographyCssEmission::written());
+        receipt.record_css_emission(SankeyTypographyCssEmission::written());
+        receipt.record_label(SankeyLabelSurface::Plain, true);
+        assert!(!duplicate_css.record_terminal(receipt));
+        assert_eq!(duplicate_css.finish_evidence().residuals().len(), 1);
+
+        let reordered =
+            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let mut receipt = reordered
+            .begin_terminal_receipt(1, true)
+            .expect("typed Sankey typography receipt");
+        receipt.record_css_emission(SankeyTypographyCssEmission::written());
+        receipt.record_label(SankeyLabelSurface::OutlineForeground, true);
+        receipt.record_label(SankeyLabelSurface::OutlineBackground, true);
+        assert!(!reordered.record_terminal(receipt));
+        assert_eq!(reordered.finish_evidence().residuals().len(), 1);
+    }
+
+    #[test]
+    fn typography_is_not_applicable_without_visible_labels() {
+        let layout = layout(&[]);
+        let theme = resolved_typography(ThemeTextStyle::default().with_font_stack(
+            FontStack::single("SankeySans").expect("valid Sankey test font stack"),
+        ));
+        let plan =
+            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+
+        assert!(plan.record_terminal(complete_typography_receipt(
+            &plan,
+            layout.nodes.len(),
+            false,
+        )));
+        let evidence = plan.finish_evidence();
+        assert!(evidence.applied().is_empty());
+        assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
+        assert!(evidence.residuals().is_empty());
     }
 }

@@ -1,8 +1,10 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
-    ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget,
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget, ThemeTextStyle,
+    TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -11,20 +13,55 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
-fn sankey_node_palette_theme(colors: &[&str]) -> DiagramTheme {
-    let palette = OrdinalPalette::new(
+fn sankey_node_palette(colors: &[&str]) -> OrdinalPalette {
+    OrdinalPalette::new(
         colors
             .iter()
             .map(|color| ThemeColorValue::parse(*color).expect("valid Sankey node palette color")),
     )
-    .expect("non-empty Sankey node palette");
+    .expect("non-empty Sankey node palette")
+}
+
+fn sankey_node_palette_theme(colors: &[&str]) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette),
+                ThemeRuleSet::default()
+                    .with_ordinal_palette(ThemeTarget::Node, sankey_node_palette(colors)),
             ),
         )
         .expect("compile Sankey node palette theme")
+}
+
+fn sankey_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::SANKEY, typography),
+        ))
+        .expect("compile Sankey typography theme")
+}
+
+fn render_sankey_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Sankey")
+        .expect("detect themed Sankey");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Sankey session");
+    family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("sankey-theme".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
 }
 
 fn render_sankey_with_theme_and_engine(
@@ -32,18 +69,13 @@ fn render_sankey_with_theme_and_engine(
     theme: &DiagramTheme,
     engine: Engine,
 ) -> family::RenderedFamilySvg {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse themed Sankey")
-        .expect("detect themed Sankey");
-    let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-        .begin_session_with_theme(theme)
-        .expect("begin strict portable Sankey session");
-    family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed Sankey")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render themed Sankey")
+    render_sankey_with_theme_requirement(
+        source,
+        theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render strict portable Sankey")
 }
 
 fn sankey_node_fills(svg: &str) -> Vec<String> {
@@ -266,6 +298,301 @@ fn sankey_node_palette_reaches_terminal_rects_and_gradient_stops() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn sankey_palette_and_typography_evidence_compose_without_shadowing() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::SANKEY,
+                        ThemeTextStyle::default().with_font_stack(
+                            FontStack::single("SankeyCombined")
+                                .expect("valid combined Sankey font stack"),
+                        ),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_ordinal_palette(
+                    ThemeTarget::Node,
+                    sankey_node_palette(&["#123456", "#abcdef"]),
+                )),
+        )
+        .expect("compile combined Sankey theme");
+    let rendered = render_sankey_with_theme_requirement(
+        "sankey-beta\nA,B,10\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render combined strict portable Sankey theme");
+
+    assert!(rendered.svg().contains("font-family:SankeyCombined;"));
+    assert_eq!(
+        sankey_node_fills(rendered.svg()),
+        vec!["#123456", "#abcdef"]
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn sankey_typed_font_stack_reaches_every_inherited_css_surface_and_terminal_labels() {
+    let font_stack =
+        FontStack::new(["SankeyTyped", "sans-serif"]).expect("valid Sankey typed font stack");
+    let expected_font = font_stack.as_css().to_string();
+    let theme = sankey_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let rendered = render_sankey_with_theme_requirement(
+        "sankey-beta\nInput,Transform,10\nTransform,Output,8\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render strict portable Sankey font stack");
+
+    for expected in [
+        format!("#sankey-theme{{font-family:{expected_font};"),
+        format!("#sankey-theme svg{{font-family:{expected_font};"),
+        format!("#sankey-theme .label{{font-family:{expected_font};}}"),
+        format!("#sankey-theme .node-labels{{font-family:{expected_font};}}"),
+        format!("--mermaid-font-family:{expected_font};"),
+    ] {
+        assert!(
+            rendered.svg().contains(&expected),
+            "missing Sankey inherited font writer `{expected}`: {}",
+            rendered.svg()
+        );
+    }
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Sankey SVG");
+    let label_group = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("node-labels"))
+        .expect("Sankey node-labels group");
+    assert_eq!(label_group.attribute("font-size"), Some("14"));
+    assert_eq!(
+        label_group
+            .children()
+            .filter(|node| node.has_tag_name("text"))
+            .count(),
+        3
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn sankey_typed_font_stack_covers_both_outlined_label_passes() {
+    let theme = sankey_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("SankeyOutlined").expect("valid outlined Sankey font stack"),
+    ));
+    let source = concat!(
+        "---\n",
+        "config:\n",
+        "  sankey:\n",
+        "    labelStyle: outlined\n",
+        "---\n",
+        "sankey-beta\n",
+        "A,B,10\n",
+    );
+    let rendered = render_sankey_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render strict portable outlined Sankey font stack");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid outlined Sankey SVG");
+    for class_name in ["sankey-label-bg", "sankey-label-fg"] {
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("text") && node.attribute("class") == Some(class_name)
+                })
+                .count(),
+            2,
+            "class={class_name}"
+        );
+    }
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn sankey_explicit_font_family_owners_outrank_the_typed_stack() {
+    let theme =
+        sankey_typography_theme(ThemeTextStyle::default().with_font_stack(
+            FontStack::single("SankeyTyped").expect("valid Sankey typed font stack"),
+        ));
+    for (owner, source, site_config, expected, excluded) in [
+        (
+            "site-root",
+            "sankey-beta\nA,B,10\n",
+            Some(serde_json::json!({ "fontFamily": "SankeySiteRoot" })),
+            "SankeySiteRoot",
+            None,
+        ),
+        (
+            "site-theme-variables",
+            "sankey-beta\nA,B,10\n",
+            Some(serde_json::json!({
+                "fontFamily": "SankeySiteRoot",
+                "themeVariables": { "fontFamily": "SankeySiteTheme" }
+            })),
+            "SankeySiteTheme",
+            Some("SankeySiteRoot"),
+        ),
+        (
+            "source-root",
+            "%%{init: {\"fontFamily\": \"SankeySourceRoot\"}}%%\nsankey-beta\nA,B,10\n",
+            Some(serde_json::json!({ "secure": [] })),
+            "SankeySourceRoot",
+            None,
+        ),
+        (
+            "source-theme-variables",
+            "%%{init: {\"fontFamily\": \"SankeySourceRoot\", \"themeVariables\": {\"fontFamily\": \"SankeySourceTheme\"}}}%%\nsankey-beta\nA,B,10\n",
+            Some(serde_json::json!({ "secure": [] })),
+            "SankeySourceTheme",
+            Some("SankeySourceRoot"),
+        ),
+    ] {
+        let engine = match site_config {
+            Some(config) => Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            None => Engine::new(),
+        };
+        let rendered = render_sankey_with_theme_requirement(
+            source,
+            &theme,
+            engine,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("render config-owned Sankey font stack");
+
+        assert!(
+            rendered.svg().contains(&format!("font-family:{expected};")),
+            "owner={owner}, svg={}",
+            rendered.svg()
+        );
+        if let Some(excluded) = excluded {
+            assert!(!rendered.svg().contains(excluded), "owner={owner}");
+        }
+        assert!(!rendered.svg().contains("SankeyTyped"), "owner={owner}");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "owner={owner}");
+        assert_eq!(evidence.applied_count(), 0, "owner={owner}");
+        assert_eq!(evidence.not_applicable_count(), 1, "owner={owner}");
+        assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
+        assert_eq!(evidence.compatibility_residual_count(), 0, "owner={owner}");
+    }
+}
+
+#[test]
+fn sankey_direct_font_stack_is_not_bounded_by_the_retired_bridge_limit() {
+    let font_stack =
+        FontStack::new((0..32).map(|index| format!("sankey-font-{index}-{}", "x".repeat(180))))
+            .expect("valid oversized direct Sankey font stack");
+    let expected_font = font_stack.as_css();
+    assert!(expected_font.len() > 4 * 1024);
+    let theme = sankey_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let rendered = render_sankey_with_theme_requirement(
+        "sankey-beta\nA,B,10\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render oversized direct Sankey font stack");
+
+    assert!(rendered.svg().contains(&expected_font));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn sankey_font_size_is_unsupported_without_recreating_the_legacy_projection() {
+    let theme = sankey_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid unsupported Sankey font size"),
+    );
+    let source = "sankey-beta\nA,B,10\n";
+    let rendered = render_sankey_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders the structured Sankey font-size residual");
+
+    assert!(!rendered.svg().contains("font-size:24px"));
+    assert!(
+        rendered
+            .svg()
+            .contains(r#"class="node-labels" font-size="14""#)
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let error = render_sankey_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .err()
+    .expect("RequirePortable rejects unsupported Sankey font size");
+    assert!(matches!(
+        error,
+        merman_render::Error::UnverifiedFamilyTheme {
+            family_id: DiagramFamilyId::SANKEY,
+            residual_count: 1,
+        }
+    ));
+}
+
+#[test]
+fn sankey_mixed_font_stack_and_size_fails_closed() {
+    let theme = sankey_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(
+                FontStack::single("SankeyMixed").expect("valid Sankey mixed font stack"),
+            )
+            .with_font_size_px(24.0)
+            .expect("valid unsupported Sankey mixed font size"),
+    );
+    let rendered = render_sankey_with_theme_requirement(
+        "sankey-beta\nA,B,10\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders mixed Sankey typography as a residual");
+
+    assert!(!rendered.svg().contains("SankeyMixed"));
+    assert!(!rendered.svg().contains("font-size:24px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

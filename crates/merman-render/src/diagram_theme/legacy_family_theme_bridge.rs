@@ -2483,48 +2483,51 @@ mod tests {
     }
 
     #[test]
-    fn venn_typography_never_recreates_the_retired_legacy_projection() {
-        let source = "venn-beta\ntitle Venn\nset A[\"Alpha\"]:20\nset B[\"Beta\"]:12\n";
-        let baseline = parse(&DiagramThemeSpec::default(), source);
-        let contribution_id = "merman.legacy-family-theme.v1.venn.typography";
-
-        for typography in [
-            TextStyle::default().with_font_stack(
-                super::super::FontStack::new(["VennTyped", "sans-serif"])
-                    .expect("valid Venn font stack"),
+    fn property_local_font_stack_families_never_recreate_retired_typography_projections() {
+        for (family, source) in [
+            (
+                DiagramFamilyId::VENN,
+                "venn-beta\ntitle Venn\nset A[\"Alpha\"]:20\nset B[\"Beta\"]:12\n",
             ),
-            TextStyle::default()
-                .with_font_size_px(24.0)
-                .expect("valid unsupported Venn font size"),
-            TextStyle::default()
-                .with_font_stack(
-                    super::super::FontStack::new(["VennMixed", "sans-serif"])
-                        .expect("valid Venn mixed font stack"),
-                )
-                .with_font_size_px(24.0)
-                .expect("valid Venn mixed font size"),
+            (DiagramFamilyId::SANKEY, "sankey-beta\nA,B,10\n"),
         ] {
-            let spec = DiagramThemeSpec::new().with_typography(
-                TypographySpec::default().with_family_style(DiagramFamilyId::VENN, typography),
-            );
-            let bridge = bridge(&spec);
-            let artifact = bridge.compile_for_family(DiagramFamilyId::VENN);
-            assert!(artifact.overlay.is_empty());
-            assert!(artifact.contribution_ids.is_empty());
-            assert!(!bridge.owns_contribution_id(contribution_id));
-
-            let parsed = parse(&spec, source);
-            assert_eq!(fallback_contribution_count(&parsed), 0);
-            for path in [
-                "fontFamily",
-                "themeVariables.fontFamily",
-                "themeVariables.fontSize",
+            let baseline = parse(&DiagramThemeSpec::default(), source);
+            for typography in [
+                TextStyle::default().with_font_stack(
+                    super::super::FontStack::new(["TypedSans", "sans-serif"])
+                        .expect("valid direct font stack"),
+                ),
+                TextStyle::default()
+                    .with_font_size_px(24.0)
+                    .expect("valid unsupported font size"),
+                TextStyle::default()
+                    .with_font_stack(
+                        super::super::FontStack::new(["MixedSans", "sans-serif"])
+                            .expect("valid mixed font stack"),
+                    )
+                    .with_font_size_px(24.0)
+                    .expect("valid mixed font size"),
             ] {
-                assert_eq!(
-                    parsed.effective_config.get_str(path),
-                    baseline.effective_config.get_str(path),
-                    "Venn typography must not mutate legacy `{path}`"
+                let spec = DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default().with_family_style(family, typography),
                 );
+                let artifact = bridge(&spec).compile_for_family(family);
+                assert!(artifact.overlay.is_empty(), "family={family}");
+                assert!(artifact.contribution_ids.is_empty(), "family={family}");
+
+                let parsed = parse(&spec, source);
+                assert_eq!(fallback_contribution_count(&parsed), 0, "family={family}");
+                for path in [
+                    "fontFamily",
+                    "themeVariables.fontFamily",
+                    "themeVariables.fontSize",
+                ] {
+                    assert_eq!(
+                        parsed.effective_config.get_str(path),
+                        baseline.effective_config.get_str(path),
+                        "{family} typography must not mutate legacy `{path}`"
+                    );
+                }
             }
         }
     }

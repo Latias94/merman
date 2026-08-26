@@ -1161,34 +1161,67 @@ where
     out
 }
 
+#[cfg(test)]
 pub(super) fn sankey_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+where
+    I: SvgDiagramIdValue,
+{
+    let mut out = String::new();
+    write_sankey_css_inner(&mut out, diagram_id, effective_config, None)
+        .expect("String-backed Sankey CSS emission cannot fail");
+    out
+}
+
+pub(super) fn write_sankey_css_with_font_family<I>(
+    out: &mut impl SvgOutput,
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    font_family_css: &str,
+) -> Result<crate::sankey::SankeyTypographyCssEmission>
+where
+    I: SvgDiagramIdValue,
+{
+    write_sankey_css_inner(out, diagram_id, effective_config, Some(font_family_css))
+}
+
+fn write_sankey_css_inner<I>(
+    out: &mut impl SvgOutput,
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    font_family_css: Option<&str>,
+) -> Result<crate::sankey::SankeyTypographyCssEmission>
 where
     I: SvgDiagramIdValue,
 {
     // Mermaid's sankey diagram uses the same base CSS as "info-like" diagrams, then appends
     // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
     let id = CssSelectorDiagramId(diagram_id);
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let mut out = parts.css_prefix;
+    let values = InfoCssValues::new(
+        effective_config,
+        InfoCssFontSizeSource::ThemeThenTopLevel,
+        font_family_css,
+    );
+    values.write_prefix(out, diagram_id)?;
     let label_background = config_string(effective_config, &["themeVariables", "mainBkg"])
         .or_else(|| config_string(effective_config, &["themeVariables", "background"]))
         .unwrap_or_else(|| "#fff".to_string());
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:{};stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:{};}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:multiply;}}"#,
         id,
-        parts.font_family,
+        values.font_family,
         id,
-        parts.font_family,
+        values.font_family,
         id,
         label_background,
         id,
-        parts.text_color,
+        values.text_color,
         id,
         id
     );
-    out.push_str(&parts.root_rule);
-    out
+    out.checkpoint()?;
+    values.write_root(out, diagram_id, diagram_id)?;
+    Ok(crate::sankey::SankeyTypographyCssEmission::written())
 }
 
 #[cfg(test)]
