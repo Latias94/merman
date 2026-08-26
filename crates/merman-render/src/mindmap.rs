@@ -1,4 +1,4 @@
-use crate::config::{config_f64_css_px, config_string};
+use crate::config::{config_f64_css_px, config_font_family_css, config_string};
 use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
@@ -33,17 +33,17 @@ type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
 type MindmapNodeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderNode;
 type MindmapEdgeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderEdge;
 
+#[cfg(test)]
 fn mindmap_text_style(effective_config: &Value) -> TextStyle {
-    // Mermaid mindmap labels are rendered via HTML `<foreignObject>` and inherit the global font.
-    let font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    // Mermaid mindmap uses HTML `<foreignObject>` labels. Mermaid CLI baselines show that the
-    // HTML label contents do not reliably inherit SVG-root `font-size` rules; measurement matches
-    // a 16px default even when users override `themeVariables.fontSize`.
+    mindmap_text_style_with_font_family(&config_font_family_css(effective_config))
+}
+
+fn mindmap_text_style_with_font_family(font_family_css: &str) -> TextStyle {
+    // Mermaid mindmap labels use HTML `<foreignObject>` and retain the historical 16px
+    // measurement baseline even when users override `themeVariables.fontSize`.
     let font_size = 16.0;
     TextStyle {
-        font_family,
+        font_family: Some(font_family_css.to_owned()),
         font_size,
         font_weight: None,
         font_style: None,
@@ -283,6 +283,7 @@ fn mindmap_layout_adapter_work(
 pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     model: &MindmapModel,
     config: &MermaidConfig,
+    font_family_css: &str,
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
@@ -294,6 +295,7 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     layout_mindmap_diagram_model(
         model,
         config,
+        font_family_css,
         text_measurer,
         math_renderer,
         &mut work_control,
@@ -303,12 +305,13 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
 fn layout_mindmap_diagram_model(
     model: &MindmapModel,
     config: &MermaidConfig,
+    font_family_css: &str,
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     _work_control: &mut OperationLayoutWorkControl,
 ) -> Result<MindmapDiagramLayout> {
     let effective_config = config.as_value();
-    let text_style = mindmap_text_style(effective_config);
+    let text_style = mindmap_text_style_with_font_family(font_family_css);
     let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());

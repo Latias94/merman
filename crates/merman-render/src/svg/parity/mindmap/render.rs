@@ -324,13 +324,19 @@ fn push_mindmap_shadow_defs(
     out.checkpoint()
 }
 
+struct MindmapCssEmission {
+    css: String,
+    font_family_css: Box<str>,
+}
+
 fn mindmap_css(
     diagram_id: &str,
     config: &merman_core::MermaidConfig,
     node_palette: &crate::mindmap::MindmapNodePalettePlan,
+    font_family_css: &str,
     theme_color_limit: usize,
     use_gradient: bool,
-) -> String {
+) -> MindmapCssEmission {
     // Mirrors pinned Mermaid `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
     // Keep `:root` last within the Mermaid baseline. The typed terminal overlay is appended after
@@ -338,7 +344,7 @@ fn mindmap_css(
     let effective_config = config.as_value();
     let id = crate::svg::escape_css_identifier(diagram_id);
     let fragment_id = escape_xml(diagram_id);
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let parts = info_css_parts_with_font_family(diagram_id, effective_config, font_family_css);
     let mut out = parts.css_prefix;
 
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
@@ -602,7 +608,10 @@ fn mindmap_css(
             );
         }
     }
-    out
+    MindmapCssEmission {
+        css: out,
+        font_family_css: parts.font_family.into_boxed_str(),
+    }
 }
 
 fn write_mindmap_edge_label(out: &mut impl SvgOutput, edge_id: &str) -> Result<()> {
@@ -827,15 +836,17 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             crate::mindmap::MindmapNodeFillSource::ColorScale
         }
     };
+    let mut node_palette_receipt = node_palette.begin_terminal_receipt();
     let css = mindmap_css(
         diagram_id.semantic_str(),
         config,
         node_palette,
+        node_palette.font_family_css(),
         theme_color_limit,
         use_gradient,
     );
-    let _ = write!(&mut out, "<style>{}</style>", css);
-    drop(css);
+    let _ = write!(&mut out, "<style>{}</style>", css.css);
+    node_palette_receipt.record_typography_css(&css.font_family_css);
     out.push_str(&mindmap_gradient_defs(
         diagram_id.semantic_str(),
         config.as_value(),
@@ -972,7 +983,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     out.push_str(r#"<g class="nodes">"#);
     out.checkpoint()?;
-    let mut node_palette_receipt = node_palette.begin_terminal_receipt();
     let node_fill_ownership = crate::mindmap::MindmapNodeFillOwnership::from_config(config);
     for (node_index, n) in model.nodes.iter().enumerate() {
         let (x, y, w, h, label_w, label_h) = node_by_id
@@ -1475,17 +1485,30 @@ mod tests {
         let node_palette =
             crate::mindmap::MindmapNodePalettePlan::resolve(None, &config, &model, &work_meter)
                 .unwrap();
-        let css = mindmap_css("mm", &config, &node_palette, 3, false);
+        let css = mindmap_css(
+            "mm",
+            &config,
+            &node_palette,
+            node_palette.font_family_css(),
+            3,
+            false,
+        );
 
-        assert!(css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));
-        assert!(css.contains(r#"#mm .section--1 span{color:#f0f0f0;}"#));
-        assert!(css.contains(r#"#mm .section-0 span{color:#404040;}"#));
-        assert!(css.contains(r#"#mm .section-1 line{stroke:#808080;stroke-width:3;}"#));
-        assert!(css.contains(r#"#mm .edge-depth--1{stroke-width:12;}"#));
-        assert!(css.contains(r#"#mm .edge-depth-0{stroke-width:10;}"#));
-        assert!(css.contains(r#"#mm .section-root rect,#mm .section-root path,#mm .section-root circle,#mm .section-root polygon{fill:#909090;}"#));
-        assert!(css.contains(r#"#mm .section-root text{fill:#a0a0a0;}"#));
-        assert!(css.contains(r#"#mm .section-root span{color:#b0b0b0;}"#));
+        assert!(css.css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));
+        assert!(css.css.contains(r#"#mm .section--1 span{color:#f0f0f0;}"#));
+        assert!(css.css.contains(r#"#mm .section-0 span{color:#404040;}"#));
+        assert!(
+            css.css
+                .contains(r#"#mm .section-1 line{stroke:#808080;stroke-width:3;}"#)
+        );
+        assert!(css.css.contains(r#"#mm .edge-depth--1{stroke-width:12;}"#));
+        assert!(css.css.contains(r#"#mm .edge-depth-0{stroke-width:10;}"#));
+        assert!(css.css.contains(r#"#mm .section-root rect,#mm .section-root path,#mm .section-root circle,#mm .section-root polygon{fill:#909090;}"#));
+        assert!(css.css.contains(r#"#mm .section-root text{fill:#a0a0a0;}"#));
+        assert!(
+            css.css
+                .contains(r#"#mm .section-root span{color:#b0b0b0;}"#)
+        );
     }
 
     #[test]

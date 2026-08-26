@@ -1450,8 +1450,8 @@ const BASE_CLAIMS: &[BaseClaim] = &[
     },
     BaseClaim {
         family: "mindmap",
-        kind: SupportClaimKind::LegacySurface,
-        properties: &["font-size", "font-stack"],
+        kind: SupportClaimKind::TypedSurface,
+        properties: &["font-stack"],
     },
     BaseClaim {
         family: "pie",

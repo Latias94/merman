@@ -10,9 +10,10 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -203,6 +204,7 @@ pub(crate) struct MindmapNodePalettePlan {
     node_count: usize,
     node_terminal_receipt: OnceLock<MindmapNodePaletteReceipt>,
     edge_terminal_receipt: OnceLock<MindmapEdgeStrokeReceipt>,
+    inherited_font_stack: InheritedFontStackPlan,
 }
 
 #[derive(Debug)]
@@ -255,6 +257,7 @@ impl MindmapNodePalettePlan {
             return Ok(plan);
         };
 
+        plan.inherited_font_stack = InheritedFontStackPlan::resolve(Some(theme), config);
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
         plan.resolve_node_palette(theme, visited, work_meter)?;
         plan.resolve_edge_stroke(theme, work_meter)?;
@@ -498,7 +501,12 @@ impl MindmapNodePalettePlan {
             node_count: model.nodes.len(),
             node_terminal_receipt: OnceLock::new(),
             edge_terminal_receipt: OnceLock::new(),
+            inherited_font_stack: InheritedFontStackPlan::resolve(None, config),
         }
+    }
+
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.inherited_font_stack.font_family_css()
     }
 
     pub(crate) fn terminal_decision_for_node(
@@ -540,7 +548,7 @@ impl MindmapNodePalettePlan {
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> MindmapNodePaletteReceipt {
-        MindmapNodePaletteReceipt::new(self.node_count)
+        MindmapNodePaletteReceipt::new(self.node_count, self.font_family_css())
     }
 
     pub(crate) fn record_terminal(&self, receipt: MindmapNodePaletteReceipt) -> bool {
@@ -606,6 +614,31 @@ impl MindmapNodePalettePlan {
                 Some(_) | None => {
                     evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
                 }
+            }
+        }
+        if self.inherited_font_stack.outcome() != InheritedFontStackOutcome::Inactive {
+            let typography_key = FamilyThemeMechanismKey::Typography;
+            match self.inherited_font_stack.outcome() {
+                InheritedFontStackOutcome::Typed => match self.node_terminal_receipt.get() {
+                    Some(receipt) if receipt.proves_font_stack(self.font_family_css()) => {
+                        evidence.mark_applied_with_capabilities(
+                            typography_key,
+                            [ThemeCapability::Typography],
+                        );
+                    }
+                    _ => evidence.mark_residual(
+                        typography_key,
+                        FamilyThemeResidualReason::UnsupportedTypography,
+                    ),
+                },
+                InheritedFontStackOutcome::ConfigOwned => {
+                    evidence.mark_not_applicable(typography_key)
+                }
+                InheritedFontStackOutcome::Unsupported => evidence.mark_residual(
+                    typography_key,
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                ),
+                InheritedFontStackOutcome::Inactive => {}
             }
         }
         evidence
@@ -747,17 +780,33 @@ pub(crate) struct MindmapNodePaletteReceipt {
     node_order_matches: bool,
     unsupported_surface: bool,
     applied_capabilities: BTreeSet<ThemeCapability>,
+    expected_font_family_css: Box<str>,
+    font_family_css: Option<Box<str>>,
+    css_emission_unique: bool,
 }
 
 impl MindmapNodePaletteReceipt {
-    fn new(node_count: usize) -> Self {
+    fn new(node_count: usize, expected_font_family_css: &str) -> Self {
         Self {
             expected_node_count: node_count,
             checkpointed_node_count: 0,
             node_order_matches: true,
             unsupported_surface: false,
             applied_capabilities: BTreeSet::new(),
+            expected_font_family_css: expected_font_family_css.into(),
+            font_family_css: None,
+            css_emission_unique: true,
         }
+    }
+
+    pub(crate) fn record_typography_css(&mut self, emitted_font_family_css: &str) {
+        if self.font_family_css.is_some() {
+            self.css_emission_unique = false;
+            return;
+        }
+        self.css_emission_unique =
+            emitted_font_family_css == self.expected_font_family_css.as_ref();
+        self.font_family_css = Some(emitted_font_family_css.into());
     }
 
     pub(crate) fn record_checkpointed_node(
@@ -781,6 +830,13 @@ impl MindmapNodePaletteReceipt {
 
     fn proves_complete(&self) -> bool {
         self.node_order_matches && self.checkpointed_node_count == self.expected_node_count
+    }
+
+    fn proves_font_stack(&self, expected_font_family_css: &str) -> bool {
+        self.proves_complete()
+            && self.css_emission_unique
+            && !expected_font_family_css.trim().is_empty()
+            && self.font_family_css.as_deref() == Some(expected_font_family_css)
     }
 }
 

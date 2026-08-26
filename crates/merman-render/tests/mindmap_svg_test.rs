@@ -3,9 +3,10 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, MermaidThemeCompatibility,
-    OrdinalPalette, ThemeAdmissionPolicy, ThemeColorValue, ThemePortabilityRequirement, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, TrustedThemeLane, TrustedThemeLanes,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    MermaidThemeCompatibility, OrdinalPalette, ThemeAdmissionPolicy, ThemeColorValue,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, TrustedThemeLane, TrustedThemeLanes, TypographySpec,
 };
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
@@ -70,6 +71,32 @@ fn mindmap_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
             ),
         )
         .expect("compile Mindmap Edge stroke")
+}
+
+fn mindmap_font_stack_theme(font_stack: FontStack) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::MINDMAP,
+                ThemeTextStyle::default().with_font_stack(font_stack),
+            ),
+        ))
+        .expect("compile Mindmap font stack theme")
+}
+
+fn mindmap_font_size_theme(font_size_px: f32) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    merman_render::DiagramFamilyId::MINDMAP,
+                    ThemeTextStyle::default()
+                        .with_font_size_px(font_size_px)
+                        .expect("valid Mindmap font size"),
+                ),
+            ),
+        )
+        .expect("compile Mindmap font size theme")
 }
 
 fn prepare_mindmap_with_theme_and_engine(
@@ -437,6 +464,93 @@ fn mindmap_node_palette_reaches_branch_shapes_without_recoloring_the_root() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_typed_font_stack_reaches_layout_css_and_strict_receipt() {
+    let font_stack =
+        FontStack::new(["Mindmap Typed", "monospace"]).expect("valid Mindmap typed font stack");
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  A root label that exercises the shared font measurement\n    Child\n",
+        &mindmap_font_stack_theme(font_stack),
+        Engine::new(),
+        "mindmap-typed-font",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert!(
+        stylesheet.contains("Mindmap Typed") && stylesheet.contains("monospace"),
+        "typed Mindmap font must reach the shared stylesheet: {stylesheet}"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_site_font_family_outranks_typed_font_stack() {
+    let typed_stack = FontStack::single("Mindmap Typed").expect("valid Mindmap typed font");
+    let theme = mindmap_font_stack_theme(typed_stack);
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "themeVariables": { "fontFamily": "Site Mindmap Font" }
+        }))),
+        "mindmap-site-font",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert!(stylesheet.contains("Site Mindmap Font"));
+    assert!(!stylesheet.contains("Mindmap Typed"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_font_size_remains_unsupported_and_fails_closed() {
+    let theme = mindmap_font_size_theme(24.0);
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        Engine::new(),
+        "mindmap-unsupported-font-size",
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync("mindmap\n  Root\n    Child\n", ParseOptions::strict())
+        .expect("parse strict Mindmap with unsupported FontSize")
+        .expect("detect strict Mindmap with unsupported FontSize");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict Mindmap FontSize session");
+    let error = match family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare strict Mindmap FontSize")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("strict Mindmap FontSize must remain unsupported"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::MINDMAP, 1)),
+    );
 }
 
 #[test]

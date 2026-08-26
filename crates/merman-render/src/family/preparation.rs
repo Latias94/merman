@@ -80,6 +80,7 @@ fn prepare_mindmap_family(
     let layout = crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
         &model,
         &meta.effective_config,
+        node_palette.font_family_css(),
         execution.text_measurer(),
         execution.math_renderer(),
         execution.work_meter(),

@@ -1071,6 +1071,7 @@ fn classify_base_typography(
             | DiagramFamilyId::ERROR
             | DiagramFamilyId::CYNEFIN
             | DiagramFamilyId::WARDLEY
+            | DiagramFamilyId::MINDMAP
     ) {
         return match property {
             ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
@@ -5559,6 +5560,33 @@ mod tests {
             .with_font_size_px(18.0)
             .expect("valid Packet font size");
         let routes = compile_base_typography_routes(DiagramFamilyId::PACKET, &typography);
+
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
+        assert!(
+            routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        );
+    }
+
+    #[test]
+    fn mindmap_directly_owns_only_the_base_font_stack() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("monospace").expect("valid Mindmap font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid Mindmap font size");
+        let routes = compile_base_typography_routes(DiagramFamilyId::MINDMAP, &typography);
 
         assert!(routes.iter().any(|route| {
             route.mechanism()
