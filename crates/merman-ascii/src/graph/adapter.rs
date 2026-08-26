@@ -8,7 +8,9 @@ use super::style::FlowchartStylePlan;
 use crate::AsciiDirection;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
-use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+#[cfg(test)]
+use crate::options::AsciiRenderOptions;
+use crate::options::{FlowchartLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
     NormalizedTextPlan, NormalizedTrimmedTextPlan, charge_text_layout, try_plan_normalized_text,
@@ -31,10 +33,11 @@ pub(crate) fn from_flowchart_model(
 ) -> Result<AsciiGraph> {
     let policy = resources.policy();
     let control = merman_core::OperationControl::new();
+    let layout_policy = options.flowchart_layout();
     from_flowchart_model_with_execution(
         model,
         None,
-        options,
+        layout_policy,
         resources,
         AsciiExecution::new(&control, &policy),
     )
@@ -43,20 +46,26 @@ pub(crate) fn from_flowchart_model(
 pub(crate) fn from_flowchart_model_with_execution(
     model: &FlowchartModel,
     render_context: Option<&FlowchartRenderContext>,
-    options: &AsciiRenderOptions,
+    layout_policy: FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
     execution.rebind_resource_context(resources, merman_core::OperationPhase::Semantic);
     resources.transaction(|resources| {
-        from_flowchart_model_transactional(model, render_context, options, resources, execution)
+        from_flowchart_model_transactional(
+            model,
+            render_context,
+            &layout_policy,
+            resources,
+            execution,
+        )
     })
 }
 
 fn from_flowchart_model_transactional(
     model: &FlowchartModel,
     render_context: Option<&FlowchartRenderContext>,
-    options: &AsciiRenderOptions,
+    layout_policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
@@ -73,12 +82,12 @@ fn from_flowchart_model_transactional(
     let direction = if let Some(direction) = model.direction.as_deref() {
         parse_direction(direction)?
     } else {
-        match options.flowchart_layout().default_direction {
+        match layout_policy.default_direction {
             AsciiDirection::LeftRight => GraphDirection::LeftRight,
             AsciiDirection::TopDown => GraphDirection::TopDown,
         }
     };
-    let wrap_width = NonZeroUsize::new(options.flowchart_layout().node_label_wrap_width).ok_or(
+    let wrap_width = NonZeroUsize::new(layout_policy.node_label_wrap_width).ok_or(
         AsciiError::InvalidOption {
             field: "flowchart_node_label_wrap_width",
             message: "must be greater than 0",
@@ -89,7 +98,7 @@ fn from_flowchart_model_transactional(
         &memberships,
         direction,
         Some(wrap_width.get()),
-        options.flowchart_layout().terminal_width_profile,
+        layout_policy.terminal_width_profile,
         resources,
         execution,
     )?;
@@ -1336,7 +1345,7 @@ mod tests {
         let error = from_flowchart_model_with_execution(
             &model,
             None,
-            &AsciiRenderOptions::default(),
+            AsciiRenderOptions::default().flowchart_layout(),
             &mut resources,
             AsciiExecution::new(&control, &policy),
         )

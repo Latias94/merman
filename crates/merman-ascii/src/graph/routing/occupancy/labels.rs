@@ -13,6 +13,7 @@ pub(in crate::graph::routing) fn allocate_route_label_placements(
     resources: &mut ResourceContext,
     diagram_type: &'static str,
 ) -> Result<()> {
+    let lane_radius = occupancy.label_lane_radius;
     let label_count = routes.iter().try_fold(0usize, |count, route| {
         resources.checked_work_add(count, route.plan.labels.len())
     })?;
@@ -43,6 +44,7 @@ pub(in crate::graph::routing) fn allocate_route_label_placements(
                 anchor,
                 occupancy.route_bounds[route_index],
                 resources,
+                lane_radius,
             )?;
             let mut selected = None;
             for candidate in candidates {
@@ -157,35 +159,41 @@ pub(super) fn label_anchor_contains(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LabelAnchorAxis {
-    Horizontal {
-        min_x: usize,
-        max_x: usize,
-        y: usize,
-    },
-    Vertical {
-        x: usize,
-        min_y: usize,
-        max_y: usize,
-    },
+    Horizontal(HorizontalLabelHost),
+    Vertical(VerticalLabelHost),
     Point(CanvasCoord),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HorizontalLabelHost {
+    min_x: usize,
+    max_x: usize,
+    y: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VerticalLabelHost {
+    x: usize,
+    min_y: usize,
+    max_y: usize,
 }
 
 impl LabelAnchorAxis {
     fn from_anchor(anchor: LabelAnchor) -> Self {
         match anchor {
             LabelAnchor::Segment { start, end, .. } if start.y == end.y && start.x != end.x => {
-                Self::Horizontal {
+                Self::Horizontal(HorizontalLabelHost {
                     min_x: start.x.min(end.x),
                     max_x: start.x.max(end.x),
                     y: start.y,
-                }
+                })
             }
             LabelAnchor::Segment { start, end, .. } if start.x == end.x && start.y != end.y => {
-                Self::Vertical {
+                Self::Vertical(VerticalLabelHost {
                     x: start.x,
                     min_y: start.y.min(end.y),
                     max_y: start.y.max(end.y),
-                }
+                })
             }
             LabelAnchor::Segment { start, .. } | LabelAnchor::PlacementHint(start) => {
                 Self::Point(start)
@@ -200,6 +208,7 @@ pub(super) fn route_label_candidates(
     anchor: LabelAnchor,
     route_bounds: Option<RouteBounds>,
     resources: &mut ResourceContext,
+    lane_radius: usize,
 ) -> Result<Vec<RoutedLabelPlacement>> {
     const CANDIDATE_CAPACITY: usize = 64;
     let mut candidates = Vec::new();
@@ -215,26 +224,24 @@ pub(super) fn route_label_candidates(
     )?;
 
     match LabelAnchorAxis::from_anchor(anchor) {
-        LabelAnchorAxis::Horizontal { min_x, max_x, y } => {
+        LabelAnchorAxis::Horizontal(host) => {
             push_horizontal_host_candidates(
                 &mut candidates,
                 original,
                 line_count,
-                min_x,
-                max_x,
-                y,
+                host,
                 resources,
+                lane_radius,
             )?;
         }
-        LabelAnchorAxis::Vertical { x, min_y, max_y } => {
+        LabelAnchorAxis::Vertical(host) => {
             push_vertical_host_candidates(
                 &mut candidates,
                 original,
                 line_count,
-                x,
-                min_y,
-                max_y,
+                host,
                 resources,
+                lane_radius,
             )?;
         }
         LabelAnchorAxis::Point(point) => {
@@ -245,39 +252,37 @@ pub(super) fn route_label_candidates(
                 point,
                 route_bounds,
                 resources,
+                lane_radius,
             )?;
         }
     }
     Ok(candidates)
 }
 
-const MAX_LABEL_LANE_RADIUS: usize = 4;
-
 fn push_horizontal_host_candidates(
     candidates: &mut Vec<RoutedLabelPlacement>,
     original: RoutedLabelPlacement,
     line_count: usize,
-    min_x: usize,
-    max_x: usize,
-    y: usize,
+    host: HorizontalLabelHost,
     resources: &mut ResourceContext,
+    lane_radius: usize,
 ) -> Result<()> {
-    let host_end = resources.checked_grid_add(max_x, 1)?;
-    let midpoint = min_x + (max_x - min_x) / 2;
+    let host_end = resources.checked_grid_add(host.max_x, 1)?;
+    let midpoint = host.min_x + (host.max_x - host.min_x) / 2;
     let x_candidates = [
         Some(original.x()),
         midpoint.checked_sub(original.width() / 2),
-        Some(min_x),
+        Some(host.min_x),
         host_end.checked_sub(original.width().max(1)),
     ];
     for x in x_candidates.into_iter().flatten() {
         push_label_candidate(candidates, original, x, original.y(), resources)?;
-        for gap in 0..=MAX_LABEL_LANE_RADIUS {
+        for gap in 0..=lane_radius {
             let above_clearance = resources.checked_grid_add(line_count.max(1), gap)?;
-            if let Some(above) = y.checked_sub(above_clearance) {
+            if let Some(above) = host.y.checked_sub(above_clearance) {
                 push_label_candidate(candidates, original, x, above, resources)?;
             }
-            let below = resources.checked_grid_add(resources.checked_grid_add(y, 1)?, gap)?;
+            let below = resources.checked_grid_add(resources.checked_grid_add(host.y, 1)?, gap)?;
             push_label_candidate(candidates, original, x, below, resources)?;
         }
     }
@@ -288,27 +293,26 @@ fn push_vertical_host_candidates(
     candidates: &mut Vec<RoutedLabelPlacement>,
     original: RoutedLabelPlacement,
     _line_count: usize,
-    x: usize,
-    min_y: usize,
-    max_y: usize,
+    host: VerticalLabelHost,
     resources: &mut ResourceContext,
+    lane_radius: usize,
 ) -> Result<()> {
-    let host_end = resources.checked_grid_add(max_y, 1)?;
-    let midpoint = min_y + (max_y - min_y) / 2;
+    let host_end = resources.checked_grid_add(host.max_y, 1)?;
+    let midpoint = host.min_y + (host.max_y - host.min_y) / 2;
     let y_candidates = [
         Some(original.y()),
         midpoint.checked_sub(1),
-        Some(min_y),
+        Some(host.min_y),
         host_end.checked_sub(1),
     ];
     for y in y_candidates.into_iter().flatten() {
         push_label_candidate(candidates, original, original.x(), y, resources)?;
-        for gap in 0..=MAX_LABEL_LANE_RADIUS {
+        for gap in 0..=lane_radius {
             let left_clearance = resources.checked_grid_add(original.width().max(1), gap)?;
-            if let Some(left) = x.checked_sub(left_clearance) {
+            if let Some(left) = host.x.checked_sub(left_clearance) {
                 push_label_candidate(candidates, original, left, y, resources)?;
             }
-            let right = resources.checked_grid_add(resources.checked_grid_add(x, 1)?, gap)?;
+            let right = resources.checked_grid_add(resources.checked_grid_add(host.x, 1)?, gap)?;
             push_label_candidate(candidates, original, right, y, resources)?;
         }
     }
@@ -322,11 +326,12 @@ fn push_point_host_candidates(
     point: CanvasCoord,
     route_bounds: Option<RouteBounds>,
     resources: &mut ResourceContext,
+    lane_radius: usize,
 ) -> Result<()> {
     let centered_x = point.x.checked_sub(original.width() / 2);
     let centered_y = point.y.checked_sub(line_count.saturating_sub(1) / 2);
     let prefer_vertical_lanes = route_bounds.is_none_or(RouteBounds::prefers_vertical_label_lanes);
-    for gap in 0..=MAX_LABEL_LANE_RADIUS {
+    for gap in 0..=lane_radius {
         let left_clearance = resources.checked_grid_add(original.width().max(1), gap)?;
         let above_clearance = resources.checked_grid_add(line_count.max(1), gap)?;
         let left = point.x.checked_sub(left_clearance);

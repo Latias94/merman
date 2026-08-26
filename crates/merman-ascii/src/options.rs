@@ -104,12 +104,26 @@ pub(crate) struct AsciiOutputPolicy {
 /// chart-specific spacing fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FlowchartLayoutPolicy {
-    pub graph_padding_x: usize,
-    pub graph_padding_y: usize,
+    /// Padding inside a node frame, measured in terminal cells.
+    pub node_border_padding: usize,
+    /// Gap between ranked graph columns and rows.
+    pub rank_gap_x: usize,
+    pub rank_gap_y: usize,
     pub node_label_wrap_width: usize,
+    /// Horizontal and vertical clearance around compound subgraph members.
+    pub group_padding_x: usize,
+    pub group_padding_y: usize,
+    /// Extra rows reserved for a compound group title before its members.
+    pub group_title_clearance: usize,
+    /// Bounded search radius used when moving edge labels away from route cells.
+    pub edge_label_lane_radius: usize,
     pub default_direction: AsciiDirection,
     pub structural_charset: AsciiCharset,
     pub terminal_width_profile: TerminalWidthProfile,
+}
+
+impl FlowchartLayoutPolicy {
+    pub(crate) const DEFAULT_EDGE_LABEL_LANE_RADIUS: usize = 4;
 }
 
 /// Sequence-owned geometry policy.
@@ -267,22 +281,12 @@ impl AsciiRenderOptions {
         self
     }
 
-    /// 应用显式布局 profile 的候选参数，同时保留调用方已经明确覆盖的字段。
+    /// Applies the selected layout profile while preserving explicit caller overrides.
     pub(crate) fn effective_layout(self) -> Self {
         if self.layout_profile != AsciiLayoutProfile::Compact {
             return self;
         }
         Self {
-            graph_padding_x: if self.layout_overrides & OVERRIDE_GRAPH_PADDING_X == 0 {
-                2
-            } else {
-                self.graph_padding_x
-            },
-            graph_padding_y: if self.layout_overrides & OVERRIDE_GRAPH_PADDING_Y == 0 {
-                2
-            } else {
-                self.graph_padding_y
-            },
             flowchart_node_label_wrap_width: if self.layout_overrides
                 & OVERRIDE_FLOWCHART_WRAP_WIDTH
                 == 0
@@ -290,14 +294,6 @@ impl AsciiRenderOptions {
                 24
             } else {
                 self.flowchart_node_label_wrap_width
-            },
-            sequence_participant_spacing: if self.layout_overrides
-                & OVERRIDE_SEQUENCE_PARTICIPANT_SPACING
-                == 0
-            {
-                3
-            } else {
-                self.sequence_participant_spacing
             },
             layout_overrides: self.layout_overrides,
             ..self
@@ -319,9 +315,14 @@ impl AsciiRenderOptions {
             layout: AsciiLayoutPolicies {
                 profile: options.layout_profile,
                 flowchart: FlowchartLayoutPolicy {
-                    graph_padding_x: options.graph_padding_x,
-                    graph_padding_y: options.graph_padding_y,
+                    node_border_padding: options.box_border_padding,
+                    rank_gap_x: options.graph_padding_x,
+                    rank_gap_y: options.graph_padding_y,
                     node_label_wrap_width: options.flowchart_node_label_wrap_width,
+                    group_padding_x: 2,
+                    group_padding_y: 2,
+                    group_title_clearance: 3,
+                    edge_label_lane_radius: FlowchartLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
                     default_direction: options.default_direction,
                     structural_charset,
                     terminal_width_profile: options.terminal_width_profile,
@@ -435,15 +436,39 @@ mod tests {
 
         assert_eq!(canonical.host, compact.host);
         assert_eq!(canonical.output, compact.output);
-        assert_ne!(
-            canonical.layout.flowchart.graph_padding_x,
-            compact.layout.flowchart.graph_padding_x
+        assert_eq!(
+            canonical.layout.flowchart.rank_gap_x,
+            compact.layout.flowchart.rank_gap_x
+        );
+        assert_eq!(
+            canonical.layout.flowchart.rank_gap_y,
+            compact.layout.flowchart.rank_gap_y
         );
         assert_ne!(
             canonical.layout.flowchart.node_label_wrap_width,
             compact.layout.flowchart.node_label_wrap_width
         );
-        assert_ne!(
+        assert_eq!(
+            canonical.layout.flowchart.node_border_padding,
+            compact.layout.flowchart.node_border_padding
+        );
+        assert_eq!(
+            canonical.layout.flowchart.group_padding_x,
+            compact.layout.flowchart.group_padding_x
+        );
+        assert_eq!(
+            canonical.layout.flowchart.group_padding_y,
+            compact.layout.flowchart.group_padding_y
+        );
+        assert_eq!(
+            canonical.layout.flowchart.group_title_clearance,
+            compact.layout.flowchart.group_title_clearance
+        );
+        assert_eq!(
+            canonical.layout.flowchart.edge_label_lane_radius,
+            compact.layout.flowchart.edge_label_lane_radius
+        );
+        assert_eq!(
             canonical.layout.sequence.participant_spacing,
             compact.layout.sequence.participant_spacing
         );

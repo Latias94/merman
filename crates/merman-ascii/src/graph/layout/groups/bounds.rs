@@ -6,7 +6,7 @@ use super::super::{DividerSpan, GroupLayout, NodeLayout};
 use super::LaidOutGroups;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
-use crate::options::TerminalWidthProfile;
+use crate::options::{FlowchartLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use merman_core::OperationPhase;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -73,11 +73,11 @@ fn include_group_layout_bounds(
 
 pub(super) fn empty_group_minimum_size(
     group: &AsciiGraphGroup,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
-    let title = empty_group_title_metrics(group, width_profile, resources)?;
-    empty_group_minimum_size_for_metrics(group, title, resources)
+    let title = empty_group_title_metrics(group, policy.terminal_width_profile, resources)?;
+    empty_group_minimum_size_for_metrics(group, title, policy.group_title_clearance, resources)
 }
 
 fn empty_group_title(
@@ -111,12 +111,15 @@ fn empty_group_title_metrics(
 fn empty_group_minimum_size_for_metrics(
     group: &AsciiGraphGroup,
     title: GraphLabelMetrics,
+    group_title_clearance: usize,
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
     match group.kind {
         GraphGroupKind::Container => Ok((
             resources.checked_grid_add(title.width.max(1), 2)?.max(3),
-            resources.checked_grid_add(title.content_height, 3)?.max(4),
+            resources
+                .checked_grid_add(title.content_height, group_title_clearance)?
+                .max(4),
         )),
         // Divider groups still need a non-degenerate perimeter when they are edge endpoints.
         GraphGroupKind::Divider => Ok((3, 3)),
@@ -127,20 +130,14 @@ pub(super) fn subgraph_offsets(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<(usize, usize)> {
     let mut min_x = 0isize;
     let mut min_y = 0isize;
     for group_index in 0..graph.groups.len() {
-        let Some(bounds) = raw_group_bounds(
-            graph,
-            layouts,
-            group_index,
-            topology,
-            width_profile,
-            resources,
-        )?
+        let Some(bounds) =
+            raw_group_bounds(graph, layouts, group_index, topology, policy, resources)?
         else {
             continue;
         };
@@ -168,7 +165,7 @@ pub(super) fn layout_groups(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<LaidOutGroups> {
@@ -267,43 +264,46 @@ pub(super) fn layout_groups(
                 group,
                 member_bounds.x,
                 member_bounds.right,
-                width_profile,
+                policy.terminal_width_profile,
                 resources,
             )?;
             let bounds = group_layout_bounds_for_members(
                 group,
                 title_metrics,
-                member_bounds.x,
-                member_bounds.y,
-                member_bounds.right,
-                member_bounds.bottom,
+                member_bounds,
+                policy,
                 resources,
             )?;
             let title = group_title_for_layout(
                 group,
                 member_bounds.x,
                 member_bounds.right,
-                width_profile,
+                policy.terminal_width_profile,
                 resources,
             )?;
             (title, bounds)
         } else {
-            let title_metrics = empty_group_title_metrics(group, width_profile, resources)?;
-            let (width, height) =
-                empty_group_minimum_size_for_metrics(group, title_metrics, resources)?;
+            let title_metrics =
+                empty_group_title_metrics(group, policy.terminal_width_profile, resources)?;
+            let (width, height) = empty_group_minimum_size_for_metrics(
+                group,
+                title_metrics,
+                policy.group_title_clearance,
+                resources,
+            )?;
             let (x, y) = empty_group_origin(
                 graph,
                 topology,
                 graph.direction,
                 group_index,
                 width,
-                width_profile,
+                policy,
                 leaf_group_levels.as_deref(),
                 layouts,
                 &groups_by_graph_index,
                 resources,
             )?;
-            let title = empty_group_title(group, width_profile, resources)?;
+            let title = empty_group_title(group, policy.terminal_width_profile, resources)?;
             (
                 title,
                 group_layout_bounds_from_size(x, y, width, height, resources)?,
@@ -452,7 +452,7 @@ fn empty_group_origin(
     direction: GraphDirection,
     group_index: usize,
     width: usize,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     leaf_group_levels: Option<&[Option<usize>]>,
     node_layouts: &[NodeLayout],
     group_layouts: &[Option<GroupLayout>],
@@ -466,14 +466,8 @@ fn empty_group_origin(
         return Ok((0, 0));
     };
 
-    let (ancestor_x_inset, ancestor_y_inset) = empty_group_ancestor_insets(
-        graph,
-        topology,
-        group_index,
-        width,
-        width_profile,
-        resources,
-    )?;
+    let (ancestor_x_inset, ancestor_y_inset) =
+        empty_group_ancestor_insets(graph, topology, group_index, width, policy, resources)?;
     let scan_work = resources.checked_work_add(node_layouts.len(), group_layouts.len())?;
     resources.charge_layout_work(scan_work)?;
     let mut same_level_start = None::<usize>;
@@ -558,7 +552,7 @@ fn empty_group_origin(
             direction,
             resources.checked_grid_add(previous_level, 1)?,
             level,
-            width_profile,
+            policy,
             resources,
         )?;
         resources.checked_grid_add(
@@ -572,7 +566,7 @@ fn empty_group_origin(
             direction,
             level,
             next_level,
-            width_profile,
+            policy,
             resources,
         )?;
         start.saturating_sub(occupied_span)
@@ -590,7 +584,7 @@ fn empty_group_origin(
                 direction,
                 0,
                 level,
-                width_profile,
+                policy,
                 resources,
             )?,
         )?
@@ -618,7 +612,7 @@ fn leaf_group_rank_span(
     direction: GraphDirection,
     range_start: usize,
     range_end: usize,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<usize> {
     if range_start >= range_end {
@@ -638,7 +632,7 @@ fn leaf_group_rank_span(
         if level < range_start || level >= range_end {
             continue;
         }
-        let (width, height) = empty_group_minimum_size(group, width_profile, resources)?;
+        let (width, height) = empty_group_minimum_size(group, policy, resources)?;
         let root_size = match direction.canonical() {
             GraphDirection::LeftRight => width,
             GraphDirection::TopDown => height,
@@ -662,7 +656,7 @@ fn empty_group_ancestor_insets(
     topology: &GraphGroupTopology<'_>,
     group_index: usize,
     width: usize,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
     let mut x_inset = 0usize;
@@ -682,18 +676,19 @@ fn empty_group_ancestor_insets(
         let Some(parent_group) = graph.groups.get(parent_index) else {
             break;
         };
-        x_inset = resources.checked_grid_add(x_inset, 2)?;
-        child_width = resources.checked_grid_add(child_width, 4)?;
+        x_inset = resources.checked_grid_add(x_inset, policy.group_padding_x)?;
+        child_width =
+            resources.checked_grid_add(child_width, policy.group_padding_x.saturating_mul(2))?;
         let top_inset = match parent_group.kind {
             GraphGroupKind::Container => {
                 let title_width = child_width.saturating_sub(2).max(1);
                 let title = GraphLabel::try_measure_wrapped_with_profile(
                     &parent_group.title,
                     title_width,
-                    width_profile,
+                    policy.terminal_width_profile,
                     resources,
                 )?;
-                resources.checked_grid_add(title.content_height, 3)?
+                resources.checked_grid_add(title.content_height, policy.group_title_clearance)?
             }
             GraphGroupKind::Divider => 1,
         };
@@ -780,16 +775,16 @@ impl RawBounds {
 pub(super) fn raw_group_bounds_for_members(
     group: &AsciiGraphGroup,
     member_bounds: RawBounds,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<RawBounds> {
     let x = member_bounds
         .x
-        .checked_sub(2)
+        .checked_sub(isize::try_from(policy.group_padding_x).map_err(|_| grid_overflow(resources))?)
         .ok_or_else(|| grid_overflow(resources))?;
     let right = member_bounds
         .right
-        .checked_add(2)
+        .checked_add(isize::try_from(policy.group_padding_x).map_err(|_| grid_overflow(resources))?)
         .ok_or_else(|| grid_overflow(resources))?;
 
     match group.kind {
@@ -804,12 +799,12 @@ pub(super) fn raw_group_bounds_for_members(
             let title = GraphLabel::try_measure_wrapped_with_profile(
                 &group.title,
                 title_width,
-                width_profile,
+                policy.terminal_width_profile,
                 resources,
             )?;
             let title_space = title
                 .content_height
-                .checked_add(3)
+                .checked_add(policy.group_title_clearance)
                 .ok_or_else(|| grid_overflow(resources))?;
             let title_space = isize::try_from(title_space).map_err(|_| grid_overflow(resources))?;
             Ok(RawBounds {
@@ -821,7 +816,10 @@ pub(super) fn raw_group_bounds_for_members(
                 right,
                 bottom: member_bounds
                     .bottom
-                    .checked_add(2)
+                    .checked_add(
+                        isize::try_from(policy.group_padding_y)
+                            .map_err(|_| grid_overflow(resources))?,
+                    )
                     .ok_or_else(|| grid_overflow(resources))?,
             })
         }
@@ -829,7 +827,10 @@ pub(super) fn raw_group_bounds_for_members(
             x,
             y: member_bounds
                 .y
-                .checked_sub(1)
+                .checked_sub(
+                    isize::try_from(policy.group_padding_y.min(1))
+                        .map_err(|_| grid_overflow(resources))?,
+                )
                 .ok_or_else(|| grid_overflow(resources))?,
             right,
             bottom: member_bounds.bottom,
@@ -842,7 +843,7 @@ fn raw_group_bounds(
     layouts: &[NodeLayout],
     group_index: usize,
     topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<Option<RawBounds>> {
     if graph.groups.get(group_index).is_none() {
@@ -912,7 +913,7 @@ fn raw_group_bounds(
                 &layout_bounds_by_id,
                 topology,
                 &completed,
-                width_profile,
+                policy,
                 resources,
             )?;
             completed.insert(index, bounds);
@@ -949,7 +950,7 @@ fn raw_group_bounds_from_completed_children(
     layout_bounds_by_id: &HashMap<&str, RawBounds>,
     topology: &GraphGroupTopology<'_>,
     completed: &HashMap<usize, Option<RawBounds>>,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<Option<RawBounds>> {
     let mut member_bounds = None::<RawBounds>;
@@ -979,25 +980,18 @@ fn raw_group_bounds_from_completed_children(
 
     match member_bounds {
         Some(bounds) => Ok(Some(raw_group_bounds_for_members(
-            group,
-            bounds,
-            width_profile,
-            resources,
+            group, bounds, policy, resources,
         )?)),
-        None => Ok(Some(raw_empty_group_bounds(
-            group,
-            width_profile,
-            resources,
-        )?)),
+        None => Ok(Some(raw_empty_group_bounds(group, policy, resources)?)),
     }
 }
 
 fn raw_empty_group_bounds(
     group: &AsciiGraphGroup,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<RawBounds> {
-    let (width, height) = empty_group_minimum_size(group, width_profile, resources)?;
+    let (width, height) = empty_group_minimum_size(group, policy, resources)?;
     Ok(RawBounds {
         x: 0,
         y: 0,
@@ -1075,30 +1069,31 @@ fn group_title_metrics_for_layout(
 fn group_layout_bounds_for_members(
     group: &AsciiGraphGroup,
     title: GraphLabelMetrics,
-    min_x: usize,
-    min_y: usize,
-    max_right: usize,
-    max_bottom: usize,
+    member_bounds: GroupLayoutBounds,
+    policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<GroupLayoutBounds> {
-    let x = min_x.saturating_sub(2);
-    let right = resources.checked_grid_add(max_right, 2)?;
+    let x = member_bounds.x.saturating_sub(policy.group_padding_x);
+    let right = resources.checked_grid_add(member_bounds.right, policy.group_padding_x)?;
 
     Ok(match group.kind {
         GraphGroupKind::Container => {
-            let title_space = resources.checked_grid_add(title.content_height, 3)?;
+            let title_space =
+                resources.checked_grid_add(title.content_height, policy.group_title_clearance)?;
             GroupLayoutBounds {
                 x,
-                y: min_y.saturating_sub(title_space),
+                y: member_bounds.y.saturating_sub(title_space),
                 right,
-                bottom: resources.checked_grid_add(max_bottom, 2)?,
+                bottom: resources.checked_grid_add(member_bounds.bottom, policy.group_padding_y)?,
             }
         }
         GraphGroupKind::Divider => GroupLayoutBounds {
             x,
-            y: min_y.saturating_sub(1),
+            y: member_bounds
+                .y
+                .saturating_sub(policy.group_padding_y.min(1)),
             right,
-            bottom: max_bottom,
+            bottom: member_bounds.bottom,
         },
     })
 }
@@ -1135,6 +1130,7 @@ fn divider_inner_span(group: &GroupLayout) -> Option<DividerSpan> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AsciiRenderOptions;
     use crate::graph::layout::GridCoord;
     use crate::graph::model::{GraphDirection, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
     use crate::resource::AsciiResourcePolicy;
@@ -1184,7 +1180,7 @@ mod tests {
             &graph,
             &layouts,
             &topology,
-            TerminalWidthProfile::Unicode,
+            &AsciiRenderOptions::default().flowchart_layout(),
             &mut measured_resources,
             AsciiExecution::for_test(&unbounded),
         )
@@ -1200,7 +1196,7 @@ mod tests {
             &graph,
             &layouts,
             &topology,
-            TerminalWidthProfile::Unicode,
+            &AsciiRenderOptions::default().flowchart_layout(),
             &mut exact_resources,
             AsciiExecution::for_test(&exact_policy),
         )
@@ -1216,7 +1212,7 @@ mod tests {
             &graph,
             &layouts,
             &topology,
-            TerminalWidthProfile::Unicode,
+            &AsciiRenderOptions::default().flowchart_layout(),
             &mut below_resources,
             AsciiExecution::for_test(&below_policy),
         )
@@ -1248,7 +1244,7 @@ mod tests {
             &graph,
             &[],
             &topology,
-            TerminalWidthProfile::Unicode,
+            &AsciiRenderOptions::default().flowchart_layout(),
             &mut resources,
             AsciiExecution::for_test(&policy),
         )
@@ -1280,7 +1276,7 @@ mod tests {
             &graph,
             &[],
             &topology,
-            TerminalWidthProfile::Unicode,
+            &AsciiRenderOptions::default().flowchart_layout(),
             &mut measured_resources,
             AsciiExecution::for_test(&unbounded),
         )
@@ -1296,7 +1292,7 @@ mod tests {
             &graph,
             &[],
             &topology,
-            TerminalWidthProfile::Unicode,
+            &AsciiRenderOptions::default().flowchart_layout(),
             &mut exact_resources,
             AsciiExecution::for_test(&exact_policy),
         )
@@ -1311,7 +1307,7 @@ mod tests {
             &graph,
             &[],
             &topology,
-            TerminalWidthProfile::Unicode,
+            &AsciiRenderOptions::default().flowchart_layout(),
             &mut below_resources,
             AsciiExecution::for_test(&below_policy),
         )
@@ -1350,7 +1346,7 @@ mod tests {
             &graph,
             &[],
             &topology,
-            TerminalWidthProfile::Unicode,
+            &AsciiRenderOptions::default().flowchart_layout(),
             &mut resources,
             AsciiExecution::for_test(&policy),
         )

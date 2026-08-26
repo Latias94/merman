@@ -3,6 +3,7 @@ use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, 
 use super::topology::GraphGroupTopology;
 use crate::error::Result;
 use crate::operation::AsciiExecution;
+#[cfg(test)]
 use crate::options::AsciiRenderOptions;
 use crate::resource::{LogicalExtent, ResourceContext};
 
@@ -118,9 +119,10 @@ pub(super) fn layout_graph_with_resources(
     resources: &mut ResourceContext,
 ) -> Result<GraphLayout> {
     let policy = resources.policy();
+    let layout_policy = options.flowchart_layout();
     layout_graph_with_resources_and_execution(
         graph,
-        options,
+        &layout_policy,
         resources,
         AsciiExecution::for_test(&policy),
     )
@@ -128,20 +130,17 @@ pub(super) fn layout_graph_with_resources(
 
 pub(super) fn layout_graph_with_resources_and_execution(
     graph: &AsciiGraph,
-    options: &AsciiRenderOptions,
+    layout_policy: &crate::options::FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GraphLayout> {
     execution.rebind_resource_context(resources, merman_core::OperationPhase::Layout);
     checkpoint_layout(execution)?;
-    grid::preflight_minimum_grid_extent(graph, options, resources)?;
+    grid::preflight_minimum_grid_extent(graph, layout_policy, resources)?;
     charge_graph_layout_work(graph, resources)?;
     checkpoint_layout(execution)?;
-    let label_plans = grid::plan_node_labels(
-        graph,
-        options.flowchart_layout().terminal_width_profile,
-        resources,
-    )?;
+    let label_plans =
+        grid::plan_node_labels(graph, layout_policy.terminal_width_profile, resources)?;
     let topology = if graph.groups.is_empty() {
         None
     } else {
@@ -151,7 +150,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
     checkpoint_layout(execution)?;
     let (mut nodes, column_widths, row_heights) = grid::layout_nodes(
         graph,
-        options,
+        layout_policy,
         topology.as_ref(),
         &label_plans,
         resources,
@@ -167,7 +166,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
             topology
                 .as_ref()
                 .expect("non-empty graph groups must have topology"),
-            options.flowchart_layout().terminal_width_profile,
+            layout_policy,
             resources,
         )?
     };
@@ -197,7 +196,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
             topology
                 .as_ref()
                 .expect("non-empty graph groups must have topology"),
-            options.flowchart_layout().terminal_width_profile,
+            layout_policy,
             resources,
             execution,
         )?
@@ -305,10 +304,11 @@ mod tests {
         let mut resources = ResourceContext::new(policy);
         let control = OperationControl::new();
         control.cancel();
+        let layout_policy = options.flowchart_layout();
 
         let error = layout_graph_with_resources_and_execution(
             &graph,
-            &options,
+            &layout_policy,
             &mut resources,
             AsciiExecution::new(&control, &policy),
         )
@@ -384,7 +384,7 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxGridCells, minimum_cells)
             .expect("exact grid limit should be valid");
         let exact_resources = ResourceContext::new(exact_policy);
-        grid::preflight_minimum_grid_extent(&graph, &options, &exact_resources)
+        grid::preflight_minimum_grid_extent(&graph, &options.flowchart_layout(), &exact_resources)
             .expect("the exact minimum grid extent should pass preflight");
         assert_eq!(exact_resources.layout_work_used(), 0);
 

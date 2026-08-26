@@ -9,7 +9,7 @@ use crate::graph::layout::{GridCoord, charge_sort_work};
 use crate::graph::model::{AsciiGraph, GraphDirection};
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::operation::AsciiExecution;
-use crate::options::TerminalWidthProfile;
+use crate::options::FlowchartLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use merman_core::OperationPhase;
 
@@ -20,7 +20,7 @@ pub(super) fn apply_group_placement_adjustments(
     graph: &AsciiGraph,
     placements: &mut [GridCoord],
     topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
@@ -33,7 +33,7 @@ pub(super) fn apply_group_placement_adjustments(
     let placement_context = GroupPlacementContext {
         graph,
         topology,
-        width_profile,
+        policy,
         direction_overrides: &direction_overrides,
         original_placements: &original_placements,
         original_root_axis: &original_root_axis,
@@ -54,8 +54,8 @@ pub(super) fn apply_group_placement_adjustments(
         resources,
         execution,
     )?;
-    reserve_group_left_constraint_space(graph, placements, topology, width_profile, resources)?;
-    separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
+    reserve_group_left_constraint_space(graph, placements, topology, policy, resources)?;
+    separate_external_nodes_from_groups(graph, placements, topology, policy, resources)?;
 
     if !placement_state_is_valid(
         graph.direction,
@@ -79,8 +79,8 @@ pub(super) fn apply_group_placement_adjustments(
             resources,
             execution,
         )?;
-        reserve_group_left_constraint_space(graph, placements, topology, width_profile, resources)?;
-        separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
+        reserve_group_left_constraint_space(graph, placements, topology, policy, resources)?;
+        separate_external_nodes_from_groups(graph, placements, topology, policy, resources)?;
     }
 
     if !placement_state_is_valid(
@@ -91,7 +91,7 @@ pub(super) fn apply_group_placement_adjustments(
         execution,
     )? {
         restore_grid_placements(placements, &original_placements, resources)?;
-        separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
+        separate_external_nodes_from_groups(graph, placements, topology, policy, resources)?;
     }
 
     Ok(())
@@ -146,7 +146,7 @@ struct GroupPlacementState {
 struct GroupPlacementContext<'context, 'graph> {
     graph: &'context AsciiGraph,
     topology: &'context GraphGroupTopology<'graph>,
-    width_profile: TerminalWidthProfile,
+    policy: &'context FlowchartLayoutPolicy,
     direction_overrides: &'context [Option<GraphDirection>],
     original_placements: &'context [GridCoord],
     original_root_axis: &'context [usize],

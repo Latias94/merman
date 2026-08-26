@@ -79,7 +79,9 @@ use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::runtime::OperationContext;
 use merman_core::{MermaidConfig, ParseMetadata};
-use options::{ResolvedAsciiPolicies, SequenceLayoutPolicy, XyChartLayoutPolicy};
+use options::{
+    FlowchartLayoutPolicy, ResolvedAsciiPolicies, SequenceLayoutPolicy, XyChartLayoutPolicy,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct AsciiRenderer {
@@ -347,9 +349,13 @@ fn render_model_with_execution(
     let rendered = match model {
         RenderSemanticModel::Class(model) => render_class_model(model, options, &execution),
         RenderSemanticModel::Er(model) => render_er_model(model, options, &execution),
-        RenderSemanticModel::Flowchart(model) => {
-            render_flowchart_model(model, flowchart_context, options, &execution)
-        }
+        RenderSemanticModel::Flowchart(model) => render_flowchart_model(
+            model,
+            flowchart_context,
+            options,
+            policies.layout.flowchart,
+            &execution,
+        ),
         RenderSemanticModel::Gantt(model) => {
             render_gantt_model(model, options, local_time_zone, &execution)
         }
@@ -413,6 +419,7 @@ fn render_flowchart_model(
     model: &FlowchartModel,
     render_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
+    layout: FlowchartLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
@@ -421,16 +428,17 @@ fn render_flowchart_model(
     let graph = graph::from_flowchart_model_with_execution(
         model,
         render_context,
-        options,
+        layout,
         &mut semantic_resources,
         *execution,
     )?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let mut layout_resources =
         execution.resource_context(&semantic_resources, merman_core::OperationPhase::Layout);
-    graph::render_graph_with_resources_and_execution(
+    graph::render_graph_with_resolved_policy_and_execution(
         &graph,
         options,
+        layout,
         &mut layout_resources,
         *execution,
     )

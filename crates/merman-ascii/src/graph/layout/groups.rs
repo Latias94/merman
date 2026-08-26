@@ -3,7 +3,7 @@ use super::super::topology::GraphGroupTopology;
 use super::{GridCoord, GroupLayout, NodeLayout};
 use crate::error::Result;
 use crate::operation::AsciiExecution;
-use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::options::FlowchartLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use std::collections::HashSet;
 
@@ -29,17 +29,12 @@ pub(super) fn apply_group_placement_adjustments(
     graph: &AsciiGraph,
     placements: &mut [GridCoord],
     topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     placement::apply_group_placement_adjustments(
-        graph,
-        placements,
-        topology,
-        width_profile,
-        resources,
-        execution,
+        graph, placements, topology, policy, resources, execution,
     )
 }
 
@@ -47,43 +42,36 @@ pub(super) fn subgraph_offsets(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<(usize, usize)> {
-    bounds::subgraph_offsets(graph, layouts, topology, width_profile, resources)
+    bounds::subgraph_offsets(graph, layouts, topology, policy, resources)
 }
 
 pub(super) fn layout_groups(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<LaidOutGroups> {
-    bounds::layout_groups(
-        graph,
-        layouts,
-        topology,
-        width_profile,
-        resources,
-        execution,
-    )
+    bounds::layout_groups(graph, layouts, topology, policy, resources, execution)
 }
 
 pub(super) fn empty_group_minimum_size(
     group: &AsciiGraphGroup,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
-    bounds::empty_group_minimum_size(group, width_profile, resources)
+    bounds::empty_group_minimum_size(group, policy, resources)
 }
 
 fn separate_external_nodes_from_groups(
     graph: &AsciiGraph,
     placements: &mut [GridCoord],
     topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
+    policy: &FlowchartLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<()> {
     if graph.groups.is_empty() || placements.is_empty() {
@@ -122,7 +110,7 @@ fn separate_external_nodes_from_groups(
                 group_index,
                 &member_indices,
                 placements,
-                width_profile,
+                policy,
                 resources,
             )?
             else {
@@ -376,7 +364,7 @@ fn layout_work_allocation_failed() -> crate::error::AsciiError {
 pub(super) fn node_padding_y(
     node_index: usize,
     index: &NodePaddingIndex,
-    options: &AsciiRenderOptions,
+    policy: &FlowchartLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<usize> {
     const SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD: usize = 4;
@@ -387,13 +375,10 @@ pub(super) fn node_padding_y(
         .copied()
         .unwrap_or(false)
     {
-        return Ok(options.flowchart_layout().graph_padding_y);
+        return Ok(policy.rank_gap_y);
     }
 
-    resources.checked_grid_add(
-        options.flowchart_layout().graph_padding_y,
-        SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD,
-    )
+    resources.checked_grid_add(policy.rank_gap_y, SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD)
 }
 
 fn shift_external_nodes_away_from_group(
@@ -494,6 +479,7 @@ fn raw_bounds_intersects(left: RawBounds, right: RawBounds) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AsciiRenderOptions;
     use crate::graph::model::GraphGroupStyle;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::resources::ResourceProfile;

@@ -1,7 +1,8 @@
 mod support;
 
 use merman_ascii::{
-    AsciiError, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy, TerminalWidthProfile,
+    AsciiError, AsciiLayoutProfile, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy,
+    TerminalWidthProfile,
 };
 use merman_core::resources::ResourceProfile;
 use support::{
@@ -17,17 +18,18 @@ fn assert_issue_53_semantics(rendered: &str) {
         "browser / agent",
         "*.docs.mysampleapp.net",
         "Route53 subzone",
-        "delegated to mysampleapps account",
+        "delegated to",
+        "mysampleapps account",
         "CloudFront distribution",
         "wildcard cert",
-        "Host-to-prefix CF Function",
-        "WAF VPN",
+        "Host-to-prefix CF",
+        "Function, WAF VPN",
         "allowlist, OAC to S3",
         "upload app",
-        "Lambda, Python",
-        "GET / form",
-        "POST /upload",
-        "POST /api/deploy",
+        "Lambda,",
+        "Python): GET / form,",
+        "POST /upload, POST",
+        "/api/deploy (IAM),",
         "IAM",
         "boto3",
         "S3 bucket mysampleapp",
@@ -49,49 +51,155 @@ fn assert_issue_53_semantics(rendered: &str) {
 fn issue_53_width_matrix_preserves_semantics_and_terminal_extent() {
     let source = local_semantic_input("flowchart/issue_53_long_node_labels.mmd");
     let model = parse_model(&source);
-    let profiles = [
-        ("ascii-unicode", AsciiRenderOptions::ascii()),
-        ("unicode-unicode", AsciiRenderOptions::unicode()),
-        (
-            "ascii-cjk",
-            AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Cjk),
-        ),
-        (
-            "unicode-cjk",
-            AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk),
-        ),
+    let layouts = [
+        ("canonical", AsciiLayoutProfile::Canonical, (74, 57)),
+        ("compact", AsciiLayoutProfile::Compact, (58, 67)),
     ];
 
-    for (profile_name, options) in profiles {
-        let rendered = render_model(&model, &options)
-            .unwrap_or_else(|error| panic!("{profile_name} Issue #53 render failed: {error}"));
-        let (width, height) =
-            terminal_extent_with_profile(&rendered, options.terminal_width_profile);
+    for (layout_name, layout_profile, expected_extent) in layouts {
+        let profiles = [
+            ("ascii-unicode", AsciiRenderOptions::ascii()),
+            ("unicode-unicode", AsciiRenderOptions::unicode()),
+            (
+                "ascii-cjk",
+                AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Cjk),
+            ),
+            (
+                "unicode-cjk",
+                AsciiRenderOptions::unicode()
+                    .with_terminal_width_profile(TerminalWidthProfile::Cjk),
+            ),
+        ];
 
-        assert_issue_53_semantics(&rendered);
-        assert!(
-            width > 0,
-            "{profile_name} output must have a non-zero width"
-        );
-        assert!(
-            height > 0,
-            "{profile_name} output must have at least one row"
-        );
-        assert!(
-            width <= 120,
-            "{profile_name} output exceeds the widest U1 bound ({width} cells):\n{rendered}"
-        );
-        assert_rectangular_terminal_grid(&rendered);
+        for (profile_name, options) in profiles {
+            let options = options.with_layout_profile(layout_profile);
+            let rendered = render_model(&model, &options).unwrap_or_else(|error| {
+                panic!("{layout_name}/{profile_name} Issue #53 render failed: {error}")
+            });
+            let (width, height) =
+                terminal_extent_with_profile(&rendered, options.terminal_width_profile);
 
-        let fits = WIDTH_MATRIX.map(|max_width| width <= max_width);
-        assert!(
-            fits.windows(2).all(|window| !window[0] || window[1]),
-            "width-fit classification must be monotonic for {profile_name}: width={width}, fits={fits:?}"
-        );
-        assert!(
-            fits[3],
-            "the 120-cell characterization bound must contain {profile_name} output"
-        );
+            assert_issue_53_semantics(&rendered);
+            assert_eq!(
+                (width, height),
+                expected_extent,
+                "{layout_name}/{profile_name} Issue #53 extent changed"
+            );
+            assert_rectangular_terminal_grid_with_profile(
+                &rendered,
+                options.terminal_width_profile,
+            );
+
+            let fits = WIDTH_MATRIX.map(|max_width| width <= max_width);
+            assert!(
+                fits.windows(2).all(|window| !window[0] || window[1]),
+                "width-fit classification must be monotonic for {layout_name}/{profile_name}: width={width}, fits={fits:?}"
+            );
+            assert!(
+                fits[3],
+                "the 120-cell characterization bound must contain {layout_name}/{profile_name} output"
+            );
+        }
+    }
+}
+
+#[test]
+fn issue_53_compact_candidate_reduces_width_and_total_blank_cells() {
+    let source = local_semantic_input("flowchart/issue_53_long_node_labels.mmd");
+    let model = parse_model(&source);
+    let canonical = render_model(&model, &AsciiRenderOptions::ascii())
+        .expect("canonical Issue #53 fixture should render");
+    let compact = render_model(
+        &model,
+        &AsciiRenderOptions::ascii().with_layout_profile(AsciiLayoutProfile::Compact),
+    )
+    .expect("compact Issue #53 fixture should preserve route clearance");
+
+    let canonical_extent = terminal_extent(&canonical);
+    let compact_extent = terminal_extent(&compact);
+    let canonical_blank_cells = canonical.bytes().filter(|byte| *byte == b' ').count();
+    let compact_blank_cells = compact.bytes().filter(|byte| *byte == b' ').count();
+
+    assert_eq!(canonical_extent, (74, 57));
+    assert_eq!(compact_extent, (58, 67));
+    assert_eq!(canonical_blank_cells, 3_220);
+    assert_eq!(compact_blank_cells, 3_006);
+    assert!(compact_extent.0 < canonical_extent.0);
+    assert!(compact_extent.1 > canonical_extent.1);
+    assert!(compact_extent.0 * compact_extent.1 < canonical_extent.0 * canonical_extent.1);
+    assert!(compact_blank_cells < canonical_blank_cells);
+}
+
+#[test]
+fn compact_flowchart_route_and_group_corpus_preserves_authored_fields() {
+    let cases: [(&str, &[&str]); 9] = [
+        (
+            "flowchart/ampersand_fanin_fanout.mmd",
+            &[
+                "SourceA", "SourceB", "Merge", "Fanout", "TargetA", "TargetB",
+            ],
+        ),
+        (
+            "flowchart/back_edge_labels.mmd",
+            &["back to top", "back to middle"],
+        ),
+        (
+            "flowchart/boundary_label_lane.mmd",
+            &["Pipeline", "boundaryLabelWithEnoughWidth", "Success"],
+        ),
+        (
+            "flowchart/cjk_boundary_routes.mmd",
+            &["入口", "流程中枢", "校验层", "验证", "发布", "完成"],
+        ),
+        (
+            "flowchart/disconnected_subgraphs.mmd",
+            &["Today", "Today Markdown", "Next Wave", "Next Widget"],
+        ),
+        (
+            "flowchart/multi_boundary_routes.mmd",
+            &["load", "check", "Pipeline", "ok", "fail", "Retry"],
+        ),
+        ("flowchart/multiline_edge_label.mmd", &["north", "south"]),
+        (
+            "flowchart/nested_direction_boundary.mmd",
+            &[
+                "Outer Pipeline",
+                "Inner Steps",
+                "Validate",
+                "Persist",
+                "Done",
+            ],
+        ),
+        (
+            "flowchart/sibling_boundary_routes.mmd",
+            &["Left Group", "Right Group", "Alpha", "Delta", "handoff"],
+        ),
+    ];
+    let profiles = [
+        AsciiRenderOptions::ascii(),
+        AsciiRenderOptions::unicode(),
+        AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Cjk),
+        AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk),
+    ];
+
+    for (fixture, expected_fields) in cases {
+        let model = parse_model(&local_semantic_input(fixture));
+        for options in profiles {
+            let options = options.with_layout_profile(AsciiLayoutProfile::Compact);
+            let rendered = render_model(&model, &options).unwrap_or_else(|error| {
+                panic!("compact {fixture} render failed for {options:?}: {error}")
+            });
+            assert_rectangular_terminal_grid_with_profile(
+                &rendered,
+                options.terminal_width_profile,
+            );
+            for field in expected_fields {
+                assert!(
+                    rendered.contains(field),
+                    "compact {fixture} lost authored field {field:?}:\n{rendered}"
+                );
+            }
+        }
     }
 }
 
