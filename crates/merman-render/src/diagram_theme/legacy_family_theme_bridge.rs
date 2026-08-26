@@ -276,12 +276,12 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::SANKEY
         | DiagramFamilyId::INFO
         | DiagramFamilyId::TREEMAP
-        | DiagramFamilyId::ISHIKAWA
         | DiagramFamilyId::VENN => LegacyFamilyDispatch::Text,
         DiagramFamilyId::STATE
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::ERROR
         | DiagramFamilyId::EVENT_MODELING
+        | DiagramFamilyId::ISHIKAWA
         | DiagramFamilyId::ZENUML => LegacyFamilyDispatch::NoLegacy,
         _ => {
             return Err(ThemeCompatibilityOverlayError::provider_failure(
@@ -2034,6 +2034,7 @@ mod tests {
                 DiagramFamilyId::PACKET,
                 DiagramFamilyId::ERROR,
                 DiagramFamilyId::EVENT_MODELING,
+                DiagramFamilyId::ISHIKAWA,
                 DiagramFamilyId::ZENUML,
             ])
         );
@@ -2418,81 +2419,50 @@ mod tests {
     }
 
     #[test]
-    fn eventmodeling_typography_never_recreates_the_retired_projection() {
-        let family = DiagramFamilyId::EVENT_MODELING;
-        let source = "eventmodeling\ntf 01 ui View\n";
-        let baseline = parse(&DiagramThemeSpec::default(), source);
-        let contribution_id = "merman.legacy-family-theme.v1.eventmodeling.typography";
+    fn direct_text_families_never_recreate_retired_typography_projections() {
         let font_stack = super::super::FontStack::new(["Inter", "sans-serif"])
-            .expect("valid Event Modeling font stack");
+            .expect("valid direct typography font stack");
         let font_size = TextStyle::default()
             .with_font_size_px(18.0)
-            .expect("valid Event Modeling font size");
+            .expect("valid direct typography font size");
 
-        for typography in [
-            TextStyle::default().with_font_stack(font_stack.clone()),
-            font_size.clone(),
-            font_size.with_font_stack(font_stack),
+        for (family, source) in [
+            (
+                DiagramFamilyId::EVENT_MODELING,
+                "eventmodeling\ntf 01 ui View\n",
+            ),
+            (DiagramFamilyId::ISHIKAWA, "ishikawa-beta\n Root cause\n"),
         ] {
-            let spec = DiagramThemeSpec::new()
-                .with_typography(TypographySpec::default().with_family_style(family, typography));
-            let bridge = bridge(&spec);
-            let artifact = bridge.compile_for_family(family);
-            assert!(artifact.overlay.is_empty());
-            assert!(artifact.contribution_ids.is_empty());
-            assert!(!bridge.owns_contribution_id(contribution_id));
-
-            let parsed = parse(&spec, source);
-            assert_eq!(fallback_contribution_count(&parsed), 0);
-            for path in [
-                "fontFamily",
-                "themeVariables.fontFamily",
-                "themeVariables.fontSize",
-            ] {
-                assert_eq!(
-                    parsed.effective_config.get_str(path),
-                    baseline.effective_config.get_str(path),
-                    "direct Event Modeling typography must not write fallback `{path}`"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn ishikawa_retires_only_the_font_stack_projection() {
-        let family = DiagramFamilyId::ISHIKAWA;
-        let source = "ishikawa-beta\n Root cause\n";
-        let contribution_id = "merman.legacy-family-theme.v1.ishikawa.typography";
-        let font_stack = super::super::FontStack::new(["Inter", "sans-serif"])
-            .expect("valid Ishikawa font stack");
-        let stack_spec =
-            DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
-                family,
+            let baseline = parse(&DiagramThemeSpec::default(), source);
+            for typography in [
                 TextStyle::default().with_font_stack(font_stack.clone()),
-            ));
-        let stack_bridge = bridge(&stack_spec);
-        let stack_artifact = stack_bridge.compile_for_family(family);
-        assert!(stack_artifact.overlay.is_empty());
-        assert!(stack_artifact.contribution_ids.is_empty());
-        assert!(!stack_bridge.owns_contribution_id(contribution_id));
+                font_size.clone(),
+                font_size.clone().with_font_stack(font_stack.clone()),
+            ] {
+                let spec = DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default().with_family_style(family, typography),
+                );
+                let artifact = bridge(&spec).compile_for_family(family);
+                assert!(artifact.overlay.is_empty(), "{family} emitted an overlay");
+                assert!(
+                    artifact.contribution_ids.is_empty(),
+                    "{family} emitted a contribution"
+                );
 
-        let size_style = TextStyle::default()
-            .with_font_size_px(18.0)
-            .expect("valid Ishikawa font size");
-        for typography in [size_style.clone(), size_style.with_font_stack(font_stack)] {
-            let spec = DiagramThemeSpec::new()
-                .with_typography(TypographySpec::default().with_family_style(family, typography));
-            let artifact = bridge(&spec).compile_for_family(family);
-            assert_eq!(
-                artifact.contribution_ids,
-                [contribution_id.to_string()].into_iter().collect()
-            );
-            let parsed = parse(&spec, source);
-            assert_eq!(fallback_contribution_count(&parsed), 1);
-            assert_eq!(
-                parsed.effective_config.get_str("themeVariables.fontSize"),
-                Some("18px")
-            );
+                let parsed = parse(&spec, source);
+                assert_eq!(fallback_contribution_count(&parsed), 0);
+                for path in [
+                    "fontFamily",
+                    "themeVariables.fontFamily",
+                    "themeVariables.fontSize",
+                ] {
+                    assert_eq!(
+                        parsed.effective_config.get_str(path),
+                        baseline.effective_config.get_str(path),
+                        "direct {family} typography must not write fallback `{path}`"
+                    );
+                }
+            }
         }
     }
 

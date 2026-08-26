@@ -1232,7 +1232,6 @@ fn render_builtin_family_artifact_raw(
             ishikawa::render_ishikawa_diagram_svg_with_theme(
                 artifact.pair().layout(),
                 artifact.text_theme(),
-                artifact.typography_theme(),
                 effective_config_value,
                 options,
             )

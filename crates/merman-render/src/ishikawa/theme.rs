@@ -8,7 +8,7 @@ use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
     ResolvedStyleProperty, ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget,
-    ThemeVariant,
+    ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
@@ -19,126 +19,10 @@ use crate::family::{
 use crate::model::{IshikawaBranchLayout, IshikawaDiagramLayout, IshikawaTextLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-/// Final Ishikawa inherited font stack shared by SVG CSS and terminal evidence.
-///
-/// Upstream deterministic spacing and wrapping consume `fontSize`. Browser `getBBox()` remains a
-/// bounded font-rendering residual, so this plan intentionally does not invent a headless layout
-/// dependency for `FontStack`.
-#[derive(Debug)]
-pub(crate) struct IshikawaTypographyThemePlan {
-    inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeEvidence,
-    terminal_receipt: OnceLock<IshikawaTypographyReceipt>,
-}
-
-impl IshikawaTypographyThemePlan {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
-    ) -> Self {
-        let inherited_font_stack = InheritedFontStackPlan::resolve(theme, effective_config);
-        let evidence = theme.map_or_else(FamilyThemeEvidence::default, |theme| {
-            FamilyThemeEvidence::from_theme(Some(theme))
-        });
-        Self {
-            inherited_font_stack,
-            evidence,
-            terminal_receipt: OnceLock::new(),
-        }
-    }
-
-    pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
-    }
-
-    pub(crate) const fn outcome(&self) -> InheritedFontStackOutcome {
-        self.inherited_font_stack.outcome()
-    }
-
-    pub(crate) fn begin_terminal_receipt(
-        &self,
-        expected_visible_text_count: usize,
-    ) -> IshikawaTypographyReceipt {
-        IshikawaTypographyReceipt {
-            expected_font_family_css: self.font_family_css().into(),
-            emitted_font_family_css: None,
-            expected_visible_text_count,
-            visible_text_count: 0,
-            css_emission_unique: true,
-        }
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: IshikawaTypographyReceipt) -> bool {
-        receipt.proves() && self.terminal_receipt.set(receipt).is_ok()
-    }
-
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
-        let key = FamilyThemeMechanismKey::Typography;
-        let Some(receipt) = self.terminal_receipt.get() else {
-            return evidence;
-        };
-        if receipt.expected_visible_text_count == 0 {
-            evidence.mark_not_applicable(key);
-            return evidence;
-        }
-        match self.outcome() {
-            InheritedFontStackOutcome::Typed if receipt.proves() => {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            }
-            InheritedFontStackOutcome::ConfigOwned if receipt.proves() => {
-                evidence.mark_not_applicable(key);
-            }
-            InheritedFontStackOutcome::Typed
-            | InheritedFontStackOutcome::ConfigOwned
-            | InheritedFontStackOutcome::Unsupported => {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
-            InheritedFontStackOutcome::Inactive => {}
-        }
-        evidence
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct IshikawaTypographyReceipt {
-    expected_font_family_css: Box<str>,
-    emitted_font_family_css: Option<Box<str>>,
-    expected_visible_text_count: usize,
-    visible_text_count: usize,
-    css_emission_unique: bool,
-}
-
-impl IshikawaTypographyReceipt {
-    /// Append the exact `.ishikawa text` declaration and record the single font-stack writer event
-    /// at the same boundary. Evidence remains structural without becoming a CSS interpreter.
-    pub(crate) fn write_text_rule(
-        &mut self,
-        css: &mut String,
-        font_size_css: &str,
-        text_color: &str,
-    ) {
-        if self.emitted_font_family_css.is_some() {
-            self.css_emission_unique = false;
-        }
-        self.emitted_font_family_css = Some(self.expected_font_family_css.clone());
-        let _ = write!(
-            css,
-            ".ishikawa text {{ font-family: {}; font-size: {}; fill: {}; }}",
-            self.expected_font_family_css, font_size_css, text_color
-        );
-    }
-
-    pub(crate) fn record_visible_text(&mut self) {
-        self.visible_text_count = self.visible_text_count.saturating_add(1);
-    }
-
-    fn proves(&self) -> bool {
-        self.css_emission_unique
-            && self.emitted_font_family_css.as_deref()
-                == Some(self.expected_font_family_css.as_ref())
-            && self.visible_text_count == self.expected_visible_text_count
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IshikawaTypographyTerminal {
+    Head,
+    InheritedBaseSize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,13 +34,22 @@ struct ExpectedFill {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TextExpectation {
     class_name: Box<str>,
+    typography_terminal: IshikawaTypographyTerminal,
     fill: Option<ExpectedFill>,
 }
 
-/// Final Ishikawa text fill shared by terminal SVG emission and family evidence.
+/// Final Ishikawa text styling shared by terminal SVG emission and family evidence.
+///
+/// Upstream deterministic spacing and wrapping consume root `fontSize`. The base CSS size remains
+/// a separate terminal property, so this plan intentionally does not feed typed CSS typography
+/// back into layout.
 #[derive(Debug)]
 pub(crate) struct IshikawaTextThemePlan {
     expectations: Box<[TextExpectation]>,
+    inherited_font_stack: InheritedFontStackPlan,
+    font_size_css: Box<str>,
+    typed_font_size_requested: bool,
+    typed_font_size_active: bool,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
     terminal_receipt: OnceLock<IshikawaTextThemeReceipt>,
@@ -170,8 +63,41 @@ impl IshikawaTextThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut expectations = terminal_domain(layout);
+        let inherited_font_stack = InheritedFontStackPlan::resolve_with_typed_sibling_owners(
+            theme,
+            effective_config,
+            &[ThemeTypographyProperty::FontSize],
+        );
+        let typed_font_size_requested = theme.is_some_and(|theme| {
+            theme.family_mechanism_routes().iter().any(|route| {
+                route.mechanism()
+                    == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            })
+        });
+        let config_owns_font_size = typed_font_size_requested
+            && merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.fontSize",
+            );
+        let typed_font_size_active = typed_font_size_requested
+            && !config_owns_font_size
+            && inherited_font_stack.outcome() != InheritedFontStackOutcome::Unsupported;
+        let font_size_css = match theme {
+            Some(theme) if typed_font_size_active => {
+                format!("{}px", theme.typography().font_size_px())
+            }
+            _ => crate::ishikawa::IshikawaConfigView::new(effective_config.as_value())
+                .stylesheet_font_size_css()
+                .unwrap_or_else(|| format!("{}px", layout.font_size)),
+        }
+        .into_boxed_str();
         let Some(theme) = theme else {
-            return Ok(Self::baseline_from_expectations(expectations));
+            return Ok(Self::baseline_from_expectations(
+                expectations,
+                inherited_font_stack,
+                font_size_css,
+            ));
         };
 
         let text_count = expectations.len();
@@ -229,7 +155,6 @@ impl IshikawaTextThemePlan {
 
                     observation.applicable = true;
                     if mermaid_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                        observation.suppressed = true;
                         continue;
                     }
                     match (route.disposition(), selector, facet) {
@@ -244,8 +169,6 @@ impl IshikawaTextThemePlan {
                                 .get(&(rule_index, ResolvedStyleProperty::Fill))
                             {
                                 observation.capabilities.insert(*capability);
-                            } else {
-                                observation.suppressed = true;
                             }
                         }
                         (FamilyThemeDisposition::Unsupported, _, facet) => {
@@ -317,8 +240,6 @@ impl IshikawaTextThemePlan {
                 // Mixed rules remain fail-closed until every winning facet has a terminal owner.
             } else if !observation.capabilities.is_empty() {
                 pending.insert(key, observation.capabilities);
-            } else if observation.suppressed {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -326,15 +247,27 @@ impl IshikawaTextThemePlan {
 
         Ok(Self {
             expectations: expectations.into_boxed_slice(),
+            inherited_font_stack,
+            font_size_css,
+            typed_font_size_requested,
+            typed_font_size_active,
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
         })
     }
 
-    fn baseline_from_expectations(expectations: Vec<TextExpectation>) -> Self {
+    fn baseline_from_expectations(
+        expectations: Vec<TextExpectation>,
+        inherited_font_stack: InheritedFontStackPlan,
+        font_size_css: Box<str>,
+    ) -> Self {
         Self {
             expectations: expectations.into_boxed_slice(),
+            inherited_font_stack,
+            font_size_css,
+            typed_font_size_requested: false,
+            typed_font_size_active: false,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
@@ -350,11 +283,11 @@ impl IshikawaTextThemePlan {
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> IshikawaTextThemeReceipt {
-        IshikawaTextThemeReceipt::new(self.expectations.clone())
-    }
-
-    pub(crate) fn visible_text_count(&self) -> usize {
-        self.expectations.len()
+        IshikawaTextThemeReceipt::new(
+            self.expectations.clone(),
+            self.inherited_font_stack.font_family_css(),
+            &self.font_size_css,
+        )
     }
 
     pub(crate) fn record_terminal(&self, receipt: IshikawaTextThemeReceipt) -> bool {
@@ -364,6 +297,12 @@ impl IshikawaTextThemePlan {
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         let Some(receipt) = self.terminal_receipt.get() else {
+            if self.typography_requested() {
+                evidence.mark_residual(
+                    FamilyThemeMechanismKey::Typography,
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                );
+            }
             return evidence;
         };
         for (key, capabilities) in &self.pending {
@@ -375,18 +314,50 @@ impl IshikawaTextThemePlan {
             };
             if receipt.proves_rule(rule_index) {
                 evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
-            } else if receipt.proves_complete() && !receipt.has_effective_rule(rule_index) {
+            } else if !receipt.has_effective_rule(rule_index) {
                 evidence.mark_not_applicable(key.clone());
             }
         }
+        self.finish_typography_evidence(&mut evidence);
         evidence
+    }
+
+    fn typography_requested(&self) -> bool {
+        self.inherited_font_stack.typed_font_stack_requested()
+            || self.typed_font_size_requested
+            || self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported
+    }
+
+    fn finish_typography_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        if !self.typography_requested() {
+            return;
+        }
+        let key = FamilyThemeMechanismKey::Typography;
+        if self.expectations.is_empty() {
+            evidence.mark_not_applicable(key);
+        } else if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported {
+            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+        } else if self.inherited_font_stack.typed_font_stack_active()
+            || (self.typed_font_size_active
+                && self.expectations.iter().any(|expectation| {
+                    expectation.typography_terminal == IshikawaTypographyTerminal::InheritedBaseSize
+                }))
+        {
+            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+        } else {
+            evidence.mark_not_applicable(key);
+        }
     }
 }
 
 fn terminal_domain(layout: &IshikawaDiagramLayout) -> Vec<TextExpectation> {
     let mut expectations = Vec::new();
     if let Some(head) = &layout.head {
-        push_text_expectation(&mut expectations, &head.label);
+        push_text_expectation(
+            &mut expectations,
+            &head.label,
+            IshikawaTypographyTerminal::Head,
+        );
     }
     for pair in &layout.pairs {
         push_branch_expectations(&mut expectations, &pair.upper);
@@ -401,18 +372,31 @@ fn push_branch_expectations(
     expectations: &mut Vec<TextExpectation>,
     branch: &IshikawaBranchLayout,
 ) {
-    push_text_expectation(expectations, &branch.label_group.label);
+    push_text_expectation(
+        expectations,
+        &branch.label_group.label,
+        IshikawaTypographyTerminal::InheritedBaseSize,
+    );
     for subgroup in &branch.sub_groups {
-        push_text_expectation(expectations, &subgroup.label);
+        push_text_expectation(
+            expectations,
+            &subgroup.label,
+            IshikawaTypographyTerminal::InheritedBaseSize,
+        );
     }
 }
 
-fn push_text_expectation(expectations: &mut Vec<TextExpectation>, text: &IshikawaTextLayout) {
+fn push_text_expectation(
+    expectations: &mut Vec<TextExpectation>,
+    text: &IshikawaTextLayout,
+    typography_terminal: IshikawaTypographyTerminal,
+) {
     if text.text.trim().is_empty() {
         return;
     }
     expectations.push(TextExpectation {
         class_name: text.class_name.as_str().into(),
+        typography_terminal,
         fill: None,
     });
 }
@@ -507,15 +491,18 @@ fn paint_capability_from_css(css: &str) -> ThemeCapability {
 struct TextRuleObservation {
     applicable: bool,
     incomplete: bool,
-    suppressed: bool,
     residual: Option<FamilyThemeResidualReason>,
     capabilities: BTreeSet<ThemeCapability>,
 }
 
-/// Writer-owned proof that each visible Ishikawa text terminal emitted its planned fill.
-#[derive(Debug, Clone)]
+/// Writer-owned proof that the Ishikawa stylesheet and each visible text terminal emitted the
+/// planned styling at the renderer boundary.
+#[derive(Debug)]
 pub(crate) struct IshikawaTextThemeReceipt {
     expectations: Box<[TextExpectation]>,
+    expected_font_family_css: Box<str>,
+    expected_font_size_css: Box<str>,
+    css_emissions: usize,
     next_index: usize,
     terminals_match: bool,
     effective_by_rule: BTreeMap<usize, usize>,
@@ -523,9 +510,16 @@ pub(crate) struct IshikawaTextThemeReceipt {
 }
 
 impl IshikawaTextThemeReceipt {
-    fn new(expectations: Box<[TextExpectation]>) -> Self {
+    fn new(
+        expectations: Box<[TextExpectation]>,
+        expected_font_family_css: &str,
+        expected_font_size_css: &str,
+    ) -> Self {
         Self {
             expectations,
+            expected_font_family_css: expected_font_family_css.into(),
+            expected_font_size_css: expected_font_size_css.into(),
+            css_emissions: 0,
             next_index: 0,
             terminals_match: true,
             effective_by_rule: BTreeMap::new(),
@@ -533,11 +527,25 @@ impl IshikawaTextThemeReceipt {
         }
     }
 
+    /// Append the exact inherited typography declarations and record the single stylesheet event
+    /// at the same writer boundary. The later head selector intentionally overrides only the base
+    /// font size while preserving the inherited font stack.
+    pub(crate) fn write_text_rules(&mut self, css: &mut String, text_color: &str) {
+        self.css_emissions = self.css_emissions.saturating_add(1);
+        let _ = write!(
+            css,
+            ".ishikawa text {{ font-family: {}; font-size: {}; fill: {}; }}\
+.ishikawa .ishikawa-head-label {{ font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }}",
+            self.expected_font_family_css, self.expected_font_size_css, text_color
+        );
+    }
+
     pub(crate) fn record_checkpointed_text(
         &mut self,
         emitted_index: usize,
         emitted_class: &str,
         emitted_fill: Option<(usize, &str)>,
+        emitted_typography_terminal: IshikawaTypographyTerminal,
     ) {
         if emitted_index != self.next_index {
             self.terminals_match = false;
@@ -549,6 +557,7 @@ impl IshikawaTextThemeReceipt {
             return;
         };
         self.terminals_match &= expected.class_name.as_ref() == emitted_class;
+        self.terminals_match &= expected.typography_terminal == emitted_typography_terminal;
 
         match expected.fill.as_ref() {
             Some(expected_fill) => {
@@ -572,7 +581,9 @@ impl IshikawaTextThemeReceipt {
     }
 
     fn proves_complete(&self) -> bool {
-        self.terminals_match && self.next_index == self.expectations.len()
+        self.css_emissions == 1
+            && self.terminals_match
+            && self.next_index == self.expectations.len()
     }
 
     fn has_effective_rule(&self, rule_index: usize) -> bool {
@@ -607,9 +618,14 @@ mod tests {
     use crate::resources::RenderResourcePolicy;
     use serde_json::json;
 
-    fn expectation(class_name: &str, fill: Option<(usize, &str)>) -> TextExpectation {
+    fn expectation(
+        class_name: &str,
+        typography_terminal: IshikawaTypographyTerminal,
+        fill: Option<(usize, &str)>,
+    ) -> TextExpectation {
         TextExpectation {
             class_name: class_name.into(),
+            typography_terminal,
             fill: fill.map(|(rule_index, css)| ExpectedFill {
                 rule_index,
                 css: css.into(),
@@ -617,79 +633,156 @@ mod tests {
         }
     }
 
+    fn receipt(expectations: Box<[TextExpectation]>) -> IshikawaTextThemeReceipt {
+        IshikawaTextThemeReceipt::new(expectations, "Ishikawa Sans,monospace", "18px")
+    }
+
     #[test]
-    fn text_receipt_requires_exact_terminal_order_value_and_count() {
+    fn text_receipt_requires_exact_stylesheet_terminal_order_role_value_and_count() {
         let expectations = vec![
-            expectation("ishikawa-head-label", Some((0, "#123456"))),
-            expectation("ishikawa-label cause", Some((0, "#123456"))),
+            expectation(
+                "ishikawa-head-label",
+                IshikawaTypographyTerminal::Head,
+                Some((0, "#123456")),
+            ),
+            expectation(
+                "ishikawa-label cause",
+                IshikawaTypographyTerminal::InheritedBaseSize,
+                Some((0, "#123456")),
+            ),
         ]
         .into_boxed_slice();
-        let mut complete = IshikawaTextThemeReceipt::new(expectations.clone());
-        complete.record_checkpointed_text(0, "ishikawa-head-label", Some((0, "#123456")));
-        complete.record_checkpointed_text(1, "ishikawa-label cause", Some((0, "#123456")));
+        let mut complete = receipt(expectations.clone());
+        let mut css = String::new();
+        complete.write_text_rules(&mut css, "#123456");
+        complete.record_checkpointed_text(
+            0,
+            "ishikawa-head-label",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::Head,
+        );
+        complete.record_checkpointed_text(
+            1,
+            "ishikawa-label cause",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::InheritedBaseSize,
+        );
+        assert_eq!(
+            css,
+            ".ishikawa text { font-family: Ishikawa Sans,monospace; font-size: 18px; fill: #123456; }.ishikawa .ishikawa-head-label { font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }"
+        );
         assert!(complete.proves_complete());
         assert!(complete.proves_rule(0));
 
-        let mut wrong_order = IshikawaTextThemeReceipt::new(expectations.clone());
-        wrong_order.record_checkpointed_text(1, "ishikawa-label cause", Some((0, "#123456")));
+        let mut missing_css = receipt(expectations.clone());
+        missing_css.record_checkpointed_text(
+            0,
+            "ishikawa-head-label",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::Head,
+        );
+        missing_css.record_checkpointed_text(
+            1,
+            "ishikawa-label cause",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::InheritedBaseSize,
+        );
+        assert!(!missing_css.proves_complete());
+
+        let mut duplicate_css = receipt(expectations.clone());
+        let mut css = String::new();
+        duplicate_css.write_text_rules(&mut css, "#123456");
+        duplicate_css.write_text_rules(&mut css, "#123456");
+        duplicate_css.record_checkpointed_text(
+            0,
+            "ishikawa-head-label",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::Head,
+        );
+        duplicate_css.record_checkpointed_text(
+            1,
+            "ishikawa-label cause",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::InheritedBaseSize,
+        );
+        assert!(!duplicate_css.proves_complete());
+
+        let mut wrong_order = receipt(expectations.clone());
+        let mut css = String::new();
+        wrong_order.write_text_rules(&mut css, "#123456");
+        wrong_order.record_checkpointed_text(
+            1,
+            "ishikawa-label cause",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::InheritedBaseSize,
+        );
         assert!(!wrong_order.proves_complete());
 
-        let mut wrong_fill = IshikawaTextThemeReceipt::new(expectations);
-        wrong_fill.record_checkpointed_text(0, "ishikawa-head-label", Some((0, "#abcdef")));
-        wrong_fill.record_checkpointed_text(1, "ishikawa-label cause", Some((0, "#123456")));
+        let mut wrong_role = receipt(expectations.clone());
+        let mut css = String::new();
+        wrong_role.write_text_rules(&mut css, "#123456");
+        wrong_role.record_checkpointed_text(
+            0,
+            "ishikawa-head-label",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::InheritedBaseSize,
+        );
+        wrong_role.record_checkpointed_text(
+            1,
+            "ishikawa-label cause",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::Head,
+        );
+        assert!(!wrong_role.proves_complete());
+
+        let mut wrong_fill = receipt(expectations);
+        let mut css = String::new();
+        wrong_fill.write_text_rules(&mut css, "#123456");
+        wrong_fill.record_checkpointed_text(
+            0,
+            "ishikawa-head-label",
+            Some((0, "#abcdef")),
+            IshikawaTypographyTerminal::Head,
+        );
+        wrong_fill.record_checkpointed_text(
+            1,
+            "ishikawa-label cause",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::InheritedBaseSize,
+        );
         assert!(!wrong_fill.proves_complete());
         assert!(!wrong_fill.proves_rule(0));
     }
 
     #[test]
     fn source_owned_receipt_rejects_a_typed_terminal_fill() {
-        let expectations = vec![expectation("ishikawa-head-label", None)].into_boxed_slice();
-        let mut complete = IshikawaTextThemeReceipt::new(expectations.clone());
-        complete.record_checkpointed_text(0, "ishikawa-head-label", None);
+        let expectations = vec![expectation(
+            "ishikawa-head-label",
+            IshikawaTypographyTerminal::Head,
+            None,
+        )]
+        .into_boxed_slice();
+        let mut complete = receipt(expectations.clone());
+        let mut css = String::new();
+        complete.write_text_rules(&mut css, "#123456");
+        complete.record_checkpointed_text(
+            0,
+            "ishikawa-head-label",
+            None,
+            IshikawaTypographyTerminal::Head,
+        );
         assert!(complete.proves_complete());
 
-        let mut leaked_typed_fill = IshikawaTextThemeReceipt::new(expectations);
-        leaked_typed_fill.record_checkpointed_text(0, "ishikawa-head-label", Some((0, "#123456")));
-        assert!(!leaked_typed_fill.proves_complete());
-    }
-
-    #[test]
-    fn typography_receipt_builds_one_exact_rule_and_requires_the_visible_domain() {
-        let receipt = || IshikawaTypographyReceipt {
-            expected_font_family_css: "Ishikawa Sans,monospace".into(),
-            emitted_font_family_css: None,
-            expected_visible_text_count: 2,
-            visible_text_count: 0,
-            css_emission_unique: true,
-        };
-
-        let mut complete = receipt();
+        let mut leaked_typed_fill = receipt(expectations);
         let mut css = String::new();
-        complete.write_text_rule(&mut css, "18px", "#123456");
-        complete.record_visible_text();
-        complete.record_visible_text();
-        assert_eq!(
-            css,
-            ".ishikawa text { font-family: Ishikawa Sans,monospace; font-size: 18px; fill: #123456; }"
+        leaked_typed_fill.write_text_rules(&mut css, "#123456");
+        leaked_typed_fill.record_checkpointed_text(
+            0,
+            "ishikawa-head-label",
+            Some((0, "#123456")),
+            IshikawaTypographyTerminal::Head,
         );
-        assert!(complete.proves());
-
-        let missing_css = receipt();
-        assert!(!missing_css.proves());
-
-        let mut missing_terminal = receipt();
-        let mut css = String::new();
-        missing_terminal.write_text_rule(&mut css, "18px", "#123456");
-        missing_terminal.record_visible_text();
-        assert!(!missing_terminal.proves());
-
-        let mut duplicate_css = receipt();
-        let mut css = String::new();
-        duplicate_css.write_text_rule(&mut css, "18px", "#123456");
-        duplicate_css.write_text_rule(&mut css, "18px", "#123456");
-        duplicate_css.record_visible_text();
-        duplicate_css.record_visible_text();
-        assert!(!duplicate_css.proves());
+        assert!(!leaked_typed_fill.proves_complete());
     }
 
     #[test]
@@ -757,7 +850,10 @@ mod tests {
 
         let plan = IshikawaTextThemePlan::resolve(Some(&resolved), &config, &layout, &work_meter)
             .expect("resolve Ishikawa title-only theme");
-        assert!(plan.record_terminal(plan.begin_terminal_receipt()));
+        let mut receipt = plan.begin_terminal_receipt();
+        let mut css = String::new();
+        receipt.write_text_rules(&mut css, "#333333");
+        assert!(plan.record_terminal(receipt));
 
         let evidence = plan.finish_evidence();
         let expected = [

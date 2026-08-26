@@ -1603,7 +1603,6 @@ pub(crate) struct EventModelingFamilyArtifact {
 pub(crate) struct IshikawaFamilyArtifact {
     pair: FamilyPair<diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>,
     text_theme: crate::ishikawa::IshikawaTextThemePlan,
-    typography_theme: crate::ishikawa::IshikawaTypographyThemePlan,
 }
 
 impl IshikawaFamilyArtifact {
@@ -1615,16 +1614,6 @@ impl IshikawaFamilyArtifact {
 
     pub(crate) const fn text_theme(&self) -> &crate::ishikawa::IshikawaTextThemePlan {
         &self.text_theme
-    }
-
-    pub(crate) const fn typography_theme(&self) -> &crate::ishikawa::IshikawaTypographyThemePlan {
-        &self.typography_theme
-    }
-
-    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.text_theme.finish_evidence();
-        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
-        evidence
     }
 }
 
@@ -2500,7 +2489,7 @@ impl BuiltinFamilyArtifact {
 
     fn ishikawa_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Ishikawa(artifact) => Some(artifact.finish_theme_evidence()),
+            Self::Ishikawa(artifact) => Some(artifact.text_theme().finish_evidence()),
             _ => None,
         }
     }

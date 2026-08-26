@@ -1153,8 +1153,9 @@ fn classify_base_typography(
     }
     if family == DiagramFamilyId::ISHIKAWA {
         return match property {
-            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
-            ThemeTypographyProperty::FontSize => FamilyThemeDisposition::LegacyCompatibility,
+            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
+                FamilyThemeDisposition::TypedAdapter
+            }
             ThemeTypographyProperty::FontWeight
             | ThemeTypographyProperty::FontStyle
             | ThemeTypographyProperty::LineHeight
@@ -5885,37 +5886,46 @@ mod tests {
     }
 
     #[test]
-    fn eventmodeling_marks_font_stack_and_font_size_as_typed() {
+    fn eventmodeling_and_ishikawa_mark_font_stack_and_font_size_as_typed() {
         let typography = TextStyle::default()
             .with_font_stack(
-                super::super::FontStack::single("EventModelingSans")
-                    .expect("valid Event Modeling font stack"),
+                super::super::FontStack::single("DirectTypographySans")
+                    .expect("valid direct typography font stack"),
             )
             .with_font_size_px(24.0)
-            .expect("valid Event Modeling font size")
+            .expect("valid direct typography font size")
             .with_font_weight(700)
-            .expect("valid unsupported Event Modeling font weight");
-        let routes = compile_base_typography_routes(DiagramFamilyId::EVENT_MODELING, &typography);
+            .expect("valid unsupported direct typography font weight");
 
-        for property in [
-            ThemeTypographyProperty::FontStack,
-            ThemeTypographyProperty::FontSize,
-        ] {
-            assert!(routes.iter().any(|route| {
-                route.mechanism() == FamilyThemeMechanism::BaseTypography(property)
-                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
-            }));
+        for family in [DiagramFamilyId::EVENT_MODELING, DiagramFamilyId::ISHIKAWA] {
+            let routes = compile_base_typography_routes(family, &typography);
+            for property in [
+                ThemeTypographyProperty::FontStack,
+                ThemeTypographyProperty::FontSize,
+            ] {
+                assert!(
+                    routes.iter().any(|route| {
+                        route.mechanism() == FamilyThemeMechanism::BaseTypography(property)
+                            && route.disposition() == FamilyThemeDisposition::TypedAdapter
+                    }),
+                    "{family} must directly own {property:?}"
+                );
+            }
+            assert!(
+                routes.iter().any(|route| {
+                    route.mechanism()
+                        == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
+                        && route.disposition() == FamilyThemeDisposition::Unsupported
+                }),
+                "{family} must reject unsupported font weight"
+            );
+            assert!(
+                routes.iter().all(|route| {
+                    route.disposition() != FamilyThemeDisposition::LegacyCompatibility
+                }),
+                "{family} must not retain a typography compatibility route"
+            );
         }
-        assert!(routes.iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
-                && route.disposition() == FamilyThemeDisposition::Unsupported
-        }));
-        assert!(
-            routes
-                .iter()
-                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
-        );
     }
 
     #[test]
