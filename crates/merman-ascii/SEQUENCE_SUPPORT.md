@@ -32,8 +32,10 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
 | Sequence control blocks | Supported subset | `loop`, `opt`, `break`, `rect`, and `par_over` render as single-section frames; `alt`/`else`, `par`/`and`, and `critical`/`option` render as sectioned frames. Frames derive their horizontal bounds from the participants used by their descendant messages, notes, and activation directives, while unrelated lifelines remain outside. Nested frames keep stable insets and empty sections fall back to the full participant span. |
 | Control-block combinations | Supported subset | Notes, activations, create/destroy lifecycle rows, and participant boxes are covered with control-block frames. |
+| Layout profiles | Supported subset | `canonical` remains the default. The explicit `compact` profile resolves the family-owned participant spacing from 5 to 3 cells unless the caller explicitly overrides it. Message, note, lifecycle, box, and control-frame semantics are unchanged. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
-| ANSI/HTML color roles | Supported subset | Opt-in `AsciiColorMode` can emit foreground roles for participants, lifelines, activations, messages, notes, boxes, and control frames. Mermaid `box` fill colors in supported sequence syntax (`rgb`/`rgba`/`hsl`/`hsla`/named colors) and parseable `rect` backgrounds render as terminal/HTML backgrounds when they can be represented without alpha blending. |
+| Color roles and encodings | Supported subset | Plain, ANSI16, ANSI256, TrueColor, and HTML encoders share one layout. ANSI16 keeps primary text at terminal Reset and uses sparse named accents for participants, lifelines, activations, messages, notes, boxes, and control frames. Mermaid `box` fill colors in supported sequence syntax (`rgb`/`rgba`/`hsl`/`hsla`/named colors) and parseable `rect` backgrounds render as terminal/HTML backgrounds when they can be represented without alpha blending. |
+| Viewport/report behavior | Supported | Allow preserves complete wide output, Error returns a typed width diagnostic, and Plain Fallback selects one complete typed structured projection. Styled fallback is rejected by capability preflight. Schema-2 output metadata identifies the encoding and does not count the final line terminator as a logical row. |
 | Actor links and properties | Accepted, intentionally omitted | Links and presentation properties are retained by the typed model for SVG consumers but do not block terminal rendering or leak URLs/style metadata into text output. |
 
 ## Explicitly Unsupported
@@ -76,6 +78,9 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
   opt-in in `merman-ascii` instead of part of the default golden fixture contract.
 - Sequence messages and notes wrap with deterministic terminal display-width heuristics; this is a
   text rendering approximation rather than Mermaid's browser font measurement path.
+- Compact is Sequence-owned and currently changes only the unresolved participant-spacing default
+  from 5 to 3 cells. Explicit spacing wins; the profile does not mutate Flowchart, State, or another
+  family through shared options.
 - Empty sequence boxes render as diagram-wide terminal regions because the typed model has no actor
   anchors to constrain the box horizontally.
 - Sequence box fill colors render as terminal/HTML backgrounds only when Mermaid supplies a color
@@ -96,6 +101,10 @@ The support boundary is covered by:
 
 - `cargo nextest run -p merman-ascii sequence`
 - `cargo nextest run -p merman-ascii sequence_golden`
+- `cargo nextest run -p merman-ascii --test viewport_characterization -j1`
 
 Golden tests compare against copied `mermaid-ascii` Unicode and ASCII sequence fixtures for the
-initial supported subset.
+initial supported subset. The viewport characterization matrix additionally exercises
+canonical/compact, ASCII/Unicode, Unicode/CJK width profiles,
+Plain/ANSI16/ANSI256/TrueColor/HTML geometry parity, and 60/80/100/120-cell
+Allow/Fallback/Error outcomes over a self-message, note, lifecycle, and alternate-branch fixture.

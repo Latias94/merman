@@ -309,7 +309,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 4);
+    assert_eq!(payload["cli_contract_version"], 5);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -398,6 +398,30 @@ fn assert_capability_document(case: &str, payload: &Value) {
             }),
     );
     assert_eq!(payload["outputs"], json!(expected_outputs));
+
+    if expected_id_set.contains("ascii") {
+        assert_eq!(payload["ascii"]["schema_version"], 1);
+        assert_eq!(payload["ascii"]["output_schema_version"], 2);
+        assert_eq!(payload["ascii"]["report"]["encoding"], "plain");
+        assert_eq!(payload["ascii"]["report"]["styled_output"], false);
+        assert!(
+            payload["ascii"]["families"]
+                .as_array()
+                .is_some_and(|families| !families.is_empty()),
+            "ASCII-enabled matrix case {case} must expose family preflight metadata"
+        );
+        assert!(
+            payload["ascii"]["detected_type_mappings"]
+                .as_array()
+                .is_some_and(|mappings| !mappings.is_empty()),
+            "ASCII-enabled matrix case {case} must map detector ids to canonical families"
+        );
+    } else {
+        assert!(
+            payload.get("ascii").is_none(),
+            "matrix case {case} must not expose the ASCII subcontract without the feature"
+        );
+    }
 
     if case == "release" {
         let release = profiles["profiles"]

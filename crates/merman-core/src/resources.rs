@@ -1410,10 +1410,14 @@ pub struct SequenceComplexity {
     pub block_depth: usize,
     pub items: usize,
     pub text_bytes: usize,
+    pub nesting_depth: usize,
 }
 
 impl SequenceComplexity {
     pub fn from_model(model: &SequenceDiagramRenderModel) -> Self {
+        const ACTOR_PROPERTY_VALUE_DEPTH: usize = 4;
+        const NOTE_ACTOR_VALUE_DEPTH: usize = 3;
+
         let mut depth = 0usize;
         let mut block_depth = 0usize;
         for message in &model.messages {
@@ -1440,14 +1444,19 @@ impl SequenceComplexity {
             .actor_order
             .iter()
             .fold(0usize, |total, value| total.saturating_add(value.len()));
+        let mut arbitrary_json = JsonValueComplexity::default();
         let actor_text_bytes = model.actors.iter().fold(0usize, |total, (key, actor)| {
+            let links = json_map_complexity(&actor.links, ACTOR_PROPERTY_VALUE_DEPTH);
+            let properties = json_map_complexity(&actor.properties, ACTOR_PROPERTY_VALUE_DEPTH);
+            arbitrary_json.merge(links);
+            arbitrary_json.merge(properties);
             total
                 .saturating_add(key.len())
                 .saturating_add(actor.name.len())
                 .saturating_add(actor.description.len())
                 .saturating_add(actor.actor_type.len())
-                .saturating_add(json_map_text_bytes(&actor.links))
-                .saturating_add(json_map_text_bytes(&actor.properties))
+                .saturating_add(links.text_bytes)
+                .saturating_add(properties.text_bytes)
         });
         let box_text_bytes = model.boxes.iter().fold(0usize, |total, sequence_box| {
             sequence_box.actor_keys.iter().fold(
@@ -1465,8 +1474,10 @@ impl SequenceComplexity {
                 .saturating_add(message.message_text().len())
         });
         let note_text_bytes = model.notes.iter().fold(0usize, |total, note| {
+            let actor = json_value_complexity(&note.actor, NOTE_ACTOR_VALUE_DEPTH);
+            arbitrary_json.merge(actor);
             total
-                .saturating_add(json_text_bytes(&note.actor))
+                .saturating_add(actor.text_bytes)
                 .saturating_add(note.message.len())
         });
         let lifecycle_text_bytes = model
@@ -1482,7 +1493,8 @@ impl SequenceComplexity {
                 .len()
                 .saturating_add(model.boxes.len())
                 .saturating_add(model.messages.len())
-                .saturating_add(model.notes.len()),
+                .saturating_add(model.notes.len())
+                .saturating_add(arbitrary_json.items),
             text_bytes: common_text_bytes
                 .saturating_add(actor_order_text_bytes)
                 .saturating_add(actor_text_bytes)
@@ -1490,11 +1502,12 @@ impl SequenceComplexity {
                 .saturating_add(message_text_bytes)
                 .saturating_add(note_text_bytes)
                 .saturating_add(lifecycle_text_bytes),
+            nesting_depth: block_depth.max(arbitrary_json.nesting_depth),
         }
     }
 
     pub fn as_model_complexity(self) -> ModelComplexity {
-        ModelComplexity::new(self.items, self.text_bytes, self.block_depth)
+        ModelComplexity::new(self.items, self.text_bytes, self.nesting_depth)
     }
 }
 
@@ -1893,54 +1906,99 @@ fn kanban_nesting_depth(model: &KanbanDiagramRenderModel) -> usize {
     depths.into_iter().max().unwrap_or(0)
 }
 
-fn json_map_text_bytes(map: &serde_json::Map<String, serde_json::Value>) -> usize {
-    map.iter().fold(0usize, |total, (key, value)| {
-        total
-            .saturating_add(key.len())
-            .saturating_add(json_text_bytes(value))
-    })
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct JsonValueComplexity {
+    items: usize,
+    text_bytes: usize,
+    nesting_depth: usize,
+}
+
+impl JsonValueComplexity {
+    fn merge(&mut self, other: Self) {
+        self.items = self.items.saturating_add(other.items);
+        self.text_bytes = self.text_bytes.saturating_add(other.text_bytes);
+        self.nesting_depth = self.nesting_depth.max(other.nesting_depth);
+    }
+}
+
+enum JsonTraversalFrame<'a> {
+    Value(&'a serde_json::Value, usize),
+    Array(std::slice::Iter<'a, serde_json::Value>, usize),
+    Object(serde_json::map::Iter<'a>, usize),
+}
+
+fn json_map_complexity(
+    map: &serde_json::Map<String, serde_json::Value>,
+    value_depth: usize,
+) -> JsonValueComplexity {
+    let mut complexity = JsonValueComplexity {
+        items: map.len(),
+        text_bytes: map
+            .keys()
+            .fold(0usize, |total, key| total.saturating_add(key.len())),
+        nesting_depth: 0,
+    };
+    for value in map.values() {
+        complexity.merge(json_value_complexity(value, value_depth));
+    }
+    complexity
+}
+
+/// Counts an arbitrary JSON subtree without recursive calls or width-proportional scratch space.
+fn json_value_complexity(value: &serde_json::Value, initial_depth: usize) -> JsonValueComplexity {
+    let mut complexity = JsonValueComplexity::default();
+    let mut pending = vec![JsonTraversalFrame::Value(value, initial_depth)];
+    while let Some(frame) = pending.pop() {
+        match frame {
+            JsonTraversalFrame::Value(value, depth) => {
+                complexity.nesting_depth = complexity.nesting_depth.max(depth);
+                match value {
+                    serde_json::Value::String(value) => {
+                        complexity.text_bytes = complexity.text_bytes.saturating_add(value.len());
+                    }
+                    serde_json::Value::Array(values) => {
+                        complexity.items = complexity.items.saturating_add(values.len());
+                        pending.push(JsonTraversalFrame::Array(
+                            values.iter(),
+                            depth.saturating_add(1),
+                        ));
+                    }
+                    serde_json::Value::Object(values) => {
+                        complexity.items = complexity.items.saturating_add(values.len());
+                        pending.push(JsonTraversalFrame::Object(
+                            values.iter(),
+                            depth.saturating_add(1),
+                        ));
+                    }
+                    serde_json::Value::Null
+                    | serde_json::Value::Bool(_)
+                    | serde_json::Value::Number(_) => {}
+                }
+            }
+            JsonTraversalFrame::Array(mut values, depth) => {
+                if let Some(value) = values.next() {
+                    pending.push(JsonTraversalFrame::Array(values, depth));
+                    pending.push(JsonTraversalFrame::Value(value, depth));
+                }
+            }
+            JsonTraversalFrame::Object(mut values, depth) => {
+                if let Some((key, value)) = values.next() {
+                    complexity.text_bytes = complexity.text_bytes.saturating_add(key.len());
+                    pending.push(JsonTraversalFrame::Object(values, depth));
+                    pending.push(JsonTraversalFrame::Value(value, depth));
+                }
+            }
+        }
+    }
+    complexity
 }
 
 fn json_text_bytes(value: &serde_json::Value) -> usize {
-    let mut total = 0usize;
-    let mut pending = vec![value];
-    while let Some(value) = pending.pop() {
-        match value {
-            serde_json::Value::String(value) => total = total.saturating_add(value.len()),
-            serde_json::Value::Array(values) => pending.extend(values),
-            serde_json::Value::Object(values) => {
-                for (key, value) in values {
-                    total = total.saturating_add(key.len());
-                    pending.push(value);
-                }
-            }
-            serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
-            }
-        }
-    }
-    total
+    json_value_complexity(value, 0).text_bytes
 }
 
 fn json_item_count(value: &serde_json::Value) -> usize {
-    let mut items = 0usize;
-    let mut pending = vec![value];
-    while let Some(value) = pending.pop() {
-        match value {
-            serde_json::Value::Array(values) => {
-                items = items.saturating_add(values.len());
-                pending.extend(values);
-            }
-            serde_json::Value::Object(values) => {
-                items = items.saturating_add(values.len());
-                pending.extend(values.values());
-            }
-            serde_json::Value::Null
-            | serde_json::Value::Bool(_)
-            | serde_json::Value::Number(_)
-            | serde_json::Value::String(_) => {}
-        }
-    }
-    items
+    json_value_complexity(value, 0).items
 }
 
 #[cfg(test)]
@@ -2046,6 +2104,58 @@ mod tests {
         assert_eq!(error.limit, "max_model_nesting_depth");
         assert_eq!(error.actual, 2);
         assert_eq!(error.max, 1);
+    }
+
+    #[test]
+    fn sequence_complexity_counts_arbitrary_json_items_and_depth_iteratively() {
+        let parsed = crate::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant A",
+                crate::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let (_, mut render_model) = parsed.into_parts();
+        let RenderSemanticModel::Sequence(model) = &mut render_model else {
+            panic!("expected Sequence model");
+        };
+        let mut nested = serde_json::Value::Null;
+        for _ in 0..300 {
+            nested = serde_json::Value::Array(vec![nested]);
+        }
+        model
+            .actors
+            .get_mut("A")
+            .unwrap()
+            .properties
+            .insert("payload".to_string(), nested);
+
+        let complexity = SequenceComplexity::from_model(model);
+        assert_eq!(complexity.nesting_depth, 304);
+        assert_eq!(complexity.items, 302);
+
+        let exact = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(
+                InputResourceLimitId::MaxModelNestingDepth,
+                complexity.nesting_depth,
+            )
+            .unwrap();
+        exact
+            .check_render_model(&render_model)
+            .expect("the exact JSON depth boundary should pass");
+
+        let below = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(
+                InputResourceLimitId::MaxModelNestingDepth,
+                complexity.nesting_depth - 1,
+            )
+            .unwrap();
+        let error = below
+            .check_render_model(&render_model)
+            .expect_err("the N-1 JSON depth boundary should fail");
+        assert_eq!(error.limit, "max_model_nesting_depth");
+        assert_eq!(error.actual, complexity.nesting_depth);
+        assert_eq!(error.max, complexity.nesting_depth - 1);
     }
 
     #[test]

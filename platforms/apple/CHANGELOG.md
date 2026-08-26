@@ -8,6 +8,11 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
+- Advanced the direct UniFFI binding API to `6` because `MermanAsciiCapability` gained
+  layout/width/encoding/fallback admission arrays and `MermanAsciiOutputPlan` gained schema-2
+  encoding. API 6 replaces `bindingApiVersionV5()` with `bindingApiVersionV6()` so stale generated
+  Swift fails before decoding either changed record. Regenerate Swift and replace the XCFramework
+  together.
 - Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. Cancellation is a distinct generated error detail with its observed reason and phase; it is not a resource-limit failure.
 - Advanced the direct UniFFI binding API to `5` because `MermanAsciiCapability` and
   `MermanError.Binding` changed wire layouts that UniFFI method checksums do not cover. API 5

@@ -189,9 +189,9 @@ impl AsciiRenderer {
         let policies = self.options.resolve_policies();
         let options = policies.options;
         let capability = output::capability_for(model);
-        validate_fallback_request(capability, &options, viewport)?;
+        validate_fallback_request(capability, &policies, viewport)?;
         let projection = output::projection_for(capability);
-        let encoding = output::AsciiOutputEncoding::from_color_mode(options.color_mode);
+        let encoding = policies.output.encoding;
         let fallback_capability =
             capability.is_some_and(|capability| capability.supports_fallback_encoding(encoding));
         let rendered = match render_model_with_execution(
@@ -223,9 +223,9 @@ impl AsciiRenderer {
                     metadata,
                     primary_extent,
                     output::OutputBuildContext {
-                        color_mode: options.color_mode,
-                        profile: options.terminal_width_profile,
-                        layout_profile: options.layout_profile,
+                        color_mode: policies.output.color_mode,
+                        profile: policies.output.terminal_width_profile,
+                        layout_profile: policies.layout.profile,
                         policy: viewport,
                         execution,
                     },
@@ -235,8 +235,8 @@ impl AsciiRenderer {
         };
         let primary = output::MeasuredOutput::measure(
             rendered,
-            options.color_mode,
-            options.terminal_width_profile,
+            policies.output.color_mode,
+            policies.output.terminal_width_profile,
             execution,
         )?;
         let primary_extent = primary.metrics().extent;
@@ -256,9 +256,9 @@ impl AsciiRenderer {
                     model.kind(),
                     primary,
                     output::OutputBuildContext {
-                        color_mode: options.color_mode,
-                        profile: options.terminal_width_profile,
-                        layout_profile: options.layout_profile,
+                        color_mode: policies.output.color_mode,
+                        profile: policies.output.terminal_width_profile,
+                        layout_profile: policies.layout.profile,
                         policy: viewport,
                         execution,
                     },
@@ -270,9 +270,9 @@ impl AsciiRenderer {
                 metadata,
                 primary_extent,
                 output::OutputBuildContext {
-                    color_mode: options.color_mode,
-                    profile: options.terminal_width_profile,
-                    layout_profile: options.layout_profile,
+                    color_mode: policies.output.color_mode,
+                    profile: policies.output.terminal_width_profile,
+                    layout_profile: policies.layout.profile,
                     policy: viewport,
                     execution,
                 },
@@ -283,9 +283,9 @@ impl AsciiRenderer {
             primary,
             projection,
             output::OutputBuildContext {
-                color_mode: options.color_mode,
-                profile: options.terminal_width_profile,
-                layout_profile: options.layout_profile,
+                color_mode: policies.output.color_mode,
+                profile: policies.output.terminal_width_profile,
+                layout_profile: policies.layout.profile,
                 policy: viewport,
                 execution,
             },
@@ -348,7 +348,7 @@ fn render_model_with_execution(
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Admission)?;
     options.validate()?;
-    validate_primary_request(output::capability_for(model), options)?;
+    validate_primary_request(output::capability_for(model), policies)?;
 
     let rendered = match model {
         RenderSemanticModel::Class(model) => render_class_model(model, options, &execution),
@@ -407,25 +407,24 @@ fn render_model_with_execution(
 
 fn validate_primary_request(
     capability: Option<AsciiCapability>,
-    options: &AsciiRenderOptions,
+    policies: &ResolvedAsciiPolicies,
 ) -> Result<()> {
     let Some(capability) = capability.filter(|capability| capability.is_supported()) else {
         return Ok(());
     };
-    if !capability.supports_layout_profile(options.layout_profile) {
+    if !capability.supports_layout_profile(policies.layout.profile) {
         return Err(AsciiError::InvalidOption {
             field: "layout_profile",
             message: "is not admitted for this diagram family",
         });
     }
-    if !capability.supports_width_profile(options.terminal_width_profile) {
+    if !capability.supports_width_profile(policies.output.terminal_width_profile) {
         return Err(AsciiError::InvalidOption {
             field: "terminal_width_profile",
             message: "is not admitted for this diagram family",
         });
     }
-    let encoding = AsciiOutputEncoding::from_color_mode(options.color_mode);
-    if !capability.supports_encoding(encoding) {
+    if !capability.supports_encoding(policies.output.encoding) {
         return Err(AsciiError::InvalidOption {
             field: "color_mode",
             message: "is not admitted for this diagram family",
@@ -436,7 +435,7 @@ fn validate_primary_request(
 
 fn validate_fallback_request(
     capability: Option<AsciiCapability>,
-    options: &AsciiRenderOptions,
+    policies: &ResolvedAsciiPolicies,
     viewport: AsciiViewportPolicy,
 ) -> Result<()> {
     if viewport.overflow != OverflowPolicy::Fallback {
@@ -445,8 +444,7 @@ fn validate_fallback_request(
     let Some(capability) = capability.filter(|capability| capability.is_supported()) else {
         return Ok(());
     };
-    let encoding = AsciiOutputEncoding::from_color_mode(options.color_mode);
-    if !capability.supports_fallback_encoding(encoding) {
+    if !capability.supports_fallback_encoding(policies.output.encoding) {
         return Err(AsciiError::InvalidOption {
             field: "ascii_viewport.overflow",
             message: "fallback is not admitted for the selected output encoding",

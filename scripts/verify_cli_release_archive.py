@@ -15,6 +15,10 @@ import xml.etree.ElementTree as ElementTree
 
 
 if __package__:
+    from .ascii_capability_contract import (
+        AsciiCapabilityContractError,
+        validate_ascii_capabilities,
+    )
     from .capability_surface_contract import (
         capability_surface_digest,
         validate_capability_authority,
@@ -44,6 +48,10 @@ if __package__:
         target_matches_host,
     )
 else:
+    from ascii_capability_contract import (
+        AsciiCapabilityContractError,
+        validate_ascii_capabilities,
+    )
     from capability_surface_contract import (
         capability_surface_digest,
         validate_capability_authority,
@@ -86,7 +94,7 @@ __all__ = (
 
 PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
-CLI_CONTRACT_VERSION = 4
+CLI_CONTRACT_VERSION = 5
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
 RUSTDOC_SMOKE_SOURCE = (
     b"# Release archive Rustdoc smoke test\n\n"
@@ -662,7 +670,27 @@ def _validate_runtime_capabilities(
     observed: dict[str, object],
     expected: dict[str, object],
 ) -> None:
-    _require_exact_json("capabilities document", observed, expected)
+    observed_without_ascii = dict(observed)
+    ascii_contract = observed_without_ascii.pop("ascii", None)
+    expected_capabilities = expected.get("capabilities")
+    expects_ascii = isinstance(expected_capabilities, list) and any(
+        isinstance(capability, dict) and capability.get("id") == "ascii"
+        for capability in expected_capabilities
+    )
+    _require_exact_json("capabilities document", observed_without_ascii, expected)
+    if expects_ascii:
+        _validate_ascii_capabilities(ascii_contract)
+    elif ascii_contract is not None:
+        raise ArchiveVerificationError(
+            "capabilities document advertises an ASCII subcontract without ASCII support"
+        )
+
+
+def _validate_ascii_capabilities(value: object) -> None:
+    try:
+        validate_ascii_capabilities(value)
+    except AsciiCapabilityContractError as error:
+        raise ArchiveVerificationError(str(error)) from error
 
 
 def _require_quiet_success(

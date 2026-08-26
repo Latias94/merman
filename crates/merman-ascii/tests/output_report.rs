@@ -209,6 +209,46 @@ fn diagrammatic_fallback_keeps_typed_flowchart_edge_markers() {
 }
 
 #[test]
+fn diagrammatic_fallback_keeps_terminal_controls_visible() {
+    let report = render_report(
+        "flowchart LR\nA[\"alpha\u{202e}beta\"] --> B",
+        AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+    )
+    .expect("typed flowchart fallback should normalize terminal controls");
+
+    assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
+    assert!(report.emitted_extent.width <= 12, "{}", report.text);
+    assert!(!report.text.contains('\u{202e}'), "{}", report.text);
+    assert!(report.text.contains("\\u{202E}"), "{}", report.text);
+}
+
+#[test]
+fn sequence_fallback_preserves_empty_authored_property_objects() {
+    let source = concat!(
+        "sequenceDiagram\n",
+        "participant A\n",
+        "properties A: {\"payload\": {}}\n",
+        "participant B\n",
+        "A->>B: A long authored message forcing a wide primary projection",
+    );
+    let report = render_report(
+        source,
+        AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+    )
+    .expect("typed sequence fallback should preserve empty authored objects");
+
+    assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
+    assert_eq!(report.lossiness.as_str(), "presentation_only");
+    assert!(report.emitted_extent.width <= 12, "{}", report.text);
+    let flattened = report.text.replace('\n', "");
+    assert!(
+        flattened.contains("model.actors.A.properties.payload: {}"),
+        "{}",
+        report.text
+    );
+}
+
+#[test]
 fn empty_extent_is_reportable_without_special_sentinel_text() {
     let model = RenderSemanticModel::Timeline(Default::default());
     let operation = Engine::new()
@@ -295,6 +335,53 @@ fn fallback_uses_the_render_wide_work_ledger() {
         AsciiError::ResourceLimitExceeded(details)
             if details.limit == merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits
                 && details.actual > details.max
+    ));
+}
+
+#[test]
+fn sequence_fallback_preserves_primary_work_in_the_render_wide_ledger() {
+    let source = concat!(
+        "sequenceDiagram\n",
+        "participant Alice\n",
+        "participant Bob\n",
+        "Alice->>Bob: Request with a long authored message\n",
+        "Bob-->>Alice: Response with another long authored message\n",
+    );
+    let exact_work = 3_818;
+    let exact_resources = merman_ascii::AsciiResourcePolicy::unbounded()
+        .with_limit(
+            merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits,
+            exact_work,
+        )
+        .expect("limit should be valid");
+
+    let report = render_report_with_resources(
+        source,
+        AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+        exact_resources,
+    )
+    .expect("the exact cumulative primary-plus-fallback work boundary should succeed");
+    assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
+
+    let below_resources = merman_ascii::AsciiResourcePolicy::unbounded()
+        .with_limit(
+            merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits,
+            exact_work - 1,
+        )
+        .expect("limit should be valid");
+    let error = render_report_with_resources(
+        source,
+        AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+        below_resources,
+    )
+    .expect_err("the N-1 cumulative work boundary should fail");
+
+    assert!(matches!(
+        error,
+        AsciiError::ResourceLimitExceeded(details)
+            if details.limit == merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits
+                && details.actual == exact_work
+                && details.max == exact_work - 1
     ));
 }
 

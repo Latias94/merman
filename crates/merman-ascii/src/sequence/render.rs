@@ -72,15 +72,25 @@ fn render_sequence_diagram_inner(
 ) -> Result<String> {
     let transaction = resources.clone();
     transaction.transaction(|_| {
-        render_sequence_diagram_transactional(
-            diagram,
-            title,
-            options,
-            layout_policy,
-            resources,
-            execution,
-        )
-    })
+        let result = transaction.transaction_preserving_layout_work(|_| {
+            render_sequence_diagram_transactional(
+                diagram,
+                title,
+                options,
+                layout_policy,
+                resources,
+                execution,
+            )
+        });
+        match result {
+            // A complete semantic fallback reuses the same render-wide ledger. Preserve the work
+            // spent proving that the primary exceeds the viewport, but discard its speculative
+            // document cells before the fallback candidate starts.
+            Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Ok(rendered) => Ok(Ok(rendered)),
+            Err(error) => Err(error),
+        }
+    })?
 }
 
 fn render_sequence_diagram_transactional(

@@ -73,9 +73,7 @@ pub(crate) fn execute_render(
 #[cfg(feature = "ascii")]
 fn ascii_report_json(output: &merman::ascii::AsciiOutput) -> Result<Vec<u8>, CliError> {
     if output.encoding != merman::ascii::AsciiOutputEncoding::Plain {
-        return Err(CliError::InvalidInput(
-            "--ascii-report requires a plain ASCII output encoding".to_string(),
-        ));
+        return Err(CliError::AsciiReportRequiresPlain);
     }
     serde_json::to_vec(&output.report()).map_err(CliError::json_output)
 }
@@ -90,10 +88,12 @@ fn map_ascii_render_error(
             CliError::Ascii(merman::ascii::AsciiDiagnostic::from(error))
         }
         merman::RenderError::ResourceLimitExceeded(error) => {
-            if merman::ascii::AsciiResourceLimitId::from_stable_id(error.id).is_none() {
-                return CliError::Render(merman::RenderError::ResourceLimitExceeded(error));
-            }
-            CliError::ascii_resource(error, resources.profile())
+            let profile = error
+                .provenance
+                .as_ref()
+                .and_then(|provenance| provenance.profile)
+                .unwrap_or_else(|| resources.profile());
+            CliError::ascii_resource(error, profile)
         }
         other => CliError::from(other),
     }

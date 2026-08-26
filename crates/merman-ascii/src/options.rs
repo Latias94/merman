@@ -1,5 +1,6 @@
 use crate::color::{AsciiColorMode, AsciiColorTheme};
 use crate::error::{AsciiError, Result};
+use crate::output::AsciiOutputEncoding;
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -85,12 +86,10 @@ pub struct AsciiRenderOptions {
 
 /// Host facts and explicit presentation choices resolved before family rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AsciiHostPolicy {
-    pub charset: AsciiCharset,
-    pub structural_charset: AsciiCharset,
-    pub terminal_width_profile: TerminalWidthProfile,
-    pub color_mode: AsciiColorMode,
-    pub color_theme: AsciiColorTheme,
+struct AsciiHostPolicy {
+    structural_charset: AsciiCharset,
+    terminal_width_profile: TerminalWidthProfile,
+    color_mode: AsciiColorMode,
 }
 
 /// Output facts shared by measurement, viewport admission, and encoders.
@@ -98,6 +97,7 @@ pub(crate) struct AsciiHostPolicy {
 pub(crate) struct AsciiOutputPolicy {
     pub terminal_width_profile: TerminalWidthProfile,
     pub color_mode: AsciiColorMode,
+    pub encoding: AsciiOutputEncoding,
 }
 
 /// Flowchart-owned projection and geometry policy. The family boundary reduces this view to a
@@ -208,7 +208,6 @@ pub(crate) struct AsciiLayoutPolicies {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ResolvedAsciiPolicies {
     pub options: AsciiRenderOptions,
-    pub host: AsciiHostPolicy,
     pub layout: AsciiLayoutPolicies,
     pub output: AsciiOutputPolicy,
 }
@@ -332,16 +331,13 @@ impl AsciiRenderOptions {
     }
 
     pub(crate) fn resolve_policies(self) -> ResolvedAsciiPolicies {
-        let structural_charset = self.structural_charset();
+        let host = AsciiHostPolicy {
+            structural_charset: self.structural_charset(),
+            terminal_width_profile: self.terminal_width_profile,
+            color_mode: self.color_mode,
+        };
         ResolvedAsciiPolicies {
             options: self,
-            host: AsciiHostPolicy {
-                charset: self.charset,
-                structural_charset,
-                terminal_width_profile: self.terminal_width_profile,
-                color_mode: self.color_mode,
-                color_theme: self.color_theme,
-            },
             layout: AsciiLayoutPolicies {
                 profile: self.layout_profile,
                 flowchart: FlowchartLayoutPolicy {
@@ -354,10 +350,10 @@ impl AsciiRenderOptions {
                     group_title_clearance: 3,
                     edge_label_lane_radius: FlowchartLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
                     default_direction: self.default_direction,
-                    structural_charset,
-                    terminal_width_profile: self.terminal_width_profile,
+                    structural_charset: host.structural_charset,
+                    terminal_width_profile: host.terminal_width_profile,
                 },
-                state: graph_layout_policy(self),
+                state: graph_layout_policy(self, host),
                 sequence: SequenceLayoutPolicy {
                     participant_label_wrap_width: 12,
                     participant_spacing: self.resolved_sequence_participant_spacing(),
@@ -376,20 +372,21 @@ impl AsciiRenderOptions {
                     control_depth_gutter: 2,
                     title_bottom_spacing: 0,
                     mirror_actors: self.sequence_mirror_actors,
-                    structural_charset,
-                    terminal_width_profile: self.terminal_width_profile,
+                    structural_charset: host.structural_charset,
+                    terminal_width_profile: host.terminal_width_profile,
                 },
                 xychart: XyChartLayoutPolicy {
                     vertical_plot_height: self.xychart_vertical_plot_height,
                     category_band_width: self.xychart_category_band_width,
                     horizontal_plot_width: self.xychart_horizontal_plot_width,
-                    structural_charset,
-                    terminal_width_profile: self.terminal_width_profile,
+                    structural_charset: host.structural_charset,
+                    terminal_width_profile: host.terminal_width_profile,
                 },
             },
             output: AsciiOutputPolicy {
-                terminal_width_profile: self.terminal_width_profile,
-                color_mode: self.color_mode,
+                terminal_width_profile: host.terminal_width_profile,
+                color_mode: host.color_mode,
+                encoding: AsciiOutputEncoding::from_color_mode(host.color_mode),
             },
         }
     }
@@ -481,7 +478,7 @@ impl AsciiRenderOptions {
     }
 }
 
-fn graph_layout_policy(options: AsciiRenderOptions) -> GraphLayoutPolicy {
+fn graph_layout_policy(options: AsciiRenderOptions, host: AsciiHostPolicy) -> GraphLayoutPolicy {
     GraphLayoutPolicy {
         node_border_padding: options.box_border_padding,
         rank_gap_x: options.graph_padding_x,
@@ -490,8 +487,8 @@ fn graph_layout_policy(options: AsciiRenderOptions) -> GraphLayoutPolicy {
         group_padding_y: 2,
         group_title_clearance: 3,
         edge_label_lane_radius: GraphLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
-        structural_charset: options.structural_charset(),
-        terminal_width_profile: options.terminal_width_profile,
+        structural_charset: host.structural_charset,
+        terminal_width_profile: host.terminal_width_profile,
     }
 }
 
@@ -514,7 +511,6 @@ mod tests {
             .with_layout_profile(AsciiLayoutProfile::Compact)
             .resolve_policies();
 
-        assert_eq!(canonical.host, compact.host);
         assert_eq!(canonical.output, compact.output);
         assert_eq!(canonical.options.flowchart_node_label_wrap_width, 40);
         assert_eq!(compact.options.flowchart_node_label_wrap_width, 40);
@@ -636,7 +632,6 @@ mod tests {
             .with_terminal_width_profile(TerminalWidthProfile::Cjk)
             .resolve_policies();
 
-        assert_eq!(policies.host.structural_charset, AsciiCharset::Ascii);
         assert_eq!(
             policies.layout.flowchart.structural_charset,
             AsciiCharset::Ascii
@@ -653,5 +648,10 @@ mod tests {
             policies.layout.xychart.structural_charset,
             AsciiCharset::Ascii
         );
+        assert_eq!(
+            policies.output.terminal_width_profile,
+            TerminalWidthProfile::Cjk
+        );
+        assert_eq!(policies.output.encoding, AsciiOutputEncoding::Plain);
     }
 }

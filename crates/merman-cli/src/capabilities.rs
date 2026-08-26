@@ -4,7 +4,9 @@ use crate::runtime::SharedWriter;
 use serde::Serialize;
 
 const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
-const CLI_CONTRACT_VERSION: u32 = 4;
+const CLI_CONTRACT_VERSION: u32 = 5;
+#[cfg(feature = "ascii")]
+const ASCII_CAPABILITIES_SCHEMA_VERSION: u16 = 1;
 
 #[allow(dead_code)]
 mod descriptor {
@@ -26,6 +28,8 @@ struct CapabilityDocument<'a> {
     commands: Vec<String>,
     capabilities: Vec<CapabilityView<'a>>,
     outputs: Vec<OutputView<'a>>,
+    #[cfg(feature = "ascii")]
+    ascii: AsciiCapabilityDocument,
 }
 
 #[derive(Serialize)]
@@ -90,6 +94,49 @@ struct EmbeddedImageLimitsView {
     max_total_pixels: Option<u64>,
 }
 
+#[cfg(feature = "ascii")]
+#[derive(Serialize)]
+struct AsciiCapabilityDocument {
+    schema_version: u16,
+    output_schema_version: u16,
+    report: AsciiReportContractView,
+    families: Vec<AsciiFamilyCapabilityView>,
+    detected_type_mappings: Vec<AsciiDetectedTypeMappingView>,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Serialize)]
+struct AsciiReportContractView {
+    success_schema_version: u16,
+    error_schema_version: u16,
+    encoding: &'static str,
+    styled_output: bool,
+    success_stream: &'static str,
+    error_stream: &'static str,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Serialize)]
+struct AsciiFamilyCapabilityView {
+    family: &'static str,
+    display_name: &'static str,
+    semantic_coverage: Option<&'static str>,
+    primary_projection: &'static str,
+    structured_text_fallback: bool,
+    support_level: &'static str,
+    layout_profiles: Vec<&'static str>,
+    width_profiles: Vec<&'static str>,
+    encodings: Vec<&'static str>,
+    fallback_encodings: Vec<&'static str>,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Serialize)]
+struct AsciiDetectedTypeMappingView {
+    detected_type: &'static str,
+    family: &'static str,
+}
+
 pub(crate) fn write_compiled_capabilities(
     json: bool,
     stdout: &SharedWriter,
@@ -126,6 +173,8 @@ pub(crate) fn write_compiled_capabilities(
             .filter(|output| capability_ids.contains(&output.capability.id()))
             .map(output_view)
             .collect(),
+        #[cfg(feature = "ascii")]
+        ascii: ascii_capability_document(),
     };
 
     if json {
@@ -142,6 +191,86 @@ pub(crate) fn write_compiled_capabilities(
         output.push('\n');
     }
     write_stdout(output.as_bytes(), stdout)
+}
+
+#[cfg(feature = "ascii")]
+fn ascii_capability_document() -> AsciiCapabilityDocument {
+    let mut families = merman::ascii::ascii_capabilities()
+        .iter()
+        .map(|capability| AsciiFamilyCapabilityView {
+            family: capability.diagram_type,
+            display_name: capability.display_name,
+            semantic_coverage: capability
+                .semantic_coverage
+                .map(merman::ascii::AsciiSemanticCoverage::as_str),
+            primary_projection: capability.primary_projection.as_str(),
+            structured_text_fallback: capability.structured_text_fallback,
+            support_level: capability.support_level.as_str(),
+            layout_profiles: capability
+                .layout_profiles
+                .iter()
+                .copied()
+                .map(merman::ascii::AsciiLayoutProfile::as_str)
+                .collect(),
+            width_profiles: capability
+                .width_profiles
+                .iter()
+                .copied()
+                .map(merman::ascii::TerminalWidthProfile::as_str)
+                .collect(),
+            encodings: capability
+                .encodings
+                .iter()
+                .copied()
+                .map(merman::ascii::AsciiOutputEncoding::as_str)
+                .collect(),
+            fallback_encodings: capability
+                .fallback_encodings
+                .iter()
+                .copied()
+                .map(merman::ascii::AsciiOutputEncoding::as_str)
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    families.sort_by_key(|capability| capability.family);
+
+    let known_families = families
+        .iter()
+        .map(|capability| capability.family)
+        .collect::<std::collections::BTreeSet<_>>();
+    let render_model_families = merman::built_in_typed_render_families()
+        .iter()
+        .map(|family| (family.render_model_kind, family.diagram_type))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut detected_type_mappings = merman::diagram_family_capabilities()
+        .iter()
+        .filter(|capability| capability.has_detector)
+        .filter_map(|capability| {
+            let family = render_model_families.get(capability.render_model_kind?)?;
+            known_families
+                .contains(family)
+                .then_some(AsciiDetectedTypeMappingView {
+                    detected_type: capability.diagram_type,
+                    family,
+                })
+        })
+        .collect::<Vec<_>>();
+    detected_type_mappings.sort_by_key(|mapping| mapping.detected_type);
+
+    AsciiCapabilityDocument {
+        schema_version: ASCII_CAPABILITIES_SCHEMA_VERSION,
+        output_schema_version: merman::ascii::ASCII_OUTPUT_SCHEMA_VERSION,
+        report: AsciiReportContractView {
+            success_schema_version: merman::ascii::ASCII_OUTPUT_SCHEMA_VERSION,
+            error_schema_version: crate::error::ASCII_ERROR_REPORT_SCHEMA_VERSION,
+            encoding: "plain",
+            styled_output: false,
+            success_stream: "output",
+            error_stream: "stderr",
+        },
+        families,
+        detected_type_mappings,
+    }
 }
 
 fn output_view(output: &descriptor::OutputDescriptor) -> OutputView<'_> {

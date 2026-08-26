@@ -12,6 +12,10 @@ omitted.
 | `semantic_coverage` | `full`, `partial`, or `null` | How much of the family's typed semantics the terminal output preserves. `null` means no output is available. |
 | `primary_projection` | `diagrammatic`, `structured_text`, or `none` | Whether the primary output is box-and-line terminal geometry, a readable report/outline, or unavailable. |
 | `structured_text_fallback` | Boolean | Whether the typed family has an admitted complete structured projection that can be selected when its primary result exceeds a bounded viewport. This applies to both diagrammatic and already-structured families. |
+| `layout_profiles` / `layoutProfiles` | Array | Layout profiles admitted for this family. Flowchart and Sequence expose `canonical` and `compact`; every other supported family currently exposes `canonical` only. |
+| `width_profiles` / `widthProfiles` | Array | Terminal display-width conventions admitted for this family: `unicode` and `cjk` for every supported output. |
+| `encodings` | Array | Primary result encodings admitted for this family: `plain`, `ansi16`, `ansi256`, `truecolor`, and `html` for every supported output. |
+| `fallback_encodings` / `fallbackEncodings` | Array | Encodings admitted with viewport `fallback`. This is currently `plain` only; styled fallback requests are rejected before rendering. |
 
 The legacy `support_level` / `supportLevel` field remains a derived compatibility view:
 `none` maps to `unsupported`, `structured_text` maps to `summary`, and `diagrammatic` maps to its
@@ -26,20 +30,36 @@ legacy `ascii_supported_diagrams` list is derived from records with available ou
 and diagram-only filters use the separate diagrammatic projection.
 
 Binding migration: consumers must replace `summary_fallback` with `structured_text_fallback`, read
-`semantic_coverage` and `primary_projection` as the source fields, and treat `support_level` only as
-a compatibility view.
+`semantic_coverage` and `primary_projection` as the source fields, treat `support_level` only as a
+compatibility view, and preflight layout/width/encoding combinations from the four admission arrays
+instead of assuming that a renderer-wide option is valid for every family.
 
 ## Viewport and report contract
 
-`AsciiOutput` is the canonical schema-1 result for a render request. `AsciiOutput::metadata()` is
+`AsciiOutput` is the canonical schema-2 result for a render request. `AsciiOutput::metadata()` is
 used by operation metadata and platform bindings; `AsciiOutput::report()` is the CLI JSON projection
-with the same metadata plus `text`. Both surfaces use the same field names, enum strings, nullable
-fallback fields, display-cell extents, and width profile. A measured candidate owns its metrics once;
-fallback construction checks width and output ceilings incrementally, then commits one render-wide
-resource admission. Overflow remains a presentation result (`allow`, `fallback`, or `error`), never a
-resource success or resource failure. Cancellation and resource errors retain precedence over
-fallback selection. Semantic fallback applies typed-model complexity preflight; Flowchart's typed
-projection uses a bounded cancellation-aware JSON writer before flattening under bounded profiles.
+with the same metadata plus `text`. Schema 2 adds an explicit `encoding` field. Both surfaces use the
+same field names, enum strings, nullable fallback fields, display-cell extents, and width/layout
+profiles. Logical height counts content rows; a final line terminator does not create an extra row.
+CLI report mode is Plain-only: host `auto` resolves to Plain and an explicit ANSI/HTML report request
+is rejected. Rust and binding result APIs can return styled text because their schema-2 metadata
+identifies it. Viewport Fallback is also Plain-only; styled fallback combinations are rejected by
+capability preflight.
+
+A measured candidate owns its metrics once; fallback construction checks width and output ceilings
+incrementally, then commits one render-wide resource admission. Overflow remains a presentation
+result (`allow`, `fallback`, or `error`), never a resource success or resource failure. Cancellation
+and resource errors retain precedence over fallback selection. Semantic fallback applies typed-model
+complexity preflight; Flowchart's typed projection uses a bounded cancellation-aware JSON writer
+before flattening under bounded profiles.
+
+### Admitted profile combinations
+
+| Family set | Layout profiles | Width profiles | Primary encodings | Fallback encodings |
+| --- | --- | --- | --- | --- |
+| Flowchart, Sequence | `canonical`, `compact` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| State, Class, ER, XYChart, structured-text families | `canonical` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| Unsupported families | none | none | none | none |
 
 ## Diagrammatic Families
 
@@ -50,9 +70,9 @@ readable at ordinary terminal widths.
 
 | Mermaid family | Semantic coverage | Primary projection | Structured-text fallback | What renders well | Important limits |
 | --- | --- | --- | --- | --- | --- |
-| Flowchart / graph | Partial | Diagrammatic | Yes | Root directions, Dagre-compatible ranking, explicit pinned-shape dispositions, common diagrammatic node shapes, terminal-cell wrapped node labels, independent endpoint markers, normal/dotted/thick/invisible edge semantics, labels, subgraphs, nested groups, first-parent compound ownership, and scene-level route occupancy. | Icons, images, callbacks, links, some uncommon shapes, arbitrary dense-route candidate policy, and mixed-stroke crossing ownership remain unsupported or incomplete; bounded fallback is a typed compatibility projection, not clipped geometry. |
-| Sequence | Partial | Diagrammatic | Yes | Mermaid-valid spaced/Unicode participant IDs, typed headless/filled/cross/point/bidirectional/half-arrow messages, central decorations, notes, lifecycles, boxes, and participant-bounded nested control frames. | Actor presentation metadata and links are accepted but omitted from the primary scene; bounded fallback discloses typed fields as structured text. |
-| State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | Some presentation metadata and future shape variants are approximated; bounded fallback is a typed compatibility projection. |
+| Flowchart / graph | Partial | Diagrammatic | Yes | Root directions, Dagre-compatible ranking, explicit pinned-shape dispositions, common diagrammatic node shapes, terminal-cell wrapped node labels, independent endpoint markers, normal/dotted/thick/invisible edge semantics, labels, subgraphs, nested groups, first-parent compound ownership, scene-level route occupancy, and a family-owned compact wrap policy. | Icons, images, callbacks, links, some uncommon shapes, arbitrary dense-route candidate policy, and mixed-stroke crossing ownership remain unsupported or incomplete; bounded fallback is a typed Plain compatibility projection, not clipped geometry. |
+| Sequence | Partial | Diagrammatic | Yes | Mermaid-valid spaced/Unicode participant IDs, typed headless/filled/cross/point/bidirectional/half-arrow messages, central decorations, notes, lifecycles, boxes, participant-bounded nested control frames, and a family-owned compact participant-spacing policy. | Actor presentation metadata and links are accepted but omitted from the primary scene; bounded fallback discloses typed fields as Plain structured text. |
+| State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | State is canonical-only and does not inherit Flowchart compact policy. Some presentation metadata and future shape variants are approximated; bounded fallback is a typed Plain compatibility projection. |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, shared relation components, a strict planar K2×2 four-node/four-edge cycle with four disjoint routes, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | The strict K2×2 layout is a bounded topology-specific path, not support for arbitrary bounded or dense graphs. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
 | ER | Partial | Diagrammatic | Yes | Entities, attributes, key tokens, attribute comments, four directions, relationship labels/cardinalities including the parent diamond, shared relation components, a strict planar K2×2 four-node/four-edge cycle with four disjoint routes, and explicit relation summaries. | The strict K2×2 layout is a bounded topology-specific path, not support for arbitrary bounded or dense graphs. Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted. |
 | XYChart | Partial | Diagrammatic | Yes | Model-owned x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, connected topology-resolved lines, mixed series, titles, legends, display policy, injective length-framed disclosure, empty-chart metadata reports, and horizontal/vertical variants. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | Browser hover is replaced by terminal disclosure; terminal coordinates are quantized, cross-series same-cell ownership remains approximate, unknown direct-model orientations and band y-axes are rejected, and accessibility title/description metadata is intentionally omitted. |
@@ -121,6 +141,22 @@ four-node/four-edge components use their bounded four-route diagrammatic layout;
 promote arbitrary bounded or dense topology out of the same lossless fallback boundary.
 
 ## Testing Policy
+
+The admitted Flowchart/Sequence matrix is executable in
+`crates/merman-ascii/tests/viewport_characterization.rs`. It covers canonical/compact layouts,
+ASCII/Unicode structure, Unicode/CJK width profiles, Plain/ANSI16/ANSI256/TrueColor/HTML geometry
+parity, and 60/80/100/120-cell Allow/Fallback/Error outcomes. The representative measurements are:
+
+| Fixture | Layout | Extent | Blank cells | Longest blank run |
+| --- | --- | ---: | ---: | ---: |
+| Issue #53 Flowchart | canonical | `74×57` | 3220 | 51 |
+| Issue #53 Flowchart | compact | `58×67` | 3006 | 43 |
+| Sequence self-messages/notes | canonical | `82×58` | 3227 | 20 |
+| Sequence self-messages/notes | compact | `78×58` | 2982 | 21 |
+
+These values are characterization evidence, not universal quality scores. Admission still requires
+complete authored-field retention and typed overflow behavior; a narrower result that drops a field
+is rejected.
 
 - Use exact snapshots when the ASCII shape itself is the contract.
 - Use semantic assertions for structured-text output and relation-summary fallback, ensuring every retained entity/endpoint/label remains visible.

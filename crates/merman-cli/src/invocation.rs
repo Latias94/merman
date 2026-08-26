@@ -1346,10 +1346,7 @@ fn resolve_text_color_mode(
                 | TextColorMode::Ansi256
                 | TextColorMode::Truecolor
                 | TextColorMode::Html,
-            ) => Err(CliError::InvalidInput(
-                "--ascii-report requires plain output; use `--ascii-color plain` or `--ascii-color auto`"
-                    .to_string(),
-            )),
+            ) => Err(CliError::AsciiReportRequiresPlain),
         };
     }
 
@@ -2216,9 +2213,7 @@ mod tests {
             )
             .expect_err("styled report output must fail during invocation normalization");
 
-            assert!(
-                matches!(error, CliError::InvalidInput(message) if message.contains("--ascii-report requires plain output"))
-            );
+            assert!(matches!(error, CliError::AsciiReportRequiresPlain));
         }
     }
 

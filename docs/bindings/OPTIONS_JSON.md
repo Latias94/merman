@@ -365,9 +365,9 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | --- | --- | --- | --- |
 | `ascii.charset` | string | `unicode` | `unicode` or `ascii`. |
 | `ascii.width_profile` / `ascii.widthProfile` | string | `unicode` | `unicode` follows the pinned non-CJK width table; `cjk` treats East Asian ambiguous authored characters as wide and uses single-cell ASCII structural glyphs because Unicode box drawing is East Asian Ambiguous. Select the profile that matches the target terminal. |
-| `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` preserves the established geometry; `compact` is an explicit opt-in density profile and never changes the default. |
+| `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` preserves the established geometry. `compact` is admitted only for Flowchart and Sequence: it resolves the Flowchart wrap default from 40 to 24 cells and Sequence participant spacing from 5 to 3 unless the corresponding family option is explicit. Other supported families reject `compact`. |
 | `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
-| `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`, `truecolor`, or `html`. |
+| `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`/`none`, `ansi16`/`ansi-16`/`ansi_16`, `ansi256`/`ansi-256`/`ansi_256`, `truecolor`/`true-color`/`true_color`, or `html`. Bindings reject host-dependent `auto`; the host must resolve it before constructing environment-independent options. |
 | `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
 | `ascii.box_border_padding` / `ascii.boxBorderPadding` | non-negative integer | `1` | Horizontal padding inside terminal node boxes. |
 | `ascii.graph_padding_x` / `ascii.graphPaddingX` | non-negative integer | `5` | Horizontal padding around terminal graph layouts. |
@@ -388,6 +388,19 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 `relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests
 that need to classify why a dense Class/ER relation layout used a summary.
+
+ASCII capability records expose `layout_profiles`, `width_profiles`, `encodings`, and
+`fallback_encodings` (camelCase in generated host DTOs where applicable). Preflight those arrays for
+the detected diagram family before rendering. Every supported family currently admits `unicode` and
+`cjk` width profiles plus Plain, ANSI16, ANSI256, TrueColor, and HTML primary encodings. Only
+Flowchart and Sequence admit `compact`; all other supported families are canonical-only.
+
+Viewport `fallback` is currently admitted only with `color_mode: "plain"`. Styled fallback requests
+are rejected instead of returning an ambiguous or partially styled compatibility projection.
+`allow` and `error` remain valid with every admitted primary encoding. The canonical ASCII output
+plan is schema `2`; it includes an explicit `encoding` field, and its logical height excludes a final
+line terminator. CLI `--ascii-report` is a separate machine-safe Plain channel: host `auto` resolves
+to Plain there and an explicit styled report request is rejected.
 
 The terminal-grid budget is resource policy, not an ASCII presentation option. Set `resources.limits.max_ascii_grid_cells`; the removed `ascii.max_grid_cells` and `ascii.maxGridCells` fields are rejected with a migration error.
 
@@ -589,7 +602,7 @@ environment contracts as `null`.
 | UniFFI/Python | `Merman.runtime_catalog_json()` / `merman.get_runtime_catalog(api)` |
 | Web/TypeScript | `runtimeCatalog()` |
 
-The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `5`, and payload
+The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `6`, and payload
 schema numbers. Reject a contract schema newer than the host understands before interpreting its
 nested fields. Detailed language catalogs are not embedded in this flat object: use the
 transport's named metadata API (`metadata_collect` for the C ABI) for

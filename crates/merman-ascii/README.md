@@ -47,8 +47,12 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 Every concrete built-in typed family has one capability record. `semantic_coverage`,
 `primary_projection`, and `structured_text_fallback` are independent; legacy `support_level` is
-derived from them. Other Mermaid families return `AsciiError::UnsupportedDiagram` through the typed
-model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
+derived from them. The same record exposes `layout_profiles`, `width_profiles`, `encodings`, and
+`fallback_encodings`, so a host can reject an unsupported combination before rendering. Compact
+layout is currently admitted only for Flowchart and Sequence; every other supported family reports
+canonical layout only. All supported families admit Plain, ANSI16, ANSI256, TrueColor, and HTML
+primary output, while structured viewport fallback is Plain-only. Other Mermaid families return
+`AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
 
 The canonical report API is `AsciiRenderer::render_model_report` or
 `AsciiRenderer::render_parsed_report`. It returns the text together with the display-cell
@@ -58,21 +62,30 @@ overflow outcome, fallback capability/attempt/reason state, trim state, and loss
 clips or ellipsizes authored values; it either returns a complete typed compatibility projection or
 `AsciiError::FallbackUnavailable`.
 
-`AsciiOutput::metadata()` is the canonical schema-1 transport payload for binding operation plans;
-`AsciiOutput::report()` adds the exact text projection for CLI report JSON. Both are derived from the
-same measured candidate, so CLI, Rust, and bindings do not remeasure text or reconstruct enum and
-field names independently. The measured seam accounts for display cells, encoded bytes, grapheme
-limits, and the render-wide layout ledger once per emitted candidate. A fallback candidate is checked
+`AsciiOutput::metadata()` is the canonical schema-2 transport payload for binding operation plans;
+`AsciiOutput::report()` adds the exact text projection for CLI report JSON. Schema 2 identifies the
+text `encoding` explicitly. CLI report mode is a machine channel: `auto` resolves to Plain there and
+an explicitly styled report request is rejected. Styled Rust and binding results remain supported
+and carry their exact encoding identity. Both projections are derived from the same measured
+candidate, so CLI, Rust, and bindings do not remeasure text or reconstruct enum and field names
+independently. Extent height counts logical content rows; a final line terminator does not create an
+extra row. The measured seam accounts for display cells, encoded bytes, grapheme limits, and the
+render-wide layout ledger once per emitted candidate. A Plain fallback candidate is checked
 incrementally in a detached candidate scope and admitted to the render-wide ledger only after it is
-complete and within the requested width. Semantic fallback projection first applies typed-model
-complexity admission; Flowchart's typed JSON projection is serialized through a bounded,
-cancellation-aware writer before flattening, so a rejected candidate does not allocate an
-unbounded intermediate under a bounded resource profile.
+complete and within the requested width. Styled fallback requests are rejected during capability
+preflight. Semantic fallback projection first applies typed-model complexity admission; Flowchart's
+typed JSON projection is serialized through a bounded, cancellation-aware writer before flattening,
+so a rejected candidate does not allocate an unbounded intermediate under a bounded resource
+profile.
 
 Flowchart node labels wrap before layout at a default width of 40 terminal display cells. Use
 `AsciiRenderOptions::with_flowchart_node_label_wrap_width` to tune that family-owned terminal
 policy. The value is not a CSS-pixel conversion of Mermaid's SVG `wrappingWidth`; the same
-grapheme-safe plan drives node measurement and final text materialization.
+grapheme-safe plan drives node measurement and final text materialization. The opt-in Compact
+profile resolves the Flowchart default to 24 cells and Sequence participant spacing from 5 to 3,
+unless the caller explicitly overrides the corresponding family option. These adjustments are
+resolved into family-local policies and do not affect State, Class, ER, XYChart, or structured-text
+families.
 
 ## Resource Policy
 
@@ -93,6 +106,11 @@ while `max_ascii_output_bytes` counts the actual bytes produced by each encoder.
 ## Terminal Theme API
 
 `AsciiColorTheme::from_terminal_palette` derives terminal roles from a compact `AsciiTerminalPalette`: required `foreground` and `background`, plus optional `line`, `accent`, `muted`, `surface`, and `border` colors. The derived theme maps only terminal-meaningful roles such as text, borders, edge lines/arrows, sequence lifelines, and chart series colors. It does not import SVG CSS-variable semantics into text output. Explicit `AsciiColorTheme::with_role` calls still take precedence after derivation.
+
+`AsciiColorMode::Ansi16` is the terminal-native profile. Unstyled primary text remains at terminal
+Reset and sparse named ANSI accents mark renderer-owned structural roles, so the renderer does not
+guess whether the terminal background is light or dark. ANSI16 changes encoding only: its stripped
+text and logical extent are identical to Plain for the same layout request.
 
 Bindings expose the same shape as `ascii.theme` in options JSON. Color values use the existing CSS color parser for opaque terminal colors; transparent colors are rejected rather than silently falling back.
 

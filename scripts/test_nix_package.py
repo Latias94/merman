@@ -100,7 +100,10 @@ class NixPackageContractTests(unittest.TestCase):
         )
         self.assertEqual(
             policy["script_files"],
-            ["scripts/verify_cli_installation.py"],
+            [
+                "scripts/ascii_capability_contract.py",
+                "scripts/verify_cli_installation.py",
+            ],
         )
         self.assertIn("target", policy["excluded_directory_names"])
         self.assertIn("node_modules", policy["excluded_directory_names"])
@@ -115,6 +118,7 @@ class NixPackageContractTests(unittest.TestCase):
             "crates/merman-cli/Cargo.toml",
             "crates/merman-cli/assets/completions/merman-cli.bash",
             "crates/merman-cli/assets/man/merman-cli.1",
+            "scripts/ascii_capability_contract.py",
             "scripts/verify_cli_installation.py",
         }
         required.update(f"{member}/Cargo.toml" for member in workspace_members())

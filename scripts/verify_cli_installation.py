@@ -16,11 +16,22 @@ import subprocess
 import sys
 from typing import Literal, TypeAlias
 
+if __package__:
+    from .ascii_capability_contract import (
+        AsciiCapabilityContractError,
+        validate_ascii_capabilities,
+    )
+else:
+    from ascii_capability_contract import (
+        AsciiCapabilityContractError,
+        validate_ascii_capabilities,
+    )
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_DESCRIPTOR = Path("capabilities/artifact-profiles-v1.json")
 CLI_RELEASE_PROFILE = "cli-release"
-CLI_CONTRACT_VERSION = 4
+CLI_CONTRACT_VERSION = 5
 CAPABILITIES_SCHEMA_VERSION = 2
 COMMANDS = (
     "batch",
@@ -298,6 +309,19 @@ def _verify_capabilities(
         )
     if _id_set(document.get("outputs"), "installed outputs") != expected_outputs:
         raise CliInstallationError("installed output set differs from cli-release")
+    if "ascii" in expected_capabilities:
+        _verify_ascii_capabilities(document.get("ascii"))
+    elif "ascii" in document:
+        raise CliInstallationError(
+            "installed capabilities expose an ASCII subcontract without ASCII support"
+        )
+
+
+def _verify_ascii_capabilities(value: object) -> None:
+    try:
+        validate_ascii_capabilities(value)
+    except AsciiCapabilityContractError as error:
+        raise CliInstallationError(f"installed {error}") from error
 
 
 def _verify_completion_paths(

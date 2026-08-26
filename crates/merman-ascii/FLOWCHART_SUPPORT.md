@@ -12,12 +12,13 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Diagram family | Supported | `flowchart`, `graph`, and `flowchart-v2` inputs that parse into `FlowchartModel`. |
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
 | Node shape | Supported subset | Every pinned Mermaid 11.16.1 shape name has one explicit terminal disposition. Common rectangular/process, rounded, circle/double-circle/stadium, diamond/decision, subroutine, cylinder/database, hexagon, asymmetric, trapezoid, lean-left/right, datastore, document/decorated-document, decorated-process, fork/join, choice, start/end, and text shapes have diagrammatic projections. Manual-input, stored-data/bow-tie, and flag/paper-tape alias families have explicit terminal approximations that follow the pinned upstream handler groups. Browser-only and unimplemented uncommon shapes fail explicitly instead of silently collapsing to rectangles. |
-| Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Ordinary Flowchart node labels wrap before node sizing at the configurable `flowchart_node_label_wrap_width` terminal-cell limit (default `40`), using one grapheme-safe plan for measurement and materialization. Missing labels fall back to node ids. This terminal policy is independent of Mermaid's CSS-pixel `wrappingWidth`. |
+| Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Ordinary Flowchart node labels wrap before node sizing at the configurable `flowchart_node_label_wrap_width` terminal-cell limit (canonical default `40`; Compact default `24` unless explicitly overridden), using one grapheme-safe plan for measurement and materialization. Missing labels fall back to node ids. This terminal policy is independent of Mermaid's CSS-pixel `wrappingWidth`. |
 | Edges | Supported subset | Independent source/target point, circle, cross, or open markers; mixed and double-ended forms; visible normal/dotted/thick strokes; invisible layout constraints; explicit/generated edge identity; multiline labels; deterministic length spacing; and TD merge/skip edges. Endpoint markers remain unresolved until scene allocation assigns each owner an independent terminal berth. Labels keep their planned footprint when clear and otherwise use bounded route-local lanes that avoid endpoint markers, nodes, group borders/titles, and accepted labels. Clear spans use direct ports; obstructed spans use family-owned alternate lanes. |
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, disconnected sibling groups, external nodes, authored local directions across boundary edges, and Mermaid 11.16.1's perpendicular default for isolated implicit subgraphs. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
-| Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, TD branches, and subgraphs use a deterministic grid layout. |
+| Layout profiles | Supported subset | `canonical` remains the default. The explicit `compact` profile keeps the same topology and routing semantics while resolving the family-owned node-label wrap default from 40 to 24 cells. Caller overrides remain authoritative. Flowchart policy is resolved separately from State and other graph-backed families. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
-| Color roles and styles | Supported subset | Opt-in `AsciiColorMode` can emit ANSI or HTML foreground/background spans for renderer-owned roles and Mermaid flowchart `classDef`, `class`, inline `style`, and `linkStyle` declarations. Supported style properties are `color` for text/labels, `stroke` for borders/edges, and `fill`/`background` for node and subgraph backgrounds. |
+| Color roles and styles | Supported subset | Plain, ANSI16, ANSI256, TrueColor, and HTML encoders share one layout. ANSI16 keeps primary text at terminal Reset and uses sparse named accents for renderer-owned structure. Mermaid flowchart `classDef`, `class`, inline `style`, and `linkStyle` declarations can supply supported foreground/background roles. Supported style properties are `color` for text/labels, `stroke` for borders/edges, and `fill`/`background` for node and subgraph backgrounds. |
+| Viewport/report behavior | Supported | Allow preserves complete wide output, Error returns a typed width diagnostic, and Plain Fallback selects one complete typed structured projection. Styled fallback is rejected by capability preflight. Schema-2 output metadata identifies the encoding and does not count the final line terminator as a logical row. |
 | Resource policy | Supported | Typed limits bound checked grid extent, layout work, logical document cells, encoded bytes, grapheme size, and nesting depth before amplification. |
 
 ## V1.1 Compatibility Plan
@@ -111,6 +112,9 @@ reference implementation is only an implementation aid.
   shape geometry and ports are computed. This is an ASCII terminal policy, not a conversion of
   Mermaid's SVG `wrappingWidth` pixels. State labels and Flowchart edge labels retain their own
   family policies.
+- Compact is a Flowchart-owned admission, not a global graph-density mutation. The current evidence
+  candidate changes only the unresolved ordinary-node wrap default from 40 to 24 display cells;
+  explicit wrap widths win, and State remains canonical-only.
 - Mermaid classes/styles are rendered only for terminal-safe color properties in opt-in ANSI/HTML
   modes: `color`, `stroke`, `fill`, and `background` support hex colors and a small named-color
   set. Stroke width, links, callbacks, icons, images, Markdown labels, and HTML labels are not
@@ -127,7 +131,11 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii graph_golden`
 - `cargo nextest run -p merman-ascii graph_fixture`
 - `cargo nextest run -p merman-ascii flowchart`
+- `cargo nextest run -p merman-ascii --test viewport_characterization -j1`
 
 Golden tests compare against immutable copied `mermaid-ascii` fixtures for the supported subset. The
 current corpus has 79 graph fixtures: 40 remain exact byte matches and 39 are named deterministic
 layout/route differences that must still render and are covered by parser-backed semantic tests.
+The viewport characterization matrix additionally exercises canonical/compact, ASCII/Unicode,
+Unicode/CJK width profiles, Plain/ANSI16/ANSI256/TrueColor/HTML geometry parity, and
+60/80/100/120-cell Allow/Fallback/Error outcomes over the Issue #53 fixture.
