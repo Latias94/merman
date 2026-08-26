@@ -1,10 +1,10 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop, InsetsPx,
-    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, Specified, ThemeColorValue,
-    ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
+    InsetsPx, LinearGradient, OrdinalSelector, PatternKind, PatternSpec, Specified,
+    ThemeColorValue, ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -84,6 +84,17 @@ fn gantt_task_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
         ThemeTarget::Task,
         ThemeStylePatch::default().with_stroke(stroke),
     ))
+}
+
+fn gantt_font_stack_theme(font_stack: FontStack) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::GANTT,
+                ThemeTextStyle::default().with_font_stack(font_stack),
+            ),
+        ))
+        .expect("compile Gantt font stack theme")
 }
 
 fn prepare_gantt_family_with_theme(
@@ -530,6 +541,67 @@ fn gantt_axis_tick_lines_retain_current_color_fallback() {
         stylesheet.contains(".grid .tick{stroke:"),
         "the scoped stylesheet must remain the Gantt grid stroke owner"
     );
+}
+
+#[test]
+fn gantt_typed_font_stack_reaches_scoped_css_and_strict_receipt() {
+    let font_stack =
+        FontStack::new(["Gantt Typed", "monospace"]).expect("valid Gantt typed font stack");
+    let expected_font = font_stack.as_css();
+    let source =
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTyped: typed-task, 2024-01-01, 1d";
+    let svg = render_gantt_svg_from_text_with_theme(source, &gantt_font_stack_theme(font_stack));
+    let document = roxmltree::Document::parse(&svg).expect("valid typed Gantt SVG XML");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("typed Gantt SVG must include its stylesheet");
+
+    assert!(
+        stylesheet.contains(&format!("#gantt-config{{font-family:{expected_font};")),
+        "typed Gantt font stack must be emitted by the scoped stylesheet"
+    );
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("text")
+                && node.attribute("id") == Some("gantt-config-typed-task-text")
+        }),
+        "typed Gantt task label must survive the strict terminal receipt"
+    );
+}
+
+#[test]
+fn gantt_site_font_family_outranks_typed_font_stack() {
+    let typed_stack = FontStack::single("Gantt Typed").expect("valid Gantt typed font stack");
+    let theme = gantt_font_stack_theme(typed_stack);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "gantt": {"fontFamily": "Site Gantt Font"}
+    })));
+    let svg = prepare_gantt_family_with_theme_and_engine(
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d",
+        &theme,
+        engine,
+    )
+    .render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("gantt-config".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
+    .expect("render site-owned Gantt font stack")
+    .svg()
+    .to_owned();
+    let document = roxmltree::Document::parse(&svg).expect("valid site-owned Gantt SVG XML");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("site-owned Gantt SVG must include its stylesheet");
+
+    assert!(stylesheet.contains("#gantt-config{font-family:Site Gantt Font;"));
+    assert!(!stylesheet.contains("Gantt Typed"));
 }
 
 #[test]

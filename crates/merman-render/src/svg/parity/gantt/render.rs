@@ -191,7 +191,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    let css = gantt_css(diagram_id, effective_config);
+    let css = gantt_css(
+        diagram_id,
+        effective_config,
+        Some(task_theme.font_family_css()),
+    );
     out.push_str(&css);
     drop(css);
     out.checkpoint()?;
@@ -301,6 +305,9 @@ pub(crate) fn render_gantt_diagram_svg_model(
         layout.tasks.iter().enumerate().collect();
     tasks_in_draw_order.sort_by(|(ai, a), (bi, b)| a.vert.cmp(&b.vert).then(ai.cmp(bi)));
     let mut task_theme_receipt = task_theme.begin_terminal_receipt();
+    if let Some(receipt) = task_theme_receipt.as_mut() {
+        receipt.record_typography_css(task_theme.font_family_css());
+    }
 
     let mut semantic_task_by_id: std::collections::HashMap<&str, &GanttRenderTask> =
         std::collections::HashMap::new();
@@ -441,6 +448,9 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 txt = escape_xml(&t.label.text),
             );
             out.checkpoint()?;
+            if let Some(receipt) = task_theme_receipt.as_mut() {
+                receipt.record_typography_text(&t.label.text);
+            }
         }
 
         out.push_str("</g>");
@@ -483,6 +493,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
             }
             out.push_str("</text>");
             out.checkpoint()?;
+            if let Some(receipt) = task_theme_receipt.as_mut() {
+                for line in &st.lines {
+                    receipt.record_typography_text(line);
+                }
+            }
         }
         out.push_str("</g>");
     }
@@ -529,6 +544,9 @@ pub(crate) fn render_gantt_diagram_svg_model(
         y = fmt(layout.title_y),
         txt = escape_xml(title),
     );
+    if let Some(receipt) = task_theme_receipt.as_mut() {
+        receipt.record_typography_text(title);
+    }
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;

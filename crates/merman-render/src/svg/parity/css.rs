@@ -1167,15 +1167,22 @@ where
     info_css_into(out, diagram_id);
 }
 
-pub(super) fn gantt_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+pub(super) fn gantt_css<I>(
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    resolved_font_family: Option<&str>,
+) -> String
 where
     I: SvgDiagramIdValue,
 {
     let id = CssSelectorDiagramId(diagram_id);
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let parts = resolved_font_family.map_or_else(
+        || info_css_parts_with_config(diagram_id, effective_config),
+        |font_family| info_css_parts_with_font_family(diagram_id, effective_config, font_family),
+    );
     let theme = MermaidThemeAdapter::new(effective_config).gantt();
     let mut out = parts.css_prefix;
-    let font = &theme.font_family;
+    let font = resolved_font_family.unwrap_or(&theme.font_family);
     let text_color = &theme.text_color;
     let exclude_bkg_color = &theme.exclude_bkg_color;
     let section_bkg_color = &theme.section_bkg_color;

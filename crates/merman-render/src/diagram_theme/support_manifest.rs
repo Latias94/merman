@@ -1425,8 +1425,8 @@ const BASE_CLAIMS: &[BaseClaim] = &[
     },
     BaseClaim {
         family: "gantt",
-        kind: SupportClaimKind::LegacySurface,
-        properties: &["font-size", "font-stack"],
+        kind: SupportClaimKind::TypedSurface,
+        properties: &["font-stack"],
     },
     BaseClaim {
         family: "gitGraph",

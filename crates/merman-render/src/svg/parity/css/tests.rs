@@ -382,7 +382,7 @@ fn gantt_css_honors_mermaid_11_15_theme_options() {
         }
     });
 
-    let css = gantt_css("g", &cfg);
+    let css = gantt_css("g", &cfg, None);
 
     assert!(css.contains(r#"#g .exclude-range{fill:#101010;}"#));
     assert!(css.contains(r#"#g .section0{fill:#202020;}"#));

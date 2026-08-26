@@ -1103,6 +1103,22 @@ fn classify_base_typography(
             | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
         };
     }
+    if family == DiagramFamilyId::GANTT {
+        return match property {
+            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
+            ThemeTypographyProperty::FontSize
+            | ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
+    }
     if family == DiagramFamilyId::RAILROAD {
         return match property {
             ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
