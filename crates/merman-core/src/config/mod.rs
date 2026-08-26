@@ -7,6 +7,7 @@ pub(crate) use overlay::ConfigOverlayLane;
 pub(crate) use overlay::{
     ConfigOverlayContribution, ConfigOverlayContributionProvenance, ConfigOverlayError,
     ConfigOverlayProvenance, PostDetectionConfigOverlay, PostDetectionConfigOverlayProvider,
+    PostDetectionConfigOverlayProviderError,
 };
 
 use crate::{OperationControl, OperationControlResult};

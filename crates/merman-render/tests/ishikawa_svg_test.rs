@@ -711,6 +711,25 @@ fn ishikawa_font_size_only_remains_legacy_and_reaches_css() {
             .expect("valid Ishikawa font size"),
     );
     let source = ishikawa_theme_source("classic");
+    let metadata = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_metadata_sync(&source)
+        .expect("parse Ishikawa font-size compatibility metadata");
+    assert_eq!(
+        metadata.effective_config.get_str("themeVariables.fontSize"),
+        Some("24px")
+    );
+    assert!(merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "themeVariables.fontSize"
+    ));
+    assert!(!merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "themeVariables.fontFamily"
+    ));
+    assert!(!merman_core::__private::fallback_overlay_owns_path(
+        &metadata.effective_config,
+        "fontFamily"
+    ));
     let rendered = try_render_ishikawa_with_theme_requirement(
         &source,
         &theme,
@@ -725,6 +744,7 @@ fn ishikawa_font_size_only_remains_legacy_and_reaches_css() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
 
     let error = try_render_ishikawa_with_theme_requirement(
         &source,
@@ -782,6 +802,7 @@ fn ishikawa_mixed_typography_composes_in_best_effort_but_remains_nonportable() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
 
     let error = try_render_ishikawa_with_theme_requirement(
         &source,

@@ -248,49 +248,13 @@ fn descriptor_from_claim(
     query: &ThemeSupportQueryV1,
     claim: SupportClaimKind,
 ) -> ThemeCapabilityDescriptorV1 {
-    match claim {
-        SupportClaimKind::TypedSurface => descriptor(
-            query,
-            ThemeSupportStateV1::Conditional,
-            [
-                "theme-support.family-owned-consumer-present",
-                "theme-support.document-surface-dependent",
-            ],
-        ),
-        SupportClaimKind::TypedPartial => descriptor(
-            query,
-            ThemeSupportStateV1::Conditional,
-            [
-                "theme-support.family-owned-consumer-present",
-                "theme-support.public-value-domain-partial",
-            ],
-        ),
-        SupportClaimKind::LegacySurface => descriptor(
-            query,
-            ThemeSupportStateV1::Conditional,
-            [
-                "theme-support.legacy-compatibility-only",
-                "theme-support.document-surface-dependent",
-            ],
-        ),
-        SupportClaimKind::LegacyPartial => descriptor(
-            query,
-            ThemeSupportStateV1::Conditional,
-            [
-                "theme-support.legacy-compatibility-only",
-                "theme-support.public-value-domain-partial",
-            ],
-        ),
-        SupportClaimKind::Unsupported => descriptor(
-            query,
-            ThemeSupportStateV1::Unsupported,
-            ["theme-support.no-supported-route"],
-        ),
-        SupportClaimKind::Missing => descriptor(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.support-claim-missing"],
-        ),
+    match project_claim(claim) {
+        SupportClaimProjection::OneReason { state, reason_id } => {
+            descriptor(query, state, [reason_id])
+        }
+        SupportClaimProjection::TwoReasons { state, reason_ids } => {
+            descriptor(query, state, reason_ids)
+        }
     }
 }
 
@@ -298,49 +262,65 @@ fn descriptor_v2_from_claim(
     query: &ThemeSupportQueryV2,
     claim: SupportClaimKind,
 ) -> ThemeCapabilityDescriptorV2 {
+    match project_claim(claim) {
+        SupportClaimProjection::OneReason { state, reason_id } => {
+            descriptor_v2(query, state, [reason_id])
+        }
+        SupportClaimProjection::TwoReasons { state, reason_ids } => {
+            descriptor_v2(query, state, reason_ids)
+        }
+    }
+}
+
+enum SupportClaimProjection {
+    OneReason {
+        state: ThemeSupportStateV1,
+        reason_id: &'static str,
+    },
+    TwoReasons {
+        state: ThemeSupportStateV1,
+        reason_ids: [&'static str; 2],
+    },
+}
+
+fn project_claim(claim: SupportClaimKind) -> SupportClaimProjection {
     match claim {
-        SupportClaimKind::TypedSurface => descriptor_v2(
-            query,
-            ThemeSupportStateV1::Conditional,
-            [
+        SupportClaimKind::TypedSurface => SupportClaimProjection::TwoReasons {
+            state: ThemeSupportStateV1::Conditional,
+            reason_ids: [
                 "theme-support.family-owned-consumer-present",
                 "theme-support.document-surface-dependent",
             ],
-        ),
-        SupportClaimKind::TypedPartial => descriptor_v2(
-            query,
-            ThemeSupportStateV1::Conditional,
-            [
+        },
+        SupportClaimKind::TypedPartial => SupportClaimProjection::TwoReasons {
+            state: ThemeSupportStateV1::Conditional,
+            reason_ids: [
                 "theme-support.family-owned-consumer-present",
                 "theme-support.public-value-domain-partial",
             ],
-        ),
-        SupportClaimKind::LegacySurface => descriptor_v2(
-            query,
-            ThemeSupportStateV1::Conditional,
-            [
+        },
+        SupportClaimKind::LegacySurface => SupportClaimProjection::TwoReasons {
+            state: ThemeSupportStateV1::Conditional,
+            reason_ids: [
                 "theme-support.legacy-compatibility-only",
                 "theme-support.document-surface-dependent",
             ],
-        ),
-        SupportClaimKind::LegacyPartial => descriptor_v2(
-            query,
-            ThemeSupportStateV1::Conditional,
-            [
+        },
+        SupportClaimKind::LegacyPartial => SupportClaimProjection::TwoReasons {
+            state: ThemeSupportStateV1::Conditional,
+            reason_ids: [
                 "theme-support.legacy-compatibility-only",
                 "theme-support.public-value-domain-partial",
             ],
-        ),
-        SupportClaimKind::Unsupported => descriptor_v2(
-            query,
-            ThemeSupportStateV1::Unsupported,
-            ["theme-support.no-supported-route"],
-        ),
-        SupportClaimKind::Missing => descriptor_v2(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.support-claim-missing"],
-        ),
+        },
+        SupportClaimKind::Unsupported => SupportClaimProjection::OneReason {
+            state: ThemeSupportStateV1::Unsupported,
+            reason_id: "theme-support.no-supported-route",
+        },
+        SupportClaimKind::Missing => SupportClaimProjection::OneReason {
+            state: ThemeSupportStateV1::Unverified,
+            reason_id: "theme-support.support-claim-missing",
+        },
     }
 }
 

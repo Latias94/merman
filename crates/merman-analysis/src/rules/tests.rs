@@ -955,7 +955,7 @@ fn rule_config_can_override_block_warning_severity() {
 fn rule_descriptors_expose_stable_rule_metadata() {
     let descriptors = rule_descriptors();
 
-    assert_eq!(descriptors.len(), 22);
+    assert_eq!(descriptors.len(), 23);
     assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
     assert!(descriptors[0].description.contains("canonical `init`"));
     assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -1142,6 +1142,16 @@ fn rule_descriptors_expose_stable_rule_metadata() {
     );
     assert_eq!(parser_contract_violation.origin, RuleOrigin::MermanInternal);
     assert!(!parser_contract_violation.fixable);
+    let internal_failure = descriptors
+        .iter()
+        .find(|descriptor| descriptor.id == INTERNAL_FAILURE_RULE_ID)
+        .expect("internal failure descriptor");
+    assert_eq!(internal_failure.default_severity, DiagnosticSeverity::Error);
+    assert_eq!(internal_failure.category, DiagnosticCategory::Internal);
+    assert!(internal_failure.default_enabled);
+    assert_eq!(internal_failure.default_profile, AnalysisRuleProfile::Core);
+    assert_eq!(internal_failure.origin, RuleOrigin::MermanInternal);
+    assert!(!internal_failure.fixable);
     assert!(
         descriptors
             .iter()
@@ -1432,6 +1442,11 @@ fn configurable_rule_descriptors_exclude_internal_and_resource_rules() {
         descriptors
             .iter()
             .all(|descriptor| descriptor.id != PARSER_CONTRACT_VIOLATION_RULE_ID)
+    );
+    assert!(
+        descriptors
+            .iter()
+            .all(|descriptor| descriptor.id != INTERNAL_FAILURE_RULE_ID)
     );
     assert!(
         descriptors

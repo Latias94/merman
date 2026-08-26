@@ -2,6 +2,31 @@ use crate::{SourceSpan, detect::DetectTypeError};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// An internal engine subsystem failed without assigning blame to authored Mermaid input.
+///
+/// Concrete provider and contribution types remain implementation details. Callers can classify
+/// the stable [`Error::Internal`] variant while treating the human-readable message as diagnostic
+/// context.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{message}")]
+pub struct InternalFailure {
+    message: String,
+}
+
+impl InternalFailure {
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub(crate) fn from_config_overlay_error(
+        error: crate::config::PostDetectionConfigOverlayProviderError,
+    ) -> Self {
+        Self {
+            message: error.to_string(),
+        }
+    }
+}
+
 /// A bounded Mermaid theme program requested more generated color slots than Merman admits.
 ///
 /// Mermaid exposes `themeVariables.THEME_COLOR_LIMIT` as mutable input and uses it as the bound
@@ -147,9 +172,13 @@ impl ParseDiagnostic {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
     OperationCancelled(#[from] crate::OperationCancelled),
+
+    #[error(transparent)]
+    Internal(#[from] InternalFailure),
 
     #[error(transparent)]
     ThemeColor(#[from] crate::theme_color::ColorError),

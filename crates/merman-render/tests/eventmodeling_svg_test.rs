@@ -335,6 +335,7 @@ fn eventmodeling_font_size_only_remains_legacy_and_reaches_css() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
 
     let error = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
         .err()
@@ -422,6 +423,7 @@ fn eventmodeling_mixed_typography_composes_in_best_effort_but_remains_nonportabl
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
 
     let error = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
         .err()

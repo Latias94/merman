@@ -1,6 +1,6 @@
 use crate::config::{
     ConfigOverlayContribution, ConfigOverlayError, ConfigOverlayField, PostDetectionConfigOverlay,
-    PostDetectionConfigOverlayProvider, ThemeParseBinding,
+    PostDetectionConfigOverlayProvider, PostDetectionConfigOverlayProviderError, ThemeParseBinding,
 };
 use crate::*;
 use futures::executor::block_on;
@@ -123,10 +123,41 @@ impl PostDetectionConfigOverlayProvider for RecordingOverlayProvider {
         &self,
         family: &str,
         control: &OperationControl,
-    ) -> OperationControlResult<Option<Arc<PostDetectionConfigOverlay>>> {
+    ) -> OperationControlResult<
+        std::result::Result<
+            Option<Arc<PostDetectionConfigOverlay>>,
+            PostDetectionConfigOverlayProviderError,
+        >,
+    > {
         control.checkpoint()?;
         self.calls.lock().unwrap().push(family.to_string());
-        Ok(self.overlays.get(family).cloned())
+        Ok(Ok(self.overlays.get(family).cloned()))
+    }
+}
+
+#[derive(Debug)]
+struct FailingOverlayProvider {
+    cancel_before_failure: bool,
+}
+
+impl PostDetectionConfigOverlayProvider for FailingOverlayProvider {
+    fn overlay_for_family(
+        &self,
+        family: &str,
+        control: &OperationControl,
+    ) -> OperationControlResult<
+        std::result::Result<
+            Option<Arc<PostDetectionConfigOverlay>>,
+            PostDetectionConfigOverlayProviderError,
+        >,
+    > {
+        if self.cancel_before_failure {
+            control.cancel();
+        }
+        Ok(Err(PostDetectionConfigOverlayProviderError::Provider {
+            family: family.to_string(),
+            message: "synthetic compatibility failure".to_string(),
+        }))
     }
 }
 
@@ -1060,6 +1091,39 @@ fn fallback_provider_is_called_once_only_for_the_final_render_family() {
             .fallback_contribution_ids()
             .eq(["provider.swimlane.spacing"])
     );
+}
+
+#[test]
+fn fallback_provider_failure_surfaces_as_an_internal_error() {
+    let error = Engine::new()
+        .with_fallback_post_detection_config_overlay_provider(FailingOverlayProvider {
+            cancel_before_failure: false,
+        })
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect_err("provider failure must not become an empty overlay");
+
+    assert!(matches!(error, Error::Internal(_)));
+    assert_eq!(
+        error.to_string(),
+        "config overlay provider failed for family `flowchart`: synthetic compatibility failure"
+    );
+}
+
+#[test]
+fn cancellation_wins_when_a_fallback_provider_also_reports_failure() {
+    let control = OperationControl::new();
+    let error = Engine::new()
+        .with_fallback_post_detection_config_overlay_provider(FailingOverlayProvider {
+            cancel_before_failure: true,
+        })
+        .parse_diagram_for_render_model_controlled_sync(
+            "flowchart TD\nA-->B",
+            ParseOptions::strict(),
+            &control,
+        )
+        .expect_err("provider-triggered cancellation must remain the outer error");
+
+    assert_eq!(error.reason, CancelReason::Requested);
 }
 
 #[test]

@@ -57,7 +57,8 @@ pub use editor::{
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{
-    Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result, ThemeEvaluationLimitExceeded,
+    Error, InternalFailure, ParseDiagnostic, ParseDiagnosticSpanKind, Result,
+    ThemeEvaluationLimitExceeded,
 };
 pub use family::{
     BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact,
@@ -88,8 +89,8 @@ pub mod __private {
     use crate::config::{
         ConfigOverlayContribution, ConfigOverlayContributionProvenance, ConfigOverlayError,
         FrozenThemeCompatibilityField, PostDetectionConfigOverlay,
-        PostDetectionConfigOverlayProvider, ThemeCompatibilityFieldKind as ConfigFieldKind,
-        ThemeParseBinding, ThemeParseBindingError,
+        PostDetectionConfigOverlayProvider, PostDetectionConfigOverlayProviderError,
+        ThemeCompatibilityFieldKind as ConfigFieldKind, ThemeParseBinding, ThemeParseBindingError,
     };
     use crate::{
         Engine, FallbackPostDetectionConfigOverlay, MermaidConfig, OperationControl,
@@ -117,7 +118,26 @@ pub mod __private {
     /// Invalid bounded family compatibility contribution.
     #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
     #[error(transparent)]
-    pub struct ThemeCompatibilityOverlayError(#[from] ConfigOverlayError);
+    pub struct ThemeCompatibilityOverlayError(PostDetectionConfigOverlayProviderError);
+
+    impl ThemeCompatibilityOverlayError {
+        pub fn provider_failure(family: impl Into<String>, message: impl Into<String>) -> Self {
+            Self(PostDetectionConfigOverlayProviderError::Provider {
+                family: family.into(),
+                message: message.into(),
+            })
+        }
+
+        fn into_provider_error(self) -> PostDetectionConfigOverlayProviderError {
+            self.0
+        }
+    }
+
+    impl From<ConfigOverlayError> for ThemeCompatibilityOverlayError {
+        fn from(error: ConfigOverlayError) -> Self {
+            Self(error.into())
+        }
+    }
 
     /// Opaque selected-family overlay returned by a lazy compatibility resolver.
     #[derive(Debug, Clone)]
@@ -132,6 +152,25 @@ pub mod __private {
     impl ThemeFamilyCompatibilityOverlay {
         pub fn is_empty(&self) -> bool {
             self.0.is_empty()
+        }
+    }
+
+    /// Normalized contribution identity and assignments admitted by the core overlay owner.
+    ///
+    /// This receipt prevents internal consumers from rebuilding contribution identifiers or
+    /// maintaining a second patch flattener alongside the core admission boundary.
+    #[derive(Debug, Clone)]
+    pub struct ThemeCompatibilityContributionReceipt(ConfigOverlayContribution);
+
+    impl ThemeCompatibilityContributionReceipt {
+        pub fn opaque_id(&self) -> &str {
+            self.0.opaque_id()
+        }
+
+        pub fn assignments(
+            &self,
+        ) -> impl ExactSizeIterator<Item = (&str, &serde_json::Value)> + '_ {
+            self.0.assignments()
         }
     }
 
@@ -156,15 +195,16 @@ pub mod __private {
             &mut self,
             contribution_label: &str,
             patch: MermaidConfig,
-        ) -> Result<(), ThemeCompatibilityOverlayError> {
+        ) -> Result<ThemeCompatibilityContributionReceipt, ThemeCompatibilityOverlayError> {
             let opaque_id = format!(
                 "{}{}.{}",
                 self.contribution_prefix, self.family, contribution_label
             );
             let contribution = ConfigOverlayContribution::new(opaque_id, patch)?;
-            self.overlay = std::mem::take(&mut self.overlay)
-                .with_family_contribution(self.family.clone(), contribution)?;
-            Ok(())
+            let receipt = ThemeCompatibilityContributionReceipt(contribution.clone());
+            self.overlay
+                .try_push_family_contribution(self.family.clone(), contribution)?;
+            Ok(receipt)
         }
 
         pub fn finish(self) -> ThemeFamilyCompatibilityOverlay {
@@ -175,8 +215,9 @@ pub mod __private {
     type ThemeCompatibilityResolver = dyn Fn(
             &str,
             &OperationControl,
-        ) -> OperationControlResult<Option<ThemeFamilyCompatibilityOverlay>>
-        + Send
+        ) -> OperationControlResult<
+            Result<Option<ThemeFamilyCompatibilityOverlay>, ThemeCompatibilityOverlayError>,
+        > + Send
         + Sync;
 
     struct ThemeCompatibilityProvider {
@@ -196,8 +237,16 @@ pub mod __private {
             &self,
             family: &str,
             control: &OperationControl,
-        ) -> OperationControlResult<Option<Arc<PostDetectionConfigOverlay>>> {
-            (self.resolver)(family, control).map(|overlay| overlay.map(|overlay| overlay.0))
+        ) -> OperationControlResult<
+            Result<
+                Option<Arc<PostDetectionConfigOverlay>>,
+                PostDetectionConfigOverlayProviderError,
+            >,
+        > {
+            let overlay = (self.resolver)(family, control)?;
+            Ok(overlay
+                .map(|overlay| overlay.map(|overlay| overlay.0))
+                .map_err(ThemeCompatibilityOverlayError::into_provider_error))
         }
     }
 
@@ -224,9 +273,9 @@ pub mod __private {
             resolver: impl Fn(
                 &str,
                 &OperationControl,
-            )
-                -> OperationControlResult<Option<ThemeFamilyCompatibilityOverlay>>
-            + Send
+            ) -> OperationControlResult<
+                Result<Option<ThemeFamilyCompatibilityOverlay>, ThemeCompatibilityOverlayError>,
+            > + Send
             + Sync
             + 'static,
         ) -> Result<Self, ThemeCompatibilityPlanError> {

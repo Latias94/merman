@@ -1127,13 +1127,16 @@ impl<'a> ParsePipeline<'a> {
             &mut effective_config,
         );
         effective_config.mark_mutations_after_as_explicit(&config_before_detection);
-        let overlay_application = self.apply_post_detection_config_overlay(
+        let overlay_application = match self.apply_post_detection_config_overlay(
             &diagram_type,
             &effective_source_config,
             &config_before_detection,
             &mut effective_config,
             control,
-        )?;
+        )? {
+            Ok(application) => application,
+            Err(error) => return Ok(Err(error)),
+        };
         let overlay_provenance = overlay_application.finalize(&effective_config);
         effective_config.set_overlay_provenance(overlay_provenance);
         effective_config.freeze_theme_compatibility();
@@ -1282,10 +1285,10 @@ impl<'a> ParsePipeline<'a> {
         config_before_detection: &MermaidConfig,
         effective_config: &mut MermaidConfig,
         control: &OperationControl,
-    ) -> OperationControlResult<crate::config::ConfigOverlayApplication> {
+    ) -> OperationControlResult<Result<crate::config::ConfigOverlayApplication>> {
         let mut application = crate::config::ConfigOverlayApplication::default();
         let Some(family) = family::operation_family_id(diagram_type, effective_config) else {
-            return Ok(application);
+            return Ok(Ok(application));
         };
         let family = family.as_str();
         if let Some(overlay) = &self.engine.post_detection_config_overlay {
@@ -1307,9 +1310,17 @@ impl<'a> ParsePipeline<'a> {
             }
             Some(crate::FallbackPostDetectionConfigOverlay::Provider(provider)) => {
                 control.checkpoint()?;
-                let overlay = provider.overlay_for_family(family, control)?;
+                let resolved_overlay = provider.overlay_for_family(family, control)?;
                 control.checkpoint()?;
-                overlay
+                match resolved_overlay {
+                    Ok(overlay) => overlay,
+                    Err(error) => {
+                        return Ok(Err(crate::InternalFailure::from_config_overlay_error(
+                            error,
+                        )
+                        .into()));
+                    }
+                }
             }
             None => None,
         };
@@ -1325,7 +1336,7 @@ impl<'a> ParsePipeline<'a> {
                 control,
             )?;
         }
-        Ok(application)
+        Ok(Ok(application))
     }
 }
 

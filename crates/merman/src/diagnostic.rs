@@ -1,12 +1,14 @@
-//! Target-neutral, terminal-safe projection for parser and runtime-policy diagnostics.
+//! Target-neutral, terminal-safe projection for core diagnostics.
 //!
-//! Core parser errors retain authored context and runtime-policy errors may retain host-adapter
-//! messages. This module owns their structured projection and consumes the shared bounded terminal
-//! normalization boundary so hosts do not need an ASCII feature merely to report an error safely.
+//! Core errors may retain authored context or host-adapter messages. This module owns their
+//! structured projection and consumes the shared bounded terminal normalization boundary so hosts
+//! do not need an ASCII feature merely to report an error safely. Callers should branch on
+//! [`TerminalDiagnosticClass`] to distinguish parse, resource, internal, cancellation, and
+//! runtime-policy failures.
 
 pub use merman_core::terminal_text::{normalize_terminal_diagnostic, normalize_terminal_text};
 
-/// Machine-readable context for a terminal-safe parser diagnostic.
+/// Machine-readable context for a terminal-safe core diagnostic.
 ///
 /// Authored string fields are terminal-safe and bounded. Byte spans remain separate from the
 /// human-readable message so bindings do not need to recover structure from display text.
@@ -20,7 +22,18 @@ pub struct TerminalDiagnosticDetails {
     pub diagram_type: Option<String>,
 }
 
-/// Bounded terminal-safe projection of a core parser error.
+/// Stable top-level classification for a terminal-safe core diagnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TerminalDiagnosticClass {
+    Parse,
+    ResourceLimit,
+    Internal,
+    Cancelled,
+    RuntimePolicy,
+}
+
+/// Bounded terminal-safe projection of a core error.
 ///
 /// The wrapped error is deliberately not exposed through [`std::error::Error::source`], because
 /// its display and debug representations may retain authored source text or host-adapter error
@@ -40,6 +53,24 @@ pub struct TerminalRuntimePolicyError {
 
 impl TerminalDiagnostic {
     #[must_use]
+    pub const fn class(&self) -> TerminalDiagnosticClass {
+        match &self.error {
+            merman_core::Error::OperationCancelled(_) => TerminalDiagnosticClass::Cancelled,
+            merman_core::Error::Internal(_) => TerminalDiagnosticClass::Internal,
+            merman_core::Error::ThemeEvaluationLimit(_) => TerminalDiagnosticClass::ResourceLimit,
+            merman_core::Error::RuntimePolicy(_) => TerminalDiagnosticClass::RuntimePolicy,
+            merman_core::Error::ThemeColor(_)
+            | merman_core::Error::DetectType(_)
+            | merman_core::Error::UnsupportedDiagram { .. }
+            | merman_core::Error::DiagramParse { .. }
+            | merman_core::Error::MalformedFrontMatter
+            | merman_core::Error::InvalidDirectiveJson { .. }
+            | merman_core::Error::InvalidFrontMatterYaml { .. } => TerminalDiagnosticClass::Parse,
+            _ => TerminalDiagnosticClass::Internal,
+        }
+    }
+
+    #[must_use]
     pub fn terminal_safe_message(&self) -> String {
         safe_parse_error(&self.error)
     }
@@ -57,12 +88,13 @@ impl TerminalDiagnostic {
     /// without parsing the human-readable message or depending on a diagnostic-code string.
     #[must_use]
     pub const fn is_resource_limit(&self) -> bool {
-        matches!(self.error, merman_core::Error::ThemeEvaluationLimit(_))
+        matches!(self.class(), TerminalDiagnosticClass::ResourceLimit)
     }
 
     fn kind(&self) -> &'static str {
         match &self.error {
             merman_core::Error::OperationCancelled(_) => "cancelled",
+            merman_core::Error::Internal(_) => "internal_failure",
             merman_core::Error::ThemeColor(_) => "theme_color",
             merman_core::Error::ThemeEvaluationLimit(_) => "theme_evaluation_limit",
             merman_core::Error::RuntimePolicy(_) => "runtime_policy",
@@ -72,6 +104,7 @@ impl TerminalDiagnostic {
             merman_core::Error::MalformedFrontMatter => "front_matter",
             merman_core::Error::InvalidDirectiveJson { .. } => "directive",
             merman_core::Error::InvalidFrontMatterYaml { .. } => "front_matter",
+            _ => "unknown",
         }
     }
 }
@@ -151,6 +184,7 @@ impl From<merman_core::runtime::RuntimePolicyError> for TerminalRuntimePolicyErr
 fn safe_parse_error(error: &merman_core::Error) -> String {
     match error {
         merman_core::Error::OperationCancelled(_) => "parse operation cancelled".to_string(),
+        merman_core::Error::Internal(error) => normalize_terminal_diagnostic(error.message()),
         merman_core::Error::ThemeColor(error) => match error {
             merman_core::theme_color::ColorError::UnsupportedFormat { input } => {
                 bounded_message("Unsupported color format: \"", input, "\"")
@@ -187,6 +221,7 @@ fn safe_parse_error(error: &merman_core::Error) -> String {
         merman_core::Error::InvalidFrontMatterYaml { message } => {
             bounded_message("Invalid YAML front-matter: ", message, "")
         }
+        _ => "internal parser failure".to_string(),
     }
 }
 
@@ -201,6 +236,9 @@ fn safe_parse_details(error: &merman_core::Error) -> TerminalDiagnosticDetails {
     match error {
         merman_core::Error::OperationCancelled(_) => {
             details.code = "merman.parse.cancelled".to_string();
+        }
+        merman_core::Error::Internal(_) => {
+            details.code = "merman.internal.failure".to_string();
         }
         merman_core::Error::ThemeColor(_) => {
             details.code = "merman.parse.theme_color".to_string();
@@ -242,6 +280,9 @@ fn safe_parse_details(error: &merman_core::Error) -> TerminalDiagnosticDetails {
         merman_core::Error::InvalidFrontMatterYaml { .. } => {
             details.code = "merman.parse.front_matter.invalid_yaml".to_string();
             details.field = Some("front_matter".to_string());
+        }
+        _ => {
+            details.code = "merman.internal.failure".to_string();
         }
     }
     details
@@ -381,5 +422,36 @@ mod tests {
             nested.missing_capability(),
             Some(merman_core::runtime::RuntimeCapability::SystemRandom)
         );
+    }
+
+    #[test]
+    fn config_overlay_projection_is_safe_and_classified() {
+        let plan = merman_core::__private::ThemeCompatibilityPlan::try_new(
+            [0x5a; 32],
+            merman_core::MermaidConfig::empty_object(),
+            |family, _control| {
+                Ok(Err(
+                    merman_core::__private::ThemeCompatibilityOverlayError::provider_failure(
+                        format!("{family}\u{1b}"),
+                        "failure\u{7}",
+                    ),
+                ))
+            },
+        )
+        .expect("fixture compatibility plan");
+        let error =
+            merman_core::__private::install_theme_compatibility(merman_core::Engine::new(), &plan)
+                .parse_metadata_sync("flowchart TD\nA-->B\n")
+                .expect_err("fixture provider must fail");
+        let diagnostic = TerminalDiagnostic::from(error);
+        let details = diagnostic.terminal_diagnostic_details();
+
+        assert!(!diagnostic.to_string().contains('\u{1b}'));
+        assert!(!diagnostic.to_string().contains('\u{7}'));
+        assert!(!format!("{diagnostic:?}").contains('\u{1b}'));
+        assert_eq!(diagnostic.class(), TerminalDiagnosticClass::Internal);
+        assert_eq!(details.code, "merman.internal.failure");
+        assert_eq!(details.field, None);
+        assert_eq!(details.diagram_type, None);
     }
 }

@@ -258,10 +258,13 @@ impl BindingDiagnosticErrorDetails {
 pub(crate) fn parse_error(error: impl Into<merman::TerminalDiagnostic>) -> BindingError {
     let error = error.into();
     let message = error.terminal_safe_message();
-    let status = if error.is_resource_limit() {
-        BindingStatus::ResourceLimitExceeded
-    } else {
-        BindingStatus::ParseError
+    let status = match error.class() {
+        merman::TerminalDiagnosticClass::Parse => BindingStatus::ParseError,
+        merman::TerminalDiagnosticClass::ResourceLimit => BindingStatus::ResourceLimitExceeded,
+        merman::TerminalDiagnosticClass::Internal => BindingStatus::InternalError,
+        merman::TerminalDiagnosticClass::Cancelled => BindingStatus::Cancelled,
+        merman::TerminalDiagnosticClass::RuntimePolicy => BindingStatus::RenderError,
+        _ => BindingStatus::InternalError,
     };
     BindingError::new(status, message).with_diagnostic_details(binding_diagnostic_details(
         error.terminal_diagnostic_details(),
@@ -645,6 +648,7 @@ pub(crate) fn input_resource_limit_error(
 
 pub(crate) fn core_error(error: merman::Error) -> BindingError {
     match error {
+        merman::Error::OperationCancelled(error) => BindingError::cancelled(error),
         merman::Error::RuntimePolicy(error) => runtime_policy_error(error),
         merman::Error::ThemeEvaluationLimit(error) => {
             BindingError::new(BindingStatus::ResourceLimitExceeded, error.to_string())
@@ -3355,11 +3359,50 @@ mod tests {
     }
 
     #[test]
+    fn config_overlay_failures_remain_internal_across_binding_payloads() {
+        let plan = merman::__private::ThemeCompatibilityPlan::try_new(
+            [0x5a; 32],
+            merman::MermaidConfig::empty_object(),
+            |family, _control| {
+                Ok(Err(
+                    merman::__private::ThemeCompatibilityOverlayError::provider_failure(
+                        family,
+                        "fixture compatibility provider failure",
+                    ),
+                ))
+            },
+        )
+        .expect("fixture compatibility plan");
+        let error = merman::__private::install_theme_compatibility(merman::Engine::new(), &plan)
+            .parse_metadata_sync("flowchart TD\nA-->B\n")
+            .expect_err("fixture provider must fail");
+        let error = core_error(error);
+
+        assert_eq!(error.status(), BindingStatus::InternalError);
+        let details = error
+            .diagnostic_details()
+            .expect("internal overlay failures expose diagnostic details");
+        assert_eq!(details.code, "merman.internal.failure");
+        assert_eq!(details.field, None);
+
+        let payload: Value = serde_json::from_slice(&binding_error_payload_json_bytes(&error))
+            .expect("binding payload JSON");
+        assert_eq!(payload["code_name"], "MERMAN_INTERNAL_ERROR");
+        assert_eq!(
+            payload["details"]["diagnostic"]["code"],
+            "merman.internal.failure"
+        );
+        assert!(payload["details"]["diagnostic"]["field"].is_null());
+    }
+
+    #[test]
     fn cancellation_payload_is_structured_and_disjoint_from_resource_details() {
-        let cancelled = BindingError::cancelled(merman::OperationCancelled {
-            phase: merman::OperationPhase::Layout,
-            reason: merman::CancelReason::DeadlineExceeded,
-        });
+        let cancelled = core_error(merman::Error::OperationCancelled(
+            merman::OperationCancelled {
+                phase: merman::OperationPhase::Layout,
+                reason: merman::CancelReason::DeadlineExceeded,
+            },
+        ));
         assert_eq!(cancelled.status(), BindingStatus::Cancelled);
         assert_eq!(cancelled.status().code(), 12);
         assert_eq!(cancelled.status().code_name(), "MERMAN_CANCELLED");

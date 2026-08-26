@@ -92,8 +92,8 @@ mod operation_runner;
 )]
 pub mod render;
 pub use diagnostic::{
-    TerminalDiagnostic, TerminalDiagnosticDetails, TerminalRuntimePolicyError,
-    normalize_terminal_diagnostic, normalize_terminal_text,
+    TerminalDiagnostic, TerminalDiagnosticClass, TerminalDiagnosticDetails,
+    TerminalRuntimePolicyError, normalize_terminal_diagnostic, normalize_terminal_text,
 };
 #[cfg(feature = "ascii")]
 pub use render::AsciiRequest;

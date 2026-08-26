@@ -1,7 +1,6 @@
-#[cfg(test)]
 use crate::rules::INTERNAL_RULE_REGISTRY_GAP_RULE;
 use crate::rules::{
-    DIAGRAM_PARSE_RULE, DIAGRAM_PARSE_RULE_ID, INVALID_DIRECTIVE_JSON_RULE,
+    DIAGRAM_PARSE_RULE, DIAGRAM_PARSE_RULE_ID, INTERNAL_FAILURE_RULE, INVALID_DIRECTIVE_JSON_RULE,
     INVALID_FRONT_MATTER_YAML_RULE, INVALID_THEME_COLOR_RULE, MALFORMED_FRONT_MATTER_RULE,
     NO_DIAGRAM_RULE, PANIC_RULE, PARSER_CONTRACT_VIOLATION_RULE, RuleDescriptor,
     THEME_EVALUATION_LIMIT_RULE, UNSUPPORTED_DIAGRAM_RULE, rule_descriptor,
@@ -305,6 +304,15 @@ pub(crate) fn core_error_candidate(
             diagram_type: None,
             parse_location: None,
         },
+        CoreError::Internal(error) => CoreErrorCandidate {
+            candidate: rule_candidate_without_default_span(
+                INTERNAL_FAILURE_RULE,
+                AnalysisStatus::InternalError,
+                error.message(),
+            ),
+            diagram_type: None,
+            parse_location: None,
+        },
         CoreError::ThemeColor(error) => CoreErrorCandidate {
             candidate: rule_candidate_without_default_span(
                 INVALID_THEME_COLOR_RULE,
@@ -386,6 +394,15 @@ pub(crate) fn core_error_candidate(
                 AnalysisStatus::ParseError,
                 format!("invalid YAML front-matter: {message}"),
                 source_map,
+            ),
+            diagram_type: None,
+            parse_location: None,
+        },
+        _ => CoreErrorCandidate {
+            candidate: rule_candidate_without_default_span(
+                INTERNAL_RULE_REGISTRY_GAP_RULE,
+                AnalysisStatus::InternalError,
+                "unclassified core error while projecting analysis diagnostics",
             ),
             diagram_type: None,
             parse_location: None,
@@ -508,8 +525,8 @@ mod tests {
     use crate::{
         DiagnosticCategory, DiagnosticSeverity,
         rules::{
-            DIAGRAM_PARSE_RULE_ID, INVALID_THEME_COLOR_RULE_ID, RECOVERED_EDITOR_FACTS_RULE,
-            THEME_EVALUATION_LIMIT_RULE_ID,
+            DIAGRAM_PARSE_RULE_ID, INTERNAL_FAILURE_RULE_ID, INVALID_THEME_COLOR_RULE_ID,
+            RECOVERED_EDITOR_FACTS_RULE, THEME_EVALUATION_LIMIT_RULE_ID,
         },
     };
     use merman_core::theme_color::ColorError;
@@ -557,6 +574,37 @@ mod tests {
             Some(AnalysisStatus::ResourceLimitExceeded.code_name())
         );
         assert!(diagnostic.message.contains("THEME_COLOR_LIMIT"));
+        assert_eq!(diagnostic.span, None);
+        assert_eq!(projection.diagram_type, None);
+        assert_eq!(projection.parse_location, None);
+    }
+
+    #[test]
+    fn config_overlay_failures_are_internal_without_source_ownership() {
+        let plan = merman_core::__private::ThemeCompatibilityPlan::try_new(
+            [0x5a; 32],
+            merman_core::MermaidConfig::empty_object(),
+            |family, _control| {
+                Ok(Err(
+                    merman_core::__private::ThemeCompatibilityOverlayError::provider_failure(
+                        family,
+                        "duplicate compatibility assignment",
+                    ),
+                ))
+            },
+        )
+        .expect("fixture compatibility plan");
+        let error =
+            merman_core::__private::install_theme_compatibility(merman_core::Engine::new(), &plan)
+                .parse_metadata_sync("classDiagram\nA <|-- B\n")
+                .expect_err("fixture provider must fail");
+        let projection = core_error_candidate(&error, &SourceMap::new("classDiagram\nA <|-- B\n"));
+
+        let diagnostic = projection.candidate.materialize(DiagnosticSeverity::Error);
+        assert_eq!(diagnostic.id, INTERNAL_FAILURE_RULE_ID);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Internal);
+        assert_eq!(diagnostic.code, Some(AnalysisStatus::InternalError.code()));
+        assert!(diagnostic.message.contains("class"));
         assert_eq!(diagnostic.span, None);
         assert_eq!(projection.diagram_type, None);
         assert_eq!(projection.parse_location, None);

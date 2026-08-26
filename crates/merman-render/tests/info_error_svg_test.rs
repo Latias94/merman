@@ -230,7 +230,7 @@ fn flowchart_typography_compatibility_plan(
         MermaidConfig::empty_object(),
         move |family, _control| {
             if family != "flowchart" {
-                return Ok(None);
+                return Ok(Ok(None));
             }
             let mut builder = ThemeFamilyCompatibilityOverlayBuilder::new(
                 "flowchart",
@@ -247,7 +247,7 @@ fn flowchart_typography_compatibility_plan(
                     })),
                 )
                 .expect("valid test-only Flowchart typography contribution");
-            Ok(Some(builder.finish()))
+            Ok(Ok(Some(builder.finish())))
         },
     )
     .expect("test compatibility plan must match the theme recipe")

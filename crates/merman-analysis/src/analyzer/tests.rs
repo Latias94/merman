@@ -1544,6 +1544,24 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         .diagram_registry_mut()
         .insert("flowchart-v2", unknown_warning_flowchart_parser);
 
+    let theme_compatibility_plan = merman_core::__private::ThemeCompatibilityPlan::try_new(
+        [0x5a; 32],
+        MermaidConfig::empty_object(),
+        |family, _control| {
+            Ok(Err(
+                merman_core::__private::ThemeCompatibilityOverlayError::provider_failure(
+                    family,
+                    "fixture compatibility provider failure",
+                ),
+            ))
+        },
+    )
+    .expect("fixture compatibility plan");
+    let theme_compatibility_engine = merman_core::__private::install_theme_compatibility(
+        merman_core::Engine::new(),
+        &theme_compatibility_plan,
+    );
+
     let invalid_theme_analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_site_config(MermaidConfig::from_value(json!({ "secure": [] }))),
@@ -1630,6 +1648,11 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         CorpusCase {
             name: "parser contract violation",
             analyzer: Analyzer::with_engine(cancelling_engine, AnalysisOptions::default()),
+            source: "flowchart TD\nA-->B\n",
+        },
+        CorpusCase {
+            name: "config overlay failure",
+            analyzer: Analyzer::with_engine(theme_compatibility_engine, AnalysisOptions::default()),
             source: "flowchart TD\nA-->B\n",
         },
         CorpusCase {

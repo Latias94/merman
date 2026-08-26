@@ -37,6 +37,7 @@ pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front
 pub const INVALID_THEME_COLOR_RULE_ID: &str = "merman.config.invalid_theme_color";
 pub const PANIC_RULE_ID: &str = "merman.internal.panic";
 pub const PARSER_CONTRACT_VIOLATION_RULE_ID: &str = "merman.internal.parser_contract_violation";
+pub const INTERNAL_FAILURE_RULE_ID: &str = "merman.internal.failure";
 pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_registry_gap";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_RULE_ID: &str =
@@ -459,6 +460,22 @@ pub(crate) const PARSER_CONTRACT_VIOLATION_RULE: RuleDescriptor = RuleDescriptor
     fixable: false,
 };
 
+pub(crate) const INTERNAL_FAILURE_RULE: RuleDescriptor = RuleDescriptor {
+    id: INTERNAL_FAILURE_RULE_ID,
+    description: "Report a low-frequency internal engine failure without assigning source ownership.",
+    evidence: &[
+        "docs/adr/0068-render-side-presentation-theme-view.md",
+        "docs/plans/2026-08-06-001-refactor-portable-diagram-theme-architecture-plan.md",
+    ],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Internal,
+    tags: &[],
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanInternal,
+    fixable: false,
+};
+
 pub(crate) const INTERNAL_RULE_REGISTRY_GAP_RULE: RuleDescriptor = RuleDescriptor {
     id: INTERNAL_RULE_REGISTRY_GAP_RULE_ID,
     description: "Report an internal rule registry gap while projecting diagnostics.",
@@ -547,6 +564,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     INVALID_THEME_COLOR_RULE,
     PANIC_RULE,
     PARSER_CONTRACT_VIOLATION_RULE,
+    INTERNAL_FAILURE_RULE,
     INTERNAL_RULE_REGISTRY_GAP_RULE,
     BLOCK_WIDTH_RULE,
     FLOWCHART_EXPLICIT_DIRECTION_RULE,

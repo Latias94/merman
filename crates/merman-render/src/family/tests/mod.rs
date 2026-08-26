@@ -592,7 +592,7 @@ fn unknown_fallback_contributions_are_always_portability_residuals() {
     let plan = ThemeCompatibilityPlan::try_new(
         *theme.recipe_fingerprint().as_bytes(),
         MermaidConfig::empty_object(),
-        move |family, _control| Ok((family == "state").then(|| overlay.clone())),
+        move |family, _control| Ok(Ok((family == "state").then(|| overlay.clone()))),
     )
     .expect("bounded compatibility plan");
     let parsed = install_theme_compatibility(Engine::new(), &plan)
@@ -9797,7 +9797,7 @@ fn recipe_identity_cannot_be_paired_with_a_different_compatibility_config() {
         let plan = ThemeCompatibilityPlan::try_new(
             *theme.recipe_fingerprint().as_bytes(),
             compatibility,
-            |_family, _control| Ok(None),
+            |_family, _control| Ok(Ok(None)),
         )
         .expect("bounded compatibility config");
         let parsed = install_theme_compatibility(Engine::new(), &plan)

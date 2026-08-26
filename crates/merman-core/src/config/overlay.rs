@@ -145,6 +145,12 @@ impl ConfigOverlayContribution {
         &self.opaque_id
     }
 
+    pub(crate) fn assignments(&self) -> impl ExactSizeIterator<Item = (&str, &Value)> + '_ {
+        self.assignments
+            .iter()
+            .map(|assignment| (assignment.path.as_ref(), assignment.value.as_ref()))
+    }
+
     fn assignment_count(&self) -> usize {
         self.assignments.len()
     }
@@ -174,7 +180,9 @@ pub(crate) trait PostDetectionConfigOverlayProvider: std::fmt::Debug + Send + Sy
         &self,
         family: &str,
         control: &OperationControl,
-    ) -> OperationControlResult<Option<Arc<PostDetectionConfigOverlay>>>;
+    ) -> OperationControlResult<
+        Result<Option<Arc<PostDetectionConfigOverlay>>, PostDetectionConfigOverlayProviderError>,
+    >;
 }
 
 impl PostDetectionConfigOverlay {
@@ -182,11 +190,21 @@ impl PostDetectionConfigOverlay {
         Self::default()
     }
 
+    #[cfg(test)]
     pub(crate) fn with_family_contribution(
         mut self,
         family: impl Into<String>,
         contribution: ConfigOverlayContribution,
     ) -> Result<Self, ConfigOverlayError> {
+        self.try_push_family_contribution(family, contribution)?;
+        Ok(self)
+    }
+
+    pub(crate) fn try_push_family_contribution(
+        &mut self,
+        family: impl Into<String>,
+        contribution: ConfigOverlayContribution,
+    ) -> Result<(), ConfigOverlayError> {
         let family = family.into();
         validate_name(&family, MAX_FAMILY_NAME_BYTES, ConfigOverlayField::Family)?;
         let is_new_family = !self.families.contains_key(&family);
@@ -283,7 +301,7 @@ impl PostDetectionConfigOverlay {
         family_overlay.contributions.push(contribution);
         self.assignment_count = assignment_count;
         self.retained_bytes = retained_bytes;
-        Ok(self)
+        Ok(())
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -514,18 +532,24 @@ impl std::fmt::Display for ConfigOverlayField {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ConfigOverlayError {
-    #[error("post-detection config overlay field `{field}` is invalid")]
+    #[error("config overlay field `{field}` is invalid")]
     InvalidValue { field: ConfigOverlayField },
-    #[error("post-detection config overlay field `{field}` exceeds its implementation limit")]
+    #[error("config overlay field `{field}` exceeds its implementation limit")]
     LimitExceeded { field: ConfigOverlayField },
-    #[error("post-detection config overlay patch must contain at least one scalar assignment")]
+    #[error("config overlay patch must contain at least one scalar assignment")]
     EmptyPatch,
-    #[error(
-        "duplicate post-detection config overlay contribution `{opaque_id}` for family `{family}`"
-    )]
+    #[error("duplicate config overlay contribution `{opaque_id}` for family `{family}`")]
     DuplicateContributionId { family: String, opaque_id: String },
-    #[error("duplicate post-detection config overlay assignment `{path}` for family `{family}`")]
+    #[error("duplicate config overlay assignment `{path}` for family `{family}`")]
     DuplicateAssignment { family: String, path: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum PostDetectionConfigOverlayProviderError {
+    #[error(transparent)]
+    Overlay(#[from] ConfigOverlayError),
+    #[error("config overlay provider failed for family `{family}`: {message}")]
+    Provider { family: String, message: String },
 }
 
 fn validate_name(
@@ -1059,6 +1083,55 @@ mod tests {
         effective.set_overlay_provenance(application.finalize(&effective));
         assert!(!effective.fallback_overlay_owns_path("themeVariables.fontFamily"));
         assert!(effective.config_path_overrides_typed_default("themeVariables.fontFamily"));
+    }
+
+    #[test]
+    fn failed_family_contribution_push_preserves_prior_overlay_state() {
+        let mut overlay = PostDetectionConfigOverlay::new();
+        overlay
+            .try_push_family_contribution(
+                "flowchart",
+                contribution(
+                    "legacy.flowchart.primary",
+                    json!({"themeVariables": {"primaryColor": "#123456"}}),
+                ),
+            )
+            .expect("first contribution is valid");
+
+        let error = overlay
+            .try_push_family_contribution(
+                "flowchart",
+                contribution(
+                    "legacy.flowchart.conflict",
+                    json!({"themeVariables": {"primaryColor": "#abcdef"}}),
+                ),
+            )
+            .expect_err("overlapping assignments must fail closed");
+        assert_eq!(
+            error,
+            ConfigOverlayError::DuplicateAssignment {
+                family: "flowchart".to_string(),
+                path: "themeVariables.primaryColor".to_string(),
+            }
+        );
+
+        let explicit = MermaidConfig::empty_object();
+        let before_detect = MermaidConfig::empty_object();
+        let mut effective = before_detect.clone();
+        let provenance = apply(
+            &overlay,
+            &explicit,
+            &explicit,
+            &before_detect,
+            &mut effective,
+        );
+
+        assert_eq!(
+            effective.get_str("themeVariables.primaryColor"),
+            Some("#123456")
+        );
+        assert!(provenance.contains("legacy.flowchart.primary"));
+        assert!(!provenance.contains("legacy.flowchart.conflict"));
     }
 
     #[test]

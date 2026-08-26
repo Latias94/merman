@@ -1,8 +1,12 @@
-use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, Mutex};
+use std::collections::BTreeMap;
+use std::sync::{Arc, OnceLock};
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use std::collections::BTreeSet;
 
 use merman_core::__private::{
-    ThemeFamilyCompatibilityOverlay, ThemeFamilyCompatibilityOverlayBuilder,
+    ThemeCompatibilityOverlayError, ThemeFamilyCompatibilityOverlay,
+    ThemeFamilyCompatibilityOverlayBuilder,
 };
 use merman_core::{MermaidConfig, OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
@@ -37,10 +41,7 @@ use super::{DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch};
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
 const EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID: &str = "marker.paint";
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
-type AcceptedLegacyProjections = BTreeSet<ThemeLegacyProjectionObservation>;
-#[cfg(not(any(test, feature = "internal-theme-acceptance")))]
-type AcceptedLegacyProjections = ();
+type BridgeResult<T> = Result<T, ThemeCompatibilityOverlayError>;
 
 /// Temporary, family-local compatibility inputs for Mermaid renderers that do not yet consume the
 /// typed theme program directly.
@@ -55,13 +56,17 @@ pub(super) struct LegacyFamilyThemeBridge {
 #[derive(Debug)]
 struct LegacyFamilyThemeBridgeInner {
     family_programs: Arc<FamilyThemeProgramCache>,
-    artifacts: Mutex<HashMap<DiagramFamilyId, Arc<LegacyFamilyThemeArtifact>>>,
+    artifacts: BTreeMap<
+        DiagramFamilyId,
+        OnceLock<Result<LegacyFamilyThemeArtifact, ThemeCompatibilityOverlayError>>,
+    >,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
+#[cfg_attr(test, derive(Clone))]
 struct LegacyFamilyThemeArtifact {
     overlay: ThemeFamilyCompatibilityOverlay,
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(test)]
     contribution_ids: BTreeSet<String>,
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
     accepted_projections: BTreeSet<ThemeLegacyProjectionObservation>,
@@ -69,40 +74,51 @@ struct LegacyFamilyThemeArtifact {
 
 impl LegacyFamilyThemeBridge {
     pub(super) fn new(family_programs: Arc<FamilyThemeProgramCache>) -> Self {
+        let artifacts = DiagramFamilyId::all()
+            .iter()
+            .copied()
+            .map(|family| (family, OnceLock::new()))
+            .collect();
         Self {
             inner: Arc::new(LegacyFamilyThemeBridgeInner {
                 family_programs,
-                artifacts: Mutex::new(HashMap::new()),
+                artifacts,
             }),
         }
     }
 
-    fn artifact_for_family(&self, family: DiagramFamilyId) -> Arc<LegacyFamilyThemeArtifact> {
-        let mut artifacts = self
+    fn artifact_for_family(
+        &self,
+        family: DiagramFamilyId,
+    ) -> Result<&LegacyFamilyThemeArtifact, ThemeCompatibilityOverlayError> {
+        let artifact = self
             .inner
             .artifacts
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        artifacts
-            .entry(family)
-            .or_insert_with(|| {
-                Arc::new(compile_selected_family(&self.inner.family_programs, family))
-            })
-            .clone()
+            .get(&family)
+            .ok_or_else(|| {
+                ThemeCompatibilityOverlayError::provider_failure(
+                    family.as_str(),
+                    "family is absent from the built-in compatibility cache",
+                )
+            })?
+            .get_or_init(|| compile_selected_family(&self.inner.family_programs, family));
+        artifact.as_ref().map_err(Clone::clone)
     }
 
     #[cfg(test)]
-    fn compile_for_family(&self, family: DiagramFamilyId) -> Arc<LegacyFamilyThemeArtifact> {
+    fn compile_for_family(&self, family: DiagramFamilyId) -> LegacyFamilyThemeArtifact {
         self.artifact_for_family(family)
+            .expect("test family compatibility bridge must compile")
+            .clone()
     }
 
     #[cfg(test)]
     fn cached_family_count(&self) -> usize {
         self.inner
             .artifacts
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len()
+            .values()
+            .filter(|artifact| artifact.get().is_some())
+            .count()
     }
 
     #[cfg(test)]
@@ -116,6 +132,7 @@ impl LegacyFamilyThemeBridge {
             return false;
         };
         self.artifact_for_family(family)
+            .expect("test family compatibility bridge must compile")
             .contribution_ids
             .contains(opaque_id)
     }
@@ -124,19 +141,20 @@ impl LegacyFamilyThemeBridge {
         &self,
         family: &str,
         control: &OperationControl,
-    ) -> OperationControlResult<Option<ThemeFamilyCompatibilityOverlay>> {
+    ) -> OperationControlResult<
+        Result<Option<ThemeFamilyCompatibilityOverlay>, ThemeCompatibilityOverlayError>,
+    > {
         control.checkpoint()?;
         let Some(family) = DiagramFamilyId::from_id(family) else {
-            return Ok(None);
+            return Ok(Err(ThemeCompatibilityOverlayError::provider_failure(
+                family,
+                "selected family is absent from the built-in legacy bridge catalog",
+            )));
         };
-        // State owns its compatibility path in the typed adapter and must never be projected
-        // through the legacy Mermaid lane.
-        if family == DiagramFamilyId::STATE {
-            return Ok(None);
-        }
         let artifact = self.artifact_for_family(family);
         control.checkpoint()?;
-        Ok((!artifact.overlay.is_empty()).then(|| artifact.overlay.clone()))
+        Ok(artifact
+            .map(|artifact| (!artifact.overlay.is_empty()).then(|| artifact.overlay.clone())))
     }
 }
 
@@ -152,94 +170,127 @@ fn contribution_family(opaque_id: &str) -> Option<DiagramFamilyId> {
 fn compile_selected_family(
     family_programs: &FamilyThemeProgramCache,
     family: DiagramFamilyId,
-) -> LegacyFamilyThemeArtifact {
-    if !family_programs
-        .get_or_compile(family)
-        .has_legacy_compatibility()
-    {
-        let (overlay, contribution_ids, accepted_projections) =
-            OverlayBuilder::new(family).finish();
-        #[cfg(not(any(test, feature = "internal-theme-acceptance")))]
-        let _ = (&contribution_ids, accepted_projections);
-        return LegacyFamilyThemeArtifact {
-            overlay,
-            #[cfg(any(test, feature = "internal-theme-acceptance"))]
-            contribution_ids,
-            #[cfg(any(test, feature = "internal-theme-acceptance"))]
-            accepted_projections,
-        };
+) -> Result<LegacyFamilyThemeArtifact, ThemeCompatibilityOverlayError> {
+    let dispatch = legacy_family_dispatch(family)?;
+    let program = family_programs.get_or_compile(family);
+    if !program.has_legacy_compatibility() {
+        return Ok(LegacyFamilyThemeArtifact::default());
     }
 
+    let reader = FamilyStyleReader::new(family, program);
     let mut builder = OverlayBuilder::new(family);
-    match family {
+    match dispatch {
+        LegacyFamilyDispatch::Node => {
+            compile_node_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Mindmap => {
+            compile_mindmap_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::TreeView => {
+            compile_tree_view_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::GitGraph => {
+            compile_gitgraph_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Sequence => {
+            compile_sequence_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Task => {
+            compile_task_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Requirement => {
+            compile_requirement_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Er => {
+            compile_er_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Pie => {
+            compile_pie_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Chart => {
+            compile_chart_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Timeline => {
+            compile_timeline_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Journey => {
+            compile_journey_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::Text => {
+            compile_text_family(&mut builder, &reader)?;
+        }
+        LegacyFamilyDispatch::NoLegacy => {
+            return Err(ThemeCompatibilityOverlayError::provider_failure(
+                family.as_str(),
+                "family matrix declares legacy compatibility but dispatch is classified as bridge-free",
+            ));
+        }
+    }
+    Ok(builder.finish())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LegacyFamilyDispatch {
+    Node,
+    Mindmap,
+    TreeView,
+    GitGraph,
+    Sequence,
+    Task,
+    Requirement,
+    Er,
+    Pie,
+    Chart,
+    Timeline,
+    Journey,
+    Text,
+    NoLegacy,
+}
+
+fn legacy_family_dispatch(
+    family: DiagramFamilyId,
+) -> Result<LegacyFamilyDispatch, ThemeCompatibilityOverlayError> {
+    let dispatch = match family {
         DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
-        | DiagramFamilyId::BLOCK => {
-            compile_node_family(&mut builder, family_programs, family);
-        }
-        DiagramFamilyId::MINDMAP => {
-            compile_mindmap_family(&mut builder, family_programs);
-        }
-        DiagramFamilyId::TREE_VIEW => {
-            compile_tree_view_family(&mut builder, family_programs);
-        }
-        DiagramFamilyId::GIT_GRAPH => {
-            compile_gitgraph_family(&mut builder, family_programs);
-        }
-        DiagramFamilyId::SEQUENCE => {
-            compile_sequence_family(&mut builder, family_programs);
-        }
-        DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN => {
-            compile_task_family(&mut builder, family_programs, family);
-        }
-        DiagramFamilyId::REQUIREMENT => {
-            compile_requirement_family(&mut builder, family_programs);
-        }
-        DiagramFamilyId::ER => {
-            compile_er_family(&mut builder, family_programs);
-        }
-        DiagramFamilyId::PIE => {
-            compile_pie_family(&mut builder, family_programs);
-        }
+        | DiagramFamilyId::BLOCK => LegacyFamilyDispatch::Node,
+        DiagramFamilyId::MINDMAP => LegacyFamilyDispatch::Mindmap,
+        DiagramFamilyId::TREE_VIEW => LegacyFamilyDispatch::TreeView,
+        DiagramFamilyId::GIT_GRAPH => LegacyFamilyDispatch::GitGraph,
+        DiagramFamilyId::SEQUENCE => LegacyFamilyDispatch::Sequence,
+        DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN => LegacyFamilyDispatch::Task,
+        DiagramFamilyId::REQUIREMENT => LegacyFamilyDispatch::Requirement,
+        DiagramFamilyId::ER => LegacyFamilyDispatch::Er,
+        DiagramFamilyId::PIE => LegacyFamilyDispatch::Pie,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
-            compile_chart_family(&mut builder, family_programs, family);
+            LegacyFamilyDispatch::Chart
         }
-        DiagramFamilyId::TIMELINE => {
-            compile_timeline_family(&mut builder, family_programs);
-        }
-        DiagramFamilyId::JOURNEY => {
-            compile_journey_family(&mut builder, family_programs);
-        }
-        DiagramFamilyId::ERROR
-        | DiagramFamilyId::ZENUML
-        | DiagramFamilyId::ARCHITECTURE
+        DiagramFamilyId::TIMELINE => LegacyFamilyDispatch::Timeline,
+        DiagramFamilyId::JOURNEY => LegacyFamilyDispatch::Journey,
+        DiagramFamilyId::ARCHITECTURE
         | DiagramFamilyId::C4
         | DiagramFamilyId::CYNEFIN
         | DiagramFamilyId::WARDLEY
         | DiagramFamilyId::RAILROAD
-        | DiagramFamilyId::PACKET
         | DiagramFamilyId::SANKEY
         | DiagramFamilyId::INFO
         | DiagramFamilyId::TREEMAP
         | DiagramFamilyId::ISHIKAWA
         | DiagramFamilyId::EVENT_MODELING
-        | DiagramFamilyId::VENN => {
-            compile_text_family(&mut builder, family_programs, family);
+        | DiagramFamilyId::VENN => LegacyFamilyDispatch::Text,
+        DiagramFamilyId::STATE
+        | DiagramFamilyId::PACKET
+        | DiagramFamilyId::ERROR
+        | DiagramFamilyId::ZENUML => LegacyFamilyDispatch::NoLegacy,
+        _ => {
+            return Err(ThemeCompatibilityOverlayError::provider_failure(
+                family.as_str(),
+                "built-in family is missing an explicit legacy bridge dispatch classification",
+            ));
         }
-        DiagramFamilyId::STATE => {}
-        _ => {}
-    }
-    let (overlay, contribution_ids, accepted_projections) = builder.finish();
-    #[cfg(not(any(test, feature = "internal-theme-acceptance")))]
-    let _ = (&contribution_ids, accepted_projections);
-    LegacyFamilyThemeArtifact {
-        overlay,
-        #[cfg(any(test, feature = "internal-theme-acceptance"))]
-        contribution_ids,
-        #[cfg(any(test, feature = "internal-theme-acceptance"))]
-        accepted_projections,
-    }
+    };
+    Ok(dispatch)
 }
 
 /// Observes the current matrix disposition and exact compatibility assignments for one route.
@@ -301,7 +352,13 @@ pub(crate) fn legacy_projection_probe(
     })?;
 
     let family_programs = FamilyThemeProgramCache::new(Arc::new(spec));
-    let artifact = compile_selected_family(&family_programs, id.family_id());
+    let artifact = compile_selected_family(&family_programs, id.family_id()).map_err(|error| {
+        ThemeLegacyProjectionProbeError::new(
+            id,
+            value,
+            format!("bridge projection failed: {error}"),
+        )
+    })?;
     if artifact.overlay.is_empty() != artifact.accepted_projections.is_empty() {
         return Err(ThemeLegacyProjectionProbeError::new(
             id,
@@ -319,13 +376,12 @@ pub(crate) fn legacy_projection_probe(
 
 fn compile_node_family(
     builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-    family: DiagramFamilyId,
-) {
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let family = reader.family;
+    let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::NodeFill.contribution_id(),
         [
@@ -408,19 +464,20 @@ fn compile_node_family(
         ],
     );
 
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
 /// 仅投影 Mindmap writer 仍然消费的 legacy 变量。
 ///
 /// 分支 palette 与边 stroke 已由 typed adapter 接管；这里仅保留节点填充和边框实际读取的
 /// Mermaid token，避免通用 node-family bridge 再生成 writer 不会读取的全局字段。
-fn compile_mindmap_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
-    let family = DiagramFamilyId::MINDMAP;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+fn compile_mindmap_family(
+    builder: &mut OverlayBuilder,
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::NodeFill.contribution_id(),
         [("mainBkg", reader.fill(ThemeTarget::Node))],
@@ -429,7 +486,7 @@ fn compile_mindmap_family(builder: &mut OverlayBuilder, family_programs: &Family
         ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
         [("nodeBorder", reader.stroke(ThemeTarget::Node))],
     );
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
 /// Projects only Tree View paint routes that still require compatibility.
@@ -439,13 +496,11 @@ fn compile_mindmap_family(builder: &mut OverlayBuilder, family_programs: &Family
 /// historical nested Mermaid variables until their own terminal cutovers are authorized.
 fn compile_tree_view_family(
     builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-) {
-    let family = DiagramFamilyId::TREE_VIEW;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
 
     let mut add_tree_view_color =
         |mapping: &'static str, key: &'static str, value: Option<String>| {
@@ -470,7 +525,7 @@ fn compile_tree_view_family(
     let marker = reader.marker_paint_contribution();
     add_tree_view_color(marker.contribution_id, "iconColor", marker.value);
 
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
 /// Projects only GitGraph variables that its terminal writer actually consumes.
@@ -480,13 +535,11 @@ fn compile_tree_view_family(
 /// resurrecting terminal-less marker, cluster, and title projections.
 fn compile_gitgraph_family(
     builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-) {
-    let family = DiagramFamilyId::GIT_GRAPH;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
     let node_fill = reader.fill(ThemeTarget::Node);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::NodeFill.contribution_id(),
@@ -529,18 +582,16 @@ fn compile_gitgraph_family(
         )],
     );
 
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
 fn compile_sequence_family(
     builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-) {
-    let family = DiagramFamilyId::SEQUENCE;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::ActorFill.contribution_id(),
         [("actorBkg", reader.fill(ThemeTarget::Actor))],
@@ -614,18 +665,17 @@ fn compile_sequence_family(
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
 
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
 fn compile_task_family(
     builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-    family: DiagramFamilyId,
-) {
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let family = reader.family;
+    let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
     contributions.add_theme_variables(
         "text.fill",
         [
@@ -666,18 +716,16 @@ fn compile_task_family(
         _ => unreachable!("task compatibility is limited to Gantt and Kanban"),
     }
 
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
 fn compile_requirement_family(
     builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-) {
-    let family = DiagramFamilyId::REQUIREMENT;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
     contributions.add_theme_variables(
         "requirement.text",
         [
@@ -710,15 +758,13 @@ fn compile_requirement_family(
             reader.fill_variant(ThemeTarget::Table, ThemeVariant::Even),
         )],
     );
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
-fn compile_er_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
-    let family = DiagramFamilyId::ER;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+fn compile_er_family(builder: &mut OverlayBuilder, reader: &FamilyStyleReader) -> BridgeResult<()> {
+    let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
     let text_fill = reader.text_fill(ThemeTarget::Text);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::TextFill.contribution_id(),
@@ -749,15 +795,16 @@ fn compile_er_family(builder: &mut OverlayBuilder, family_programs: &FamilyTheme
             reader.fill_variant(ThemeTarget::Table, ThemeVariant::Even),
         )],
     );
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
-fn compile_pie_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
-    let family = DiagramFamilyId::PIE;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+fn compile_pie_family(
+    builder: &mut OverlayBuilder,
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
     contributions.add_theme_variables(
         "text.fill",
         [
@@ -765,21 +812,20 @@ fn compile_pie_family(builder: &mut OverlayBuilder, family_programs: &FamilyThem
             ("pieSectionTextColor", reader.text_fill(ThemeTarget::Text)),
         ],
     );
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
 fn compile_chart_family(
     builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-    family: DiagramFamilyId,
-) {
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let family = reader.family;
+    let mut contributions = FamilyContributions::new();
     let text = reader.text_fill(ThemeTarget::Text);
     let title = reader.text_fill(ThemeTarget::Title);
     let axis_text = reader.text_fill(ThemeTarget::Axis);
     let axis_line = reader.stroke_or_fill(ThemeTarget::Axis);
-    contributions.add_typography(&reader);
+    contributions.add_typography(reader);
     match family {
         DiagramFamilyId::XY_CHART => {
             let mut xy = Map::new();
@@ -831,17 +877,15 @@ fn compile_chart_family(
         }
         _ => unreachable!("chart compatibility is limited to XY, Quadrant, and Radar"),
     }
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
 fn compile_timeline_family(
     builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-) {
-    let family = DiagramFamilyId::TIMELINE;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
-    contributions.add_typography(&reader);
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let mut contributions = FamilyContributions::new();
+    contributions.add_typography(reader);
     contributions.add_theme_variables(
         "event.paint-text",
         [
@@ -851,14 +895,15 @@ fn compile_timeline_family(
             ("titleColor", reader.text_fill(ThemeTarget::Title)),
         ],
     );
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
-fn compile_journey_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
-    let family = DiagramFamilyId::JOURNEY;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
-    contributions.add_typography(&reader);
+fn compile_journey_family(
+    builder: &mut OverlayBuilder,
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
+    let mut contributions = FamilyContributions::new();
+    contributions.add_typography(reader);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::JourneyTaskFill.contribution_id(),
         [("mainBkg", reader.fill(ThemeTarget::JourneyTask))],
@@ -874,33 +919,27 @@ fn compile_journey_family(builder: &mut OverlayBuilder, family_programs: &Family
             ("titleColor", reader.text_fill(ThemeTarget::Title)),
         ],
     );
-    contributions.finish_into(builder);
+    contributions.finish_into(builder)
 }
 
 fn compile_text_family(
     builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-    family: DiagramFamilyId,
-) {
+    reader: &FamilyStyleReader,
+) -> BridgeResult<()> {
     // Text and Title are only candidate compatibility mappings here. The family matrix filters
-    // terminal-less routes, such as Info Title and Error Text/Title, before any contribution is
-    // created. Renderer-specific roles remain unsupported until the public model types them.
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
-    contributions.add_typography(&reader);
-    // Packet owns its Text and Title terminal roles directly. Avoid reintroducing competing
-    // global compatibility variables after that family-local ownership boundary.
-    if family != DiagramFamilyId::PACKET {
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::TextFill.contribution_id(),
-            [("textColor", reader.text_fill(ThemeTarget::Text))],
-        );
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::TitleFill.contribution_id(),
-            [("titleColor", reader.text_fill(ThemeTarget::Title))],
-        );
-    }
-    contributions.finish_into(builder);
+    // terminal-less routes before any contribution is created. Renderer-specific roles remain
+    // unsupported until the public model types them.
+    let mut contributions = FamilyContributions::new();
+    contributions.add_typography(reader);
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::TextFill.contribution_id(),
+        [("textColor", reader.text_fill(ThemeTarget::Text))],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::TitleFill.contribution_id(),
+        [("titleColor", reader.text_fill(ThemeTarget::Title))],
+    );
+    contributions.finish_into(builder)
 }
 
 struct FamilyStyleReader {
@@ -909,11 +948,8 @@ struct FamilyStyleReader {
 }
 
 impl FamilyStyleReader {
-    fn new(family_programs: &FamilyThemeProgramCache, family: DiagramFamilyId) -> Self {
-        Self {
-            family,
-            program: family_programs.get_or_compile(family),
-        }
+    fn new(family: DiagramFamilyId, program: Arc<FamilyThemeProgram>) -> Self {
+        Self { family, program }
     }
 
     fn base_typography(&self) -> &TextStyle {
@@ -1086,7 +1122,6 @@ fn solid_paint(paint: &CanvasPaint) -> Option<String> {
 }
 
 struct FamilyContributions {
-    family: DiagramFamilyId,
     entries: Vec<PendingContribution>,
 }
 
@@ -1096,9 +1131,8 @@ struct PendingContribution {
 }
 
 impl FamilyContributions {
-    fn new(family: DiagramFamilyId) -> Self {
+    fn new() -> Self {
         Self {
-            family,
             entries: Vec::new(),
         }
     }
@@ -1178,170 +1212,72 @@ impl FamilyContributions {
         self.entries.push(PendingContribution { mapping, patch });
     }
 
-    fn finish_into(mut self, builder: &mut OverlayBuilder) {
-        if self.entries.is_empty() {
-            return;
+    fn finish_into(self, builder: &mut OverlayBuilder) -> BridgeResult<()> {
+        for contribution in self.entries {
+            builder.push(contribution.mapping, contribution.patch)?;
         }
-        for contribution in self.entries.drain(..) {
-            builder.push(self.family, contribution.mapping, contribution.patch);
-        }
+        Ok(())
     }
 }
 
 struct OverlayBuilder {
-    family: DiagramFamilyId,
     overlay: ThemeFamilyCompatibilityOverlayBuilder,
+    #[cfg(test)]
     contribution_ids: BTreeSet<String>,
-    claimed_paths: BTreeSet<String>,
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    accepted_projections: AcceptedLegacyProjections,
+    accepted_projections: BTreeSet<ThemeLegacyProjectionObservation>,
 }
 
 impl OverlayBuilder {
     fn new(family: DiagramFamilyId) -> Self {
         Self {
-            family,
             overlay: ThemeFamilyCompatibilityOverlayBuilder::new(
                 family.as_str(),
                 CONTRIBUTION_ID_PREFIX,
             ),
+            #[cfg(test)]
             contribution_ids: BTreeSet::new(),
-            claimed_paths: BTreeSet::new(),
             #[cfg(any(test, feature = "internal-theme-acceptance"))]
             accepted_projections: BTreeSet::new(),
         }
     }
 
-    fn push(&mut self, family: DiagramFamilyId, mapping: &'static str, patch: Map<String, Value>) {
-        debug_assert_eq!(family, self.family);
-        let opaque_id = format!("{CONTRIBUTION_ID_PREFIX}{}.{}", family.as_str(), mapping);
-        if self.contribution_ids.contains(&opaque_id) {
-            return;
-        }
-
-        let mut accepted_paths = Vec::new();
-        let patch = retain_unclaimed_assignments(
-            patch,
-            &self.claimed_paths,
-            &mut Vec::new(),
-            &mut accepted_paths,
-        );
-        if patch.is_empty() {
-            return;
-        }
-        #[cfg(any(test, feature = "internal-theme-acceptance"))]
-        let accepted_projections = projection_observations(&opaque_id, &patch);
-        if self
+    fn push(&mut self, mapping: &'static str, patch: Map<String, Value>) -> BridgeResult<()> {
+        let _receipt = self
             .overlay
-            .try_push(mapping, MermaidConfig::from_value(Value::Object(patch)))
-            .is_err()
+            .try_push(mapping, MermaidConfig::from_value(Value::Object(patch)))?;
+
+        #[cfg(test)]
         {
-            return;
+            let inserted = self
+                .contribution_ids
+                .insert(_receipt.opaque_id().to_string());
+            debug_assert!(inserted, "core must reject duplicate contribution ids");
         }
-
-        self.claimed_paths.extend(accepted_paths);
-        self.contribution_ids.insert(opaque_id);
         #[cfg(any(test, feature = "internal-theme-acceptance"))]
-        self.accepted_projections.extend(accepted_projections);
+        {
+            self.accepted_projections.extend(_receipt.assignments().map(
+                |(assignment_path, value)| {
+                    ThemeLegacyProjectionObservation::new(
+                        _receipt.opaque_id().to_string(),
+                        assignment_path.to_string(),
+                        value_digest(value),
+                    )
+                },
+            ));
+        }
+        Ok(())
     }
 
-    fn finish(
-        self,
-    ) -> (
-        ThemeFamilyCompatibilityOverlay,
-        BTreeSet<String>,
-        AcceptedLegacyProjections,
-    ) {
-        #[cfg(any(test, feature = "internal-theme-acceptance"))]
-        let accepted_projections = self.accepted_projections;
-        #[cfg(not(any(test, feature = "internal-theme-acceptance")))]
-        let accepted_projections = ();
-        (
-            self.overlay.finish(),
-            self.contribution_ids,
-            accepted_projections,
-        )
-    }
-}
-
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
-fn projection_observations(
-    contribution_id: &str,
-    patch: &Map<String, Value>,
-) -> Vec<ThemeLegacyProjectionObservation> {
-    fn visit(
-        contribution_id: &str,
-        value: &Value,
-        path: &mut Vec<String>,
-        observations: &mut Vec<ThemeLegacyProjectionObservation>,
-    ) {
-        match value {
-            Value::Object(object) => {
-                for (key, value) in object {
-                    path.push(key.clone());
-                    visit(contribution_id, value, path, observations);
-                    path.pop();
-                }
-            }
-            value => observations.push(ThemeLegacyProjectionObservation::new(
-                contribution_id.to_string(),
-                path.join("."),
-                value_digest(value),
-            )),
+    fn finish(self) -> LegacyFamilyThemeArtifact {
+        LegacyFamilyThemeArtifact {
+            overlay: self.overlay.finish(),
+            #[cfg(test)]
+            contribution_ids: self.contribution_ids,
+            #[cfg(any(test, feature = "internal-theme-acceptance"))]
+            accepted_projections: self.accepted_projections,
         }
     }
-
-    let mut observations = Vec::new();
-    visit(
-        contribution_id,
-        &Value::Object(patch.clone()),
-        &mut Vec::new(),
-        &mut observations,
-    );
-    observations
-}
-
-fn retain_unclaimed_assignments(
-    patch: Map<String, Value>,
-    claimed_paths: &BTreeSet<String>,
-    path: &mut Vec<String>,
-    accepted_paths: &mut Vec<String>,
-) -> Map<String, Value> {
-    patch
-        .into_iter()
-        .filter_map(|(key, value)| {
-            path.push(key.clone());
-            let retained = match value {
-                Value::Object(object) => {
-                    let object =
-                        retain_unclaimed_assignments(object, claimed_paths, path, accepted_paths);
-                    (!object.is_empty()).then_some(Value::Object(object))
-                }
-                value => {
-                    let dotted_path = path.join(".");
-                    let is_claimed = claimed_paths
-                        .iter()
-                        .any(|claimed| dotted_paths_overlap(claimed, &dotted_path));
-                    (!is_claimed).then(|| {
-                        accepted_paths.push(dotted_path);
-                        value
-                    })
-                }
-            };
-            path.pop();
-            retained.map(|value| (key, value))
-        })
-        .collect()
-}
-
-fn dotted_paths_overlap(left: &str, right: &str) -> bool {
-    left == right
-        || left
-            .strip_prefix(right)
-            .is_some_and(|suffix| suffix.starts_with('.'))
-        || right
-            .strip_prefix(left)
-            .is_some_and(|suffix| suffix.starts_with('.'))
 }
 
 #[cfg(test)]
@@ -2081,6 +2017,44 @@ mod tests {
     }
 
     #[test]
+    fn bridge_free_dispatch_is_limited_to_families_without_legacy_routes() {
+        let actual = DiagramFamilyId::all()
+            .iter()
+            .copied()
+            .filter(|family| {
+                legacy_family_dispatch(*family).expect("built-in family dispatch")
+                    == LegacyFamilyDispatch::NoLegacy
+            })
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(
+            actual,
+            BTreeSet::from([
+                DiagramFamilyId::STATE,
+                DiagramFamilyId::PACKET,
+                DiagramFamilyId::ERROR,
+                DiagramFamilyId::ZENUML,
+            ])
+        );
+    }
+
+    #[test]
+    fn unknown_selected_family_fails_without_populating_the_cache() {
+        let spec = Arc::new(DiagramThemeSpec::new());
+        let family_programs = Arc::new(FamilyThemeProgramCache::new(Arc::clone(&spec)));
+        let bridge = LegacyFamilyThemeBridge::new(Arc::clone(&family_programs));
+
+        let error = bridge
+            .overlay_for_family("future-family", &OperationControl::new())
+            .expect("active control")
+            .expect_err("unknown selected family must fail closed");
+
+        assert!(error.to_string().contains("future-family"));
+        assert_eq!(bridge.cached_family_count(), 0);
+        assert_eq!(family_programs.len(), 0);
+    }
+
+    #[test]
     fn provider_compiles_only_the_selected_family_and_reuses_its_artifact() {
         let spec = Arc::new(
             DiagramThemeSpec::new().with_styles(
@@ -2103,6 +2077,7 @@ mod tests {
         let first = bridge
             .overlay_for_family("flowchart", &control)
             .expect("active control")
+            .expect("valid flowchart compatibility bridge")
             .expect("flowchart compatibility overlay");
         assert!(!first.is_empty());
         assert_eq!(bridge.cached_family_count(), 1);
@@ -2113,6 +2088,7 @@ mod tests {
         let second = bridge
             .overlay_for_family("flowchart", &control)
             .expect("active control")
+            .expect("cached valid flowchart compatibility bridge")
             .expect("cached flowchart compatibility overlay");
         assert!(!second.is_empty());
         assert_eq!(bridge.cached_family_count(), 1);
@@ -2122,16 +2098,18 @@ mod tests {
             bridge
                 .overlay_for_family("state", &control)
                 .expect("active control")
+                .expect("valid bridge-free State classification")
                 .is_none()
         );
-        assert_eq!(bridge.cached_family_count(), 1);
-        assert_eq!(family_programs.len(), 1);
+        assert_eq!(bridge.cached_family_count(), 2);
+        assert_eq!(family_programs.len(), 2);
 
         bridge
             .overlay_for_family("sequence", &control)
-            .expect("active control");
-        assert_eq!(bridge.cached_family_count(), 2);
-        assert_eq!(family_programs.len(), 2);
+            .expect("active control")
+            .expect("valid Sequence compatibility bridge");
+        assert_eq!(bridge.cached_family_count(), 3);
+        assert_eq!(family_programs.len(), 3);
         assert!(family_programs.contains(DiagramFamilyId::SEQUENCE));
     }
 
@@ -3584,19 +3562,63 @@ mod tests {
     }
 
     #[test]
-    fn overlay_builder_keeps_the_first_assignment_without_panicking() {
+    fn overlay_builder_rejects_duplicate_assignments_without_erasing_prior_state() {
         let mut builder = OverlayBuilder::new(DiagramFamilyId::FLOWCHART);
-        let mut direct = FamilyContributions::new(DiagramFamilyId::FLOWCHART);
+        let mut direct = FamilyContributions::new();
         direct.add_theme_variables("direct", [("primaryColor", Some("#ef4444".to_string()))]);
-        direct.finish_into(&mut builder);
+        direct
+            .finish_into(&mut builder)
+            .expect("first contribution is valid");
 
-        let mut duplicate = FamilyContributions::new(DiagramFamilyId::FLOWCHART);
+        let mut duplicate = FamilyContributions::new();
         duplicate.add_theme_variables("duplicate", [("primaryColor", Some("#22c55e".to_string()))]);
-        duplicate.finish_into(&mut builder);
+        let error = duplicate
+            .finish_into(&mut builder)
+            .expect_err("duplicate assignment must fail closed");
+        assert!(error.to_string().contains("duplicate"));
 
-        let (_, contribution_ids, _) = builder.finish();
-        assert!(contribution_ids.contains("merman.legacy-family-theme.v1.flowchart.direct"));
-        assert!(!contribution_ids.contains("merman.legacy-family-theme.v1.flowchart.duplicate"));
+        let artifact = builder.finish();
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.flowchart.direct")
+        );
+        assert!(
+            !artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.flowchart.duplicate")
+        );
+    }
+
+    #[test]
+    fn overlay_builder_propagates_empty_patch_and_duplicate_id_errors() {
+        let mut builder = OverlayBuilder::new(DiagramFamilyId::FLOWCHART);
+        let empty_error = builder
+            .push("empty", Map::new())
+            .expect_err("empty compatibility patch must fail closed");
+        assert!(empty_error.to_string().contains("at least one scalar"));
+
+        let mut first = Map::new();
+        first.insert(
+            "fontFamily".to_string(),
+            Value::String("FirstFont".to_string()),
+        );
+        builder
+            .push("typography", first)
+            .expect("first contribution id is valid");
+
+        let mut duplicate_id = Map::new();
+        duplicate_id.insert("fontSize".to_string(), Value::String("24px".to_string()));
+        let duplicate_error = builder
+            .push("typography", duplicate_id)
+            .expect_err("duplicate contribution id must fail closed");
+        assert!(duplicate_error.to_string().contains("duplicate"));
+
+        let artifact = builder.finish();
+        assert_eq!(
+            artifact.contribution_ids,
+            BTreeSet::from(["merman.legacy-family-theme.v1.flowchart.typography".to_string()])
+        );
     }
 
     #[test]
