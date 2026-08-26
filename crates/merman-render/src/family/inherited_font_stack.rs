@@ -25,6 +25,12 @@ pub(crate) struct InheritedFontStackPlan {
     typed_font_stack_active: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SiblingTypographyPolicy {
+    SuppressUnsupported,
+    ComposeFontStack,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct InheritedTextRunSpec<'a> {
     text: &'a str,
@@ -195,13 +201,56 @@ impl InheritedFontStackPlan {
         effective_config: &MermaidConfig,
     ) -> Self {
         let configured_font = crate::config::config_font_family_css(effective_config.as_value());
-        Self::resolve_with_configured_font(theme, effective_config, configured_font)
+        Self::resolve_inner(
+            theme,
+            effective_config,
+            configured_font,
+            SiblingTypographyPolicy::SuppressUnsupported,
+            &[],
+        )
     }
 
-    pub(crate) fn resolve_with_configured_font(
+    /// Resolves the font stack while requiring the family plan to name every other typed
+    /// typography property that it consumes directly.
+    pub(crate) fn resolve_with_typed_sibling_owners(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+        owned_typed_siblings: &[ThemeTypographyProperty],
+    ) -> Self {
+        let configured_font = crate::config::config_font_family_css(effective_config.as_value());
+        Self::resolve_inner(
+            theme,
+            effective_config,
+            configured_font,
+            SiblingTypographyPolicy::SuppressUnsupported,
+            owned_typed_siblings,
+        )
+    }
+
+    /// Resolves the font stack independently from unsupported sibling typography properties.
+    ///
+    /// This is appropriate only for families whose final writer can preserve the supported
+    /// font-family assignment while reporting sibling properties as aggregate residual evidence.
+    pub(crate) fn resolve_property_local(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+    ) -> Self {
+        let configured_font = crate::config::config_font_family_css(effective_config.as_value());
+        Self::resolve_inner(
+            theme,
+            effective_config,
+            configured_font,
+            SiblingTypographyPolicy::ComposeFontStack,
+            &[],
+        )
+    }
+
+    fn resolve_inner(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
         configured_font: String,
+        sibling_policy: SiblingTypographyPolicy,
+        owned_typed_siblings: &[ThemeTypographyProperty],
     ) -> Self {
         let Some(theme) = theme else {
             return Self {
@@ -223,7 +272,7 @@ impl InheritedFontStackPlan {
                 });
         let mut typed_font_stack = false;
         let mut residual_typography = false;
-        let mut unsupported_sibling_typography = false;
+        let mut blocking_sibling_typography = false;
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
@@ -231,10 +280,20 @@ impl InheritedFontStackPlan {
                 {
                     typed_font_stack = true;
                 }
-                FamilyThemeMechanism::BaseTypography(_) => {
+                FamilyThemeMechanism::BaseTypography(_)
+                    if route.disposition() != FamilyThemeDisposition::TypedAdapter =>
+                {
                     residual_typography = true;
-                    unsupported_sibling_typography |=
+                    blocking_sibling_typography |=
                         route.disposition() == FamilyThemeDisposition::Unsupported;
+                }
+                FamilyThemeMechanism::BaseTypography(property)
+                    if owned_typed_siblings.contains(&property) => {}
+                FamilyThemeMechanism::BaseTypography(_) => {
+                    // A matrix row is not sufficient proof that a sibling property has a final
+                    // writer. The family must declare that owner at this call site.
+                    residual_typography = true;
+                    blocking_sibling_typography = true;
                 }
                 FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
@@ -244,9 +303,14 @@ impl InheritedFontStackPlan {
 
         // A legacy sibling remains non-portable, but it does not own the font-family assignment.
         // Best-effort rendering therefore composes the typed stack with that compatibility value.
-        // A genuinely unsupported sibling still suppresses the aggregate typography request.
-        let typed_font_stack_active =
-            typed_font_stack && !config_owns_font_stack && !unsupported_sibling_typography;
+        // A typed sibling is ignored only when the family explicitly names its terminal owner.
+        // Families with a genuinely independent font-family terminal may also compose an
+        // unsupported sibling; aggregate families suppress the font stack until every requested
+        // property is owned.
+        let typed_font_stack_active = typed_font_stack
+            && !config_owns_font_stack
+            && (sibling_policy == SiblingTypographyPolicy::ComposeFontStack
+                || !blocking_sibling_typography);
         let font_family_css = if typed_font_stack_active {
             theme.typography().font_stack().as_css()
         } else {

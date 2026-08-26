@@ -277,11 +277,11 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::INFO
         | DiagramFamilyId::TREEMAP
         | DiagramFamilyId::ISHIKAWA
-        | DiagramFamilyId::EVENT_MODELING
         | DiagramFamilyId::VENN => LegacyFamilyDispatch::Text,
         DiagramFamilyId::STATE
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::ERROR
+        | DiagramFamilyId::EVENT_MODELING
         | DiagramFamilyId::ZENUML => LegacyFamilyDispatch::NoLegacy,
         _ => {
             return Err(ThemeCompatibilityOverlayError::provider_failure(
@@ -2033,6 +2033,7 @@ mod tests {
                 DiagramFamilyId::STATE,
                 DiagramFamilyId::PACKET,
                 DiagramFamilyId::ERROR,
+                DiagramFamilyId::EVENT_MODELING,
                 DiagramFamilyId::ZENUML,
             ])
         );
@@ -2417,96 +2418,81 @@ mod tests {
     }
 
     #[test]
-    fn eventmodeling_and_ishikawa_retire_only_the_font_stack_projection() {
-        for (family, source) in [
-            (
-                DiagramFamilyId::EVENT_MODELING,
-                "eventmodeling\ntf 01 ui View\n",
-            ),
-            (DiagramFamilyId::ISHIKAWA, "ishikawa-beta\n Root cause\n"),
+    fn eventmodeling_typography_never_recreates_the_retired_projection() {
+        let family = DiagramFamilyId::EVENT_MODELING;
+        let source = "eventmodeling\ntf 01 ui View\n";
+        let baseline = parse(&DiagramThemeSpec::default(), source);
+        let contribution_id = "merman.legacy-family-theme.v1.eventmodeling.typography";
+        let font_stack = super::super::FontStack::new(["Inter", "sans-serif"])
+            .expect("valid Event Modeling font stack");
+        let font_size = TextStyle::default()
+            .with_font_size_px(18.0)
+            .expect("valid Event Modeling font size");
+
+        for typography in [
+            TextStyle::default().with_font_stack(font_stack.clone()),
+            font_size.clone(),
+            font_size.with_font_stack(font_stack),
         ] {
-            let contribution_id = format!(
-                "merman.legacy-family-theme.v1.{}.typography",
-                family.as_str()
-            );
-            let font_stack = super::super::FontStack::new(["Inter", "sans-serif"])
-                .expect("valid property-local font stack");
+            let spec = DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_family_style(family, typography));
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(family);
+            assert!(artifact.overlay.is_empty());
+            assert!(artifact.contribution_ids.is_empty());
+            assert!(!bridge.owns_contribution_id(contribution_id));
 
-            let stack_spec = DiagramThemeSpec::new().with_typography(
-                TypographySpec::default().with_family_style(
-                    family,
-                    TextStyle::default().with_font_stack(font_stack.clone()),
-                ),
-            );
-            let stack_bridge = bridge(&stack_spec);
-            let stack_artifact = stack_bridge.compile_for_family(family);
-            assert!(stack_artifact.overlay.is_empty(), "family={family}");
-            assert!(
-                stack_artifact.contribution_ids.is_empty(),
-                "family={family}"
-            );
-            assert!(
-                !stack_bridge.owns_contribution_id(&contribution_id),
-                "family={family}"
-            );
-
-            let size_style = TextStyle::default()
-                .with_font_size_px(18.0)
-                .expect("valid property-local font size");
-            let size_spec = DiagramThemeSpec::new().with_typography(
-                TypographySpec::default().with_family_style(family, size_style.clone()),
-            );
-            let size_artifact = bridge(&size_spec).compile_for_family(family);
-            assert_eq!(
-                size_artifact.contribution_ids,
-                [contribution_id.clone()].into_iter().collect(),
-                "family={family}"
-            );
-            let size_parsed = parse(&size_spec, source);
-            let baseline = parse(&DiagramThemeSpec::default(), source);
-            assert_eq!(
-                fallback_contribution_count(&size_parsed),
-                1,
-                "family={family}"
-            );
-            assert_eq!(
-                size_parsed
-                    .effective_config
-                    .get_str("themeVariables.fontSize"),
-                Some("18px"),
-                "family={family}"
-            );
-            for path in ["fontFamily", "themeVariables.fontFamily"] {
+            let parsed = parse(&spec, source);
+            assert_eq!(fallback_contribution_count(&parsed), 0);
+            for path in [
+                "fontFamily",
+                "themeVariables.fontFamily",
+                "themeVariables.fontSize",
+            ] {
                 assert_eq!(
-                    size_parsed.effective_config.get_str(path),
+                    parsed.effective_config.get_str(path),
                     baseline.effective_config.get_str(path),
-                    "FontSize-only {family} compatibility must not write `{path}`"
+                    "direct Event Modeling typography must not write fallback `{path}`"
                 );
             }
+        }
+    }
 
-            let mixed_style = size_style.with_font_stack(font_stack);
-            let mixed_spec = DiagramThemeSpec::new()
-                .with_typography(TypographySpec::default().with_family_style(family, mixed_style));
-            let mixed_parsed = parse(&mixed_spec, source);
+    #[test]
+    fn ishikawa_retires_only_the_font_stack_projection() {
+        let family = DiagramFamilyId::ISHIKAWA;
+        let source = "ishikawa-beta\n Root cause\n";
+        let contribution_id = "merman.legacy-family-theme.v1.ishikawa.typography";
+        let font_stack = super::super::FontStack::new(["Inter", "sans-serif"])
+            .expect("valid Ishikawa font stack");
+        let stack_spec =
+            DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
+                family,
+                TextStyle::default().with_font_stack(font_stack.clone()),
+            ));
+        let stack_bridge = bridge(&stack_spec);
+        let stack_artifact = stack_bridge.compile_for_family(family);
+        assert!(stack_artifact.overlay.is_empty());
+        assert!(stack_artifact.contribution_ids.is_empty());
+        assert!(!stack_bridge.owns_contribution_id(contribution_id));
+
+        let size_style = TextStyle::default()
+            .with_font_size_px(18.0)
+            .expect("valid Ishikawa font size");
+        for typography in [size_style.clone(), size_style.with_font_stack(font_stack)] {
+            let spec = DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_family_style(family, typography));
+            let artifact = bridge(&spec).compile_for_family(family);
             assert_eq!(
-                fallback_contribution_count(&mixed_parsed),
-                1,
-                "family={family}"
+                artifact.contribution_ids,
+                [contribution_id.to_string()].into_iter().collect()
             );
+            let parsed = parse(&spec, source);
+            assert_eq!(fallback_contribution_count(&parsed), 1);
             assert_eq!(
-                mixed_parsed
-                    .effective_config
-                    .get_str("themeVariables.fontSize"),
-                Some("18px"),
-                "family={family}"
+                parsed.effective_config.get_str("themeVariables.fontSize"),
+                Some("18px")
             );
-            for path in ["fontFamily", "themeVariables.fontFamily"] {
-                assert_eq!(
-                    mixed_parsed.effective_config.get_str(path),
-                    baseline.effective_config.get_str(path),
-                    "mixed {family} typography must not recreate the retired `{path}` projection"
-                );
-            }
         }
     }
 

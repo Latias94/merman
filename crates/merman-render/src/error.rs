@@ -156,7 +156,8 @@ impl ErrorTypographyThemePlan {
         effective_config: &MermaidConfig,
         measurer: &dyn TextMeasurer,
     ) -> Self {
-        let inherited_font_stack = InheritedFontStackPlan::resolve(theme, effective_config);
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let version = format!("mermaid version {UPSTREAM_MERMAID_VERSION}");
         let terminal_geometry = InheritedTextViewportFacts::prepare(
             ERROR_BASELINE_VIEWBOX_WIDTH,

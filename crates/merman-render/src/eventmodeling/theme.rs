@@ -6,7 +6,8 @@ use merman_core::MermaidConfig;
 use crate::config::config_css_number_or_string;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
+    ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -53,16 +54,25 @@ struct EventModelingTextRuleObservation {
     residual: Option<FamilyThemeResidualReason>,
 }
 
-/// Final Event Modeling text paint shared by terminal emission and family evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EventModelingTypographyOutcome {
+    Inactive,
+    Typed,
+    ConfigOwned,
+    Unsupported,
+}
+
+/// Final Event Modeling text styling shared by terminal emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct EventModelingTextThemePlan {
     typed_fill: Option<DirectStaticPaint>,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Option<Box<str>>,
+    typography_outcome: EventModelingTypographyOutcome,
     occurrences: EventModelingTextOccurrences,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, ThemeCapability>,
-    terminal_receipt: OnceLock<EventModelingTextThemeReceipt>,
+    terminal_verified: OnceLock<()>,
 }
 
 impl EventModelingTextThemePlan {
@@ -73,17 +83,21 @@ impl EventModelingTextThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let occurrences = EventModelingTextOccurrences::from_layout(layout);
-        let inherited_font_stack = InheritedFontStackPlan::resolve(theme, effective_config);
-        let font_size_css = config_css_number_or_string(
-            effective_config.as_value(),
-            &["themeVariables", "fontSize"],
-        )
-        .map(String::into_boxed_str);
+        let inherited_font_stack = InheritedFontStackPlan::resolve_with_typed_sibling_owners(
+            theme,
+            effective_config,
+            &[ThemeTypographyProperty::FontSize],
+        );
         let Some(theme) = theme else {
+            let configured_font_size_css = config_css_number_or_string(
+                effective_config.as_value(),
+                &["themeVariables", "fontSize"],
+            )
+            .map(String::into_boxed_str);
             return Ok(Self::baseline_from_occurrences(
                 occurrences,
                 inherited_font_stack,
-                font_size_css,
+                configured_font_size_css,
             ));
         };
 
@@ -122,6 +136,8 @@ impl EventModelingTextThemePlan {
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let mut observations = BTreeMap::<usize, EventModelingTextRuleObservation>::new();
+        let mut typed_font_size = false;
+        let mut unsupported_typography = false;
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
@@ -208,8 +224,17 @@ impl EventModelingTextThemePlan {
                     // chrome and is intentionally not the semantic Title styling target.
                     evidence.mark_not_applicable(theme.family_mechanism_key(route));
                 }
-                FamilyThemeMechanism::BaseTypography(_)
-                | FamilyThemeMechanism::RuleFacet { .. }
+                FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                    if route.disposition() == FamilyThemeDisposition::TypedAdapter =>
+                {
+                    typed_font_size = true;
+                }
+                FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                    if route.disposition() == FamilyThemeDisposition::TypedAdapter => {}
+                FamilyThemeMechanism::BaseTypography(_) => {
+                    unsupported_typography = true;
+                }
+                FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
@@ -246,14 +271,47 @@ impl EventModelingTextThemePlan {
             }
         }
 
+        let config_owns_font_size = typed_font_size
+            && merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.fontSize",
+            );
+        let typed_font_size_active =
+            typed_font_size && !config_owns_font_size && !unsupported_typography;
+        let font_size_css = if typed_font_size_active {
+            Some(format!("{}px", theme.typography().font_size_px()).into_boxed_str())
+        } else {
+            config_css_number_or_string(
+                effective_config.as_value(),
+                &["themeVariables", "fontSize"],
+            )
+            .map(String::into_boxed_str)
+        };
+        let typography_outcome = if unsupported_typography
+            || inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported
+        {
+            EventModelingTypographyOutcome::Unsupported
+        } else if inherited_font_stack.outcome() == InheritedFontStackOutcome::Typed
+            || typed_font_size_active
+        {
+            EventModelingTypographyOutcome::Typed
+        } else if inherited_font_stack.outcome() == InheritedFontStackOutcome::ConfigOwned
+            || config_owns_font_size
+        {
+            EventModelingTypographyOutcome::ConfigOwned
+        } else {
+            EventModelingTypographyOutcome::Inactive
+        };
+
         Ok(Self {
             typed_fill,
             inherited_font_stack,
             font_size_css,
+            typography_outcome,
             occurrences,
             evidence,
             pending,
-            terminal_receipt: OnceLock::new(),
+            terminal_verified: OnceLock::new(),
         })
     }
 
@@ -266,10 +324,11 @@ impl EventModelingTextThemePlan {
             typed_fill: None,
             inherited_font_stack,
             font_size_css,
+            typography_outcome: EventModelingTypographyOutcome::Inactive,
             occurrences,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
-            terminal_receipt: OnceLock::new(),
+            terminal_verified: OnceLock::new(),
         }
     }
 
@@ -279,63 +338,49 @@ impl EventModelingTextThemePlan {
             .map_or(configured_fill, DirectStaticPaint::css)
     }
 
-    pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
-    }
-
     pub(crate) fn begin_terminal_receipt(
         &self,
         configured_fill: &str,
     ) -> EventModelingTextThemeReceipt {
-        EventModelingTextThemeReceipt::with_font_family(
+        EventModelingTextThemeReceipt::new(
             self.occurrences,
             self.terminal_fill(configured_fill),
-            self.font_family_css(),
+            self.inherited_font_stack.font_family_css(),
             self.font_size_css.as_deref(),
         )
     }
 
     pub(crate) fn record_terminal(&self, receipt: EventModelingTextThemeReceipt) -> bool {
-        receipt.proves_complete()
-            && receipt.proves_font_stack(self.inherited_font_stack.outcome())
-            && self.terminal_receipt.set(receipt).is_ok()
+        receipt.proves_complete() && self.terminal_verified.set(()).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        if self.terminal_receipt.get().is_some() {
+        let terminal_verified = self.terminal_verified.get().is_some();
+        if terminal_verified {
             for (key, capability) in &self.pending {
                 evidence.mark_applied_with_capabilities(key.clone(), [*capability]);
             }
         }
-        if let Some(receipt) = self.terminal_receipt.get() {
-            let typography_key = FamilyThemeMechanismKey::Typography;
-            if self.occurrences.total() == 0 {
-                evidence.mark_not_applicable(typography_key);
-            } else {
-                match self.inherited_font_stack.outcome() {
-                    InheritedFontStackOutcome::Typed
-                        if receipt.proves_font_stack(InheritedFontStackOutcome::Typed) =>
-                    {
-                        evidence.mark_applied_with_capabilities(
-                            typography_key,
-                            [ThemeCapability::Typography],
-                        )
-                    }
-                    InheritedFontStackOutcome::ConfigOwned
-                        if receipt.proves_font_stack(InheritedFontStackOutcome::ConfigOwned) =>
-                    {
-                        evidence.mark_not_applicable(typography_key)
-                    }
-                    InheritedFontStackOutcome::Typed
-                    | InheritedFontStackOutcome::ConfigOwned
-                    | InheritedFontStackOutcome::Unsupported => evidence.mark_residual(
-                        typography_key,
-                        FamilyThemeResidualReason::UnsupportedTypography,
-                    ),
-                    InheritedFontStackOutcome::Inactive => {}
-                }
+        let typography_key = FamilyThemeMechanismKey::Typography;
+        match (self.typography_outcome, terminal_verified) {
+            (EventModelingTypographyOutcome::Inactive, _) => {}
+            (_, false) => evidence.mark_residual(
+                typography_key,
+                FamilyThemeResidualReason::UnsupportedTypography,
+            ),
+            (_, true) if self.occurrences.total() == 0 => {
+                evidence.mark_not_applicable(typography_key)
             }
+            (EventModelingTypographyOutcome::Typed, true) => evidence
+                .mark_applied_with_capabilities(typography_key, [ThemeCapability::Typography]),
+            (EventModelingTypographyOutcome::ConfigOwned, true) => {
+                evidence.mark_not_applicable(typography_key)
+            }
+            (EventModelingTypographyOutcome::Unsupported, true) => evidence.mark_residual(
+                typography_key,
+                FamilyThemeResidualReason::UnsupportedTypography,
+            ),
         }
         evidence
     }
@@ -349,13 +394,12 @@ pub(crate) struct EventModelingTextThemeReceipt {
     expected_fill: Box<str>,
     expected_font_family: Box<str>,
     expected_font_size: Option<Box<str>>,
-    emitted_font_family: Option<Box<str>>,
-    emitted_font_size: Option<Box<str>>,
+    stylesheet_emissions: usize,
     terminal_matches: bool,
 }
 
 impl EventModelingTextThemeReceipt {
-    fn with_font_family(
+    fn new(
         expected: EventModelingTextOccurrences,
         expected_fill: &str,
         expected_font_family: &str,
@@ -367,25 +411,17 @@ impl EventModelingTextThemeReceipt {
             expected_fill: expected_fill.into(),
             expected_font_family: expected_font_family.into(),
             expected_font_size: expected_font_size.map(Into::into),
-            emitted_font_family: None,
-            emitted_font_size: None,
+            stylesheet_emissions: 0,
             terminal_matches: true,
         }
     }
 
-    /// Build the exact stylesheet owned by this receipt and record the single font-stack writer
-    /// event at the same boundary. Evidence never reparses the resulting CSS.
+    /// Build the exact stylesheet from the values sealed into this writer-owned receipt.
+    /// Evidence never reparses the resulting CSS.
     pub(crate) fn stylesheet(&mut self) -> String {
-        if self.emitted_font_family.is_some() {
-            self.terminal_matches = false;
-        }
-        self.emitted_font_family = Some(self.expected_font_family.clone());
-        if self.emitted_font_size.is_some() {
-            self.terminal_matches = false;
-        }
-        self.emitted_font_size = self.expected_font_size.clone();
+        self.stylesheet_emissions = self.stylesheet_emissions.saturating_add(1);
         let font_size = self
-            .emitted_font_size
+            .expected_font_size
             .as_deref()
             .map(|value| format!(" font-size: {value};"))
             .unwrap_or_default();
@@ -413,14 +449,7 @@ impl EventModelingTextThemeReceipt {
     }
 
     fn proves_complete(&self) -> bool {
-        self.emitted == self.expected && self.terminal_matches
-    }
-
-    fn proves_font_stack(&self, outcome: InheritedFontStackOutcome) -> bool {
-        if outcome == InheritedFontStackOutcome::Inactive {
-            return true;
-        }
-        self.emitted_font_family.as_deref() == Some(self.expected_font_family.as_ref())
+        self.stylesheet_emissions == 1 && self.emitted == self.expected && self.terminal_matches
     }
 }
 
@@ -434,26 +463,26 @@ mod tests {
             swimlanes: 1,
             boxes: 1,
         };
-        let mut missing_box =
-            EventModelingTextThemeReceipt::with_font_family(expected, "#123456", "", None);
+        let mut missing_box = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
+        let _ = missing_box.stylesheet();
         missing_box.record_swimlane_text("UI/Automation", "#123456");
         assert!(!missing_box.proves_complete());
 
-        let mut mismatched_box =
-            EventModelingTextThemeReceipt::with_font_family(expected, "#123456", "", None);
+        let mut mismatched_box = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
+        let _ = mismatched_box.stylesheet();
         mismatched_box.record_swimlane_text("UI/Automation", "#123456");
         mismatched_box.record_box_text("View", "#abcdef");
         assert!(!mismatched_box.proves_complete());
 
-        let mut extra_swimlane =
-            EventModelingTextThemeReceipt::with_font_family(expected, "#123456", "", None);
+        let mut extra_swimlane = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
+        let _ = extra_swimlane.stylesheet();
         extra_swimlane.record_swimlane_text("UI/Automation", "#123456");
         extra_swimlane.record_swimlane_text("UI/A: Shop", "#123456");
         extra_swimlane.record_box_text("View", "#123456");
         assert!(!extra_swimlane.proves_complete());
 
-        let mut complete =
-            EventModelingTextThemeReceipt::with_font_family(expected, "#123456", "", None);
+        let mut complete = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
+        let _ = complete.stylesheet();
         complete.record_swimlane_text("", "wrong-but-empty");
         complete.record_box_text("   ", "wrong-but-empty");
         complete.record_swimlane_text("UI/Automation", "#123456");
@@ -462,30 +491,29 @@ mod tests {
     }
 
     #[test]
-    fn eventmodeling_text_receipt_requires_one_exact_font_stack_emission() {
+    fn eventmodeling_text_receipt_requires_one_exact_typography_emission() {
         let expected = EventModelingTextOccurrences {
             swimlanes: 1,
             boxes: 1,
         };
         let mut complete =
-            EventModelingTextThemeReceipt::with_font_family(expected, "#123456", "Fira Sans", None);
+            EventModelingTextThemeReceipt::new(expected, "#123456", "Fira Sans", Some("24px"));
         let stylesheet = complete.stylesheet();
         assert!(stylesheet.contains(
-            ".em-swimlane text,.em-box span { font-family: Fira Sans; color: #123456; }"
+            ".em-swimlane text,.em-box span { font-family: Fira Sans; font-size: 24px; color: #123456; }"
         ));
         complete.record_swimlane_text("UI/Automation", "#123456");
         complete.record_box_text("View", "#123456");
         assert!(complete.proves_complete());
-        assert!(complete.proves_font_stack(InheritedFontStackOutcome::Typed));
 
         let mut missing =
-            EventModelingTextThemeReceipt::with_font_family(expected, "#123456", "Fira Sans", None);
+            EventModelingTextThemeReceipt::new(expected, "#123456", "Fira Sans", Some("24px"));
         missing.record_swimlane_text("UI/Automation", "#123456");
         missing.record_box_text("View", "#123456");
-        assert!(!missing.proves_font_stack(InheritedFontStackOutcome::Typed));
+        assert!(!missing.proves_complete());
 
         let mut duplicate =
-            EventModelingTextThemeReceipt::with_font_family(expected, "#123456", "Fira Sans", None);
+            EventModelingTextThemeReceipt::new(expected, "#123456", "Fira Sans", Some("24px"));
         let _ = duplicate.stylesheet();
         let _ = duplicate.stylesheet();
         assert!(!duplicate.proves_complete());

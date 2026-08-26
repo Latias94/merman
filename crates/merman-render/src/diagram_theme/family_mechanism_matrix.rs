@@ -1065,8 +1065,9 @@ fn classify_base_typography(
     }
     if family == DiagramFamilyId::EVENT_MODELING {
         return match property {
-            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
-            ThemeTypographyProperty::FontSize => FamilyThemeDisposition::LegacyCompatibility,
+            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
+                FamilyThemeDisposition::TypedAdapter
+            }
             ThemeTypographyProperty::FontWeight
             | ThemeTypographyProperty::FontStyle
             | ThemeTypographyProperty::LineHeight
@@ -5881,6 +5882,40 @@ mod tests {
                     && route.disposition() == FamilyThemeDisposition::Unsupported
             }));
         }
+    }
+
+    #[test]
+    fn eventmodeling_marks_font_stack_and_font_size_as_typed() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("EventModelingSans")
+                    .expect("valid Event Modeling font stack"),
+            )
+            .with_font_size_px(24.0)
+            .expect("valid Event Modeling font size")
+            .with_font_weight(700)
+            .expect("valid unsupported Event Modeling font weight");
+        let routes = compile_base_typography_routes(DiagramFamilyId::EVENT_MODELING, &typography);
+
+        for property in [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+        ] {
+            assert!(routes.iter().any(|route| {
+                route.mechanism() == FamilyThemeMechanism::BaseTypography(property)
+                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            }));
+        }
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
+        assert!(
+            routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        );
     }
 
     #[test]

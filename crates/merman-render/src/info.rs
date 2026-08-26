@@ -147,7 +147,8 @@ impl InfoTypographyThemePlan {
         effective_config: &MermaidConfig,
         measurer: &dyn TextMeasurer,
     ) -> Self {
-        let inherited_font_stack = InheritedFontStackPlan::resolve(theme, effective_config);
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let version = format!("v{PINNED_MERMAID_BASELINE_VERSION}");
         let terminal_geometry = InheritedTextViewportFacts::prepare(
             INFO_BASELINE_WIDTH_PX,
