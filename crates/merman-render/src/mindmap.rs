@@ -1,4 +1,4 @@
-use crate::config::{config_f64_css_px, config_font_family_css, config_string};
+use crate::config::{config_f64_css_px, config_string};
 use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
@@ -35,7 +35,7 @@ type MindmapEdgeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderEdge
 
 #[cfg(test)]
 fn mindmap_text_style(effective_config: &Value) -> TextStyle {
-    mindmap_text_style_with_font_family(&config_font_family_css(effective_config))
+    mindmap_text_style_with_font_family(&crate::config::config_font_family_css(effective_config))
 }
 
 fn mindmap_text_style_with_font_family(font_family_css: &str) -> TextStyle {
