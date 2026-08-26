@@ -1642,6 +1642,7 @@ impl VennFamilyArtifact {
 pub(crate) struct BlockFamilyArtifact {
     pair: FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
     node_paint_theme: crate::block::BlockNodePaintThemePlan,
+    typography_theme: crate::block::BlockTypographyThemePlan,
 }
 
 impl BlockFamilyArtifact {
@@ -1653,6 +1654,16 @@ impl BlockFamilyArtifact {
 
     pub(crate) const fn node_paint_theme(&self) -> &crate::block::BlockNodePaintThemePlan {
         &self.node_paint_theme
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::block::BlockTypographyThemePlan {
+        &self.typography_theme
+    }
+
+    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.node_paint_theme.finish_evidence();
+        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
+        evidence
     }
 }
 
@@ -2339,7 +2350,7 @@ impl BuiltinFamilyArtifact {
 
     fn block_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Block(artifact) => Some(artifact.node_paint_theme().finish_evidence()),
+            Self::Block(artifact) => Some(artifact.finish_theme_evidence()),
             _ => None,
         }
     }

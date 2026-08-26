@@ -7,7 +7,7 @@ use merman_core::diagrams::block::BlockClassDefRenderModel;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
     FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty,
-    ResolvedThemeStyle, ThemeCapability, ThemeTarget, ThemeVariant,
+    ResolvedThemeStyle, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
@@ -20,6 +20,217 @@ use crate::model::BlockDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::BlockShapeBoundary;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlockTypographyOutcome {
+    Inactive,
+    Typed,
+    ConfigOwned,
+    Unsupported,
+}
+
+/// Final Block typography shared by layout measurement, SVG CSS, and terminal evidence.
+#[derive(Debug)]
+pub(crate) struct BlockTypographyThemePlan {
+    padding: f64,
+    text_style: crate::text::TextStyle,
+    evidence: FamilyThemeEvidence,
+    outcome: BlockTypographyOutcome,
+    terminal_receipt: OnceLock<BlockTypographyReceipt>,
+}
+
+#[derive(Debug)]
+pub(crate) struct BlockTypographyReceipt {
+    expected_font_family_css: Box<str>,
+    expected_font_size_px: f64,
+    emitted_font_family_css: Option<Box<str>>,
+    emitted_font_size_css: Option<Box<str>>,
+    css_emission_unique: bool,
+    visible_label_count: usize,
+}
+
+impl BlockTypographyThemePlan {
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &merman_core::MermaidConfig,
+    ) -> Self {
+        let settings =
+            super::config::BlockConfigView::new(effective_config.as_value()).layout_settings();
+        let padding = settings.padding;
+        let mut text_style = settings.text_style;
+        let Some(theme) = theme else {
+            return Self {
+                padding,
+                text_style,
+                evidence: FamilyThemeEvidence::default(),
+                outcome: BlockTypographyOutcome::Inactive,
+                terminal_receipt: OnceLock::new(),
+            };
+        };
+
+        let mut typed_font_stack = false;
+        let mut typed_font_size = false;
+        let mut unsupported_typography = false;
+        for route in theme.family_mechanism_routes().iter().copied() {
+            match route.mechanism() {
+                FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                    if route.disposition() == FamilyThemeDisposition::TypedAdapter =>
+                {
+                    typed_font_stack = true;
+                }
+                FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                    if route.disposition() == FamilyThemeDisposition::TypedAdapter =>
+                {
+                    typed_font_size = true;
+                }
+                FamilyThemeMechanism::BaseTypography(_)
+                    if route.disposition() == FamilyThemeDisposition::Unsupported =>
+                {
+                    unsupported_typography = true;
+                }
+                FamilyThemeMechanism::BaseTypography(_)
+                | FamilyThemeMechanism::RuleFacet { .. }
+                | FamilyThemeMechanism::OrdinalPalette { .. }
+                | FamilyThemeMechanism::EffectBinding { .. } => {}
+            }
+        }
+
+        let config_owns_font_stack =
+            ["themeVariables.fontFamily", "fontFamily"]
+                .into_iter()
+                .any(|path| {
+                    merman_core::__private::config_path_overrides_typed_default(
+                        effective_config,
+                        path,
+                    )
+                });
+        let config_owns_font_size =
+            ["themeVariables.fontSize", "fontSize"]
+                .into_iter()
+                .any(|path| {
+                    merman_core::__private::config_path_overrides_typed_default(
+                        effective_config,
+                        path,
+                    )
+                });
+        if typed_font_stack && !config_owns_font_stack {
+            text_style.font_family = Some(theme.typography().font_stack().as_css());
+        }
+        if typed_font_size && !config_owns_font_size {
+            text_style.font_size = f64::from(theme.typography().font_size_px()).max(1.0);
+        }
+
+        let requested_typed = typed_font_stack || typed_font_size;
+        let applied_typed = (typed_font_stack && !config_owns_font_stack)
+            || (typed_font_size && !config_owns_font_size);
+        let outcome = if unsupported_typography {
+            BlockTypographyOutcome::Unsupported
+        } else if applied_typed {
+            BlockTypographyOutcome::Typed
+        } else if requested_typed {
+            BlockTypographyOutcome::ConfigOwned
+        } else {
+            BlockTypographyOutcome::Inactive
+        };
+        Self {
+            padding,
+            text_style,
+            evidence: FamilyThemeEvidence::from_theme(Some(theme)),
+            outcome,
+            terminal_receipt: OnceLock::new(),
+        }
+    }
+
+    pub(crate) const fn text_style(&self) -> &crate::text::TextStyle {
+        &self.text_style
+    }
+
+    pub(crate) const fn padding(&self) -> f64 {
+        self.padding
+    }
+
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.text_style.font_family.as_deref().unwrap_or_default()
+    }
+
+    pub(crate) const fn font_size_px(&self) -> f64 {
+        self.text_style.font_size
+    }
+
+    pub(crate) fn begin_terminal_receipt(&self) -> BlockTypographyReceipt {
+        BlockTypographyReceipt {
+            expected_font_family_css: self.font_family_css().into(),
+            expected_font_size_px: self.font_size_px(),
+            emitted_font_family_css: None,
+            emitted_font_size_css: None,
+            css_emission_unique: true,
+            visible_label_count: 0,
+        }
+    }
+
+    pub(crate) fn record_terminal(&self, receipt: BlockTypographyReceipt) -> bool {
+        receipt.proves_css() && self.terminal_receipt.set(receipt).is_ok()
+    }
+
+    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.evidence.clone();
+        let key = FamilyThemeMechanismKey::Typography;
+        match self.outcome {
+            BlockTypographyOutcome::Typed => match self.terminal_receipt.get() {
+                Some(receipt) if receipt.proves_css() && receipt.has_visible_label() => {
+                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                }
+                Some(receipt) if receipt.proves_css() && !receipt.has_visible_label() => {
+                    evidence.mark_not_applicable(key);
+                }
+                Some(_) | None => {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography)
+                }
+            },
+            BlockTypographyOutcome::ConfigOwned => evidence.mark_not_applicable(key),
+            BlockTypographyOutcome::Unsupported => {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography)
+            }
+            BlockTypographyOutcome::Inactive => {}
+        }
+        evidence
+    }
+}
+
+impl BlockTypographyReceipt {
+    pub(crate) fn record_css(&mut self, font_family_css: &str, font_size_css: &str) {
+        if self.emitted_font_family_css.is_some() || self.emitted_font_size_css.is_some() {
+            self.css_emission_unique = false;
+            return;
+        }
+        self.emitted_font_family_css = Some(font_family_css.into());
+        self.emitted_font_size_css = Some(font_size_css.into());
+    }
+
+    pub(crate) fn record_visible_label(&mut self, text: &str) {
+        if !text.trim().is_empty() {
+            self.visible_label_count += 1;
+        }
+    }
+
+    fn proves_css(&self) -> bool {
+        let emitted_font_size_px = self
+            .emitted_font_size_css
+            .as_deref()
+            .and_then(|value| value.parse::<f64>().ok());
+        self.css_emission_unique
+            && !self.expected_font_family_css.trim().is_empty()
+            && self.emitted_font_family_css.as_deref()
+                == Some(self.expected_font_family_css.as_ref())
+            && emitted_font_size_px.is_some_and(|value| {
+                value.is_finite() && (value - self.expected_font_size_px).abs() < 1e-6
+            })
+    }
+
+    fn has_visible_label(&self) -> bool {
+        self.visible_label_count != 0
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct NodeExpectation {

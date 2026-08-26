@@ -3,9 +3,9 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -191,6 +191,18 @@ fn block_node_ordinal_palette_theme() -> DiagramTheme {
         .expect("compile Block node ordinal palette theme")
 }
 
+fn block_typography_theme(font_family: &str, font_size_px: f32) -> DiagramTheme {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single(font_family).expect("valid Block font stack"))
+        .with_font_size_px(font_size_px)
+        .expect("valid Block font size");
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::BLOCK, typography),
+        ))
+        .expect("compile Block typography theme")
+}
+
 fn render_block_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
@@ -229,6 +241,99 @@ fn render_block_with_theme_requirement(
             &SvgDebugOptions::default(),
         )
         .expect("render themed Block")
+}
+
+#[test]
+fn block_typed_typography_reaches_layout_css_and_strict_receipt() {
+    let theme = block_typography_theme("Block Sans", 22.0);
+    let rendered = render_block_with_theme_and_engine(
+        r#"block
+  A["Alpha"] --> B["Beta"]
+"#,
+        &theme,
+        Engine::new(),
+    );
+    let svg = rendered.svg();
+    assert!(
+        svg.contains("#block-theme{font-family:\"Block Sans\";font-size:22px;"),
+        "typed Block typography must reach the writer-owned root CSS: {svg}"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_typography_receipt_matches_writer_number_formatting() {
+    let theme = block_typography_theme("Block Sans", 1.0000001);
+    let rendered = render_block_with_theme_and_engine(
+        r#"block
+  A["Alpha"] --> B["Beta"]
+"#,
+        &theme,
+        Engine::new(),
+    );
+    assert!(
+        rendered
+            .svg()
+            .contains("#block-theme{font-family:\"Block Sans\";font-size:1px;")
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_mixed_base_typography_fails_closed() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("Mixed Block Font").expect("valid Block font stack"))
+        .with_font_size_px(22.0)
+        .expect("valid Block font size")
+        .with_font_weight(700)
+        .expect("valid unsupported Block font weight");
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::BLOCK, typography),
+        ))
+        .expect("compile mixed Block typography theme");
+    let rendered = render_block_with_theme_requirement(
+        "block\n  A[\"Alpha\"]\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn block_explicit_typography_ownership_outranks_typed_values() {
+    let theme = block_typography_theme("Typed Block Sans", 22.0);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "fontFamily": "Site Block Sans",
+        "themeVariables": { "fontSize": "30px" }
+    })));
+    let rendered = render_block_with_theme_and_engine(
+        r#"block
+  A["Alpha"] --> B["Beta"]
+"#,
+        &theme,
+        engine,
+    );
+    let svg = rendered.svg();
+    assert!(svg.contains("#block-theme{font-family:Site Block Sans;font-size:30px;"));
+    assert!(!svg.contains("Typed Block Sans"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 fn terminal_shell_styles(svg: &str, node_id: &str) -> Vec<(String, String)> {

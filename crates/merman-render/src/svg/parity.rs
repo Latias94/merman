@@ -1177,10 +1177,11 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model(
+        BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model_with_theme(
             artifact.pair().layout(),
             artifact.pair().semantic(),
             artifact.node_paint_theme(),
+            artifact.typography_theme(),
             effective_config_value,
             options,
         ),

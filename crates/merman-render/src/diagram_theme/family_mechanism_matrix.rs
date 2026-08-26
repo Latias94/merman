@@ -1120,6 +1120,23 @@ fn classify_base_typography(
             | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
         };
     }
+    if family == DiagramFamilyId::BLOCK {
+        return match property {
+            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
+                FamilyThemeDisposition::TypedAdapter
+            }
+            ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
+    }
     if family == DiagramFamilyId::RAILROAD {
         return match property {
             ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
@@ -5596,6 +5613,40 @@ mod tests {
         assert!(routes.iter().any(|route| {
             route.mechanism()
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
+        assert!(
+            routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        );
+    }
+
+    #[test]
+    fn block_directly_owns_base_font_stack_and_size() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("monospace").expect("valid Block font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid Block font size")
+            .with_font_weight(700)
+            .expect("valid Block font weight");
+        let routes = compile_base_typography_routes(DiagramFamilyId::BLOCK, &typography);
+
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
                 && route.disposition() == FamilyThemeDisposition::Unsupported
         }));
         assert!(

@@ -1,15 +1,18 @@
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
+#[cfg(test)]
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 mod config;
 mod theme;
 
+#[cfg(test)]
 use config::{BlockConfigView, BlockLayoutSettings};
 pub(crate) use theme::{
     BlockNodePaintSourceOwnership, BlockNodePaintThemePlan, BlockNodeShellKind,
+    BlockTypographyThemePlan,
 };
 
 mod geometry;
@@ -968,6 +971,7 @@ fn collect_shape_sources(root: &BlockNode, out: &mut HashMap<String, BlockShapeS
     }
 }
 
+#[cfg(test)]
 pub(crate) fn layout_block_diagram_typed(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     effective_config: &Value,
@@ -977,7 +981,15 @@ pub(crate) fn layout_block_diagram_typed(
         padding,
         text_style,
     } = BlockConfigView::new(effective_config).layout_settings();
+    layout_block_diagram_typed_with_text_style(model, padding, text_style, measurer)
+}
 
+pub(crate) fn layout_block_diagram_typed_with_text_style(
+    model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+    padding: f64,
+    text_style: TextStyle,
+    measurer: &dyn TextMeasurer,
+) -> Result<BlockDiagramLayout> {
     let root = model
         .blocks_flat
         .iter()

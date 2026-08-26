@@ -125,9 +125,14 @@ fn prepare_block_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let layout = crate::block::layout_block_diagram_typed(
+    let typography_theme = crate::block::BlockTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
+    let layout = crate::block::layout_block_diagram_typed_with_text_style(
         &model,
-        meta.effective_config.as_value(),
+        typography_theme.padding(),
+        typography_theme.text_style().clone(),
         execution.text_measurer(),
     )?;
     let source_ownership = crate::block::BlockNodePaintSourceOwnership::new(&model.class_defs);
@@ -150,6 +155,7 @@ fn prepare_block_family(
         BlockFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             node_paint_theme,
+            typography_theme,
         },
     )))
 }

@@ -79,11 +79,16 @@ fn render_block_direct_with_policy(
         SvgExecution::unthemed_for_test(&request, &debug, &session, crate::DiagramFamilyId::BLOCK)
             .expect("SVG execution");
     let node_paint_theme = BlockNodePaintThemePlan::baseline(&layout);
+    let typography_theme = BlockTypographyThemePlan::resolve(
+        None,
+        &merman_core::MermaidConfig::from_value(effective_config.clone()),
+    );
 
-    render_block_diagram_svg_model(
+    render_block_diagram_svg_model_with_theme(
         &layout,
         model,
         &node_paint_theme,
+        &typography_theme,
         effective_config,
         &execution,
     )

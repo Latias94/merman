@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::block::{
     BlockNodePaintSourceOwnership, BlockNodePaintThemePlan, BlockNodeShellKind, BlockRectangleKind,
-    BlockShapeBoundary, block_label_is_effectively_empty,
+    BlockShapeBoundary, BlockTypographyThemePlan, block_label_is_effectively_empty,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 
@@ -42,10 +42,11 @@ fn write_important_declarations<'a>(
     Ok(())
 }
 
-pub(crate) fn render_block_diagram_svg_model(
+pub(crate) fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     node_paint_theme: &BlockNodePaintThemePlan,
+    typography_theme: &BlockTypographyThemePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -117,6 +118,7 @@ pub(crate) fn render_block_diagram_svg_model(
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
     let node_paint_source_ownership = BlockNodePaintSourceOwnership::new(&model.class_defs);
     let mut node_paint_receipt = node_paint_theme.begin_terminal_receipt();
+    let mut typography_receipt = typography_theme.begin_terminal_receipt();
 
     fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
@@ -309,19 +311,26 @@ pub(crate) fn render_block_diagram_svg_model(
         Ok(())
     }
 
+    struct BlockCssEmission {
+        font_family_css: Box<str>,
+        font_size_css: Box<str>,
+    }
+
     fn write_block_css(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
         effective_config: &serde_json::Value,
+        typography_theme: &BlockTypographyThemePlan,
         class_defs: &indexmap::IndexMap<
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
         options: &SvgExecution<'_>,
-    ) -> Result<()> {
+    ) -> Result<BlockCssEmission> {
         let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
-        let font_family = theme.common.font_family_css.as_str();
-        let font_size = theme.common.font_size_px;
+        let font_family = typography_theme.font_family_css();
+        let font_size = typography_theme.font_size_px();
+        let font_size_css: Box<str> = fmt(font_size).to_string().into();
         let text_color = theme.common.text_color.as_str();
         let node_text_color = theme.node_text_color.as_str();
         let title_color = theme.title_color.as_str();
@@ -339,10 +348,7 @@ pub(crate) fn render_block_diagram_svg_model(
         let _ = write!(
             out,
             r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-            diagram_id,
-            font_family,
-            fmt(font_size),
-            node_text_color
+            diagram_id, font_family, font_size_css, node_text_color
         );
         out.checkpoint()?;
         let _ = write!(
@@ -429,7 +435,11 @@ pub(crate) fn render_block_diagram_svg_model(
             font_family
         );
         out.checkpoint()?;
-        write_block_class_css(out, diagram_id, class_defs, options)
+        write_block_class_css(out, diagram_id, class_defs, options)?;
+        Ok(BlockCssEmission {
+            font_family_css: font_family.into(),
+            font_size_css,
+        })
     }
 
     let diagram_id = options.diagram_id_or("merman");
@@ -464,13 +474,15 @@ pub(crate) fn render_block_diagram_svg_model(
     options.checkpoint_emit()?;
     out.push_str("<style>");
     out.checkpoint()?;
-    write_block_css(
+    let css_emission = write_block_css(
         &mut out,
         diagram_id,
         effective_config,
+        typography_theme,
         &model.class_defs,
         options,
     )?;
+    typography_receipt.record_css(&css_emission.font_family_css, &css_emission.font_size_css);
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
@@ -715,6 +727,7 @@ pub(crate) fn render_block_diagram_svg_model(
         let label = decode_block_label_html(&node.label);
         let label_effectively_empty =
             node.label.is_empty() || block_label_is_effectively_empty(&label);
+        typography_receipt.record_visible_label(&label);
         let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
             (0.0, 0.0, 0.0, 0.0)
         } else {
@@ -814,6 +827,7 @@ pub(crate) fn render_block_diagram_svg_model(
         let Some(lbl) = le.label.as_ref().filter(|_| !e.label.trim().is_empty()) else {
             continue;
         };
+        typography_receipt.record_visible_label(&e.label);
 
         let _ = write!(
             &mut out,
@@ -835,6 +849,11 @@ pub(crate) fn render_block_diagram_svg_model(
     if !node_paint_theme.record_terminal(node_paint_receipt) {
         return Err(Error::InvalidModel {
             message: "Block node shell paint terminal receipt was incomplete".to_string(),
+        });
+    }
+    if !typography_theme.record_terminal(typography_receipt) {
+        return Err(Error::InvalidModel {
+            message: "Block typography terminal receipt was incomplete".to_string(),
         });
     }
     Ok(rooted)
