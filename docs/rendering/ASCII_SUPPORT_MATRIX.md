@@ -29,6 +29,18 @@ Binding migration: consumers must replace `summary_fallback` with `structured_te
 `semantic_coverage` and `primary_projection` as the source fields, and treat `support_level` only as
 a compatibility view.
 
+## Viewport and report contract
+
+`AsciiOutput` is the canonical schema-1 result for a render request. `AsciiOutput::metadata()` is
+used by operation metadata and platform bindings; `AsciiOutput::report()` is the CLI JSON projection
+with the same metadata plus `text`. Both surfaces use the same field names, enum strings, nullable
+fallback fields, display-cell extents, and width profile. A measured candidate owns its metrics once;
+fallback construction checks width and output ceilings incrementally, then commits one render-wide
+resource admission. Overflow remains a presentation result (`allow`, `fallback`, or `error`), never a
+resource success or resource failure. Cancellation and resource errors retain precedence over
+fallback selection. Semantic fallback applies typed-model complexity preflight; Flowchart's typed
+projection uses a bounded cancellation-aware JSON writer before flattening under bounded profiles.
+
 ## Diagrammatic Families
 
 These families are counted as ASCII diagrams because the primary projection preserves a spatial

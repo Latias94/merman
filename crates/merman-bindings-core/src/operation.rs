@@ -393,27 +393,29 @@ struct BindingAsciiOutputPlanWire<'a> {
 impl BindingAsciiOutputPlan {
     #[cfg(feature = "ascii")]
     pub(crate) fn from_output(output: &merman::ascii::AsciiOutput) -> Self {
+        Self::from_metadata(output.metadata())
+    }
+
+    #[cfg(feature = "ascii")]
+    fn from_metadata(metadata: merman::ascii::AsciiOutputMetadata) -> Self {
         Self {
-            schema_version: output.schema_version(),
-            family: output.family.clone(),
-            projection: output.projection.as_str().to_owned(),
-            primary_width: output.primary_extent.width as u64,
-            primary_height: output.primary_extent.height as u64,
-            emitted_width: output.emitted_extent.width as u64,
-            emitted_height: output.emitted_extent.height as u64,
-            width_profile: output.width_profile.as_str().to_owned(),
-            layout_profile: output.layout_profile.as_str().to_owned(),
-            requested_max_width: output.requested_max_width.map(|value| value as u64),
-            overflowed: output.overflowed,
-            outcome: output.outcome.as_str().to_owned(),
-            fallback_capability: output.fallback.capability.as_str().to_owned(),
-            fallback_attempted: output.fallback.attempted,
-            fallback_reason: output
-                .fallback
-                .reason
-                .map(|reason| reason.as_str().to_owned()),
-            trimmed: output.trimmed,
-            lossiness: output.lossiness.as_str().to_owned(),
+            schema_version: metadata.schema_version,
+            family: metadata.family,
+            projection: metadata.projection,
+            primary_width: metadata.primary_width,
+            primary_height: metadata.primary_height,
+            emitted_width: metadata.emitted_width,
+            emitted_height: metadata.emitted_height,
+            width_profile: metadata.width_profile,
+            layout_profile: metadata.layout_profile,
+            requested_max_width: metadata.requested_max_width,
+            overflowed: metadata.overflowed,
+            outcome: metadata.outcome,
+            fallback_capability: metadata.fallback_capability,
+            fallback_attempted: metadata.fallback_attempted,
+            fallback_reason: metadata.fallback_reason,
+            trimmed: metadata.trimmed,
+            lossiness: metadata.lossiness,
         }
     }
 

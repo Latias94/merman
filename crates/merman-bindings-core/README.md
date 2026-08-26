@@ -59,6 +59,12 @@ let request = BindingOperationRequest::new("document-analysis-json", source)
 
 Operation results expose typed schema-1 metadata and retain the exact original metadata JSON. Known raster and PDF plans are typed, while future output-plan kinds decode as an open `Unknown` variant without discarding their JSON. `operation_metadata_contract()` and `binding_operation_expectations()` are the stable generator inputs for language projections and the descriptor-derived 13-operation test matrix. `xtask gen-binding-contract` materializes both the Node projection and the language-neutral fixture under `fixtures/bindings/generated/`; transports consume those generated values instead of maintaining parallel operation or metadata vocabularies.
 
+When `ascii` is enabled, the ASCII output plan is adapted from `merman-ascii::AsciiOutput::metadata()`.
+The CLI's report JSON is the same metadata payload plus the exact text projection from
+`AsciiOutput::report()`. Schema version 1, field names, enum strings, nullable fallback fields, and
+unknown-field behavior therefore remain one coordinated contract across Rust, CLI, generated
+fixtures, Web metadata, and platform DTOs.
+
 Reusable host services are immutable and constructor-owned. A transport wraps its callback and admission policy, then creates the engine through the single service-aware constructor:
 
 ```rust
