@@ -209,7 +209,11 @@ fn prepare_graph_render_controlled(
         crate::resource::AsciiResourceLimitId::MaxGridCells,
         extent.cells(),
     )?;
-    execution.admit_graph_extent(width, height, options.terminal_width_profile)?;
+    execution.admit_graph_extent(
+        width,
+        height,
+        options.flowchart_layout().terminal_width_profile,
+    )?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let output_transform = OutputTransform::for_direction(graph.direction);
     if !output_transform.is_identity() {
@@ -245,7 +249,7 @@ fn paint_graph_render_controlled(
     let mut canvas = RawCanvas::try_with_resources_and_execution(
         width,
         height,
-        options.terminal_width_profile,
+        options.flowchart_layout().terminal_width_profile,
         resources,
         execution,
     )?;
@@ -263,7 +267,7 @@ fn paint_graph_render_controlled(
             output_transform,
             width,
             height,
-            options.terminal_width_profile,
+            options.flowchart_layout().terminal_width_profile,
         );
         for group_index in &graph_layout.group_background_order {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
@@ -298,7 +302,7 @@ fn paint_graph_render_controlled(
             output_transform,
             width,
             height,
-            options.terminal_width_profile,
+            options.flowchart_layout().terminal_width_profile,
         );
         let mut route_drawing = routing::RouteDrawing::new(&mut surface, &mut route_cells);
         route_scene.paint_routes_with_execution(&mut route_drawing, execution)?;

@@ -1,5 +1,7 @@
 use super::SequenceCheckpointCursor;
 use super::chars::SequenceChars;
+use super::layout::calculate_layout_with_policy;
+#[cfg(test)]
 use super::layout::calculate_layout_with_resources;
 use super::model::AsciiSequenceDiagram;
 use super::notes::apply_note_gutters;
@@ -7,7 +9,7 @@ use super::plan::prepare_sequence_row_document;
 use super::row_document::{prepare_sequence_document, prepare_sequence_title};
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
-use crate::options::AsciiRenderOptions;
+use crate::options::{AsciiRenderOptions, SequenceLayoutPolicy};
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
 use crate::resource::ResourceContext;
@@ -24,11 +26,13 @@ pub(crate) fn render_sequence_diagram(
         diagram,
         None,
         options,
+        options.sequence_layout(),
         &mut resources,
         AsciiExecution::for_test(policy),
     )
 }
 
+#[cfg(test)]
 pub(crate) fn render_sequence_diagram_with_execution(
     diagram: &AsciiSequenceDiagram,
     title: Option<&str>,
@@ -36,20 +40,46 @@ pub(crate) fn render_sequence_diagram_with_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    render_sequence_diagram_with_resolved_policy(
+        diagram,
+        title,
+        options,
+        options.sequence_layout(),
+        resources,
+        execution,
+    )
+}
+
+pub(crate) fn render_sequence_diagram_with_resolved_policy(
+    diagram: &AsciiSequenceDiagram,
+    title: Option<&str>,
+    options: &AsciiRenderOptions,
+    layout_policy: SequenceLayoutPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
     debug_assert_eq!(resources.policy(), *execution.resources());
-    render_sequence_diagram_inner(diagram, title, options, resources, execution)
+    render_sequence_diagram_inner(diagram, title, options, layout_policy, resources, execution)
 }
 
 fn render_sequence_diagram_inner(
     diagram: &AsciiSequenceDiagram,
     title: Option<&str>,
     options: &AsciiRenderOptions,
+    layout_policy: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let transaction = resources.clone();
     transaction.transaction(|_| {
-        render_sequence_diagram_transactional(diagram, title, options, resources, execution)
+        render_sequence_diagram_transactional(
+            diagram,
+            title,
+            options,
+            layout_policy,
+            resources,
+            execution,
+        )
     })
 }
 
@@ -57,6 +87,7 @@ fn render_sequence_diagram_transactional(
     diagram: &AsciiSequenceDiagram,
     title: Option<&str>,
     options: &AsciiRenderOptions,
+    layout_policy: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -71,17 +102,17 @@ fn render_sequence_diagram_transactional(
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     debug_assert_eq!(resources.policy(), *execution.resources());
     let mut layout_resources = execution.resource_context(resources, OperationPhase::Layout);
-    let chars = SequenceChars::for_options(options);
+    let chars = SequenceChars::for_charset(layout_policy.structural_charset);
     let mut layout_checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
     let title = prepare_sequence_title(
         title,
-        options.terminal_width_profile,
+        layout_policy.terminal_width_profile,
         &mut layout_resources,
         &mut layout_checkpoints,
     )?;
-    let mut layout = calculate_layout_with_resources(
+    let mut layout = calculate_layout_with_policy(
         diagram,
-        options,
+        layout_policy,
         &mut layout_resources,
         &mut layout_checkpoints,
     )?;
@@ -95,7 +126,7 @@ fn render_sequence_diagram_transactional(
         diagram,
         &layout,
         &chars,
-        options.sequence_mirror_actors,
+        layout_policy.mirror_actors,
         &mut layout_resources,
         &mut layout_checkpoints,
     )?;
@@ -377,7 +408,7 @@ mod tests {
         let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
         let title = prepare_sequence_title(
             Some(title),
-            options.terminal_width_profile,
+            options.sequence_layout().terminal_width_profile,
             &mut layout_resources,
             &mut checkpoints,
         )?;
@@ -398,7 +429,7 @@ mod tests {
             diagram,
             &layout,
             &chars,
-            options.sequence_mirror_actors,
+            options.sequence_layout().mirror_actors,
             &mut layout_resources,
             &mut checkpoints,
         )?;

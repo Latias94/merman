@@ -79,6 +79,7 @@ use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::runtime::OperationContext;
 use merman_core::{MermaidConfig, ParseMetadata};
+use options::{ResolvedAsciiPolicies, SequenceLayoutPolicy, XyChartLayoutPolicy};
 
 #[derive(Debug, Clone, Default)]
 pub struct AsciiRenderer {
@@ -130,10 +131,12 @@ impl AsciiRenderer {
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let execution = operation::AsciiExecution::new(control, &resources);
+        let policies = self.options.resolve_policies();
         render_model_with_execution(
             model,
             None,
-            &self.options.effective_layout(),
+            &policies.options,
+            &policies,
             execution,
             context.local_time_zone(),
         )
@@ -180,7 +183,8 @@ impl AsciiRenderer {
         let execution = operation::AsciiExecution::new(control, &resources)
             .with_viewport(viewport)
             .with_render_ledger(&render_ledger);
-        let options = self.options.effective_layout();
+        let policies = self.options.resolve_policies();
+        let options = policies.options;
         let capability = output::capability_for(model);
         let projection = output::projection_for(capability);
         let fallback_capability = options.color_mode == color::AsciiColorMode::Plain
@@ -189,6 +193,7 @@ impl AsciiRenderer {
             model,
             flowchart_context,
             &options,
+            &policies,
             execution,
             context.local_time_zone(),
         ) {
@@ -298,10 +303,12 @@ impl AsciiRenderer {
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let execution = operation::AsciiExecution::new(control, &resources);
+        let policies = self.options.resolve_policies();
         render_model_with_execution(
             parsed.model(),
             parsed.flowchart_render_context(),
-            &self.options.effective_layout(),
+            &policies.options,
+            &policies,
             execution,
             context.local_time_zone(),
         )
@@ -330,6 +337,7 @@ fn render_model_with_execution(
     model: &RenderSemanticModel,
     flowchart_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
+    policies: &ResolvedAsciiPolicies,
     execution: operation::AsciiExecution<'_>,
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<String> {
@@ -350,10 +358,14 @@ fn render_model_with_execution(
         RenderSemanticModel::Kanban(model) => render_kanban_model(model, options, &execution),
         RenderSemanticModel::Mindmap(model) => render_mindmap_model(model, options, &execution),
         RenderSemanticModel::Packet(model) => render_packet_model(model, options, &execution),
-        RenderSemanticModel::Sequence(model) => render_sequence_model(model, options, &execution),
+        RenderSemanticModel::Sequence(model) => {
+            render_sequence_model(model, options, policies.layout.sequence, &execution)
+        }
         RenderSemanticModel::State(model) => render_state_model(model, options, &execution),
         RenderSemanticModel::Timeline(model) => render_timeline_model(model, options, &execution),
-        RenderSemanticModel::XyChart(model) => render_xychart_model(model, options, &execution),
+        RenderSemanticModel::XyChart(model) => {
+            render_xychart_model(model, options, policies.layout.xychart, &execution)
+        }
         RenderSemanticModel::TreeView(model) => render_tree_view_model(model, options, &execution),
         RenderSemanticModel::Error(_)
         | RenderSemanticModel::CustomJson(_)
@@ -482,20 +494,22 @@ fn render_packet_model(
 fn render_sequence_model(
     model: &SequenceDiagramRenderModel,
     options: &AsciiRenderOptions,
+    layout: SequenceLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     let mut resources = execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let diagram = sequence::from_sequence_model(
         model,
-        options.terminal_width_profile,
+        layout.terminal_width_profile,
         &mut resources,
         *execution,
     )?;
-    sequence::render_sequence_diagram_with_execution(
+    sequence::render_sequence_diagram_with_resolved_policy(
         &diagram,
         model.title.as_deref().filter(|title| !title.is_empty()),
         options,
+        layout,
         &mut resources,
         *execution,
     )
@@ -538,10 +552,11 @@ fn render_timeline_model(
 fn render_xychart_model(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
+    layout: XyChartLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    xychart::render_xychart_diagram_with_execution(model, options, *execution)
+    xychart::render_xychart_diagram_with_resolved_policy(model, options, layout, *execution)
 }
 
 fn render_tree_view_model(

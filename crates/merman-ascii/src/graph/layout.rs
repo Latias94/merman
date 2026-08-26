@@ -137,7 +137,11 @@ pub(super) fn layout_graph_with_resources_and_execution(
     grid::preflight_minimum_grid_extent(graph, options, resources)?;
     charge_graph_layout_work(graph, resources)?;
     checkpoint_layout(execution)?;
-    let label_plans = grid::plan_node_labels(graph, options.terminal_width_profile, resources)?;
+    let label_plans = grid::plan_node_labels(
+        graph,
+        options.flowchart_layout().terminal_width_profile,
+        resources,
+    )?;
     let topology = if graph.groups.is_empty() {
         None
     } else {
@@ -163,7 +167,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
             topology
                 .as_ref()
                 .expect("non-empty graph groups must have topology"),
-            options.terminal_width_profile,
+            options.flowchart_layout().terminal_width_profile,
             resources,
         )?
     };
@@ -193,7 +197,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
             topology
                 .as_ref()
                 .expect("non-empty graph groups must have topology"),
-            options.terminal_width_profile,
+            options.flowchart_layout().terminal_width_profile,
             resources,
             execution,
         )?

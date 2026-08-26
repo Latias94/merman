@@ -83,6 +83,74 @@ pub struct AsciiRenderOptions {
     pub(crate) layout_overrides: u8,
 }
 
+/// Host facts and explicit presentation choices resolved before family rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AsciiHostPolicy {
+    pub charset: AsciiCharset,
+    pub structural_charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
+    pub color_mode: AsciiColorMode,
+    pub color_theme: AsciiColorTheme,
+}
+
+/// Output facts shared by measurement, viewport admission, and encoders.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AsciiOutputPolicy {
+    pub terminal_width_profile: TerminalWidthProfile,
+    pub color_mode: AsciiColorMode,
+}
+
+/// Flowchart-owned geometry policy. Graph renderers may consume this view but not sequence or
+/// chart-specific spacing fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FlowchartLayoutPolicy {
+    pub graph_padding_x: usize,
+    pub graph_padding_y: usize,
+    pub node_label_wrap_width: usize,
+    pub default_direction: AsciiDirection,
+    pub structural_charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
+}
+
+/// Sequence-owned geometry policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SequenceLayoutPolicy {
+    pub participant_spacing: usize,
+    pub message_spacing: usize,
+    pub self_message_width: usize,
+    pub mirror_actors: bool,
+    pub structural_charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
+}
+
+/// XYChart-owned geometry policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct XyChartLayoutPolicy {
+    pub vertical_plot_height: usize,
+    pub category_band_width: usize,
+    pub horizontal_plot_width: usize,
+    pub structural_charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AsciiLayoutPolicies {
+    pub profile: AsciiLayoutProfile,
+    pub flowchart: FlowchartLayoutPolicy,
+    pub sequence: SequenceLayoutPolicy,
+    pub xychart: XyChartLayoutPolicy,
+}
+
+/// The one internal policy resolution seam. The public options record remains a compatibility
+/// façade while family modules consume only the resolved view they own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ResolvedAsciiPolicies {
+    pub options: AsciiRenderOptions,
+    pub host: AsciiHostPolicy,
+    pub layout: AsciiLayoutPolicies,
+    pub output: AsciiOutputPolicy,
+}
+
 const OVERRIDE_GRAPH_PADDING_X: u8 = 1 << 0;
 const OVERRIDE_GRAPH_PADDING_Y: u8 = 1 << 1;
 const OVERRIDE_FLOWCHART_WRAP_WIDTH: u8 = 1 << 2;
@@ -236,6 +304,63 @@ impl AsciiRenderOptions {
         }
     }
 
+    pub(crate) fn resolve_policies(self) -> ResolvedAsciiPolicies {
+        let options = self.effective_layout();
+        let structural_charset = options.structural_charset();
+        ResolvedAsciiPolicies {
+            options,
+            host: AsciiHostPolicy {
+                charset: options.charset,
+                structural_charset,
+                terminal_width_profile: options.terminal_width_profile,
+                color_mode: options.color_mode,
+                color_theme: options.color_theme,
+            },
+            layout: AsciiLayoutPolicies {
+                profile: options.layout_profile,
+                flowchart: FlowchartLayoutPolicy {
+                    graph_padding_x: options.graph_padding_x,
+                    graph_padding_y: options.graph_padding_y,
+                    node_label_wrap_width: options.flowchart_node_label_wrap_width,
+                    default_direction: options.default_direction,
+                    structural_charset,
+                    terminal_width_profile: options.terminal_width_profile,
+                },
+                sequence: SequenceLayoutPolicy {
+                    participant_spacing: options.sequence_participant_spacing,
+                    message_spacing: options.sequence_message_spacing,
+                    self_message_width: options.sequence_self_message_width,
+                    mirror_actors: options.sequence_mirror_actors,
+                    structural_charset,
+                    terminal_width_profile: options.terminal_width_profile,
+                },
+                xychart: XyChartLayoutPolicy {
+                    vertical_plot_height: options.xychart_vertical_plot_height,
+                    category_band_width: options.xychart_category_band_width,
+                    horizontal_plot_width: options.xychart_horizontal_plot_width,
+                    structural_charset,
+                    terminal_width_profile: options.terminal_width_profile,
+                },
+            },
+            output: AsciiOutputPolicy {
+                terminal_width_profile: options.terminal_width_profile,
+                color_mode: options.color_mode,
+            },
+        }
+    }
+
+    pub(crate) fn flowchart_layout(self) -> FlowchartLayoutPolicy {
+        self.resolve_policies().layout.flowchart
+    }
+
+    pub(crate) fn sequence_layout(self) -> SequenceLayoutPolicy {
+        self.resolve_policies().layout.sequence
+    }
+
+    pub(crate) fn xychart_layout(self) -> XyChartLayoutPolicy {
+        self.resolve_policies().layout.xychart
+    }
+
     /// Returns the structural glyph set that can preserve one-cell grid topology.
     ///
     /// Unicode box-drawing and marker characters are East Asian Ambiguous. The CJK width table
@@ -299,5 +424,54 @@ mod tests {
             AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk);
 
         assert_eq!(options.structural_charset(), AsciiCharset::Ascii);
+    }
+
+    #[test]
+    fn resolved_compact_policy_changes_only_admitted_family_fields() {
+        let canonical = AsciiRenderOptions::unicode().resolve_policies();
+        let compact = AsciiRenderOptions::unicode()
+            .with_layout_profile(AsciiLayoutProfile::Compact)
+            .resolve_policies();
+
+        assert_eq!(canonical.host, compact.host);
+        assert_eq!(canonical.output, compact.output);
+        assert_ne!(
+            canonical.layout.flowchart.graph_padding_x,
+            compact.layout.flowchart.graph_padding_x
+        );
+        assert_ne!(
+            canonical.layout.flowchart.node_label_wrap_width,
+            compact.layout.flowchart.node_label_wrap_width
+        );
+        assert_ne!(
+            canonical.layout.sequence.participant_spacing,
+            compact.layout.sequence.participant_spacing
+        );
+        assert_eq!(
+            canonical.layout.sequence.message_spacing,
+            compact.layout.sequence.message_spacing
+        );
+        assert_eq!(canonical.layout.xychart, compact.layout.xychart);
+    }
+
+    #[test]
+    fn resolved_policy_carries_one_structural_charset_to_every_family() {
+        let policies = AsciiRenderOptions::unicode()
+            .with_terminal_width_profile(TerminalWidthProfile::Cjk)
+            .resolve_policies();
+
+        assert_eq!(policies.host.structural_charset, AsciiCharset::Ascii);
+        assert_eq!(
+            policies.layout.flowchart.structural_charset,
+            AsciiCharset::Ascii
+        );
+        assert_eq!(
+            policies.layout.sequence.structural_charset,
+            AsciiCharset::Ascii
+        );
+        assert_eq!(
+            policies.layout.xychart.structural_charset,
+            AsciiCharset::Ascii
+        );
     }
 }

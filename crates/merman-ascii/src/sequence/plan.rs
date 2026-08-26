@@ -1190,7 +1190,7 @@ mod tests {
         let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
         let title = crate::sequence::row_document::prepare_sequence_title(
             Some(title),
-            options.terminal_width_profile,
+            options.sequence_layout().terminal_width_profile,
             &mut layout_resources,
             &mut checkpoints,
         )?;
@@ -1211,7 +1211,7 @@ mod tests {
             diagram,
             &layout,
             &chars,
-            options.sequence_mirror_actors,
+            options.sequence_layout().mirror_actors,
             &mut layout_resources,
             &mut checkpoints,
         )?;
@@ -1399,7 +1399,7 @@ mod tests {
             None,
             &layout,
             &chars,
-            options.sequence_mirror_actors,
+            options.sequence_layout().mirror_actors,
             &mut resources,
             &mut layout_cursor,
         )
@@ -1435,7 +1435,7 @@ mod tests {
         let mut layout_cursor = layout_checkpoints(&policy);
         let title = crate::sequence::row_document::prepare_sequence_title(
             Some("Timeline"),
-            options.terminal_width_profile,
+            options.sequence_layout().terminal_width_profile,
             &mut resources,
             &mut layout_cursor,
         )

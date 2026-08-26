@@ -27,7 +27,7 @@ use crate::safe_text::{
 use merman_core::OperationPhase;
 
 pub(crate) use model::from_sequence_model;
-pub(crate) use render::render_sequence_diagram_with_execution;
+pub(crate) use render::render_sequence_diagram_with_resolved_policy;
 
 #[derive(Debug, Clone, Copy)]
 struct SequenceCheckpointCursor<'a> {

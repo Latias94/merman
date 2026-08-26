@@ -40,7 +40,7 @@ impl GraphCharset {
         match options.structural_charset() {
             AsciiCharset::Ascii => Self {
                 unicode: false,
-                width_profile: options.terminal_width_profile,
+                width_profile: options.flowchart_layout().terminal_width_profile,
                 top_left: '+',
                 top_right: '+',
                 bottom_left: '+',
@@ -73,7 +73,7 @@ impl GraphCharset {
             },
             AsciiCharset::Unicode => Self {
                 unicode: true,
-                width_profile: options.terminal_width_profile,
+                width_profile: options.flowchart_layout().terminal_width_profile,
                 top_left: '┌',
                 top_right: '┐',
                 bottom_left: '└',

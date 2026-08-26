@@ -106,7 +106,7 @@ impl SequenceRowDocument {
         layout_checkpoints.execution().admit_primary_extent(
             output_extent.width(),
             output_extent.height(),
-            options.terminal_width_profile,
+            options.sequence_layout().terminal_width_profile,
         )?;
         // Box/title geometry, extent admission, and canvas construction are layout work. Only
         // after those complete do we bind the shared ledger to Emit for byte/document emission.
@@ -473,8 +473,10 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, 64)
             .expect("the output limit should be valid");
         let mut resources = ResourceContext::new(policy);
-        let line =
-            SequenceLine::plain_text_with_profile(&"x".repeat(128), options.terminal_width_profile);
+        let line = SequenceLine::plain_text_with_profile(
+            &"x".repeat(128),
+            options.sequence_layout().terminal_width_profile,
+        );
         let control = OperationControl::new();
         let execution = AsciiExecution::new(&control, &policy);
         resources = execution.resource_context(&resources, OperationPhase::Emit);
@@ -498,7 +500,10 @@ mod tests {
         let policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, 1)
             .expect("the output limit should be valid");
-        let line = SequenceLine::plain_text_with_profile("AB", options.terminal_width_profile);
+        let line = SequenceLine::plain_text_with_profile(
+            "AB",
+            options.sequence_layout().terminal_width_profile,
+        );
         let control = OperationControl::new();
         let execution = AsciiExecution::new(&control, &policy);
         let base_resources = ResourceContext::new(policy);
@@ -543,11 +548,17 @@ mod tests {
         options: &AsciiRenderOptions,
         policy: AsciiResourcePolicy,
     ) -> Vec<SequenceLine> {
-        let mut first = SequenceLine::with_resource_policy(options.terminal_width_profile, policy);
+        let mut first = SequenceLine::with_resource_policy(
+            options.sequence_layout().terminal_width_profile,
+            policy,
+        );
         first
             .try_push_role_text("A<&", AsciiColorRole::Text)
             .expect("styled line should fit");
-        let mut second = SequenceLine::with_resource_policy(options.terminal_width_profile, policy);
+        let mut second = SequenceLine::with_resource_policy(
+            options.sequence_layout().terminal_width_profile,
+            policy,
+        );
         second
             .try_push_role_text("B👩🏽‍💻", AsciiColorRole::EdgeArrow)
             .expect("styled line should fit");

@@ -73,12 +73,12 @@ fn from_flowchart_model_transactional(
     let direction = if let Some(direction) = model.direction.as_deref() {
         parse_direction(direction)?
     } else {
-        match options.default_direction {
+        match options.flowchart_layout().default_direction {
             AsciiDirection::LeftRight => GraphDirection::LeftRight,
             AsciiDirection::TopDown => GraphDirection::TopDown,
         }
     };
-    let wrap_width = NonZeroUsize::new(options.flowchart_node_label_wrap_width).ok_or(
+    let wrap_width = NonZeroUsize::new(options.flowchart_layout().node_label_wrap_width).ok_or(
         AsciiError::InvalidOption {
             field: "flowchart_node_label_wrap_width",
             message: "must be greater than 0",
@@ -89,7 +89,7 @@ fn from_flowchart_model_transactional(
         &memberships,
         direction,
         Some(wrap_width.get()),
-        options.terminal_width_profile,
+        options.flowchart_layout().terminal_width_profile,
         resources,
         execution,
     )?;

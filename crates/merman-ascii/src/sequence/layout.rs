@@ -4,7 +4,9 @@ use super::{BOX_BORDER_WIDTH, BOX_PADDING_LEFT_RIGHT, MIN_BOX_WIDTH};
 use crate::error::{AsciiError, Result};
 #[cfg(test)]
 use crate::operation::AsciiExecution;
-use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+#[cfg(test)]
+use crate::options::AsciiRenderOptions;
+use crate::options::{SequenceLayoutPolicy, TerminalWidthProfile};
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
@@ -33,9 +35,19 @@ pub(super) fn calculate_layout(
     calculate_layout_with_resources(diagram, options, &mut resources, &mut checkpoints)
 }
 
+#[cfg(test)]
 pub(super) fn calculate_layout_with_resources(
     diagram: &AsciiSequenceDiagram,
     options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<SequenceLayout> {
+    calculate_layout_with_policy(diagram, options.sequence_layout(), resources, checkpoints)
+}
+
+pub(super) fn calculate_layout_with_policy(
+    diagram: &AsciiSequenceDiagram,
+    layout: SequenceLayoutPolicy,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLayout> {
@@ -71,8 +83,7 @@ pub(super) fn calculate_layout_with_resources(
             participant_centers.push(box_width / 2);
             current_x = box_width;
         } else {
-            current_x =
-                resources.checked_grid_add(current_x, options.sequence_participant_spacing)?;
+            current_x = resources.checked_grid_add(current_x, layout.participant_spacing)?;
             participant_centers.push(resources.checked_grid_add(current_x, box_width / 2)?);
             current_x = resources.checked_grid_add(current_x, box_width)?;
         }
@@ -94,9 +105,9 @@ pub(super) fn calculate_layout_with_resources(
         participant_widths,
         participant_centers,
         total_width,
-        message_spacing: options.sequence_message_spacing.max(1),
-        self_message_width: options.sequence_self_message_width,
-        width_profile: options.terminal_width_profile,
+        message_spacing: layout.message_spacing.max(1),
+        self_message_width: layout.self_message_width,
+        width_profile: layout.terminal_width_profile,
     })
 }
 

@@ -387,10 +387,13 @@ pub(super) fn node_padding_y(
         .copied()
         .unwrap_or(false)
     {
-        return Ok(options.graph_padding_y);
+        return Ok(options.flowchart_layout().graph_padding_y);
     }
 
-    resources.checked_grid_add(options.graph_padding_y, SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD)
+    resources.checked_grid_add(
+        options.flowchart_layout().graph_padding_y,
+        SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD,
+    )
 }
 
 fn shift_external_nodes_away_from_group(

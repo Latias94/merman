@@ -1,5 +1,7 @@
 use super::model::SequenceArrowHead;
-use crate::options::{AsciiCharset, AsciiRenderOptions};
+use crate::options::AsciiCharset;
+#[cfg(test)]
+use crate::options::AsciiRenderOptions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct SequenceChars {
@@ -47,8 +49,13 @@ impl SequenceEndpointGlyph {
 }
 
 impl SequenceChars {
+    #[cfg(test)]
     pub(super) fn for_options(options: &AsciiRenderOptions) -> Self {
-        match options.structural_charset() {
+        Self::for_charset(options.structural_charset())
+    }
+
+    pub(super) fn for_charset(charset: AsciiCharset) -> Self {
+        match charset {
             AsciiCharset::Ascii => Self {
                 top_left: '+',
                 top_right: '+',

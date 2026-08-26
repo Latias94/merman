@@ -109,8 +109,9 @@ pub(super) fn preflight_minimum_grid_extent(
     // that unavoidable storage before constructing any hash-backed layout containers.
     let minimum_cells = minimum_node_grid_cells(graph.nodes.len(), resources)?;
     resources.grid_extent(minimum_cells, 1)?;
-    resources.grid_extent(options.graph_padding_x, 1)?;
-    resources.grid_extent(options.graph_padding_y, 1)?;
+    let policy = options.flowchart_layout();
+    resources.grid_extent(policy.graph_padding_x, 1)?;
+    resources.grid_extent(policy.graph_padding_y, 1)?;
     Ok(())
 }
 
@@ -225,7 +226,7 @@ fn layout_left_right_grid_nodes(
     let ranked = place_left_right_grid_nodes(
         graph,
         topology,
-        options.terminal_width_profile,
+        options.flowchart_layout().terminal_width_profile,
         resources,
         execution,
     )?;
@@ -250,7 +251,11 @@ fn layout_left_right_grid_nodes(
         );
         set_axis_size(&mut column_widths, coord.x + 2, 1);
         if coord.x > 0 {
-            set_axis_size(&mut column_widths, coord.x - 1, options.graph_padding_x);
+            set_axis_size(
+                &mut column_widths,
+                coord.x - 1,
+                options.flowchart_layout().graph_padding_x,
+            );
         }
 
         set_axis_size(&mut row_heights, coord.y, 1);
@@ -307,7 +312,7 @@ fn layout_left_right_grid_nodes(
         placements,
         &column_widths,
         &row_heights,
-        options.terminal_width_profile,
+        options.flowchart_layout().terminal_width_profile,
         resources,
         execution,
     )
@@ -542,7 +547,7 @@ fn layout_top_down_grid_nodes(
     let ranked = place_top_down_grid_nodes(
         graph,
         topology,
-        options.terminal_width_profile,
+        options.flowchart_layout().terminal_width_profile,
         resources,
         execution,
     )?;
@@ -567,7 +572,11 @@ fn layout_top_down_grid_nodes(
         );
         set_axis_size(&mut column_widths, coord.x + 2, 1);
         if coord.x > 0 {
-            set_axis_size(&mut column_widths, coord.x - 1, options.graph_padding_x);
+            set_axis_size(
+                &mut column_widths,
+                coord.x - 1,
+                options.flowchart_layout().graph_padding_x,
+            );
         }
 
         set_axis_size(&mut row_heights, coord.y, 1);
@@ -626,7 +635,7 @@ fn layout_top_down_grid_nodes(
         placements,
         &column_widths,
         &row_heights,
-        options.terminal_width_profile,
+        options.flowchart_layout().terminal_width_profile,
         resources,
         execution,
     )
@@ -646,8 +655,11 @@ fn reserve_leaf_group_rank_axis_sizes(
         let (Some(level), Some(group)) = (level, graph.groups.get(group_index)) else {
             continue;
         };
-        let (width, height) =
-            groups::empty_group_minimum_size(group, options.terminal_width_profile, resources)?;
+        let (width, height) = groups::empty_group_minimum_size(
+            group,
+            options.flowchart_layout().terminal_width_profile,
+            resources,
+        )?;
         let second = resources.checked_grid_add(level, 1)?;
         let third = resources.checked_grid_add(level, 2)?;
         match direction.canonical() {
@@ -659,7 +671,10 @@ fn reserve_leaf_group_rank_axis_sizes(
                     set_axis_size(
                         column_widths,
                         level - 1,
-                        options.graph_padding_x.max(MINIMUM_GROUP_RANK_GAP),
+                        options
+                            .flowchart_layout()
+                            .graph_padding_x
+                            .max(MINIMUM_GROUP_RANK_GAP),
                     );
                 }
             }
@@ -671,7 +686,10 @@ fn reserve_leaf_group_rank_axis_sizes(
                     set_axis_size(
                         row_heights,
                         level - 1,
-                        options.graph_padding_y.max(MINIMUM_GROUP_RANK_GAP),
+                        options
+                            .flowchart_layout()
+                            .graph_padding_y
+                            .max(MINIMUM_GROUP_RANK_GAP),
                     );
                 }
             }
@@ -695,7 +713,7 @@ fn apply_vertical_edge_spacing(
     }
 
     let length_gap = resources.checked_grid_add(
-        options.graph_padding_y,
+        options.flowchart_layout().graph_padding_y,
         resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
     )?;
     let label_width = if from.x == to.x {
@@ -704,7 +722,7 @@ fn apply_vertical_edge_spacing(
             .map(|label| {
                 GraphLabel::try_measure_width_with_profile(
                     label,
-                    options.terminal_width_profile,
+                    options.flowchart_layout().terminal_width_profile,
                     resources,
                 )
             })
@@ -736,7 +754,7 @@ fn apply_horizontal_edge_spacing(
     }
 
     let length_gap = resources.checked_grid_add(
-        options.graph_padding_x,
+        options.flowchart_layout().graph_padding_x,
         resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
     )?;
     let label_gap = edge
@@ -746,7 +764,7 @@ fn apply_horizontal_edge_spacing(
             resources.checked_grid_add(
                 GraphLabel::try_measure_width_with_profile(
                     label,
-                    options.terminal_width_profile,
+                    options.flowchart_layout().terminal_width_profile,
                     resources,
                 )?,
                 2,
