@@ -80,7 +80,8 @@ use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::runtime::OperationContext;
 use merman_core::{MermaidConfig, ParseMetadata};
 use options::{
-    FlowchartLayoutPolicy, ResolvedAsciiPolicies, SequenceLayoutPolicy, XyChartLayoutPolicy,
+    FlowchartLayoutPolicy, GraphLayoutPolicy, ResolvedAsciiPolicies, SequenceLayoutPolicy,
+    XyChartLayoutPolicy,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -367,7 +368,9 @@ fn render_model_with_execution(
         RenderSemanticModel::Sequence(model) => {
             render_sequence_model(model, options, policies.layout.sequence, &execution)
         }
-        RenderSemanticModel::State(model) => render_state_model(model, options, &execution),
+        RenderSemanticModel::State(model) => {
+            render_state_model(model, options, policies.layout.state, &execution)
+        }
         RenderSemanticModel::Timeline(model) => render_timeline_model(model, options, &execution),
         RenderSemanticModel::XyChart(model) => {
             render_xychart_model(model, options, policies.layout.xychart, &execution)
@@ -438,7 +441,7 @@ fn render_flowchart_model(
     graph::render_graph_with_resolved_policy_and_execution(
         &graph,
         options,
-        layout,
+        layout.graph_policy(),
         &mut layout_resources,
         *execution,
     )
@@ -521,6 +524,7 @@ fn render_sequence_model(
 fn render_state_model(
     model: &StateDiagramRenderModel,
     options: &AsciiRenderOptions,
+    layout: GraphLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
@@ -535,9 +539,10 @@ fn render_state_model(
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let mut layout_resources =
         execution.resource_context(&semantic_resources, merman_core::OperationPhase::Layout);
-    graph::render_graph_with_resources_and_execution(
+    graph::render_graph_with_resolved_policy_and_execution(
         &graph,
         options,
+        layout,
         &mut layout_resources,
         *execution,
     )

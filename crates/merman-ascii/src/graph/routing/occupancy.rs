@@ -377,7 +377,7 @@ impl<'layout> SceneOccupancy<'layout> {
         let mut scene = Self::try_new_for_routes(
             graph_layout,
             routes.len(),
-            crate::options::FlowchartLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
+            crate::options::GraphLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
             resources,
             AsciiExecution::for_test(&policy),
         )?;

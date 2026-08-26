@@ -119,7 +119,7 @@ pub(super) fn layout_graph_with_resources(
     resources: &mut ResourceContext,
 ) -> Result<GraphLayout> {
     let policy = resources.policy();
-    let layout_policy = options.flowchart_layout();
+    let layout_policy = options.flowchart_layout().graph_policy();
     layout_graph_with_resources_and_execution(
         graph,
         &layout_policy,
@@ -130,7 +130,7 @@ pub(super) fn layout_graph_with_resources(
 
 pub(super) fn layout_graph_with_resources_and_execution(
     graph: &AsciiGraph,
-    layout_policy: &crate::options::FlowchartLayoutPolicy,
+    layout_policy: &crate::options::GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GraphLayout> {
@@ -304,7 +304,7 @@ mod tests {
         let mut resources = ResourceContext::new(policy);
         let control = OperationControl::new();
         control.cancel();
-        let layout_policy = options.flowchart_layout();
+        let layout_policy = options.flowchart_layout().graph_policy();
 
         let error = layout_graph_with_resources_and_execution(
             &graph,
@@ -384,8 +384,12 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxGridCells, minimum_cells)
             .expect("exact grid limit should be valid");
         let exact_resources = ResourceContext::new(exact_policy);
-        grid::preflight_minimum_grid_extent(&graph, &options.flowchart_layout(), &exact_resources)
-            .expect("the exact minimum grid extent should pass preflight");
+        grid::preflight_minimum_grid_extent(
+            &graph,
+            &options.flowchart_layout().graph_policy(),
+            &exact_resources,
+        )
+        .expect("the exact minimum grid extent should pass preflight");
         assert_eq!(exact_resources.layout_work_used(), 0);
 
         let below_policy = unbounded

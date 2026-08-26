@@ -3,7 +3,7 @@ use super::super::topology::GraphGroupTopology;
 use super::{GridCoord, GroupLayout, NodeLayout};
 use crate::error::Result;
 use crate::operation::AsciiExecution;
-use crate::options::FlowchartLayoutPolicy;
+use crate::options::GraphLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use std::collections::HashSet;
 
@@ -29,7 +29,7 @@ pub(super) fn apply_group_placement_adjustments(
     graph: &AsciiGraph,
     placements: &mut [GridCoord],
     topology: &GraphGroupTopology<'_>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
@@ -42,7 +42,7 @@ pub(super) fn subgraph_offsets(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<(usize, usize)> {
     bounds::subgraph_offsets(graph, layouts, topology, policy, resources)
@@ -52,7 +52,7 @@ pub(super) fn layout_groups(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<LaidOutGroups> {
@@ -61,7 +61,7 @@ pub(super) fn layout_groups(
 
 pub(super) fn empty_group_minimum_size(
     group: &AsciiGraphGroup,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
     bounds::empty_group_minimum_size(group, policy, resources)
@@ -71,7 +71,7 @@ fn separate_external_nodes_from_groups(
     graph: &AsciiGraph,
     placements: &mut [GridCoord],
     topology: &GraphGroupTopology<'_>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<()> {
     if graph.groups.is_empty() || placements.is_empty() {
@@ -364,7 +364,7 @@ fn layout_work_allocation_failed() -> crate::error::AsciiError {
 pub(super) fn node_padding_y(
     node_index: usize,
     index: &NodePaddingIndex,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<usize> {
     const SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD: usize = 4;

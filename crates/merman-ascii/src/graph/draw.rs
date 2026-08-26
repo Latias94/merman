@@ -13,7 +13,7 @@ use crate::canvas::Canvas as RawCanvas;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
-use crate::options::{AsciiRenderOptions, FlowchartLayoutPolicy};
+use crate::options::{AsciiRenderOptions, GraphLayoutPolicy};
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
@@ -107,7 +107,7 @@ impl GraphSurface for CooperativeSurface<'_, '_, '_> {
 
 struct PreparedGraphRender {
     charset: GraphCharset,
-    layout_policy: FlowchartLayoutPolicy,
+    layout_policy: GraphLayoutPolicy,
     graph_layout: GraphLayout,
     route_scene: routing::RouteScene,
     width: usize,
@@ -155,7 +155,8 @@ pub(crate) fn render_graph_with_execution(
     render_graph_with_resources_and_execution(graph, options, &mut resources, execution)
 }
 
-pub(crate) fn render_graph_with_resources_and_execution(
+#[cfg(test)]
+fn render_graph_with_resources_and_execution(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
@@ -164,7 +165,7 @@ pub(crate) fn render_graph_with_resources_and_execution(
     render_graph_with_resolved_policy_and_execution(
         graph,
         options,
-        options.flowchart_layout(),
+        options.flowchart_layout().graph_policy(),
         resources,
         execution,
     )
@@ -173,7 +174,7 @@ pub(crate) fn render_graph_with_resources_and_execution(
 pub(crate) fn render_graph_with_resolved_policy_and_execution(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
-    layout_policy: FlowchartLayoutPolicy,
+    layout_policy: GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -194,7 +195,7 @@ pub(crate) fn render_graph_with_resolved_policy_and_execution(
 
 fn prepare_graph_render_controlled(
     graph: &AsciiGraph,
-    layout_policy: &FlowchartLayoutPolicy,
+    layout_policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<PreparedGraphRender> {
@@ -383,7 +384,7 @@ fn draw_node_with_execution(
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
-    layout_policy: &FlowchartLayoutPolicy,
+    layout_policy: &GraphLayoutPolicy,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     paint_node_background_with_execution(canvas, layout, execution)?;
@@ -396,7 +397,7 @@ fn draw_node_foreground(
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
-    layout_policy: &FlowchartLayoutPolicy,
+    layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
     match layout.shape {
         GraphNodeShape::Rect => draw_rect_node(canvas, layout, charset, options),
@@ -932,7 +933,7 @@ fn draw_subroutine_node(
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
-    layout_policy: &FlowchartLayoutPolicy,
+    layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
     draw_rect_node(canvas, layout, charset, options)?;
     if layout.width > 5 {
@@ -955,7 +956,7 @@ fn draw_cylinder_node(
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
-    layout_policy: &FlowchartLayoutPolicy,
+    layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
     draw_rounded_node(canvas, layout, charset, options)?;
     if layout.height > 3 {

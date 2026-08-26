@@ -1,6 +1,6 @@
 #[cfg(test)]
 use crate::options::AsciiRenderOptions;
-use crate::options::{AsciiCharset, FlowchartLayoutPolicy, TerminalWidthProfile};
+use crate::options::{AsciiCharset, GraphLayoutPolicy, TerminalWidthProfile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GraphCharset {
@@ -40,10 +40,10 @@ pub(super) struct GraphCharset {
 impl GraphCharset {
     #[cfg(test)]
     pub(super) fn for_options(options: &AsciiRenderOptions) -> Self {
-        Self::for_policy(&options.flowchart_layout())
+        Self::for_policy(&options.flowchart_layout().graph_policy())
     }
 
-    pub(super) fn for_policy(policy: &FlowchartLayoutPolicy) -> Self {
+    pub(super) fn for_policy(policy: &GraphLayoutPolicy) -> Self {
         match policy.structural_charset {
             AsciiCharset::Ascii => Self {
                 unicode: false,

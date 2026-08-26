@@ -9,7 +9,7 @@ use crate::graph::layout::{GridCoord, charge_sort_work};
 use crate::graph::model::{AsciiGraph, GraphDirection};
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::operation::AsciiExecution;
-use crate::options::FlowchartLayoutPolicy;
+use crate::options::GraphLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use merman_core::OperationPhase;
 
@@ -20,7 +20,7 @@ pub(super) fn apply_group_placement_adjustments(
     graph: &AsciiGraph,
     placements: &mut [GridCoord],
     topology: &GraphGroupTopology<'_>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
@@ -146,7 +146,7 @@ struct GroupPlacementState {
 struct GroupPlacementContext<'context, 'graph> {
     graph: &'context AsciiGraph,
     topology: &'context GraphGroupTopology<'graph>,
-    policy: &'context FlowchartLayoutPolicy,
+    policy: &'context GraphLayoutPolicy,
     direction_overrides: &'context [Option<GraphDirection>],
     original_placements: &'context [GridCoord],
     original_root_axis: &'context [usize],

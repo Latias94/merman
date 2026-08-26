@@ -6,7 +6,7 @@ use super::super::{DividerSpan, GroupLayout, NodeLayout};
 use super::LaidOutGroups;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
-use crate::options::{FlowchartLayoutPolicy, TerminalWidthProfile};
+use crate::options::{GraphLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use merman_core::OperationPhase;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -73,7 +73,7 @@ fn include_group_layout_bounds(
 
 pub(super) fn empty_group_minimum_size(
     group: &AsciiGraphGroup,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
     let title = empty_group_title_metrics(group, policy.terminal_width_profile, resources)?;
@@ -130,7 +130,7 @@ pub(super) fn subgraph_offsets(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<(usize, usize)> {
     let mut min_x = 0isize;
@@ -165,7 +165,7 @@ pub(super) fn layout_groups(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<LaidOutGroups> {
@@ -452,7 +452,7 @@ fn empty_group_origin(
     direction: GraphDirection,
     group_index: usize,
     width: usize,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     leaf_group_levels: Option<&[Option<usize>]>,
     node_layouts: &[NodeLayout],
     group_layouts: &[Option<GroupLayout>],
@@ -612,7 +612,7 @@ fn leaf_group_rank_span(
     direction: GraphDirection,
     range_start: usize,
     range_end: usize,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<usize> {
     if range_start >= range_end {
@@ -656,7 +656,7 @@ fn empty_group_ancestor_insets(
     topology: &GraphGroupTopology<'_>,
     group_index: usize,
     width: usize,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
     let mut x_inset = 0usize;
@@ -775,7 +775,7 @@ impl RawBounds {
 pub(super) fn raw_group_bounds_for_members(
     group: &AsciiGraphGroup,
     member_bounds: RawBounds,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<RawBounds> {
     let x = member_bounds
@@ -843,7 +843,7 @@ fn raw_group_bounds(
     layouts: &[NodeLayout],
     group_index: usize,
     topology: &GraphGroupTopology<'_>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<Option<RawBounds>> {
     if graph.groups.get(group_index).is_none() {
@@ -950,7 +950,7 @@ fn raw_group_bounds_from_completed_children(
     layout_bounds_by_id: &HashMap<&str, RawBounds>,
     topology: &GraphGroupTopology<'_>,
     completed: &HashMap<usize, Option<RawBounds>>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<Option<RawBounds>> {
     let mut member_bounds = None::<RawBounds>;
@@ -988,7 +988,7 @@ fn raw_group_bounds_from_completed_children(
 
 fn raw_empty_group_bounds(
     group: &AsciiGraphGroup,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<RawBounds> {
     let (width, height) = empty_group_minimum_size(group, policy, resources)?;
@@ -1070,7 +1070,7 @@ fn group_layout_bounds_for_members(
     group: &AsciiGraphGroup,
     title: GraphLabelMetrics,
     member_bounds: GroupLayoutBounds,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<GroupLayoutBounds> {
     let x = member_bounds.x.saturating_sub(policy.group_padding_x);
@@ -1180,7 +1180,9 @@ mod tests {
             &graph,
             &layouts,
             &topology,
-            &AsciiRenderOptions::default().flowchart_layout(),
+            &AsciiRenderOptions::default()
+                .flowchart_layout()
+                .graph_policy(),
             &mut measured_resources,
             AsciiExecution::for_test(&unbounded),
         )
@@ -1196,7 +1198,9 @@ mod tests {
             &graph,
             &layouts,
             &topology,
-            &AsciiRenderOptions::default().flowchart_layout(),
+            &AsciiRenderOptions::default()
+                .flowchart_layout()
+                .graph_policy(),
             &mut exact_resources,
             AsciiExecution::for_test(&exact_policy),
         )
@@ -1212,7 +1216,9 @@ mod tests {
             &graph,
             &layouts,
             &topology,
-            &AsciiRenderOptions::default().flowchart_layout(),
+            &AsciiRenderOptions::default()
+                .flowchart_layout()
+                .graph_policy(),
             &mut below_resources,
             AsciiExecution::for_test(&below_policy),
         )
@@ -1244,7 +1250,9 @@ mod tests {
             &graph,
             &[],
             &topology,
-            &AsciiRenderOptions::default().flowchart_layout(),
+            &AsciiRenderOptions::default()
+                .flowchart_layout()
+                .graph_policy(),
             &mut resources,
             AsciiExecution::for_test(&policy),
         )
@@ -1276,7 +1284,9 @@ mod tests {
             &graph,
             &[],
             &topology,
-            &AsciiRenderOptions::default().flowchart_layout(),
+            &AsciiRenderOptions::default()
+                .flowchart_layout()
+                .graph_policy(),
             &mut measured_resources,
             AsciiExecution::for_test(&unbounded),
         )
@@ -1292,7 +1302,9 @@ mod tests {
             &graph,
             &[],
             &topology,
-            &AsciiRenderOptions::default().flowchart_layout(),
+            &AsciiRenderOptions::default()
+                .flowchart_layout()
+                .graph_policy(),
             &mut exact_resources,
             AsciiExecution::for_test(&exact_policy),
         )
@@ -1307,7 +1319,9 @@ mod tests {
             &graph,
             &[],
             &topology,
-            &AsciiRenderOptions::default().flowchart_layout(),
+            &AsciiRenderOptions::default()
+                .flowchart_layout()
+                .graph_policy(),
             &mut below_resources,
             AsciiExecution::for_test(&below_policy),
         )
@@ -1346,7 +1360,9 @@ mod tests {
             &graph,
             &[],
             &topology,
-            &AsciiRenderOptions::default().flowchart_layout(),
+            &AsciiRenderOptions::default()
+                .flowchart_layout()
+                .graph_policy(),
             &mut resources,
             AsciiExecution::for_test(&policy),
         )

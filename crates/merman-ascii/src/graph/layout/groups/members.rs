@@ -4,7 +4,7 @@ use crate::error::Result;
 use crate::graph::layout::GridCoord;
 use crate::graph::model::AsciiGraph;
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
-use crate::options::FlowchartLayoutPolicy;
+use crate::options::GraphLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use crate::safe_text::try_clone_layout_text;
 use std::collections::HashSet;
@@ -50,7 +50,7 @@ pub(super) fn group_bounds_for_placements(
     group_index: usize,
     member_indices: &[usize],
     placements: &[GridCoord],
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<Option<RawBounds>> {
     let Some(group) = graph.groups.get(group_index) else {

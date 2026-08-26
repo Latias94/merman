@@ -8,7 +8,7 @@ use super::{GridCoord, NodeLayout, charge_sort_work};
 use crate::error::{AsciiError, Result};
 use crate::graph::topology::GraphGroupTopology;
 use crate::operation::AsciiExecution;
-use crate::options::{FlowchartLayoutPolicy, TerminalWidthProfile};
+use crate::options::{GraphLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -102,7 +102,7 @@ fn checkpoint_layout(execution: AsciiExecution<'_>, iteration: usize) -> Result<
 
 pub(super) fn preflight_minimum_grid_extent(
     graph: &AsciiGraph,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<()> {
     // Every placed node owns a disjoint 3x3 exclusion block in the temporary routing grid. Check
@@ -116,7 +116,7 @@ pub(super) fn preflight_minimum_grid_extent(
 
 pub(super) fn layout_nodes(
     graph: &AsciiGraph,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &mut ResourceContext,
@@ -211,7 +211,7 @@ fn checkpoint_node_label_plan(resources: &ResourceContext, iteration: usize) -> 
 
 fn layout_left_right_grid_nodes(
     graph: &AsciiGraph,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &mut ResourceContext,
@@ -305,7 +305,7 @@ fn layout_left_right_grid_nodes(
 fn place_left_right_grid_nodes(
     graph: &AsciiGraph,
     topology: Option<&GraphGroupTopology<'_>>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RankedGridPlacements> {
@@ -522,7 +522,7 @@ fn grid_spot_occupied(
 
 fn layout_top_down_grid_nodes(
     graph: &AsciiGraph,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &mut ResourceContext,
@@ -619,7 +619,7 @@ fn reserve_leaf_group_rank_axis_sizes(
     graph: &AsciiGraph,
     leaf_group_levels: &[Option<usize>],
     direction: GraphDirection,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &ResourceContext,
@@ -667,7 +667,7 @@ fn apply_vertical_edge_spacing(
     edge: &AsciiGraphEdge,
     from: GridCoord,
     to: GridCoord,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &ResourceContext,
@@ -709,7 +709,7 @@ fn apply_horizontal_edge_spacing(
     edge: &AsciiGraphEdge,
     from: GridCoord,
     to: GridCoord,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
     resources: &ResourceContext,
 ) -> Result<()> {
@@ -747,7 +747,7 @@ fn apply_horizontal_edge_spacing(
 fn place_top_down_grid_nodes(
     graph: &AsciiGraph,
     topology: Option<&GraphGroupTopology<'_>>,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RankedGridPlacements> {
@@ -923,7 +923,7 @@ fn set_axis_size(axis_sizes: &mut AxisSizes, index: usize, size: usize) {
 fn node_shape_size(
     node: &AsciiGraphNode,
     label_plan: &GraphNodeLabelPlan,
-    policy: &FlowchartLayoutPolicy,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<GraphNodeShapeSize> {
     let metrics = label_plan.metrics();
@@ -991,7 +991,7 @@ mod tests {
                 edge,
                 GridCoord { x: 0, y: 0 },
                 GridCoord { x: 4, y: 0 },
-                &options.flowchart_layout(),
+                &options.flowchart_layout().graph_policy(),
                 column_widths,
                 resources,
             ),
@@ -999,7 +999,7 @@ mod tests {
                 edge,
                 GridCoord { x: 0, y: 0 },
                 GridCoord { x: 0, y: 4 },
-                &options.flowchart_layout(),
+                &options.flowchart_layout().graph_policy(),
                 column_widths,
                 row_heights,
                 resources,

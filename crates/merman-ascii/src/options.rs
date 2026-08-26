@@ -100,8 +100,8 @@ pub(crate) struct AsciiOutputPolicy {
     pub color_mode: AsciiColorMode,
 }
 
-/// Flowchart-owned geometry policy. Graph renderers may consume this view but not sequence or
-/// chart-specific spacing fields.
+/// Flowchart-owned projection and geometry policy. The family boundary reduces this view to a
+/// graph-scene policy only after Flowchart semantics have been projected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FlowchartLayoutPolicy {
     /// Padding inside a node frame, measured in terminal cells.
@@ -123,6 +123,40 @@ pub(crate) struct FlowchartLayoutPolicy {
 }
 
 impl FlowchartLayoutPolicy {
+    pub(crate) const DEFAULT_EDGE_LABEL_LANE_RADIUS: usize =
+        GraphLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS;
+
+    pub(crate) const fn graph_policy(self) -> GraphLayoutPolicy {
+        GraphLayoutPolicy {
+            node_border_padding: self.node_border_padding,
+            rank_gap_x: self.rank_gap_x,
+            rank_gap_y: self.rank_gap_y,
+            group_padding_x: self.group_padding_x,
+            group_padding_y: self.group_padding_y,
+            group_title_clearance: self.group_title_clearance,
+            edge_label_lane_radius: self.edge_label_lane_radius,
+            structural_charset: self.structural_charset,
+            terminal_width_profile: self.terminal_width_profile,
+        }
+    }
+}
+
+/// Family-neutral graph-scene geometry consumed only after semantic projection. Flowchart and
+/// State construct this policy independently so profile experiments cannot cross family bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GraphLayoutPolicy {
+    pub node_border_padding: usize,
+    pub rank_gap_x: usize,
+    pub rank_gap_y: usize,
+    pub group_padding_x: usize,
+    pub group_padding_y: usize,
+    pub group_title_clearance: usize,
+    pub edge_label_lane_radius: usize,
+    pub structural_charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
+}
+
+impl GraphLayoutPolicy {
     pub(crate) const DEFAULT_EDGE_LABEL_LANE_RADIUS: usize = 4;
 }
 
@@ -164,6 +198,7 @@ pub(crate) struct XyChartLayoutPolicy {
 pub(crate) struct AsciiLayoutPolicies {
     pub profile: AsciiLayoutProfile,
     pub flowchart: FlowchartLayoutPolicy,
+    pub state: GraphLayoutPolicy,
     pub sequence: SequenceLayoutPolicy,
     pub xychart: XyChartLayoutPolicy,
 }
@@ -322,6 +357,7 @@ impl AsciiRenderOptions {
     }
 
     pub(crate) fn resolve_policies(self) -> ResolvedAsciiPolicies {
+        let requested_options = self;
         let options = self.effective_layout();
         let structural_charset = options.structural_charset();
         ResolvedAsciiPolicies {
@@ -348,6 +384,7 @@ impl AsciiRenderOptions {
                     structural_charset,
                     terminal_width_profile: options.terminal_width_profile,
                 },
+                state: graph_layout_policy(requested_options),
                 sequence: SequenceLayoutPolicy {
                     participant_label_wrap_width: 12,
                     participant_spacing: options.sequence_participant_spacing,
@@ -384,6 +421,7 @@ impl AsciiRenderOptions {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn flowchart_layout(self) -> FlowchartLayoutPolicy {
         self.resolve_policies().layout.flowchart
     }
@@ -447,6 +485,20 @@ impl AsciiRenderOptions {
         }
 
         Ok(())
+    }
+}
+
+fn graph_layout_policy(options: AsciiRenderOptions) -> GraphLayoutPolicy {
+    GraphLayoutPolicy {
+        node_border_padding: options.box_border_padding,
+        rank_gap_x: options.graph_padding_x,
+        rank_gap_y: options.graph_padding_y,
+        group_padding_x: 2,
+        group_padding_y: 2,
+        group_title_clearance: 3,
+        edge_label_lane_radius: GraphLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
+        structural_charset: options.structural_charset(),
+        terminal_width_profile: options.terminal_width_profile,
     }
 }
 
@@ -567,6 +619,7 @@ mod tests {
             canonical.layout.sequence.title_bottom_spacing,
             compact.layout.sequence.title_bottom_spacing
         );
+        assert_eq!(canonical.layout.state, compact.layout.state);
         assert_eq!(canonical.layout.xychart, compact.layout.xychart);
     }
 
@@ -593,6 +646,10 @@ mod tests {
         );
         assert_eq!(
             policies.layout.sequence.structural_charset,
+            AsciiCharset::Ascii
+        );
+        assert_eq!(
+            policies.layout.state.structural_charset,
             AsciiCharset::Ascii
         );
         assert_eq!(
