@@ -59,10 +59,12 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     }
     out.checkpoint()?;
 
-    let css = text_theme_receipt.stylesheet();
-    let _ = write!(&mut out, "<style>{css}</style>");
-    drop(css);
-    out.push_str("<g/>");
+    out.push_str("<style>");
+    text_theme_receipt.write_stylesheet(
+        &mut out,
+        super::super::util::css_selector_diagram_id(diagram_id),
+    );
+    out.push_str("</style><g/>");
     out.checkpoint()?;
 
     for swimlane in &layout.swimlanes {

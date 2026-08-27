@@ -62,6 +62,22 @@ fn try_render_ishikawa_with_theme_requirement(
     engine: Engine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
+    try_render_ishikawa_with_theme_requirement_and_id(
+        source,
+        theme,
+        engine,
+        portability,
+        "ishikawa-theme",
+    )
+}
+
+fn try_render_ishikawa_with_theme_requirement_and_id(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+    diagram_id: &str,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Ishikawa")
@@ -73,7 +89,7 @@ fn try_render_ishikawa_with_theme_requirement(
 
     family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
-            diagram_id: Some("ishikawa-theme".to_string()),
+            diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()
         },
         &SvgDebugOptions::default(),
@@ -771,6 +787,59 @@ fn ishikawa_font_size_is_direct_and_portable_in_classic_and_hand_drawn() {
         assert_eq!(evidence.not_applicable_count(), 0, "look={look}");
         assert_eq!(evidence.theme_residual_count(), 0, "look={look}");
         assert_eq!(evidence.compatibility_residual_count(), 0, "look={look}");
+    }
+}
+
+#[test]
+fn ishikawa_styles_are_scoped_per_inline_svg() {
+    let source = ishikawa_theme_source("classic");
+    let theme_a = ishikawa_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(12.0)
+            .expect("valid Ishikawa font size"),
+    );
+    let theme_b = ishikawa_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Ishikawa font size"),
+    );
+    let rendered_a = try_render_ishikawa_with_theme_requirement_and_id(
+        &source,
+        &theme_a,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        "ishikawa-a",
+    )
+    .expect("render first scoped Ishikawa SVG");
+    let rendered_b = try_render_ishikawa_with_theme_requirement_and_id(
+        &source,
+        &theme_b,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        "ishikawa-b",
+    )
+    .expect("render second scoped Ishikawa SVG");
+
+    let stylesheet_a = ishikawa_stylesheet(rendered_a.svg());
+    let stylesheet_b = ishikawa_stylesheet(rendered_b.svg());
+    for (diagram_id, stylesheet, font_size, other_id) in [
+        ("ishikawa-a", &stylesheet_a, "12px", "ishikawa-b"),
+        ("ishikawa-b", &stylesheet_b, "24px", "ishikawa-a"),
+    ] {
+        let scope = format!("#{diagram_id} ");
+        assert!(stylesheet.contains(&format!("font-size: {font_size};")));
+        assert!(!stylesheet.contains(&format!("#{other_id} ")));
+        for rule in stylesheet.split_terminator('}') {
+            let (selectors, _) = rule
+                .split_once('{')
+                .unwrap_or_else(|| panic!("malformed Ishikawa CSS rule: {rule:?}"));
+            for selector in selectors.split(',') {
+                assert!(
+                    selector.trim().starts_with(&scope),
+                    "unscoped Ishikawa selector {selector:?}: {stylesheet}"
+                );
+            }
+        }
     }
 }
 

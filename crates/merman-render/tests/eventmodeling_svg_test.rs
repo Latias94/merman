@@ -78,6 +78,22 @@ fn render_eventmodeling_with_theme_requirement(
     engine: Engine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
+    render_eventmodeling_with_theme_requirement_and_id(
+        source,
+        theme,
+        engine,
+        portability,
+        "eventmodeling-theme",
+    )
+}
+
+fn render_eventmodeling_with_theme_requirement_and_id(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+    diagram_id: &str,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Event Modeling")
@@ -89,7 +105,7 @@ fn render_eventmodeling_with_theme_requirement(
 
     family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
         &SvgRenderOptions {
-            diagram_id: Some("eventmodeling-theme".to_string()),
+            diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()
         },
         &SvgDebugOptions::default(),
@@ -300,7 +316,7 @@ fn eventmodeling_typed_font_stack_reaches_both_text_selectors_and_strict_receipt
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
 
     assert!(stylesheet.contains(&format!(
-        ".em-swimlane text,.em-box span {{ font-family: {expected_font};"
+        "#eventmodeling-theme .em-swimlane text,#eventmodeling-theme .em-box span {{ font-family: {expected_font};"
     )));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
@@ -350,6 +366,52 @@ fn eventmodeling_typed_font_size_reaches_css_and_strict_receipt() {
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn eventmodeling_styles_are_scoped_per_inline_svg() {
+    let source = "eventmodeling\ntf 01 ui View\n";
+    let theme_a = eventmodeling_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(12.0)
+            .expect("valid Event Modeling font size"),
+    );
+    let theme_b = eventmodeling_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Event Modeling font size"),
+    );
+    let rendered_a = render_eventmodeling_with_theme_requirement_and_id(
+        source,
+        &theme_a,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        "event-a",
+    )
+    .expect("render first scoped Event Modeling SVG");
+    let rendered_b = render_eventmodeling_with_theme_requirement_and_id(
+        source,
+        &theme_b,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        "event-b",
+    )
+    .expect("render second scoped Event Modeling SVG");
+
+    let stylesheet_a = eventmodeling_stylesheet(rendered_a.svg());
+    let stylesheet_b = eventmodeling_stylesheet(rendered_b.svg());
+    assert!(
+        stylesheet_a.contains("#event-a .em-swimlane text,#event-a .em-box span { font-family:")
+    );
+    assert!(stylesheet_a.contains("font-size: 12px;"));
+    assert!(stylesheet_a.contains("#event-a .em-relation { fill: none; }"));
+    assert!(!stylesheet_a.contains("#event-b "));
+    assert!(
+        stylesheet_b.contains("#event-b .em-swimlane text,#event-b .em-box span { font-family:")
+    );
+    assert!(stylesheet_b.contains("font-size: 24px;"));
+    assert!(stylesheet_b.contains("#event-b .em-relation { fill: none; }"));
+    assert!(!stylesheet_b.contains("#event-a "));
 }
 
 #[test]

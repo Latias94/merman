@@ -171,7 +171,10 @@ pub fn sanitize_svg_id(raw: &str) -> String {
 pub struct SvgRenderOptions {
     /// Adds extra space around the computed viewBox.
     pub viewbox_padding: f64,
-    /// Optional diagram id used for Mermaid-like marker ids.
+    /// Optional diagram id used for Mermaid-like marker ids and scoped styles.
+    ///
+    /// Callers embedding multiple SVGs in one host document must provide ids that remain unique
+    /// after Merman normalizes them for XML and CSS.
     pub diagram_id: Option<String>,
 }
 

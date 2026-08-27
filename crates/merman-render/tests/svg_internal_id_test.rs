@@ -139,6 +139,11 @@ fn css_root_scope_normalizes_selector_significant_ids_across_families() {
             "journey\n  section Work\n    Write regression: 5: Developer\n",
         ),
         ("Timeline", "timeline\n  section Release\n    2026 : Ship\n"),
+        ("EventModeling", "eventmodeling\ntf 01 ui View\n"),
+        (
+            "Ishikawa",
+            "ishikawa-beta\n Root cause\n  Process\n   Slow step\n",
+        ),
     ] {
         assert_css_root_scope_normalizes_selector_significant_id_characters(family, source);
     }

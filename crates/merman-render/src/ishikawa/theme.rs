@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write as _;
 use std::sync::OnceLock;
 
 use merman_core::MermaidConfig;
@@ -530,12 +529,17 @@ impl IshikawaTextThemeReceipt {
     /// Append the exact inherited typography declarations and record the single stylesheet event
     /// at the same writer boundary. The later head selector intentionally overrides only the base
     /// font size while preserving the inherited font stack.
-    pub(crate) fn write_text_rules(&mut self, css: &mut String, text_color: &str) {
+    pub(crate) fn write_text_rules(
+        &mut self,
+        css: &mut impl std::fmt::Write,
+        diagram_id: impl Copy + std::fmt::Display,
+        text_color: &str,
+    ) {
         self.css_emissions = self.css_emissions.saturating_add(1);
         let _ = write!(
             css,
-            ".ishikawa text {{ font-family: {}; font-size: {}; fill: {}; }}\
-.ishikawa .ishikawa-head-label {{ font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }}",
+            "#{diagram_id} .ishikawa text {{ font-family: {}; font-size: {}; fill: {}; }}\
+#{diagram_id} .ishikawa .ishikawa-head-label {{ font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }}",
             self.expected_font_family_css, self.expected_font_size_css, text_color
         );
     }
@@ -618,6 +622,8 @@ mod tests {
     use crate::resources::RenderResourcePolicy;
     use serde_json::json;
 
+    const RECEIPT_DIAGRAM_ID: &str = "ishikawa-receipt";
+
     fn expectation(
         class_name: &str,
         typography_terminal: IshikawaTypographyTerminal,
@@ -654,7 +660,7 @@ mod tests {
         .into_boxed_slice();
         let mut complete = receipt(expectations.clone());
         let mut css = String::new();
-        complete.write_text_rules(&mut css, "#123456");
+        complete.write_text_rules(&mut css, RECEIPT_DIAGRAM_ID, "#123456");
         complete.record_checkpointed_text(
             0,
             "ishikawa-head-label",
@@ -669,7 +675,7 @@ mod tests {
         );
         assert_eq!(
             css,
-            ".ishikawa text { font-family: Ishikawa Sans,monospace; font-size: 18px; fill: #123456; }.ishikawa .ishikawa-head-label { font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }"
+            "#ishikawa-receipt .ishikawa text { font-family: Ishikawa Sans,monospace; font-size: 18px; fill: #123456; }#ishikawa-receipt .ishikawa .ishikawa-head-label { font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }"
         );
         assert!(complete.proves_complete());
         assert!(complete.proves_rule(0));
@@ -691,8 +697,8 @@ mod tests {
 
         let mut duplicate_css = receipt(expectations.clone());
         let mut css = String::new();
-        duplicate_css.write_text_rules(&mut css, "#123456");
-        duplicate_css.write_text_rules(&mut css, "#123456");
+        duplicate_css.write_text_rules(&mut css, RECEIPT_DIAGRAM_ID, "#123456");
+        duplicate_css.write_text_rules(&mut css, RECEIPT_DIAGRAM_ID, "#123456");
         duplicate_css.record_checkpointed_text(
             0,
             "ishikawa-head-label",
@@ -709,7 +715,7 @@ mod tests {
 
         let mut wrong_order = receipt(expectations.clone());
         let mut css = String::new();
-        wrong_order.write_text_rules(&mut css, "#123456");
+        wrong_order.write_text_rules(&mut css, RECEIPT_DIAGRAM_ID, "#123456");
         wrong_order.record_checkpointed_text(
             1,
             "ishikawa-label cause",
@@ -720,7 +726,7 @@ mod tests {
 
         let mut wrong_role = receipt(expectations.clone());
         let mut css = String::new();
-        wrong_role.write_text_rules(&mut css, "#123456");
+        wrong_role.write_text_rules(&mut css, RECEIPT_DIAGRAM_ID, "#123456");
         wrong_role.record_checkpointed_text(
             0,
             "ishikawa-head-label",
@@ -737,7 +743,7 @@ mod tests {
 
         let mut wrong_fill = receipt(expectations);
         let mut css = String::new();
-        wrong_fill.write_text_rules(&mut css, "#123456");
+        wrong_fill.write_text_rules(&mut css, RECEIPT_DIAGRAM_ID, "#123456");
         wrong_fill.record_checkpointed_text(
             0,
             "ishikawa-head-label",
@@ -764,7 +770,7 @@ mod tests {
         .into_boxed_slice();
         let mut complete = receipt(expectations.clone());
         let mut css = String::new();
-        complete.write_text_rules(&mut css, "#123456");
+        complete.write_text_rules(&mut css, RECEIPT_DIAGRAM_ID, "#123456");
         complete.record_checkpointed_text(
             0,
             "ishikawa-head-label",
@@ -775,7 +781,7 @@ mod tests {
 
         let mut leaked_typed_fill = receipt(expectations);
         let mut css = String::new();
-        leaked_typed_fill.write_text_rules(&mut css, "#123456");
+        leaked_typed_fill.write_text_rules(&mut css, RECEIPT_DIAGRAM_ID, "#123456");
         leaked_typed_fill.record_checkpointed_text(
             0,
             "ishikawa-head-label",
@@ -852,7 +858,7 @@ mod tests {
             .expect("resolve Ishikawa title-only theme");
         let mut receipt = plan.begin_terminal_receipt();
         let mut css = String::new();
-        receipt.write_text_rules(&mut css, "#333333");
+        receipt.write_text_rules(&mut css, RECEIPT_DIAGRAM_ID, "#333333");
         assert!(plan.record_terminal(receipt));
 
         let evidence = plan.finish_evidence();

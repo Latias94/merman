@@ -31,6 +31,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     let diagram_id = options.diagram_id_or("ishikawa");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut text_terminals = IshikawaTextTerminalWriter::new(text_theme);
+    let theme = MermaidThemeAdapter::new(effective_config).ishikawa();
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
         layout.viewbox_y,
@@ -45,13 +46,16 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
             .write_open(&mut out, root_spec, root_chrome)?;
     options.checkpoint_emit()?;
 
-    let css = ishikawa_css(effective_config, &mut text_terminals.receipt);
-    let _ = write!(&mut out, "<style>{css}</style>");
-    drop(css);
-    out.push_str(r#"<g/><g class="ishikawa">"#);
+    out.push_str("<style>");
+    write_ishikawa_css(
+        &mut out,
+        super::super::util::css_selector_diagram_id(diagram_id),
+        &theme,
+        &mut text_terminals.receipt,
+    );
+    out.push_str(r#"</style><g/><g class="ishikawa">"#);
     out.checkpoint()?;
     if crate::config::config_diagram_look(effective_config).as_str() == "handDrawn" {
-        let theme = MermaidThemeAdapter::new(effective_config).ishikawa();
         let rough = RoughContext {
             randomness: options.rough_randomness(
                 effective_config
@@ -603,28 +607,29 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
     }
 }
 
-fn ishikawa_css(
-    effective_config: &serde_json::Value,
+fn write_ishikawa_css(
+    css: &mut impl SvgOutput,
+    diagram_id: impl Copy + std::fmt::Display,
+    theme: &super::super::theme::IshikawaTheme,
     text_receipt: &mut IshikawaTextThemeReceipt,
-) -> String {
-    let theme = MermaidThemeAdapter::new(effective_config).ishikawa();
-
-    let mut css = format!(
-        ".ishikawa .ishikawa-spine,.ishikawa .ishikawa-branch,.ishikawa .ishikawa-sub-branch {{ stroke: {line_color}; stroke-width: 2; fill: none; }}\
-.ishikawa .ishikawa-sub-branch {{ stroke-width: 1; }}\
-.ishikawa .ishikawa-arrow {{ fill: {line_color}; }}\
-.ishikawa .ishikawa-head {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
-.ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}",
+) {
+    let _ = write!(
+        css,
+        "#{diagram_id} .ishikawa .ishikawa-spine,#{diagram_id} .ishikawa .ishikawa-branch,#{diagram_id} .ishikawa .ishikawa-sub-branch {{ stroke: {line_color}; stroke-width: 2; fill: none; }}\
+#{diagram_id} .ishikawa .ishikawa-sub-branch {{ stroke-width: 1; }}\
+#{diagram_id} .ishikawa .ishikawa-arrow {{ fill: {line_color}; }}\
+#{diagram_id} .ishikawa .ishikawa-head {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
+#{diagram_id} .ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}",
         line_color = theme.line_color,
         main_bkg = theme.main_bkg,
     );
-    text_receipt.write_text_rules(&mut css, &theme.text_color);
-    css.push_str(
-        ".ishikawa .ishikawa-label { text-anchor: end; }\
-.ishikawa .ishikawa-label.cause { text-anchor: middle; dominant-baseline: middle; }\
-.ishikawa .ishikawa-label.align { text-anchor: end; dominant-baseline: middle; }\
-.ishikawa .ishikawa-label.up { dominant-baseline: baseline; }\
-.ishikawa .ishikawa-label.down { dominant-baseline: hanging; }",
+    text_receipt.write_text_rules(css, diagram_id, &theme.text_color);
+    let _ = write!(
+        css,
+        "#{diagram_id} .ishikawa .ishikawa-label {{ text-anchor: end; }}\
+#{diagram_id} .ishikawa .ishikawa-label.cause {{ text-anchor: middle; dominant-baseline: middle; }}\
+#{diagram_id} .ishikawa .ishikawa-label.align {{ text-anchor: end; dominant-baseline: middle; }}\
+#{diagram_id} .ishikawa .ishikawa-label.up {{ dominant-baseline: baseline; }}\
+#{diagram_id} .ishikawa .ishikawa-label.down {{ dominant-baseline: hanging; }}"
     );
-    css
 }
