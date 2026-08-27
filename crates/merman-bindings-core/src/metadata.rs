@@ -214,6 +214,10 @@ pub struct BindingAsciiCapability {
     pub semantic_coverage: Option<&'static str>,
     pub primary_projection: &'static str,
     pub structured_text_fallback: bool,
+    pub layout_profiles: Vec<&'static str>,
+    pub width_profiles: Vec<&'static str>,
+    pub encodings: Vec<&'static str>,
+    pub fallback_encodings: Vec<&'static str>,
     /// Compatibility view derived from semantic coverage and the primary projection.
     pub support_level: &'static str,
     pub supported_semantics: &'static [&'static str],
@@ -759,6 +763,26 @@ pub fn ascii_capabilities() -> Vec<BindingAsciiCapability> {
                     .map(|coverage| coverage.as_str()),
                 primary_projection: capability.primary_projection.as_str(),
                 structured_text_fallback: capability.structured_text_fallback,
+                layout_profiles: capability
+                    .layout_profiles
+                    .iter()
+                    .map(|profile| profile.as_str())
+                    .collect(),
+                width_profiles: capability
+                    .width_profiles
+                    .iter()
+                    .map(|profile| profile.as_str())
+                    .collect(),
+                encodings: capability
+                    .encodings
+                    .iter()
+                    .map(|encoding| encoding.as_str())
+                    .collect(),
+                fallback_encodings: capability
+                    .fallback_encodings
+                    .iter()
+                    .map(|encoding| encoding.as_str())
+                    .collect(),
                 support_level: capability.support_level.as_str(),
                 supported_semantics: capability.supported_semantics,
                 limits: capability.limits,
@@ -1734,6 +1758,13 @@ mod tests {
         assert_eq!(flowchart.primary_projection, "diagrammatic");
         assert_eq!(flowchart.support_level, "partial");
         assert!(flowchart.structured_text_fallback);
+        assert_eq!(flowchart.layout_profiles, ["canonical", "compact"]);
+        assert_eq!(flowchart.width_profiles, ["unicode", "cjk"]);
+        assert_eq!(
+            flowchart.encodings,
+            ["plain", "ansi16", "ansi256", "truecolor", "html"]
+        );
+        assert_eq!(flowchart.fallback_encodings, ["plain"]);
         assert!(flowchart.supported_semantics.contains(&"root directions"));
         assert!(flowchart.evidence.iter().any(|evidence| {
             evidence.kind == "local_advantage" && evidence.note.contains("true RL/BT")
@@ -1759,6 +1790,18 @@ mod tests {
         assert_eq!(gantt.semantic_coverage, Some("partial"));
         assert_eq!(gantt.primary_projection, "structured_text");
         assert!(!gantt.supported_semantics.contains(&"dependencies"));
+
+        let sequence = ascii_capability(&capabilities, "sequence");
+        assert_eq!(sequence.layout_profiles, ["canonical", "compact"]);
+
+        let state = ascii_capability(&capabilities, "state");
+        assert_eq!(state.layout_profiles, ["canonical"]);
+
+        let zenuml = ascii_capability(&capabilities, "zenuml");
+        assert!(zenuml.layout_profiles.is_empty());
+        assert!(zenuml.width_profiles.is_empty());
+        assert!(zenuml.encodings.is_empty());
+        assert!(zenuml.fallback_encodings.is_empty());
 
         let xychart = ascii_capability(&capabilities, "xychart");
         assert_eq!(xychart.support_level, "partial");

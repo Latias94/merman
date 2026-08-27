@@ -10,6 +10,11 @@ The next workspace release remains in development. This section records only com
 
 ### Breaking changes
 
+- Advanced the machine-readable CLI contract from `4` to `5`. ASCII-enabled artifacts now expose
+  family layout, terminal-width, encoding, fallback, report-schema, and detector-to-family
+  mappings under `capabilities --json`. When `--ascii-report` is requested, invocation, render,
+  resource, and width failures are emitted as one Plain JSON diagnostic on stderr instead of
+  human-only text.
 - Changed the `merman` and `merman-rustdoc` `complete-svg` aggregate to include SVG, Cytoscape
   layout, and math without the optional ELK implementation. Applications that require ELK must
   select the new `complete-svg-elk` aggregate (or the direct `layout-elk` leaf) and distribute the
@@ -26,11 +31,12 @@ The next workspace release remains in development. This section records only com
   remain parser-backed, while syntax highlighting now comes exclusively from Tree-sitter.
 - Replaced `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` helpers, public SVG prepared stages, and CPU-bound render `async fn` wrappers with one operation-scoped `Renderer`, typed `RenderRequest` / `RenderTarget`, and format-neutral `SemanticArtifact`. Hosts retain a cloneable `OperationControl` to cancel stale synchronous work or set a monotonic deadline; cancellation is reported separately from resource exhaustion and returns no partial output.
 - Renamed parser-only `ParseControl`, `ParseCancelled`, and `ParseControlResult` to the operation-neutral `OperationControl`, `OperationCancelled`, and `OperationControlResult`. Analysis cancellation tokens now delegate to the same shared operation state instead of maintaining a second atomic flag.
-- Advanced the direct Apple/Python UniFFI binding API from alpha.5 API `3` to API `5`. The final
-  API 5 surface includes required lint-rule tags, revised ASCII capability fields, and structured
-  diagnostic records; it replaces the intermediate API 4 `transport_api_version` probe with
-  `binding_api_version_v5`, so API 3 and API 4 generated bindings fail before decoding changed
-  records. Regenerate and deploy each language projection with its matching native artifact.
+- Advanced the direct Apple/Python UniFFI binding API from alpha.5 API `3` to API `6`. API 5 added
+  required lint-rule tags, revised ASCII semantic/projection capability fields, and structured
+  diagnostic records. API 6 adds ASCII layout/width/encoding/fallback admission arrays and
+  schema-2 output-plan encoding, replacing `binding_api_version_v5` with
+  `binding_api_version_v6`. Older generated bindings fail before decoding changed records;
+  regenerate and deploy each language projection with its matching native artifact.
 - Renamed the generic UniFFI request to `MermanOperationRequestV4` and added optional `MermanOperationControl` ownership with structured cancellation reason/phase details. Web transport API `4` accepts transport-owned `timeout_ms`; synchronous same-realm WASM remains cooperatively cancellable, while hard interruption requires terminating a Worker or process.
 - Default Android, Apple, Python, and Flutter native artifacts now bundle SVG, Cytoscape and ELK layouts, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native clock/time-zone/random adapters. Generated wrapper methods remain stable and report typed missing-capability or unsupported-operation errors; consumers that need an omitted operation must build a current-contract custom native library.
 - `DiagramParseOutcome::Parsed(Value)` is now `DiagramParseOutcome::Parsed { model, warning_facts }`. Rust editor integrations should match the struct variant and consume the parser-owned typed warning facts instead of decoding the compatibility model's `warningFacts` field.
@@ -53,6 +59,9 @@ The next workspace release remains in development. This section records only com
 - Added the experimental public `@mermanjs/node` alpha package group for Node.js 22 and newer on macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. The root loader selects one exact-version native package and exposes deterministic static SVG plus metadata/layout operations without a postinstall downloader or browser-WASM fallback.
 - Added grapheme-aware terminal plans, checked six-phase ASCII resource descriptors, parser-backed semantic evidence for the diagrammatic families, and explicit structured-text projections for Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, and TreeView.
 - Added configurable terminal-cell wrapping for ordinary Flowchart node labels, including the Issue #53 regression fixture and binding JSON snake/camel aliases.
+- Added family-local canonical/compact ASCII layout admission for Flowchart and Sequence,
+  terminal-native ANSI16 semantic roles, schema-2 output encoding metadata, Plain-only CLI reports
+  and viewport fallback, and capability preflight for layout, width, and encoding combinations.
 - Added `merman-cli rustdoc build/check` as a checked static-fragment workflow. Crates can commit deterministic light/dark SVG Markdown, consume it through Rust's native `include_str!`, verify freshness in CI, and build hosted documentation without adding a Merman renderer or proc macro to the consuming Cargo graph.
 
 ### Changed

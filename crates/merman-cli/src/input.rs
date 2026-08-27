@@ -6,6 +6,7 @@ pub(crate) const IO_CHUNK_BYTES: usize = 8 * 1024;
 pub(crate) struct InputLimit {
     pub(crate) stable_id: &'static str,
     pub(crate) max_bytes: Option<usize>,
+    pub(crate) profile: Option<merman::resources::ResourceProfile>,
 }
 
 impl InputLimit {
@@ -13,7 +14,16 @@ impl InputLimit {
         Self {
             stable_id,
             max_bytes,
+            profile: None,
         }
+    }
+
+    pub(crate) const fn with_profile(
+        mut self,
+        profile: merman::resources::ResourceProfile,
+    ) -> Self {
+        self.profile = Some(profile);
+        self
     }
 }
 
@@ -50,6 +60,7 @@ pub(crate) enum InputReadError {
         actual: ObservedSize,
         limit: usize,
         limit_id: &'static str,
+        profile: Option<merman::resources::ResourceProfile>,
     },
     #[error("{resource} is not valid UTF-8 (invalid byte sequence at offset {valid_up_to})")]
     InvalidUtf8 {
@@ -164,6 +175,7 @@ fn read_bytes_impl(
             actual: ObservedSize::Exact(length_hint),
             limit: max_bytes,
             limit_id: limit.stable_id,
+            profile: limit.profile,
         });
     }
 
@@ -216,6 +228,7 @@ fn read_bytes_impl(
             actual: ObservedSize::AtLeast(bytes.len() as u64),
             limit: max_bytes,
             limit_id: limit.stable_id,
+            profile: limit.profile,
         });
     }
 

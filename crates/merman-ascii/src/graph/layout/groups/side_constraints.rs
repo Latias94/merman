@@ -5,7 +5,7 @@ use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::graph::{
     AsciiGraph, GraphDirection, GraphNodeSemantics, GraphNodeSide, GraphNodeSideConstraint,
 };
-use crate::options::TerminalWidthProfile;
+use crate::options::GraphLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use crate::safe_text::try_clone_layout_text;
 use std::collections::HashMap;
@@ -14,7 +14,7 @@ pub(super) fn reserve_group_left_constraint_space(
     graph: &AsciiGraph,
     placements: &mut [super::GridCoord],
     topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<()> {
     if graph.direction.canonical() != GraphDirection::TopDown {
@@ -58,7 +58,7 @@ pub(super) fn reserve_group_left_constraint_space(
             group_index,
             &member_indices,
             placements,
-            width_profile,
+            policy,
             resources,
         )?
         else {

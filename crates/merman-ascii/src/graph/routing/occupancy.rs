@@ -281,6 +281,7 @@ pub(super) struct SceneOccupancy<'layout> {
     markers: HashMap<CanvasCoord, MarkerOccupant>,
     labels: HashSet<CanvasCoord>,
     pub(super) protected: Vec<ProtectedGeometry<'layout>>,
+    pub(super) label_lane_radius: usize,
     control: OperationControl,
 }
 
@@ -288,6 +289,7 @@ impl<'layout> SceneOccupancy<'layout> {
     pub(super) fn try_new_for_routes(
         graph_layout: &'layout GraphLayout,
         route_capacity: usize,
+        label_lane_radius: usize,
         resources: &mut ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
@@ -310,6 +312,7 @@ impl<'layout> SceneOccupancy<'layout> {
             markers: HashMap::new(),
             labels: HashSet::new(),
             protected: Vec::new(),
+            label_lane_radius,
             control: execution.cloned_control(),
         };
         scene
@@ -374,6 +377,7 @@ impl<'layout> SceneOccupancy<'layout> {
         let mut scene = Self::try_new_for_routes(
             graph_layout,
             routes.len(),
+            crate::options::GraphLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
             resources,
             AsciiExecution::for_test(&policy),
         )?;
@@ -569,6 +573,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 anchor,
                 route_bounds,
                 resources,
+                self.label_lane_radius,
             )?;
             let mut clear = false;
             for candidate in candidates {

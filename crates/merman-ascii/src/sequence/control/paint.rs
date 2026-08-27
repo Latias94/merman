@@ -453,7 +453,7 @@ fn render_border_row(
         row.try_write_text_role_with_checkpoint(
             resources.checked_grid_add(left_index, 1)?,
             label,
-            AsciiColorRole::Text,
+            AsciiColorRole::Section,
             resources,
             || checkpoints.tick(),
         )?;

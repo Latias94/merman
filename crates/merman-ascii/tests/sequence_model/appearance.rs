@@ -1,6 +1,55 @@
 use super::*;
 
 #[test]
+fn sequence_ansi16_preserves_plain_geometry_and_uses_named_title_activation_and_arrow_roles() {
+    let input = concat!(
+        "sequenceDiagram\n",
+        "title Checkout\n",
+        "box Group\n",
+        "participant A\n",
+        "participant B\n",
+        "end\n",
+        "A->>+B: Start\n",
+        "B-->>-A: Done",
+    );
+    let plain = render_sequence(input, &AsciiRenderOptions::ascii()).unwrap();
+    let rendered = render_sequence(
+        input,
+        &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Ansi16),
+    )
+    .unwrap();
+
+    assert_eq!(strip_ansi(&rendered), plain);
+    assert!(
+        rendered.contains("\u{1b}[36m"),
+        "title/arrow accent is missing: {rendered:?}"
+    );
+    assert!(
+        rendered.contains("\u{1b}[35m"),
+        "activation accent is missing: {rendered:?}"
+    );
+    assert!(
+        !rendered.contains("38;") && !rendered.contains("48;"),
+        "ANSI16 must not leak RGB or background guesses: {rendered:?}"
+    );
+}
+
+#[test]
+fn compact_sequence_ansi16_preserves_plain_geometry_for_control_and_lifecycle_rows() {
+    let input = read_local_semantic_fixture("sequence/dense_control_rows.mmd");
+    let plain_options =
+        AsciiRenderOptions::ascii().with_layout_profile(merman_ascii::AsciiLayoutProfile::Compact);
+    let plain = render_sequence(&input, &plain_options).unwrap();
+    let ansi16 = render_sequence(
+        &input,
+        &plain_options.with_color_mode(AsciiColorMode::Ansi16),
+    )
+    .unwrap();
+
+    assert_eq!(strip_ansi(&ansi16), plain);
+}
+
+#[test]
 fn sequence_color_truecolor_emits_participant_lifeline_activation_and_message_roles() {
     let theme = AsciiColorTheme::default_light()
         .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 1, 1))
@@ -58,6 +107,7 @@ fn sequence_color_html_wraps_boxes_notes_control_frames_and_messages_without_cha
     let input = "sequenceDiagram\nbox Group\nparticipant A\nparticipant B\nend\nloop Work\nA->>+B: Start\nNote over A,B: Wait\nB-->>-A: Done\nend";
     let theme = AsciiColorTheme::default_light()
         .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x101010))
+        .with_role(AsciiColorRole::Section, AsciiRgb::from_hex24(0x101010))
         .with_role(
             AsciiColorRole::SequenceFrame,
             AsciiRgb::from_hex24(0x202020),

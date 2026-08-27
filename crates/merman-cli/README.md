@@ -350,7 +350,7 @@ cargo install merman-cli --version 0.8.0-alpha.6 --locked \
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. `layout-elk` is the explicit EPL-2.0 boundary; add it only when the resulting artifact will distribute the corresponding notices and provenance. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 4`, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs. Contract 4 records the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and the feature-gated top-level `rustdoc` workflow; automation that depends on CLI behavior should version-check this field independently from the JSON schema.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 5`, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs. Contract 5 retains the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow from contract 4. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 
 ## Rendering And Runtime Policy
 
@@ -361,9 +361,21 @@ merman-cli render diagram.mmd --format svg --svg-pipeline readable
 merman-cli render diagram.mmd --format png --raster-fit-width 1600
 merman-cli render diagram.mmd --format pdf --pdf-filter-scale 4
 merman-cli render diagram.mmd --format unicode --ascii-color auto
+merman-cli render diagram.mmd --format unicode --ascii-layout-profile compact \
+  --ascii-max-width 80 --ascii-overflow fallback --ascii-report
 ```
 
 PNG/JPEG use a bounded Rust raster pipeline. PDF keeps vector geometry and bounds localized filter and embedded-image raster work. They are not Chromium screenshots. ASCII/Unicode support is family-specific; see the [support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md).
+
+`--ascii-report` is a machine-safe JSON channel. It always emits Plain text: `--ascii-color auto`
+resolves to Plain in report mode, while an explicit ANSI16/ANSI256/TrueColor/HTML request is
+rejected. The report uses ASCII output schema 2 and includes `encoding`, logical primary/emitted
+extents, layout and width profiles, and typed overflow/fallback state. A final line terminator is not
+counted as another logical row. Viewport fallback is currently Plain-only. `compact` is admitted only
+for Flowchart and Sequence; other supported families reject that layout profile rather than
+inheriting unrelated density policy. Once report mode is selected, failures use ASCII error-report
+schema 1 on stderr with a stable code, category, terminal-safe message, and typed details; stdout and
+the requested output target remain unpublished.
 
 Runtime behavior is deterministic by default even when system adapters are compiled. This also applies to `mmdc` and is a deliberate divergence from Chromium's ambient date, time zone, and randomness. A complete default binary can opt into upstream-like host state:
 

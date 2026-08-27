@@ -13,7 +13,7 @@ use crate::canvas::Canvas as RawCanvas;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
-use crate::options::AsciiRenderOptions;
+use crate::options::{AsciiRenderOptions, GraphLayoutPolicy};
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
@@ -107,6 +107,7 @@ impl GraphSurface for CooperativeSurface<'_, '_, '_> {
 
 struct PreparedGraphRender {
     charset: GraphCharset,
+    layout_policy: GraphLayoutPolicy,
     graph_layout: GraphLayout,
     route_scene: routing::RouteScene,
     width: usize,
@@ -154,9 +155,26 @@ pub(crate) fn render_graph_with_execution(
     render_graph_with_resources_and_execution(graph, options, &mut resources, execution)
 }
 
-pub(crate) fn render_graph_with_resources_and_execution(
+#[cfg(test)]
+fn render_graph_with_resources_and_execution(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    render_graph_with_resolved_policy_and_execution(
+        graph,
+        options,
+        options.flowchart_layout().graph_policy(),
+        resources,
+        execution,
+    )
+}
+
+pub(crate) fn render_graph_with_resolved_policy_and_execution(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    layout_policy: GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
@@ -169,7 +187,7 @@ pub(crate) fn render_graph_with_resources_and_execution(
     let mut layout_resources =
         execution.resource_context(resources, merman_core::OperationPhase::Layout);
     let prepared =
-        prepare_graph_render_controlled(graph, options, &mut layout_resources, execution)?;
+        prepare_graph_render_controlled(graph, &layout_policy, &mut layout_resources, execution)?;
     let mut emit_resources =
         execution.resource_context(&layout_resources, merman_core::OperationPhase::Emit);
     paint_graph_render_controlled(prepared, options, &mut emit_resources, execution)
@@ -177,14 +195,14 @@ pub(crate) fn render_graph_with_resources_and_execution(
 
 fn prepare_graph_render_controlled(
     graph: &AsciiGraph,
-    options: &AsciiRenderOptions,
+    layout_policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<PreparedGraphRender> {
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    let charset = GraphCharset::for_options(options);
+    let charset = GraphCharset::for_policy(layout_policy);
     let graph_layout =
-        layout_graph_with_resources_and_execution(graph, options, resources, execution)?;
+        layout_graph_with_resources_and_execution(graph, layout_policy, resources, execution)?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     graph_canvas_extent(&graph_layout.nodes, &graph_layout.groups, 0, 0, resources)?;
     let route_scene_plan = routing::prepare_route_scene_with_execution(
@@ -192,6 +210,7 @@ fn prepare_graph_render_controlled(
         &graph_layout,
         &graph.edges,
         &charset,
+        layout_policy,
         resources,
         execution,
     )?;
@@ -209,7 +228,7 @@ fn prepare_graph_render_controlled(
         crate::resource::AsciiResourceLimitId::MaxGridCells,
         extent.cells(),
     )?;
-    execution.admit_graph_extent(width, height, options.terminal_width_profile)?;
+    execution.admit_graph_extent(width, height, layout_policy.terminal_width_profile)?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let output_transform = OutputTransform::for_direction(graph.direction);
     if !output_transform.is_identity() {
@@ -219,6 +238,7 @@ fn prepare_graph_render_controlled(
 
     Ok(PreparedGraphRender {
         charset,
+        layout_policy: *layout_policy,
         graph_layout,
         route_scene,
         width,
@@ -235,6 +255,7 @@ fn paint_graph_render_controlled(
 ) -> Result<String> {
     let PreparedGraphRender {
         charset,
+        layout_policy,
         graph_layout,
         route_scene,
         width,
@@ -245,7 +266,7 @@ fn paint_graph_render_controlled(
     let mut canvas = RawCanvas::try_with_resources_and_execution(
         width,
         height,
-        options.terminal_width_profile,
+        layout_policy.terminal_width_profile,
         resources,
         execution,
     )?;
@@ -263,7 +284,7 @@ fn paint_graph_render_controlled(
             output_transform,
             width,
             height,
-            options.terminal_width_profile,
+            layout_policy.terminal_width_profile,
         );
         for group_index in &graph_layout.group_background_order {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
@@ -277,7 +298,14 @@ fn paint_graph_render_controlled(
         }
         for layout in &graph_layout.nodes {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            draw_node_with_execution(&mut surface, layout, &charset, options, execution)?;
+            draw_node_with_execution(
+                &mut surface,
+                layout,
+                &charset,
+                options,
+                &layout_policy,
+                execution,
+            )?;
         }
     }
 
@@ -298,7 +326,7 @@ fn paint_graph_render_controlled(
             output_transform,
             width,
             height,
-            options.terminal_width_profile,
+            layout_policy.terminal_width_profile,
         );
         let mut route_drawing = routing::RouteDrawing::new(&mut surface, &mut route_cells);
         route_scene.paint_routes_with_execution(&mut route_drawing, execution)?;
@@ -356,11 +384,12 @@ fn draw_node_with_execution(
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
+    layout_policy: &GraphLayoutPolicy,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     paint_node_background_with_execution(canvas, layout, execution)?;
     let mut surface = CooperativeSurface::new(canvas, execution);
-    draw_node_foreground(&mut surface, layout, charset, options)
+    draw_node_foreground(&mut surface, layout, charset, options, layout_policy)
 }
 
 fn draw_node_foreground(
@@ -368,6 +397,7 @@ fn draw_node_foreground(
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
+    layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
     match layout.shape {
         GraphNodeShape::Rect => draw_rect_node(canvas, layout, charset, options),
@@ -377,8 +407,12 @@ fn draw_node_foreground(
         GraphNodeShape::Stadium => draw_stadium_node(canvas, layout, charset, options),
         GraphNodeShape::DoubleCircle => draw_double_circle_node(canvas, layout, charset, options),
         GraphNodeShape::Diamond => draw_diamond_node(canvas, layout, charset, options),
-        GraphNodeShape::Subroutine => draw_subroutine_node(canvas, layout, charset, options),
-        GraphNodeShape::Cylinder => draw_cylinder_node(canvas, layout, charset, options),
+        GraphNodeShape::Subroutine => {
+            draw_subroutine_node(canvas, layout, charset, options, layout_policy)
+        }
+        GraphNodeShape::Cylinder => {
+            draw_cylinder_node(canvas, layout, charset, options, layout_policy)
+        }
         GraphNodeShape::LeanRight => draw_lean_node(canvas, layout, charset, options, true),
         GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset, options, false),
         GraphNodeShape::ManualInput => draw_manual_input_node(canvas, layout, charset),
@@ -637,7 +671,7 @@ fn write_group_title(
     if let Some(color) = style.title {
         canvas.write_text_color(x, y, text, color)
     } else {
-        canvas.write_text_role(x, y, text, AsciiColorRole::MutedText)
+        canvas.write_text_role(x, y, text, AsciiColorRole::Section)
     }
 }
 
@@ -899,6 +933,7 @@ fn draw_subroutine_node(
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
+    layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
     draw_rect_node(canvas, layout, charset, options)?;
     if layout.width > 5 {
@@ -908,7 +943,7 @@ fn draw_subroutine_node(
             set_node_border(canvas, left_inner, y, charset.vertical, layout.style)?;
             set_node_border(canvas, right_inner, y, charset.vertical, layout.style)?;
         }
-        let text_y = layout.y + 1 + options.box_border_padding;
+        let text_y = layout.y + 1 + layout_policy.node_border_padding;
         for x in (left_inner + 1)..right_inner {
             canvas.set(x, text_y, ' ')?;
         }
@@ -921,6 +956,7 @@ fn draw_cylinder_node(
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
+    layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
     draw_rounded_node(canvas, layout, charset, options)?;
     if layout.height > 3 {
@@ -928,7 +964,7 @@ fn draw_cylinder_node(
             set_node_border(canvas, x, layout.y + 1, charset.horizontal, layout.style)?;
         }
     }
-    let text_y = layout.y + 1 + options.box_border_padding;
+    let text_y = layout.y + 1 + layout_policy.node_border_padding;
     for x in (layout.x + 1)..layout.right() {
         canvas.set(x, text_y, ' ')?;
     }

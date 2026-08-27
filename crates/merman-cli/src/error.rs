@@ -1,4 +1,6 @@
 use crate::input::InputReadError;
+#[cfg(feature = "ascii")]
+use serde::Serialize;
 use std::path::Path;
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 use std::path::PathBuf;
@@ -58,6 +60,71 @@ enum ErrorCategory {
 }
 
 #[cfg(feature = "ascii")]
+impl ErrorCategory {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Content => "content",
+            Self::Usage => "usage",
+            Self::Operational => "operational",
+        }
+    }
+}
+
+#[cfg(feature = "ascii")]
+pub(crate) const ASCII_ERROR_REPORT_SCHEMA_VERSION: u16 = 1;
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Serialize)]
+pub(crate) struct AsciiErrorReport {
+    schema_version: u16,
+    kind: &'static str,
+    encoding: &'static str,
+    error: AsciiErrorReportBody,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Serialize)]
+struct AsciiErrorReportBody {
+    code: String,
+    category: &'static str,
+    message: String,
+    details: AsciiErrorReportDetails,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Default, Serialize)]
+struct AsciiErrorReportDetails {
+    span: Option<AsciiErrorReportSpan>,
+    span_kind: Option<&'static str>,
+    field: Option<String>,
+    diagram_type: Option<String>,
+    requested_max_width: Option<usize>,
+    actual_width: Option<usize>,
+    width_profile: Option<String>,
+    fallback_reason: Option<String>,
+    resource_limit: Option<AsciiErrorReportResourceLimit>,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Serialize)]
+struct AsciiErrorReportSpan {
+    start: usize,
+    end: usize,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Serialize)]
+struct AsciiErrorReportResourceLimit {
+    id: &'static str,
+    phase: &'static str,
+    actual: u64,
+    maximum: u64,
+    cause: &'static str,
+    profile: Option<&'static str>,
+}
+
+#[cfg(feature = "ascii")]
 #[derive(Debug)]
 pub(crate) struct AsciiResourceError {
     details: merman::render::ResourceLimitExceeded,
@@ -67,9 +134,15 @@ pub(crate) struct AsciiResourceError {
 #[cfg(feature = "ascii")]
 impl std::fmt::Display for AsciiResourceError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let label =
+            if merman::ascii::AsciiResourceLimitId::from_stable_id(self.details.id).is_some() {
+                "ASCII resource limit"
+            } else {
+                "resource limit"
+            };
         write!(
             formatter,
-            "ASCII resource limit `{}` exceeded during `{}`: actual {}, maximum {} (profile `{}`)",
+            "{label} `{}` exceeded during `{}`: actual {}, maximum {} (profile `{}`)",
             self.details.id,
             self.details.phase,
             self.details.actual,
@@ -98,6 +171,11 @@ pub(crate) enum CliError {
     #[cfg(feature = "ascii")]
     #[error("{0}")]
     AsciiResource(AsciiResourceError),
+    #[cfg(feature = "ascii")]
+    #[error(
+        "--ascii-report requires plain output; use `--ascii-color plain` or `--ascii-color auto`"
+    )]
+    AsciiReportRequiresPlain,
     #[cfg(feature = "network-icons")]
     #[error("{0}")]
     Network(#[from] crate::network::NetworkError),
@@ -262,6 +340,112 @@ impl CliError {
         }
     }
 
+    #[cfg(feature = "ascii")]
+    pub(crate) fn ascii_error_report(&self) -> AsciiErrorReport {
+        let mut code = match self.category() {
+            ErrorCategory::Success => "merman.cli.success",
+            ErrorCategory::Content => "merman.cli.content_error",
+            ErrorCategory::Usage => "merman.cli.invalid_request",
+            ErrorCategory::Operational => "merman.cli.operational_error",
+        }
+        .to_string();
+        let mut details = AsciiErrorReportDetails::default();
+
+        match self {
+            Self::Diagnostic(diagnostic) => {
+                let terminal = diagnostic.terminal_diagnostic_details();
+                code = terminal.code.clone();
+                details = AsciiErrorReportDetails::from_terminal(terminal);
+            }
+            Self::Ascii(diagnostic) => {
+                if let Some(terminal) = diagnostic.terminal_diagnostic_details() {
+                    code = terminal.code.clone();
+                    details = AsciiErrorReportDetails::from_terminal(terminal);
+                } else {
+                    code = "merman.ascii.render".to_string();
+                }
+            }
+            Self::AsciiResource(resource) => {
+                code = if merman::ascii::AsciiResourceLimitId::from_stable_id(resource.details.id)
+                    .is_some()
+                {
+                    "merman.ascii.resource_limit"
+                } else if merman::resources::InputResourceLimitId::from_stable_id(
+                    resource.details.id,
+                )
+                .is_some()
+                {
+                    "merman.input.resource_limit"
+                } else {
+                    "merman.render.resource_limit"
+                }
+                .to_string();
+                details.resource_limit = Some(AsciiErrorReportResourceLimit {
+                    id: resource.details.id,
+                    phase: resource.details.phase,
+                    actual: resource.details.actual,
+                    maximum: resource.details.maximum,
+                    cause: resource.details.cause.as_str(),
+                    profile: Some(resource.profile.id()),
+                });
+            }
+            Self::Input {
+                error:
+                    InputReadError::LimitExceeded {
+                        actual,
+                        limit,
+                        limit_id,
+                        profile,
+                        ..
+                    },
+                ..
+            } => {
+                code = "merman.input.resource_limit".to_string();
+                let actual = match actual {
+                    crate::input::ObservedSize::Exact(bytes)
+                    | crate::input::ObservedSize::AtLeast(bytes) => *bytes,
+                };
+                let phase = merman::resources::InputResourceLimitId::from_stable_id(limit_id)
+                    .map_or("input", |id| id.descriptor().phase.as_str());
+                details.resource_limit = Some(AsciiErrorReportResourceLimit {
+                    id: limit_id,
+                    phase,
+                    actual,
+                    maximum: *limit as u64,
+                    cause: "ceiling",
+                    profile: profile.map(merman::resources::ResourceProfile::id),
+                });
+            }
+            Self::AsciiReportRequiresPlain => {
+                code = "merman.cli.ascii_report.requires_plain".to_string();
+                details.field = Some("ascii_color".to_string());
+            }
+            Self::NoDiagram => {
+                code = "merman.parse.no_diagram_detected".to_string();
+            }
+            Self::MissingInput { .. } => {
+                code = "merman.cli.missing_input".to_string();
+                details.field = Some("input".to_string());
+            }
+            Self::InvalidInput(_) => {
+                code = "merman.cli.invalid_input".to_string();
+            }
+            _ => {}
+        }
+
+        AsciiErrorReport {
+            schema_version: ASCII_ERROR_REPORT_SCHEMA_VERSION,
+            kind: "ascii_error",
+            encoding: "plain",
+            error: AsciiErrorReportBody {
+                code,
+                category: self.category().as_str(),
+                message: merman::normalize_terminal_diagnostic(&self.to_string()),
+                details,
+            },
+        }
+    }
+
     #[cfg(feature = "rustdoc")]
     pub(crate) fn rustdoc_config(
         path: impl AsRef<Path>,
@@ -388,6 +572,8 @@ impl CliError {
             Self::Diagnostic(_) | Self::NoDiagram => ErrorCategory::Content,
             #[cfg(feature = "ascii")]
             Self::Ascii(_) | Self::AsciiResource(_) => ErrorCategory::Content,
+            #[cfg(feature = "ascii")]
+            Self::AsciiReportRequiresPlain => ErrorCategory::Usage,
             #[cfg(any(test, feature = "svg", feature = "ascii"))]
             Self::Resource(_) => ErrorCategory::Content,
             #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -403,6 +589,30 @@ impl CliError {
         match self {
             Self::MissingInput { command } => Some(command),
             _ => None,
+        }
+    }
+}
+
+#[cfg(feature = "ascii")]
+impl AsciiErrorReportDetails {
+    fn from_terminal(details: merman::TerminalDiagnosticDetails) -> Self {
+        Self {
+            span: details.span.map(|span| AsciiErrorReportSpan {
+                start: span.start,
+                end: span.end,
+            }),
+            span_kind: details.span_kind.map(|kind| match kind {
+                merman::ParseDiagnosticSpanKind::Exact => "exact",
+                merman::ParseDiagnosticSpanKind::InsertionPoint => "insertion_point",
+                merman::ParseDiagnosticSpanKind::Fallback => "fallback",
+            }),
+            field: details.field,
+            diagram_type: details.diagram_type,
+            requested_max_width: details.requested_max_width,
+            actual_width: details.actual_width,
+            width_profile: details.width_profile,
+            fallback_reason: details.fallback_reason,
+            resource_limit: None,
         }
     }
 }

@@ -88,10 +88,11 @@ impl SequenceRowDocument {
             layout_checkpoints,
         )?;
         if let Some(title) = document.title {
-            prepend_title_line(
+            prepend_title_lines(
                 &mut lines,
                 title,
                 document.content_extent.width(),
+                layout.policy.title_bottom_spacing,
                 resources,
                 layout_checkpoints,
             )?;
@@ -106,7 +107,7 @@ impl SequenceRowDocument {
         layout_checkpoints.execution().admit_primary_extent(
             output_extent.width(),
             output_extent.height(),
-            options.terminal_width_profile,
+            layout.policy.terminal_width_profile,
         )?;
         // Box/title geometry, extent admission, and canvas construction are layout work. Only
         // after those complete do we bind the shared ledger to Emit for byte/document emission.
@@ -154,13 +155,14 @@ fn prepare_sequence_document_transactional<'a>(
         Some(title) => {
             let title_cells =
                 planned_title_retained_width(title, content_extent.width(), resources)?;
+            let title_rows = resources.checked_grid_add(layout.policy.title_bottom_spacing, 1)?;
             let document_cells = content_extent
                 .document_cells()
                 .checked_add(title_cells)
                 .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
             SequenceDocumentExtent::new(
                 content_extent.width().max(title_cells),
-                resources.checked_grid_add(content_extent.height(), 1)?,
+                resources.checked_grid_add(content_extent.height(), title_rows)?,
                 document_cells,
             )
         }
@@ -271,16 +273,22 @@ fn write_plain_sequence_line(
     Ok(())
 }
 
-fn prepend_title_line(
+fn prepend_title_lines(
     lines: &mut Vec<SequenceLine>,
     title: PreparedSequenceTitle<'_>,
     content_width: usize,
+    bottom_spacing: usize,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
     checkpoints.before_charge()?;
-    resources.charge_layout_work(title.alignment_width.max(1))?;
-    lines.try_reserve(1).map_err(|_| allocation_failed())?;
+    let added_rows = resources.checked_grid_add(bottom_spacing, 1)?;
+    resources.charge_layout_work(
+        resources.checked_work_add(title.alignment_width.max(1), bottom_spacing)?,
+    )?;
+    lines
+        .try_reserve(added_rows)
+        .map_err(|_| allocation_failed())?;
     lines.insert(
         0,
         render_title_line(
@@ -293,6 +301,13 @@ fn prepend_title_line(
             checkpoints,
         )?,
     );
+    for row in 0..bottom_spacing {
+        checkpoints.tick()?;
+        lines.insert(
+            row + 1,
+            blank_line_with_checkpoints(0, title.width_profile, resources, checkpoints)?,
+        );
+    }
     Ok(())
 }
 
@@ -398,7 +413,7 @@ fn render_title_line(
             }
             line.try_push_role_text_with_checkpoint(
                 grapheme,
-                AsciiColorRole::Text,
+                AsciiColorRole::Title,
                 resources,
                 || checkpoints.tick(),
             )?;
@@ -473,8 +488,10 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, 64)
             .expect("the output limit should be valid");
         let mut resources = ResourceContext::new(policy);
-        let line =
-            SequenceLine::plain_text_with_profile(&"x".repeat(128), options.terminal_width_profile);
+        let line = SequenceLine::plain_text_with_profile(
+            &"x".repeat(128),
+            options.sequence_layout().terminal_width_profile,
+        );
         let control = OperationControl::new();
         let execution = AsciiExecution::new(&control, &policy);
         resources = execution.resource_context(&resources, OperationPhase::Emit);
@@ -498,7 +515,10 @@ mod tests {
         let policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, 1)
             .expect("the output limit should be valid");
-        let line = SequenceLine::plain_text_with_profile("AB", options.terminal_width_profile);
+        let line = SequenceLine::plain_text_with_profile(
+            "AB",
+            options.sequence_layout().terminal_width_profile,
+        );
         let control = OperationControl::new();
         let execution = AsciiExecution::new(&control, &policy);
         let base_resources = ResourceContext::new(policy);
@@ -543,11 +563,17 @@ mod tests {
         options: &AsciiRenderOptions,
         policy: AsciiResourcePolicy,
     ) -> Vec<SequenceLine> {
-        let mut first = SequenceLine::with_resource_policy(options.terminal_width_profile, policy);
+        let mut first = SequenceLine::with_resource_policy(
+            options.sequence_layout().terminal_width_profile,
+            policy,
+        );
         first
             .try_push_role_text("A<&", AsciiColorRole::Text)
             .expect("styled line should fit");
-        let mut second = SequenceLine::with_resource_policy(options.terminal_width_profile, policy);
+        let mut second = SequenceLine::with_resource_policy(
+            options.sequence_layout().terminal_width_profile,
+            policy,
+        );
         second
             .try_push_role_text("B👩🏽‍💻", AsciiColorRole::EdgeArrow)
             .expect("styled line should fit");

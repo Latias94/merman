@@ -182,6 +182,13 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "open_value": false
         },
         {
+          "name": "encoding",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
           "name": "primary_width",
           "json_type": "unsigned-integer",
           "required": true,

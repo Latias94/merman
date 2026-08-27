@@ -7,12 +7,13 @@
 pub use crate::{normalize_terminal_diagnostic, normalize_terminal_text};
 
 pub use merman_ascii::{
-    ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCapability,
-    AsciiCapabilityEvidence, AsciiCharset, AsciiColorMode, AsciiColorRole, AsciiColorTheme,
-    AsciiDirection, AsciiError, AsciiEvidenceKind, AsciiExtent, AsciiFallbackCapability,
-    AsciiFallbackReason, AsciiLayoutProfile, AsciiOutput, AsciiOutputMetadata, AsciiOutputOutcome,
-    AsciiOutputReport, AsciiOverflowPolicy, AsciiPrimaryProjection, AsciiProjection,
-    AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitCause, AsciiResourceLimitDescriptor,
+    ASCII_OUTPUT_SCHEMA_VERSION, ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS,
+    AsciiCapability, AsciiCapabilityEvidence, AsciiCharset, AsciiColorMode, AsciiColorRole,
+    AsciiColorTheme, AsciiDirection, AsciiError, AsciiEvidenceKind, AsciiExtent,
+    AsciiFallbackCapability, AsciiFallbackReason, AsciiLayoutProfile, AsciiOutput,
+    AsciiOutputEncoding, AsciiOutputMetadata, AsciiOutputOutcome, AsciiOutputReport,
+    AsciiOverflowPolicy, AsciiPrimaryProjection, AsciiProjection, AsciiRenderOptions,
+    AsciiRenderer, AsciiResourceLimitCause, AsciiResourceLimitDescriptor,
     AsciiResourceLimitExceeded, AsciiResourceLimitId, AsciiResourceLimitOverrideError,
     AsciiResourceLimitPhase, AsciiResourcePolicy, AsciiRgb, AsciiSemanticCoverage,
     AsciiSupportLevel, AsciiTerminalPalette, AsciiTrimPolicy, AsciiViewportPolicy,

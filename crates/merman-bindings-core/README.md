@@ -61,9 +61,9 @@ Operation results expose typed schema-1 metadata and retain the exact original m
 
 When `ascii` is enabled, the ASCII output plan is adapted from `merman-ascii::AsciiOutput::metadata()`.
 The CLI's report JSON is the same metadata payload plus the exact text projection from
-`AsciiOutput::report()`. Schema version 1, field names, enum strings, nullable fallback fields, and
-unknown-field behavior therefore remain one coordinated contract across Rust, CLI, generated
-fixtures, Web metadata, and platform DTOs.
+`AsciiOutput::report()`. ASCII schema version 2, the required `encoding` field, field names, enum
+strings, nullable fallback fields, and unknown-field behavior therefore remain one coordinated
+contract across Rust, CLI, generated fixtures, Web metadata, and platform DTOs.
 
 Reusable host services are immutable and constructor-owned. A transport wraps its callback and admission policy, then creates the engine through the single service-aware constructor:
 

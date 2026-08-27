@@ -417,6 +417,45 @@ pub(crate) fn visit_safe_line_graphemes(
     }
 }
 
+/// Streams one authored terminal line as normalized fragments.
+///
+/// Visible escapes remain one fragment so callers that own wrapping can keep `\u{...}` tokens
+/// intact whenever the viewport can contain them. The final `usize` is the largest emitted
+/// grapheme byte length represented by the fragment.
+pub(crate) fn visit_safe_line_fragments(
+    resources: &mut ResourceContext,
+    value: &str,
+    profile: TerminalWidthProfile,
+    mut visit: impl FnMut(&str, usize, usize) -> Result<()>,
+) -> Result<()> {
+    resources.charge_layout_work(1)?;
+    visit_normalized_segments(value, |segment| {
+        if matches!(segment.kind, NormalizedSegmentKind::LineBreak) {
+            resources.check_grapheme_bytes(segment.source_grapheme_bytes)?;
+            resources.charge_layout_work(visible_escape_len('\n'))?;
+            let mut buffer = [0u8; 10];
+            let escape = visible_escape('\n', &mut buffer);
+            return visit(escape, visible_escape_len('\n'), 1);
+        }
+
+        segment.check_grapheme_budget(resources)?;
+        resources.charge_layout_work(segment.layout_work())?;
+        match segment.kind {
+            NormalizedSegmentKind::Grapheme(grapheme) => visit(
+                grapheme,
+                grapheme_display_width(grapheme, profile),
+                grapheme.len(),
+            ),
+            NormalizedSegmentKind::VisibleEscape(ch) => {
+                let mut buffer = [0u8; 10];
+                let escape = visible_escape(ch, &mut buffer);
+                visit(escape, visible_escape_len(ch), 1)
+            }
+            NormalizedSegmentKind::LineBreak => unreachable!("handled above"),
+        }
+    })
+}
+
 fn visit_visible_escape_graphemes(
     ch: char,
     visit: &mut impl FnMut(&str, usize) -> Result<bool>,

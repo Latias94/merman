@@ -7,10 +7,12 @@ use crate::{AsciiError, Result};
 use merman_core::{OperationPhase, ParseMetadata};
 use serde::Serialize;
 use serde_json::Value;
+use serde_json::value::RawValue;
+use std::collections::BTreeMap;
 use std::io::{self, Write as IoWrite};
 use unicode_segmentation::UnicodeSegmentation;
 
-pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 1;
+pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 2;
 const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
 
 /// 宽度超限时的输出策略。
@@ -38,6 +40,45 @@ impl OverflowPolicy {
 
 /// `OverflowPolicy` 的 ASCII 命名别名，便于调用方表达目标边界。
 pub type AsciiOverflowPolicy = OverflowPolicy;
+
+/// Encoded representation carried by the emitted output bytes.
+///
+/// This is intentionally distinct from [`AsciiColorMode`]: color mode is a render request,
+/// while output encoding is stable result metadata that transport consumers can inspect without
+/// scanning the returned bytes.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AsciiOutputEncoding {
+    Plain,
+    Ansi16,
+    Ansi256,
+    TrueColor,
+    Html,
+}
+
+impl AsciiOutputEncoding {
+    #[must_use]
+    pub const fn from_color_mode(color_mode: AsciiColorMode) -> Self {
+        match color_mode {
+            AsciiColorMode::Plain => Self::Plain,
+            AsciiColorMode::Ansi16 => Self::Ansi16,
+            AsciiColorMode::Ansi256 => Self::Ansi256,
+            AsciiColorMode::TrueColor => Self::TrueColor,
+            AsciiColorMode::Html => Self::Html,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Plain => "plain",
+            Self::Ansi16 => "ansi16",
+            Self::Ansi256 => "ansi256",
+            Self::TrueColor => "truecolor",
+            Self::Html => "html",
+        }
+    }
+}
 
 /// 输出尾部空格处理策略。
 #[non_exhaustive]
@@ -133,7 +174,7 @@ impl AsciiExtent {
             return Self::default();
         }
         let mut extent = Self::default();
-        for line in text.split('\n') {
+        for line in text.lines() {
             extent.width = extent.width.max(display_width_with_profile(line, profile));
             extent.height = extent.height.saturating_add(1);
         }
@@ -249,6 +290,7 @@ pub struct AsciiOutput {
     pub schema_version: u16,
     pub family: String,
     pub projection: AsciiProjection,
+    pub encoding: AsciiOutputEncoding,
     pub text: String,
     pub primary_extent: AsciiExtent,
     pub emitted_extent: AsciiExtent,
@@ -367,6 +409,7 @@ pub struct AsciiOutputMetadata {
     pub schema_version: u16,
     pub family: String,
     pub projection: String,
+    pub encoding: String,
     pub primary_width: u64,
     pub primary_height: u64,
     pub emitted_width: u64,
@@ -414,7 +457,7 @@ fn measure_text(
     let mut extent = AsciiExtent::default();
     let mut document_cells = 0usize;
     let mut grapheme_bytes = 0usize;
-    for (line_index, line) in text.split('\n').enumerate() {
+    for (line_index, line) in text.lines().enumerate() {
         execution.checkpoint(OperationPhase::Emit)?;
         resources.charge_layout_work(1)?;
         let visible = match color_mode {
@@ -450,6 +493,11 @@ fn measure_text(
         resources.charge_layout_work(grapheme_work)?;
         execution.checkpoint_loop(OperationPhase::Emit, line_index)?;
     }
+    if text.ends_with('\n') {
+        // The final line terminator is encoded work, but it is not another logical content row.
+        execution.checkpoint(OperationPhase::Emit)?;
+        resources.charge_layout_work(1)?;
+    }
     Ok(OutputMetrics {
         extent,
         document_cells,
@@ -481,6 +529,7 @@ impl AsciiOutput {
             schema_version: self.schema_version,
             family: self.family.clone(),
             projection: self.projection.as_str().to_owned(),
+            encoding: self.encoding.as_str().to_owned(),
             primary_width: self.primary_extent.width as u64,
             primary_height: self.primary_extent.height as u64,
             emitted_width: self.emitted_extent.width as u64,
@@ -661,10 +710,11 @@ struct OutputAssembly<'a> {
 
 fn assemble_output(assembly: OutputAssembly<'_>, context: OutputBuildContext<'_>) -> AsciiOutput {
     let OutputBuildContext {
+        color_mode,
         profile,
         layout_profile,
         policy,
-        ..
+        execution: _,
     } = context;
     let OutputAssembly {
         family,
@@ -682,6 +732,7 @@ fn assemble_output(assembly: OutputAssembly<'_>, context: OutputBuildContext<'_>
         schema_version: crate::ASCII_OUTPUT_SCHEMA_VERSION,
         family: family.to_string(),
         projection,
+        encoding: AsciiOutputEncoding::from_color_mode(color_mode),
         text,
         primary_extent,
         emitted_extent,
@@ -730,9 +781,9 @@ pub(crate) fn build_semantic_fallback(
     }
     let control = execution.cloned_control();
     preflight_semantic_model(model, execution)?;
-    let value =
-        semantic_fallback_value(model, metadata, &control, execution).map_err(
-            |error| match error {
+    let projection =
+        semantic_fallback_projection(model, metadata, &control, execution).map_err(|error| {
+            match error {
                 SemanticFallbackError::Cancelled(cancelled) => AsciiError::Cancelled(cancelled),
                 SemanticFallbackError::Resource(error) => error,
                 SemanticFallbackError::Unavailable => AsciiError::FallbackUnavailable {
@@ -740,11 +791,18 @@ pub(crate) fn build_semantic_fallback(
                     max_width,
                     actual_width: primary_extent.width,
                 },
-            },
-        )?;
+            }
+        })?;
     let mut fallback = SemanticFallbackWriter::new(execution, max_width, profile);
     fallback.push(format!("family: {}", model.kind()))?;
-    flatten_json_value("model", &value, &mut fallback)?;
+    match projection {
+        SemanticFallbackProjection::Serialized(bytes) => {
+            flatten_serialized_json("model", &bytes, &mut fallback)?;
+        }
+        SemanticFallbackProjection::Value(value) => {
+            flatten_json_value("model", &value, &mut fallback)?;
+        }
+    }
     let candidate = fallback.finish();
     finalize_fallback(
         model.kind(),
@@ -765,11 +823,49 @@ fn preflight_semantic_model(
 ) -> Result<()> {
     execution.checkpoint(OperationPhase::Semantic)?;
     let complexity = merman_core::resources::ModelComplexity::from_render_model(model);
-    let resources = execution.detached_resource_context(OperationPhase::Semantic);
+    let resources = execution.new_resource_context(OperationPhase::Semantic);
     resources.check_nesting_depth(complexity.nesting_depth)?;
     resources.check(AsciiResourceLimitId::MaxOutputBytes, complexity.text_bytes)?;
+    if !matches!(
+        model,
+        merman_core::diagram::RenderSemanticModel::Flowchart(_)
+            | merman_core::diagram::RenderSemanticModel::Sequence(_)
+    ) {
+        check_semantic_projection_budget(complexity, &resources)?;
+    }
     resources.charge_layout_work(complexity.items)?;
     execution.checkpoint(OperationPhase::Semantic)
+}
+
+const SEMANTIC_PROJECTION_TEXT_MULTIPLIER: usize = 2;
+const SEMANTIC_PROJECTION_ITEM_OVERHEAD: usize = 96;
+const SEMANTIC_PROJECTION_DEPTH_OVERHEAD: usize = 64;
+
+/// Conservatively bounds the temporary compatibility projection before it can allocate a
+/// deep `serde_json::Value` tree. The estimate intentionally over-approximates escaped text,
+/// object keys, map/vector entries, and nesting metadata; bounded profiles reject before the
+/// family-owned projector is allowed to materialize the value.
+fn check_semantic_projection_budget(
+    complexity: merman_core::resources::ModelComplexity,
+    resources: &ResourceContext,
+) -> Result<()> {
+    let text_bytes = complexity
+        .text_bytes
+        .checked_mul(SEMANTIC_PROJECTION_TEXT_MULTIPLIER)
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+    let item_bytes = complexity
+        .items
+        .checked_mul(SEMANTIC_PROJECTION_ITEM_OVERHEAD)
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+    let depth_bytes = complexity
+        .nesting_depth
+        .checked_mul(SEMANTIC_PROJECTION_DEPTH_OVERHEAD)
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+    let estimate = text_bytes
+        .checked_add(item_bytes)
+        .and_then(|value| value.checked_add(depth_bytes))
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+    resources.check(AsciiResourceLimitId::MaxOutputBytes, estimate)
 }
 
 enum SemanticFallbackError {
@@ -785,37 +881,59 @@ enum SemanticFallbackError {
 /// this path serializes the typed render model directly and only adds the stable family marker.
 /// Other families continue to use their existing family-owned compatibility projection until
 /// their field-level fallback coverage is admitted explicitly.
-fn semantic_fallback_value(
+enum SemanticFallbackProjection {
+    Serialized(Vec<u8>),
+    Value(Value),
+}
+
+#[derive(Serialize)]
+struct SemanticFallbackEnvelope<'a, T> {
+    #[serde(flatten)]
+    model: &'a T,
+    #[serde(rename = "type")]
+    diagram_type: &'a str,
+}
+
+fn semantic_fallback_projection(
     model: &merman_core::diagram::RenderSemanticModel,
     metadata: &ParseMetadata,
     control: &merman_core::OperationControl,
     execution: AsciiExecution<'_>,
-) -> std::result::Result<serde_json::Value, SemanticFallbackError> {
+) -> std::result::Result<SemanticFallbackProjection, SemanticFallbackError> {
     let control = control.for_phase(OperationPhase::Semantic);
     control
         .checkpoint()
         .map_err(SemanticFallbackError::Cancelled)?;
-    let value = match model {
+    let projection = match model {
         merman_core::diagram::RenderSemanticModel::Flowchart(flowchart) => {
-            let bytes = serialize_bounded_json(flowchart, execution)?;
-            serde_json::from_slice(&bytes).map_err(|_| SemanticFallbackError::Unavailable)?
+            let envelope = SemanticFallbackEnvelope {
+                model: flowchart,
+                diagram_type: &metadata.diagram_type,
+            };
+            SemanticFallbackProjection::Serialized(serialize_bounded_json(&envelope, execution)?)
         }
-        _ => model
-            .compatibility_json_controlled(metadata, &control)
-            .map_err(SemanticFallbackError::Cancelled)?
-            .map_err(|_| SemanticFallbackError::Unavailable)?,
+        merman_core::diagram::RenderSemanticModel::Sequence(sequence) => {
+            let projection = sequence.compatibility_projection(&metadata.diagram_type);
+            SemanticFallbackProjection::Serialized(serialize_bounded_json(&projection, execution)?)
+        }
+        _ => {
+            let mut value = model
+                .compatibility_json_controlled(metadata, &control)
+                .map_err(SemanticFallbackError::Cancelled)?
+                .map_err(|_| SemanticFallbackError::Unavailable)?;
+            if let Some(object) = value.as_object_mut() {
+                object.insert(
+                    "type".to_string(),
+                    serde_json::Value::String(metadata.diagram_type.clone()),
+                );
+            }
+            SemanticFallbackProjection::Value(value)
+        }
     };
     control
         .checkpoint()
         .map_err(SemanticFallbackError::Cancelled)?;
-    let mut value = value;
-    if let Some(object) = value.as_object_mut() {
-        object.insert(
-            "type".to_string(),
-            serde_json::Value::String(metadata.diagram_type.clone()),
-        );
-    }
-    Ok(value)
+    Ok(projection)
 }
 
 /// Serializes a typed semantic projection through the ASCII policy before materializing its
@@ -827,7 +945,7 @@ fn serialize_bounded_json<T: Serialize>(
     value: &T,
     execution: AsciiExecution<'_>,
 ) -> std::result::Result<Vec<u8>, SemanticFallbackError> {
-    let resources = execution.detached_resource_context(OperationPhase::Semantic);
+    let resources = execution.new_resource_context(OperationPhase::Semantic);
     let mut writer = BoundedJsonWriter {
         output: Vec::new(),
         resources,
@@ -866,6 +984,9 @@ impl IoWrite for BoundedJsonWriter<'_> {
                 self.error = Some(error);
                 io::Error::other("ASCII semantic projection was cancelled")
             })?;
+        if let Err(error) = self.resources.charge_layout_work(bytes.len()) {
+            return self.fail(error);
+        }
         let next_len = self.output.len().checked_add(bytes.len()).ok_or_else(|| {
             self.error = Some(
                 self.resources
@@ -937,42 +1058,110 @@ impl<'a> SemanticFallbackWriter<'a> {
     }
 
     fn push(&mut self, line: String) -> Result<()> {
+        let (mut width, mut has_content) = self.begin_line()?;
+        let mut emit_resources = self.emit_resources.clone();
+        crate::safe_text::visit_safe_line_fragments(
+            &mut emit_resources,
+            &line,
+            self.profile,
+            |fragment, fragment_width, fragment_grapheme_bytes| {
+                self.push_wrapped_fragment(
+                    fragment,
+                    fragment_width,
+                    fragment_grapheme_bytes,
+                    &mut width,
+                    &mut has_content,
+                )
+            },
+        )?;
+        self.finish_line()
+    }
+
+    fn push_quoted(&mut self, path: &str, value: &str) -> Result<()> {
+        let (mut width, mut has_content) = self.begin_line()?;
+        let prefix = format!("{path}: ");
+        let mut prefix_resources = self.emit_resources.clone();
+        crate::safe_text::visit_safe_line_fragments(
+            &mut prefix_resources,
+            &prefix,
+            self.profile,
+            |fragment, fragment_width, fragment_grapheme_bytes| {
+                self.push_wrapped_fragment(
+                    fragment,
+                    fragment_width,
+                    fragment_grapheme_bytes,
+                    &mut width,
+                    &mut has_content,
+                )
+            },
+        )?;
+
+        let quoted_resources = self.emit_resources.clone();
+        crate::safe_text::visit_quoted_terminal_text(value, &quoted_resources, |fragment| {
+            let mut grapheme_count = 0usize;
+            let mut fragment_grapheme_bytes = 0usize;
+            for grapheme in fragment.graphemes(true) {
+                grapheme_count = grapheme_count.saturating_add(1);
+                fragment_grapheme_bytes = fragment_grapheme_bytes.max(grapheme.len());
+            }
+            quoted_resources.charge_layout_work(grapheme_count)?;
+            self.push_wrapped_fragment(
+                fragment,
+                display_width_with_profile(fragment, self.profile),
+                fragment_grapheme_bytes,
+                &mut width,
+                &mut has_content,
+            )
+        })?;
+        self.finish_line()
+    }
+
+    fn begin_line(&mut self) -> Result<(usize, bool)> {
         self.execution.checkpoint(OperationPhase::Semantic)?;
         if self.line_count > 0 {
-            self.push_fragment("\n")?;
+            self.push_fragment("\n", 1)?;
         }
-        let mut width = 0usize;
-        let mut has_content = false;
-        for grapheme in line.graphemes(true) {
-            self.emit_resources.charge_layout_work(1)?;
-            self.execution
-                .checkpoint_loop(OperationPhase::Emit, self.work)?;
-            self.work = self.work.saturating_add(1);
-            let grapheme_width = display_width_with_profile(grapheme, self.profile);
-            if has_content
-                && self
-                    .candidate_resources
-                    .checked_grid_add(width, grapheme_width)?
-                    > self.max_width
-            {
-                self.push_fragment("\n")?;
-                width = 0;
-            }
-            let next_width = self
+        Ok((0, false))
+    }
+
+    fn push_wrapped_fragment(
+        &mut self,
+        fragment: &str,
+        fragment_width: usize,
+        fragment_grapheme_bytes: usize,
+        width: &mut usize,
+        has_content: &mut bool,
+    ) -> Result<()> {
+        self.execution
+            .checkpoint_loop(OperationPhase::Emit, self.work)?;
+        self.work = self.work.saturating_add(1);
+        if *has_content
+            && self
                 .candidate_resources
-                .checked_grid_add(width, grapheme_width)?;
-            let next_document_cells = self
-                .candidate_resources
-                .checked_grid_add(self.document_cells, grapheme_width)?;
-            self.candidate_resources
-                .check(AsciiResourceLimitId::MaxDocumentCells, next_document_cells)?;
-            self.push_fragment(grapheme)?;
-            width = next_width;
-            self.max_line_width = self.max_line_width.max(width);
-            self.max_grapheme_bytes = self.max_grapheme_bytes.max(grapheme.len());
-            self.document_cells = next_document_cells;
-            has_content = true;
+                .checked_grid_add(*width, fragment_width)?
+                > self.max_width
+        {
+            self.push_fragment("\n", 1)?;
+            *width = 0;
         }
+        let next_width = self
+            .candidate_resources
+            .checked_grid_add(*width, fragment_width)?;
+        let next_document_cells = self
+            .candidate_resources
+            .checked_grid_add(self.document_cells, fragment_width)?;
+        self.candidate_resources
+            .check(AsciiResourceLimitId::MaxDocumentCells, next_document_cells)?;
+        self.push_fragment(fragment, fragment_grapheme_bytes)?;
+        *width = next_width;
+        self.max_line_width = self.max_line_width.max(*width);
+        self.max_grapheme_bytes = self.max_grapheme_bytes.max(fragment_grapheme_bytes);
+        self.document_cells = next_document_cells;
+        *has_content = true;
+        Ok(())
+    }
+
+    fn finish_line(&mut self) -> Result<()> {
         self.line_count = self
             .candidate_resources
             .checked_grid_add(self.line_count, 1)?;
@@ -984,9 +1173,9 @@ impl<'a> SemanticFallbackWriter<'a> {
         self.semantic_resources.check_nesting_depth(depth)
     }
 
-    fn push_fragment(&mut self, fragment: &str) -> Result<()> {
+    fn push_fragment(&mut self, fragment: &str, grapheme_bytes: usize) -> Result<()> {
         self.candidate_resources
-            .check(AsciiResourceLimitId::MaxGraphemeBytes, fragment.len())?;
+            .check(AsciiResourceLimitId::MaxGraphemeBytes, grapheme_bytes)?;
         let output_bytes = self
             .output_bytes
             .checked_add(fragment.len())
@@ -1042,6 +1231,9 @@ fn flatten_json_value(
                     let child_path = append_path_key(path, key);
                     visit(&child_path, &object[key], lines, depth + 1)?;
                 }
+                if object.is_empty() {
+                    lines.push(format!("{path}: {{}}"))?;
+                }
             }
             Value::Array(values) => {
                 for (index, value) in values.iter().enumerate() {
@@ -1051,7 +1243,7 @@ fn flatten_json_value(
                     lines.push(format!("{path}: []"))?;
                 }
             }
-            Value::String(value) => lines.push(format!("{path}: {value:?}"))?,
+            Value::String(value) => lines.push_quoted(path, value)?,
             Value::Number(value) => lines.push(format!("{path}: {value}"))?,
             Value::Bool(value) => lines.push(format!("{path}: {value}"))?,
             Value::Null => lines.push(format!("{path}: null"))?,
@@ -1060,6 +1252,109 @@ fn flatten_json_value(
     }
 
     visit(path, value, lines, 0)
+}
+
+/// Flattens a bounded serialized projection while borrowing every nested value from the one
+/// policy-limited byte buffer. Objects use a sorted map of raw slices, so deterministic field
+/// ordering is retained without constructing a recursive `serde_json::Value` tree.
+fn flatten_serialized_json(
+    path: &str,
+    bytes: &[u8],
+    lines: &mut SemanticFallbackWriter<'_>,
+) -> Result<()> {
+    let raw =
+        serde_json::from_slice::<&RawValue>(bytes).map_err(|_| AsciiError::UnsupportedFeature {
+            diagram_type: "ascii",
+            feature: "invalid serialized semantic projection",
+        })?;
+
+    fn visit(
+        path: &str,
+        raw: &RawValue,
+        lines: &mut SemanticFallbackWriter<'_>,
+        depth: usize,
+    ) -> Result<()> {
+        lines.admit_node(depth)?;
+        let json = raw.get().trim();
+        match json.as_bytes().first().copied() {
+            Some(b'{') => {
+                let object =
+                    serde_json::from_str::<BTreeMap<String, &RawValue>>(json).map_err(|_| {
+                        AsciiError::UnsupportedFeature {
+                            diagram_type: "ascii",
+                            feature: "invalid serialized semantic object",
+                        }
+                    })?;
+                if object.is_empty() {
+                    lines.push(format!("{path}: {{}}"))?;
+                } else {
+                    for (key, child) in object {
+                        let child_path = append_path_key(path, &key);
+                        visit(&child_path, child, lines, depth + 1)?;
+                    }
+                }
+            }
+            Some(b'[') => {
+                let values = serde_json::from_str::<Vec<&RawValue>>(json).map_err(|_| {
+                    AsciiError::UnsupportedFeature {
+                        diagram_type: "ascii",
+                        feature: "invalid serialized semantic array",
+                    }
+                })?;
+                for (index, child) in values.iter().enumerate() {
+                    visit(&format!("{path}[{index}]"), child, lines, depth + 1)?;
+                }
+                if values.is_empty() {
+                    lines.push(format!("{path}: []"))?;
+                }
+            }
+            Some(b'"') => {
+                let value = serde_json::from_str::<String>(json).map_err(|_| {
+                    AsciiError::UnsupportedFeature {
+                        diagram_type: "ascii",
+                        feature: "invalid serialized semantic string",
+                    }
+                })?;
+                lines.push_quoted(path, &value)?;
+            }
+            Some(b't' | b'f') => {
+                let value = serde_json::from_str::<bool>(json).map_err(|_| {
+                    AsciiError::UnsupportedFeature {
+                        diagram_type: "ascii",
+                        feature: "invalid serialized semantic boolean",
+                    }
+                })?;
+                lines.push(format!("{path}: {value}"))?;
+            }
+            Some(b'n') => {
+                if json != "null" {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "ascii",
+                        feature: "invalid serialized semantic null",
+                    });
+                }
+                lines.push(format!("{path}: null"))?;
+            }
+            Some(_) => {
+                let value = serde_json::from_str::<serde_json::Number>(json).map_err(|_| {
+                    AsciiError::UnsupportedFeature {
+                        diagram_type: "ascii",
+                        feature: "invalid serialized semantic number",
+                    }
+                })?;
+                lines.push(format!("{path}: {value}"))?;
+            }
+            None => {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "ascii",
+                    feature: "empty serialized semantic projection",
+                });
+            }
+        }
+        Ok(())
+    }
+
+    visit(path, raw, lines, 0)
 }
 
 fn append_path_key(path: &str, key: &str) -> String {
@@ -1249,6 +1544,27 @@ pub(crate) fn projection_for(capability: Option<crate::AsciiCapability>) -> Asci
 mod tests {
     use super::*;
 
+    fn sequence_model_with_property(value: Value) -> merman_core::diagram::RenderSemanticModel {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant A",
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("sequence diagram should parse")
+            .expect("sequence diagram should be detected");
+        let (_, mut model) = parsed.into_parts();
+        let merman_core::diagram::RenderSemanticModel::Sequence(sequence) = &mut model else {
+            unreachable!("fixture is a sequence diagram");
+        };
+        sequence
+            .actors
+            .get_mut("A")
+            .expect("fixture actor should exist")
+            .properties
+            .insert("payload".to_string(), value);
+        model
+    }
+
     #[test]
     fn empty_extent_is_zero_by_zero() {
         assert_eq!(
@@ -1258,10 +1574,10 @@ mod tests {
     }
 
     #[test]
-    fn extent_preserves_trailing_empty_rows() {
+    fn extent_preserves_authored_empty_rows_without_counting_the_line_terminator() {
         assert_eq!(
             AsciiExtent::measure("alpha\n\n", TerminalWidthProfile::Unicode),
-            AsciiExtent::new(5, 3)
+            AsciiExtent::new(5, 2)
         );
     }
 
@@ -1344,6 +1660,39 @@ mod tests {
     }
 
     #[test]
+    fn measured_candidate_counts_terminal_terminator_work_without_counting_an_extra_row() {
+        let exact_resources = crate::AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 3)
+            .expect("positive layout-work limit");
+        let candidate = MeasuredOutput::measure(
+            "a\n".to_string(),
+            AsciiColorMode::Plain,
+            TerminalWidthProfile::Unicode,
+            crate::operation::AsciiExecution::for_test(&exact_resources),
+        )
+        .expect("the exact terminator-work boundary should succeed");
+        assert_eq!(candidate.metrics().extent, AsciiExtent::new(1, 1));
+
+        let below_resources = crate::AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+            .expect("positive layout-work limit");
+        let error = MeasuredOutput::measure(
+            "a\n".to_string(),
+            AsciiColorMode::Plain,
+            TerminalWidthProfile::Unicode,
+            crate::operation::AsciiExecution::for_test(&below_resources),
+        )
+        .expect_err("the N-1 terminator-work boundary should fail");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == 3
+                    && details.max == 2
+        ));
+    }
+
+    #[test]
     fn projection_resolution_is_capability_owned() {
         let timeline = merman_core::diagram::RenderSemanticModel::Timeline(Default::default());
         assert_eq!(
@@ -1379,6 +1728,516 @@ mod tests {
         let value = serde_json::json!({"payload": "abcdef"});
 
         let result = serialize_bounded_json(&value, execution);
+        assert!(matches!(
+            result,
+            Err(SemanticFallbackError::Cancelled(cancelled))
+                if cancelled.phase == OperationPhase::Semantic
+        ));
+    }
+
+    #[test]
+    fn serialized_semantic_projection_flattens_sorted_fields_without_value_materialization() {
+        let resources = crate::AsciiResourcePolicy::unbounded();
+        let execution = crate::operation::AsciiExecution::for_test(&resources);
+        let mut fallback =
+            SemanticFallbackWriter::new(execution, 80, TerminalWidthProfile::Unicode);
+
+        flatten_serialized_json(
+            "model",
+            br#"{"z":{"value":"last"},"a":[true,2],"empty":{},"items":[]}"#,
+            &mut fallback,
+        )
+        .expect("serialized semantic projection should flatten");
+
+        assert_eq!(
+            fallback.finish().into_text(),
+            "model.a[0]: true\nmodel.a[1]: 2\nmodel.empty: {}\nmodel.items: []\nmodel.z.value: \"last\""
+        );
+    }
+
+    #[test]
+    fn value_semantic_projection_preserves_empty_containers() {
+        let resources = crate::AsciiResourcePolicy::unbounded();
+        let execution = crate::operation::AsciiExecution::for_test(&resources);
+        let mut fallback =
+            SemanticFallbackWriter::new(execution, 80, TerminalWidthProfile::Unicode);
+
+        flatten_json_value(
+            "model",
+            &serde_json::json!({"empty": {}, "items": []}),
+            &mut fallback,
+        )
+        .expect("value semantic projection should flatten");
+
+        assert_eq!(
+            fallback.finish().into_text(),
+            "model.empty: {}\nmodel.items: []"
+        );
+    }
+
+    #[test]
+    fn semantic_fallback_writer_normalizes_terminal_controls_with_exact_output_budget() {
+        let authored = "prefix \u{202e} suffix";
+        let expected = "prefix \\u{202E} suffix";
+        let exact_resources = crate::AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+            .expect("positive output-byte limit");
+        let exact_execution = crate::operation::AsciiExecution::for_test(&exact_resources);
+        let mut exact =
+            SemanticFallbackWriter::new(exact_execution, 80, TerminalWidthProfile::Unicode);
+
+        exact
+            .push(authored.to_string())
+            .expect("the exact normalized output-byte boundary should succeed");
+        assert_eq!(exact.finish().into_text(), expected);
+
+        let below_resources = crate::AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+            .expect("positive output-byte limit");
+        let below_execution = crate::operation::AsciiExecution::for_test(&below_resources);
+        let mut below =
+            SemanticFallbackWriter::new(below_execution, 80, TerminalWidthProfile::Unicode);
+
+        let error = below
+            .push(authored.to_string())
+            .expect_err("the N-1 normalized output-byte boundary should fail");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                    && details.actual == expected.len()
+                    && details.max == expected.len() - 1
+        ));
+    }
+
+    #[test]
+    fn semantic_fallback_writer_keeps_visible_escapes_atomic_when_they_fit() {
+        let resources = crate::AsciiResourcePolicy::unbounded();
+        let execution = crate::operation::AsciiExecution::for_test(&resources);
+        let mut fallback = SemanticFallbackWriter::new(execution, 8, TerminalWidthProfile::Unicode);
+
+        fallback
+            .push("a\u{202e}b".to_string())
+            .expect("terminal-safe fallback should render");
+
+        assert_eq!(fallback.finish().into_text(), "a\n\\u{202E}\nb");
+    }
+
+    #[test]
+    fn flowchart_semantic_fallback_observes_cancellation_before_projection() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA[Alpha] --> B[Beta]",
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("flowchart should parse")
+            .expect("flowchart should be detected");
+        let (metadata, model) = parsed.into_parts();
+        let control = merman_core::OperationControl::new();
+        control.cancel_after_checkpoints(0);
+        let resources = crate::AsciiResourcePolicy::default();
+        let execution = crate::operation::AsciiExecution::new(&control, &resources);
+
+        let error = build_semantic_fallback(
+            &model,
+            &metadata,
+            AsciiExtent::new(80, 5),
+            OutputBuildContext {
+                color_mode: AsciiColorMode::Plain,
+                profile: TerminalWidthProfile::Unicode,
+                layout_profile: crate::AsciiLayoutProfile::Canonical,
+                policy: AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+                execution,
+            },
+        )
+        .expect_err("cancelled fallback must not emit a partial projection");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Semantic
+        ));
+    }
+
+    #[test]
+    fn flowchart_semantic_fallback_honors_exact_output_budget() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA[Alpha] --> B[Beta]",
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("flowchart should parse")
+            .expect("flowchart should be detected");
+        let (metadata, model) = parsed.into_parts();
+        let unbounded_resources = crate::AsciiResourcePolicy::unbounded();
+        let unbounded_execution = crate::operation::AsciiExecution::for_test(&unbounded_resources);
+        let unbounded = build_semantic_fallback(
+            &model,
+            &metadata,
+            AsciiExtent::new(80, 5),
+            OutputBuildContext {
+                color_mode: AsciiColorMode::Plain,
+                profile: TerminalWidthProfile::Unicode,
+                layout_profile: crate::AsciiLayoutProfile::Canonical,
+                policy: AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+                execution: unbounded_execution,
+            },
+        )
+        .expect("unbounded flowchart fallback should render");
+        let serialized_len = match &model {
+            merman_core::diagram::RenderSemanticModel::Flowchart(flowchart) => {
+                let envelope = SemanticFallbackEnvelope {
+                    model: flowchart,
+                    diagram_type: &metadata.diagram_type,
+                };
+                serialize_bounded_json(&envelope, unbounded_execution)
+                    .unwrap_or_else(|_| panic!("flowchart projection should serialize"))
+                    .len()
+            }
+            _ => unreachable!("fixture is a flowchart"),
+        };
+        let exact_bytes = serialized_len.max(unbounded.text.len());
+
+        let exact_resources = crate::AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_bytes)
+            .expect("positive output-byte limit");
+        let exact_execution = crate::operation::AsciiExecution::for_test(&exact_resources);
+        build_semantic_fallback(
+            &model,
+            &metadata,
+            AsciiExtent::new(80, 5),
+            OutputBuildContext {
+                color_mode: AsciiColorMode::Plain,
+                profile: TerminalWidthProfile::Unicode,
+                layout_profile: crate::AsciiLayoutProfile::Canonical,
+                policy: AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+                execution: exact_execution,
+            },
+        )
+        .expect("the exact semantic output boundary should succeed");
+
+        let below_resources = crate::AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_bytes - 1)
+            .expect("positive output-byte limit");
+        let below_execution = crate::operation::AsciiExecution::for_test(&below_resources);
+        let error = build_semantic_fallback(
+            &model,
+            &metadata,
+            AsciiExtent::new(80, 5),
+            OutputBuildContext {
+                color_mode: AsciiColorMode::Plain,
+                profile: TerminalWidthProfile::Unicode,
+                layout_profile: crate::AsciiLayoutProfile::Canonical,
+                policy: AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+                execution: below_execution,
+            },
+        )
+        .expect_err("the N-1 semantic output boundary should fail");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                    && details.actual == exact_bytes
+                    && details.max == exact_bytes - 1
+        ));
+    }
+
+    #[test]
+    fn sequence_semantic_fallback_honors_exact_output_budget() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                concat!(
+                    "sequenceDiagram\n",
+                    "participant A\n",
+                    "properties A: {\"payload\": {}}\n",
+                    "participant B\n",
+                    "A->>B: A long authored message forcing a wide primary projection",
+                ),
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("sequence diagram should parse")
+            .expect("sequence diagram should be detected");
+        let (metadata, model) = parsed.into_parts();
+        let unbounded_resources = crate::AsciiResourcePolicy::unbounded();
+        let unbounded_execution = crate::operation::AsciiExecution::for_test(&unbounded_resources);
+        let unbounded = build_semantic_fallback(
+            &model,
+            &metadata,
+            AsciiExtent::new(80, 5),
+            OutputBuildContext {
+                color_mode: AsciiColorMode::Plain,
+                profile: TerminalWidthProfile::Unicode,
+                layout_profile: crate::AsciiLayoutProfile::Canonical,
+                policy: AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+                execution: unbounded_execution,
+            },
+        )
+        .expect("unbounded sequence fallback should render");
+        let flattened = unbounded.text.replace('\n', "");
+        assert!(
+            flattened.contains("model.actors.A.properties.payload: {}"),
+            "{}",
+            unbounded.text
+        );
+        let serialized_len = match &model {
+            merman_core::diagram::RenderSemanticModel::Sequence(sequence) => {
+                serialize_bounded_json(
+                    &sequence.compatibility_projection(&metadata.diagram_type),
+                    unbounded_execution,
+                )
+                .unwrap_or_else(|_| panic!("sequence projection should serialize"))
+                .len()
+            }
+            _ => unreachable!("fixture is a sequence diagram"),
+        };
+        let exact_bytes = serialized_len.max(unbounded.text.len());
+
+        let exact_resources = crate::AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_bytes)
+            .expect("positive output-byte limit");
+        let exact_execution = crate::operation::AsciiExecution::for_test(&exact_resources);
+        build_semantic_fallback(
+            &model,
+            &metadata,
+            AsciiExtent::new(80, 5),
+            OutputBuildContext {
+                color_mode: AsciiColorMode::Plain,
+                profile: TerminalWidthProfile::Unicode,
+                layout_profile: crate::AsciiLayoutProfile::Canonical,
+                policy: AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+                execution: exact_execution,
+            },
+        )
+        .expect("the exact sequence output boundary should succeed");
+
+        let below_resources = crate::AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_bytes - 1)
+            .expect("positive output-byte limit");
+        let below_execution = crate::operation::AsciiExecution::for_test(&below_resources);
+        let error = build_semantic_fallback(
+            &model,
+            &metadata,
+            AsciiExtent::new(80, 5),
+            OutputBuildContext {
+                color_mode: AsciiColorMode::Plain,
+                profile: TerminalWidthProfile::Unicode,
+                layout_profile: crate::AsciiLayoutProfile::Canonical,
+                policy: AsciiViewportPolicy::with_max_width(12).overflow(OverflowPolicy::Fallback),
+                execution: below_execution,
+            },
+        )
+        .expect_err("the N-1 sequence output boundary should fail");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                    && details.actual == exact_bytes
+                    && details.max == exact_bytes - 1
+        ));
+    }
+
+    #[test]
+    fn serialized_semantic_projection_observes_semantic_cancellation_before_first_row() {
+        let control = merman_core::OperationControl::new();
+        control.cancel_after_checkpoints(0);
+        let resources = crate::AsciiResourcePolicy::default();
+        let execution = crate::operation::AsciiExecution::new(&control, &resources);
+        let mut fallback =
+            SemanticFallbackWriter::new(execution, 80, TerminalWidthProfile::Unicode);
+
+        let result = flatten_serialized_json("model", br#"{"value":"first"}"#, &mut fallback);
+        assert!(matches!(
+            result,
+            Err(AsciiError::Cancelled(cancelled))
+                if cancelled.phase == OperationPhase::Semantic
+        ));
+    }
+
+    #[test]
+    fn compatibility_projection_budget_rejects_container_amplification_before_allocation() {
+        let policy = crate::AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 256)
+            .expect("positive output limit");
+        let resources = ResourceContext::new(policy);
+
+        let error = check_semantic_projection_budget(
+            merman_core::resources::ModelComplexity::new(8, 128, 2),
+            &resources,
+        )
+        .expect_err("the conservative projection budget should reject amplification");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+        ));
+    }
+
+    #[test]
+    fn compatibility_projection_budget_records_the_operation_terminal() {
+        let control = merman_core::OperationControl::new();
+        let policy = crate::AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 256)
+            .expect("positive output limit");
+        let execution = crate::operation::AsciiExecution::new(&control, &policy);
+        let resources = execution.new_resource_context(OperationPhase::Semantic);
+
+        let first = check_semantic_projection_budget(
+            merman_core::resources::ModelComplexity::new(8, 128, 2),
+            &resources,
+        )
+        .expect_err("the projection estimate should exceed the output budget");
+        let replayed = execution
+            .checkpoint(OperationPhase::Emit)
+            .expect_err("later phases must replay the first resource terminal");
+
+        assert_eq!(replayed, first);
+    }
+
+    #[test]
+    fn sequence_semantic_preflight_enforces_json_nesting_before_serialization() {
+        let mut nested = Value::Null;
+        for _ in 0..300 {
+            nested = Value::Array(vec![nested]);
+        }
+        let model = sequence_model_with_property(nested);
+        let complexity = merman_core::resources::ModelComplexity::from_render_model(&model);
+
+        let exact_policy = crate::AsciiResourcePolicy::unbounded()
+            .with_limit(
+                AsciiResourceLimitId::MaxNestingDepth,
+                complexity.nesting_depth,
+            )
+            .expect("positive nesting limit");
+        let exact_control = merman_core::OperationControl::new();
+        let exact_execution = crate::operation::AsciiExecution::new(&exact_control, &exact_policy);
+        preflight_semantic_model(&model, exact_execution)
+            .expect("the exact JSON nesting boundary should pass");
+
+        let below_policy = crate::AsciiResourcePolicy::unbounded()
+            .with_limit(
+                AsciiResourceLimitId::MaxNestingDepth,
+                complexity.nesting_depth - 1,
+            )
+            .expect("positive nesting limit");
+        let below_control = merman_core::OperationControl::new();
+        let below_execution = crate::operation::AsciiExecution::new(&below_control, &below_policy);
+        let error = preflight_semantic_model(&model, below_execution)
+            .expect_err("the N-1 JSON nesting boundary should fail before serde");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxNestingDepth
+                    && details.actual == complexity.nesting_depth
+                    && details.max == complexity.nesting_depth - 1
+        ));
+    }
+
+    #[test]
+    fn sequence_semantic_preflight_charges_json_items_as_layout_work() {
+        let model = sequence_model_with_property(Value::Array(vec![Value::Null; 4_096]));
+        let complexity = merman_core::resources::ModelComplexity::from_render_model(&model);
+        assert!(complexity.items > 4_096);
+
+        let exact_policy = crate::AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, complexity.items)
+            .expect("positive work limit");
+        let exact_control = merman_core::OperationControl::new();
+        let exact_execution = crate::operation::AsciiExecution::new(&exact_control, &exact_policy);
+        preflight_semantic_model(&model, exact_execution)
+            .expect("the exact JSON item work boundary should pass");
+
+        let below_policy = crate::AsciiResourcePolicy::unbounded()
+            .with_limit(
+                AsciiResourceLimitId::MaxLayoutWorkUnits,
+                complexity.items - 1,
+            )
+            .expect("positive work limit");
+        let below_control = merman_core::OperationControl::new();
+        let below_execution = crate::operation::AsciiExecution::new(&below_control, &below_policy);
+        let error = preflight_semantic_model(&model, below_execution)
+            .expect_err("the N-1 JSON item work boundary should fail before serde");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == complexity.items
+                    && details.max == complexity.items - 1
+        ));
+    }
+
+    #[test]
+    fn sequence_semantic_projection_bounds_nested_properties_while_streaming() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant A",
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("sequence diagram should parse")
+            .expect("sequence diagram should be detected");
+        let (metadata, mut model) = parsed.into_parts();
+        let merman_core::diagram::RenderSemanticModel::Sequence(sequence) = &mut model else {
+            unreachable!("fixture is a sequence diagram");
+        };
+        sequence
+            .actors
+            .get_mut("A")
+            .expect("fixture actor should exist")
+            .properties
+            .insert(
+                "payload".to_string(),
+                Value::Array((0..4_096).map(Value::from).collect()),
+            );
+        let control = merman_core::OperationControl::new();
+        let resources = crate::AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 256)
+            .expect("positive output limit");
+        let execution = crate::operation::AsciiExecution::new(&control, &resources);
+
+        let result = semantic_fallback_projection(&model, &metadata, &control, execution);
+
+        assert!(matches!(
+            result,
+            Err(SemanticFallbackError::Resource(
+                AsciiError::ResourceLimitExceeded(details)
+            )) if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                && details.actual > details.max
+        ));
+    }
+
+    #[test]
+    fn sequence_semantic_projection_observes_cancellation_during_streaming_properties() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant A",
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("sequence diagram should parse")
+            .expect("sequence diagram should be detected");
+        let (metadata, mut model) = parsed.into_parts();
+        let merman_core::diagram::RenderSemanticModel::Sequence(sequence) = &mut model else {
+            unreachable!("fixture is a sequence diagram");
+        };
+        sequence
+            .actors
+            .get_mut("A")
+            .expect("fixture actor should exist")
+            .properties
+            .insert(
+                "payload".to_string(),
+                Value::Array((0..4_096).map(Value::from).collect()),
+            );
+        let control = merman_core::OperationControl::new();
+        control.cancel_after_checkpoints(64);
+        let resources = crate::AsciiResourcePolicy::unbounded();
+        let execution = crate::operation::AsciiExecution::new(&control, &resources);
+
+        let result = semantic_fallback_projection(&model, &metadata, &control, execution);
+
         assert!(matches!(
             result,
             Err(SemanticFallbackError::Cancelled(cancelled))

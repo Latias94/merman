@@ -16,7 +16,8 @@ pub(crate) use deferred::{
 #[cfg(test)]
 use document::encode_text_lines;
 pub(crate) use document::{
-    BudgetedTextDocument, BudgetedTextLine, charge_text_layout, visit_safe_line_graphemes,
+    BudgetedTextDocument, BudgetedTextLine, charge_text_layout, visit_safe_line_fragments,
+    visit_safe_line_graphemes,
 };
 pub(crate) use encode::visit_html_escaped_text;
 pub(crate) use framing::{

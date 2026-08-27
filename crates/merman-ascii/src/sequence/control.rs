@@ -130,6 +130,7 @@ struct SequenceFrameBodyPlanContext<'a, 'diagram> {
     forest: &'a SequenceControlFrameForest,
     frames: &'a [SequenceControlFrame<'diagram>],
     footprints: &'a [SequenceRowFootprint],
+    layout: &'a SequenceLayout,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -442,6 +443,7 @@ fn plan_control_frames<'diagram>(
         forest,
         frames,
         footprints,
+        layout,
     };
     let mut pending = Vec::new();
     pending
@@ -482,7 +484,12 @@ fn plan_control_frames<'diagram>(
             resources,
             checkpoints,
         )?;
-        let title = frame_title_plan(frame, layout.width_profile, resources, checkpoints)?;
+        let title = frame_title_plan(
+            frame,
+            layout.policy.terminal_width_profile,
+            resources,
+            checkpoints,
+        )?;
         let mut separator_titles = Vec::new();
         separator_titles
             .try_reserve_exact(frame.separators.len())
@@ -492,7 +499,7 @@ fn plan_control_frames<'diagram>(
             separator_titles.push(separator_title_plan(
                 frame,
                 separator,
-                layout.width_profile,
+                layout.policy.terminal_width_profile,
                 resources,
                 checkpoints,
             )?);
@@ -512,7 +519,10 @@ fn plan_control_frames<'diagram>(
             .depth
             .checked_sub(1)
             .ok_or_else(invalid_control_frame)?;
-        bounds.shift_right(resources.checked_grid_mul(inset_levels, 2)?, resources)?;
+        bounds.shift_right(
+            resources.checked_grid_mul(inset_levels, layout.policy.control_depth_gutter)?,
+            resources,
+        )?;
         let row_count = resources.checked_grid_add(body_rows, 2)?;
         let total_width = input_width.max(bounds.right_exclusive(resources)?);
         resources.grid_extent(total_width, row_count)?;
@@ -595,7 +605,7 @@ fn planned_frame_body_extent(
                     .and_then(Option::as_ref)
                     .ok_or_else(invalid_control_frame)?;
                 planned_rows = resources.checked_grid_add(planned_rows, child_plan.row_count)?;
-                bounds.include_child(child_plan.bounds, resources)?;
+                bounds.include_child(child_plan.bounds, context.layout, resources)?;
                 row = resources
                     .checked_grid_add(child_frame.end_row.ok_or_else(invalid_control_frame)?, 1)?;
                 child_index = resources.checked_grid_add(child_index, 1)?;
@@ -610,7 +620,7 @@ fn planned_frame_body_extent(
             .ok_or_else(invalid_control_frame)?;
         planned_rows = resources.checked_grid_add(planned_rows, 1)?;
         if participant_span.is_some() {
-            bounds.include_footprint_content(footprint, resources)?;
+            bounds.include_footprint_content(footprint, context.layout, resources)?;
         }
         row = resources.checked_grid_add(row, 1)?;
     }
@@ -1011,6 +1021,7 @@ fn allocation_failed() -> AsciiError {
 mod tests {
     use super::*;
     use crate::operation::AsciiExecution;
+    use crate::options::AsciiRenderOptions;
     use crate::resource::AsciiResourcePolicy;
     use crate::sequence::text::blank_line;
     #[cfg(not(target_arch = "wasm32"))]
@@ -1378,9 +1389,7 @@ mod tests {
             participant_widths: Vec::new(),
             participant_centers: Vec::new(),
             total_width: 3,
-            message_spacing: 1,
-            self_message_width: 4,
-            width_profile: TerminalWidthProfile::Unicode,
+            policy: AsciiRenderOptions::unicode().sequence_layout(),
         }
     }
 

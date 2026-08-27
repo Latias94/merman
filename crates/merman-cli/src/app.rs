@@ -88,6 +88,19 @@ pub(crate) struct CliApp {
     execution: ExecutionContext,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ErrorOutputMode {
+    Human,
+    #[cfg(feature = "ascii")]
+    AsciiReportJson,
+}
+
+impl ErrorOutputMode {
+    const fn emits_human_text(self) -> bool {
+        matches!(self, Self::Human)
+    }
+}
+
 pub(crate) fn run_system() -> ExitCode {
     CliApp {
         process: ProcessSnapshot::system(),
@@ -102,13 +115,15 @@ impl CliApp {
             process,
             mut execution,
         } = self;
+        let error_output = error_output_mode(&process.args);
         let parsed = match parse_cli(&process.args) {
             Ok(parsed) => parsed,
             Err(error) => {
-                return print_clap_error(error, &execution.stdout, &execution.stderr);
+                return print_clap_error(error, &execution.stdout, &execution.stderr, error_output);
             }
         };
-        if let Some(warning) = parsed.deprecated_native_format_warning()
+        if error_output.emits_human_text()
+            && let Some(warning) = parsed.deprecated_native_format_warning()
             && let Err(source) = execution.stderr.write_all(warning.as_bytes())
         {
             return CliError::stream("stderr", source).exit_code();
@@ -116,31 +131,35 @@ impl CliApp {
         let cli = parsed.cli;
         let facts = match process.into_facts(command_needs_working_directory(&cli.command)) {
             Ok(facts) => facts,
-            Err(error) => return report_error(CliError::Io(error), &execution.stderr),
+            Err(error) => {
+                return report_error(CliError::Io(error), &execution.stderr, error_output);
+            }
         };
-        Self::execute_parsed(cli, facts, &mut execution)
+        Self::execute_parsed(cli, facts, &mut execution, error_output)
     }
 
     fn execute_parsed(
         cli: Cli,
         facts: InvocationFacts,
         execution: &mut ExecutionContext,
+        error_output: ErrorOutputMode,
     ) -> ExitCode {
         let invocation = match crate::invocation::resolve(cli, &facts) {
             Ok(invocation) => invocation,
             Err(error) => {
-                if let Some(command) = error.missing_input_command()
+                if error_output.emits_human_text()
+                    && let Some(command) = error.missing_input_command()
                     && let Err(source) = write_command_help_to_stderr(command, &execution.stderr)
                 {
                     return CliError::stream("stderr", source).exit_code();
                 }
-                return report_error(error, &execution.stderr);
+                return report_error(error, &execution.stderr, error_output);
             }
         };
         #[cfg(any(feature = "svg", feature = "ascii"))]
         let host_operation = match crate::operation::HostOperation::begin_for(&invocation) {
             Ok(operation) => operation,
-            Err(error) => return report_error(error, &execution.stderr),
+            Err(error) => return report_error(error, &execution.stderr, error_output),
         };
         let Some(cwd) = facts.cwd.as_deref() else {
             return match crate::output::LocalPreflight::path_free(invocation) {
@@ -149,8 +168,9 @@ impl CliApp {
                     #[cfg(any(feature = "svg", feature = "ascii"))]
                     host_operation,
                     execution,
+                    error_output,
                 ),
-                Err(error) => report_error(error, &execution.stderr),
+                Err(error) => report_error(error, &execution.stderr, error_output),
             };
         };
         #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -170,7 +190,7 @@ impl CliApp {
             Err(error) => {
                 #[cfg(any(feature = "svg", feature = "ascii"))]
                 drop(host_operation);
-                return report_error(error, &execution.stderr);
+                return report_error(error, &execution.stderr, error_output);
             }
         };
         run_preflight(
@@ -178,6 +198,7 @@ impl CliApp {
             #[cfg(any(feature = "svg", feature = "ascii"))]
             host_operation,
             execution,
+            error_output,
         )
     }
 }
@@ -188,6 +209,7 @@ fn run_preflight(
         crate::operation::HostOperation,
     >,
     execution: &mut ExecutionContext,
+    error_output: ErrorOutputMode,
 ) -> ExitCode {
     #[cfg(any(feature = "svg", feature = "ascii"))]
     let fallback_control = merman::OperationControl::new();
@@ -206,8 +228,25 @@ fn run_preflight(
     drop(host_operation);
     match result {
         Ok(exit_code) => exit_code_from_i32(exit_code),
-        Err(error) => report_error(error, &execution.stderr),
+        Err(error) => report_error(error, &execution.stderr, error_output),
     }
+}
+
+fn error_output_mode(_args: &[OsString]) -> ErrorOutputMode {
+    #[cfg(feature = "ascii")]
+    if matches!(
+        _args.get(1).and_then(|argument| argument.to_str()),
+        Some("render")
+    ) && _args
+        .iter()
+        .skip(2)
+        .take_while(|argument| argument.as_os_str() != OsStr::new("--"))
+        .any(|argument| argument == OsStr::new("--ascii-report"))
+    {
+        return ErrorOutputMode::AsciiReportJson;
+    }
+
+    ErrorOutputMode::Human
 }
 
 fn command_needs_working_directory(command: &RawCommand) -> bool {
@@ -654,24 +693,55 @@ fn write_command_help_to_stderr(name: &str, stderr: &SharedWriter) -> io::Result
     stderr.write_all(b"\n\n")
 }
 
-fn print_clap_error(error: clap::Error, stdout: &SharedWriter, stderr: &SharedWriter) -> ExitCode {
+fn print_clap_error(
+    error: clap::Error,
+    stdout: &SharedWriter,
+    stderr: &SharedWriter,
+    error_output: ErrorOutputMode,
+) -> ExitCode {
+    if !error_output.emits_human_text() && error.use_stderr() {
+        return report_error(
+            CliError::InvalidInput(error.to_string()),
+            stderr,
+            error_output,
+        );
+    }
     let exit_code = error.exit_code();
     let (stream, destination) = if error.use_stderr() {
         ("stderr", stderr)
     } else {
         ("stdout", stdout)
     };
-    match destination.write_all(error.render().to_string().as_bytes()) {
+    let rendered = error.render().to_string();
+    let terminal_safe = merman::normalize_terminal_text(&rendered);
+    match destination.write_all(terminal_safe.as_bytes()) {
         Ok(()) => exit_code_from_i32(exit_code),
         Err(source) => CliError::stream(stream, source).exit_code(),
     }
 }
 
-fn report_error(error: CliError, stderr: &SharedWriter) -> ExitCode {
+fn report_error(
+    error: CliError,
+    stderr: &SharedWriter,
+    _error_output: ErrorOutputMode,
+) -> ExitCode {
     if error.is_broken_stdout_pipe() {
         return ExitCode::SUCCESS;
     }
     let exit_code = error.exit_code();
+    #[cfg(feature = "ascii")]
+    if _error_output == ErrorOutputMode::AsciiReportJson {
+        let mut bytes = match serde_json::to_vec(&error.ascii_error_report()) {
+            Ok(bytes) => bytes,
+            Err(source) => return CliError::json_output(source).exit_code(),
+        };
+        bytes.push(b'\n');
+        return match stderr.write_all(&bytes) {
+            Ok(()) => exit_code,
+            Err(source) => CliError::stream("stderr", source).exit_code(),
+        };
+    }
+
     match stderr.with_writer(|stderr| writeln!(stderr, "{error}")) {
         Ok(()) => exit_code,
         Err(source) => CliError::stream("stderr", source).exit_code(),

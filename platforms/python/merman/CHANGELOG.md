@@ -8,6 +8,11 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
+- Advanced the direct UniFFI binding API to `6` because `MermanAsciiCapability` gained
+  layout/width/encoding/fallback admission arrays and `MermanAsciiOutputPlan` gained schema-2
+  encoding. API 6 replaces `binding_api_version_v5()` with `binding_api_version_v6()` so stale
+  generated packages fail before decoding either changed record. Regenerate and deploy the Python
+  package and native library together.
 - Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. `MermanError.Binding.cancellation` reports the observed reason and phase independently from resource-limit details.
 - Advanced the direct UniFFI binding API to `5` because `MermanAsciiCapability` and
   `MermanError.Binding` changed wire layouts that UniFFI method checksums do not cover. API 5

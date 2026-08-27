@@ -4,9 +4,12 @@ import type {
   AsciiCapability,
   AsciiCapabilityEvidence,
   AsciiDiagramType,
+  AsciiLayoutProfile,
+  AsciiOutputEncoding,
   AsciiPrimaryProjection,
   AsciiSemanticCoverage,
   AsciiSupportLevel,
+  AsciiWidthProfile,
 } from "./public-catalog.js";
 import type { AsciiBindingOptions } from "./public-types.js";
 import type { MermanRuntimeState } from "./runtime-state.js";
@@ -40,6 +43,10 @@ export function asciiCapabilities(): AsciiCapability[] {
     .map(normalizeAsciiCapability);
   return cache.capabilities.map((capability) => ({
     ...capability,
+    layout_profiles: [...capability.layout_profiles],
+    width_profiles: [...capability.width_profiles],
+    encodings: [...capability.encodings],
+    fallback_encodings: [...capability.fallback_encodings],
     supported_semantics: [...capability.supported_semantics],
     limits: [...capability.limits],
     evidence: capability.evidence.map((evidence) => ({ ...evidence })),
@@ -108,6 +115,13 @@ function normalizeAsciiCapability(capability: AsciiCapability): AsciiCapability 
     semantic_coverage: semanticCoverage,
     primary_projection: primaryProjection,
     structured_text_fallback: Boolean(capability.structured_text_fallback),
+    layout_profiles: normalizeAsciiLayoutProfiles(capability.layout_profiles),
+    width_profiles: normalizeAsciiWidthProfiles(capability.width_profiles),
+    encodings: normalizeAsciiOutputEncodings(capability.encodings, "encodings"),
+    fallback_encodings: normalizeAsciiOutputEncodings(
+      capability.fallback_encodings,
+      "fallback_encodings"
+    ),
     support_level: supportLevel,
     supported_semantics: Array.isArray(capability.supported_semantics)
       ? capability.supported_semantics.map(String)
@@ -115,6 +129,47 @@ function normalizeAsciiCapability(capability: AsciiCapability): AsciiCapability 
     limits: Array.isArray(capability.limits) ? capability.limits.map(String) : [],
     evidence,
   };
+}
+
+function normalizeAsciiLayoutProfiles(value: unknown): AsciiLayoutProfile[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Merman WASM returned invalid ASCII layout profiles.");
+  }
+  return value.map((profile) => {
+    if (profile === "canonical" || profile === "compact") return profile;
+    throw new Error("Merman WASM returned an unknown ASCII layout profile.");
+  });
+}
+
+function normalizeAsciiWidthProfiles(value: unknown): AsciiWidthProfile[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Merman WASM returned invalid ASCII width profiles.");
+  }
+  return value.map((profile) => {
+    if (profile === "unicode" || profile === "cjk") return profile;
+    throw new Error("Merman WASM returned an unknown ASCII width profile.");
+  });
+}
+
+function normalizeAsciiOutputEncodings(
+  value: unknown,
+  field: string
+): AsciiOutputEncoding[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Merman WASM returned invalid ASCII ${field}.`);
+  }
+  return value.map((encoding) => {
+    if (
+      encoding === "plain" ||
+      encoding === "ansi16" ||
+      encoding === "ansi256" ||
+      encoding === "truecolor" ||
+      encoding === "html"
+    ) {
+      return encoding;
+    }
+    throw new Error(`Merman WASM returned an unknown ASCII ${field} value.`);
+  });
 }
 
 function normalizeAsciiSemanticCoverage(level: unknown): AsciiSemanticCoverage {

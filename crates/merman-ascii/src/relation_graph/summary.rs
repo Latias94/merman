@@ -125,10 +125,10 @@ pub(crate) fn relation_summary_lines_for_rows(
         .map_err(|_| super::layout_allocation_failed())?;
     if let Some(reason) = measurement.diagnostic_reason {
         let mut diagnostic = StyledLine::with_resources(options.terminal_width_profile, resources);
-        diagnostic.try_push_role_text("reason: ", AsciiColorRole::MutedText)?;
+        diagnostic.try_push_role_text("reason: ", AsciiColorRole::Diagnostic)?;
         diagnostic.try_push_role_text(
             relation_summary_reason_text(reason),
-            AsciiColorRole::MutedText,
+            AsciiColorRole::Diagnostic,
         )?;
         lines.push(RelationGraphLine::from_styled(diagnostic));
     }
@@ -391,7 +391,7 @@ mod tests {
     #[test]
     fn render_stacked_boxes_with_relation_summary_colors_title_and_rows() {
         let theme = AsciiColorTheme::default_light()
-            .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x222222))
+            .with_role(AsciiColorRole::Section, AsciiRgb::from_hex24(0x222222))
             .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x333333));
 
         let options = AsciiRenderOptions::ascii()

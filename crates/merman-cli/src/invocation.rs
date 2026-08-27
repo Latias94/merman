@@ -1313,20 +1313,7 @@ fn resolve_text_output_options(
             TextDirection::TopDown => merman::ascii::AsciiDirection::TopDown,
         };
     }
-    if let Some(color_mode) = args.ascii_color {
-        let color_mode = match color_mode {
-            TextColorMode::Auto => resolve_auto_text_color(facts, destination),
-            explicit => explicit,
-        };
-        options.color_mode = match color_mode {
-            TextColorMode::Plain => merman::ascii::AsciiColorMode::Plain,
-            TextColorMode::Ansi16 => merman::ascii::AsciiColorMode::Ansi16,
-            TextColorMode::Ansi256 => merman::ascii::AsciiColorMode::Ansi256,
-            TextColorMode::Truecolor => merman::ascii::AsciiColorMode::TrueColor,
-            TextColorMode::Html => merman::ascii::AsciiColorMode::Html,
-            TextColorMode::Auto => unreachable!("automatic text color is resolved above"),
-        };
-    }
+    options.color_mode = resolve_text_color_mode(args, destination, facts)?;
     options.sequence_mirror_actors = args.sequence_mirror_actors;
     if let Some(height) = args.xychart_vertical_plot_height {
         options.xychart_vertical_plot_height = height;
@@ -1341,6 +1328,40 @@ fn resolve_text_output_options(
         .validate()
         .map_err(|error| CliError::InvalidInput(format!("invalid ASCII options: {error}")))?;
     Ok(options)
+}
+
+#[cfg(feature = "ascii")]
+fn resolve_text_color_mode(
+    args: &TextOutputCliArgs,
+    destination: &ResolvedDestination,
+    facts: &InvocationFacts,
+) -> Result<merman::ascii::AsciiColorMode, CliError> {
+    if args.ascii_report {
+        return match args.ascii_color {
+            None | Some(TextColorMode::Plain | TextColorMode::Auto) => {
+                Ok(merman::ascii::AsciiColorMode::Plain)
+            }
+            Some(
+                TextColorMode::Ansi16
+                | TextColorMode::Ansi256
+                | TextColorMode::Truecolor
+                | TextColorMode::Html,
+            ) => Err(CliError::AsciiReportRequiresPlain),
+        };
+    }
+
+    let color_mode = match args.ascii_color.unwrap_or(TextColorMode::Plain) {
+        TextColorMode::Auto => resolve_auto_text_color(facts, destination),
+        explicit => explicit,
+    };
+    Ok(match color_mode {
+        TextColorMode::Plain => merman::ascii::AsciiColorMode::Plain,
+        TextColorMode::Ansi16 => merman::ascii::AsciiColorMode::Ansi16,
+        TextColorMode::Ansi256 => merman::ascii::AsciiColorMode::Ansi256,
+        TextColorMode::Truecolor => merman::ascii::AsciiColorMode::TrueColor,
+        TextColorMode::Html => merman::ascii::AsciiColorMode::Html,
+        TextColorMode::Auto => unreachable!("automatic text color is resolved above"),
+    })
 }
 
 #[cfg(feature = "ascii")]
@@ -2127,6 +2148,73 @@ mod tests {
         .expect("resolve text options");
 
         assert_eq!(resolved.color_mode, merman::ascii::AsciiColorMode::Ansi16);
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn report_output_normalizes_auto_color_to_plain_for_every_host_context() {
+        let args = TextOutputCliArgs {
+            ascii_color: Some(crate::cli::TextColorMode::Auto),
+            ascii_report: true,
+            ..TextOutputCliArgs::default()
+        };
+        let cases = [
+            (
+                ResolvedDestination::Stdout,
+                color_facts(
+                    true,
+                    false,
+                    false,
+                    Some("truecolor"),
+                    Some("xterm-256color"),
+                ),
+            ),
+            (
+                ResolvedDestination::Stdout,
+                color_facts(false, false, false, None, Some("xterm")),
+            ),
+            (
+                ResolvedDestination::File(PathBuf::from("report.json")),
+                color_facts(true, false, true, Some("truecolor"), Some("xterm-256color")),
+            ),
+            (
+                ResolvedDestination::Stdout,
+                color_facts(true, true, false, Some("truecolor"), Some("dumb")),
+            ),
+        ];
+
+        for (destination, facts) in cases {
+            let resolved =
+                resolve_text_output_options(RenderFormat::Unicode, &args, &destination, &facts)
+                    .expect("report auto color should normalize to plain");
+            assert_eq!(resolved.color_mode, merman::ascii::AsciiColorMode::Plain);
+        }
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn report_output_rejects_every_explicit_styled_encoding() {
+        for color_mode in [
+            crate::cli::TextColorMode::Ansi16,
+            crate::cli::TextColorMode::Ansi256,
+            crate::cli::TextColorMode::Truecolor,
+            crate::cli::TextColorMode::Html,
+        ] {
+            let args = TextOutputCliArgs {
+                ascii_color: Some(color_mode),
+                ascii_report: true,
+                ..TextOutputCliArgs::default()
+            };
+            let error = resolve_text_output_options(
+                RenderFormat::Ascii,
+                &args,
+                &ResolvedDestination::Stdout,
+                &color_facts(true, false, false, Some("truecolor"), Some("xterm")),
+            )
+            .expect_err("styled report output must fail during invocation normalization");
+
+            assert!(matches!(error, CliError::AsciiReportRequiresPlain));
+        }
     }
 
     #[cfg(feature = "ascii")]

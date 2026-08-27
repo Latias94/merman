@@ -1,5 +1,6 @@
 use crate::color::{AsciiColorMode, AsciiColorTheme};
 use crate::error::{AsciiError, Result};
+use crate::output::AsciiOutputEncoding;
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -83,10 +84,140 @@ pub struct AsciiRenderOptions {
     pub(crate) layout_overrides: u8,
 }
 
+/// Host facts and explicit presentation choices resolved before family rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AsciiHostPolicy {
+    structural_charset: AsciiCharset,
+    terminal_width_profile: TerminalWidthProfile,
+    color_mode: AsciiColorMode,
+}
+
+/// Output facts shared by measurement, viewport admission, and encoders.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AsciiOutputPolicy {
+    pub terminal_width_profile: TerminalWidthProfile,
+    pub color_mode: AsciiColorMode,
+    pub encoding: AsciiOutputEncoding,
+}
+
+/// Flowchart-owned projection and geometry policy. The family boundary reduces this view to a
+/// graph-scene policy only after Flowchart semantics have been projected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FlowchartLayoutPolicy {
+    /// Padding inside a node frame, measured in terminal cells.
+    pub node_border_padding: usize,
+    /// Gap between ranked graph columns and rows.
+    pub rank_gap_x: usize,
+    pub rank_gap_y: usize,
+    pub node_label_wrap_width: usize,
+    /// Horizontal and vertical clearance around compound subgraph members.
+    pub group_padding_x: usize,
+    pub group_padding_y: usize,
+    /// Extra rows reserved for a compound group title before its members.
+    pub group_title_clearance: usize,
+    /// Bounded search radius used when moving edge labels away from route cells.
+    pub edge_label_lane_radius: usize,
+    pub default_direction: AsciiDirection,
+    pub structural_charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
+}
+
+impl FlowchartLayoutPolicy {
+    pub(crate) const DEFAULT_EDGE_LABEL_LANE_RADIUS: usize =
+        GraphLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS;
+
+    pub(crate) const fn graph_policy(self) -> GraphLayoutPolicy {
+        GraphLayoutPolicy {
+            node_border_padding: self.node_border_padding,
+            rank_gap_x: self.rank_gap_x,
+            rank_gap_y: self.rank_gap_y,
+            group_padding_x: self.group_padding_x,
+            group_padding_y: self.group_padding_y,
+            group_title_clearance: self.group_title_clearance,
+            edge_label_lane_radius: self.edge_label_lane_radius,
+            structural_charset: self.structural_charset,
+            terminal_width_profile: self.terminal_width_profile,
+        }
+    }
+}
+
+/// Family-neutral graph-scene geometry consumed only after semantic projection. Flowchart and
+/// State construct this policy independently so profile experiments cannot cross family bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GraphLayoutPolicy {
+    pub node_border_padding: usize,
+    pub rank_gap_x: usize,
+    pub rank_gap_y: usize,
+    pub group_padding_x: usize,
+    pub group_padding_y: usize,
+    pub group_title_clearance: usize,
+    pub edge_label_lane_radius: usize,
+    pub structural_charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
+}
+
+impl GraphLayoutPolicy {
+    pub(crate) const DEFAULT_EDGE_LABEL_LANE_RADIUS: usize = 4;
+}
+
+/// Sequence-owned geometry policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SequenceLayoutPolicy {
+    pub participant_label_wrap_width: usize,
+    pub participant_spacing: usize,
+    pub message_spacing: usize,
+    pub message_label_left_margin: usize,
+    pub message_label_overflow_buffer: usize,
+    pub self_message_width: usize,
+    pub note_side_gutter: usize,
+    pub note_wrap_width: usize,
+    pub box_content_gutter: usize,
+    pub section_title_gutter: usize,
+    pub section_title_wrap_width: usize,
+    pub control_participant_gutter: usize,
+    pub control_content_gutter: usize,
+    pub control_nested_gutter: usize,
+    pub control_depth_gutter: usize,
+    pub title_bottom_spacing: usize,
+    pub mirror_actors: bool,
+    pub structural_charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
+}
+
+/// XYChart-owned geometry policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct XyChartLayoutPolicy {
+    pub vertical_plot_height: usize,
+    pub category_band_width: usize,
+    pub horizontal_plot_width: usize,
+    pub structural_charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AsciiLayoutPolicies {
+    pub profile: AsciiLayoutProfile,
+    pub flowchart: FlowchartLayoutPolicy,
+    pub state: GraphLayoutPolicy,
+    pub sequence: SequenceLayoutPolicy,
+    pub xychart: XyChartLayoutPolicy,
+}
+
+/// The one internal policy resolution seam. The public options record remains a compatibility
+/// façade while family modules consume only the resolved view they own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ResolvedAsciiPolicies {
+    pub options: AsciiRenderOptions,
+    pub layout: AsciiLayoutPolicies,
+    pub output: AsciiOutputPolicy,
+}
+
 const OVERRIDE_GRAPH_PADDING_X: u8 = 1 << 0;
 const OVERRIDE_GRAPH_PADDING_Y: u8 = 1 << 1;
 const OVERRIDE_FLOWCHART_WRAP_WIDTH: u8 = 1 << 2;
 const OVERRIDE_SEQUENCE_PARTICIPANT_SPACING: u8 = 1 << 3;
+const COMPACT_FLOWCHART_WRAP_WIDTH: usize = 24;
+const COMPACT_SEQUENCE_PARTICIPANT_SPACING: usize = 3;
 
 impl Default for AsciiRenderOptions {
     fn default() -> Self {
@@ -199,41 +330,99 @@ impl AsciiRenderOptions {
         self
     }
 
-    /// 应用显式布局 profile 的候选参数，同时保留调用方已经明确覆盖的字段。
-    pub(crate) fn effective_layout(self) -> Self {
-        if self.layout_profile != AsciiLayoutProfile::Compact {
-            return self;
+    pub(crate) fn resolve_policies(self) -> ResolvedAsciiPolicies {
+        let host = AsciiHostPolicy {
+            structural_charset: self.structural_charset(),
+            terminal_width_profile: self.terminal_width_profile,
+            color_mode: self.color_mode,
+        };
+        ResolvedAsciiPolicies {
+            options: self,
+            layout: AsciiLayoutPolicies {
+                profile: self.layout_profile,
+                flowchart: FlowchartLayoutPolicy {
+                    node_border_padding: self.box_border_padding,
+                    rank_gap_x: self.graph_padding_x,
+                    rank_gap_y: self.graph_padding_y,
+                    node_label_wrap_width: self.resolved_flowchart_wrap_width(),
+                    group_padding_x: 2,
+                    group_padding_y: 2,
+                    group_title_clearance: 3,
+                    edge_label_lane_radius: FlowchartLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
+                    default_direction: self.default_direction,
+                    structural_charset: host.structural_charset,
+                    terminal_width_profile: host.terminal_width_profile,
+                },
+                state: graph_layout_policy(self, host),
+                sequence: SequenceLayoutPolicy {
+                    participant_label_wrap_width: 12,
+                    participant_spacing: self.resolved_sequence_participant_spacing(),
+                    message_spacing: self.sequence_message_spacing,
+                    message_label_left_margin: 2,
+                    message_label_overflow_buffer: 10,
+                    self_message_width: self.sequence_self_message_width,
+                    note_side_gutter: 2,
+                    note_wrap_width: 24,
+                    box_content_gutter: 2,
+                    section_title_gutter: 2,
+                    section_title_wrap_width: 12,
+                    control_participant_gutter: 2,
+                    control_content_gutter: 1,
+                    control_nested_gutter: 2,
+                    control_depth_gutter: 2,
+                    title_bottom_spacing: 0,
+                    mirror_actors: self.sequence_mirror_actors,
+                    structural_charset: host.structural_charset,
+                    terminal_width_profile: host.terminal_width_profile,
+                },
+                xychart: XyChartLayoutPolicy {
+                    vertical_plot_height: self.xychart_vertical_plot_height,
+                    category_band_width: self.xychart_category_band_width,
+                    horizontal_plot_width: self.xychart_horizontal_plot_width,
+                    structural_charset: host.structural_charset,
+                    terminal_width_profile: host.terminal_width_profile,
+                },
+            },
+            output: AsciiOutputPolicy {
+                terminal_width_profile: host.terminal_width_profile,
+                color_mode: host.color_mode,
+                encoding: AsciiOutputEncoding::from_color_mode(host.color_mode),
+            },
         }
-        Self {
-            graph_padding_x: if self.layout_overrides & OVERRIDE_GRAPH_PADDING_X == 0 {
-                2
-            } else {
-                self.graph_padding_x
-            },
-            graph_padding_y: if self.layout_overrides & OVERRIDE_GRAPH_PADDING_Y == 0 {
-                2
-            } else {
-                self.graph_padding_y
-            },
-            flowchart_node_label_wrap_width: if self.layout_overrides
-                & OVERRIDE_FLOWCHART_WRAP_WIDTH
-                == 0
-            {
-                24
-            } else {
-                self.flowchart_node_label_wrap_width
-            },
-            sequence_participant_spacing: if self.layout_overrides
-                & OVERRIDE_SEQUENCE_PARTICIPANT_SPACING
-                == 0
-            {
-                3
-            } else {
-                self.sequence_participant_spacing
-            },
-            layout_overrides: self.layout_overrides,
-            ..self
+    }
+
+    fn resolved_flowchart_wrap_width(self) -> usize {
+        if self.layout_profile == AsciiLayoutProfile::Compact
+            && self.layout_overrides & OVERRIDE_FLOWCHART_WRAP_WIDTH == 0
+        {
+            COMPACT_FLOWCHART_WRAP_WIDTH
+        } else {
+            self.flowchart_node_label_wrap_width
         }
+    }
+
+    fn resolved_sequence_participant_spacing(self) -> usize {
+        if self.layout_profile == AsciiLayoutProfile::Compact
+            && self.layout_overrides & OVERRIDE_SEQUENCE_PARTICIPANT_SPACING == 0
+        {
+            COMPACT_SEQUENCE_PARTICIPANT_SPACING
+        } else {
+            self.sequence_participant_spacing
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn flowchart_layout(self) -> FlowchartLayoutPolicy {
+        self.resolve_policies().layout.flowchart
+    }
+
+    #[cfg(test)]
+    pub(crate) fn sequence_layout(self) -> SequenceLayoutPolicy {
+        self.resolve_policies().layout.sequence
+    }
+
+    pub(crate) fn xychart_layout(self) -> XyChartLayoutPolicy {
+        self.resolve_policies().layout.xychart
     }
 
     /// Returns the structural glyph set that can preserve one-cell grid topology.
@@ -289,6 +478,20 @@ impl AsciiRenderOptions {
     }
 }
 
+fn graph_layout_policy(options: AsciiRenderOptions, host: AsciiHostPolicy) -> GraphLayoutPolicy {
+    GraphLayoutPolicy {
+        node_border_padding: options.box_border_padding,
+        rank_gap_x: options.graph_padding_x,
+        rank_gap_y: options.graph_padding_y,
+        group_padding_x: 2,
+        group_padding_y: 2,
+        group_title_clearance: 3,
+        edge_label_lane_radius: GraphLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
+        structural_charset: host.structural_charset,
+        terminal_width_profile: host.terminal_width_profile,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,5 +502,156 @@ mod tests {
             AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk);
 
         assert_eq!(options.structural_charset(), AsciiCharset::Ascii);
+    }
+
+    #[test]
+    fn resolved_compact_policy_changes_only_admitted_family_fields() {
+        let canonical = AsciiRenderOptions::unicode().resolve_policies();
+        let compact = AsciiRenderOptions::unicode()
+            .with_layout_profile(AsciiLayoutProfile::Compact)
+            .resolve_policies();
+
+        assert_eq!(canonical.output, compact.output);
+        assert_eq!(canonical.options.flowchart_node_label_wrap_width, 40);
+        assert_eq!(compact.options.flowchart_node_label_wrap_width, 40);
+        assert_eq!(canonical.options.sequence_participant_spacing, 5);
+        assert_eq!(compact.options.sequence_participant_spacing, 5);
+        assert_eq!(
+            canonical.layout.flowchart.rank_gap_x,
+            compact.layout.flowchart.rank_gap_x
+        );
+        assert_eq!(
+            canonical.layout.flowchart.rank_gap_y,
+            compact.layout.flowchart.rank_gap_y
+        );
+        assert_ne!(
+            canonical.layout.flowchart.node_label_wrap_width,
+            compact.layout.flowchart.node_label_wrap_width
+        );
+        assert_eq!(
+            canonical.layout.flowchart.node_border_padding,
+            compact.layout.flowchart.node_border_padding
+        );
+        assert_eq!(
+            canonical.layout.flowchart.group_padding_x,
+            compact.layout.flowchart.group_padding_x
+        );
+        assert_eq!(
+            canonical.layout.flowchart.group_padding_y,
+            compact.layout.flowchart.group_padding_y
+        );
+        assert_eq!(
+            canonical.layout.flowchart.group_title_clearance,
+            compact.layout.flowchart.group_title_clearance
+        );
+        assert_eq!(
+            canonical.layout.flowchart.edge_label_lane_radius,
+            compact.layout.flowchart.edge_label_lane_radius
+        );
+        assert_ne!(
+            canonical.layout.sequence.participant_spacing,
+            compact.layout.sequence.participant_spacing
+        );
+        assert_eq!(
+            canonical.layout.sequence.message_spacing,
+            compact.layout.sequence.message_spacing
+        );
+        assert_eq!(
+            canonical.layout.sequence.participant_label_wrap_width,
+            compact.layout.sequence.participant_label_wrap_width
+        );
+        assert_eq!(
+            canonical.layout.sequence.message_label_left_margin,
+            compact.layout.sequence.message_label_left_margin
+        );
+        assert_eq!(
+            canonical.layout.sequence.message_label_overflow_buffer,
+            compact.layout.sequence.message_label_overflow_buffer
+        );
+        assert_eq!(
+            canonical.layout.sequence.self_message_width,
+            compact.layout.sequence.self_message_width
+        );
+        assert_eq!(
+            canonical.layout.sequence.note_side_gutter,
+            compact.layout.sequence.note_side_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.note_wrap_width,
+            compact.layout.sequence.note_wrap_width
+        );
+        assert_eq!(
+            canonical.layout.sequence.box_content_gutter,
+            compact.layout.sequence.box_content_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.section_title_gutter,
+            compact.layout.sequence.section_title_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.section_title_wrap_width,
+            compact.layout.sequence.section_title_wrap_width
+        );
+        assert_eq!(
+            canonical.layout.sequence.control_participant_gutter,
+            compact.layout.sequence.control_participant_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.control_content_gutter,
+            compact.layout.sequence.control_content_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.control_nested_gutter,
+            compact.layout.sequence.control_nested_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.control_depth_gutter,
+            compact.layout.sequence.control_depth_gutter
+        );
+        assert_eq!(
+            canonical.layout.sequence.title_bottom_spacing,
+            compact.layout.sequence.title_bottom_spacing
+        );
+        assert_eq!(canonical.layout.state, compact.layout.state);
+        assert_eq!(canonical.layout.xychart, compact.layout.xychart);
+    }
+
+    #[test]
+    fn explicit_sequence_spacing_override_wins_over_compact_profile() {
+        let policies = AsciiRenderOptions::unicode()
+            .with_layout_profile(AsciiLayoutProfile::Compact)
+            .with_sequence_participant_spacing(7)
+            .resolve_policies();
+
+        assert_eq!(policies.layout.sequence.participant_spacing, 7);
+    }
+
+    #[test]
+    fn resolved_policy_carries_one_structural_charset_to_every_family() {
+        let policies = AsciiRenderOptions::unicode()
+            .with_terminal_width_profile(TerminalWidthProfile::Cjk)
+            .resolve_policies();
+
+        assert_eq!(
+            policies.layout.flowchart.structural_charset,
+            AsciiCharset::Ascii
+        );
+        assert_eq!(
+            policies.layout.sequence.structural_charset,
+            AsciiCharset::Ascii
+        );
+        assert_eq!(
+            policies.layout.state.structural_charset,
+            AsciiCharset::Ascii
+        );
+        assert_eq!(
+            policies.layout.xychart.structural_charset,
+            AsciiCharset::Ascii
+        );
+        assert_eq!(
+            policies.output.terminal_width_profile,
+            TerminalWidthProfile::Cjk
+        );
+        assert_eq!(policies.output.encoding, AsciiOutputEncoding::Plain);
     }
 }

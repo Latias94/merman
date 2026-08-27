@@ -477,6 +477,8 @@ mod tests {
         );
         assert_eq!(plan.family(), "timeline");
         assert_eq!(plan.projection(), "structured_text");
+        assert_eq!(plan.schema_version(), 2);
+        assert_eq!(plan.encoding(), "plain");
         assert_eq!(plan.outcome(), "fallback");
         assert_eq!(plan.requested_max_width(), Some(10));
         assert!(plan.fallback_attempted());
@@ -484,9 +486,55 @@ mod tests {
         let metadata: serde_json::Value =
             serde_json::from_slice(result.metadata_json()).expect("metadata JSON");
         assert_eq!(metadata["output_plan"]["kind"], "ascii");
+        assert_eq!(metadata["output_plan"]["encoding"], "plain");
         assert_eq!(
             metadata["output_plan"]["emitted_width"],
             plan.emitted_width()
+        );
+    }
+
+    #[test]
+    fn styled_ascii_results_identify_their_exact_encoding() {
+        for (color_mode, expected_encoding, required_bytes) in [
+            ("ansi16", "ansi16", "\u{1b}["),
+            ("ansi256", "ansi256", "\u{1b}[38;5;"),
+            ("truecolor", "truecolor", "\u{1b}[38;2;"),
+            ("html", "html", "<span style=\""),
+        ] {
+            let options = format!(
+                r##"{{"ascii":{{"color_mode":"{color_mode}","theme":{{"foreground":"#010101","background":"#ffffff","line":"#020202","accent":"#030303","border":"#040404"}}}}}}"##
+            );
+            let result = crate::render_ascii_result(
+                b"flowchart LR\nA[Hello] -- yes --> B[World]",
+                options.as_bytes(),
+            )
+            .unwrap_or_else(|error| panic!("{color_mode} render should succeed: {error:?}"));
+            let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+            else {
+                panic!("ASCII operation must expose an ASCII output plan");
+            };
+
+            assert_eq!(plan.encoding(), expected_encoding);
+            assert!(
+                String::from_utf8_lossy(result.data()).contains(required_bytes),
+                "{color_mode} bytes do not match metadata: {:?}",
+                result.data()
+            );
+        }
+    }
+
+    #[test]
+    fn binding_rejects_styled_complete_fallback_requests_before_rendering() {
+        let error = render_ascii(
+            b"flowchart LR\nA[Alpha] --> B[Beta]",
+            br#"{ "ascii": { "color_mode": "ansi16", "max_width": 5, "overflow": "fallback" } }"#,
+        )
+        .expect_err("styled fallback combinations are not admitted");
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(
+            error.message().contains("ascii_viewport.overflow"),
+            "{error:?}"
         );
     }
 

@@ -8,7 +8,7 @@ use super::{GridCoord, NodeLayout, charge_sort_work};
 use crate::error::{AsciiError, Result};
 use crate::graph::topology::GraphGroupTopology;
 use crate::operation::AsciiExecution;
-use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::options::{GraphLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -102,37 +102,32 @@ fn checkpoint_layout(execution: AsciiExecution<'_>, iteration: usize) -> Result<
 
 pub(super) fn preflight_minimum_grid_extent(
     graph: &AsciiGraph,
-    options: &AsciiRenderOptions,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<()> {
     // Every placed node owns a disjoint 3x3 exclusion block in the temporary routing grid. Check
     // that unavoidable storage before constructing any hash-backed layout containers.
     let minimum_cells = minimum_node_grid_cells(graph.nodes.len(), resources)?;
     resources.grid_extent(minimum_cells, 1)?;
-    resources.grid_extent(options.graph_padding_x, 1)?;
-    resources.grid_extent(options.graph_padding_y, 1)?;
+    resources.grid_extent(policy.rank_gap_x, 1)?;
+    resources.grid_extent(policy.rank_gap_y, 1)?;
     Ok(())
 }
 
 pub(super) fn layout_nodes(
     graph: &AsciiGraph,
-    options: &AsciiRenderOptions,
+    policy: &GraphLayoutPolicy,
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
     match graph.direction.canonical() {
-        GraphDirection::LeftRight => layout_left_right_grid_nodes(
-            graph,
-            options,
-            topology,
-            label_plans,
-            resources,
-            execution,
-        ),
+        GraphDirection::LeftRight => {
+            layout_left_right_grid_nodes(graph, policy, topology, label_plans, resources, execution)
+        }
         GraphDirection::TopDown => {
-            layout_top_down_grid_nodes(graph, options, topology, label_plans, resources, execution)
+            layout_top_down_grid_nodes(graph, policy, topology, label_plans, resources, execution)
         }
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     }
@@ -216,19 +211,13 @@ fn checkpoint_node_label_plan(resources: &ResourceContext, iteration: usize) -> 
 
 fn layout_left_right_grid_nodes(
     graph: &AsciiGraph,
-    options: &AsciiRenderOptions,
+    policy: &GraphLayoutPolicy,
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
-    let ranked = place_left_right_grid_nodes(
-        graph,
-        topology,
-        options.terminal_width_profile,
-        resources,
-        execution,
-    )?;
+    let ranked = place_left_right_grid_nodes(graph, topology, policy, resources, execution)?;
     let placements = ranked.nodes;
     let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
     let axis_entity_count = resources.checked_grid_add(graph.nodes.len(), graph.groups.len())?;
@@ -241,7 +230,7 @@ fn layout_left_right_grid_nodes(
         let label_plan = label_plans
             .get(index)
             .ok_or_else(|| invalid_node_label_plans(graph.diagram_type()))?;
-        let shape_size = node_shape_size(node, label_plan, options, resources)?;
+        let shape_size = node_shape_size(node, label_plan, policy, resources)?;
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
@@ -250,7 +239,7 @@ fn layout_left_right_grid_nodes(
         );
         set_axis_size(&mut column_widths, coord.x + 2, 1);
         if coord.x > 0 {
-            set_axis_size(&mut column_widths, coord.x - 1, options.graph_padding_x);
+            set_axis_size(&mut column_widths, coord.x - 1, policy.rank_gap_x);
         }
 
         set_axis_size(&mut row_heights, coord.y, 1);
@@ -264,7 +253,7 @@ fn layout_left_right_grid_nodes(
             set_axis_size(
                 &mut row_heights,
                 coord.y - 1,
-                groups::node_padding_y(index, &node_padding, options, resources)?,
+                groups::node_padding_y(index, &node_padding, policy, resources)?,
             );
         }
     }
@@ -273,7 +262,7 @@ fn layout_left_right_grid_nodes(
         graph,
         &ranked.leaf_group_levels,
         GraphDirection::LeftRight,
-        options,
+        policy,
         &mut column_widths,
         &mut row_heights,
         resources,
@@ -288,13 +277,13 @@ fn layout_left_right_grid_nodes(
         ) else {
             continue;
         };
-        apply_horizontal_edge_spacing(edge, from, to, options, &mut column_widths, resources)?;
+        apply_horizontal_edge_spacing(edge, from, to, policy, &mut column_widths, resources)?;
         if from.x == to.x {
             apply_vertical_edge_spacing(
                 edge,
                 from,
                 to,
-                options,
+                policy,
                 &mut column_widths,
                 &mut row_heights,
                 resources,
@@ -307,7 +296,7 @@ fn layout_left_right_grid_nodes(
         placements,
         &column_widths,
         &row_heights,
-        options.terminal_width_profile,
+        policy.terminal_width_profile,
         resources,
         execution,
     )
@@ -316,7 +305,7 @@ fn layout_left_right_grid_nodes(
 fn place_left_right_grid_nodes(
     graph: &AsciiGraph,
     topology: Option<&GraphGroupTopology<'_>>,
-    width_profile: TerminalWidthProfile,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RankedGridPlacements> {
@@ -333,7 +322,7 @@ fn place_left_right_grid_nodes(
             graph,
             &mut ranked.nodes,
             topology.expect("non-empty graph groups must have topology"),
-            width_profile,
+            policy,
             resources,
             execution,
         )?;
@@ -533,19 +522,13 @@ fn grid_spot_occupied(
 
 fn layout_top_down_grid_nodes(
     graph: &AsciiGraph,
-    options: &AsciiRenderOptions,
+    policy: &GraphLayoutPolicy,
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
-    let ranked = place_top_down_grid_nodes(
-        graph,
-        topology,
-        options.terminal_width_profile,
-        resources,
-        execution,
-    )?;
+    let ranked = place_top_down_grid_nodes(graph, topology, policy, resources, execution)?;
     let placements = ranked.nodes;
     let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
     let axis_entity_count = resources.checked_grid_add(graph.nodes.len(), graph.groups.len())?;
@@ -558,7 +541,7 @@ fn layout_top_down_grid_nodes(
         let label_plan = label_plans
             .get(index)
             .ok_or_else(|| invalid_node_label_plans(graph.diagram_type()))?;
-        let shape_size = node_shape_size(node, label_plan, options, resources)?;
+        let shape_size = node_shape_size(node, label_plan, policy, resources)?;
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
@@ -567,7 +550,7 @@ fn layout_top_down_grid_nodes(
         );
         set_axis_size(&mut column_widths, coord.x + 2, 1);
         if coord.x > 0 {
-            set_axis_size(&mut column_widths, coord.x - 1, options.graph_padding_x);
+            set_axis_size(&mut column_widths, coord.x - 1, policy.rank_gap_x);
         }
 
         set_axis_size(&mut row_heights, coord.y, 1);
@@ -581,7 +564,7 @@ fn layout_top_down_grid_nodes(
             set_axis_size(
                 &mut row_heights,
                 coord.y - 1,
-                groups::node_padding_y(index, &node_padding, options, resources)?,
+                groups::node_padding_y(index, &node_padding, policy, resources)?,
             );
         }
     }
@@ -590,7 +573,7 @@ fn layout_top_down_grid_nodes(
         graph,
         &ranked.leaf_group_levels,
         GraphDirection::TopDown,
-        options,
+        policy,
         &mut column_widths,
         &mut row_heights,
         resources,
@@ -611,13 +594,13 @@ fn layout_top_down_grid_nodes(
             edge,
             from,
             to,
-            options,
+            policy,
             &mut column_widths,
             &mut row_heights,
             resources,
         )?;
         if to.x != from.x && from.y == to.y {
-            apply_horizontal_edge_spacing(edge, from, to, options, &mut column_widths, resources)?;
+            apply_horizontal_edge_spacing(edge, from, to, policy, &mut column_widths, resources)?;
         }
     }
 
@@ -626,7 +609,7 @@ fn layout_top_down_grid_nodes(
         placements,
         &column_widths,
         &row_heights,
-        options.terminal_width_profile,
+        policy.terminal_width_profile,
         resources,
         execution,
     )
@@ -636,7 +619,7 @@ fn reserve_leaf_group_rank_axis_sizes(
     graph: &AsciiGraph,
     leaf_group_levels: &[Option<usize>],
     direction: GraphDirection,
-    options: &AsciiRenderOptions,
+    policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &ResourceContext,
@@ -646,8 +629,7 @@ fn reserve_leaf_group_rank_axis_sizes(
         let (Some(level), Some(group)) = (level, graph.groups.get(group_index)) else {
             continue;
         };
-        let (width, height) =
-            groups::empty_group_minimum_size(group, options.terminal_width_profile, resources)?;
+        let (width, height) = groups::empty_group_minimum_size(group, policy, resources)?;
         let second = resources.checked_grid_add(level, 1)?;
         let third = resources.checked_grid_add(level, 2)?;
         match direction.canonical() {
@@ -659,7 +641,7 @@ fn reserve_leaf_group_rank_axis_sizes(
                     set_axis_size(
                         column_widths,
                         level - 1,
-                        options.graph_padding_x.max(MINIMUM_GROUP_RANK_GAP),
+                        policy.rank_gap_x.max(MINIMUM_GROUP_RANK_GAP),
                     );
                 }
             }
@@ -671,7 +653,7 @@ fn reserve_leaf_group_rank_axis_sizes(
                     set_axis_size(
                         row_heights,
                         level - 1,
-                        options.graph_padding_y.max(MINIMUM_GROUP_RANK_GAP),
+                        policy.rank_gap_y.max(MINIMUM_GROUP_RANK_GAP),
                     );
                 }
             }
@@ -685,7 +667,7 @@ fn apply_vertical_edge_spacing(
     edge: &AsciiGraphEdge,
     from: GridCoord,
     to: GridCoord,
-    options: &AsciiRenderOptions,
+    policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &ResourceContext,
@@ -695,7 +677,7 @@ fn apply_vertical_edge_spacing(
     }
 
     let length_gap = resources.checked_grid_add(
-        options.graph_padding_y,
+        policy.rank_gap_y,
         resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
     )?;
     let label_width = if from.x == to.x {
@@ -704,7 +686,7 @@ fn apply_vertical_edge_spacing(
             .map(|label| {
                 GraphLabel::try_measure_width_with_profile(
                     label,
-                    options.terminal_width_profile,
+                    policy.terminal_width_profile,
                     resources,
                 )
             })
@@ -727,7 +709,7 @@ fn apply_horizontal_edge_spacing(
     edge: &AsciiGraphEdge,
     from: GridCoord,
     to: GridCoord,
-    options: &AsciiRenderOptions,
+    policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
     resources: &ResourceContext,
 ) -> Result<()> {
@@ -736,7 +718,7 @@ fn apply_horizontal_edge_spacing(
     }
 
     let length_gap = resources.checked_grid_add(
-        options.graph_padding_x,
+        policy.rank_gap_x,
         resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
     )?;
     let label_gap = edge
@@ -746,7 +728,7 @@ fn apply_horizontal_edge_spacing(
             resources.checked_grid_add(
                 GraphLabel::try_measure_width_with_profile(
                     label,
-                    options.terminal_width_profile,
+                    policy.terminal_width_profile,
                     resources,
                 )?,
                 2,
@@ -765,7 +747,7 @@ fn apply_horizontal_edge_spacing(
 fn place_top_down_grid_nodes(
     graph: &AsciiGraph,
     topology: Option<&GraphGroupTopology<'_>>,
-    width_profile: TerminalWidthProfile,
+    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RankedGridPlacements> {
@@ -782,7 +764,7 @@ fn place_top_down_grid_nodes(
             graph,
             &mut ranked.nodes,
             topology.expect("non-empty graph groups must have topology"),
-            width_profile,
+            policy,
             resources,
             execution,
         )?;
@@ -941,14 +923,14 @@ fn set_axis_size(axis_sizes: &mut AxisSizes, index: usize, size: usize) {
 fn node_shape_size(
     node: &AsciiGraphNode,
     label_plan: &GraphNodeLabelPlan,
-    options: &AsciiRenderOptions,
+    policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<GraphNodeShapeSize> {
     let metrics = label_plan.metrics();
     GraphNodeShapeSemantics::new(node.shape).try_size_for_label_metrics(
         metrics.width,
         metrics.content_height,
-        options,
+        policy,
         resources,
     )
 }
@@ -991,6 +973,7 @@ fn layout_allocation_failed() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AsciiRenderOptions;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::resources::ResourceProfile;
     use merman_core::{OperationControl, OperationPhase};
@@ -1008,7 +991,7 @@ mod tests {
                 edge,
                 GridCoord { x: 0, y: 0 },
                 GridCoord { x: 4, y: 0 },
-                options,
+                &options.flowchart_layout().graph_policy(),
                 column_widths,
                 resources,
             ),
@@ -1016,7 +999,7 @@ mod tests {
                 edge,
                 GridCoord { x: 0, y: 0 },
                 GridCoord { x: 0, y: 4 },
-                options,
+                &options.flowchart_layout().graph_policy(),
                 column_widths,
                 row_heights,
                 resources,

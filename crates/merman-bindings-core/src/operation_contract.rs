@@ -163,6 +163,7 @@ const ASCII_FIELDS: &[BindingJsonFieldContract] = &[
     field("schema_version", "unsigned-integer", true, Some(16), false),
     field("family", "string", true, None, true),
     field("projection", "string", true, None, false),
+    field("encoding", "string", true, None, false),
     field("primary_width", "unsigned-integer", true, Some(64), false),
     field("primary_height", "unsigned-integer", true, Some(64), false),
     field("emitted_width", "unsigned-integer", true, Some(64), false),
@@ -401,6 +402,18 @@ mod tests {
             .unwrap();
         assert_eq!(byte_length.integer_width_bits(), Some(64));
         assert_eq!(contract.output_plans().len(), 3);
+        let ascii = contract
+            .output_plans()
+            .iter()
+            .find(|plan| plan.kind() == "ascii")
+            .expect("ASCII output plan contract");
+        let encoding = ascii
+            .fields()
+            .iter()
+            .find(|field| field.name() == "encoding")
+            .expect("ASCII encoding field");
+        assert_eq!(encoding.json_type(), "string");
+        assert!(encoding.required());
     }
 
     #[test]

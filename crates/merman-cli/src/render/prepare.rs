@@ -691,7 +691,8 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
             resources
                 .render_policy()
                 .value(merman::svg::ResourceLimitId::MaxSvgBytes),
-        );
+        )
+        .with_profile(resources.profile());
     }
     let _ = raw_svg;
     InputLimit::new(
@@ -700,6 +701,7 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
             .input_policy()
             .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
     )
+    .with_profile(resources.profile())
 }
 
 #[cfg(all(test, feature = "rustdoc"))]

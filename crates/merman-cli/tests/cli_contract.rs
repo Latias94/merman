@@ -1153,7 +1153,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 4);
+    assert_eq!(payload["cli_contract_version"], 5);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -1226,6 +1226,95 @@ fn compiled_capabilities_match_the_full_test_artifact() {
                 .iter()
                 .any(|capability| capability["id"].as_str() == Some(id)),
             "missing compiled capability {id}: {payload}"
+        );
+    }
+
+    let ascii = &payload["ascii"];
+    assert_eq!(ascii["schema_version"], 1);
+    assert_eq!(ascii["output_schema_version"], 2);
+    assert_eq!(
+        ascii["report"],
+        serde_json::json!({
+            "success_schema_version": 2,
+            "error_schema_version": 1,
+            "encoding": "plain",
+            "styled_output": false,
+            "success_stream": "output",
+            "error_stream": "stderr",
+        })
+    );
+
+    let families = ascii["families"]
+        .as_array()
+        .expect("ASCII families should be an array");
+    let family_ids = families
+        .iter()
+        .map(|family| family["family"].as_str().expect("ASCII family id"))
+        .collect::<Vec<_>>();
+    assert!(
+        family_ids.windows(2).all(|pair| pair[0] < pair[1]),
+        "ASCII family ids must be sorted and unique: {family_ids:?}"
+    );
+    for family_id in ["flowchart", "sequence"] {
+        let family = families
+            .iter()
+            .find(|family| family["family"] == family_id)
+            .unwrap_or_else(|| panic!("missing ASCII family {family_id}: {ascii}"));
+        assert_eq!(
+            family["layout_profiles"],
+            serde_json::json!(["canonical", "compact"])
+        );
+        assert_eq!(
+            family["width_profiles"],
+            serde_json::json!(["unicode", "cjk"])
+        );
+        assert_eq!(
+            family["encodings"],
+            serde_json::json!(["plain", "ansi16", "ansi256", "truecolor", "html"])
+        );
+        assert_eq!(family["fallback_encodings"], serde_json::json!(["plain"]));
+    }
+    let state = families
+        .iter()
+        .find(|family| family["family"] == "state")
+        .expect("missing ASCII State family");
+    assert_eq!(state["layout_profiles"], serde_json::json!(["canonical"]));
+
+    let mappings = ascii["detected_type_mappings"]
+        .as_array()
+        .expect("ASCII detected-type mappings should be an array");
+    assert!(mappings.iter().any(|mapping| {
+        mapping["detected_type"] == "flowchart-v2" && mapping["family"] == "flowchart"
+    }));
+    assert!(mappings.iter().any(|mapping| {
+        mapping["detected_type"] == "stateDiagram" && mapping["family"] == "state"
+    }));
+    assert!(mappings.iter().any(|mapping| {
+        mapping["detected_type"] == "swimlane" && mapping["family"] == "flowchart"
+    }));
+    let render_model_families = merman::built_in_typed_render_families()
+        .iter()
+        .map(|family| (family.render_model_kind, family.diagram_type))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    for capability in merman::diagram_family_capabilities()
+        .iter()
+        .filter(|capability| capability.has_detector)
+    {
+        let Some(render_model_kind) = capability.render_model_kind else {
+            continue;
+        };
+        let Some(family) = render_model_families.get(render_model_kind).copied() else {
+            continue;
+        };
+        if !family_ids.contains(&family) {
+            continue;
+        }
+        assert!(
+            mappings.iter().any(|mapping| {
+                mapping["detected_type"] == capability.diagram_type && mapping["family"] == family
+            }),
+            "missing detector mapping {} -> {family}: {ascii}",
+            capability.diagram_type
         );
     }
 }

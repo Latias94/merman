@@ -80,8 +80,9 @@ opt-in candidate; canonical geometry and the Issue #53 pre-layout label wrapping
 
 ## 2026-08-25 contract-hardening addendum
 
-Internal output seams may change during the alpha stabilization window, but the merged report
-vocabulary remains schema 1. `AsciiOutput` owns one measured-candidate path for extent, display-cell,
+Internal output seams may change during the alpha stabilization window. At this stage the merged
+report vocabulary remained schema 1; the later encoding addendum below supersedes that transport
+version. `AsciiOutput` owns one measured-candidate path for extent, display-cell,
 grapheme, encoded-byte, and output admission observations. Fallback writers perform bounded local
 checks while constructing a complete candidate, then commit its document admission once against the
 render-wide resource ledger; failed candidates never become partial output.
@@ -94,3 +95,32 @@ Semantic fallback applies typed-model complexity preflight before family compati
 Flowchart's typed projection additionally uses a bounded, cancellation-aware JSON writer before
 flattening, keeping intermediate materialization within the active ASCII output policy for bounded
 profiles.
+
+## 2026-08-26 layout, theme, and encoding addendum
+
+The alpha contract now resolves one host request into narrower host, family-layout, visual-role, and
+output policies. `AsciiRenderOptions` remains the public compatibility façade, but family renderers
+consume resolved policy rather than interpreting a global density switch. Flowchart and Sequence
+separately admit `AsciiLayoutProfile::Compact`; State, Class, ER, XYChart, and structured-text
+families remain canonical-only until family-local evidence admits another profile. Flowchart Compact
+uses a 24-cell ordinary-node wrap default and Sequence Compact uses three-cell participant spacing,
+unless the caller explicitly overrides the corresponding family option. State does not inherit
+Flowchart graph policy.
+
+`AsciiColorMode::Ansi16` is the terminal-native styled profile. It keeps unstyled primary text at
+terminal Reset and applies sparse named ANSI accents to semantic roles without detecting terminal
+background polarity. Plain remains the deterministic default. Host environment signals such as TTY,
+`NO_COLOR`, `TERM`, and `COLORTERM` are resolved by the CLI or another adapter before the renderer is
+called.
+
+`AsciiOutput` transport schema 2 adds explicit `encoding` identity for Plain, ANSI16, ANSI256,
+TrueColor, and HTML results. Logical extent counts content rows; a final line terminator is encoded
+output but not another logical row. CLI report mode is a machine-safe Plain channel and rejects an
+explicit styled request. Viewport Fallback is likewise admitted only for Plain; styled fallback
+requests fail capability preflight rather than returning ambiguous or partially styled structured
+text. `Allow` and `Error` remain valid for every admitted primary encoding.
+
+Family capability records are the request-preflight authority. In addition to semantic coverage and
+projection, they publish admitted layout profiles, width profiles, primary encodings, and fallback
+encodings. CLI, bindings-core, UniFFI, Web, Flutter, Python, Apple, and generated contract snapshots
+must project those same source descriptors rather than maintaining transport-local admission tables.
