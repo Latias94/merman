@@ -171,6 +171,9 @@ class NixPackageContractTests(unittest.TestCase):
         self.assertIn("apps = forAllSystems", flake)
         self.assertIn("checks = forAllSystems", flake)
         self.assertIn("source-contract", flake)
+        self.assertIn("scriptFiles = package.sourcePolicy.script_files;", flake)
+        self.assertIn('concatMapStringsSep "\\n"', flake)
+        self.assertIn("builtins.length scriptFiles", flake)
 
         lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
         self.assertEqual(lock["version"], 7)
