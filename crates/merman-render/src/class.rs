@@ -1884,27 +1884,104 @@ fn class_effective_text_style<'a>(
     base: &'a TextStyle,
     css_style: &str,
 ) -> std::borrow::Cow<'a, TextStyle> {
-    let mut style = std::borrow::Cow::Borrowed(base);
-    for declaration in css_style.split(';') {
-        let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(declaration) else {
-            continue;
-        };
-        match key {
-            "font-weight" => style.to_mut().font_weight = Some(value.trim().to_string()),
-            "font-style" => style.to_mut().font_style = Some(value.trim().to_string()),
+    enum Value<T> {
+        Base,
+        Resolved(T),
+    }
+
+    struct Winner<T> {
+        important: bool,
+        value: Value<T>,
+    }
+
+    #[derive(Default)]
+    struct Winners<'a> {
+        font_weight: Option<Winner<&'a str>>,
+        font_style: Option<Winner<&'a str>>,
+        font_size: Option<Winner<f64>>,
+        font_family: Option<Winner<&'a str>>,
+    }
+
+    fn observe<T>(winner: &mut Option<Winner<T>>, important: bool, value: Value<T>) {
+        if winner
+            .as_ref()
+            .is_none_or(|current| important || !current.important)
+        {
+            *winner = Some(Winner { important, value });
+        }
+    }
+
+    fn resolved_value<T>(winner: Option<Winner<T>>) -> Option<T> {
+        match winner?.value {
+            Value::Base => None,
+            Value::Resolved(value) => Some(value),
+        }
+    }
+
+    let mut winners = Winners::default();
+    let font_size_context = crate::mermaid_style::CssFontSizeContext::uniform(base.font_size);
+    crate::mermaid_style::visit_parsed_style_declarations(css_style, |declaration| {
+        let important = declaration.important();
+        let inherits = declaration.inherits_property_value();
+        match declaration.property() {
+            "font-weight" if inherits => observe(&mut winners.font_weight, important, Value::Base),
+            "font-weight"
+                if crate::mermaid_style::is_supported_css_font_weight_value(
+                    declaration.value(),
+                ) =>
+            {
+                observe(
+                    &mut winners.font_weight,
+                    important,
+                    Value::Resolved(declaration.value()),
+                );
+            }
+            "font-style" if inherits => observe(&mut winners.font_style, important, Value::Base),
+            "font-style"
+                if crate::mermaid_style::is_supported_css_font_style_value(declaration.value()) =>
+            {
+                observe(
+                    &mut winners.font_style,
+                    important,
+                    Value::Resolved(declaration.value()),
+                );
+            }
+            "font-size" if inherits => observe(&mut winners.font_size, important, Value::Base),
             "font-size" => {
-                if let Some(font_size) = crate::mermaid_style::resolve_mermaid_font_size_px(
-                    value,
-                    crate::mermaid_style::CssFontSizeContext::uniform(style.font_size),
-                ) {
-                    style.to_mut().font_size = font_size;
+                if let Some(font_size) = declaration.resolve_font_size_px(font_size_context) {
+                    observe(
+                        &mut winners.font_size,
+                        important,
+                        Value::Resolved(font_size),
+                    );
                 }
             }
-            "font-family" => {
-                style.to_mut().font_family = Some(value.trim().to_string());
+            "font-family" if inherits => observe(&mut winners.font_family, important, Value::Base),
+            "font-family"
+                if crate::mermaid_style::is_static_css_font_family_list(declaration.value()) =>
+            {
+                observe(
+                    &mut winners.font_family,
+                    important,
+                    Value::Resolved(declaration.value()),
+                );
             }
             _ => {}
         }
+    });
+
+    let mut style = std::borrow::Cow::Borrowed(base);
+    if let Some(font_weight) = resolved_value(winners.font_weight) {
+        style.to_mut().font_weight = Some(font_weight.to_string());
+    }
+    if let Some(font_style) = resolved_value(winners.font_style) {
+        style.to_mut().font_style = Some(font_style.to_string());
+    }
+    if let Some(font_size) = resolved_value(winners.font_size) {
+        style.to_mut().font_size = font_size;
+    }
+    if let Some(font_family) = resolved_value(winners.font_family) {
+        style.to_mut().font_family = Some(font_family.to_string());
     }
     style
 }
@@ -3878,6 +3955,71 @@ mod tests {
             super::class_html_create_text_width_px("unseen label", &ClassProbeMeasurer, &style),
             130
         );
+    }
+
+    #[test]
+    fn class_effective_text_style_uses_token_aware_declaration_boundaries() {
+        let base = default_style();
+        let style = super::class_effective_text_style(
+            &base,
+            r#"font-family:"a;b",sans-serif;font-size:20px !important"#,
+        );
+
+        assert_eq!(style.font_family.as_deref(), Some(r#""a;b",sans-serif"#));
+        assert_eq!(style.font_size, 20.0);
+    }
+
+    #[test]
+    fn class_effective_text_style_applies_css_winners_against_the_inherited_base() {
+        let base = default_style();
+        let style = super::class_effective_text_style(
+            &base,
+            "font-family:Important !important;font-family:Later;\
+             font-size:20px !important;font-size:2em;\
+             font-weight:700 !important;font-weight:400;\
+             font-style:italic !important;font-style:normal",
+        );
+
+        assert_eq!(style.font_family.as_deref(), Some("Important"));
+        assert_eq!(style.font_size, 20.0);
+        assert_eq!(style.font_weight.as_deref(), Some("700"));
+        assert_eq!(style.font_style.as_deref(), Some("italic"));
+
+        let relative = super::class_effective_text_style(&base, "font-size:2em;font-size:2em");
+        assert_eq!(relative.font_size, base.font_size * 2.0);
+
+        let same_priority = super::class_effective_text_style(
+            &base,
+            "font-family:First;font-family:Second;\
+             font-size:2em;font-size:150%;\
+             font-weight:400;font-weight:500;\
+             font-style:italic;font-style:normal",
+        );
+        assert_eq!(same_priority.font_family.as_deref(), Some("Second"));
+        assert_eq!(same_priority.font_size, base.font_size * 1.5);
+        assert_eq!(same_priority.font_weight.as_deref(), Some("500"));
+        assert_eq!(same_priority.font_style.as_deref(), Some("normal"));
+
+        let invalid = super::class_effective_text_style(
+            &base,
+            "font-family:Valid;font-family:inherit junk !important;\
+             font-size:20px;font-size:30px junk !important;\
+             font-weight:700;font-weight:invalid !important;\
+             font-style:italic;font-style:invalid !important",
+        );
+        assert_eq!(invalid.font_family.as_deref(), Some("Valid"));
+        assert_eq!(invalid.font_size, 20.0);
+        assert_eq!(invalid.font_weight.as_deref(), Some("700"));
+        assert_eq!(invalid.font_style.as_deref(), Some("italic"));
+
+        let inherited = super::class_effective_text_style(
+            &base,
+            "font-family:Other;font-family:unset;\
+             font-size:20px;font-size:inherit;\
+             font-weight:700;font-weight:unset;\
+             font-style:italic;font-style:inherit",
+        );
+        assert!(matches!(inherited, std::borrow::Cow::Borrowed(_)));
     }
 
     #[test]

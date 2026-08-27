@@ -1,7 +1,8 @@
 //! Mermaid CSS/style helpers shared by layout and SVG parity code.
 
 use cssparser::{
-    BasicParseErrorKind, ParseError, Parser, ParserInput, SourcePosition, Token, parse_important,
+    BasicParseErrorKind, Delimiter, ParseError, Parser, ParserInput, SourcePosition, Token,
+    parse_important,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,6 +45,10 @@ impl<'a> ParsedStyleDeclaration<'a> {
 
     pub(crate) const fn analysis(&self) -> &CssValueAnalysis {
         &self.analysis
+    }
+
+    pub(crate) fn inherits_property_value(&self) -> bool {
+        matches!(self.analysis.single_ident(), Some("inherit" | "unset"))
     }
 
     pub(crate) const fn is_single_component_value(&self) -> bool {
@@ -118,15 +123,74 @@ pub(crate) enum CssFontFamilyOwnership {
     Unverified,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CssFontFamilyOverride {
+    important: bool,
+    ownership: CssFontFamilyOwnership,
+}
+
+impl CssFontFamilyOverride {
+    pub(crate) const fn important(self) -> bool {
+        self.important
+    }
+
+    pub(crate) const fn ownership(self) -> CssFontFamilyOwnership {
+        self.ownership
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StyleDeclarationBoundary<'a> {
+    raw: &'a str,
+    affects_font_family: bool,
+    important: bool,
+}
+
 pub(crate) fn css_font_family_ownership<'a>(
     declarations: impl IntoIterator<Item = &'a str>,
 ) -> CssFontFamilyOwnership {
-    css_font_family_ownership_from_parsed(
-        declarations
-            .into_iter()
-            .flat_map(|declaration| declaration.split(';'))
-            .filter_map(parse_style_declaration),
-    )
+    css_font_family_winner(declarations).map_or(CssFontFamilyOwnership::Inherited, |winner| {
+        winner.ownership()
+    })
+}
+
+pub(crate) fn css_font_family_override(declaration_list: &str) -> Option<CssFontFamilyOverride> {
+    css_font_family_winner([declaration_list])
+}
+
+fn css_font_family_winner<'a>(
+    declarations: impl IntoIterator<Item = &'a str>,
+) -> Option<CssFontFamilyOverride> {
+    let mut winner = None;
+    for declaration_list in declarations {
+        visit_style_declaration_boundaries(declaration_list, |boundary| {
+            match parse_style_declaration(boundary.raw) {
+                Some(declaration) => observe_css_font_family_ownership(&mut winner, &declaration),
+                None => {
+                    if boundary.affects_font_family
+                        && winner.is_none_or(|current| boundary.important || !current.important)
+                    {
+                        winner = Some(CssFontFamilyOverride {
+                            important: boundary.important,
+                            ownership: CssFontFamilyOwnership::Unverified,
+                        });
+                    }
+                }
+            }
+        });
+    }
+    winner
+}
+
+pub(crate) fn visit_parsed_style_declarations<'a>(
+    declaration_list: &'a str,
+    mut visit: impl FnMut(ParsedStyleDeclaration<'a>),
+) {
+    visit_style_declaration_boundaries(declaration_list, |boundary| {
+        if let Some(declaration) = parse_style_declaration(boundary.raw) {
+            visit(declaration);
+        }
+    });
 }
 
 /// Resolves a sequence whose items are already individual CSS declarations.
@@ -144,26 +208,161 @@ pub(crate) fn css_font_family_declaration_ownership<'a>(
 fn css_font_family_ownership_from_parsed<'a>(
     declarations: impl IntoIterator<Item = ParsedStyleDeclaration<'a>>,
 ) -> CssFontFamilyOwnership {
-    let mut winner: Option<(bool, CssFontFamilyOwnership)> = None;
-    for declaration in declarations
-        .into_iter()
-        .filter(|declaration| declaration.property() == "font-family")
-    {
-        if winner.is_none_or(|(important, _)| declaration.important() || !important) {
-            let ownership = if matches!(
-                declaration.analysis().single_ident(),
-                Some("inherit" | "unset")
-            ) {
-                CssFontFamilyOwnership::Inherited
+    let mut winner = None;
+    for declaration in declarations {
+        observe_css_font_family_ownership(&mut winner, &declaration);
+    }
+    winner.map_or(CssFontFamilyOwnership::Inherited, |winner| {
+        winner.ownership()
+    })
+}
+
+fn observe_css_font_family_ownership(
+    winner: &mut Option<CssFontFamilyOverride>,
+    declaration: &ParsedStyleDeclaration<'_>,
+) {
+    let ownership = match declaration.property() {
+        "font-family" => {
+            if declaration.inherits_property_value() {
+                Some(CssFontFamilyOwnership::Inherited)
             } else if declaration.analysis().has_dynamic_reference_function() {
-                CssFontFamilyOwnership::Unverified
+                Some(CssFontFamilyOwnership::Unverified)
+            } else if matches!(
+                declaration.analysis().single_ident(),
+                Some("initial" | "revert" | "revert-layer")
+            ) {
+                Some(CssFontFamilyOwnership::Unverified)
+            } else if is_static_css_font_family_list(declaration.value()) {
+                Some(CssFontFamilyOwnership::SourceOwned)
             } else {
-                CssFontFamilyOwnership::SourceOwned
-            };
-            winner = Some((declaration.important(), ownership));
+                None
+            }
+        }
+        "font" => {
+            if declaration.inherits_property_value() {
+                Some(CssFontFamilyOwnership::Inherited)
+            } else if declaration.analysis().has_dynamic_reference_function()
+                || matches!(
+                    declaration.analysis().single_ident(),
+                    Some(
+                        "initial"
+                            | "revert"
+                            | "revert-layer"
+                            | "caption"
+                            | "icon"
+                            | "menu"
+                            | "message-box"
+                            | "small-caption"
+                            | "status-bar"
+                    )
+                )
+                || !declaration.is_single_component_value()
+            {
+                Some(CssFontFamilyOwnership::Unverified)
+            } else {
+                None
+            }
+        }
+        "all" if declaration.inherits_property_value() => Some(CssFontFamilyOwnership::Inherited),
+        "all"
+            if declaration.analysis().has_dynamic_reference_function()
+                || matches!(
+                    declaration.analysis().single_ident(),
+                    Some("initial" | "revert" | "revert-layer")
+                ) =>
+        {
+            Some(CssFontFamilyOwnership::Unverified)
+        }
+        "all" => None,
+        _ => return,
+    };
+    let Some(ownership) = ownership else {
+        return;
+    };
+    if !declaration.important() && winner.is_some_and(|current| current.important) {
+        return;
+    }
+    *winner = Some(CssFontFamilyOverride {
+        important: declaration.important(),
+        ownership,
+    });
+}
+
+pub(crate) fn is_static_css_font_family_list(value: &str) -> bool {
+    let mut input = ParserInput::new(value);
+    let mut parser = Parser::new(&mut input);
+    let mut family_count = 0usize;
+    while !parser.is_exhausted() {
+        if let Ok(family) = parser.try_parse(|parser| parser.expect_string_cloned()) {
+            if family.is_empty() {
+                return false;
+            }
+        } else {
+            let mut component_count = 0usize;
+            while let Ok(component) = parser.try_parse(|parser| parser.expect_ident_cloned()) {
+                if crate::diagram_theme::is_css_wide_keyword(component.as_ref()) {
+                    return false;
+                }
+                component_count = component_count.saturating_add(1);
+            }
+            if component_count == 0 {
+                return false;
+            }
+        }
+        family_count = family_count.saturating_add(1);
+        if parser.is_exhausted() {
+            break;
+        }
+        if parser.expect_comma().is_err() || parser.is_exhausted() {
+            return false;
         }
     }
-    winner.map_or(CssFontFamilyOwnership::Inherited, |(_, owner)| owner)
+    family_count != 0
+}
+
+fn visit_style_declaration_boundaries<'a>(
+    declaration_list: &'a str,
+    mut visit: impl FnMut(StyleDeclarationBoundary<'a>),
+) {
+    let mut input = ParserInput::new(declaration_list);
+    let mut parser = Parser::new(&mut input);
+    while !parser.is_exhausted() {
+        let start = parser.position();
+        let boundary = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
+            let property = declaration.expect_ident_cloned()?;
+            declaration.expect_colon()?;
+            let important = declaration_has_trailing_important(declaration);
+            let property = property.as_ref();
+            let affects_font_family = property.eq_ignore_ascii_case("font-family")
+                || property.eq_ignore_ascii_case("font")
+                || property.eq_ignore_ascii_case("all");
+            Ok::<_, ParseError<'_, ()>>((affects_font_family, important))
+        });
+        let raw = parser.slice(start..parser.position()).trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let (affects_font_family, important) = boundary.unwrap_or((false, false));
+        visit(StyleDeclarationBoundary {
+            raw,
+            affects_font_family,
+            important,
+        });
+    }
+}
+
+fn declaration_has_trailing_important(parser: &mut Parser<'_, '_>) -> bool {
+    while !parser.is_exhausted() {
+        let state = parser.state();
+        let Ok(token) = parser.next() else {
+            return false;
+        };
+        if matches!(token, Token::Delim('!')) {
+            parser.reset(&state);
+            return parser.try_parse(parse_important).is_ok() && parser.is_exhausted();
+        }
+    }
+    false
 }
 
 pub(crate) fn is_resource_free_css_value(value: &str) -> bool {
@@ -628,9 +827,9 @@ fn css_value_source_is_safe(value: &str) -> bool {
     !value.is_empty()
         && !value.contains("/*")
         && !value.contains("*/")
-        && !value.chars().any(|character| {
-            character.is_control() || matches!(character, '<' | '>' | '{' | '}' | ';')
-        })
+        && !value
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '<' | '>' | '{' | '}'))
 }
 
 fn validate_css_component<'i, 't>(
@@ -907,6 +1106,93 @@ mod tests {
         );
         assert_eq!(
             css_font_family_ownership([r"font-family:u\6eset"]),
+            CssFontFamilyOwnership::Inherited
+        );
+        assert_eq!(
+            css_font_family_ownership([r#"font-family:"a;b",sans-serif"#]),
+            CssFontFamilyOwnership::SourceOwned
+        );
+        assert_eq!(
+            css_font_family_ownership([
+                r#"font-family:"a;b",sans-serif !important;font-family:inherit"#
+            ]),
+            CssFontFamilyOwnership::SourceOwned
+        );
+        assert_eq!(
+            css_font_family_ownership([
+                r#"font-family:/* host comment */ var("!important");font-family:inherit"#
+            ]),
+            CssFontFamilyOwnership::Inherited
+        );
+        assert_eq!(
+            css_font_family_ownership(["font:16px DescendantOwned"]),
+            CssFontFamilyOwnership::Unverified
+        );
+        assert_eq!(
+            css_font_family_ownership(["font:inherit"]),
+            CssFontFamilyOwnership::Inherited
+        );
+        assert_eq!(
+            css_font_family_ownership(["all:initial"]),
+            CssFontFamilyOwnership::Unverified
+        );
+        assert_eq!(css_font_family_override("all:red"), None);
+        assert_eq!(css_font_family_override("font:red"), None);
+        assert_eq!(css_font_family_override("font:16px"), None);
+        assert_eq!(
+            css_font_family_ownership(["font:16px DescendantOwned !important;font-family:inherit"]),
+            CssFontFamilyOwnership::Unverified
+        );
+        assert_eq!(
+            css_font_family_ownership([
+                "font:16px DescendantOwned !important;font-family:inherit !important"
+            ]),
+            CssFontFamilyOwnership::Inherited
+        );
+    }
+
+    #[test]
+    fn font_family_ownership_fails_closed_only_for_unreliable_font_declarations() {
+        assert_eq!(
+            css_font_family_ownership(["font-family:/* host comment */ Source"]),
+            CssFontFamilyOwnership::Unverified
+        );
+        assert_eq!(
+            css_font_family_ownership([
+                "font-family:/* host comment */ Source;font-family:inherit !important"
+            ]),
+            CssFontFamilyOwnership::Inherited
+        );
+        assert_eq!(
+            css_font_family_ownership([
+                "font-family:/* host comment */ Source;font-family:Known !important"
+            ]),
+            CssFontFamilyOwnership::SourceOwned
+        );
+        assert_eq!(
+            css_font_family_ownership(["font-family:/* host comment */ Source;font-family:Known"]),
+            CssFontFamilyOwnership::SourceOwned
+        );
+        assert_eq!(
+            css_font_family_ownership([
+                "font-family:/* host comment */ Source !important;font-family:inherit"
+            ]),
+            CssFontFamilyOwnership::Unverified
+        );
+        assert_eq!(
+            css_font_family_ownership([
+                "font-family:/* host comment */ Source !important;font-family:unset !important"
+            ]),
+            CssFontFamilyOwnership::Inherited
+        );
+        assert_eq!(
+            css_font_family_ownership([
+                "color:url(https://example.test/paint.svg);font-family:Source"
+            ]),
+            CssFontFamilyOwnership::SourceOwned
+        );
+        assert_eq!(
+            css_font_family_ownership(["color:url(https://example.test/paint.svg)"]),
             CssFontFamilyOwnership::Inherited
         );
     }

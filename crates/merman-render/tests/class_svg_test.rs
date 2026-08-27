@@ -601,6 +601,81 @@ classDiagram
 }
 
 #[test]
+fn class_html_descendant_fonts_fail_closed_until_layout_measures_them() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassMeasuredTyped").expect("valid Class measured font"),
+    ));
+    for (case, label) in [
+        (
+            "static",
+            "<span style='font-family:DescendantOwned'>Visible</span>",
+        ),
+        (
+            "quoted-semicolon",
+            "<span style='font-family:&quot;a;b&quot;,sans-serif'>Visible</span>",
+        ),
+        (
+            "font-shorthand",
+            "<span style='font:16px DescendantOwned'>Visible</span>",
+        ),
+        ("all-reset", "<span style='all:initial'>Visible</span>"),
+        ("font-face", "<font face='DescendantOwned'>Visible</font>"),
+    ] {
+        let source = format!(
+            "%%{{init: {{\"htmlLabels\": true}}}}%%\nclassDiagram\n  class Alpha[\"{label}\"]\n"
+        );
+        let rendered = try_render_class_svg_with_theme_requirement(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap_or_else(|error| panic!("BestEffort preserves {case} descendant font: {error}"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "case={case}");
+        assert_eq!(evidence.applied_count(), 0, "case={case}");
+        assert_eq!(evidence.theme_residual_count(), 1, "case={case}");
+
+        let error = try_render_class_svg_with_theme_and_engine(&source, &theme, Engine::new())
+            .err()
+            .unwrap_or_else(|| panic!("RequirePortable must reject {case} descendant font"));
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::CLASS, 1)),
+            "case={case}"
+        );
+    }
+}
+
+#[test]
+fn class_html_descendant_inherit_keeps_typed_font_portable() {
+    let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("ClassInheritedTyped").expect("valid Class inherited font"),
+    ));
+    for label in [
+        "<span style='font-family:inherit'>Visible</span>",
+        "<font face='DescendantOwned' style='font-family:inherit'>Visible</font>",
+        "<span class='host' style='font-family:inherit !important'>Visible</span>",
+    ] {
+        let source = format!(
+            r#"%%{{init: {{"htmlLabels": true}}}}%%
+classDiagram
+  class Alpha["{label}"]
+"#
+        );
+        let rendered = try_render_class_svg_with_theme_and_engine(&source, &theme, Engine::new())
+            .unwrap_or_else(|error| panic!("render portable inherited descendant font: {error}"));
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "label={label}");
+        assert_eq!(evidence.applied_count(), 1, "label={label}");
+        assert_eq!(evidence.theme_residual_count(), 0, "label={label}");
+    }
+}
+
+#[test]
 fn class_svg_inline_html_font_style_remains_literal_inherited_text() {
     let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
         FontStack::single("ClassSvgLiteralTyped").expect("valid Class SVG literal font"),

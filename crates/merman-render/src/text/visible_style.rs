@@ -30,8 +30,7 @@ enum VisibleTextColorOwner {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum VisibleTextFontFamilyOwner {
     Inherited,
-    CssClass,
-    Inline,
+    UnmeasuredSource,
 }
 
 impl VisibleTextStyleFacts {
@@ -112,10 +111,7 @@ impl VisibleTextStyleFacts {
     }
 
     pub(crate) fn unverified_font_family_run_count(&self) -> usize {
-        self.runs
-            .iter()
-            .filter(|run| matches!(run.font_family_owner, VisibleTextFontFamilyOwner::CssClass))
-            .count()
+        self.runs.len() - self.inherited_font_family_run_count()
     }
 
     #[cfg(test)]
@@ -131,25 +127,31 @@ fn collect_visible_runs(
     runs: &mut Vec<VisibleTextRunStyleFact>,
 ) {
     let (color_owner, font_family_owner) = if node.is_element() {
-        let inherited_color_owner = if node
+        let has_css_class = node
             .attribute("class")
-            .is_some_and(|class| !class.trim().is_empty())
-        {
+            .is_some_and(|class| !class.trim().is_empty());
+        let has_font_face = node.tag_name().name().eq_ignore_ascii_case("font")
+            && node
+                .attribute("face")
+                .is_some_and(|face| !face.trim().is_empty());
+        let local_color_owner = if has_css_class {
             &VisibleTextColorOwner::CssClass
         } else {
             inherited_color_owner
         };
-        let inherited_font_family_owner = if node
-            .attribute("class")
-            .is_some_and(|class| !class.trim().is_empty())
-        {
-            &VisibleTextFontFamilyOwner::CssClass
+        let local_font_family_owner = if has_css_class || has_font_face {
+            &VisibleTextFontFamilyOwner::UnmeasuredSource
         } else {
             inherited_font_family_owner
         };
         (
-            inline_color_owner(node.attribute("style"), inherited_color_owner),
-            inline_font_family_owner(node.attribute("style"), inherited_font_family_owner),
+            inline_color_owner(node.attribute("style"), local_color_owner),
+            inline_font_family_owner(
+                node.attribute("style"),
+                inherited_font_family_owner,
+                local_font_family_owner,
+                has_css_class,
+            ),
         )
     } else {
         (
@@ -218,16 +220,19 @@ fn inline_color_owner(
 
 fn inline_font_family_owner(
     style: Option<&str>,
-    inherited: &VisibleTextFontFamilyOwner,
+    parent: &VisibleTextFontFamilyOwner,
+    local: &VisibleTextFontFamilyOwner,
+    has_css_class: bool,
 ) -> VisibleTextFontFamilyOwner {
-    match style.map(|style| crate::mermaid_style::css_font_family_ownership([style])) {
-        None | Some(crate::mermaid_style::CssFontFamilyOwnership::Inherited) => inherited.clone(),
-        Some(crate::mermaid_style::CssFontFamilyOwnership::SourceOwned) => {
-            VisibleTextFontFamilyOwner::Inline
+    match style.and_then(crate::mermaid_style::css_font_family_override) {
+        None => local.clone(),
+        Some(override_)
+            if override_.ownership() == crate::mermaid_style::CssFontFamilyOwnership::Inherited
+                && (!has_css_class || override_.important()) =>
+        {
+            parent.clone()
         }
-        Some(crate::mermaid_style::CssFontFamilyOwnership::Unverified) => {
-            VisibleTextFontFamilyOwner::CssClass
-        }
+        Some(_) => VisibleTextFontFamilyOwner::UnmeasuredSource,
     }
 }
 
@@ -305,17 +310,59 @@ mod tests {
 
         assert_eq!(facts.visible_run_count(), 3);
         assert_eq!(facts.inherited_font_family_run_count(), 1);
-        assert_eq!(facts.unverified_font_family_run_count(), 1);
+        assert_eq!(facts.unverified_font_family_run_count(), 2);
     }
 
     #[test]
-    fn inherited_font_family_declaration_preserves_parent_ownership() {
+    fn inherited_font_family_declaration_preserves_parent_measurement_state() {
         let facts = VisibleTextStyleFacts::from_xhtml_fragment(
             "<span style=\"font-family:Source Sans\"><b style=\"font-family:inherit\">Owned</b></span>",
         );
 
         assert_eq!(facts.inherited_font_family_run_count(), 0);
-        assert_eq!(facts.unverified_font_family_run_count(), 0);
+        assert_eq!(facts.unverified_font_family_run_count(), 1);
+
+        let inherited = VisibleTextStyleFacts::from_xhtml_fragment(
+            "<span style=\"font-family:inherit\">Inherited</span>",
+        );
+        assert_eq!(inherited.inherited_font_family_run_count(), 1);
+        assert_eq!(inherited.unverified_font_family_run_count(), 0);
+    }
+
+    #[test]
+    fn quoted_semicolon_font_family_is_unmeasured_source_text() {
+        let facts = VisibleTextStyleFacts::from_xhtml_fragment(
+            r#"<span style='font-family:"a;b",sans-serif'>Owned</span>"#,
+        );
+
+        assert_eq!(facts.inherited_font_family_run_count(), 0);
+        assert_eq!(facts.unverified_font_family_run_count(), 1);
+    }
+
+    #[test]
+    fn font_shorthand_and_face_attribute_are_unmeasured_source_text() {
+        for fragment in [
+            "<span style='font:16px DescendantOwned'>Shorthand</span>",
+            "<span style='all:initial'>Reset</span>",
+            "<font face='DescendantOwned'>Face</font>",
+            "<font face='DescendantOwned'><span style='font-family:inherit'>Nested</span></font>",
+            "<span class='host' style='font-family:inherit'>Class</span>",
+        ] {
+            let facts = VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+            assert_eq!(facts.inherited_font_family_run_count(), 0, "{fragment}");
+            assert_eq!(facts.unverified_font_family_run_count(), 1, "{fragment}");
+        }
+
+        for fragment in [
+            "<font face='DescendantOwned' style='font-family:inherit'>Inherited</font>",
+            "<span class='host' style='font-family:inherit !important'>Important</span>",
+            "<font face=''>Empty</font>",
+            "<span style='all:red'>Invalid</span>",
+        ] {
+            let facts = VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+            assert_eq!(facts.inherited_font_family_run_count(), 1, "{fragment}");
+            assert_eq!(facts.unverified_font_family_run_count(), 0, "{fragment}");
+        }
     }
 
     #[test]
