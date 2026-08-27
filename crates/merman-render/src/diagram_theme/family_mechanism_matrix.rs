@@ -443,6 +443,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_PIE_SLICE_STROKE)
         }
+        (DiagramFamilyId::PIE, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL)
+        }
         _ => None,
     }
 }
@@ -1776,6 +1779,18 @@ pub(super) fn classify_rule_facet(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
     ) {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::PIE
+        && target == ThemeTarget::Title
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::BLOCK

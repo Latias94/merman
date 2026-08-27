@@ -805,11 +805,12 @@ fn compile_pie_family(
 
     contributions.add_typography(reader);
     contributions.add_theme_variables(
+        "title.fill",
+        [("pieTitleTextColor", reader.text_fill(ThemeTarget::Title))],
+    );
+    contributions.add_theme_variables(
         "text.fill",
-        [
-            ("pieTitleTextColor", reader.text_fill(ThemeTarget::Title)),
-            ("pieSectionTextColor", reader.text_fill(ThemeTarget::Text)),
-        ],
+        [("pieSectionTextColor", reader.text_fill(ThemeTarget::Text))],
     );
     contributions.finish_into(builder)
 }
@@ -2343,6 +2344,39 @@ mod tests {
         assert!(artifact.overlay.is_empty());
         assert!(artifact.contribution_ids.is_empty());
         assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.pie.slice.stroke"));
+    }
+
+    #[test]
+    fn direct_pie_title_fill_suppresses_only_the_title_bridge_contribution() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(solid("#111827")),
+                    )
+                    .for_family(DiagramFamilyId::PIE),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid("#b45309")),
+                    )
+                    .for_family(DiagramFamilyId::PIE),
+                ),
+        );
+        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::PIE);
+
+        assert!(
+            !artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.pie.title.fill")
+        );
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.pie.text.fill")
+        );
     }
 
     #[test]

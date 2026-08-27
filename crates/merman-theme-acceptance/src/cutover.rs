@@ -179,6 +179,10 @@ const PIE_SLICE_SOURCE: &str = r#"pie
   "Alpha" : 3
   "Beta" : 2
 "#;
+const PIE_TITLE_SOURCE: &str = r#"pie title Cutover pie title
+  "Alpha" : 3
+  "Beta" : 2
+"#;
 const BLOCK_NODE_SOURCE: &str = r#"block-beta
   columns 5
   rect["Rect"] circle(("Circle")) double((("Double"))) cylinder[("Cylinder")] polygon{{"Polygon"}}
@@ -384,6 +388,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::PieSlice,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(PIE_SLICE_SOURCE),
+        (DiagramFamilyId::PIE, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(PIE_TITLE_SOURCE)
+        }
         (
             DiagramFamilyId::BLOCK,
             ThemeTarget::Node,
@@ -1291,11 +1298,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_146_routes_and_162_artifact_witnesses() {
+    fn route_inventory_retains_148_routes_and_164_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 146);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 162);
+        assert_eq!(inventory.len(), 148);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 164);
     }
 
     #[test]

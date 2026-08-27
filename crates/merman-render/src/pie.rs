@@ -10,7 +10,7 @@ mod config;
 mod theme;
 
 pub(crate) use config::{PieConfigView, PieLegendPosition};
-pub(crate) use theme::{PieThemePlan, PieThemeReceipt};
+pub(crate) use theme::{PIE_TITLE_CLASS, PieThemePlan, PieThemeReceipt};
 
 fn polar_xy(radius: f64, angle: f64) -> (f64, f64) {
     // Mermaid pie charts use a "12 o'clock is zero" convention with y increasing downwards.

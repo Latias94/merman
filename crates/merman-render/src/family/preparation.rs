@@ -488,10 +488,12 @@ fn prepare_pie_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let theme = crate::pie::PieThemePlan::resolve(
+    let title = model.title.as_deref().or(meta.title.as_deref());
+    let theme = crate::pie::PieThemePlan::resolve_with_title(
         &model,
         &meta.effective_config,
         execution.resolved_theme(),
+        title,
         execution.work_meter_ref(),
     )?;
     let layout = crate::pie::layout_pie_diagram_typed_with_paint_plan(

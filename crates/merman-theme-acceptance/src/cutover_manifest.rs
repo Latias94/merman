@@ -322,7 +322,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 146] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 148] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -806,6 +806,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 146] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         PIE_SLICE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::PIE,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::PIE,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TITLE_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::BLOCK,

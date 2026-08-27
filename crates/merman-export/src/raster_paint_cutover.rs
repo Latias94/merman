@@ -100,7 +100,7 @@ impl RasterPaintCutoverReceipt {
 
     fn canonical_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v2");
+        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v3");
         update_len_prefixed(&mut hasher, self.facet.id());
         hasher.update(self.control_rgb);
         hasher.update(self.solid_source_digest);
@@ -1056,10 +1056,22 @@ mod tests {
         let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="transparent" stroke="transparent"/></svg>"##;
 
         let pair = encode_pair(solid, transparent, RasterPaintCutoverFacet::Fill, "#dc2626")
-            .expect("valid dual-facet control pair");
-
+            .expect("a shared fill and stroke control paint remains a valid fill witness");
         let (_, _, receipt) = pair.into_parts();
         assert!(receipt.proves_semantics());
+    }
+
+    #[test]
+    fn invisible_transparent_stroke_geometry_drift_fails_closed() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="#f8fafc" stroke="#2563eb" stroke-width="2" stroke-dasharray="2 1"/></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="#f8fafc" stroke="transparent" stroke-width="4" stroke-dasharray="1 2"/></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Stroke,
+            "#2563eb",
+        ));
     }
 
     #[test]

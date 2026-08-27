@@ -244,6 +244,67 @@ fn pie_slice_default_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
         .expect("compile explicit-Default Pie stroke theme")
 }
 
+fn pie_title_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::PIE),
+                ),
+            ),
+        )
+        .expect("compile Pie title fill theme")
+}
+
+fn pie_title_default_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::PIE)
+                    .with_variant(ThemeVariant::Default),
+                ),
+            ),
+        )
+        .expect("compile explicit-Default Pie title fill theme")
+}
+
+fn pie_title_and_text_fill_theme() -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Title,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#111827").expect("valid Pie title fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::PIE),
+                    )
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#b45309").expect("valid Pie text fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::PIE),
+                    ),
+            ),
+        )
+        .expect("compile mixed Pie title and text theme")
+}
+
 fn pie_slice_ordinal_stroke_theme(selector: OrdinalSelector) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
@@ -308,6 +369,176 @@ fn pie_stylesheet_property_values(svg: &str, selector: &str, property: &str) -> 
         .filter(|(name, _)| name.trim() == property)
         .map(|(_, value)| value.trim().to_string())
         .collect()
+}
+
+#[test]
+fn pie_static_title_fill_is_verified_from_scoped_stylesheet_and_visible_title() {
+    for (fill, expected_css) in [
+        (
+            CanvasPaint::solid("#2563eb").expect("valid solid Pie title fill"),
+            "#2563eb",
+        ),
+        (CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = pie_title_fill_theme(fill);
+        let rendered = try_render_pie_with_theme_requirement(
+            "pie title Release distribution\n  \"Alpha\" : 1\n",
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("unqualified Pie title fill must be portable");
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), "#merman .pieTitleText", "fill"),
+            [expected_css]
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Pie SVG");
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class") == Some("pieTitleText")
+                        && node.text().is_some_and(|text| !text.trim().is_empty())
+                })
+                .count(),
+            1,
+            "the typed title route must bind exactly one visible title terminal"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.status(),
+            merman_render::__private::FamilyEvidenceStatus::Verified
+        );
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn pie_static_title_fill_respects_source_ownership_and_absent_title() {
+    let theme = pie_title_fill_theme(CanvasPaint::solid("#2563eb").expect("valid Pie title fill"));
+    let source_owned = try_render_pie_with_theme_requirement(
+        r##"%%{init: {"themeVariables": {"pieTitleTextColor": "#b45309"}}}%%
+pie title Source title
+  "Alpha" : 1
+"##,
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("source-owned Pie title must be NotApplicable");
+    assert_eq!(
+        pie_stylesheet_property_values(source_owned.svg(), "#merman .pieTitleText", "fill"),
+        ["#b45309"]
+    );
+    let source_evidence =
+        merman_render::__private::family_evidence(source_owned.into_completion().report());
+    assert_eq!(source_evidence.required_count(), 1);
+    assert_eq!(source_evidence.applied_count(), 0);
+    assert_eq!(source_evidence.not_applicable_count(), 1);
+    assert_eq!(source_evidence.theme_residual_count(), 0);
+    assert_eq!(source_evidence.compatibility_residual_count(), 0);
+
+    let absent = try_render_pie_with_theme_requirement(
+        "pie\n  \"Alpha\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("an absent Pie title must be NotApplicable");
+    let absent_evidence =
+        merman_render::__private::family_evidence(absent.into_completion().report());
+    assert_eq!(absent_evidence.required_count(), 1);
+    assert_eq!(absent_evidence.applied_count(), 0);
+    assert_eq!(absent_evidence.not_applicable_count(), 1);
+    assert_eq!(absent_evidence.theme_residual_count(), 0);
+    assert_eq!(absent_evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_static_title_fill_tracks_frontmatter_titles() {
+    let theme = pie_title_fill_theme(CanvasPaint::solid("#2563eb").expect("valid Pie title fill"));
+    let rendered = try_render_pie_with_theme_requirement(
+        "---\ntitle: Frontmatter title\n---\npie\n  \"Alpha\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("frontmatter Pie title must be a typed terminal");
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .pieTitleText", "fill"),
+        ["#2563eb"]
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_title_fill_is_independent_from_legacy_text_fill() {
+    let theme = pie_title_and_text_fill_theme();
+    let rendered = try_render_pie_with_theme_requirement(
+        "pie title Mixed ownership\n  \"Alpha\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort mixed Pie title and text render");
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .pieTitleText", "fill"),
+        ["#111827"]
+    );
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .slice", "fill"),
+        ["#b45309"]
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(
+        evidence.compatibility_residual_count(),
+        2,
+        "the typed title coexists with the legacy text and typography projections"
+    );
+}
+
+#[test]
+fn pie_explicit_default_title_fill_remains_on_the_compatibility_bridge() {
+    let theme = pie_title_default_fill_theme(
+        CanvasPaint::solid("#2563eb").expect("valid explicit-Default Pie title fill"),
+    );
+    let rendered = try_render_pie_with_theme_requirement(
+        "pie title Default title\n  \"Alpha\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort explicit-Default Pie title render");
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .pieTitleText", "fill"),
+        ["#2563eb"]
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
+
+    let Err(error) = try_render_pie_with_theme_requirement(
+        "pie title Default title\n  \"Alpha\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    ) else {
+        panic!("explicit-Default Pie title must remain outside the direct tranche");
+    };
+    assert!(matches!(
+        error,
+        Error::LegacyFamilyThemeCompatibility {
+            family_id: DiagramFamilyId::PIE,
+            residual_count: 1,
+        }
+    ));
 }
 
 #[test]

@@ -42,30 +42,6 @@ fn emitted_attribute_matches(
         .is_some_and(|(value, _)| value == expected_value)
 }
 
-fn pie_stroke_rule_matches(css: &str, diagram_id: &str, class_name: &str, stroke: &str) -> bool {
-    let marker = format!(
-        "#{} .{class_name}{{",
-        crate::svg::escape_css_identifier(diagram_id)
-    );
-    let mut bodies = css.match_indices(&marker).filter_map(|(start, _)| {
-        let body_start = start.checked_add(marker.len())?;
-        let body = css.get(body_start..)?;
-        let body_end = body.find('}')?;
-        body.get(..body_end)
-    });
-    let Some(body) = bodies.next() else {
-        return false;
-    };
-    if bodies.next().is_some() {
-        return false;
-    }
-    body.split(';').any(|declaration| {
-        declaration
-            .split_once(':')
-            .is_some_and(|(property, value)| property.trim() == "stroke" && value.trim() == stroke)
-    })
-}
-
 fn empty_pie_root_viewport_fallback(
     model: &PieDiagramRenderModel,
     min_x: f64,
@@ -300,44 +276,42 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     let outer_stroke = (!layout.slices.is_empty())
         .then(|| paint_plan.outer_stroke_css())
         .flatten();
-    let css = pie_css_with_stroke_overrides(
+    let title_fill = paint_plan.title_fill_css();
+    let css_emission = write_pie_css_with_theme_overrides(
+        &mut out,
         diagram_id.semantic_str(),
         effective_config,
         slice_stroke,
         outer_stroke,
-    );
-    let css_start = out.len();
-    out.push_str(&css);
-    out.checkpoint()?;
-    let emitted_css = css_start
-        .checked_add(css.len())
-        .and_then(|css_end| out.as_str().get(css_start..css_end))
-        .filter(|emitted| *emitted == css);
-    if let Some(stroke) = slice_stroke {
-        let emitted = emitted_css.is_some_and(|css| {
-            pie_stroke_rule_matches(css, diagram_id.semantic_str(), "pieCircle", stroke)
-        });
-        if let Some(receipt) = paint_receipt.as_mut() {
+        title_fill,
+    )?;
+    if let Some(receipt) = paint_receipt.as_mut() {
+        if let Some(stroke) = slice_stroke {
             receipt.record_slice_stroke_stylesheet(
                 paint_plan,
                 "pieCircle",
-                emitted.then_some(stroke),
+                css_emission
+                    .slice_stroke()
+                    .filter(|emitted| *emitted == stroke),
             );
         }
-    }
-    if let Some(stroke) = outer_stroke {
-        let emitted = emitted_css.is_some_and(|css| {
-            pie_stroke_rule_matches(css, diagram_id.semantic_str(), "pieOuterCircle", stroke)
-        });
-        if let Some(receipt) = paint_receipt.as_mut() {
+        if let Some(stroke) = outer_stroke {
             receipt.record_outer_stroke_stylesheet(
                 paint_plan,
                 "pieOuterCircle",
-                emitted.then_some(stroke),
+                css_emission
+                    .outer_stroke()
+                    .filter(|emitted| *emitted == stroke),
+            );
+        }
+        if title_fill.is_some() {
+            receipt.record_title_stylesheet(
+                paint_plan,
+                crate::pie::PIE_TITLE_CLASS,
+                css_emission.title_fill(),
             );
         }
     }
-    drop(css);
     out.push_str(r#"</style><g/>"#);
     out.checkpoint()?;
 
@@ -414,13 +388,16 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
 
     out.push_str("</g>");
 
-    match layout.title.as_deref() {
+    let title_start = out.len();
+    let title_text = layout.title.as_deref();
+    match title_text {
         Some(t) => {
             options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
-                r#"<text x="0" y="{y}" class="pieTitleText">{text}</text>"#,
+                r#"<text x="0" y="{y}" class="{class}">{text}</text>"#,
                 y = fmt(-200.0),
+                class = crate::pie::PIE_TITLE_CLASS,
                 text = escape_xml(t)
             );
         }
@@ -428,12 +405,25 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
             options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
-                r#"<text x="0" y="{y}" class="pieTitleText"/>"#,
-                y = fmt(-200.0)
+                r#"<text x="0" y="{y}" class="{class}"/>"#,
+                y = fmt(-200.0),
+                class = crate::pie::PIE_TITLE_CLASS,
             );
         }
     }
     out.checkpoint()?;
+    if paint_plan.title_fill_css().is_some()
+        && let Some(receipt) = paint_receipt.as_mut()
+    {
+        let terminal_class = emitted_attribute_matches(
+            out.as_str(),
+            title_start,
+            r#" class=""#,
+            crate::pie::PIE_TITLE_CLASS,
+        )
+        .then_some(crate::pie::PIE_TITLE_CLASS);
+        receipt.record_title_text(terminal_class, title_text);
+    }
 
     let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
     let legend_text_x = legend_rect_size + PIE_LEGEND_SPACING_PX;

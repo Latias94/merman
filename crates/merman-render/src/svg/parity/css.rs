@@ -1079,15 +1079,38 @@ pub(super) struct PieCss {
     pie_legend_text_color: String,
 }
 
-impl PieCss {
-    pub(super) fn new(effective_config: &serde_json::Value) -> Self {
-        Self::with_stroke_overrides(effective_config, None, None)
+/// Structured values emitted for Pie routes whose terminal evidence requires stylesheet proof.
+#[derive(Debug, Default)]
+pub(super) struct PieCssEmission {
+    slice_stroke: Option<Box<str>>,
+    outer_stroke: Option<Box<str>>,
+    title_fill: Option<Box<str>>,
+}
+
+impl PieCssEmission {
+    pub(super) fn slice_stroke(&self) -> Option<&str> {
+        self.slice_stroke.as_deref()
     }
 
-    fn with_stroke_overrides(
+    pub(super) fn outer_stroke(&self) -> Option<&str> {
+        self.outer_stroke.as_deref()
+    }
+
+    pub(super) fn title_fill(&self) -> Option<&str> {
+        self.title_fill.as_deref()
+    }
+}
+
+impl PieCss {
+    pub(super) fn new(effective_config: &serde_json::Value) -> Self {
+        Self::with_theme_overrides(effective_config, None, None, None)
+    }
+
+    fn with_theme_overrides(
         effective_config: &serde_json::Value,
         slice_stroke: Option<&str>,
         outer_stroke: Option<&str>,
+        title_fill: Option<&str>,
     ) -> Self {
         let info = InfoCssValues::new(
             effective_config,
@@ -1096,7 +1119,9 @@ impl PieCss {
         );
         let theme = SvgTheme::new(effective_config);
         let task_text_dark_color = theme.color("taskTextDarkColor", "black");
-        let pie_title_text_color = theme.color("pieTitleTextColor", task_text_dark_color.as_str());
+        let pie_title_text_color = title_fill
+            .map(str::to_owned)
+            .unwrap_or_else(|| theme.color("pieTitleTextColor", task_text_dark_color.as_str()));
         let pie_section_text_color = theme.color("pieSectionTextColor", info.text_color.as_str());
         let pie_legend_text_color =
             theme.color("pieLegendTextColor", task_text_dark_color.as_str());
@@ -1139,7 +1164,7 @@ impl PieCss {
         let id = selector_id;
         let _ = write!(
             out,
-            r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
+            r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .{}{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
             id,
             self.pie_stroke_color,
             self.pie_stroke_width,
@@ -1150,6 +1175,7 @@ impl PieCss {
             self.pie_outer_stroke_color,
             self.pie_outer_stroke_width,
             id,
+            crate::pie::PIE_TITLE_CLASS,
             self.pie_title_text_size,
             self.pie_title_text_color,
             self.info.font_family,
@@ -1171,23 +1197,32 @@ pub(super) fn pie_css<I>(diagram_id: I, effective_config: &serde_json::Value) ->
 where
     I: SvgDiagramIdValue,
 {
-    pie_css_with_stroke_overrides(diagram_id, effective_config, None, None)
+    let mut out = String::new();
+    write_pie_css_with_theme_overrides(&mut out, diagram_id, effective_config, None, None, None)
+        .expect("String-backed Pie CSS emission cannot fail");
+    out
 }
 
-pub(super) fn pie_css_with_stroke_overrides<I>(
+pub(super) fn write_pie_css_with_theme_overrides<I>(
+    out: &mut impl SvgOutput,
     diagram_id: I,
     effective_config: &serde_json::Value,
     slice_stroke: Option<&str>,
     outer_stroke: Option<&str>,
-) -> String
+    title_fill: Option<&str>,
+) -> Result<PieCssEmission>
 where
     I: SvgDiagramIdValue,
 {
-    let plan = PieCss::with_stroke_overrides(effective_config, slice_stroke, outer_stroke);
-    let mut out = String::new();
-    plan.write_for_normalized_id(&mut out, diagram_id)
-        .expect("String-backed Pie CSS emission cannot fail");
-    out
+    let plan =
+        PieCss::with_theme_overrides(effective_config, slice_stroke, outer_stroke, title_fill);
+    let emission = PieCssEmission {
+        slice_stroke: slice_stroke.map(|_| plan.pie_stroke_color.clone().into_boxed_str()),
+        outer_stroke: outer_stroke.map(|_| plan.pie_outer_stroke_color.clone().into_boxed_str()),
+        title_fill: title_fill.map(|_| plan.pie_title_text_color.clone().into_boxed_str()),
+    };
+    plan.write_for_normalized_id(out, diagram_id)?;
+    Ok(emission)
 }
 
 #[cfg(test)]
