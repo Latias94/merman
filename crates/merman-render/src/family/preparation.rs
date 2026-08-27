@@ -711,9 +711,14 @@ fn prepare_gitgraph_family(
 ) -> Result<BuiltinFamilyArtifact> {
     let has_title =
         crate::gitgraph::resolve_gitgraph_title(&model, meta.title.as_deref()).is_some();
+    let typography_theme = crate::gitgraph::GitGraphTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
     let layout = crate::gitgraph::layout_gitgraph_diagram_typed(
         &model,
         meta.effective_config.as_value(),
+        &typography_theme,
         execution.text_measurer(),
     )?;
     let node_palette = crate::gitgraph::GitGraphNodePalettePlan::resolve(
@@ -727,6 +732,7 @@ fn prepare_gitgraph_family(
         GitGraphFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             node_palette,
+            typography_theme,
         },
     )))
 }

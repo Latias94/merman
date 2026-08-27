@@ -1,10 +1,10 @@
 use merman_core::{DiagramFamilyId, Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
     LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, Specified,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -88,6 +88,52 @@ fn gitgraph_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
         ThemeStylePatch::default().with_stroke(stroke),
     )
     .for_family(DiagramFamilyId::GIT_GRAPH)])
+}
+
+fn gitgraph_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::GIT_GRAPH, typography),
+        ))
+        .expect("compile GitGraph typography theme")
+}
+
+fn gitgraph_stylesheet(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid GitGraph SVG");
+    document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect()
+}
+
+fn gitgraph_css_rule(stylesheet: &str, selector: &str) -> String {
+    let marker = format!("{selector}{{");
+    let start = stylesheet
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing GitGraph CSS selector `{selector}`: {stylesheet}"))
+        + marker.len();
+    let end = stylesheet[start..]
+        .find('}')
+        .unwrap_or_else(|| panic!("unterminated GitGraph CSS selector `{selector}`: {stylesheet}"));
+    stylesheet[start..start + end].to_string()
+}
+
+fn css_property<'a>(declarations: &'a str, property: &str) -> Option<&'a str> {
+    declarations.split(';').find_map(|declaration| {
+        let (name, value) = declaration.split_once(':')?;
+        (name == property).then_some(value)
+    })
+}
+
+fn css_property_winner<'a>(declarations: &'a str, property: &str) -> Option<&'a str> {
+    declarations
+        .split(';')
+        .filter_map(|declaration| {
+            let (name, value) = declaration.split_once(':')?;
+            (name == property).then_some(value)
+        })
+        .last()
 }
 
 fn gitgraph_legacy_paint_theme() -> DiagramTheme {
@@ -174,13 +220,527 @@ fn render_gitgraph_with_theme_and_engine(
         .expect("render themed GitGraph")
 }
 
-fn stylesheet(svg: &str) -> String {
-    let document = roxmltree::Document::parse(svg).expect("valid GitGraph SVG");
-    document
-        .descendants()
-        .filter(|node| node.has_tag_name("style"))
-        .filter_map(|node| node.text())
-        .collect()
+#[test]
+fn gitgraph_mixed_base_typography_is_direct_and_portable() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(
+            FontStack::new(["GitGraph Typed", "monospace"])
+                .expect("valid GitGraph typed font stack"),
+        )
+        .with_font_size_px(23.0)
+        .expect("valid GitGraph typed font size");
+    let theme = gitgraph_typography_theme(typography);
+    let rendered = try_render_gitgraph_with_theme_and_engine(
+        r#"---
+title: GitGraph typography
+---
+gitGraph
+  commit id: "1" tag: "v1"
+  branch develop
+  checkout develop
+  commit id: "2"
+"#,
+        &theme,
+        Engine::new(),
+        "git-typography",
+    )
+    .expect("render strict portable GitGraph typography");
+
+    for path in [
+        "fontFamily",
+        "themeVariables.fontFamily",
+        "themeVariables.fontSize",
+    ] {
+        assert!(
+            !merman_core::__private::fallback_overlay_owns_path(
+                &rendered.metadata().effective_config,
+                path,
+            ),
+            "GitGraph direct typography must retire fallback ownership of {path}"
+        );
+    }
+
+    let stylesheet = gitgraph_stylesheet(rendered.svg());
+    assert_eq!(
+        gitgraph_css_rule(&stylesheet, "#git-typography"),
+        "font-family:\"GitGraph Typed\", monospace;font-size:23px;fill:#333;"
+    );
+    assert_eq!(
+        gitgraph_css_rule(&stylesheet, "#git-typography svg"),
+        "font-family:\"GitGraph Typed\", monospace;font-size:23px;"
+    );
+    assert_eq!(
+        css_property_winner(
+            &gitgraph_css_rule(
+                &stylesheet,
+                "#git-typography .commit-id,#git-typography .commit-msg,#git-typography .branch-label"
+            ),
+            "font-family"
+        ),
+        Some("\"GitGraph Typed\", monospace")
+    );
+    assert!(!stylesheet.contains("font-family:var(--mermaid-font-family)"));
+
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph SVG");
+    assert!(document.descendants().any(|node| {
+        node.is_element()
+            && node.tag_name().name() == "tspan"
+            && node.attribute("class") == Some("row")
+            && node.text() == Some("develop")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.is_element()
+            && node.tag_name().name() == "text"
+            && node.attribute("class") == Some("commit-label")
+            && node.text() == Some("1")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.is_element()
+            && node.tag_name().name() == "text"
+            && node.attribute("class") == Some("tag-label")
+            && node.text() == Some("v1")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.is_element()
+            && node.tag_name().name() == "text"
+            && node.attribute("class") == Some("gitTitleText")
+            && node.text() == Some("GitGraph typography")
+    }));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn gitgraph_font_stack_only_is_proven_by_fixed_size_visual_roles() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default().with_font_stack(
+            FontStack::new(["GitGraphStackOnly", "monospace"])
+                .expect("valid GitGraph stack-only theme"),
+        ),
+    );
+    let rendered = render_gitgraph_with_theme_and_engine(
+        r#"---
+title: GitGraph fixed roles
+---
+gitGraph
+  commit id: "1" tag: "v1"
+"#,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "gitGraph": { "showBranches": false }
+        }))),
+        "git-stack-fixed-roles",
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph SVG");
+    let root_rule = gitgraph_css_rule(
+        &gitgraph_stylesheet(rendered.svg()),
+        "#git-stack-fixed-roles",
+    );
+
+    assert_eq!(
+        css_property(&root_rule, "font-family"),
+        Some("GitGraphStackOnly, monospace")
+    );
+    assert_eq!(css_property(&root_rule, "font-size"), Some("16px"));
+    assert!(
+        !document
+            .descendants()
+            .any(|node| has_class(&node, "branch-label0"))
+    );
+    for (class, text) in [
+        ("commit-label", "1"),
+        ("tag-label", "v1"),
+        ("gitTitleText", "GitGraph fixed roles"),
+    ] {
+        assert!(document.descendants().any(|node| {
+            node.is_element() && has_class(&node, class) && node.text() == Some(text)
+        }));
+    }
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gitgraph_font_size_requires_a_visible_nonempty_branch_label() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(29.0)
+            .expect("valid GitGraph font size"),
+    );
+    let visible = render_gitgraph_with_theme_and_engine(
+        TWO_BRANCHES,
+        &theme,
+        Engine::new(),
+        "git-size-visible-branch",
+    );
+    let visible_rule = gitgraph_css_rule(
+        &gitgraph_stylesheet(visible.svg()),
+        "#git-size-visible-branch",
+    );
+    assert_eq!(css_property(&visible_rule, "font-size"), Some("29px"));
+    let visible_evidence =
+        merman_render::__private::family_evidence(visible.into_completion().report());
+    assert_eq!(visible_evidence.applied_count(), 1);
+    assert_eq!(visible_evidence.not_applicable_count(), 0);
+
+    let fixed_roles_only = render_gitgraph_with_theme_and_engine(
+        r#"---
+title: Fixed size roles only
+---
+gitGraph
+  commit id: "1" tag: "v1"
+"#,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "gitGraph": { "showBranches": false }
+        }))),
+        "git-size-fixed-roles",
+    );
+    let fixed_document =
+        roxmltree::Document::parse(fixed_roles_only.svg()).expect("valid GitGraph SVG");
+    assert!(
+        !fixed_document
+            .descendants()
+            .any(|node| has_class(&node, "branch-label0"))
+    );
+    assert!(
+        fixed_document
+            .descendants()
+            .any(|node| has_class(&node, "commit-label"))
+    );
+    assert!(
+        fixed_document
+            .descendants()
+            .any(|node| has_class(&node, "tag-label"))
+    );
+    assert!(
+        fixed_document
+            .descendants()
+            .any(|node| has_class(&node, "gitTitleText"))
+    );
+    let fixed_evidence =
+        merman_render::__private::family_evidence(fixed_roles_only.into_completion().report());
+    assert_eq!(fixed_evidence.applied_count(), 0);
+    assert_eq!(fixed_evidence.not_applicable_count(), 1);
+    assert_eq!(fixed_evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gitgraph_base_dependent_role_sizes_use_the_typed_font_size() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(29.0)
+            .expect("valid GitGraph font size"),
+    );
+    let rendered = render_gitgraph_with_theme_and_engine(
+        r#"gitGraph
+  commit id: "1" tag: "v1"
+"#,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "gitGraph": { "showBranches": false },
+            "themeVariables": {
+                "commitLabelFontSize": "inherit",
+                "tagLabelFontSize": "150%"
+            }
+        }))),
+        "git-relative-role-size",
+    );
+    let stylesheet = gitgraph_stylesheet(rendered.svg());
+    assert_eq!(
+        css_property(
+            &gitgraph_css_rule(&stylesheet, "#git-relative-role-size .commit-label"),
+            "font-size"
+        ),
+        Some("inherit")
+    );
+    assert_eq!(
+        css_property(
+            &gitgraph_css_rule(&stylesheet, "#git-relative-role-size .tag-label"),
+            "font-size"
+        ),
+        Some("150%")
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gitgraph_unmeasurable_role_size_fails_closed() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(29.0)
+            .expect("valid GitGraph font size"),
+    );
+    let engine = || {
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "gitGraph": { "showBranches": false },
+            "themeVariables": {
+                "commitLabelFontSize": "calc(10px + 1em)"
+            }
+        })))
+    };
+    let source = r#"gitGraph
+  commit id: "1"
+"#;
+    let error = match try_render_gitgraph_with_theme_and_engine(
+        source,
+        &theme,
+        engine(),
+        "git-unmeasurable-role-size",
+    ) {
+        Ok(_) => panic!("unmeasurable GitGraph role size must fail closed"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::GIT_GRAPH, 1))
+    );
+
+    let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+        source,
+        &theme,
+        engine(),
+        "git-unmeasurable-role-size-best-effort",
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort GitGraph keeps the Mermaid CSS value");
+    let stylesheet = gitgraph_stylesheet(rendered.svg());
+    assert_eq!(
+        css_property(
+            &gitgraph_css_rule(
+                &stylesheet,
+                "#git-unmeasurable-role-size-best-effort .commit-label"
+            ),
+            "font-size"
+        ),
+        Some("calc(10px + 1em)")
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn gitgraph_accessibility_metadata_does_not_prove_visual_typography() {
+    let theme = gitgraph_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("GitGraphAccessibleOnly").expect("valid GitGraph font stack"),
+    ));
+    let rendered = render_gitgraph_with_theme_and_engine(
+        r#"gitGraph:
+accTitle: Accessibility only
+accDescr: This text is not a visual terminal
+commit id:"1"
+"#,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "gitGraph": {
+                "showBranches": false,
+                "showCommitLabel": false
+            }
+        }))),
+        "git-accessibility-only",
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph SVG");
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("title") && node.text() == Some("Accessibility only"))
+    );
+    assert!(
+        !document
+            .descendants()
+            .any(|node| has_class(&node, "gitTitleText"))
+    );
+    assert!(
+        !document
+            .descendants()
+            .any(|node| has_class(&node, "branch-label0"))
+    );
+    assert!(
+        !document
+            .descendants()
+            .any(|node| has_class(&node, "commit-label"))
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gitgraph_typography_config_ownership_is_property_local() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(
+                FontStack::new(["GitGraphTypedOwner", "monospace"])
+                    .expect("valid GitGraph typed font stack"),
+            )
+            .with_font_size_px(23.0)
+            .expect("valid GitGraph typed font size"),
+    );
+
+    render_source_and_site_config_cases(
+        TWO_BRANCHES,
+        json!({
+            "fontFamily": "RootFallback",
+            "fontSize": 41
+        }),
+        &theme,
+        "git-root-family-owner",
+        |owner, rendered| {
+            let selector = format!("#git-root-family-owner-{owner}");
+            let root = gitgraph_css_rule(&gitgraph_stylesheet(rendered.svg()), &selector);
+            assert_eq!(css_property(&root, "font-family"), Some("RootFallback"));
+            assert_eq!(
+                css_property(&root, "font-size"),
+                Some("23px"),
+                "root fontSize must not own or suppress GitGraph FontSize"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1, "owner={owner}");
+            assert_eq!(evidence.not_applicable_count(), 0, "owner={owner}");
+            assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
+        },
+    );
+
+    render_source_and_site_config_cases(
+        TWO_BRANCHES,
+        json!({
+            "fontFamily": "RootOwner",
+            "fontSize": 41,
+            "themeVariables": { "fontFamily": "NestedOwner" }
+        }),
+        &theme,
+        "git-family-owner",
+        |owner, rendered| {
+            let selector = format!("#git-family-owner-{owner}");
+            let root = gitgraph_css_rule(&gitgraph_stylesheet(rendered.svg()), &selector);
+            assert_eq!(css_property(&root, "font-family"), Some("NestedOwner"));
+            assert_eq!(
+                css_property(&root, "font-size"),
+                Some("23px"),
+                "root fontSize must not own or suppress GitGraph FontSize"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1, "owner={owner}");
+            assert_eq!(evidence.not_applicable_count(), 0, "owner={owner}");
+            assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
+        },
+    );
+
+    render_source_and_site_config_cases(
+        TWO_BRANCHES,
+        json!({
+            "fontSize": 41,
+            "themeVariables": { "fontSize": "31px" }
+        }),
+        &theme,
+        "git-size-owner",
+        |owner, rendered| {
+            let selector = format!("#git-size-owner-{owner}");
+            let root = gitgraph_css_rule(&gitgraph_stylesheet(rendered.svg()), &selector);
+            assert_eq!(
+                css_property(&root, "font-family"),
+                Some("GitGraphTypedOwner, monospace")
+            );
+            assert_eq!(css_property(&root, "font-size"), Some("31px"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1, "owner={owner}");
+            assert_eq!(evidence.not_applicable_count(), 0, "owner={owner}");
+            assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
+        },
+    );
+}
+
+#[test]
+fn gitgraph_unsupported_typography_sibling_fails_closed() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(
+                FontStack::single("GitGraphSuppressed").expect("valid GitGraph font stack"),
+            )
+            .with_font_size_px(23.0)
+            .expect("valid GitGraph font size")
+            .with_font_weight(700)
+            .expect("valid unsupported GitGraph font weight"),
+    );
+    let error = match try_render_gitgraph_with_theme_and_engine(
+        TWO_BRANCHES,
+        &theme,
+        Engine::new(),
+        "git-unsupported-typography",
+    ) {
+        Ok(_) => panic!("unsupported GitGraph typography sibling must fail closed"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::GIT_GRAPH, 1))
+    );
+
+    let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+        TWO_BRANCHES,
+        &theme,
+        Engine::new(),
+        "git-unsupported-typography-best-effort",
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort GitGraph must retain baseline typography");
+    let root = gitgraph_css_rule(
+        &gitgraph_stylesheet(rendered.svg()),
+        "#git-unsupported-typography-best-effort",
+    );
+    assert_eq!(
+        css_property(&root, "font-family"),
+        Some("\"trebuchet ms\",verdana,arial,sans-serif")
+    );
+    assert_eq!(css_property(&root, "font-size"), Some("16px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn gitgraph_direct_font_stack_is_not_bounded_by_the_legacy_assignment_ceiling() {
+    let stack =
+        FontStack::new((0..32).map(|index| format!("GitGraphFont{index}{}", "x".repeat(180))))
+            .expect("valid large GitGraph font stack");
+    let expected_css = stack.as_css();
+    assert!(expected_css.len() > 4 * 1024);
+    let theme = gitgraph_typography_theme(ThemeTextStyle::default().with_font_stack(stack));
+    let rendered = render_gitgraph_with_theme_and_engine(
+        TWO_BRANCHES,
+        &theme,
+        Engine::new(),
+        "git-large-stack",
+    );
+    let root = gitgraph_css_rule(&gitgraph_stylesheet(rendered.svg()), "#git-large-stack");
+    assert_eq!(
+        css_property(&root, "font-family"),
+        Some(expected_css.as_str())
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 fn has_class(node: &roxmltree::Node<'_, '_>, class: &str) -> bool {
@@ -305,7 +865,7 @@ fn gitgraph_edge_stroke_and_node_palette_keep_independent_terminal_receipts() {
         "git-palette-and-edge",
     );
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid combined GitGraph SVG");
-    let css = stylesheet(rendered.svg());
+    let css = gitgraph_stylesheet(rendered.svg());
 
     assert!(
         branch_lines(&document)
@@ -339,7 +899,7 @@ gitGraph
     )
     .expect("render GitGraph compatibility surfaces");
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph SVG");
-    let css = stylesheet(rendered.svg());
+    let css = gitgraph_stylesheet(rendered.svg());
 
     for expected in [
         "#git-legacy-paint .branch{stroke-width:1;stroke:#1c1d1e;",
@@ -462,7 +1022,7 @@ fn gitgraph_edge_stroke_respects_commit_line_and_line_color_owners() {
         let document =
             roxmltree::Document::parse(rendered.svg()).expect("valid owned GitGraph Edge SVG");
         let branches = branch_lines(&document);
-        let css = stylesheet(rendered.svg());
+        let css = gitgraph_stylesheet(rendered.svg());
 
         assert_eq!(branches.len(), 2, "{owner}");
         assert!(
@@ -525,7 +1085,7 @@ fn gitgraph_source_commit_line_color_is_sanitized_before_terminal_ownership() {
             .iter()
             .all(|branch| branch.attribute("style") == Some("stroke:#123456;"))
     );
-    assert!(!stylesheet(rendered.svg()).contains("#fedcba"));
+    assert!(!gitgraph_stylesheet(rendered.svg()).contains("#fedcba"));
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
@@ -712,7 +1272,7 @@ fn gitgraph_qualified_edge_stroke_accounts_only_real_default_occurrence_winners(
     .expect("render qualified GitGraph edge winners");
 
     assert!(
-        stylesheet(rendered.svg())
+        gitgraph_stylesheet(rendered.svg())
             .contains("#git-edge-qualified-winners .branch{stroke-width:1;stroke:#222222;"),
         "the final Default winner must own the compatibility branch stroke",
     );
@@ -733,7 +1293,7 @@ fn gitgraph_node_palette_reaches_terminal_commit_arrow_and_branch_label_surfaces
     let rendered =
         render_gitgraph_with_theme_and_engine(TWO_BRANCHES, &theme, Engine::new(), "git-palette");
     let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph palette SVG");
-    let css = stylesheet(rendered.svg());
+    let css = gitgraph_stylesheet(rendered.svg());
 
     let solid_rule = concat!(
         "#git-palette .commit0{stroke:#123456;fill:#123456;}",
@@ -795,7 +1355,7 @@ fn gitgraph_node_palette_strokes_survive_static_node_stroke_on_its_actual_tag_su
     .expect("best-effort GitGraph should retain the direct palette beside compatibility stroke");
     let document = roxmltree::Document::parse(rendered.svg())
         .expect("valid GitGraph palette and static stroke SVG");
-    let css = stylesheet(rendered.svg());
+    let css = gitgraph_stylesheet(rendered.svg());
 
     for (slot, color) in [(0, "#123456"), (1, "#abcdef")] {
         assert!(
@@ -872,7 +1432,7 @@ fn gitgraph_node_palette_respects_source_and_site_git_slot_owners() {
     for (owner, source, engine) in cases {
         let diagram_id = format!("git-owner-{owner}");
         let rendered = render_gitgraph_with_theme_and_engine(source, &theme, engine, &diagram_id);
-        let css = stylesheet(rendered.svg());
+        let css = gitgraph_stylesheet(rendered.svg());
         let direct_slot_zero = format!(
             "#{diagram_id} .commit0{{stroke:#123456;fill:#123456;}}#{diagram_id} .arrow0{{stroke:#123456;}}#{diagram_id} .label0{{fill:#123456;}}"
         );
@@ -925,7 +1485,7 @@ fn gitgraph_node_palette_is_not_applicable_when_every_visible_slot_is_owned() {
         }))),
         "git-owned-only",
     );
-    let css = stylesheet(rendered.svg());
+    let css = gitgraph_stylesheet(rendered.svg());
 
     assert!(css.contains("#git-owned-only .commit0{stroke:#fedcba;fill:#fedcba;}"));
     assert!(!css.contains("#git-owned-only .commit0{stroke:#123456;fill:#123456;}"));
@@ -958,7 +1518,7 @@ fn gitgraph_redux_palette_preserves_source_and_site_node_border_per_terminal_sur
                     "the Redux fixture must contain the terminal {class} surface"
                 );
             }
-            let css = stylesheet(rendered.svg());
+            let css = gitgraph_stylesheet(rendered.svg());
             let diagram_id = format!("git-redux-node-border-{owner}");
 
             assert!(
@@ -1020,7 +1580,7 @@ fn gitgraph_redux_color_palette_preserves_site_border_color_array_surfaces() {
             "the Redux-color fixture must contain the terminal {class} surface"
         );
     }
-    let css = stylesheet(rendered.svg());
+    let css = gitgraph_stylesheet(rendered.svg());
     let diagram_id = "git-redux-color-array-site";
 
     for rule in [
@@ -1082,7 +1642,7 @@ fn gitgraph_neo_palette_yields_when_every_visible_surface_is_owned() {
                     "the Neo fixture must contain the terminal {class} surface"
                 );
             }
-            let css = stylesheet(rendered.svg());
+            let css = gitgraph_stylesheet(rendered.svg());
             let diagram_id = format!("git-neo-owned-{owner}");
 
             assert!(

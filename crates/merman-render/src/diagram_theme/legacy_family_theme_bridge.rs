@@ -539,7 +539,6 @@ fn compile_gitgraph_family(
 ) -> BridgeResult<()> {
     let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(reader);
     let node_fill = reader.fill(ThemeTarget::Node);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::NodeFill.contribution_id(),
@@ -1913,6 +1912,55 @@ mod tests {
                 ("themeVariables.tagLabelColor", node_label),
                 ("themeVariables.textColor", text),
             ])
+        );
+    }
+
+    #[test]
+    fn gitgraph_direct_typography_retires_only_the_typography_contribution() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::new(["GitGraph Direct", "sans-serif"])
+                    .expect("valid GitGraph font stack"),
+            )
+            .with_font_size_px(23.0)
+            .expect("valid GitGraph font size");
+        let spec = DiagramThemeSpec::new()
+            .with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::GIT_GRAPH, typography),
+            )
+            .with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(solid("#123456")),
+                    )
+                    .for_family(DiagramFamilyId::GIT_GRAPH),
+                ),
+            );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::GIT_GRAPH);
+
+        let typography_id = "merman.legacy-family-theme.v1.gitGraph.typography";
+        let node_fill_id = "merman.legacy-family-theme.v1.gitGraph.node.fill";
+        assert!(!artifact.contribution_ids.contains(typography_id));
+        assert!(!bridge.owns_contribution_id(typography_id));
+        assert!(artifact.contribution_ids.contains(node_fill_id));
+        assert!(bridge.owns_contribution_id(node_fill_id));
+
+        let parsed = parse(&spec, "gitGraph\n  commit id: \"A\"\n");
+        for path in [
+            "fontFamily",
+            "themeVariables.fontFamily",
+            "themeVariables.fontSize",
+        ] {
+            assert!(
+                !merman_core::__private::fallback_overlay_owns_path(&parsed.effective_config, path,),
+                "GitGraph typography must not retain fallback ownership of `{path}`"
+            );
+        }
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.mainBkg"),
+            Some("#123456")
         );
     }
 

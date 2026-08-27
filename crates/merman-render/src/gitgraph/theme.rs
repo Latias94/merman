@@ -15,9 +15,14 @@ use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod branch_stroke;
+mod typography;
 
 use branch_stroke::GitGraphBranchStrokePlan;
 pub(crate) use branch_stroke::GitGraphBranchStrokeReceipt;
+pub(crate) use typography::{
+    GitGraphTypographyCssEmission, GitGraphTypographyThemePlan, gitgraph_commit_label_is_visible,
+    gitgraph_tags_in_output_order,
+};
 
 pub(crate) const GITGRAPH_PALETTE_SLOT_COUNT: usize = 8;
 

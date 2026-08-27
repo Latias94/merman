@@ -1801,6 +1801,7 @@ impl SankeyFamilyArtifact {
 pub(crate) struct GitGraphFamilyArtifact {
     pair: FamilyPair<diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout>,
     node_palette: crate::gitgraph::GitGraphNodePalettePlan,
+    typography_theme: crate::gitgraph::GitGraphTypographyThemePlan,
 }
 
 impl GitGraphFamilyArtifact {
@@ -1812,6 +1813,16 @@ impl GitGraphFamilyArtifact {
 
     pub(crate) const fn node_palette(&self) -> &crate::gitgraph::GitGraphNodePalettePlan {
         &self.node_palette
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::gitgraph::GitGraphTypographyThemePlan {
+        &self.typography_theme
+    }
+
+    fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.node_palette.finish_evidence();
+        evidence.merge_accounted_from(self.typography_theme.finish_evidence());
+        evidence
     }
 }
 
@@ -2476,7 +2487,7 @@ impl BuiltinFamilyArtifact {
 
     fn gitgraph_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::GitGraph(artifact) => Some(artifact.node_palette().finish_evidence()),
+            Self::GitGraph(artifact) => Some(artifact.finish_theme_evidence()),
             _ => None,
         }
     }

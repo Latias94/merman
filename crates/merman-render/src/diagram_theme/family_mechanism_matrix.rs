@@ -1061,6 +1061,7 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::ISHIKAWA
             | DiagramFamilyId::EVENT_MODELING
             | DiagramFamilyId::VENN
+            | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::RADAR
     ) {
         return FamilyThemeDisposition::TypedAdapter;
@@ -1070,7 +1071,6 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
         DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::C4
             | DiagramFamilyId::ER
-            | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::PIE
@@ -1095,6 +1095,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::RAILROAD
             | DiagramFamilyId::ISHIKAWA
             | DiagramFamilyId::EVENT_MODELING
+            | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::RADAR
     ) {
         return FamilyThemeDisposition::TypedAdapter;
@@ -1105,7 +1106,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::C4
             | DiagramFamilyId::ER
-            | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::PIE
@@ -5758,7 +5758,7 @@ mod tests {
     }
 
     #[test]
-    fn eventmodeling_ishikawa_and_radar_mark_font_stack_and_font_size_as_typed() {
+    fn eventmodeling_gitgraph_ishikawa_and_radar_mark_font_stack_and_font_size_as_typed() {
         let typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::single("DirectTypographySans")
@@ -5771,6 +5771,7 @@ mod tests {
 
         for family in [
             DiagramFamilyId::EVENT_MODELING,
+            DiagramFamilyId::GIT_GRAPH,
             DiagramFamilyId::ISHIKAWA,
             DiagramFamilyId::RADAR,
         ] {
@@ -5829,7 +5830,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_oversized_font_stack_and_size_remain_direct() {
+    fn direct_typography_families_accept_oversized_font_stacks() {
         let families = (0..32)
             .map(|index| format!("font-{index}-{}", "x".repeat(180)))
             .collect::<Vec<_>>();
@@ -5837,17 +5838,22 @@ mod tests {
             .with_font_stack(super::super::FontStack::new(families).expect("valid font stack"))
             .with_font_size_px(18.0)
             .expect("valid font size");
-        let routes = compile_base_typography_routes(DiagramFamilyId::SEQUENCE, &typography);
+        for family in [DiagramFamilyId::SEQUENCE, DiagramFamilyId::GIT_GRAPH] {
+            let routes = compile_base_typography_routes(family, &typography);
 
-        assert_eq!(routes.len(), 2);
-        for property in [
-            ThemeTypographyProperty::FontStack,
-            ThemeTypographyProperty::FontSize,
-        ] {
-            assert!(routes.iter().any(|route| {
-                route.mechanism() == FamilyThemeMechanism::BaseTypography(property)
-                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
-            }));
+            assert_eq!(routes.len(), 2, "{family}");
+            for property in [
+                ThemeTypographyProperty::FontStack,
+                ThemeTypographyProperty::FontSize,
+            ] {
+                assert!(
+                    routes.iter().any(|route| {
+                        route.mechanism() == FamilyThemeMechanism::BaseTypography(property)
+                            && route.disposition() == FamilyThemeDisposition::TypedAdapter
+                    }),
+                    "{family} must directly own {property:?}"
+                );
+            }
         }
     }
 }

@@ -59,6 +59,8 @@ pub(super) struct MermaidBaseCss<'a> {
 pub(super) struct MermaidBaseFontCssEmission<'a> {
     diagram_root_font_family_css: &'a str,
     nested_svg_font_family_css: &'a str,
+    diagram_root_font_size_css: &'a str,
+    nested_svg_font_size_css: &'a str,
 }
 
 impl<'a> MermaidBaseFontCssEmission<'a> {
@@ -68,6 +70,14 @@ impl<'a> MermaidBaseFontCssEmission<'a> {
 
     pub(super) const fn nested_svg_font_family_css(self) -> &'a str {
         self.nested_svg_font_family_css
+    }
+
+    pub(super) const fn diagram_root_font_size_css(self) -> &'a str {
+        self.diagram_root_font_size_css
+    }
+
+    pub(super) const fn nested_svg_font_size_css(self) -> &'a str {
+        self.nested_svg_font_size_css
     }
 }
 
@@ -144,6 +154,8 @@ where
     Ok(MermaidBaseFontCssEmission {
         diagram_root_font_family_css: css.font_family,
         nested_svg_font_family_css: css.font_family,
+        diagram_root_font_size_css: css.font_size_css,
+        nested_svg_font_size_css: css.font_size_css,
     })
 }
 
@@ -352,6 +364,8 @@ pub(super) struct InfoCssParts {
     pub(super) css_prefix: String,
     pub(super) root_rule: String,
     pub(super) font_family: String,
+    pub(super) font_size_css: String,
+    pub(super) base_typography_emitted: bool,
     pub(super) text_color: String,
     pub(super) line_color: String,
 }
@@ -359,7 +373,6 @@ pub(super) struct InfoCssParts {
 #[derive(Clone, Copy)]
 enum InfoCssFontSizeSource {
     ThemeThenTopLevel,
-    ThemeOnly,
     RawTheme,
 }
 
@@ -389,10 +402,6 @@ impl InfoCssValues {
                 crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
                     .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
             }
-            InfoCssFontSizeSource::ThemeOnly => {
-                config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-                    .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
-            }
             InfoCssFontSizeSource::RawTheme => crate::config::config_css_number_or_string(
                 effective_config,
                 &["themeVariables", "fontSize"],
@@ -400,6 +409,14 @@ impl InfoCssValues {
         }
         .unwrap_or_else(|| "16px".to_string());
 
+        Self::with_resolved_typography(effective_config, font_family, font_size_css)
+    }
+
+    fn with_resolved_typography(
+        effective_config: &serde_json::Value,
+        font_family: String,
+        font_size_css: String,
+    ) -> Self {
         Self {
             font_family,
             font_size_css,
@@ -566,19 +583,21 @@ where
     )
 }
 
-pub(super) fn info_css_parts_with_theme_font_size_only<I>(
+pub(super) fn info_css_parts_with_resolved_typography<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
+    font_family: &str,
+    font_size_css: &str,
 ) -> InfoCssParts
 where
     I: Copy + std::fmt::Display,
 {
-    info_css_parts_with_font_size_source(
-        diagram_id,
+    let values = InfoCssValues::with_resolved_typography(
         effective_config,
-        InfoCssFontSizeSource::ThemeOnly,
-        None,
-    )
+        font_family.to_string(),
+        font_size_css.to_string(),
+    );
+    info_css_parts_from_values(diagram_id, values)
 }
 
 fn info_css_parts_with_font_size_source<I>(
@@ -591,20 +610,30 @@ where
     I: Copy + std::fmt::Display,
 {
     let values = InfoCssValues::new(effective_config, font_size_source, resolved_font_family);
+    info_css_parts_from_values(diagram_id, values)
+}
+
+fn info_css_parts_from_values<I>(diagram_id: I, values: InfoCssValues) -> InfoCssParts
+where
+    I: Copy + std::fmt::Display,
+{
     let mut out = String::new();
-    values
-        .write_prefix(&mut out, diagram_id)
+    let base_typography_emitted = values
+        .write_prefix_with_font_emission(&mut out, diagram_id)
+        .map(|_| true)
         .expect("String-backed Mermaid base CSS emission cannot fail");
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
     let mut root_rule = String::new();
     values
-        .write_root(&mut root_rule, diagram_id, diagram_id)
+        .write_root_with_font_emission(&mut root_rule, diagram_id, diagram_id)
         .expect("String-backed Mermaid root CSS emission cannot fail");
 
     InfoCssParts {
         css_prefix: out,
         root_rule,
         font_family: values.font_family,
+        font_size_css: values.font_size_css,
+        base_typography_emitted,
         text_color: values.text_color,
         line_color: values.line_color,
     }

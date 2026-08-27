@@ -73,7 +73,7 @@ mod xychart;
 mod zenuml;
 use css::{
     MermaidBaseCss, er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_font_family,
-    info_css_parts_with_theme_font_size_only, info_css_with_config, pie_css_with_stroke_overrides,
+    info_css_parts_with_resolved_typography, info_css_with_config, pie_css_with_stroke_overrides,
     push_xychart_css, requirement_css, write_info_css_with_font_family,
     write_mermaid_base_css_prefix, write_mermaid_base_css_root_rule,
     write_mermaid_default_base_css_prefix, write_sankey_css_with_font_family,
@@ -1219,6 +1219,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.pair().semantic(),
             artifact.node_palette(),
+            artifact.typography_theme(),
             effective_config_value,
             title,
             measurer,
