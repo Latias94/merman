@@ -19,6 +19,13 @@ impl RasterPaintCutoverFacet {
             Self::Stroke => b"stroke",
         }
     }
+
+    const fn index(self) -> usize {
+        match self {
+            Self::Fill => 0,
+            Self::Stroke => 1,
+        }
+    }
 }
 
 /// Opaque exporter-owned evidence for one solid/transparent paint pair.
@@ -34,13 +41,17 @@ pub struct RasterPaintCutoverReceipt {
     solid_source_digest: [u8; 32],
     transparent_source_digest: [u8; 32],
     underlay_source_digest: [u8; 32],
-    geometry_digest: [u8; 32],
-    shape_digest: [u8; 32],
-    transparent_shape_digest: [u8; 32],
+    underlay_path_tree_digest: [u8; 32],
+    transparent_path_tree_digest: [u8; 32],
+    solid_effect_tree_digest: [u8; 32],
+    underlay_effect_tree_digest: [u8; 32],
+    transparent_effect_tree_digest: [u8; 32],
+    transparent_geometry_compatible: bool,
     target_geometry_digest: [u8; 32],
     target_path_count: usize,
     solid_control_pixels: usize,
     changed_control_pixels: usize,
+    requested_changed_control_pixels: usize,
     changed_pixels: usize,
     changed_outside_target_pixels: usize,
     transparent_control_pixels: usize,
@@ -57,13 +68,17 @@ impl RasterPaintCutoverReceipt {
             solid_source_digest: facts.solid_source_digest,
             transparent_source_digest: facts.transparent_source_digest,
             underlay_source_digest: facts.underlay_source_digest,
-            geometry_digest: facts.geometry_digest,
-            shape_digest: facts.shape_digest,
-            transparent_shape_digest: facts.transparent_shape_digest,
+            underlay_path_tree_digest: facts.underlay_path_tree_digest,
+            transparent_path_tree_digest: facts.transparent_path_tree_digest,
+            solid_effect_tree_digest: facts.solid_effect_tree_digest,
+            underlay_effect_tree_digest: facts.underlay_effect_tree_digest,
+            transparent_effect_tree_digest: facts.transparent_effect_tree_digest,
+            transparent_geometry_compatible: facts.transparent_geometry_compatible,
             target_geometry_digest: facts.target_geometry_digest,
             target_path_count: facts.target_path_count,
             solid_control_pixels: facts.solid_control_pixels,
             changed_control_pixels: facts.changed_control_pixels,
+            requested_changed_control_pixels: facts.requested_changed_control_pixels,
             changed_pixels: facts.changed_pixels,
             changed_outside_target_pixels: facts.changed_outside_target_pixels,
             transparent_control_pixels: facts.transparent_control_pixels,
@@ -84,13 +99,18 @@ impl RasterPaintCutoverReceipt {
             && self.solid_source_digest != [0; 32]
             && self.transparent_source_digest != [0; 32]
             && self.underlay_source_digest != [0; 32]
-            && self.geometry_digest != [0; 32]
-            && self.shape_digest != [0; 32]
-            && self.transparent_shape_digest == self.shape_digest
+            && self.underlay_path_tree_digest != [0; 32]
+            && self.transparent_path_tree_digest != [0; 32]
+            && self.solid_effect_tree_digest != [0; 32]
+            && self.underlay_effect_tree_digest != [0; 32]
+            && self.underlay_effect_tree_digest == self.solid_effect_tree_digest
+            && self.transparent_effect_tree_digest == self.underlay_effect_tree_digest
+            && self.transparent_geometry_compatible
             && self.target_geometry_digest != [0; 32]
             && self.target_path_count > 0
             && self.solid_control_pixels > 0
             && self.changed_control_pixels > 0
+            && self.requested_changed_control_pixels > 0
             && self.changed_pixels > 0
             && self.changed_outside_target_pixels == 0
             && self.transparent_control_pixels == 0
@@ -100,19 +120,23 @@ impl RasterPaintCutoverReceipt {
 
     fn canonical_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v3");
+        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v6");
         update_len_prefixed(&mut hasher, self.facet.id());
         hasher.update(self.control_rgb);
         hasher.update(self.solid_source_digest);
         hasher.update(self.transparent_source_digest);
         hasher.update(self.underlay_source_digest);
-        hasher.update(self.geometry_digest);
-        hasher.update(self.shape_digest);
-        hasher.update(self.transparent_shape_digest);
+        hasher.update(self.underlay_path_tree_digest);
+        hasher.update(self.transparent_path_tree_digest);
+        hasher.update(self.solid_effect_tree_digest);
+        hasher.update(self.underlay_effect_tree_digest);
+        hasher.update(self.transparent_effect_tree_digest);
+        hasher.update([u8::from(self.transparent_geometry_compatible)]);
         hasher.update(self.target_geometry_digest);
         update_usize(&mut hasher, self.target_path_count);
         update_usize(&mut hasher, self.solid_control_pixels);
         update_usize(&mut hasher, self.changed_control_pixels);
+        update_usize(&mut hasher, self.requested_changed_control_pixels);
         update_usize(&mut hasher, self.changed_pixels);
         update_usize(&mut hasher, self.changed_outside_target_pixels);
         update_usize(&mut hasher, self.transparent_control_pixels);
@@ -206,10 +230,15 @@ fn encode_pair_on_backend_stack(
 
     let solid = prepare_raster_source_on_backend_stack(solid_svg, solid_source, options, control)?;
     let solid_placement = RasterPlacement::from_prepared(&solid);
-    let solid_tree = observe_paint_tree(&solid.tree, control_rgb)?;
+    let solid_tree = observe_paint_tree(&solid.tree, control_rgb, facet)?;
     if solid_tree.targets.is_empty() {
         return Err(ExportError::RasterPaintCutover(
             "solid SVG contains no renderable control-painted path",
+        ));
+    }
+    if solid_tree.requested_targets.is_empty() {
+        return Err(ExportError::RasterPaintCutover(
+            "solid SVG contains no control-painted path for the requested facet",
         ));
     }
     let solid_report = solid.report_for_output(RasterOutputKind::Png);
@@ -222,14 +251,16 @@ fn encode_pair_on_backend_stack(
     let underlay =
         prepare_raster_source_on_backend_stack(solid_svg, &underlay_source, options, control)?;
     require_same_placement(solid_placement, RasterPlacement::from_prepared(&underlay))?;
-    let underlay_tree = observe_paint_tree(&underlay.tree, control_rgb)?;
+    let underlay_tree = observe_paint_tree(&underlay.tree, control_rgb, facet)?;
     require_no_opaque_control_targets(&underlay_tree)?;
+    require_solid_underlay_path_compatibility(&solid_tree, &underlay_tree)?;
     let underlay_pixmap = underlay.render_pixmap(underlay.matte, control)?;
 
     let solid_delta = observe_solid_delta(
         &solid_pixmap,
         &underlay_pixmap,
         &solid_tree.targets,
+        &solid_tree.requested_targets,
         solid_placement,
         control_rgb,
     )?;
@@ -245,13 +276,14 @@ fn encode_pair_on_backend_stack(
         solid_placement,
         RasterPlacement::from_prepared(&transparent),
     )?;
-    let transparent_tree = observe_paint_tree(&transparent.tree, control_rgb)?;
+    let transparent_tree = observe_paint_tree(&transparent.tree, control_rgb, facet)?;
     require_no_opaque_control_targets(&transparent_tree)?;
-    if transparent_tree.shape_digest != solid_tree.shape_digest {
+    if transparent_tree.effect_tree_digest != underlay_tree.effect_tree_digest {
         return Err(ExportError::RasterPaintCutover(
-            "solid and transparent SVG geometry differs",
+            "underlay and transparent SVG effect contexts differ",
         ));
     }
+    require_transparent_path_compatibility(&underlay_tree, &transparent_tree, &solid_tree)?;
     let transparent_report = transparent.report_for_output(RasterOutputKind::Png);
     let transparent_pixmap = transparent.render_pixmap(transparent.matte, control)?;
     let transparent_reference_mismatches = transparent_pixmap
@@ -287,14 +319,18 @@ fn encode_pair_on_backend_stack(
         solid_source_digest: Sha256::digest(solid_source.as_bytes()).into(),
         transparent_source_digest: Sha256::digest(transparent_source.as_bytes()).into(),
         underlay_source_digest: Sha256::digest(underlay_source.as_bytes()).into(),
-        geometry_digest: solid_tree.geometry_digest,
-        shape_digest: solid_tree.shape_digest,
-        transparent_shape_digest: transparent_tree.shape_digest,
+        underlay_path_tree_digest: underlay_tree.path_tree_digest,
+        transparent_path_tree_digest: transparent_tree.path_tree_digest,
+        solid_effect_tree_digest: solid_tree.effect_tree_digest,
+        underlay_effect_tree_digest: underlay_tree.effect_tree_digest,
+        transparent_effect_tree_digest: transparent_tree.effect_tree_digest,
+        transparent_geometry_compatible: true,
         target_geometry_digest: solid_tree.target_geometry_digest,
         target_path_count: solid_tree.targets.len(),
         solid_control_pixels: solid_delta.control_pixels,
         changed_pixels: solid_delta.changed_pixels,
         changed_control_pixels: solid_delta.changed_control_pixels,
+        requested_changed_control_pixels: solid_delta.requested_changed_control_pixels,
         changed_outside_target_pixels: solid_delta.changed_outside_target_pixels,
         transparent_control_pixels,
         unchanged_control_pixels: solid_delta.unchanged_control_pixels,
@@ -382,23 +418,30 @@ fn require_same_placement(left: RasterPlacement, right: RasterPlacement) -> Resu
 }
 
 struct PaintTreeObservation {
-    geometry_digest: [u8; 32],
-    shape_digest: [u8; 32],
+    path_tree_digest: [u8; 32],
+    shape_tree_digest: [u8; 32],
+    effect_tree_digest: [u8; 32],
+    paths: Vec<PathObservation>,
+    target_facets_by_path: Vec<[bool; 2]>,
     target_geometry_digest: [u8; 32],
+    requested_targets: Vec<TargetPath>,
     targets: Vec<TargetPath>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct PathObservation {
-    geometry_digest: [u8; 32],
+    path_digest: [u8; 32],
     shape_digest: [u8; 32],
+    fill_geometry_digest: [u8; 32],
+    stroke_geometry_digest: Option<[u8; 32]>,
     fill_region_bits: [u32; 4],
     stroke_region_bits: [u32; 4],
+    visible: bool,
     fill: Option<PaintObservation>,
     stroke: Option<PaintObservation>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PaintObservation {
     rgb: Option<[u8; 3]>,
     opacity_bits: u32,
@@ -410,7 +453,7 @@ impl PaintObservation {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct TargetPath {
     region_bits: [u32; 4],
 }
@@ -421,33 +464,56 @@ impl TargetPath {
     }
 }
 
-fn observe_paint_tree(tree: &usvg::Tree, control_rgb: [u8; 3]) -> Result<PaintTreeObservation> {
-    let mut paths = Vec::new();
-    collect_group_paths(tree.root(), &mut paths)?;
-    let mut geometry_hasher = Sha256::new();
-    update_len_prefixed(
-        &mut geometry_hasher,
-        b"merman.raster-paint-tree-geometry.v1",
-    );
-    update_usize(&mut geometry_hasher, paths.len());
-    for path in &paths {
-        geometry_hasher.update(path.geometry_digest);
+impl PathObservation {
+    fn paint(&self, facet: RasterPaintCutoverFacet) -> Option<PaintObservation> {
+        match facet {
+            RasterPaintCutoverFacet::Fill => self.fill,
+            RasterPaintCutoverFacet::Stroke => self.stroke,
+        }
     }
-    let geometry_digest = geometry_hasher.finalize().into();
 
-    let mut shape_hasher = Sha256::new();
-    update_len_prefixed(&mut shape_hasher, b"merman.raster-paint-tree-shape.v1");
-    update_usize(&mut shape_hasher, paths.len());
-    for path in &paths {
-        shape_hasher.update(path.shape_digest);
+    fn geometry(&self, facet: RasterPaintCutoverFacet) -> Option<[u8; 32]> {
+        match facet {
+            RasterPaintCutoverFacet::Fill => Some(self.fill_geometry_digest),
+            RasterPaintCutoverFacet::Stroke => self.stroke_geometry_digest,
+        }
     }
+}
+
+fn observe_paint_tree(
+    tree: &usvg::Tree,
+    control_rgb: [u8; 3],
+    requested_facet: RasterPaintCutoverFacet,
+) -> Result<PaintTreeObservation> {
+    let mut paths = Vec::new();
+    let mut effect_hasher = Sha256::new();
+    update_len_prefixed(&mut effect_hasher, b"merman.raster-paint-effect-tree.v1");
+    hash_tree_clip_paths(tree, &mut effect_hasher)?;
+    collect_group_paths(tree.root(), &mut paths, &mut effect_hasher)?;
+    let effect_tree_digest = effect_hasher.finalize().into();
+    let mut path_tree_hasher = Sha256::new();
+    update_len_prefixed(&mut path_tree_hasher, b"merman.raster-paint-path-tree.v1");
+    update_usize(&mut path_tree_hasher, paths.len());
+    for path in &paths {
+        path_tree_hasher.update(path.path_digest);
+    }
+    let path_tree_digest = path_tree_hasher.finalize().into();
+    let mut shape_tree_hasher = Sha256::new();
+    update_len_prefixed(&mut shape_tree_hasher, b"merman.raster-paint-shape-tree.v1");
+    update_usize(&mut shape_tree_hasher, paths.len());
+    for path in &paths {
+        shape_tree_hasher.update(path.shape_digest);
+    }
+    let shape_tree_digest = shape_tree_hasher.finalize().into();
 
     let mut targets = Vec::new();
+    let mut target_facets_by_path = vec![[false; 2]; paths.len()];
     let mut target_hasher = Sha256::new();
     update_len_prefixed(
         &mut target_hasher,
         b"merman.raster-paint-target-geometry.v1",
     );
+    let mut requested_targets = Vec::new();
     for (path_index, path) in paths.iter().enumerate() {
         let fill_control = paint_is_opaque_control(path.fill, control_rgb);
         let stroke_control = paint_is_opaque_control(path.stroke, control_rgb);
@@ -461,21 +527,203 @@ fn observe_paint_tree(tree: &usvg::Tree, control_rgb: [u8; 3]) -> Result<PaintTr
             path.stroke_region_bits,
         );
         update_usize(&mut target_hasher, path_index);
-        target_hasher.update(path.geometry_digest);
+        target_hasher.update(path.path_digest);
         target_hasher.update([u8::from(fill_control), u8::from(stroke_control)]);
         for coordinate in region_bits {
             target_hasher.update(coordinate.to_be_bytes());
         }
         targets.push(TargetPath { region_bits });
+        target_facets_by_path[path_index] = [fill_control, stroke_control];
+
+        let requested_region_bits = match requested_facet {
+            RasterPaintCutoverFacet::Fill if fill_control => Some(path.fill_region_bits),
+            RasterPaintCutoverFacet::Stroke if stroke_control => Some(path.stroke_region_bits),
+            RasterPaintCutoverFacet::Fill | RasterPaintCutoverFacet::Stroke => None,
+        };
+        if let Some(requested_region_bits) = requested_region_bits {
+            requested_targets.push(TargetPath {
+                region_bits: requested_region_bits,
+            });
+        }
     }
     update_usize(&mut target_hasher, targets.len());
 
     Ok(PaintTreeObservation {
-        geometry_digest,
-        shape_digest: shape_hasher.finalize().into(),
+        path_tree_digest,
+        shape_tree_digest,
+        effect_tree_digest,
+        paths,
+        target_facets_by_path,
         target_geometry_digest: target_hasher.finalize().into(),
+        requested_targets,
         targets,
     })
+}
+
+fn hash_tree_clip_paths(tree: &usvg::Tree, hasher: &mut Sha256) -> Result<()> {
+    update_len_prefixed(hasher, b"tree-clip-paths");
+    update_usize(hasher, tree.clip_paths().len());
+    for clip_path in tree.clip_paths() {
+        update_len_prefixed(hasher, clip_path.id().as_bytes());
+        hash_clip_path(clip_path, hasher)?;
+    }
+    Ok(())
+}
+
+fn require_solid_underlay_path_compatibility(
+    solid: &PaintTreeObservation,
+    underlay: &PaintTreeObservation,
+) -> Result<()> {
+    require_same_path_shapes(solid, underlay)?;
+    if solid.effect_tree_digest != underlay.effect_tree_digest {
+        return Err(ExportError::RasterPaintCutover(
+            "solid and underlay SVG effect contexts differ",
+        ));
+    }
+    for (path_index, (solid_path, underlay_path)) in
+        solid.paths.iter().zip(&underlay.paths).enumerate()
+    {
+        if solid_path.visible != underlay_path.visible {
+            return Err(ExportError::RasterPaintCutover(
+                "solid and underlay path visibility differs",
+            ));
+        }
+        let target_facets = solid.target_facets_by_path[path_index];
+        for facet in [
+            RasterPaintCutoverFacet::Fill,
+            RasterPaintCutoverFacet::Stroke,
+        ] {
+            let target = target_facets[facet.index()];
+            let solid_state = paint_state(solid_path.paint(facet));
+            let underlay_state = paint_state(underlay_path.paint(facet));
+            if solid_path.geometry(facet) != underlay_path.geometry(facet) {
+                return Err(ExportError::RasterPaintCutover(
+                    "solid and underlay paint geometry differs",
+                ));
+            }
+            if target {
+                if solid_state != PaintState::Active || underlay_state != PaintState::Suppressed {
+                    return Err(ExportError::RasterPaintCutover(
+                        "solid control paint was not reduced to a suppressed underlay paint",
+                    ));
+                }
+            } else if solid_state != underlay_state
+                || solid_path.paint(facet) != underlay_path.paint(facet)
+            {
+                return Err(ExportError::RasterPaintCutover(
+                    "solid and underlay non-target paint differs",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn require_transparent_path_compatibility(
+    underlay: &PaintTreeObservation,
+    transparent: &PaintTreeObservation,
+    solid: &PaintTreeObservation,
+) -> Result<()> {
+    require_same_path_shapes(underlay, transparent)?;
+    for (path_index, (underlay_path, transparent_path)) in
+        underlay.paths.iter().zip(&transparent.paths).enumerate()
+    {
+        let target_facets = solid.target_facets_by_path[path_index];
+        let mut target_omission = false;
+        for facet in [
+            RasterPaintCutoverFacet::Fill,
+            RasterPaintCutoverFacet::Stroke,
+        ] {
+            let target = target_facets[facet.index()];
+            let underlay_state = paint_state(underlay_path.paint(facet));
+            let transparent_state = paint_state(transparent_path.paint(facet));
+            if target {
+                if underlay_state != PaintState::Suppressed {
+                    return Err(ExportError::RasterPaintCutover(
+                        "underlay target paint is not suppressed",
+                    ));
+                }
+                match transparent_state {
+                    PaintState::Suppressed => {
+                        if underlay_path.geometry(facet) != transparent_path.geometry(facet) {
+                            return Err(ExportError::RasterPaintCutover(
+                                "transparent target paint geometry differs",
+                            ));
+                        }
+                    }
+                    PaintState::Absent => target_omission = true,
+                    PaintState::Active | PaintState::Partial => {
+                        return Err(ExportError::RasterPaintCutover(
+                            "transparent output retained a target paint",
+                        ));
+                    }
+                }
+            } else if underlay_state != transparent_state
+                || underlay_path.geometry(facet) != transparent_path.geometry(facet)
+                || underlay_path.paint(facet) != transparent_path.paint(facet)
+            {
+                return Err(ExportError::RasterPaintCutover(
+                    "transparent output changed non-target paint geometry",
+                ));
+            }
+        }
+
+        if underlay_path.visible != transparent_path.visible
+            && !(target_omission
+                && underlay_path.visible
+                && !transparent_path.visible
+                && transparent_path
+                    .paint(RasterPaintCutoverFacet::Fill)
+                    .is_none()
+                && transparent_path
+                    .paint(RasterPaintCutoverFacet::Stroke)
+                    .is_none())
+        {
+            return Err(ExportError::RasterPaintCutover(
+                "transparent output changed path visibility",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn require_same_path_shapes(
+    left: &PaintTreeObservation,
+    right: &PaintTreeObservation,
+) -> Result<()> {
+    if left.paths.len() != right.paths.len() || left.shape_tree_digest != right.shape_tree_digest {
+        return Err(ExportError::RasterPaintCutover(
+            "raster path tree shape differs",
+        ));
+    }
+    if left
+        .paths
+        .iter()
+        .zip(&right.paths)
+        .any(|(left, right)| left.shape_digest != right.shape_digest)
+    {
+        return Err(ExportError::RasterPaintCutover(
+            "raster path geometry differs",
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PaintState {
+    Absent,
+    Suppressed,
+    Active,
+    Partial,
+}
+
+fn paint_state(paint: Option<PaintObservation>) -> PaintState {
+    match paint {
+        None => PaintState::Absent,
+        Some(paint) if paint.opacity() == 0.0 => PaintState::Suppressed,
+        Some(paint) if paint.opacity() == 1.0 => PaintState::Active,
+        Some(_) => PaintState::Partial,
+    }
 }
 
 fn union_control_regions(
@@ -484,19 +732,19 @@ fn union_control_regions(
     stroke_control: bool,
     stroke_region_bits: [u32; 4],
 ) -> [u32; 4] {
-    let mut regions = [fill_region_bits, stroke_region_bits]
-        .into_iter()
-        .zip([fill_control, stroke_control])
-        .filter_map(|(bits, included)| included.then_some(bits));
-    let first = regions.next().unwrap_or([0; 4]);
+    let first = match (fill_control, stroke_control) {
+        (true, _) => fill_region_bits,
+        (false, true) => stroke_region_bits,
+        (false, false) => return [0; 4],
+    };
     let [first_left, first_top, first_width, first_height] = first.map(f32::from_bits);
     let mut left = first_left;
     let mut top = first_top;
     let mut right = first_left + first_width;
     let mut bottom = first_top + first_height;
-    for [region_left, region_top, region_width, region_height] in
-        regions.map(|bits| bits.map(f32::from_bits))
-    {
+    if fill_control && stroke_control {
+        let [region_left, region_top, region_width, region_height] =
+            stroke_region_bits.map(f32::from_bits);
         left = left.min(region_left);
         top = top.min(region_top);
         right = right.max(region_left + region_width);
@@ -505,19 +753,25 @@ fn union_control_regions(
     [left, top, right - left, bottom - top].map(f32::to_bits)
 }
 
-fn collect_group_paths(group: &usvg::Group, paths: &mut Vec<PathObservation>) -> Result<()> {
-    collect_group_paths_with_transform(group, paths, None)
+fn collect_group_paths(
+    group: &usvg::Group,
+    paths: &mut Vec<PathObservation>,
+    effect_hasher: &mut Sha256,
+) -> Result<()> {
+    collect_group_paths_with_transform(group, paths, None, effect_hasher)
 }
 
 fn collect_group_paths_with_transform(
     group: &usvg::Group,
     paths: &mut Vec<PathObservation>,
     extra_transform: Option<tiny_skia::Transform>,
+    effect_hasher: &mut Sha256,
 ) -> Result<()> {
+    hash_group_effects(group, effect_hasher)?;
     for node in group.children() {
         match node {
             usvg::Node::Group(child) => {
-                collect_group_paths_with_transform(child, paths, extra_transform)?
+                collect_group_paths_with_transform(child, paths, extra_transform, effect_hasher)?
             }
             usvg::Node::Path(path) => paths.push(observe_path(path, extra_transform)?),
             // `usvg` keeps the glyph paths in a text node's flattened group in local
@@ -527,8 +781,95 @@ fn collect_group_paths_with_transform(
                 text.flattened(),
                 paths,
                 Some(text.abs_transform()),
+                effect_hasher,
             )?,
-            usvg::Node::Image(_) => {}
+            usvg::Node::Image(_) => {
+                return Err(ExportError::RasterPaintCutover(
+                    "raster paint proof does not support embedded images",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn hash_group_effects(group: &usvg::Group, hasher: &mut Sha256) -> Result<()> {
+    if group.mask().is_some() || !group.filters().is_empty() {
+        return Err(ExportError::RasterPaintCutover(
+            "raster paint proof does not support SVG group effects",
+        ));
+    }
+    update_len_prefixed(hasher, group.id().as_bytes());
+    update_usize(hasher, group.children().len());
+    hash_transform(hasher, group.abs_transform());
+    hasher.update(group.opacity().get().to_bits().to_be_bytes());
+    hasher.update([u8::from(group.isolate())]);
+    hasher.update([blend_mode_tag(group.blend_mode())]);
+    if let Some(clip_path) = group.clip_path() {
+        update_len_prefixed(hasher, b"clip");
+        update_len_prefixed(hasher, clip_path.id().as_bytes());
+        hash_clip_path(clip_path, hasher)?;
+    } else {
+        update_len_prefixed(hasher, b"no-clip");
+    }
+    Ok(())
+}
+
+fn blend_mode_tag(mode: usvg::BlendMode) -> u8 {
+    match mode {
+        usvg::BlendMode::Normal => 0,
+        usvg::BlendMode::Multiply => 1,
+        usvg::BlendMode::Screen => 2,
+        usvg::BlendMode::Overlay => 3,
+        usvg::BlendMode::Darken => 4,
+        usvg::BlendMode::Lighten => 5,
+        usvg::BlendMode::ColorDodge => 6,
+        usvg::BlendMode::ColorBurn => 7,
+        usvg::BlendMode::HardLight => 8,
+        usvg::BlendMode::SoftLight => 9,
+        usvg::BlendMode::Difference => 10,
+        usvg::BlendMode::Exclusion => 11,
+        usvg::BlendMode::Hue => 12,
+        usvg::BlendMode::Saturation => 13,
+        usvg::BlendMode::Color => 14,
+        usvg::BlendMode::Luminosity => 15,
+    }
+}
+
+fn hash_clip_path(clip_path: &usvg::ClipPath, hasher: &mut Sha256) -> Result<()> {
+    hash_transform(hasher, clip_path.transform());
+    if let Some(nested) = clip_path.clip_path() {
+        update_len_prefixed(hasher, b"nested-clip");
+        update_len_prefixed(hasher, nested.id().as_bytes());
+        hash_clip_path(nested, hasher)?;
+    } else {
+        update_len_prefixed(hasher, b"no-nested-clip");
+    }
+    hash_group_tree(clip_path.root(), hasher)
+}
+
+fn hash_group_tree(group: &usvg::Group, hasher: &mut Sha256) -> Result<()> {
+    hash_group_effects(group, hasher)?;
+    for node in group.children() {
+        match node {
+            usvg::Node::Group(child) => {
+                update_len_prefixed(hasher, b"group");
+                hash_group_tree(child, hasher)?;
+            }
+            usvg::Node::Path(path) => {
+                update_len_prefixed(hasher, b"path");
+                let observation = observe_path(path, None)?;
+                hasher.update(observation.path_digest);
+            }
+            usvg::Node::Text(text) => {
+                update_len_prefixed(hasher, b"text");
+                hash_group_tree(text.flattened(), hasher)?;
+            }
+            usvg::Node::Image(_) => {
+                return Err(ExportError::RasterPaintCutover(
+                    "raster paint proof does not support images in clip paths",
+                ));
+            }
         }
     }
     Ok(())
@@ -538,34 +879,11 @@ fn observe_path(
     path: &usvg::Path,
     extra_transform: Option<tiny_skia::Transform>,
 ) -> Result<PathObservation> {
-    let mut hasher = Sha256::new();
-    update_len_prefixed(&mut hasher, b"merman.raster-paint-path-geometry.v1");
     let transform = path.abs_transform();
     let fill_bbox = map_rect(path.abs_bounding_box(), extra_transform)?;
     let stroke_bbox = map_rect(path.abs_stroke_bounding_box(), extra_transform)?;
-    hash_path_shape(&mut hasher, transform, extra_transform, fill_bbox, path);
-    hash_rect(&mut hasher, fill_bbox);
-    hash_rect(&mut hasher, stroke_bbox);
-    if let Some(stroke) = path.stroke() {
-        hasher.update([1]);
-        hasher.update(stroke.width().get().to_bits().to_be_bytes());
-        hasher.update(stroke.dashoffset().to_bits().to_be_bytes());
-        match stroke.dasharray() {
-            Some(dasharray) => {
-                hasher.update([1]);
-                update_usize(&mut hasher, dasharray.len());
-                for value in dasharray {
-                    hasher.update(value.to_bits().to_be_bytes());
-                }
-            }
-            None => hasher.update([0]),
-        }
-    } else {
-        hasher.update([0]);
-    }
-
     let mut shape_hasher = Sha256::new();
-    update_len_prefixed(&mut shape_hasher, b"merman.raster-paint-path-shape.v1");
+    update_len_prefixed(&mut shape_hasher, b"merman.raster-paint-path-shape.v2");
     hash_path_shape(
         &mut shape_hasher,
         transform,
@@ -573,15 +891,95 @@ fn observe_path(
         fill_bbox,
         path,
     );
+    shape_hasher.update([match path.paint_order() {
+        usvg::PaintOrder::FillAndStroke => 0,
+        usvg::PaintOrder::StrokeAndFill => 1,
+    }]);
+    shape_hasher.update([match path.rendering_mode() {
+        usvg::ShapeRendering::OptimizeSpeed => 0,
+        usvg::ShapeRendering::CrispEdges => 1,
+        usvg::ShapeRendering::GeometricPrecision => 2,
+    }]);
+    let shape_digest = shape_hasher.finalize().into();
+    let fill_geometry_digest = fill_geometry_digest(path.fill());
+    let stroke_geometry_digest = stroke_geometry_digest(path.stroke(), stroke_bbox);
+
+    let mut path_hasher = Sha256::new();
+    update_len_prefixed(&mut path_hasher, b"merman.raster-paint-path-structure.v2");
+    path_hasher.update(shape_digest);
+    path_hasher.update([u8::from(path.fill().is_some())]);
+    path_hasher.update(fill_geometry_digest);
+    match stroke_geometry_digest {
+        Some(digest) => {
+            path_hasher.update([1]);
+            path_hasher.update(digest);
+        }
+        None => path_hasher.update([0]),
+    }
+    path_hasher.update([u8::from(path.is_visible())]);
 
     Ok(PathObservation {
-        geometry_digest: hasher.finalize().into(),
-        shape_digest: shape_hasher.finalize().into(),
+        path_digest: path_hasher.finalize().into(),
+        shape_digest,
+        fill_geometry_digest,
+        stroke_geometry_digest,
         fill_region_bits: rect_bits(fill_bbox),
         stroke_region_bits: rect_bits(stroke_bbox),
+        visible: path.is_visible(),
         fill: path.fill().map(observe_fill),
         stroke: path.stroke().map(observe_stroke),
     })
+}
+
+fn fill_geometry_digest(fill: Option<&usvg::Fill>) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    update_len_prefixed(&mut hasher, b"merman.raster-paint-fill-geometry.v1");
+    match fill {
+        Some(fill) => {
+            hasher.update([1]);
+            hasher.update([match fill.rule() {
+                usvg::FillRule::NonZero => 0,
+                usvg::FillRule::EvenOdd => 1,
+            }]);
+        }
+        None => hasher.update([0]),
+    }
+    hasher.finalize().into()
+}
+
+fn stroke_geometry_digest(
+    stroke: Option<&usvg::Stroke>,
+    stroke_bbox: usvg::Rect,
+) -> Option<[u8; 32]> {
+    let stroke = stroke?;
+    let mut hasher = Sha256::new();
+    update_len_prefixed(&mut hasher, b"merman.raster-paint-stroke-geometry.v1");
+    hash_rect(&mut hasher, stroke_bbox);
+    hasher.update(stroke.width().get().to_bits().to_be_bytes());
+    hasher.update(stroke.dashoffset().to_bits().to_be_bytes());
+    hasher.update(stroke.miterlimit().get().to_bits().to_be_bytes());
+    hasher.update([match stroke.linecap() {
+        usvg::LineCap::Butt => 0,
+        usvg::LineCap::Round => 1,
+        usvg::LineCap::Square => 2,
+    }]);
+    hasher.update([match stroke.linejoin() {
+        usvg::LineJoin::Miter => 0,
+        usvg::LineJoin::MiterClip => 1,
+        usvg::LineJoin::Round => 2,
+        usvg::LineJoin::Bevel => 3,
+    }]);
+    match stroke.dasharray() {
+        Some(dasharray) => {
+            hasher.update([1]);
+            update_usize(&mut hasher, dasharray.len());
+            for value in dasharray {
+                hasher.update(value.to_bits().to_be_bytes());
+            }
+        }
+        None => hasher.update([0]),
+    }
+    Some(hasher.finalize().into())
 }
 
 fn hash_path_shape(
@@ -591,28 +989,10 @@ fn hash_path_shape(
     fill_bbox: usvg::Rect,
     path: &usvg::Path,
 ) {
-    for value in [
-        transform.sx,
-        transform.kx,
-        transform.ky,
-        transform.sy,
-        transform.tx,
-        transform.ty,
-    ] {
-        hasher.update(value.to_bits().to_be_bytes());
-    }
+    hash_transform(hasher, transform);
     if let Some(extra_transform) = extra_transform {
         hasher.update([1]);
-        for value in [
-            extra_transform.sx,
-            extra_transform.kx,
-            extra_transform.ky,
-            extra_transform.sy,
-            extra_transform.tx,
-            extra_transform.ty,
-        ] {
-            hasher.update(value.to_bits().to_be_bytes());
-        }
+        hash_transform(hasher, extra_transform);
     } else {
         hasher.update([0]);
     }
@@ -641,6 +1021,19 @@ fn hash_path_shape(
             }
             PathSegment::Close => hasher.update([4]),
         }
+    }
+}
+
+fn hash_transform(hasher: &mut Sha256, transform: tiny_skia::Transform) {
+    for value in [
+        transform.sx,
+        transform.kx,
+        transform.ky,
+        transform.sy,
+        transform.tx,
+        transform.ty,
+    ] {
+        hasher.update(value.to_bits().to_be_bytes());
     }
 }
 
@@ -715,6 +1108,7 @@ fn require_no_opaque_control_targets(observation: &PaintTreeObservation) -> Resu
 struct SolidDeltaObservation {
     control_pixels: usize,
     changed_control_pixels: usize,
+    requested_changed_control_pixels: usize,
     changed_pixels: usize,
     changed_outside_target_pixels: usize,
     unchanged_control_pixels: usize,
@@ -724,6 +1118,7 @@ fn observe_solid_delta(
     solid: &tiny_skia::Pixmap,
     underlay: &tiny_skia::Pixmap,
     targets: &[TargetPath],
+    requested_targets: &[TargetPath],
     placement: RasterPlacement,
     control_rgb: [u8; 3],
 ) -> Result<SolidDeltaObservation> {
@@ -733,8 +1128,10 @@ fn observe_solid_delta(
         ));
     }
     let regions = pixel_regions(targets, placement)?;
+    let requested_regions = pixel_regions(requested_targets, placement)?;
     let mut control_pixels = 0usize;
     let mut changed_control_pixels = 0usize;
+    let mut requested_changed_control_pixels = 0usize;
     let mut changed_pixels = 0usize;
     let mut changed_outside_target_pixels = 0usize;
     let mut unchanged_control_pixels = 0usize;
@@ -746,17 +1143,15 @@ fn observe_solid_delta(
         let y = (index / width) as u32;
         let is_control = pixel_near_rgb(*solid_pixel, control_rgb, COLOR_TOLERANCE);
         let changed = solid_pixel != underlay_pixel;
-        let mut inside_any_region = false;
-        for region in &regions {
-            if !region.contains(x, y) {
-                continue;
-            }
-            inside_any_region = true;
-        }
+        let inside_any_region = regions.iter().any(|region| region.contains(x, y));
         if is_control {
             control_pixels = control_pixels.saturating_add(1);
             if changed {
                 changed_control_pixels = changed_control_pixels.saturating_add(1);
+                if requested_regions.iter().any(|region| region.contains(x, y)) {
+                    requested_changed_control_pixels =
+                        requested_changed_control_pixels.saturating_add(1);
+                }
             } else {
                 unchanged_control_pixels = unchanged_control_pixels.saturating_add(1);
             }
@@ -768,9 +1163,13 @@ fn observe_solid_delta(
             }
         }
     }
-    if control_pixels == 0 || changed_pixels == 0 || changed_control_pixels == 0 {
+    if control_pixels == 0
+        || changed_pixels == 0
+        || changed_control_pixels == 0
+        || requested_changed_control_pixels == 0
+    {
         return Err(ExportError::RasterPaintCutover(
-            "solid route produced no removed visible control-painted pixels",
+            "solid route produced no removed visible control-painted pixels for the requested facet",
         ));
     }
     if changed_outside_target_pixels != 0 {
@@ -781,6 +1180,7 @@ fn observe_solid_delta(
     Ok(SolidDeltaObservation {
         control_pixels,
         changed_control_pixels,
+        requested_changed_control_pixels,
         changed_pixels,
         changed_outside_target_pixels,
         unchanged_control_pixels,
@@ -896,13 +1296,17 @@ struct RasterPaintCutoverFacts {
     solid_source_digest: [u8; 32],
     transparent_source_digest: [u8; 32],
     underlay_source_digest: [u8; 32],
-    geometry_digest: [u8; 32],
-    shape_digest: [u8; 32],
-    transparent_shape_digest: [u8; 32],
+    underlay_path_tree_digest: [u8; 32],
+    transparent_path_tree_digest: [u8; 32],
+    solid_effect_tree_digest: [u8; 32],
+    underlay_effect_tree_digest: [u8; 32],
+    transparent_effect_tree_digest: [u8; 32],
+    transparent_geometry_compatible: bool,
     target_geometry_digest: [u8; 32],
     target_path_count: usize,
     solid_control_pixels: usize,
     changed_control_pixels: usize,
+    requested_changed_control_pixels: usize,
     changed_pixels: usize,
     changed_outside_target_pixels: usize,
     transparent_control_pixels: usize,
@@ -999,6 +1403,32 @@ mod tests {
     }
 
     #[test]
+    fn stroke_witness_rejects_control_paint_owned_only_by_fill() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="#2563eb"/></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="transparent"/></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Stroke,
+            "#2563eb",
+        ));
+    }
+
+    #[test]
+    fn fill_witness_rejects_control_paint_owned_only_by_stroke() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="none" stroke="#dc2626" stroke-width="2"/></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="none" stroke="transparent" stroke-width="2"/></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+        ));
+    }
+
+    #[test]
     fn opaque_transparent_witness_fails_closed() {
         let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="#dc2626"/></svg>"##;
         let opaque = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="#111827"/></svg>"##;
@@ -1071,6 +1501,43 @@ mod tests {
             transparent,
             RasterPaintCutoverFacet::Stroke,
             "#2563eb",
+        ));
+    }
+
+    #[test]
+    fn clip_path_is_part_of_the_effect_receipt_and_can_be_used_by_a_witness() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><clipPath id="clip"><rect x="4" y="4" width="8" height="8"/></clipPath></defs><g clip-path="url(#clip)"><rect width="20" height="20" fill="#dc2626"/></g></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><clipPath id="clip"><rect x="4" y="4" width="8" height="8"/></clipPath></defs><g clip-path="url(#clip)"><rect width="20" height="20" fill="transparent"/></g></svg>"##;
+
+        let pair = encode_pair(solid, transparent, RasterPaintCutoverFacet::Fill, "#dc2626")
+            .expect("a geometry-preserving clip path is supported");
+        let (_, _, receipt) = pair.into_parts();
+        assert!(receipt.proves_semantics());
+    }
+
+    #[test]
+    fn clip_path_geometry_drift_fails_closed() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><clipPath id="clip"><rect x="4" y="4" width="8" height="8"/></clipPath></defs><g clip-path="url(#clip)"><rect width="20" height="20" fill="#dc2626"/></g></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><clipPath id="clip"><rect x="5" y="4" width="8" height="8"/></clipPath></defs><g clip-path="url(#clip)"><rect width="20" height="20" fill="transparent"/></g></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+        ));
+    }
+
+    #[test]
+    fn unsupported_group_effects_fail_closed_before_raster_rendering() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><filter id="blur"><feGaussianBlur stdDeviation="1"/></filter></defs><g filter="url(#blur)"><rect x="4" y="4" width="12" height="12" fill="#dc2626"/></g></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><filter id="blur"><feGaussianBlur stdDeviation="1"/></filter></defs><g filter="url(#blur)"><rect x="4" y="4" width="12" height="12" fill="transparent"/></g></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
         ));
     }
 
