@@ -671,8 +671,8 @@ Primary objective: ensure parity does not silently regress.
 Actions:
 
 1. Keep mandatory checks for:
-   - `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
-   - `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+   - `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout`
+   - `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 2. Run the production architecture guard that rejects fixture ids, complete-label answers, and
    direct family root emission.
 3. Document the profile regeneration and independent fixture-validation protocol when the pinned
@@ -687,8 +687,8 @@ Exit criteria:
 For each PR in this phase:
 
 1. `cargo nextest run`
-2. `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
-3. `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+2. `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout`
+3. `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
 ## Risk Notes
 

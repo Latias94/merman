@@ -1916,6 +1916,8 @@ where
                     requested_mode,
                     diagram,
                     stem,
+                    input_text,
+                    upstream_svg,
                     local_svg,
                     comparison_error,
                     failures,
@@ -1952,12 +1954,22 @@ fn record_upstream_dom_comparison(
     mode: svgdom::DomMode,
     diagram: &str,
     stem: &str,
+    input_text: &str,
+    upstream_svg: &str,
     local_svg: &str,
     comparison_error: Option<String>,
     failures: &mut Vec<String>,
     notes: &mut Vec<String>,
 ) {
     let mode_label = dom_mode_label(mode);
+    if policy == UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+        && let Some(residual) = residual
+        && let Err(error) =
+            residual.validate_source_artifacts(input_text.as_bytes(), upstream_svg.as_bytes())
+    {
+        failures.push(format!("[{mode_label}] {error}"));
+        return;
+    }
     let admitted = policy == UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
         && residual.is_some_and(|residual| residual.admits_mode(mode));
 
@@ -2858,13 +2870,15 @@ mod tests {
 
     #[test]
     fn browser_text_layout_receipts_accept_only_the_exact_reviewed_local_svg() {
+        let reviewed_input = "sequenceDiagram\nA->>B: probe";
+        let reviewed_upstream = "<svg><text>browser</text></svg>";
         let reviewed_local = r#"<svg><g><text>wrapped text</text></g></svg>"#;
         let receipt = super::super::BrowserTextLayoutResidual::test_only(
             "sequence",
             "browser-text-layout",
             &[svgdom::DomMode::Parity],
-            "sequenceDiagram\nA->>B: probe",
-            "<svg><text>browser</text></svg>",
+            reviewed_input,
+            reviewed_upstream,
             reviewed_local,
         );
         let mismatch = Some("dom mismatch for browser-text-layout".to_string());
@@ -2877,6 +2891,8 @@ mod tests {
             svgdom::DomMode::Parity,
             "sequence",
             "browser-text-layout",
+            reviewed_input,
+            reviewed_upstream,
             reviewed_local,
             mismatch.clone(),
             &mut failures,
@@ -2884,6 +2900,38 @@ mod tests {
         );
         assert!(failures.is_empty(), "{failures:?}");
         assert_eq!(notes.len(), 1);
+
+        for (actual_input, actual_upstream, drifted_role) in [
+            (
+                "sequenceDiagram\nA->>B: changed",
+                reviewed_upstream,
+                "input drifted",
+            ),
+            (
+                reviewed_input,
+                "<svg><text>changed browser baseline</text></svg>",
+                "upstream SVG drifted",
+            ),
+        ] {
+            let mut failures = Vec::new();
+            let mut notes = Vec::new();
+            record_upstream_dom_comparison(
+                UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+                Some(&receipt),
+                svgdom::DomMode::Parity,
+                "sequence",
+                "browser-text-layout",
+                actual_input,
+                actual_upstream,
+                reviewed_local,
+                mismatch.clone(),
+                &mut failures,
+                &mut notes,
+            );
+            assert_eq!(failures.len(), 1, "source artifact drift must block");
+            assert!(failures[0].contains(drifted_role), "{failures:?}");
+            assert!(notes.is_empty());
+        }
 
         let mut failures = Vec::new();
         let mut notes = Vec::new();
@@ -2893,6 +2941,8 @@ mod tests {
             svgdom::DomMode::Parity,
             "sequence",
             "browser-text-layout",
+            reviewed_input,
+            reviewed_upstream,
             r#"<svg><g><circle/></g></svg>"#,
             mismatch.clone(),
             &mut failures,
@@ -2909,6 +2959,8 @@ mod tests {
             svgdom::DomMode::Parity,
             "sequence",
             "unregistered-neighbor",
+            reviewed_input,
+            reviewed_upstream,
             reviewed_local,
             mismatch,
             &mut failures,
@@ -2925,6 +2977,8 @@ mod tests {
             svgdom::DomMode::Parity,
             "sequence",
             "browser-text-layout",
+            reviewed_input,
+            reviewed_upstream,
             reviewed_local,
             None,
             &mut failures,

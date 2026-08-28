@@ -58,7 +58,11 @@ impl BrowserTextLayoutResidual {
         self.validate_digest("local SVG", &self.local_svg_sha256, local_svg.as_bytes())
     }
 
-    fn validate_source_artifacts(&self, input: &[u8], upstream_svg: &[u8]) -> Result<(), String> {
+    pub(crate) fn validate_source_artifacts(
+        &self,
+        input: &[u8],
+        upstream_svg: &[u8],
+    ) -> Result<(), String> {
         self.validate_digest("input", &self.input_sha256, input)?;
         self.validate_digest("upstream SVG", &self.upstream_svg_sha256, upstream_svg)
     }

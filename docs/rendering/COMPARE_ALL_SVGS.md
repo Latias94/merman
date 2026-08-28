@@ -5,13 +5,13 @@ checks in one shot and aggregates failures.
 
 ## Run
 
-- Full suite, DOM parity enabled:
+- Strict investigation mode, where reviewed browser text-layout residuals remain blocking:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
 
 - Release policy with browser text layout reported as diagnostic:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
-- Use a specific DOM comparison mode for all diagrams:
+- Use a specific strict DOM comparison mode for all diagrams:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 - Only run a subset of diagrams:
@@ -65,7 +65,7 @@ Text measurement is always deterministic; there is no single-value selector.
 
 Example:
 
-- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root`
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root`
 
 ## Notes
 
