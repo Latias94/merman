@@ -246,7 +246,12 @@ pub(crate) fn legacy_replacing_typed_routes()
                 (ThemeRouteCutoverFacet::Fill, PaintChannel::Fill),
                 (ThemeRouteCutoverFacet::Stroke, PaintChannel::Stroke),
             ] {
-                for selector in legacy_route_selectors(family, target) {
+                for selector in std::iter::once(ThemeRouteCutoverSelector::StaticUnqualified).chain(
+                    ThemeVariant::ALL
+                        .iter()
+                        .copied()
+                        .map(ThemeRouteCutoverSelector::StaticVariant),
+                ) {
                     for (value, paint_kind) in [
                         (
                             ThemeRouteCutoverValue::Transparent,
@@ -448,42 +453,6 @@ fn legacy_bridge_projections(
         }
         _ => None,
     }
-}
-
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
-fn legacy_route_selectors(
-    family: DiagramFamilyId,
-    target: ThemeTarget,
-) -> Vec<ThemeRouteCutoverSelector> {
-    let mut selectors = vec![ThemeRouteCutoverSelector::StaticUnqualified];
-    match (family, target) {
-        (DiagramFamilyId::GANTT, ThemeTarget::Task) => selectors.extend([
-            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
-            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Active),
-            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Success),
-            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Error),
-        ]),
-        (DiagramFamilyId::REQUIREMENT | DiagramFamilyId::BLOCK, target)
-            if matches!(target, ThemeTarget::Requirement | ThemeTarget::Node) =>
-        {
-            selectors.push(ThemeRouteCutoverSelector::StaticVariant(
-                ThemeVariant::Default,
-            ));
-        }
-        (DiagramFamilyId::ER, ThemeTarget::Relation) => {
-            selectors.push(ThemeRouteCutoverSelector::StaticVariant(
-                ThemeVariant::Default,
-            ));
-        }
-        (DiagramFamilyId::PIE, ThemeTarget::PieSlice)
-        | (DiagramFamilyId::CLASS, ThemeTarget::Node | ThemeTarget::NodeLabel) => {
-            selectors.push(ThemeRouteCutoverSelector::StaticVariant(
-                ThemeVariant::Default,
-            ));
-        }
-        _ => {}
-    }
-    selectors
 }
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
@@ -4736,6 +4705,20 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::PIE,
+                ThemeTarget::Title,
+                Fill,
+                Transparent,
+                vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::PIE,
+                ThemeTarget::Title,
+                Fill,
+                Solid,
+                vec!["title.fill"],
             ),
             (
                 DiagramFamilyId::PIE,
