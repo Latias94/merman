@@ -12,8 +12,9 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    InheritedFontStackOutcome, InheritedFontStackPlan, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -90,6 +91,8 @@ struct PieTerminalEvidence {
     stroke_not_applicable: bool,
     text_fill_applied: bool,
     text_fill_not_applicable: bool,
+    typography_applied: bool,
+    typography_not_applicable: bool,
 }
 
 /// Resolves Pie theme surfaces once for layout, SVG emission, and terminal evidence.
@@ -101,6 +104,8 @@ pub(crate) struct PieThemePlan {
     stroke: Option<PieSliceStroke>,
     title_fill: Option<PieTitleFill>,
     text_fill: Option<PieTextFill>,
+    inherited_font_stack: InheritedFontStackPlan,
+    title_present: bool,
     evidence: FamilyThemeEvidence,
     palette_key: Option<FamilyThemeMechanismKey>,
     pending_rules: BTreeMap<FamilyThemeMechanismKey, PiePendingEvidence>,
@@ -112,6 +117,14 @@ impl PieThemePlan {
         model: &PieDiagramRenderModel,
         effective_config: &serde_json::Value,
     ) -> Self {
+        let effective_config = MermaidConfig::from_value(effective_config.clone());
+        Self::baseline_with_config(model, &effective_config)
+    }
+
+    fn baseline_with_config(
+        model: &PieDiagramRenderModel,
+        effective_config: &MermaidConfig,
+    ) -> Self {
         let mut plan = Self {
             label_indices: HashMap::new(),
             section_paint_indices: Vec::with_capacity(model.sections.len()),
@@ -119,13 +132,19 @@ impl PieThemePlan {
             stroke: None,
             title_fill: None,
             text_fill: None,
+            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
+                None,
+                effective_config,
+            ),
+            title_present: false,
             evidence: FamilyThemeEvidence::default(),
             palette_key: None,
             pending_rules: BTreeMap::new(),
             terminal_evidence: OnceLock::new(),
         };
         for section in &model.sections {
-            let paint_index = plan.insert_mermaid_paint(&section.label, effective_config);
+            let paint_index =
+                plan.insert_mermaid_paint(&section.label, effective_config.as_value());
             plan.section_paint_indices.push(paint_index);
         }
         plan
@@ -153,7 +172,10 @@ impl PieThemePlan {
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let mut plan = Self::baseline(model, effective_config.as_value());
+        let mut plan = Self::baseline_with_config(model, effective_config);
+        plan.title_present = title.is_some_and(|title| !title.trim().is_empty());
+        plan.inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let Some(theme) = theme else {
             return Ok(plan);
         };
@@ -775,6 +797,14 @@ impl PieThemePlan {
         self.text_fill.as_ref().map(|fill| fill.css.as_ref())
     }
 
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn typography_requested(&self) -> bool {
+        self.inherited_font_stack.typed_font_stack_requested()
+    }
+
     pub(crate) fn begin_terminal_receipt<'a>(
         &self,
         visible_slice_labels: impl IntoIterator<Item = &'a str>,
@@ -782,7 +812,8 @@ impl PieThemePlan {
         (self.palette_key.is_some()
             || !self.pending_rules.is_empty()
             || self.stroke.is_some()
-            || self.text_fill.is_some())
+            || self.text_fill.is_some()
+            || self.typography_requested())
         .then(|| PieThemeReceipt::new(self, visible_slice_labels))
     }
 
@@ -797,6 +828,34 @@ impl PieThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        match self.inherited_font_stack.outcome() {
+            InheritedFontStackOutcome::Inactive => {}
+            InheritedFontStackOutcome::Unsupported => evidence.mark_residual(
+                FamilyThemeMechanismKey::Typography,
+                FamilyThemeResidualReason::UnsupportedTypography,
+            ),
+            InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::ConfigOwned => {
+                match self.terminal_evidence.get() {
+                    Some(terminal) if terminal.typography_not_applicable => {
+                        evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography)
+                    }
+                    Some(terminal) if terminal.typography_applied => {
+                        if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Typed {
+                            evidence.mark_applied_with_capabilities(
+                                FamilyThemeMechanismKey::Typography,
+                                [ThemeCapability::Typography],
+                            );
+                        } else {
+                            evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography);
+                        }
+                    }
+                    _ => evidence.mark_residual(
+                        FamilyThemeMechanismKey::Typography,
+                        FamilyThemeResidualReason::UnsupportedTypography,
+                    ),
+                }
+            }
+        }
         if let Some(key) = self.palette_key.clone() {
             match self.terminal_evidence.get() {
                 Some(terminal) if terminal.palette_capabilities.is_empty() => {
@@ -879,8 +938,13 @@ pub(crate) struct PieThemeReceipt {
     title_stylesheet_class: Option<Box<str>>,
     text_stylesheet_fill: Option<Box<str>>,
     text_stylesheet_class: Option<Box<str>>,
+    typography_stylesheet_family: Option<Box<str>>,
     visible_title_count: usize,
+    title_text_recorded: bool,
     visible_slice_text_count: usize,
+    next_legend_text_index: usize,
+    visible_legend_text_count: usize,
+    legend_texts_match: bool,
     palette_capabilities: BTreeSet<ThemeCapability>,
     fill_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     slice_stroke_css: Option<Box<str>>,
@@ -920,8 +984,13 @@ impl PieThemeReceipt {
             title_stylesheet_class: None,
             text_stylesheet_fill: None,
             text_stylesheet_class: None,
+            typography_stylesheet_family: None,
             visible_title_count: 0,
+            title_text_recorded: false,
             visible_slice_text_count: 0,
+            next_legend_text_index: 0,
+            visible_legend_text_count: 0,
+            legend_texts_match: true,
             palette_capabilities: BTreeSet::new(),
             fill_capabilities: BTreeMap::new(),
             slice_stroke_css: None,
@@ -1004,6 +1073,27 @@ impl PieThemeReceipt {
         self.visible_slice_text_count = self
             .visible_slice_text_count
             .saturating_add(usize::from(!emitted_text.trim().is_empty()));
+    }
+
+    pub(crate) fn record_legend_text(
+        &mut self,
+        emitted_parent_class: Option<&str>,
+        emitted_text: &str,
+    ) {
+        self.values_match &= self.next_legend_text_index < self.expected_legend_paints.len();
+        self.next_legend_text_index = self.next_legend_text_index.saturating_add(1);
+        self.legend_texts_match &= emitted_parent_class == Some("legend");
+        self.visible_legend_text_count = self
+            .visible_legend_text_count
+            .saturating_add(usize::from(!emitted_text.trim().is_empty()));
+    }
+
+    pub(crate) fn record_typography_stylesheet(&mut self, emitted_font_family: Option<&str>) {
+        if self.typography_stylesheet_family.is_some() {
+            self.values_match = false;
+            return;
+        }
+        self.typography_stylesheet_family = emitted_font_family.map(Into::into);
     }
 
     fn record_paint_owner(&mut self, owner: Option<PieSlicePaintOwner>) {
@@ -1096,6 +1186,10 @@ impl PieThemeReceipt {
         emitted_class: Option<&str>,
         emitted_text: Option<&str>,
     ) {
+        if self.title_text_recorded {
+            self.values_match = false;
+        }
+        self.title_text_recorded = true;
         self.visible_title_count = self.visible_title_count.saturating_add(usize::from(
             emitted_text.is_some_and(|text| !text.trim().is_empty()),
         ));
@@ -1137,6 +1231,19 @@ impl PieThemeReceipt {
                             .map(|text_fill| text_fill.css.as_ref())
                     && self.next_slice_text_index == self.expected_slice_paints.len()
                     && self.slice_texts_match))
+            && self.proves_typography(plan)
+    }
+
+    fn proves_typography(&self, plan: &PieThemePlan) -> bool {
+        if !plan.typography_requested() {
+            return true;
+        }
+        self.typography_stylesheet_family.as_deref() == Some(plan.font_family_css())
+            && self.next_slice_text_index == self.expected_slice_paints.len()
+            && self.next_legend_text_index == self.expected_legend_paints.len()
+            && self.legend_texts_match
+            && self.title_text_recorded
+            && self.visible_title_count == usize::from(plan.title_present)
     }
 
     fn into_terminal_evidence(self, plan: &PieThemePlan) -> PieTerminalEvidence {
@@ -1158,6 +1265,14 @@ impl PieThemeReceipt {
             text_fill_applied: plan.text_fill.is_some() && self.visible_slice_text_count > 0,
             text_fill_not_applicable: plan.text_fill.is_some()
                 && self.visible_slice_text_count == 0,
+            typography_applied: plan.typography_requested()
+                && (self.visible_title_count > 0
+                    || self.visible_slice_text_count > 0
+                    || self.visible_legend_text_count > 0),
+            typography_not_applicable: plan.typography_requested()
+                && self.visible_title_count == 0
+                && self.visible_slice_text_count == 0
+                && self.visible_legend_text_count == 0,
         }
     }
 }

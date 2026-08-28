@@ -1086,6 +1086,7 @@ pub(super) struct PieCssEmission {
     outer_stroke: Option<Box<str>>,
     title_fill: Option<Box<str>>,
     section_text_fill: Option<Box<str>>,
+    font_family: Option<Box<str>>,
 }
 
 impl PieCssEmission {
@@ -1104,6 +1105,10 @@ impl PieCssEmission {
     pub(super) fn section_text_fill(&self) -> Option<&str> {
         self.section_text_fill.as_deref()
     }
+
+    pub(super) fn font_family(&self) -> Option<&str> {
+        self.font_family.as_deref()
+    }
 }
 
 impl PieCss {
@@ -1118,10 +1123,28 @@ impl PieCss {
         title_fill: Option<&str>,
         section_text_fill: Option<&str>,
     ) -> Self {
+        Self::with_theme_overrides_and_font_family(
+            effective_config,
+            slice_stroke,
+            outer_stroke,
+            title_fill,
+            section_text_fill,
+            None,
+        )
+    }
+
+    fn with_theme_overrides_and_font_family(
+        effective_config: &serde_json::Value,
+        slice_stroke: Option<&str>,
+        outer_stroke: Option<&str>,
+        title_fill: Option<&str>,
+        section_text_fill: Option<&str>,
+        font_family: Option<&str>,
+    ) -> Self {
         let info = InfoCssValues::new(
             effective_config,
             InfoCssFontSizeSource::ThemeThenTopLevel,
-            None,
+            font_family,
         );
         let theme = SvgTheme::new(effective_config);
         let task_text_dark_color = theme.color("taskTextDarkColor", "black");
@@ -1231,12 +1254,38 @@ pub(super) fn write_pie_css_with_theme_overrides<I>(
 where
     I: SvgDiagramIdValue,
 {
-    let plan = PieCss::with_theme_overrides(
+    write_pie_css_with_theme_overrides_and_font_family(
+        out,
+        diagram_id,
         effective_config,
         slice_stroke,
         outer_stroke,
         title_fill,
         section_text_fill,
+        None,
+    )
+}
+
+pub(super) fn write_pie_css_with_theme_overrides_and_font_family<I>(
+    out: &mut impl SvgOutput,
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    slice_stroke: Option<&str>,
+    outer_stroke: Option<&str>,
+    title_fill: Option<&str>,
+    section_text_fill: Option<&str>,
+    font_family: Option<&str>,
+) -> Result<PieCssEmission>
+where
+    I: SvgDiagramIdValue,
+{
+    let plan = PieCss::with_theme_overrides_and_font_family(
+        effective_config,
+        slice_stroke,
+        outer_stroke,
+        title_fill,
+        section_text_fill,
+        font_family,
     );
     let emission = PieCssEmission {
         slice_stroke: slice_stroke.map(|_| plan.pie_stroke_color.clone().into_boxed_str()),
@@ -1244,6 +1293,7 @@ where
         title_fill: title_fill.map(|_| plan.pie_title_text_color.clone().into_boxed_str()),
         section_text_fill: section_text_fill
             .map(|_| plan.pie_section_text_color.clone().into_boxed_str()),
+        font_family: font_family.map(|_| plan.info.font_family.clone().into_boxed_str()),
     };
     plan.write_for_normalized_id(out, diagram_id)?;
     Ok(emission)

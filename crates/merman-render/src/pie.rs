@@ -177,13 +177,13 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
     }
 
     let legend_style = TextStyle {
-        font_family: None,
+        font_family: Some(paint_plan.font_family_css().to_owned()),
         font_size: 17.0,
         font_weight: None,
         font_style: None,
     };
     let title_style = TextStyle {
-        font_family: None,
+        font_family: Some(paint_plan.font_family_css().to_owned()),
         font_size: 25.0,
         font_weight: None,
         font_style: None,
@@ -288,6 +288,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingBoundingClientRectMeasurer {
         calls: Mutex<Vec<String>>,
+        font_families: Mutex<Vec<Option<String>>>,
     }
 
     impl TextMeasurer for RecordingBoundingClientRectMeasurer {
@@ -302,12 +303,16 @@ mod tests {
         fn measure_svg_text_bounding_client_rect_width_px(
             &self,
             text: &str,
-            _style: &TextStyle,
+            style: &TextStyle,
         ) -> f64 {
             self.calls
                 .lock()
                 .expect("measurement calls")
                 .push(text.to_string());
+            self.font_families
+                .lock()
+                .expect("font family measurements")
+                .push(style.font_family.clone());
             match text {
                 "Legend" => 123.456_789,
                 "Title" => 1_000.123_456,
@@ -378,5 +383,67 @@ mod tests {
                 [title.to_string()]
             );
         }
+    }
+
+    #[test]
+    fn pie_layout_measurement_uses_the_resolved_font_stack() {
+        use crate::DiagramFamilyId;
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
+        };
+        use crate::resources::RenderResourcePolicy;
+        use merman_core::MermaidConfig;
+        use merman_core::diagrams::pie::PieRenderSection;
+
+        let mut model = PieDiagramRenderModel::default();
+        model.title = Some("Title".to_string());
+        model.sections = ["Legend"]
+            .into_iter()
+            .map(|label| PieRenderSection {
+                label: label.to_string(),
+                value: 1.0,
+            })
+            .collect();
+        let font_stack =
+            FontStack::new(["Pie Layout", "sans-serif"]).expect("valid Pie layout font stack");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    DiagramFamilyId::PIE,
+                    ThemeTextStyle::default().with_font_stack(font_stack.clone()),
+                ),
+            ))
+            .expect("compile Pie typography theme")
+            .resolve(DiagramFamilyId::PIE);
+        let config = MermaidConfig::empty_object();
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let plan = super::PieThemePlan::resolve_with_title(
+            &model,
+            &config,
+            Some(&theme),
+            model.title.as_deref(),
+            &work_meter,
+        )
+        .expect("resolve Pie typography theme");
+        let measurer = RecordingBoundingClientRectMeasurer::default();
+
+        let _ = super::layout_pie_diagram_typed_with_paint_plan(
+            &model,
+            None,
+            config.as_value(),
+            &plan,
+            &measurer,
+        )
+        .expect("layout Pie typography theme");
+
+        assert_eq!(
+            *measurer
+                .font_families
+                .lock()
+                .expect("font family measurements"),
+            [Some(font_stack.as_css()), Some(font_stack.as_css())]
+        );
     }
 }

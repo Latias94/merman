@@ -278,7 +278,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         .flatten();
     let title_fill = paint_plan.title_fill_css();
     let text_fill = paint_plan.text_fill_css();
-    let css_emission = write_pie_css_with_theme_overrides(
+    let css_emission = write_pie_css_with_theme_overrides_and_font_family(
         &mut out,
         diagram_id.semantic_str(),
         effective_config,
@@ -286,8 +286,14 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         outer_stroke,
         title_fill,
         text_fill,
+        paint_plan
+            .typography_requested()
+            .then_some(paint_plan.font_family_css()),
     )?;
     if let Some(receipt) = paint_receipt.as_mut() {
+        if paint_plan.typography_requested() {
+            receipt.record_typography_stylesheet(css_emission.font_family());
+        }
         if let Some(stroke) = slice_stroke {
             receipt.record_slice_stroke_stylesheet(
                 paint_plan,
@@ -391,7 +397,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
             text = escape_xml(&text)
         );
         out.checkpoint()?;
-        if text_fill.is_some()
+        if (text_fill.is_some() || paint_plan.typography_requested())
             && let Some(receipt) = paint_receipt.as_mut()
         {
             let terminal_class =
@@ -427,7 +433,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         }
     }
     out.checkpoint()?;
-    if paint_plan.title_fill_css().is_some()
+    if (paint_plan.title_fill_css().is_some() || paint_plan.typography_requested())
         && let Some(receipt) = paint_receipt.as_mut()
     {
         let terminal_class = emitted_attribute_matches(
@@ -444,6 +450,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     let legend_text_x = legend_rect_size + PIE_LEGEND_SPACING_PX;
 
     for (legend_index, item) in layout.legend_items.iter().enumerate() {
+        let legend_start = out.len();
         let _ = write!(
             &mut out,
             r#"<g class="legend" transform="translate({x},{y})">"#,
@@ -481,6 +488,12 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         out.checkpoint()?;
         if let Some(receipt) = paint_receipt.as_mut() {
             receipt.record_legend(paint_plan, legend_index, item.label.as_str(), terminal_fill);
+            if paint_plan.typography_requested() {
+                let terminal_parent_class =
+                    emitted_attribute_matches(out.as_str(), legend_start, r#" class=""#, "legend")
+                        .then_some("legend");
+                receipt.record_legend_text(terminal_parent_class, &text);
+            }
         }
     }
 

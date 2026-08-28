@@ -76,7 +76,7 @@ use css::{
     info_css_parts_with_resolved_typography, info_css_with_config, push_xychart_css,
     requirement_css, write_info_css_with_font_family, write_mermaid_base_css_prefix,
     write_mermaid_base_css_root_rule, write_mermaid_default_base_css_prefix,
-    write_pie_css_with_theme_overrides, write_sankey_css_with_font_family,
+    write_pie_css_with_theme_overrides_and_font_family, write_sankey_css_with_font_family,
 };
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};

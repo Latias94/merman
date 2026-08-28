@@ -1038,6 +1038,7 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::VENN
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::RADAR
+            | DiagramFamilyId::PIE
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1048,7 +1049,6 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::ER
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::KANBAN
-            | DiagramFamilyId::PIE
             | DiagramFamilyId::QUADRANT_CHART
             | DiagramFamilyId::REQUIREMENT
             | DiagramFamilyId::TIMELINE
@@ -1083,7 +1083,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::ER
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::KANBAN
-            | DiagramFamilyId::PIE
             | DiagramFamilyId::QUADRANT_CHART
             | DiagramFamilyId::REQUIREMENT
             | DiagramFamilyId::TIMELINE
@@ -5540,6 +5539,7 @@ mod tests {
             DiagramFamilyId::MINDMAP,
             DiagramFamilyId::SANKEY,
             DiagramFamilyId::VENN,
+            DiagramFamilyId::PIE,
         ] {
             let routes = compile_base_typography_routes(family, &typography);
             assert!(

@@ -2628,6 +2628,7 @@ mod tests {
                 "venn-beta\ntitle Venn\nset A[\"Alpha\"]:20\nset B[\"Beta\"]:12\n",
             ),
             (DiagramFamilyId::SANKEY, "sankey-beta\nA,B,10\n"),
+            (DiagramFamilyId::PIE, "pie\n  \"Alpha\" : 1\n"),
         ] {
             let baseline = parse(&DiagramThemeSpec::default(), source);
             for typography in [

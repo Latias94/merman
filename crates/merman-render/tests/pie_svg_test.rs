@@ -4,9 +4,9 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{DiagramFamilyId, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
-    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, OrdinalPalette, OrdinalSelector,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FontStack, OrdinalPalette,
+    OrdinalSelector, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
 use merman_render::family;
@@ -305,6 +305,14 @@ fn pie_title_and_text_fill_theme() -> DiagramTheme {
         .expect("compile mixed Pie title and text theme")
 }
 
+fn pie_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::PIE, typography),
+        ))
+        .expect("compile Pie typography theme")
+}
+
 fn pie_slice_ordinal_stroke_theme(selector: OrdinalSelector) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
@@ -503,6 +511,132 @@ fn pie_title_fill_is_independent_from_legacy_text_fill() {
         0,
         "typed Pie title and section text routes have no compatibility residual"
     );
+}
+
+#[test]
+fn pie_typed_font_stack_reaches_layout_stylesheet_and_terminal_evidence() {
+    let font_stack =
+        FontStack::new(["Pie Typed", "sans-serif"]).expect("valid Pie typed font stack");
+    let expected_font = font_stack.as_css();
+    let theme = pie_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let rendered = try_render_pie_with_theme_requirement(
+        "pie title Release distribution\n  \"Alpha\" : 1\n  \"Beta\" : 2\n",
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("typed Pie font stack must be portable");
+
+    for selector in [
+        "#merman .pieTitleText",
+        "#merman .slice",
+        "#merman .legend text",
+    ] {
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), selector, "font-family"),
+            [expected_font.clone()],
+            "selector={selector}"
+        );
+    }
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(
+        evidence.status(),
+        merman_render::__private::FamilyEvidenceStatus::Verified
+    );
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_typed_font_stack_respects_source_font_family_ownership() {
+    let theme = pie_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Pie Typed").expect("valid Pie typed font stack")),
+    );
+    let rendered = try_render_pie_with_theme_requirement(
+        r##"%%{init: {"themeVariables": {"fontFamily": "Source Pie"}}}%%
+pie title Source font
+  "Alpha" : 1
+"##,
+        &theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("source-owned Pie font family must be portable");
+
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .pieTitleText", "font-family"),
+        ["Source Pie"]
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_font_size_only_is_explicitly_unsupported_without_a_legacy_bridge() {
+    let typography = ThemeTextStyle::default()
+        .with_font_size_px(24.0)
+        .expect("valid unsupported Pie font size");
+    let theme = pie_typography_theme(typography);
+    let rendered = try_render_pie_with_theme_requirement(
+        "pie title Fixed role sizes\n  \"Alpha\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort unsupported Pie font size should still render");
+
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .pieTitleText", "font-size"),
+        ["25px"]
+    );
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .slice", "font-size"),
+        ["17px"]
+    );
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .legend text", "font-size"),
+        ["17px"]
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn pie_mixed_font_stack_and_size_keeps_the_stack_but_fails_closed() {
+    let font_stack = FontStack::single("Pie Mixed").expect("valid mixed Pie font stack");
+    let expected_font = font_stack.as_css();
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(font_stack)
+        .with_font_size_px(24.0)
+        .expect("valid mixed Pie font size");
+    let theme = pie_typography_theme(typography);
+    let rendered = try_render_pie_with_theme_requirement(
+        "pie title Mixed typography\n  \"Alpha\" : 1\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort mixed Pie typography should render");
+
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .pieTitleText", "font-family"),
+        [expected_font]
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
