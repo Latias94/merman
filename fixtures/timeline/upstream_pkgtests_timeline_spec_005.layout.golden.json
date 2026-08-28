@@ -65,7 +65,6 @@
                   "section_class": "section--1",
                   "label": "[event1](http://example.com)",
                   "label_lines": [
-                    "",
                     "[event1](http://example.com)"
                   ],
                   "kind": "event"

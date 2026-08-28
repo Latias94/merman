@@ -38,16 +38,14 @@ missing registered fixtures, stale residuals, or a label/path identity mismatch 
 even when the selected DOM profile passes. The contract is documented in
 `docs/alignment/SEMANTIC_LABEL_PARITY.md`.
 
-## Flowchart-specific options
+## Root reports
 
-`compare-all-svgs` forwards these only to the Flowchart compare task:
-
-- `--flowchart-text-measurer vendored`
-- `--report-root`
+`compare-all-svgs` forwards `--report-root` to diagram families that support the root-delta report.
+Text measurement is always deterministic; there is no single-value selector.
 
 Example:
 
-- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root`
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root`
 
 ## Notes
 

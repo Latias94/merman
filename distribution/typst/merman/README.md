@@ -81,9 +81,9 @@ You can also pass typography intent explicitly:
 )
 ```
 
-The typography size accepts CSS `px` strings, absolute Typst lengths, or numeric CSS pixels. Typst lengths are converted through the SVG 96-DPI coordinate system (`72pt == 96px`) so layout measurement and CSS presentation use the same pixel value. Typst font descriptors are projected to their ordered family names; descriptor `covers` constraints have no CSS or vendored-measurer equivalent and are therefore not preserved.
+The typography size accepts CSS `px` strings, absolute Typst lengths, or numeric CSS pixels. Typst lengths are converted through the SVG 96-DPI coordinate system (`72pt == 96px`) so layout measurement and CSS presentation use the same pixel value. Typst font descriptors are projected to their ordered family names; descriptor `covers` constraints have no CSS or deterministic-measurer equivalent and are therefore not preserved.
 
-This changes the SVG style intent sent to the headless renderer. It does not mean the Typst plugin measured the exact Typst font file. Current measurement modes are the built-in `vendored` and `deterministic` measurers; browser-style host callbacks and Typst font-asset measurement are not automatic.
+This changes the SVG style intent sent to the headless renderer. It does not mean the Typst plugin measured the exact Typst font file. The plugin has no synchronous font-measurement host import and therefore advertises and uses only the built-in `deterministic` provider. Browser-style host callbacks and Typst font-asset measurement are not available through this transport.
 
 Check the compiled plugin capability surface with:
 

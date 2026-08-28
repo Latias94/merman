@@ -33,6 +33,10 @@ The linker globals are transport metadata, not plugin operations. No other funct
 
 `capabilities_json` reports the flat runtime catalog schema `1` compiled from the canonical `typst-wasm` artifact recipe. It contains only current artifact facts: transport and package identity, capability/output/operation IDs, registry size, text measurement, and resource descriptors. It does not copy the global capability vocabulary or independently versioned options and result schemas. `render_svg_json` and `analyze_json` return result envelope schema 1 with `version`, `operation`, `ok`, `code`, `code_name`, `kind`, `capability_id`, `message`, and `data`. A successful render stores the SVG in `data.svg`; a failed operation keeps its machine-readable error kind and optional capability ID. Successful analysis stores canonical analysis schema 1 in `data.analysis`. ABI 1's legacy `validate_json` projection is not exported.
 
+The closed Typst import surface has no synchronous font-measurement service. Its runtime catalog
+therefore advertises only the built-in `deterministic` text-measurement provider; Typst font assets
+and browser host callbacks are not measured by this transport.
+
 Changing an imported or exported function, its WebAssembly signature, or one of these byte payload contracts requires a Typst plugin ABI change. Changes to the Typst wrapper API under `distribution/typst/merman/src/` do not require an ABI bump when this transport remains unchanged.
 
 ## Profiles

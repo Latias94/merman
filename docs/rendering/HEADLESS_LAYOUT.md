@@ -72,8 +72,9 @@ unless a renderer capability is designed and registered separately.
 captures one operation context and passes it into the SVG session; the target adapter does not
 create a replacement operation.
 
-Use `RenderEnvironment::parity()` for deterministic vendored measurement. Host builds can supply
-host services explicitly; a successful host measurement bypasses vendored fallback facts.
+Use `RenderEnvironment::deterministic()` for built-in font-agnostic measurement. Host builds can
+supply host services explicitly; a successful host measurement bypasses the deterministic fallback
+for that request.
 `LayoutOptions` contains layout request values and does not own environment services.
 
 ## Low-Level Use

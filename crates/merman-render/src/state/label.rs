@@ -290,7 +290,7 @@ pub(crate) fn measure_state_markdown_label(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::VendoredFontMetricsTextMeasurer;
+    use crate::text::DeterministicTextMeasurer;
 
     #[test]
     fn node_xhtml_normalizes_sanitized_images_like_mermaid_label_helper() {
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn simple_html_cjk_label_uses_unicode_soft_break_opportunities() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let style = TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,

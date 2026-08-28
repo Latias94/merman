@@ -498,7 +498,7 @@ fn is_start_switch_tag(tag: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::foreign_object_label_fallback_svg_text as render_fallback;
-    use crate::text::{TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer};
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use std::cell::RefCell;
 
     #[derive(Default)]
@@ -518,7 +518,7 @@ mod tests {
     }
 
     fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
-        render_fallback(svg, &VendoredFontMetricsTextMeasurer::default())
+        render_fallback(svg, &DeterministicTextMeasurer::default())
     }
 
     #[test]
@@ -1011,7 +1011,7 @@ mod tests {
             r#"</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></svg>"#,
         );
 
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let mut checkpoint = || Ok::<(), &'static str>(());
         let mut selector_limit = |actual, maximum| {
             assert_eq!(actual, super::cascade::MAX_UNIVERSAL_POSTINGS + 1);
@@ -1054,7 +1054,7 @@ mod tests {
             "the infallible helper must ignore ordinary postings beyond the private cap: {out}"
         );
 
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let mut checkpoint = || Ok::<(), &'static str>(());
         let mut selector_limit = |actual, maximum| {
             assert_eq!(actual, super::cascade::MAX_SELECTOR_POSTINGS + 1);
@@ -1084,7 +1084,7 @@ mod tests {
             r#"</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></svg>"#,
         );
 
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let mut checkpoint = || Ok::<(), &'static str>(());
         let mut selector_limit = |actual, maximum| {
             assert_eq!(actual, super::cascade::MAX_SELECTOR_STYLESHEET_BYTES + 1);
@@ -1153,7 +1153,7 @@ mod tests {
             "an over-limit declaration block must be discarded atomically: {out}"
         );
 
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let mut checkpoint = || Ok::<(), &'static str>(());
         let mut selector_limit = |actual, maximum| {
             assert_eq!(
@@ -1194,7 +1194,7 @@ mod tests {
             "a selector-list resource overflow must not retain an admitted sibling: {out}"
         );
 
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let mut checkpoint = || Ok::<(), &'static str>(());
         let mut selector_limit = |actual, maximum| {
             assert_eq!(
@@ -1246,7 +1246,7 @@ mod tests {
             "an exhausted match budget must skip all stylesheet candidates for the element"
         );
 
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let mut checkpoint = || Ok::<(), &'static str>(());
         let mut selector_limit = |actual, maximum| {
             assert!(actual > maximum);
@@ -1290,7 +1290,7 @@ mod tests {
             "an over-deep source path must use the bounded fallback defaults: {out}"
         );
 
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let mut checkpoint = || Ok::<(), &'static str>(());
         let mut selector_limit = |actual, maximum| {
             assert_eq!(actual, super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH + 1);
@@ -1526,9 +1526,20 @@ mod tests {
             !out.contains(">Import / WebSurface / Data Egress Gates</text>"),
             "fallback text should inherit Mermaid HTML soft wrapping instead of flattening into one SVG text line: {out}"
         );
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .expect("fallback group");
         assert!(
-            out.contains(">Import / WebSurface /<") && out.contains(">Data Egress Gates<"),
-            "expected fallback text to wrap into readable SVG lines: {out}"
+            fallback.contains("Import") && fallback.contains("Egress Gates"),
+            "fallback text should preserve all visible content: {out}"
+        );
+        assert_eq!(
+            fallback
+                .matches("merman-foreignobject-fallback-text")
+                .count(),
+            2,
+            "the deterministic fallback should fit this label in two readable rows: {out}"
         );
     }
 

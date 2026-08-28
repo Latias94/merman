@@ -42,7 +42,7 @@ void main() {
   rejectsInconsistentAdapters();
   rejectsCoercedRuntimeCatalogVersionFields();
   rejectsInconsistentTextMeasurement();
-  rejectsTextMeasurementWithoutVendoredProvider();
+  rejectsTextMeasurementWithoutDeterministicProvider();
   rejectsMalformedResourceDescriptors();
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
@@ -1424,7 +1424,7 @@ void rejectsInconsistentTextMeasurement() {
   _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
 }
 
-void rejectsTextMeasurementWithoutVendoredProvider() {
+void rejectsTextMeasurementWithoutDeterministicProvider() {
   for (final providers in <List<String>>[
     <String>[],
     <String>['host-callback'],
@@ -2142,7 +2142,7 @@ Map<String, Object?> _catalog({
           .toList()
         ..sort((left, right) => left.id.compareTo(right.id));
   final providers = <String>{
-    if (usesSvgPipeline) 'vendored',
+    if (usesSvgPipeline) 'deterministic',
     for (final spec in serviceSpecs) ...spec.providedTextMeasurementProviderIds,
   }.toList()..sort();
   final effectiveMetadataIds =

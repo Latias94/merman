@@ -434,7 +434,7 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
             system_adapter_ids: [],
             text_measurement: {
               protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-              provider_ids: ["vendored"],
+              provider_ids: ["deterministic"],
             },
           },
           metadataIds: SVG_METADATA_IDS,
@@ -465,7 +465,7 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
             system_adapter_ids: [],
             text_measurement: {
               protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-              provider_ids: ["vendored"],
+              provider_ids: ["deterministic"],
             },
           },
           metadataIds: SVG_METADATA_IDS,
@@ -515,7 +515,7 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
           system_adapter_ids: [],
           text_measurement: {
             protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-            provider_ids: ["host-callback", "vendored"],
+            provider_ids: ["deterministic", "host-callback"],
           },
         },
         metadataIds: SVG_METADATA_IDS,
@@ -545,7 +545,7 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
           system_adapter_ids: [],
           text_measurement: {
             protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-            provider_ids: ["host-callback", "vendored"],
+            provider_ids: ["deterministic", "host-callback"],
           },
         },
         metadataIds: SVG_METADATA_IDS,
@@ -581,7 +581,7 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
           system_adapter_ids: [],
           text_measurement: {
             protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-            provider_ids: ["host-callback", "vendored"],
+            provider_ids: ["deterministic", "host-callback"],
           },
         },
         metadataIds: SVG_METADATA_IDS,
@@ -617,7 +617,7 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
           system_adapter_ids: [],
           text_measurement: {
             protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-            provider_ids: ["vendored"],
+            provider_ids: ["deterministic"],
           },
         },
         metadataIds: SVG_METADATA_IDS,
@@ -881,7 +881,7 @@ test("runtime catalog preserves artifact-selected metadata and service subsets",
       system_adapter_ids: [],
       text_measurement: {
         protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-        provider_ids: ["vendored"],
+        provider_ids: ["deterministic"],
       },
     },
     metadataIds: ["supported-diagrams"],
@@ -937,7 +937,7 @@ test("runtime catalog validates constructor service ownership and preserves exte
       system_adapter_ids: [],
       text_measurement: {
         protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-        provider_ids: ["host-callback", "vendored"],
+        provider_ids: ["deterministic", "host-callback"],
       },
     },
     metadataIds: SVG_METADATA_IDS,
@@ -979,7 +979,7 @@ test("runtime catalog accepts text measurement for an internal rendering pipelin
       system_adapter_ids: [],
       text_measurement: {
         protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-        provider_ids: ["host-callback", "vendored"],
+        provider_ids: ["deterministic", "host-callback"],
       },
     },
     metadataIds: SVG_METADATA_IDS,
@@ -1005,8 +1005,8 @@ test("runtime catalog accepts text measurement for an internal rendering pipelin
   const catalog = runtime.runtimeCatalog();
   assert.deepEqual(catalog.capabilities.capability_ids, ["future-output"]);
   assert.deepEqual(catalog.capabilities.text_measurement.provider_ids, [
+    "deterministic",
     "host-callback",
-    "vendored",
   ]);
 });
 

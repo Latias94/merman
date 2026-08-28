@@ -46,7 +46,7 @@ postprocessing so every phase observes the same snapshot and provenance. The hig
 date-sensitive parsing; direct low-level callers are responsible for configuring the core
 `Engine` consistently.
 
-`TextMeasurer` keeps browser DOM primitives distinct. In particular, `measure_svg_create_text_bbox_y_offset_px` measures ordinary Mermaid createText, while `measure_svg_create_text_middle_bbox_y_offset_px` measures Architecture's formatted text under an inherited middle baseline. The latter is font- and x-height-dependent and cannot reuse the former. The vendored profile's pinned middle-baseline shift is a deterministic fallback, not a general system-font formula; an authoritative host measurement bypasses it.
+`TextMeasurer` keeps browser DOM primitives distinct. In particular, `measure_svg_create_text_bbox_y_offset_px` measures ordinary Mermaid createText, while `measure_svg_create_text_middle_bbox_y_offset_px` measures Architecture's formatted text under an inherited middle baseline. The latter is font- and x-height-dependent and cannot reuse the former. The built-in deterministic measurer is a font-agnostic fallback, not a named-font or browser formula; an authoritative host measurement bypasses it.
 
 This is a breaking replacement for independently configured layout and SVG services. Text and math adapters no longer live in `LayoutOptions`, and render code does not read process-global policy. Production request values stay in `SvgRenderOptions`; diagnostics, including timing output, live in `SvgDebugOptions` and are accepted only by the explicit `*_with_debug` entry points.
 

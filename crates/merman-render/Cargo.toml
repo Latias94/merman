@@ -45,8 +45,6 @@ cssparser.workspace = true
 data-url.workspace = true
 dugong.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
-icu_collator.workspace = true
-icu_locale_core.workspace = true
 kurbo.workspace = true
 libm.workspace = true
 manatee = { workspace = true, optional = true }

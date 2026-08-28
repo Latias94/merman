@@ -12,21 +12,20 @@ emission. The canonical typed `Renderer` operation supplies the render environme
 text-measurement operations.
 
 Production rendering has no fixture-id lookup, complete-label answer table, root override policy,
-or numeric lattice compensation. Vendored measurement data contains generalized font and DOM
-operation profiles only. A host measurer remains authoritative when it successfully answers the
-requested operation.
+numeric lattice compensation, or browser-probed font table. The built-in deterministic measurer is
+font-agnostic. A host measurer remains authoritative when it successfully answers the requested
+operation.
 
 ## Verification
 
-Run the focused root comparison with the pinned vendored profile:
+Run the focused root comparison with the canonical deterministic profile:
 
 ```sh
 cargo run --release -p xtask -- compare-flowchart-svgs \
   --check-dom \
   --dom-mode parity-root \
   --dom-decimals 3 \
-  --report-root \
-  --text-measurer vendored
+  --report-root
 ```
 
 The report is written to `target/compare/flowchart_report.md`. Omitting `--check-dom` produces a
@@ -38,8 +37,7 @@ The repository-wide release gate uses the same canonical render path:
 cargo run --release -p xtask -- compare-all-svgs \
   --check-dom \
   --dom-mode parity-root \
-  --dom-decimals 3 \
-  --flowchart-text-measurer vendored
+  --dom-decimals 3
 ```
 
 ## Root Transform Debugging

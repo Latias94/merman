@@ -4,7 +4,7 @@
 .SH NAME
 merman\-cli\-layout \- Parse and layout Mermaid source, then print layout JSON
 .SH SYNOPSIS
-\fBmerman\-cli layout\fR [\fB\-\-pretty\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-text\-measurer\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+\fBmerman\-cli layout\fR [\fB\-\-pretty\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
 .SH DESCRIPTION
 Parse and layout Mermaid source, then print layout JSON
 .SH OPTIONS
@@ -87,17 +87,6 @@ Override the local "today" date for time\-dependent diagrams
 \fB\-\-fixed\-local\-offset\-minutes\fR \fI<FIXED_LOCAL_OFFSET_MINUTES>\fR
 Override the local timezone offset in minutes for time\-dependent diagrams
 .SH "LAYOUT CONTROLS"
-.TP
-\fB\-\-text\-measurer\fR \fI<TEXT_MEASURER>\fR [default: vendored]
-Text measurement strategy
-.sp
-\fIPossible values:\fR
-.RS 14
-.IP \(bu 2
-deterministic
-.IP \(bu 2
-vendored
-.RE
 .TP
 \fB\-\-math\-renderer\fR \fI<MATH_RENDERER>\fR
 Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`

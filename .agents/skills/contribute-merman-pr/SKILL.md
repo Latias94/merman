@@ -74,7 +74,7 @@ cargo run --locked --release -p xtask -- compare-all-svgs \
   --check-dom --dom-mode parity --dom-decimals 3
 cargo run --locked --release -p xtask -- compare-all-svgs \
   --check-dom --dom-mode parity-root --dom-decimals 3 \
-  --flowchart-text-measurer vendored --report-root
+  --report-root
 ```
 
 `parity-root` blocks descendant parity regressions, malformed viewports, strategy changes, and the

@@ -155,13 +155,13 @@ See [Apple Swift](APPLE_SWIFT.md) for the SwiftPM API and smoke command.
 
 ## Text Measurement
 
-Merman uses a deterministic vendored text measurer by default. A UI host can place a
+Merman uses a deterministic, font-agnostic text measurer by default. A UI host can place a
 `MermanTextMeasurer` in `MermanEngineServices` when it directly constructs a `MermanEngine` whose
 Core Text, Android, or other platform font stack must determine layout. The callback is immutable
 for that engine. It receives
 the independent text-measurement protocol version `1` and a typed operation. Return `None`/`nil`
 for work that is unavailable or cannot be answered synchronously; Merman falls back to its
-vendored implementation for that operation.
+deterministic fallback for that operation.
 
 Callback-free reusable engines admit concurrent operations. A callback engine serializes operation
 admission and returns `Busy` to a competitor; an operation started while the same engine's callback

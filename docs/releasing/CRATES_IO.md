@@ -17,7 +17,7 @@ This is expected. Publish in dependency order.
 
 - `cargo fmt`
 - `cargo nextest run`
-- `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored`
+- `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 - `cargo run -p xtask -- verify-generated`
 - Confirm `docs/alignment/STATUS.md` is up to date.
 - Bump versions (workspace + crates as needed) and tag the release.

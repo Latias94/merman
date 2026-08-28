@@ -334,7 +334,7 @@ mod tests {
         if let Some(text_measurement) = capabilities["text_measurement"].as_object() {
             assert_eq!(
                 text_measurement["provider_ids"],
-                json!([merman_bindings_core::TEXT_MEASUREMENT_PROVIDER_VENDORED])
+                json!([merman_bindings_core::TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC])
             );
         }
     }

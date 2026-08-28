@@ -652,6 +652,32 @@ end
 }
 
 #[test]
+fn cycles_use_stable_utf16_identifier_tie_breaks() {
+    let source = r#"swimlane-beta TB
+subgraph Lane
+  A --> a
+  a --> Z
+  Z --> A
+end
+"#;
+
+    let layout = layout_swimlane(source);
+    let expected = serde_json::to_value(&layout).expect("serialize layout");
+    for _ in 0..8 {
+        let repeated = serde_json::to_value(layout_swimlane(source)).expect("serialize layout");
+        assert_eq!(repeated, expected, "cycle removal must be deterministic");
+    }
+
+    let reversed: Vec<_> = layout
+        .edges
+        .iter()
+        .filter(|edge| edge.reversed_for_layout)
+        .map(|edge| (edge.from.as_str(), edge.to.as_str()))
+        .collect();
+    assert_eq!(reversed, [("Z", "A")]);
+}
+
+#[test]
 fn all_four_directions_are_mirrored_and_deterministic() {
     const BODY: &str = r#"
 subgraph Customer

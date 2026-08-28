@@ -163,14 +163,20 @@ fn wrap_lines(
         // `<tspan>.getComputedTextLength()`. Keep this distinct from `getBBox().width`: glyph
         // overhang can otherwise move a word to an extra line at a wrapping boundary.
         let candidate_width = measurer.measure_svg_text_computed_length_px(&candidate, style);
-        if candidate_width > max_width || tok == "<br>" {
+        if tok == "<br>" {
             cur.pop();
             lines.push(join_trim(&cur));
-            if tok == "<br>" {
-                cur = vec![String::new()];
-            } else {
-                cur = vec![tok];
+            cur = vec![String::new()];
+        } else if candidate_width > max_width {
+            cur.pop();
+            let previous = join_trim(&cur);
+            if !previous.is_empty() {
+                lines.push(previous);
             }
+            // An unbreakable token wider than the whole line must occupy that line directly.
+            // Emitting the empty candidate first would create a phantom leading row for CJK and
+            // other scripts that do not contain ASCII whitespace.
+            cur = vec![tok];
         }
     }
 
@@ -1051,6 +1057,7 @@ fn layout_timeline_vertical(
 mod tests {
     use super::*;
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+    use crate::text::DeterministicTextMeasurer;
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::path::PathBuf;
 
@@ -1106,6 +1113,22 @@ mod tests {
         let height = text_bbox_height(&lines, &style, &TspanHeightMeasurer);
 
         assert_eq!(height, 25.0 + 17.0 * 1.1);
+    }
+
+    #[test]
+    fn oversized_unbreakable_token_does_not_create_a_phantom_leading_row() {
+        let text = "日本語のテキストも対応";
+        let lines = wrap_lines(
+            text,
+            150.0,
+            &TextStyle {
+                font_size: 16.0,
+                ..TextStyle::default()
+            },
+            &DeterministicTextMeasurer::default(),
+        );
+
+        assert_eq!(lines, [text]);
     }
 
     #[test]
@@ -1167,7 +1190,7 @@ mod tests {
     }
 
     #[test]
-    fn long_word_wrap_keeps_upstream_activity_line_extent() {
+    fn long_word_wrap_keeps_the_activity_line_aligned_with_content_bounds() {
         let path = workspace_root()
             .join("fixtures")
             .join("timeline")
@@ -1177,10 +1200,12 @@ mod tests {
         let layout = layout_timeline(&text);
 
         let actual = layout.activity_line.x2;
-        assert!(
-            (actual - 920.640625).abs() < 0.0001,
-            "expected long-word timeline activity line extent to stay aligned with upstream, got {actual}"
+        assert_eq!(
+            actual,
+            layout.pre_title_box_width + 3.0 * layout.left_margin
         );
+        assert!(actual > layout.activity_line.x1);
+        assert!(layout.bounds.expect("bounds").max_x >= actual);
     }
 
     #[test]

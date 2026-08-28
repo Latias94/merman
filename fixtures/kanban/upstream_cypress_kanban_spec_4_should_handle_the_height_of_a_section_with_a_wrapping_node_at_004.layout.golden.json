@@ -6,7 +6,7 @@
         "min_x": 90.0,
         "min_y": -310.0,
         "max_x": 310.0,
-        "max_y": -66.0
+        "max_y": -90.0
       },
       "section_width": 200.0,
       "padding": 10.0,
@@ -22,7 +22,7 @@
           "center_y": 0.0,
           "width": 200.0,
           "rect_y": -300.0,
-          "rect_height": 224.0,
+          "rect_height": 200.0,
           "rx": 5.0,
           "ry": 5.0,
           "label_width": 30.24
@@ -49,9 +49,9 @@
           "label": "Title of diagram is more than 100 chars when user duplicates diagram with 100 char, wrapping",
           "parent_id": "id1",
           "center_x": 200.0,
-          "center_y": -156.0,
+          "center_y": -168.0,
           "width": 185.0,
-          "height": 140.0,
+          "height": 116.0,
           "rx": 5.0,
           "ry": 5.0,
           "ticket": null,

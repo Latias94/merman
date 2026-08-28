@@ -591,7 +591,7 @@ jobs:
 
       - name: SVG DOM comparison suite
         if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
+        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --report-root
 
       - name: Install root viewport oracle dependencies
         if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'

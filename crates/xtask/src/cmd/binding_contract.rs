@@ -592,8 +592,8 @@ fn render_node_javascript() -> String {
     .unwrap();
     writeln!(
         out,
-        "export const VENDORED_TEXT_MEASUREMENT_PROVIDER_ID = {:?};",
-        TextMeasurementProviderKey::Vendored.id()
+        "export const DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID = {:?};",
+        TextMeasurementProviderKey::Deterministic.id()
     )
     .unwrap();
     writeln!(
@@ -702,8 +702,8 @@ fn render_web_typescript() -> String {
     .unwrap();
     writeln!(
         out,
-        "export const VENDORED_TEXT_MEASUREMENT_PROVIDER_ID = {:?} as const;",
-        TextMeasurementProviderKey::Vendored.id()
+        "export const DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID = {:?} as const;",
+        TextMeasurementProviderKey::Deterministic.id()
     )
     .unwrap();
     writeln!(
@@ -1736,8 +1736,8 @@ fn render_python() -> String {
     out.push_str(")\n");
     writeln!(
         out,
-        "VENDORED_TEXT_MEASUREMENT_PROVIDER_ID = {:?}",
-        TextMeasurementProviderKey::Vendored.id()
+        "DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID = {:?}",
+        TextMeasurementProviderKey::Deterministic.id()
     )
     .unwrap();
     writeln!(
@@ -1941,6 +1941,8 @@ mod tests {
         assert!(generated.contains("constructor_service_candidate_ids"));
         assert!(generated.contains("BINDING_PAYLOAD_SCHEMAS"));
         assert!(generated.contains("TEXT_MEASUREMENT_PROVIDER_SPECS"));
+        assert!(generated.contains("DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID"));
+        assert!(!generated.contains("VENDORED_TEXT_MEASUREMENT_PROVIDER_ID"));
 
         let wire_contract = render_node_wire_contract_json();
         assert!(wire_contract.contains("\"artifact_id\": \"merman-node-static-svg\""));
@@ -1953,6 +1955,8 @@ mod tests {
         assert!(generated.contains("CAPABILITY_SPECS"));
         assert!(generated.contains("implication_ids"));
         assert!(generated.contains("RUNTIME_CATALOG_IDENTIFIER_PATTERN"));
+        assert!(generated.contains("DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID"));
+        assert!(!generated.contains("VENDORED_TEXT_MEASUREMENT_PROVIDER_ID"));
         assert!(generated.contains("RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN"));
         assert!(generated.contains("RUNTIME_CATALOG_MAX_SAFE_INTEGER"));
         assert!(generated.contains("REQUIRED_PAYLOAD_SCHEMA_VERSIONS"));

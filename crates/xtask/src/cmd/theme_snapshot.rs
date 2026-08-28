@@ -1,9 +1,9 @@
 //! Pinned Mermaid theme snapshot and behavior-oracle generation.
 //!
-//! Theme classes are ordered JavaScript programs. The checked-in artifact gives the pure-Rust
-//! evaluator exact no-override and dark-mode snapshots, while the compact oracle matrix locks the
-//! value-shape behavior that is easy to lose when translating JavaScript truthiness and merge
-//! semantics.
+//! Theme classes are ordered JavaScript programs. A compact runtime artifact gives the pure-Rust
+//! evaluator exact no-override and dark-mode snapshots, while a repository-level audit artifact
+//! locks the value-shape behavior that is easy to lose when translating JavaScript truthiness and
+//! merge semantics. Both artifacts come from one projection of the content-pinned runtime.
 
 use crate::XtaskError;
 use serde::Deserialize;
@@ -13,7 +13,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const THEME_SNAPSHOT_OUTPUT: &str = "crates/merman-core/src/generated/theme_variables_11_16_1.json";
+pub(super) const THEME_RUNTIME_OUTPUT: &str =
+    "crates/merman-core/src/generated/theme_variables_11_16_1.json";
+pub(super) const THEME_AUDIT_OUTPUT: &str =
+    "fixtures/_verification/theme_variables_oracle_11_16_1.json";
 const THEME_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 const GENERATOR_COMMAND: &str = "cargo run -p xtask -- gen-theme-snapshot";
 const THEME_NAMES: &[&str] = &[
@@ -60,27 +63,52 @@ struct RuntimeThemeProjection {
 }
 
 struct GenerateOptions {
-    out_path: PathBuf,
+    runtime_out_path: PathBuf,
+    audit_out_path: PathBuf,
 }
 
 pub(crate) fn gen_theme_snapshot(args: Vec<String>) -> Result<(), XtaskError> {
     let options = parse_generate_options(args)?;
     let projection = project_pinned_mermaid_runtime()?;
-    let mut artifact = json!({
+    let (runtime_artifact, audit_artifact) = build_theme_artifacts(projection)?;
+    write_compact_json(&options.runtime_out_path, &runtime_artifact)?;
+    write_pretty_json(&options.audit_out_path, &audit_artifact)
+}
+
+fn build_theme_artifacts(
+    projection: RuntimeThemeProjection,
+) -> Result<(JsonValue, JsonValue), XtaskError> {
+    let oracle_case_count = projection
+        .oracle_cases
+        .as_array()
+        .ok_or_else(|| {
+            XtaskError::ThemeSnapshotProjection(
+                "runtime projection field `oracleCases` must be an array".to_string(),
+            )
+        })?
+        .len();
+    let provenance = json!({
+        "generator": GENERATOR_COMMAND,
+        "mermaidVersion": crate::cmd::PINNED_MERMAID_VERSION,
+        "mermaidPackageSha256": crate::cmd::PINNED_MERMAID_PACKAGE_SHA256,
+        "mermaidSourceTag": crate::cmd::MERMAID_SOURCE_TAG,
+        "mermaidSourceCommit": crate::cmd::MERMAID_SOURCE_COMMIT,
+    });
+    let mut runtime_artifact = json!({
         "schemaVersion": THEME_ARTIFACT_SCHEMA_VERSION,
-        "provenance": {
-            "generator": GENERATOR_COMMAND,
-            "mermaidVersion": crate::cmd::PINNED_MERMAID_VERSION,
-            "mermaidPackageSha256": crate::cmd::PINNED_MERMAID_PACKAGE_SHA256,
-            "mermaidSourceTag": crate::cmd::MERMAID_SOURCE_TAG,
-            "mermaidSourceCommit": crate::cmd::MERMAID_SOURCE_COMMIT,
-        },
+        "provenance": provenance.clone(),
         "themes": projection.themes,
         "darkModeTrue": projection.dark_mode_true,
+        "oracleCaseCount": oracle_case_count,
+    });
+    let mut audit_artifact = json!({
+        "schemaVersion": THEME_ARTIFACT_SCHEMA_VERSION,
+        "provenance": provenance,
         "oracleCases": projection.oracle_cases,
     });
-    sort_json_value_keys(&mut artifact);
-    write_pretty_json(&options.out_path, &artifact)
+    sort_json_value_keys(&mut runtime_artifact);
+    sort_json_value_keys(&mut audit_artifact);
+    Ok((runtime_artifact, audit_artifact))
 }
 
 fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskError> {
@@ -91,13 +119,18 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
         return Err(XtaskError::Usage);
     }
 
-    let mut out_path = None;
+    let mut runtime_out_path = None;
+    let mut audit_out_path = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--out" => {
                 index += 1;
-                out_path = args.get(index).map(PathBuf::from);
+                runtime_out_path = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
+            }
+            "--audit-out" => {
+                index += 1;
+                audit_out_path = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
             }
             _ => return Err(XtaskError::Usage),
         }
@@ -105,7 +138,8 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
     }
 
     Ok(GenerateOptions {
-        out_path: out_path.unwrap_or_else(|| PathBuf::from(THEME_SNAPSHOT_OUTPUT)),
+        runtime_out_path: runtime_out_path.unwrap_or_else(|| PathBuf::from(THEME_RUNTIME_OUTPUT)),
+        audit_out_path: audit_out_path.unwrap_or_else(|| PathBuf::from(THEME_AUDIT_OUTPUT)),
     })
 }
 
@@ -274,12 +308,19 @@ fn sort_json_value_keys(value: &mut JsonValue) {
 }
 
 fn write_pretty_json(path: &Path, value: &JsonValue) -> Result<(), XtaskError> {
+    write_json(path, serde_json::to_string_pretty(value)?)
+}
+
+fn write_compact_json(path: &Path, value: &JsonValue) -> Result<(), XtaskError> {
+    write_json(path, serde_json::to_string(value)?)
+}
+
+fn write_json(path: &Path, mut output: String) -> Result<(), XtaskError> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
         path: parent.display().to_string(),
         source,
     })?;
-    let mut output = serde_json::to_string_pretty(value)?;
     output.push('\n');
     fs::write(path, output).map_err(|source| XtaskError::WriteFile {
         path: path.display().to_string(),
@@ -413,6 +454,26 @@ mod tests {
             oracle_cases: JsonValue::Array(oracle_cases),
         };
 
-        validate_projection(projection).expect("complete projection is valid");
+        let projection = validate_projection(projection).expect("complete projection is valid");
+        let (runtime, audit) = build_theme_artifacts(projection).unwrap();
+
+        assert!(runtime.get("oracleCases").is_none());
+        assert!(runtime.get("themes").is_some_and(JsonValue::is_object));
+        assert!(
+            runtime
+                .get("darkModeTrue")
+                .is_some_and(JsonValue::is_object)
+        );
+        assert_eq!(
+            runtime.get("oracleCaseCount").and_then(JsonValue::as_u64),
+            Some(
+                (THEME_NAMES.len() * COMMON_ORACLE_CASE_IDS.len() + BASE_ORACLE_CASE_IDS.len())
+                    as u64
+            )
+        );
+        assert!(audit.get("themes").is_none());
+        assert!(audit.get("darkModeTrue").is_none());
+        assert!(audit.get("oracleCases").is_some_and(JsonValue::is_array));
+        assert_eq!(runtime.get("provenance"), audit.get("provenance"));
     }
 }

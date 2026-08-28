@@ -331,9 +331,9 @@ def _validate_capabilities(
     provider_ids = _validate_identifier_list(
         measurement["provider_ids"], "runtime text measurement provider IDs"
     )
-    if "vendored" not in provider_ids:
+    if "deterministic" not in provider_ids:
         raise MermanRuntimeCatalogError(
-            "runtime text measurement providers must include vendored"
+            "runtime text measurement providers must include deterministic"
         )
     return capability_ids, output_ids, operation_ids, provider_ids
 

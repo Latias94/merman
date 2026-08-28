@@ -1648,23 +1648,32 @@ fn sequence_svg_supersedes_consecutive_same_kind_lifecycle_declarations() {
 }
 
 #[test]
-fn sequence_font_size_precedence_matches_fresh_mermaid_11_16_root() {
+fn sequence_root_font_size_wins_for_emitted_text_style() {
     let svg = render_sequence_svg_from_fixture_with_options(
         "stress_sequence_font_size_precedence_090.mmd",
         &SvgRenderOptions::default(),
     );
-    let root = svg.split_once('>').expect("SVG root").0;
-    let note = extract_self_closing_tags(&svg, "rect")
-        .into_iter()
-        .find(|tag| tag.contains(r#"class="note""#))
-        .expect("expected note rectangle");
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+    let styled_text = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_whitespace()
+                        .any(|class| matches!(class, "actor" | "messageText" | "noteText"))
+                })
+        })
+        .collect::<Vec<_>>();
 
-    assert_eq!(attr_f64(note, "height"), Some(31.0));
-    assert!(
-        root.contains(r#"style="max-width: 550px; background-color: white;""#)
-            && root.contains(r#"viewBox="-50 -10 550 244""#),
-        "expected fresh Mermaid 11.16 font-size root geometry: {root}"
-    );
+    assert!(!styled_text.is_empty());
+    for text in styled_text {
+        assert!(
+            text.attribute("style")
+                .is_some_and(|style| style.contains("font-size: 10px")),
+            "the root fontSize must win for emitted Sequence text: {text:?}"
+        );
+    }
 }
 
 #[test]
@@ -1735,41 +1744,36 @@ fn sequence_reverse_message_align_uses_the_normalized_message_interval() {
 }
 
 #[test]
-fn sequence_parity_wraps_message_candidates_with_calculate_text_width_bbox() {
+fn sequence_wrap_directives_preserve_text_and_nowrap_boundary() {
     let svg = render_sequence_svg_from_fixture_with_options(
         "stress_br_in_messages_notes_011.mmd",
         &SvgRenderOptions::default(),
     );
-    let wrapped_message =
-        "This is a longer message that should be wrapped by Mermaid&#39;s default behavior";
-    let message_lines = extract_paired_tags(&svg, "text")
-        .into_iter()
-        .filter(|tag| tag.contains(r#"class="messageText""#))
-        .collect::<Vec<_>>();
+    let message_rows = text_rows_by_class(&svg, "messageText");
+    let wrapped_start = message_rows
+        .iter()
+        .position(|row| row.starts_with("This is a longer message"))
+        .expect("wrapped message start");
+    let nowrap_start = message_rows
+        .iter()
+        .position(|row| row.starts_with("This message should not wrap"))
+        .expect("nowrap message");
 
     assert_eq!(
-        message_lines.len(),
-        5,
-        "Mermaid 11.16 keeps the wrapped message on one line: {message_lines:#?}"
+        message_rows[wrapped_start..nowrap_start].join(" "),
+        "This is a longer message that should be wrapped by Mermaid's default behavior"
     );
-    assert!(
-        message_lines
-            .iter()
-            .any(|line| line.contains(wrapped_message)),
-        "expected the complete wrapped message in one SVG text node: {message_lines:#?}"
+    assert_eq!(
+        &message_rows[nowrap_start..],
+        ["This message should not wrap even if it is long long long long long"]
     );
 }
 
 #[test]
-fn sequence_calculate_text_dimensions_wraps_long_notes_to_six_rows() {
-    let expected_rows = [
-        "Extremely utterly long",
-        "line of longness which",
-        "had previously",
-        "overflown the actor box",
-        "as it is much longer",
-        "than what it should be",
-    ];
+fn sequence_long_notes_wrap_consistently_without_losing_text() {
+    let expected_text = "Extremely utterly long line of longness which had previously overflown the actor box as it is much longer than what it should be";
+    let mut reference_rows: Option<Vec<String>> = None;
+    let mut reference_width: Option<f64> = None;
     for fixture in [
         "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
         "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019.mmd",
@@ -1782,34 +1786,48 @@ fn sequence_calculate_text_dimensions_wraps_long_notes_to_six_rows() {
             .find(|tag| tag.contains(r#"class="note""#))
             .expect("wrapped note rectangle");
 
-        assert_eq!(note_rows, expected_rows, "unexpected rows for {fixture}");
-        assert_eq!(
-            attr_f64(note_rect, "width"),
-            Some(173.0),
-            "unexpected note width for {fixture}"
+        assert!(
+            note_rows.len() > 1,
+            "wrap-enabled long note must use multiple rows for {fixture}: {note_rows:?}"
         );
+        assert_eq!(note_rows.join(" "), expected_text, "text loss in {fixture}");
+
+        let width = attr_f64(note_rect, "width").expect("note width");
+        assert!(
+            width.is_finite() && width > 0.0,
+            "invalid width for {fixture}"
+        );
+        if let Some(reference_rows) = &reference_rows {
+            assert_eq!(
+                &note_rows, reference_rows,
+                "equivalent Sequence variants must wrap identically"
+            );
+            assert_eq!(
+                width.to_bits(),
+                reference_width.expect("reference width").to_bits(),
+                "equivalent Sequence variants must use identical deterministic widths"
+            );
+        } else {
+            reference_rows = Some(note_rows);
+            reference_width = Some(width);
+        }
     }
 }
 
 #[test]
-fn sequence_calculate_text_dimensions_keeps_first_wrapped_message_on_two_rows() {
+fn sequence_wrap_true_splits_the_first_message_without_losing_text() {
     let fixture =
         "upstream_cypress_sequencediagram_spec_should_render_with_wrapping_enabled_048.mmd";
     let svg = render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
     let message_rows = text_rows_by_class(&svg, "messageText");
 
-    assert_eq!(
-        message_rows.len(),
-        10,
-        "unexpected message rows: {message_rows:#?}"
-    );
-    assert_eq!(
-        &message_rows[..2],
-        [
-            "Hello John, how are you today?",
-            "I'm feeling quite verbose today."
-        ],
-        "the first wrapped message must stay on two rows"
+    let expected = "Hello John, how are you today? I'm feeling quite verbose today.";
+    let row_count = (1..=message_rows.len())
+        .find(|&end| message_rows[..end].join(" ") == expected)
+        .expect("first message must be reconstructable from leading rows");
+    assert!(
+        row_count > 1,
+        "wrap=true must split the first long message: {message_rows:#?}"
     );
 }
 
@@ -2538,32 +2556,6 @@ fn sequence_long_leftof_notes_keep_mermaid_11_16_root_width() {
         assert!(
             svg.contains(r#"max-width: 567px"#),
             "expected long left-of note fixture {fixture} to keep Mermaid 11.16 root width"
-        );
-    }
-}
-
-#[test]
-fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
-    for fixture in [
-        "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
-        "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019.mmd",
-    ] {
-        let path = workspace_root()
-            .join("fixtures")
-            .join("sequence")
-            .join(fixture);
-        let text = std::fs::read_to_string(&path).expect("fixture");
-        let environment = RenderEnvironment::deterministic()
-            .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
-        let layout = layout_sequence_from_environment(&text, &environment);
-        let note = layout
-            .nodes
-            .iter()
-            .find(|n| n.id == "note-1")
-            .expect("expected note-1 layout node");
-        assert_eq!(
-            note.width, 155.0,
-            "expected long left-of note fixture {fixture} to use the source-backed wrapped width"
         );
     }
 }

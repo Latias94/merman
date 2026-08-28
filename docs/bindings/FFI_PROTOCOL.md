@@ -445,7 +445,7 @@ kinds.
 
 Use the same display font system that will render the final SVG. A host that cannot answer an
 operation accurately should initialize the result, set `handled = 0`, and return
-`MERMAN_NATIVE_STATUS_OK`; Merman falls back to its vendored measurer for that request. While a
+`MERMAN_NATIVE_STATUS_OK`; Merman uses its deterministic fallback for that request. While a
 host callback is active, any thread that re-enters or retires that same engine receives
 `MERMAN_NATIVE_STATUS_REENTRANT_CALL`; calls using other engines remain independent. Callback
 records, returned statuses, and result values are validated by the shared host-measurement decoder;

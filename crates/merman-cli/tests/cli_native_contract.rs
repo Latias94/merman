@@ -79,7 +79,6 @@ fn render_short_help_prioritizes_the_common_workflow() {
         "--raster-max-width",
         "--pdf-filter-scale",
         "--embedded-image-max-bytes",
-        "--text-measurer",
         "--presentation-profile",
         "--system-timing",
         "--allow-private-network",

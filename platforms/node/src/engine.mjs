@@ -29,7 +29,7 @@ import {
   TEXT_MEASUREMENT_PROTOCOL_VERSION,
   TEXT_MEASUREMENT_PROVIDER_IDS,
   TEXT_MEASUREMENT_PROVIDER_SPECS,
-  VENDORED_TEXT_MEASUREMENT_PROVIDER_ID,
+  DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID,
 } from "./generated/binding-contract.mjs";
 
 const RESOURCE_PROFILES = new Set([
@@ -145,6 +145,19 @@ export function normalizeBindingOptions(value = {}) {
   normalized.resources.profile ??= "interactive";
   if (!RESOURCE_PROFILES.has(normalized.resources.profile)) {
     throw new RangeError(`Unknown resource profile \`${normalized.resources.profile}\`.`);
+  }
+  if (normalized.environment !== undefined) {
+    if (!isPlainObject(normalized.environment)) {
+      throw new TypeError("bindingOptions.environment must be a plain object.");
+    }
+    if (
+      normalized.environment.text_measurement !== undefined &&
+      normalized.environment.text_measurement !== "deterministic"
+    ) {
+      throw new RangeError(
+        "bindingOptions.environment.text_measurement must be `deterministic`.",
+      );
+    }
   }
   return normalized;
 }
@@ -965,7 +978,7 @@ function validateTextMeasurement(value, { requiresSvgPipeline }) {
     providerIds.some(
       (id) =>
         KNOWN_TEXT_MEASUREMENT_PROVIDER_IDS.has(id) &&
-        id !== VENDORED_TEXT_MEASUREMENT_PROVIDER_ID,
+        id !== DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID,
     )
   ) {
     throw new MermanInvalidTransportError(
@@ -974,10 +987,10 @@ function validateTextMeasurement(value, { requiresSvgPipeline }) {
   }
   if (
     requiresSvgPipeline &&
-    !providerIds.includes(VENDORED_TEXT_MEASUREMENT_PROVIDER_ID)
+    !providerIds.includes(DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID)
   ) {
     throw new MermanInvalidTransportError(
-      "Merman runtime catalog must expose the callable vendored text measurement provider for the SVG pipeline.",
+      "Merman runtime catalog must expose the callable deterministic text measurement provider for the SVG pipeline.",
     );
   }
   return providerIds;

@@ -39,7 +39,7 @@
           "id": "4",
           "x": 136.269,
           "y": 456.312,
-          "width": 78.406,
+          "width": 104.0,
           "height": 44.0,
           "is_cluster": false
         },
@@ -47,7 +47,7 @@
           "id": "5",
           "x": 127.716,
           "y": 553.601,
-          "width": 97.594,
+          "width": 136.0,
           "height": 44.0,
           "is_cluster": false
         }

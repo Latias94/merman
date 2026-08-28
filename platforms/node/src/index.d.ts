@@ -7,6 +7,10 @@ export type MermanResourceProfile =
 export interface MermanBindingOptions {
   version?: 2;
   runtime_policy?: "deterministic";
+  environment?: {
+    text_measurement?: "deterministic";
+    [key: string]: unknown;
+  };
   resources?: {
     profile?: MermanResourceProfile;
     limits?: Record<string, number>;

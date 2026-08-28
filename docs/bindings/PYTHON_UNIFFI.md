@@ -102,7 +102,7 @@ lint_rules = api.lint_rule_catalog()
 class PreviewMeasurer(merman.MermanTextMeasurer):
     def measure(self, request):
         # Use the final display surface's font API here. Returning None asks
-        # Merman to use its operation-specific vendored fallback.
+        # Merman to use its operation-specific deterministic fallback.
         return None
 
 services = merman.MermanEngineServices().with_text_measurer(PreviewMeasurer())
@@ -190,7 +190,7 @@ for the routing stage and `request.operation` for the exact platform primitive. 
 tagged with the matching
 `MermanTextMeasurementResultKind`: metrics, length, horizontal extents, or wrapped metrics with raw
 width. `None`, wrong-kind or invalid results, and Python exceptions reported through UniFFI's
-generated callback trampoline use the operation's vendored fallback for that request instead of
+generated callback trampoline use the operation's deterministic fallback for that request instead of
 failing the reusable render/layout call. Merman does not catch arbitrary foreign unwinds that
 bypass that generated boundary. Follow
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the

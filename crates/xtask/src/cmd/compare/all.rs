@@ -56,7 +56,6 @@ struct CompareAllOptions {
     dom_modes: Vec<crate::svgdom::DomMode>,
     dom_decimals: Option<u32>,
     filter: Option<String>,
-    flowchart_text_measurer: Option<String>,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
     only_diagrams: Vec<String>,
@@ -94,11 +93,6 @@ impl CompareAllOptions {
                 "--filter" => {
                     i += 1;
                     options.filter = args.get(i).map(|s| s.to_string());
-                }
-                "--flowchart-text-measurer" => {
-                    i += 1;
-                    options.flowchart_text_measurer =
-                        args.get(i).map(|s| s.trim().to_ascii_lowercase());
                 }
                 "--report-root" => options.report_root = true,
                 "--report-root-all" => {
@@ -144,7 +138,6 @@ impl CompareAllOptions {
             dom_modes: &self.dom_modes,
             dom_decimals: self.dom_decimals,
             filter: self.filter.as_deref(),
-            flowchart_text_measurer: self.flowchart_text_measurer.as_deref(),
             report_root: self.report_root,
             root_report_limit: self.root_report_limit,
         }
@@ -262,7 +255,6 @@ struct CompareAllInvocationOptions<'a> {
     dom_modes: &'a [crate::svgdom::DomMode],
     dom_decimals: Option<u32>,
     filter: Option<&'a str>,
-    flowchart_text_measurer: Option<&'a str>,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
 }
@@ -285,7 +277,6 @@ impl CompareAllInvocationOptions<'_> {
         let report_path = report_mode.and_then(|mode| {
             (!mode.is_empty()).then(|| compare_dir.join(format!("{diagram}_report_{mode}.md")))
         });
-        let is_flowchart = diagram == "flowchart";
         let supports_root_report = diagram_supports_root_delta_report(diagram);
         let request = CompareRequest {
             out_path: report_path.clone(),
@@ -298,10 +289,6 @@ impl CompareAllInvocationOptions<'_> {
             root_report_limit: supports_root_report
                 .then_some(self.root_report_limit)
                 .flatten(),
-            flowchart_text_measurer: is_flowchart
-                .then_some(self.flowchart_text_measurer)
-                .flatten()
-                .map(str::to_string),
             accepted_residual_policy: if matches!(diagram, "c4" | "class" | "ishikawa" | "venn") {
                 AcceptedResidualPolicy::ScopedDomEvidenceCatalog
             } else {
@@ -379,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_all_options_parse_common_flags_without_tightening_legacy_inputs() {
+    fn compare_all_options_parse_common_flags_with_deterministic_measurement() {
         let options = CompareAllOptions::parse(vec![
             "--check-dom".to_string(),
             "--dom-mode".to_string(),
@@ -388,8 +375,6 @@ mod tests {
             "nope".to_string(),
             "--filter".to_string(),
             "upstream_info_spec".to_string(),
-            "--flowchart-text-measurer".to_string(),
-            " BROWSER ".to_string(),
             "--report-root-limit".to_string(),
             "7".to_string(),
             "--diagram".to_string(),
@@ -403,7 +388,6 @@ mod tests {
         assert_eq!(options.dom_mode.as_deref(), Some("parity-root"));
         assert_eq!(options.dom_decimals, None);
         assert_eq!(options.filter.as_deref(), Some("upstream_info_spec"));
-        assert_eq!(options.flowchart_text_measurer.as_deref(), Some("browser"));
         assert!(options.report_root);
         assert_eq!(
             options.root_report_limit,
@@ -467,26 +451,6 @@ mod tests {
             CompareAllOptions::parse(vec!["--dom-mode".to_string(), "unknown".to_string(),])
                 .is_err()
         );
-    }
-
-    #[test]
-    fn compare_all_invocation_passes_flowchart_text_measurement_only_to_flowchart() {
-        let options = CompareAllOptions {
-            filter: Some("elk_probe".to_string()),
-            flowchart_text_measurer: Some("vendored".to_string()),
-            ..Default::default()
-        };
-        let invocation = options.invocation_options();
-        let compare_dir = Path::new("target/compare");
-
-        let flowchart = invocation.for_diagram("flowchart", compare_dir);
-        assert_eq!(
-            flowchart.request.flowchart_text_measurer.as_deref(),
-            Some("vendored")
-        );
-
-        let info = invocation.for_diagram("info", compare_dir);
-        assert!(info.request.flowchart_text_measurer.is_none());
     }
 
     #[test]
@@ -796,31 +760,6 @@ mod tests {
         assert_eq!(
             invocation.report_path.as_deref(),
             Some(expected_report.as_path())
-        );
-    }
-
-    #[test]
-    fn compare_invocation_adds_flowchart_text_measurer_only_for_flowchart() {
-        let compare_dir = Path::new("target/compare");
-        let options = CompareAllInvocationOptions {
-            flowchart_text_measurer: Some("browser"),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            options
-                .for_diagram("flowchart", compare_dir)
-                .request
-                .flowchart_text_measurer
-                .as_deref(),
-            Some("browser")
-        );
-        assert!(
-            options
-                .for_diagram("state", compare_dir)
-                .request
-                .flowchart_text_measurer
-                .is_none()
         );
     }
 

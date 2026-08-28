@@ -168,8 +168,8 @@ export interface BindingErrorPayload {
 }
 
 export const TEXT_MEASUREMENT_PROVIDER_IDS = [
+  "deterministic",
   "host-callback",
-  "vendored",
 ] as const;
 
 export type TextMeasurementProviderId = string;

@@ -432,7 +432,6 @@ pub(crate) struct ResolvedRuntimeOptions {
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedRenderOptions {
     pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
-    pub(crate) text_measurer: crate::cli::TextMeasurerKind,
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
     pub(crate) container_width: Option<f64>,
     pub(crate) container_height: Option<f64>,
@@ -927,7 +926,6 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     let runtime_policy = resolve_render_runtime_policy(&parse, args.quiet)?;
     let render = RenderCliArgs {
         presentation_profile: args.render.presentation_profile,
-        text_measurer: Some(args.render.text_measurer),
         math_renderer: args.render.math_renderer,
         container_width: Some(args.render.container_width),
         container_height: Some(args.render.container_height),
@@ -1562,9 +1560,6 @@ fn resolve_parse_options(
 fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
     ResolvedRenderOptions {
         presentation_profile: args.presentation_profile,
-        text_measurer: args
-            .text_measurer
-            .unwrap_or(crate::cli::TextMeasurerKind::Vendored),
         math_renderer: args.math_renderer,
         container_width: args.container_width,
         container_height: args.container_height,
@@ -1762,8 +1757,7 @@ fn validate_graphical_output_options(
             ));
         }
         #[cfg(feature = "svg")]
-        if options.render.text_measurer.is_some()
-            || options.render.presentation_profile.is_some()
+        if options.render.presentation_profile.is_some()
             || options.render.math_renderer.is_some()
             || options.render.container_width.is_some()
             || options.render.container_height.is_some()
@@ -1809,8 +1803,7 @@ fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Res
                 .to_string(),
         ));
     }
-    if options.render.text_measurer.is_some()
-        || options.render.presentation_profile.is_some()
+    if options.render.presentation_profile.is_some()
         || options.render.math_renderer.is_some()
         || options.render.container_width.is_some()
         || options.render.container_height.is_some()

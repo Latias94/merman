@@ -133,7 +133,6 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-svg-xml");
     println!("  debug-svg-bbox");
     println!("  debug-svg-data-points");
-    println!("  gen-font-metrics");
     println!("  measure-text");
     println!("  gen-theme-snapshot");
     println!("  gen-editor-language-contract");
@@ -256,7 +255,6 @@ fn main() -> Result<(), XtaskError> {
         "check-alignment" => cmd::check_alignment(args.collect()),
         "audit-gaps" => cmd::audit_gaps(args.collect()),
         "gen-debug-svgs" => cmd::gen_debug_svgs(args.collect()),
-        "gen-font-metrics" => cmd::gen_font_metrics(args.collect()),
         "measure-text" => cmd::measure_text(args.collect()),
         "gen-upstream-svgs" => cmd::gen_upstream_svgs(args.collect()),
         "sync-upstream-mmd-corpus" => cmd::sync_upstream_mmd_corpus(args.collect()),

@@ -1257,7 +1257,7 @@ mod tests {
             font_weight: None,
             font_style: None,
         };
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
 
         for (raw_label, label_type) in [("A<br>&nbsp;", "string"), ("A\n\u{00A0}", "markdown")] {
             let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
@@ -1288,7 +1288,7 @@ mod tests {
             font_weight: None,
             font_style: None,
         };
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
 
         for (raw_label, expected_lines) in [
             ("第一行\n第二行", 2),
@@ -1597,7 +1597,7 @@ mod tests {
             font_weight: None,
             font_style: None,
         };
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let measure = |raw_label: &str, label_type: &str| {
             flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
                 measurer: &measurer,

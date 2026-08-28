@@ -65,7 +65,7 @@ pub use metadata::{
     RuntimeConstructorServiceContract, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
     RuntimeOutputContract, RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract,
     RuntimeResourceLimit, RuntimeResourceProfile, RuntimeSystemFontContract,
-    TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK, TEXT_MEASUREMENT_PROVIDER_VENDORED,
+    TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
     TextMeasurementCapabilities, ascii_capabilities, ascii_capabilities_json,
     ascii_diagrammatic_diagrams, ascii_supported_diagrams, ascii_supported_diagrams_json,
     configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,

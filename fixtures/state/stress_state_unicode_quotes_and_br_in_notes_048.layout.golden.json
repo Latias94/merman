@@ -15,7 +15,7 @@
           "id": "CN",
           "x": 259.3,
           "y": 92.0,
-          "width": 59.68,
+          "width": 85.28,
           "height": 40.0,
           "is_cluster": false
         },
@@ -69,8 +69,8 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 230.236,
-              "y": 109.135
+              "x": 224.256,
+              "y": 112.5
             },
             {
               "x": 158.0,
@@ -131,8 +131,8 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 289.364,
-              "y": 109.135
+              "x": 295.344,
+              "y": 112.5
             },
             {
               "x": 360.6,
@@ -188,7 +188,7 @@
           "label": {
             "x": 360.6,
             "y": 423.0,
-            "width": 28.8,
+            "width": 48.0,
             "height": 24.0
           },
           "start_label_left": null,
@@ -222,7 +222,7 @@
           "label": {
             "x": 360.6,
             "y": 537.0,
-            "width": 9.6,
+            "width": 16.0,
             "height": 24.0
           },
           "start_label_left": null,

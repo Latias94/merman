@@ -211,7 +211,7 @@
   ("analysis-json", "svg"),
 )
 #assert(
-  capabilities.capabilities.text_measurement.provider_ids.contains("vendored"),
+  capabilities.capabilities.text_measurement.provider_ids.contains("deterministic"),
   message: "capabilities should keep text measurement boundary",
 )
 #assert(

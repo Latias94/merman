@@ -4,9 +4,10 @@ Date: 2026-01-21
 
 ## Status
 
-Superseded by ADR-0057 and ADR-0062 on 2026-07-15. Fixture corpora now validate independently;
-they do not train or publish complete-text answers. The current deterministic profile contains
-only generalized glyph, kerning, trigram, fallback-font, and endpoint-overhang facts.
+Superseded by ADR-0057 and ADR-0062 on 2026-07-15, then fully superseded by ADR-0086 on
+2026-08-27. The generated font profiles described below are no longer production inputs. Current
+headless fallback measurement is deterministic and font-agnostic; fixture and browser corpora are
+verification evidence only.
 
 ## Context
 

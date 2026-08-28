@@ -15,7 +15,7 @@ fn main() {
 fn main() {
     use merman_core::MermaidConfig;
     use merman_render::math::{NodeKatexMathRenderer, RatexMathRenderer};
-    use merman_render::text::VendoredFontMetricsTextMeasurer;
+    use merman_render::text::DeterministicTextMeasurer;
     use std::path::Path;
 
     let node_cwd = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -56,7 +56,7 @@ fn main() {
         print_row(formula, katex, ratex_metrics);
     }
 
-    let text_measurer = VendoredFontMetricsTextMeasurer::default();
+    let text_measurer = DeterministicTextMeasurer::default();
     println!();
     println!(
         "Flowchart mixed prose/math samples compose text fragments with measured math fragments:\n"

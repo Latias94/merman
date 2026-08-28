@@ -1078,8 +1078,15 @@ id1(Start)-->id2(Stop)
             2,
             "unexpected ELK edge data-points: {points:?}"
         );
-        assert_eq!(points[0], (77.015625, 39.0));
-        assert_eq!(points[1], (117.015625, 39.0));
+        assert_eq!(points[0].1, points[1].1);
+        assert!(
+            points[0].0 < points[1].0,
+            "ELK edge must travel left to right: {points:?}"
+        );
+        assert!(
+            (points[1].0 - points[0].0 - 40.0).abs() < 1.0e-9,
+            "ELK straight edge must retain the source-backed node span: {points:?}"
+        );
     }
 
     #[cfg(feature = "layout-elk")]

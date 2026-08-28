@@ -65,8 +65,9 @@ SVG parity matrix:
 Normal parity is green for all four families. The current 11.16 corpus has eight root-only width
 residuals: four Railroad, two EBNF, one ABNF, and one PEG. Normalized descendants and root heights
 match in every case. The signed width differences range from `-0.016px` to `+0.047px`, matching the
-Chromium text-bbox lattice used by upstream `measureText()`; the deterministic vendored profile is
-within three `1/64px` steps.
+Chromium text-bbox lattice used by upstream `measureText()`; the font-agnostic deterministic
+fallback is within three `1/64px` steps for this corpus without treating those browser values as a
+runtime font profile.
 
 The global `parity-root` sweep rejects descendant DOM changes, malformed or non-positive roots,
 root sizing-strategy changes, and broken `max-width`/`viewBox` relationships. Exact roots remain

@@ -137,7 +137,6 @@ pub(crate) struct CompareRequest {
     pub(crate) dom_decimals: Option<u32>,
     pub(crate) report_root: bool,
     pub(crate) root_report_limit: Option<super::RootDeltaReportLimit>,
-    pub(crate) flowchart_text_measurer: Option<String>,
     pub(crate) accepted_residual_policy: AcceptedResidualPolicy,
 }
 
@@ -152,7 +151,6 @@ impl Default for CompareRequest {
             dom_decimals: None,
             report_root: false,
             root_report_limit: None,
-            flowchart_text_measurer: None,
             accepted_residual_policy: AcceptedResidualPolicy::None,
         }
     }

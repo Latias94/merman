@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; updated 2026-08-11 for Mermaid `@11.16.1`, ADR-0050, and ADR-0062.
+Accepted; updated 2026-08-27 for Mermaid `@11.16.1`, ADR-0050, ADR-0062, and ADR-0086.
 
 ## Context
 
@@ -37,9 +37,9 @@ For a release, we require:
 
 Notes:
 
-- For Flowchart, use the vendored text measurer when running these gates locally to match the
-  baseline corpus assumptions:
-  - add `--flowchart-text-measurer vendored`
+- The canonical built-in measurement mode is deterministic. Comparison commands do not expose a
+  single-value text-measurement selector, and no browser font table is embedded to make the local
+  run imitate one baseline machine.
 - `parity-root` keeps descendant parity blocking and invokes the root viewport contract for every
   fixture. The contract rejects an invalid root SVG, malformed or non-finite viewport geometry,
   non-positive dimensions, changed width/height strategy, changed non-numeric root style, and a

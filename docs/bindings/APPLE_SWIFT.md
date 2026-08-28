@@ -131,7 +131,7 @@ Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `2`. 
 
 ## Text Measurement
 
-Merman uses its deterministic vendored measurer by default. A Swift UI that must match Core Text,
+Merman uses its deterministic, font-agnostic measurer by default. A Swift UI that must match Core Text,
 AppKit, or UIKit geometry can implement the generated `MermanTextMeasurer` protocol, place it in
 `MermanEngineServices`, and pass that value to the direct engine constructor:
 
@@ -147,7 +147,7 @@ built-in measurer.
 
 The callback receives the independent text-measurement protocol version `1`, not a C ABI record.
 Return `nil` for a request that cannot be answered synchronously and faithfully; the corresponding
-operation uses Merman's vendored fallback. Callback-free engines admit concurrent calls. Callback
+operation uses Merman's deterministic fallback. Callback-free engines admit concurrent calls. Callback
 engines serialize admission and return `.busy` to a competitor; same-engine entry or close from a
 callback returns `.reentrantCall`. A busy or re-entrant close retains the engine and services for a
 later retry. Only callback errors delivered through UniFFI's generated trampoline can be converted

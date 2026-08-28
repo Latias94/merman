@@ -186,7 +186,7 @@ use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 
 let source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>";
 let control = OperationControl::new();
-let session = RenderEnvironment::parity().begin_session_with_control(control.clone())?;
+let session = RenderEnvironment::deterministic().begin_session_with_control(control.clone())?;
 let svg = finalize_resvg_svg(source, &session)?;
 
 let raster = RasterOptions::default().with_scale(2.0);

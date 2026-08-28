@@ -529,7 +529,7 @@ mod tests {
 
     #[test]
     fn mindmap_plain_wrapping_label_uses_wrapped_container_width() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
         let (width, height) = super::mindmap_label_bbox_px(
             "A root with a long text that wraps to keep the node size in check",
@@ -547,7 +547,7 @@ mod tests {
 
     #[test]
     fn mindmap_markdown_wrapping_respects_max_node_width() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
         let (width, height) = super::mindmap_label_bbox_px(
             "The dog in **the** hog... a *very long text* that wraps to a new line",
@@ -562,7 +562,7 @@ mod tests {
 
     #[test]
     fn mindmap_break_spaces_preserves_trailing_indentation_line_box() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
         let source = "\n    Multi-line root\n    with three lines\n  ";
         assert_eq!(
@@ -577,7 +577,7 @@ mod tests {
 
     #[test]
     fn mindmap_html_labels_measure_visible_content_instead_of_markup() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
         let expected = crate::text::TextMeasurer::measure_wrapped(
             &measurer,
@@ -594,12 +594,18 @@ mod tests {
             200.0,
         );
 
-        assert_eq!(actual, (expected.width, expected.height));
+        assert_eq!(
+            actual,
+            (
+                crate::text::round_to_1_64_px(expected.width),
+                expected.height
+            )
+        );
     }
 
     #[test]
     fn mindmap_layout_decodes_mermaid_entity_placeholders_before_measurement() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
         let expected = super::mindmap_label_bbox_px("Circle: &♥ ∞", &measurer, &style, 200.0);
 
@@ -610,15 +616,13 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_code_only_html_uses_monospace_measurement() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    fn mindmap_code_only_html_measures_visible_code_content() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
-        let mut code_style = style.clone();
-        code_style.font_family = Some("monospace".to_string());
         let expected = crate::text::TextMeasurer::measure_wrapped(
             &measurer,
             "note about mermaid",
-            &code_style,
+            &style,
             Some(200.0),
             crate::text::WrapMode::HtmlLike,
         );
@@ -630,7 +634,13 @@ mod tests {
             200.0,
         );
 
-        assert_eq!(actual, (expected.width, expected.height));
+        assert_eq!(
+            actual,
+            (
+                crate::text::round_to_1_64_px(expected.width),
+                expected.height
+            )
+        );
     }
 
     #[test]

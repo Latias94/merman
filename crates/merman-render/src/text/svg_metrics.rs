@@ -2,8 +2,6 @@
 
 use super::TextStyle;
 
-pub(crate) const FLOWCHART_DEFAULT_FONT_KEY: &str = "trebuchetms,verdana,arial,sans-serif";
-
 const SVG_DEFAULT_FIRST_LINE_BBOX_EM: f64 = 1.1875;
 const SVG_COURIER_FIRST_LINE_BBOX_EM: f64 = 1.125;
 const SVG_DEFAULT_TITLE_ASCENT_EM: f64 = 0.9444444444;

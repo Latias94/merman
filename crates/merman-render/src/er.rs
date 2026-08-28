@@ -146,8 +146,8 @@ pub(crate) fn measure_entity_box(
     settings: ErEntityMeasurementSettings,
 ) -> ErEntityMeasure {
     // Mermaid measures ER attribute-table text through HTML labels (`foreignObject`). Consume the
-    // operation-owned measurement directly: browser hosts provide DOM metrics and the vendored
-    // profile is the explicit headless fallback.
+    // operation-owned measurement directly: browser hosts provide DOM metrics and the built-in
+    // deterministic profile is the explicit headless fallback.
 
     // Mermaid's ER renderer (erBox.ts) uses `config.htmlLabels` inconsistently:
     // - It passes `useHtmlLabels: config.htmlLabels` into `createText`, where `undefined`
@@ -1308,9 +1308,7 @@ fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
 
 #[cfg(test)]
 mod tests {
-    use crate::text::{
-        TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
-    };
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
     #[cfg(feature = "layout-elk")]
     #[test]
@@ -1357,7 +1355,7 @@ mod tests {
         let mut graph = super::er_elk_graph(
             &model,
             &effective_config,
-            &VendoredFontMetricsTextMeasurer::default(),
+            &DeterministicTextMeasurer::default(),
             &settings,
         )
         .expect("ER ELK adapter graph");
@@ -1462,7 +1460,7 @@ mod tests {
 
     #[test]
     fn er_raw_code_and_anchor_metrics_measure_the_rendered_dom() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let style = default_style();
         let source = "<a href='https://example.com'><code>Entity</code></a>";
         let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(source, true);

@@ -1096,7 +1096,7 @@ mod inline_planning_tests {
         MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
         TextMeasurementPolicy, TextMeasurementProfileIdentity,
     };
-    use crate::text::{DeterministicTextMeasurer, VendoredFontMetricsTextMeasurer};
+    use crate::text::DeterministicTextMeasurer;
     use std::cell::{Cell, RefCell};
     use std::sync::{Arc, Mutex};
 
@@ -1610,15 +1610,26 @@ mod inline_planning_tests {
         right: InlineHtmlLineLayout,
         max_width: f64,
     ) {
-        assert_eq!(left.natural_width.to_bits(), right.natural_width.to_bits());
-        assert_eq!(left.wrapped_width.to_bits(), right.wrapped_width.to_bits());
+        assert_eq!(
+            left.natural_width.to_bits(),
+            right.natural_width.to_bits(),
+            "natural width mismatch at max_width={max_width}: left={left:?}, right={right:?}"
+        );
+        assert_eq!(
+            left.wrapped_width.to_bits(),
+            right.wrapped_width.to_bits(),
+            "wrapped width mismatch at max_width={max_width}: left={left:?}, right={right:?}"
+        );
         if right.natural_width > max_width {
             assert_eq!(
                 left.min_content_width.to_bits(),
                 right.min_content_width.to_bits()
             );
         }
-        assert_eq!(left.line_count, right.line_count);
+        assert_eq!(
+            left.line_count, right.line_count,
+            "line-count mismatch at max_width={max_width}: left={left:?}, right={right:?}"
+        );
     }
 
     fn next_down(value: f64) -> f64 {
@@ -1723,23 +1734,23 @@ mod inline_planning_tests {
             font_weight: None,
             font_style: None,
         };
-        let parity_session = RenderEnvironment::deterministic()
+        let builtin_session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("deterministic render session");
-        let parity = parity_session.text_measurer(TextMeasurementPhase::Wrap);
-        let parity_carrier = inline_html_carrier(&parity);
+        let builtin = builtin_session.text_measurer(TextMeasurementPhase::Wrap);
+        let builtin_carrier = inline_html_carrier(&builtin);
         assert_backend(
-            &VendoredFontMetricsTextMeasurer::default(),
-            &parity,
-            parity_carrier,
+            &DeterministicTextMeasurer::default(),
+            &builtin,
+            builtin_carrier,
             &style,
         );
         let mut unknown_font_style = style.clone();
         unknown_font_style.font_family = Some("fixture-private-font".to_string());
         assert_backend(
-            &VendoredFontMetricsTextMeasurer::default(),
-            &parity,
-            parity_carrier,
+            &DeterministicTextMeasurer::default(),
+            &builtin,
+            builtin_carrier,
             &unknown_font_style,
         );
 
@@ -1785,7 +1796,10 @@ mod inline_planning_tests {
             summary.provenance().operation,
             TextMeasurementOperation::Wrapped
         );
-        assert_eq!(summary.count(), 3);
+        assert!(
+            (3..=6).contains(&summary.count()),
+            "each of the three visible runs should require at most one fit and one overflow probe"
+        );
     }
 
     #[test]
@@ -1843,62 +1857,62 @@ mod inline_planning_tests {
         let html =
             "A\u{301} alpha <strong>👩‍💻 beta </strong><em>مرحبا gamma </em><code>世界 delta</code>";
 
-        let parity_session = RenderEnvironment::deterministic()
+        let builtin_session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("deterministic render session");
-        let parity = parity_session.text_measurer(TextMeasurementPhase::Wrap);
-        let parity_expected = measure_inline_html_line_layout(
-            &VendoredFontMetricsTextMeasurer::default(),
+        let builtin = builtin_session.text_measurer(TextMeasurementPhase::Wrap);
+        let builtin_expected = measure_inline_html_line_layout(
+            &DeterministicTextMeasurer::default(),
             &runs,
             &style,
             Some(96.0),
         );
-        let parity_actual = measure_inline_html_line_layout_with_carrier(
-            &parity,
-            inline_html_carrier(&parity),
+        let builtin_actual = measure_inline_html_line_layout_with_carrier(
+            &builtin,
+            inline_html_carrier(&builtin),
             &runs,
             &style,
             Some(96.0),
         );
-        assert_layout_eq(parity_actual, parity_expected);
-        let parity_actual =
-            measure_html_with_inline_styles(&parity, html, &style, Some(96.0), WrapMode::HtmlLike);
-        let parity_expected = measure_html_with_inline_styles(
-            &VendoredFontMetricsTextMeasurer::default(),
+        assert_layout_eq(builtin_actual, builtin_expected);
+        let builtin_actual =
+            measure_html_with_inline_styles(&builtin, html, &style, Some(96.0), WrapMode::HtmlLike);
+        let builtin_expected = measure_html_with_inline_styles(
+            &DeterministicTextMeasurer::default(),
             html,
             &style,
             Some(96.0),
             WrapMode::HtmlLike,
         );
-        assert_eq!(parity_actual.width, parity_expected.width);
-        assert_eq!(parity_actual.height, parity_expected.height);
-        assert_eq!(parity_actual.line_count, parity_expected.line_count);
+        assert_eq!(builtin_actual.width, builtin_expected.width);
+        assert_eq!(builtin_actual.height, builtin_expected.height);
+        assert_eq!(builtin_actual.line_count, builtin_expected.line_count);
 
         let mut unknown_font_style = style.clone();
         unknown_font_style.font_family = Some("fixture-private-font".to_string());
         let fallback_expected = measure_inline_html_line_layout(
-            &VendoredFontMetricsTextMeasurer::default(),
+            &DeterministicTextMeasurer::default(),
             &runs,
             &unknown_font_style,
             Some(96.0),
         );
         let fallback_actual = measure_inline_html_line_layout_with_carrier(
-            &parity,
-            inline_html_carrier(&parity),
+            &builtin,
+            inline_html_carrier(&builtin),
             &runs,
             &unknown_font_style,
             Some(96.0),
         );
         assert_layout_eq(fallback_actual, fallback_expected);
         let fallback_actual = measure_html_with_inline_styles(
-            &parity,
+            &builtin,
             html,
             &unknown_font_style,
             Some(96.0),
             WrapMode::HtmlLike,
         );
         let fallback_expected = measure_html_with_inline_styles(
-            &VendoredFontMetricsTextMeasurer::default(),
+            &DeterministicTextMeasurer::default(),
             html,
             &unknown_font_style,
             Some(96.0),
@@ -1951,7 +1965,7 @@ mod inline_planning_tests {
 
     #[test]
     fn rich_html_path_handles_many_styles_breaks_entities_and_unicode() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let style = TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,

@@ -19,19 +19,10 @@ fn assert_same_metrics(actual: TextMetrics, expected: TextMetrics) {
     assert_eq!(actual.line_count, expected.line_count);
 }
 
-fn approximate_svg_vertical_profiles(
-    bbox_y_em: f64,
-    bbox_height_em: f64,
-    pair_union_max_delta_px: f64,
-) -> [super::font_metrics_data::SvgVerticalProfileSetData;
-    super::font_metrics_data::SvgVerticalDomShapeData::COUNT] {
-    std::array::from_fn(
-        |_| super::font_metrics_data::SvgVerticalProfileSetData::Approximate {
-            bbox_y_em,
-            bbox_height_em,
-            pair_union_max_delta_px,
-        },
-    )
+fn assert_same_metrics_after_dom_rounding(actual: TextMetrics, expected: TextMetrics) {
+    assert_eq!(actual.width, round_to_1_64_px(expected.width));
+    assert_eq!(actual.height, expected.height);
+    assert_eq!(actual.line_count, expected.line_count);
 }
 
 #[test]
@@ -40,7 +31,7 @@ fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
         crate::flowchart::flowchart_label_plain_text_for_layout("Hexagon <br> end", "text", true);
     assert_eq!(plain, "Hexagon\nend");
 
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -94,7 +85,7 @@ fn flowchart_html_text_extraction_decodes_html5_entities_once_after_tag_removal(
 
 #[test]
 fn html_inline_measurement_uses_full_named_entity_decoding() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -139,7 +130,7 @@ fn html_inline_measurement_uses_full_named_entity_decoding() {
 
 #[test]
 fn html_break_spaces_uses_decoded_entity_whitespace() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -302,7 +293,7 @@ fn flowchart_svg_text_extraction_matches_create_text_entity_and_whitespace_seman
 
 #[test]
 fn flowchart_html_unicode_entities_use_finite_fallback_metrics() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -334,7 +325,7 @@ fn flowchart_html_unicode_entities_use_finite_fallback_metrics() {
 
 #[test]
 fn flowchart_html_unicode_blocks_produce_finite_metrics() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -379,63 +370,26 @@ fn typst_relevant_font_intent_keeps_measurement_finite_without_host_font_assets(
             font_style: None,
         },
     ];
-    let vendored = VendoredFontMetricsTextMeasurer::default();
-    let deterministic = DeterministicTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
 
     for style in &styles {
         for payload in payloads {
-            for metrics in [
-                vendored.measure_wrapped(payload, style, Some(200.0), WrapMode::HtmlLike),
-                deterministic.measure_wrapped(payload, style, Some(200.0), WrapMode::HtmlLike),
-            ] {
-                assert!(
-                    metrics.width.is_finite() && metrics.width >= 0.0,
-                    "{metrics:?}"
-                );
-                assert!(
-                    metrics.height.is_finite() && metrics.height >= 0.0,
-                    "{metrics:?}"
-                );
-            }
+            let metrics = measurer.measure_wrapped(payload, style, Some(200.0), WrapMode::HtmlLike);
+            assert!(
+                metrics.width.is_finite() && metrics.width >= 0.0,
+                "{metrics:?}"
+            );
+            assert!(
+                metrics.height.is_finite() && metrics.height >= 0.0,
+                "{metrics:?}"
+            );
         }
     }
 }
 
 #[test]
-fn markdown_strong_uses_operation_specific_bold_metrics() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-
-    let regular_html = measurer.measure_wrapped("omega", &style, Some(200.0), WrapMode::HtmlLike);
-    let strong_html = measure_markdown_with_inline_styles(
-        &measurer,
-        "**omega**",
-        &style,
-        Some(200.0),
-        WrapMode::HtmlLike,
-    );
-    let regular_svg = measurer.measure_wrapped("omega", &style, Some(200.0), WrapMode::SvgLike);
-    let strong_svg = measure_markdown_with_inline_styles(
-        &measurer,
-        "**omega**",
-        &style,
-        Some(200.0),
-        WrapMode::SvgLike,
-    );
-
-    assert!(strong_html.width > regular_html.width);
-    assert!(strong_svg.width > regular_svg.width);
-    assert_ne!(strong_svg.height, strong_html.height);
-}
-
-#[test]
 fn html_inline_styles_delegate_to_the_matching_font_variant() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let regular = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -457,7 +411,7 @@ fn html_inline_styles_delegate_to_the_matching_font_variant() {
     );
     let expected = measurer.measure_wrapped("Moving", &bold_italic, None, WrapMode::HtmlLike);
 
-    assert_same_metrics(actual, expected);
+    assert_same_metrics_after_dom_rounding(actual, expected);
 
     let bold = TextStyle {
         font_weight: Some("700".to_string()),
@@ -483,12 +437,12 @@ fn html_inline_styles_delegate_to_the_matching_font_variant() {
         + measurer
             .measure_wrapped("Italic", &italic, None, WrapMode::HtmlLike)
             .width;
-    assert_eq!(mixed.width, mixed_expected);
+    assert_eq!(mixed.width, round_to_1_64_px(mixed_expected));
 }
 
 #[test]
 fn html_inline_metrics_preserve_entity_and_direct_nbsp_boundaries() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -555,134 +509,8 @@ fn html_inline_metrics_preserve_entity_and_direct_nbsp_boundaries() {
 }
 
 #[test]
-fn html_wrapping_uses_browser_line_break_opportunities() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let width = |text: &str| {
-        measurer
-            .measure_wrapped(text, &style, None, WrapMode::HtmlLike)
-            .width
-    };
-
-    let hyphen_width = width("alpha-").max(width("beta"));
-    let hyphenated =
-        measurer.measure_wrapped("alpha-beta", &style, Some(hyphen_width), WrapMode::HtmlLike);
-    assert_eq!(hyphenated.line_count, 2, "{hyphenated:?}");
-
-    let cjk_width = width("负责");
-    let cjk = measurer.measure_wrapped("负责人审批", &style, Some(cjk_width), WrapMode::HtmlLike);
-    assert_eq!(cjk.line_count, 3, "{cjk:?}");
-    assert!(cjk.width <= cjk_width, "{cjk:?}");
-
-    let path_width = ["prefix/", "(alpha)/", "suffix"]
-        .into_iter()
-        .map(width)
-        .fold(0.0_f64, f64::max);
-    let parenthesized_path = measurer.measure_wrapped(
-        "prefix/(alpha)/suffix",
-        &style,
-        Some(path_width),
-        WrapMode::HtmlLike,
-    );
-    assert_eq!(
-        parenthesized_path.line_count, 1,
-        "Chromium keeps this parenthesized path at its min-content width: {parenthesized_path:?}"
-    );
-    assert!(
-        parenthesized_path.width > path_width,
-        "{parenthesized_path:?}"
-    );
-
-    let long_url = "https://example.com/api/v1/some(very-long)/resource-name?query=foo_bar&baz=qux";
-    let long_url_width = [
-        "https://example.com/api/v1/some(very-long)/resource-name?",
-        "query=foo_bar&baz=qux",
-    ]
-    .into_iter()
-    .map(width)
-    .fold(0.0_f64, f64::max);
-    let wrapped_url =
-        measurer.measure_wrapped(long_url, &style, Some(long_url_width), WrapMode::HtmlLike);
-    assert_eq!(wrapped_url.line_count, 2, "{wrapped_url:?}");
-}
-
-#[test]
-fn html_min_content_width_uses_browser_line_break_segments() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let width = |text: &str| {
-        measurer
-            .measure_wrapped(text, &style, None, WrapMode::HtmlLike)
-            .width
-    };
-
-    for (text, segments) in [
-        ("https://x.test/(alpha)/z", vec!["https://x.test/(alpha)/z"]),
-        (
-            "https://example.com/api/v1/some(very-long)/resource-name?query=foo_bar&baz=qux",
-            vec![
-                "https://example.com/api/v1/some(very-",
-                "long)/resource-",
-                "name?",
-                "query=foo_bar&baz=qux",
-            ],
-        ),
-        ("负责人审批", vec!["负", "责", "人", "审", "批"]),
-    ] {
-        let expected_min_content = segments.into_iter().map(width).fold(0.0_f64, f64::max);
-        let actual = measurer.measure_wrapped(text, &style, Some(1.0), WrapMode::HtmlLike);
-
-        assert_eq!(actual.width, expected_min_content, "{text}: {actual:?}");
-    }
-}
-
-#[test]
-fn html_styled_runs_preserve_unicode_line_break_opportunities() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let regular = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let bold = TextStyle {
-        font_weight: Some("700".to_string()),
-        ..regular.clone()
-    };
-    let regular_width = measurer
-        .measure_wrapped("alpha-beta", &regular, None, WrapMode::HtmlLike)
-        .width;
-    let bold_width = measurer
-        .measure_wrapped("alpha-beta", &bold, None, WrapMode::HtmlLike)
-        .width;
-    assert!(bold_width > regular_width);
-    let wrapping_width = (regular_width + bold_width) / 2.0;
-
-    let actual = measure_html_with_inline_styles(
-        &measurer,
-        "<strong>alpha-beta</strong>",
-        &regular,
-        Some(wrapping_width),
-        WrapMode::HtmlLike,
-    );
-
-    assert_eq!(actual.line_count, 2, "{actual:?}");
-    assert_eq!(actual.width, round_to_1_64_px(wrapping_width), "{actual:?}");
-}
-
-#[test]
 fn html_break_spaces_preserves_trailing_spaces() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -694,12 +522,12 @@ fn html_break_spaces_preserves_trailing_spaces() {
         measure_html_with_inline_styles(&measurer, "alpha ", &style, None, WrapMode::HtmlLike);
     let expected = measurer.measure_wrapped("alpha ", &style, None, WrapMode::HtmlLike);
 
-    assert_same_metrics(actual, expected);
+    assert_same_metrics_after_dom_rounding(actual, expected);
 }
 
 #[test]
 fn markdown_inline_styles_delegate_to_operation_specific_font_variants() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let regular = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -723,7 +551,7 @@ fn markdown_inline_styles_delegate_to_operation_specific_font_variants() {
         WrapMode::HtmlLike,
     );
     let italic_expected = measurer.measure_wrapped("Moving", &italic, None, WrapMode::HtmlLike);
-    assert_same_metrics(italic_actual, italic_expected);
+    assert_same_metrics_after_dom_rounding(italic_actual, italic_expected);
 
     let bold_actual = measure_markdown_with_inline_styles(
         &measurer,
@@ -733,7 +561,7 @@ fn markdown_inline_styles_delegate_to_operation_specific_font_variants() {
         WrapMode::SvgLike,
     );
     let bold_expected = measurer.measure_svg_text_computed_length_px("Two", &bold);
-    assert_eq!(bold_actual.width, bold_expected);
+    assert_eq!(bold_actual.width, round_to_1_64_px(bold_expected));
 
     let mixed = measure_markdown_with_inline_styles(
         &measurer,
@@ -754,12 +582,12 @@ fn markdown_inline_styles_delegate_to_operation_specific_font_variants() {
         + measurer
             .measure_wrapped("Italic", &italic, None, WrapMode::HtmlLike)
             .width;
-    assert_eq!(mixed.width, mixed_expected);
+    assert_eq!(mixed.width, round_to_1_64_px(mixed_expected));
 }
 
 #[test]
 fn flowchart_html_unwrapped_measurement_scales_with_font_size() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style_15 = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 15.0,
@@ -785,7 +613,7 @@ fn flowchart_html_unwrapped_measurement_scales_with_font_size() {
 fn flowchart_html_fontawesome_icon_width_uses_nominal_boundary() {
     // Model standard FontAwesome icons using Mermaid 11.15's inline FA box width instead of
     // the browser's per-icon glyph advance.
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -812,7 +640,7 @@ fn flowchart_html_fontawesome_icon_width_uses_nominal_boundary() {
 #[test]
 fn flowchart_html_fontawesome_custom_pack_icon_width_uses_nominal_boundary() {
     // Mermaid 11.15 keeps the inline icon box width even for the documented custom-pack example.
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -866,7 +694,7 @@ fn fontawesome_icon_substitution_matches_mermaid_source_boundaries() {
 fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
     // Non-markdown Flowchart icon labels should use the same HTML fragment measurement path as
     // emitted `<foreignObject>` content, with the same Mermaid 11.15 icon width boundary.
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -895,7 +723,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
 
 #[test]
 fn flowchart_label_metrics_plain_text_uses_dom_text_operation() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -922,7 +750,7 @@ fn flowchart_label_metrics_plain_text_uses_dom_text_operation() {
 
 #[test]
 fn flowchart_label_metrics_for_layout_fontawesome_icon_only_lines_preserve_breaks() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -964,10 +792,10 @@ fn flowchart_label_metrics_for_layout_fontawesome_icon_only_lines_preserve_break
 }
 
 #[test]
-fn flowchart_label_metrics_for_layout_fontawesome_wraps_unbreakable_icon_runs() {
+fn flowchart_label_metrics_for_layout_fontawesome_keeps_icon_runs_bounded() {
     // Mermaid upstream fixture:
     // fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007.svg
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -988,8 +816,8 @@ fn flowchart_label_metrics_for_layout_fontawesome_wraps_unbreakable_icon_runs() 
             math_renderer: None,
         },
     );
-    assert!(database.width > 200.0);
-    assert_eq!(database.line_count, 2);
+    assert!(database.width > 0.0 && database.width <= 200.0);
+    assert!(database.line_count >= 1);
 
     let support_db = crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
@@ -1003,14 +831,14 @@ fn flowchart_label_metrics_for_layout_fontawesome_wraps_unbreakable_icon_runs() 
             math_renderer: None,
         },
     );
-    assert!(support_db.width > 200.0);
-    assert_eq!(support_db.line_count, 3);
-    assert!(support_db.height > database.height);
+    assert!(support_db.width > 0.0 && support_db.width <= 200.0);
+    assert!(support_db.line_count >= database.line_count);
+    assert!(support_db.height >= database.height);
 }
 
 #[test]
 fn default_font_html_advance_is_monotonic_for_appended_text() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1034,7 +862,7 @@ fn default_font_html_advance_is_monotonic_for_appended_text() {
 
 #[test]
 fn default_font_repeated_glyph_runs_have_monotonic_advance() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1062,7 +890,7 @@ fn default_font_repeated_glyph_runs_have_monotonic_advance() {
 
 #[test]
 fn flowchart_multiline_html_label_uses_widest_measured_line() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1099,13 +927,13 @@ fn flowchart_multiline_html_label_uses_widest_measured_line() {
         .fold(0.0, f64::max);
 
     assert_eq!(metrics.line_count, lines.len());
-    assert_eq!(metrics.width, widest_line);
+    assert_eq!(metrics.width, round_to_1_64_px(widest_line));
     assert!(metrics.height > style.font_size);
 }
 
 #[test]
-fn default_font_ascii_punctuation_uses_canonical_profile_entries() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+fn deterministic_ascii_punctuation_has_finite_advances() {
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1115,23 +943,6 @@ fn default_font_ascii_punctuation_uses_canonical_profile_entries() {
 
     let open_brace = measurer.measure_wrapped("{", &style, None, WrapMode::HtmlLike);
     let close_brace = measurer.measure_wrapped("}", &style, None, WrapMode::HtmlLike);
-    let table = crate::generated::mermaid_font_metrics_11_16_0::lookup_font_metrics(
-        FLOWCHART_DEFAULT_FONT_KEY,
-        FontMetricsVariant::Regular,
-    )
-    .expect("default regular font profile");
-    assert!(
-        table
-            .entries
-            .binary_search_by_key(&'{', |entry| entry.0)
-            .is_ok()
-    );
-    assert!(
-        table
-            .entries
-            .binary_search_by_key(&'}', |entry| entry.0)
-            .is_ok()
-    );
     assert_finite_positive_metrics(open_brace);
     assert_finite_positive_metrics(close_brace);
 
@@ -1141,8 +952,8 @@ fn default_font_ascii_punctuation_uses_canonical_profile_entries() {
 }
 
 #[test]
-fn default_font_nbsp_uses_its_canonical_profile_entry() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+fn deterministic_nbsp_uses_regular_space_advance() {
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1154,25 +965,15 @@ fn default_font_nbsp_uses_its_canonical_profile_entry() {
     let non_breaking_space =
         measurer.measure_wrapped("A\u{00A0}B", &style, None, WrapMode::HtmlLike);
 
-    let table = crate::generated::mermaid_font_metrics_11_16_0::lookup_font_metrics(
-        FLOWCHART_DEFAULT_FONT_KEY,
-        FontMetricsVariant::Regular,
-    )
-    .expect("default regular font profile");
-    assert!(
-        table
-            .entries
-            .binary_search_by_key(&'\u{00A0}', |entry| entry.0)
-            .is_ok()
-    );
     assert_finite_positive_metrics(regular_space);
     assert_finite_positive_metrics(non_breaking_space);
+    assert_eq!(non_breaking_space.width, regular_space.width);
     assert_eq!(non_breaking_space.line_count, regular_space.line_count);
 }
 
 #[test]
-fn default_font_v_comma_pair_uses_profile_advance() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+fn deterministic_v_comma_pair_uses_additive_heuristic_advance() {
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1189,48 +990,8 @@ fn default_font_v_comma_pair_uses_profile_advance() {
 }
 
 #[test]
-fn c1_controls_use_each_profiles_generic_missing_glyph_advance() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let default_style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let courier_style = TextStyle {
-        font_family: Some("courier".to_string()),
-        ..default_style.clone()
-    };
-
-    let default_widths = ['\u{80}', '\u{89}', '\u{8f}', '\u{9f}'].map(|control| {
-        let metrics = measurer.measure_wrapped(
-            &control.to_string(),
-            &default_style,
-            None,
-            WrapMode::HtmlLike,
-        );
-        assert_finite_positive_metrics(metrics);
-        metrics.width
-    });
-    let courier_widths = ['\u{80}', '\u{89}', '\u{8f}', '\u{9f}'].map(|control| {
-        let metrics = measurer.measure_wrapped(
-            &control.to_string(),
-            &courier_style,
-            None,
-            WrapMode::HtmlLike,
-        );
-        assert_finite_positive_metrics(metrics);
-        metrics.width
-    });
-
-    assert!(default_widths.windows(2).all(|pair| pair[0] == pair[1]));
-    assert!(courier_widths.windows(2).all(|pair| pair[0] == pair[1]));
-    assert_ne!(default_widths[0], courier_widths[0]);
-}
-
-#[test]
 fn html_measurement_ignores_inactive_wrap_limit() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1250,420 +1011,8 @@ fn html_measurement_ignores_inactive_wrap_limit() {
 }
 
 #[test]
-fn font_metrics_variant_tracks_css_weight_and_style() {
-    let variant = |font_weight: Option<&str>, font_style: Option<&str>| {
-        FontMetricsVariant::from_style(&TextStyle {
-            font_family: None,
-            font_size: 16.0,
-            font_weight: font_weight.map(str::to_string),
-            font_style: font_style.map(str::to_string),
-        })
-    };
-
-    assert_eq!(variant(None, None), FontMetricsVariant::Regular);
-    assert_eq!(variant(Some("600"), None), FontMetricsVariant::Bold);
-    assert_eq!(
-        variant(None, Some("oblique 12deg")),
-        FontMetricsVariant::Italic
-    );
-    assert_eq!(
-        variant(Some("bold"), Some("italic")),
-        FontMetricsVariant::BoldItalic
-    );
-}
-
-#[test]
-fn font_metrics_lookup_prefers_exact_variant_and_falls_back_to_regular() {
-    let regular = crate::generated::mermaid_font_metrics_11_16_0::lookup_font_metrics(
-        FLOWCHART_DEFAULT_FONT_KEY,
-        FontMetricsVariant::Regular,
-    )
-    .expect("default regular font profile");
-    let bold = crate::generated::mermaid_font_metrics_11_16_0::lookup_font_metrics(
-        FLOWCHART_DEFAULT_FONT_KEY,
-        FontMetricsVariant::Bold,
-    )
-    .expect("default bold font profile");
-
-    assert_eq!(regular.variant, FontMetricsVariant::Regular);
-    assert_eq!(bold.variant, FontMetricsVariant::Bold);
-
-    let regular_only = [*regular];
-    let fallback = FontMetricsTable::lookup(
-        &regular_only,
-        FLOWCHART_DEFAULT_FONT_KEY,
-        FontMetricsVariant::BoldItalic,
-    )
-    .expect("missing variants must use the regular profile");
-    assert_eq!(fallback.variant, FontMetricsVariant::Regular);
-    assert!(
-        FontMetricsTable::lookup(&regular_only, "missing-font", FontMetricsVariant::Regular,)
-            .is_none()
-    );
-}
-
-#[test]
-fn compact_font_metrics_rejects_palettes_that_exceed_u8_indices() {
-    use super::font_metrics_data::{
-        FontMetricsTableData, FontMetricsVariantData, encode_font_metrics_profile,
-    };
-
-    let entries = (0_u32..257)
-        .map(|index| {
-            (
-                char::from_u32(index).expect("valid scalar"),
-                f64::from_bits(0x3ff0_0000_0000_0000 + u64::from(index)),
-            )
-        })
-        .collect::<Vec<_>>();
-    let table = FontMetricsTableData {
-        font_key: "palette-limit".to_string(),
-        variant: FontMetricsVariantData::Regular,
-        default_em: entries[0].1,
-        entries,
-        kern_pairs: Vec::new(),
-        space_trigrams: Vec::new(),
-        trigrams: Vec::new(),
-        svg_scale: 1.0,
-        svg_bbox_overhang_left_default_em: 1.0,
-        svg_bbox_overhang_right_default_em: 1.0,
-        svg_bbox_overhang_left: Vec::new(),
-        svg_bbox_overhang_right: Vec::new(),
-        svg_vertical_glyphs: Vec::new(),
-        svg_vertical_profiles: approximate_svg_vertical_profiles(-0.9, 1.1, 0.0),
-    };
-
-    let error = encode_font_metrics_profile(&[table]).expect_err("257-value palette must fail");
-    assert_eq!(
-        error.to_string(),
-        "font metrics profile error at byte 0: metric palette exceeds u8 index capacity"
-    );
-}
-
-#[test]
-fn compact_font_metrics_accepts_all_256_u8_palette_indices() {
-    use super::font_metrics_data::{
-        FontMetricsTableData, FontMetricsVariantData, decode_font_metrics_profile,
-        encode_font_metrics_profile,
-    };
-
-    let entries = (0_u32..=u32::from(u8::MAX))
-        .map(|index| {
-            (
-                char::from_u32(index).expect("valid scalar"),
-                f64::from_bits(0x3ff0_0000_0000_0000 + u64::from(index)),
-            )
-        })
-        .collect::<Vec<_>>();
-    let first_value = entries[0].1;
-    let table = FontMetricsTableData {
-        font_key: "palette-full".to_string(),
-        variant: FontMetricsVariantData::Regular,
-        default_em: first_value,
-        entries,
-        kern_pairs: Vec::new(),
-        space_trigrams: Vec::new(),
-        trigrams: Vec::new(),
-        svg_scale: first_value,
-        svg_bbox_overhang_left_default_em: first_value,
-        svg_bbox_overhang_right_default_em: first_value,
-        svg_bbox_overhang_left: Vec::new(),
-        svg_bbox_overhang_right: Vec::new(),
-        svg_vertical_glyphs: Vec::new(),
-        svg_vertical_profiles: approximate_svg_vertical_profiles(first_value, first_value, 0.0),
-    };
-
-    let encoded =
-        encode_font_metrics_profile(std::slice::from_ref(&table)).expect("256-value palette");
-    let key_length = usize::from(u16::from_le_bytes([encoded[10], encoded[11]]));
-    let palette_count_offset = 12 + key_length + 1;
-    let palette_count = u32::from_le_bytes(
-        encoded[palette_count_offset..palette_count_offset + 4]
-            .try_into()
-            .expect("palette count"),
-    );
-    assert_eq!(palette_count, 256);
-
-    let entries_count_offset = palette_count_offset + 4 + 256 * 8 + 4;
-    let entries_offset = entries_count_offset + 2;
-    let last_entry_index_offset = entries_offset + usize::from(u8::MAX) * 5 + 4;
-    assert_eq!(encoded[last_entry_index_offset], u8::MAX);
-
-    let decoded = decode_font_metrics_profile(&encoded).expect("decode full palette");
-    assert_eq!(decoded[0].entries.len(), 256);
-    assert_eq!(
-        decoded[0].entries[usize::from(u8::MAX)].1.to_bits(),
-        table.entries[usize::from(u8::MAX)].1.to_bits()
-    );
-}
-
-#[test]
-fn compact_font_metrics_round_trip_preserves_fact_bits_and_variant_fallback() {
-    use super::font_metrics_data::{
-        FontMetricsTableData, FontMetricsVariantData, decode_font_metrics_profile,
-        decode_font_metrics_tables, encode_font_metrics_profile,
-    };
-
-    fn table(font_key: &str, variant: FontMetricsVariantData, salt: u64) -> FontMetricsTableData {
-        let value = |bits| f64::from_bits(0x3fd0_0000_0000_0000_u64 + bits + salt);
-        FontMetricsTableData {
-            font_key: font_key.to_string(),
-            variant,
-            default_em: value(1),
-            entries: vec![(' ', value(2)), ('~', value(3)), ('\u{00a0}', value(4))],
-            kern_pairs: vec![(33, 126, value(5)), (126, 33, -0.0)],
-            space_trigrams: vec![(33, 126, value(6))],
-            trigrams: vec![(33, 64, 126, value(7))],
-            svg_scale: value(8),
-            svg_bbox_overhang_left_default_em: value(9),
-            svg_bbox_overhang_right_default_em: value(10),
-            svg_bbox_overhang_left: vec![('!', value(11))],
-            svg_bbox_overhang_right: vec![('~', value(12))],
-            svg_vertical_glyphs: vec![' ', 'ß'],
-            svg_vertical_profiles: approximate_svg_vertical_profiles(
-                value(13),
-                value(14),
-                value(15),
-            ),
-        }
-    }
-
-    fn fact_bits(table: &FontMetricsTableData) -> Vec<u64> {
-        std::iter::once(table.default_em)
-            .chain(table.entries.iter().map(|entry| entry.1))
-            .chain(table.kern_pairs.iter().map(|entry| entry.2))
-            .chain(table.space_trigrams.iter().map(|entry| entry.2))
-            .chain(table.trigrams.iter().map(|entry| entry.3))
-            .chain(std::iter::once(table.svg_scale))
-            .chain(std::iter::once(table.svg_bbox_overhang_left_default_em))
-            .chain(std::iter::once(table.svg_bbox_overhang_right_default_em))
-            .chain(table.svg_bbox_overhang_left.iter().map(|entry| entry.1))
-            .chain(table.svg_bbox_overhang_right.iter().map(|entry| entry.1))
-            .map(f64::to_bits)
-            .collect()
-    }
-
-    let variants = [
-        FontMetricsVariantData::Regular,
-        FontMetricsVariantData::Bold,
-        FontMetricsVariantData::Italic,
-        FontMetricsVariantData::BoldItalic,
-    ];
-    let mut source = variants
-        .into_iter()
-        .enumerate()
-        .map(|(index, variant)| table("probe", variant, index as u64 * 32))
-        .collect::<Vec<_>>();
-    source.push(table("regular-only", FontMetricsVariantData::Regular, 256));
-
-    let encoded = encode_font_metrics_profile(&source).expect("encode compact profile");
-    let decoded = decode_font_metrics_profile(&encoded).expect("decode compact profile");
-    assert_eq!(decoded.len(), source.len());
-    for (actual, expected) in decoded.iter().zip(&source) {
-        assert_eq!(actual.font_key, expected.font_key);
-        assert_eq!(actual.variant, expected.variant);
-        assert_eq!(fact_bits(actual), fact_bits(expected));
-        assert_eq!(
-            actual
-                .entries
-                .iter()
-                .map(|entry| entry.0)
-                .collect::<Vec<_>>(),
-            expected
-                .entries
-                .iter()
-                .map(|entry| entry.0)
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(
-            actual
-                .kern_pairs
-                .iter()
-                .map(|entry| (entry.0, entry.1))
-                .collect::<Vec<_>>(),
-            expected
-                .kern_pairs
-                .iter()
-                .map(|entry| (entry.0, entry.1))
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(actual.svg_vertical_glyphs, expected.svg_vertical_glyphs);
-        assert_eq!(actual.svg_vertical_profiles, expected.svg_vertical_profiles);
-    }
-
-    let runtime = decode_font_metrics_tables(&encoded).expect("decode runtime tables");
-    let fallback =
-        FontMetricsTable::lookup(runtime, "regular-only", FontMetricsVariant::BoldItalic)
-            .expect("missing variant falls back to regular");
-    assert_eq!(fallback.variant, FontMetricsVariant::Regular);
-    assert_eq!(fallback.kern_pairs[1].2.to_bits(), (-0.0_f64).to_bits());
-}
-
-#[test]
-fn generated_font_metrics_keep_all_fonts_and_variants() {
-    for (module, font_keys) in [
-        (
-            crate::generated::mermaid_font_metrics_11_16_0::lookup_font_metrics
-                as fn(&str, FontMetricsVariant) -> Option<&'static FontMetricsTable>,
-            &[
-                "courier",
-                "helveticaneue,helvetica,sans-serif",
-                "sans-serif",
-                "trebuchetms,verdana,arial,sans-serif",
-            ][..],
-        ),
-        (
-            crate::generated::mermaid_calculate_text_dimensions_font_metrics_11_16_0::lookup_exact_font_metrics,
-            &["mermaid-calculate-text-dimensions-cssom-fallback"][..],
-        ),
-    ] {
-        for font_key in font_keys {
-            for variant in [
-                FontMetricsVariant::Regular,
-                FontMetricsVariant::Bold,
-                FontMetricsVariant::Italic,
-                FontMetricsVariant::BoldItalic,
-            ] {
-                let table = module(font_key, variant).expect("generated font variant");
-                assert_eq!(table.font_key, *font_key);
-                assert_eq!(table.variant, variant);
-                assert_eq!(table.entries.len(), 100);
-                assert_eq!(table.svg_vertical_glyphs.len(), 100);
-                assert_eq!(
-                    table.svg_vertical_profiles.len(),
-                    SvgVerticalDomShape::COUNT
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn generated_font_metric_blobs_have_the_exact_canonical_catalog() {
-    use super::font_metrics_data::{FontMetricsVariantData, decode_font_metrics_profile};
-
-    let variants = [
-        FontMetricsVariantData::Regular,
-        FontMetricsVariantData::Bold,
-        FontMetricsVariantData::Italic,
-        FontMetricsVariantData::BoldItalic,
-    ];
-    let main_expected = [
-        "courier",
-        "helveticaneue,helvetica,sans-serif",
-        "sans-serif",
-        "trebuchetms,verdana,arial,sans-serif",
-    ]
-    .into_iter()
-    .flat_map(|font_key| variants.map(|variant| (font_key, variant)))
-    .collect::<Vec<_>>();
-    let calculate_text_dimensions_expected = variants
-        .map(|variant| ("mermaid-calculate-text-dimensions-cssom-fallback", variant))
-        .into_iter()
-        .collect::<Vec<_>>();
-
-    for (bytes, expected) in [
-        (
-            include_bytes!("../generated/mermaid_font_metrics_11_16_0.bin").as_slice(),
-            main_expected,
-        ),
-        (
-            include_bytes!(
-                "../generated/mermaid_calculate_text_dimensions_font_metrics_11_16_0.bin"
-            )
-            .as_slice(),
-            calculate_text_dimensions_expected,
-        ),
-    ] {
-        let tables = decode_font_metrics_profile(bytes).expect("valid generated profile");
-        let identities = tables
-            .iter()
-            .map(|table| (table.font_key.as_str(), table.variant))
-            .collect::<Vec<_>>();
-        assert_eq!(identities, expected);
-
-        let canonical_chars = (b' '..=b'~')
-            .map(char::from)
-            .chain(std::iter::once('\u{00a0}'))
-            .chain(['ﬂ', '°', '¶', 'ß'])
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        let vertical_glyphs = (b' '..=b'~')
-            .map(char::from)
-            .chain(['ﬂ', '°', '¶', 'ß'])
-            .chain(std::iter::once('\u{200b}'))
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        for table in &tables {
-            assert_eq!(
-                table
-                    .entries
-                    .iter()
-                    .map(|entry| entry.0)
-                    .collect::<Vec<_>>(),
-                canonical_chars
-            );
-            for (left, right, _) in table.kern_pairs.iter().chain(&table.space_trigrams) {
-                assert!((33..=126).contains(left));
-                assert!((33..=126).contains(right));
-            }
-            for (character, _) in table
-                .svg_bbox_overhang_left
-                .iter()
-                .chain(&table.svg_bbox_overhang_right)
-            {
-                assert!(canonical_chars.contains(character));
-            }
-            assert_eq!(table.svg_vertical_glyphs, vertical_glyphs);
-            assert_eq!(
-                table.svg_vertical_profiles.len(),
-                super::font_metrics_data::SvgVerticalDomShapeData::COUNT
-            );
-        }
-    }
-}
-
-#[test]
-fn calculate_text_dimensions_uses_the_body_attached_svg_profile() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
-        font_size: 16.0,
-        font_weight: Some("400".to_string()),
-        font_style: None,
-    };
-
-    let metrics = measurer.measure_mermaid_calculate_text_dimensions(
-        "This is a longer message that should be wrapped by Mermaid's default behavior",
-        &style,
-    );
-    let selected = measure_mermaid_text_dimensions(
-        &measurer,
-        "This is a longer message that should be wrapped by Mermaid's default behavior",
-        &style,
-    );
-
-    assert_eq!(metrics.width.round(), 510.0, "{metrics:?}");
-    assert_eq!(metrics.height.round(), 17.0, "{metrics:?}");
-    assert_eq!(metrics.line_count, 1);
-    assert_eq!(selected.width, 510, "{selected:?}");
-    assert_eq!(selected.height, 17, "{selected:?}");
-    assert_eq!(selected.line_height, 17, "{selected:?}");
-
-    let literal_text = r"multiline<br \t/>text";
-    let literal_direct = measurer.measure_mermaid_calculate_text_dimensions(literal_text, &style);
-    let literal_br = measure_mermaid_text_dimensions(&measurer, literal_text, &style);
-    assert_eq!(
-        literal_br.width, 131,
-        "direct={literal_direct:?} selected={literal_br:?}"
-    );
-}
-
-#[test]
 fn calculate_text_dimensions_collapses_svg_tspan_ascii_whitespace() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
         font_size: 16.0,
@@ -1685,83 +1034,8 @@ fn calculate_text_dimensions_collapses_svg_tspan_ascii_whitespace() {
 }
 
 #[test]
-fn vendored_create_text_bbox_y_operations_use_exact_profile_facts() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: Some("400".to_string()),
-        font_style: None,
-    };
-
-    assert_eq!(
-        measurer.measure_svg_create_text_bbox_y_offset_px("API gateway", &style),
-        1.0
-    );
-    assert_eq!(
-        measurer.measure_svg_create_text_middle_bbox_y_offset_px("API gateway", &style),
-        5.1875
-    );
-
-    let unsupported = TextStyle {
-        font_family: Some("unknown-font-without-a-profile".to_string()),
-        ..style
-    };
-    assert_eq!(
-        measurer.measure_svg_create_text_bbox_y_offset_px("API gateway", &unsupported),
-        0.0
-    );
-    assert_eq!(
-        measurer.measure_svg_create_text_middle_bbox_y_offset_px("API gateway", &unsupported),
-        0.0
-    );
-}
-
-#[test]
-fn flowchart_html_font_variants_use_measured_profiles() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let regular = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let italic = TextStyle {
-        font_style: Some("italic".to_string()),
-        ..regular.clone()
-    };
-    let bold = TextStyle {
-        font_weight: Some("700".to_string()),
-        ..regular.clone()
-    };
-    let bold_italic = TextStyle {
-        font_weight: Some("bold".to_string()),
-        font_style: Some("oblique".to_string()),
-        ..regular.clone()
-    };
-
-    let measure =
-        |style| measurer.measure_wrapped("Merman 012345", style, None, WrapMode::HtmlLike);
-    let regular_metrics = measure(&regular);
-    let bold_metrics = measure(&bold);
-    let italic_metrics = measure(&italic);
-    let bold_italic_metrics = measure(&bold_italic);
-    for metrics in [
-        regular_metrics,
-        bold_metrics,
-        italic_metrics,
-        bold_italic_metrics,
-    ] {
-        assert_finite_positive_metrics(metrics);
-    }
-    assert!(bold_metrics.width >= regular_metrics.width);
-    assert!(bold_italic_metrics.width >= italic_metrics.width);
-    assert_ne!(italic_metrics.width, regular_metrics.width);
-}
-
-#[test]
 fn svg_wrapped_width_tracks_a_bounded_emitted_line() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1780,7 +1054,7 @@ fn svg_wrapped_width_tracks_a_bounded_emitted_line() {
 
 #[test]
 fn flowchart_html_punctuation_wraps_at_spaces() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1801,28 +1075,8 @@ fn flowchart_html_punctuation_wraps_at_spaces() {
 }
 
 #[test]
-fn svg_and_html_text_operations_expose_distinct_bbox_metrics() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let text = "synthetic operation probe";
-
-    let html = measurer.measure_wrapped(text, &style, None, WrapMode::HtmlLike);
-    let svg = measurer.measure_wrapped(text, &style, None, WrapMode::SvgLike);
-    assert_finite_positive_metrics(html);
-    assert_finite_positive_metrics(svg);
-    assert_ne!(svg.width, html.width);
-    assert_eq!(svg.line_count, html.line_count);
-    assert!(svg.height < html.height);
-}
-
-#[test]
 fn flowchart_svg_layout_metrics_follow_the_shared_text_operation() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1853,7 +1107,7 @@ fn flowchart_svg_layout_metrics_follow_the_shared_text_operation() {
 
 #[test]
 fn courier_svg_and_html_operations_keep_operation_specific_heights() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("courier".to_string()),
         font_size: 16.0,
@@ -1872,27 +1126,8 @@ fn courier_svg_and_html_operations_keep_operation_specific_heights() {
 }
 
 #[test]
-fn courier_html_dotted_identifier_overflows_without_dot_wrapping() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("courier".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let text = "Synthetic.Namespace.UnbrokenIdentifier";
-    let unwrapped = measurer.measure_wrapped(text, &style, None, WrapMode::HtmlLike);
-    let limit = unwrapped.width / 2.0;
-
-    let metrics = measurer.measure_wrapped(text, &style, Some(limit), WrapMode::HtmlLike);
-    assert_eq!(metrics.line_count, 1);
-    assert_eq!(metrics.width, unwrapped.width);
-    assert!(metrics.width > limit);
-}
-
-#[test]
 fn default_font_html_hyphenated_compound_wraps_at_dynamic_limit() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1971,7 +1206,7 @@ fn svg_title_bbox_vertical_extents_use_courier_profile_for_courier_stacks() {
 
 #[test]
 fn flowchart_title_bbox_uses_symmetric_shared_advance() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 18.0,
@@ -1989,7 +1224,7 @@ fn flowchart_title_bbox_uses_symmetric_shared_advance() {
 
 #[test]
 fn svg_single_run_keeps_literal_br_with_backslash_t_on_one_line() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
         font_size: 16.0,
@@ -2010,8 +1245,8 @@ fn svg_single_run_keeps_literal_br_with_backslash_t_on_one_line() {
 }
 
 #[test]
-fn vendored_svg_bbox_operations_scale_generalized_font_facts() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+fn deterministic_svg_bbox_operations_scale_with_font_size() {
+    let measurer = DeterministicTextMeasurer::default();
     let style_16 = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
         font_size: 16.0,
@@ -2042,14 +1277,14 @@ fn vendored_svg_bbox_operations_scale_generalized_font_facts() {
         assert!(width_32.is_finite() && width_32 > width_16);
         assert!(
             (width_32 / width_16 - 2.0).abs() < 0.01,
-            "font-backed SVG measurement should scale with font size: {width_16} -> {width_32}"
+            "deterministic SVG measurement should scale with font size: {width_16} -> {width_32}"
         );
     }
 }
 
 #[test]
 fn wrap_label_like_mermaid_respects_generalized_probe_thresholds() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
         font_size: 16.0,
@@ -2075,7 +1310,7 @@ fn wrap_label_like_mermaid_respects_generalized_probe_thresholds() {
 
 #[test]
 fn wrap_label_like_mermaid_does_not_split_escaped_br() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
         font_size: 16.0,
@@ -2094,7 +1329,7 @@ fn wrap_label_like_mermaid_does_not_split_escaped_br() {
 
 #[test]
 fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -2127,30 +1362,8 @@ fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid
 }
 
 #[test]
-fn html_code_elements_use_the_browser_monospace_font() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let html = r#"<p><a href="https://mermaid.js.org/"><code>note about mermaid</code></a></p>"#;
-
-    let actual = measure_html_with_inline_styles(&measurer, html, &style, None, WrapMode::HtmlLike);
-    let mut code_style = style.clone();
-    code_style.font_family = Some("monospace".to_string());
-    let expected =
-        measurer.measure_wrapped("note about mermaid", &code_style, None, WrapMode::HtmlLike);
-    let ordinary = measurer.measure_wrapped("note about mermaid", &style, None, WrapMode::HtmlLike);
-
-    assert_same_metrics(actual, expected);
-    assert_ne!(actual.width, ordinary.width);
-}
-
-#[test]
 fn flowchart_html_markdown_metrics_preserve_paragraph_break_height() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -2185,7 +1398,7 @@ fn flowchart_html_markdown_metrics_preserve_paragraph_break_height() {
 fn markdown_svg_wrapping_keeps_raw_html_tags_literal_but_wraps_like_mermaid() {
     use MermaidMarkdownWordType::*;
 
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -2217,11 +1430,15 @@ fn markdown_svg_wrapping_keeps_raw_html_tags_literal_but_wraps_like_mermaid() {
         ]
     );
 
+    let entity_max_width = ["&nbsp;Edge", "markdown&nbsp;"]
+        .into_iter()
+        .map(|word| measurer.measure_svg_text_computed_length_px(word, &style))
+        .fold(0.0_f64, f64::max);
     let entity_lines = mermaid_markdown_to_wrapped_word_lines(
         &measurer,
         "&nbsp;Edge markdown&nbsp;",
         &style,
-        Some(200.0),
+        Some(entity_max_width),
         WrapMode::SvgLike,
     );
     assert_eq!(

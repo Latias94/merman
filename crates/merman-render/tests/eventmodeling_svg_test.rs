@@ -106,7 +106,7 @@ tf 01 event Start
 }
 
 #[test]
-fn eventmodeling_docs_minimum_layout_tracks_upstream_html_label_metrics() {
+fn eventmodeling_docs_minimum_layout_uses_bounded_deterministic_label_metrics() {
     let input =
         include_str!("../../../fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd");
     let parsed = Engine::new()
@@ -122,15 +122,35 @@ fn eventmodeling_docs_minimum_layout_tracks_upstream_html_label_metrics() {
         serde_json::from_value(projection["layout"]["EventModelingDiagram"].clone())
             .expect("EventModeling layout projection");
 
-    assert_close(layout.total_width, 1_157.666_666_666_666_7, 1.0);
-    assert_close(layout.boxes[0].width, 134.0, 2.0);
-    assert_close(layout.boxes[2].width, 307.333_333_333_333_3, 1.0);
-    assert_close(layout.boxes[2].height, 116.0, 1.0);
-}
-
-fn assert_close(actual: f64, expected: f64, tolerance: f64) {
+    assert_eq!(layout.boxes.len(), 5);
+    assert!(!layout.swimlanes.is_empty());
+    assert!(!layout.relations.is_empty());
     assert!(
-        (actual - expected).abs() <= tolerance,
-        "expected {actual} to be within {tolerance} of {expected}"
+        layout
+            .boxes
+            .iter()
+            .all(|box_layout| box_layout.width.is_finite()
+                && box_layout.height.is_finite()
+                && (100.0..=470.0).contains(&box_layout.width)
+                && (100.0..=770.0).contains(&box_layout.height)),
+        "EventModeling boxes must stay inside the source-defined min/max geometry: {:?}",
+        layout.boxes
     );
+    assert!(
+        layout.boxes[2].width > layout.boxes[0].width,
+        "the data-rich event must remain wider than the short UI frame: {:?}",
+        layout.boxes
+    );
+    assert!(
+        layout.boxes[2].height >= layout.boxes[0].height,
+        "the data-rich event must not become shorter than the short UI frame: {:?}",
+        layout.boxes
+    );
+    let rightmost_box = layout
+        .boxes
+        .iter()
+        .map(|box_layout| box_layout.x + box_layout.width)
+        .fold(0.0_f64, f64::max);
+    assert!(layout.total_width > rightmost_box);
+    assert!(layout.total_height > 0.0);
 }

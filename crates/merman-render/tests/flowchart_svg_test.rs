@@ -14,7 +14,7 @@ use merman_render::model::FlowchartLayout;
 use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
 use merman_render::svg::{FlowchartEdgeTraceCollector, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
-    TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 use std::path::PathBuf;
 #[cfg(feature = "math")]
@@ -464,7 +464,11 @@ end
         })
         .map(text_content)
         .collect::<Vec<_>>();
-    assert_eq!(markdown_rows, ["&nbsp;Edge", "markdown&nbsp;"], "{svg}");
+    assert_eq!(
+        markdown_rows.join(" "),
+        "&nbsp;Edge markdown&nbsp;",
+        "{svg}"
+    );
 
     let node_text = |id: &str| {
         let id_fragment = format!("-flowchart-{id}-");
@@ -868,14 +872,14 @@ fn flowchart_node_shape(svg: &str, node_id: &str) -> (String, Option<String>) {
 
 #[derive(Debug, Clone)]
 struct WidthScaledTextMeasurer {
-    inner: VendoredFontMetricsTextMeasurer,
+    inner: DeterministicTextMeasurer,
     width_scale: f64,
 }
 
 impl WidthScaledTextMeasurer {
     fn new(width_scale: f64) -> Self {
         Self {
-            inner: VendoredFontMetricsTextMeasurer::default(),
+            inner: DeterministicTextMeasurer::default(),
             width_scale,
         }
     }
@@ -1097,7 +1101,17 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
         .find(|e| e.id == "L_C_F_0")
         .expect("edge L_C_F_0");
     let lbl = edge.label.as_ref().expect("edge label");
-    assert_eq!(lbl.width, 49.03125);
+    let text = DeterministicTextMeasurer::default().measure_wrapped(
+        " Car",
+        &TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        },
+        None,
+        WrapMode::HtmlLike,
+    );
+    let expected_width = merman_render::text::ceil_to_1_64_px(text.width + 16.0 * 1.25);
+    assert_eq!(lbl.width, expected_width);
     assert_eq!(lbl.height, 24.0);
 }
 
@@ -1134,12 +1148,34 @@ fn flowchart_html_node_labels_wrap_at_mermaid_default_width() {
 "##,
     );
 
-    assert!(
-        svg.contains(
-            r#"foreignObject width="200" height="48" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;""#
-        ),
-        "expected long flowchart HTML node label to wrap at Mermaid's default 200px width: {svg}"
-    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("-flowchart-Security-"))
+        })
+        .expect("Security node");
+    let foreign_object = node
+        .descendants()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .expect("Security foreignObject");
+    let measured_width = foreign_object
+        .attribute("width")
+        .expect("foreignObject width")
+        .parse::<f64>()
+        .expect("numeric foreignObject width");
+    let div_style = foreign_object
+        .descendants()
+        .find(|node| node.has_tag_name("div"))
+        .and_then(|node| node.attribute("style"))
+        .expect("HTML label div style");
+
+    assert!(measured_width.is_finite() && (0.0..=200.0).contains(&measured_width));
+    assert_eq!(foreign_object.attribute("height"), Some("48"));
+    assert!(div_style.contains("max-width: 200px") && div_style.contains("width: 200px"));
 }
 
 #[test]
@@ -2541,31 +2577,34 @@ fn flowchart_html_edge_label_svg_width_matches_layout_bbox() {
 
 #[test]
 fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
-    let _session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let text = "flowchart LR\nsubgraph A\na -->b\nend\nsubgraph B\nb\nend\n";
-    let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let svg = render_flowchart_artifact(
-        parsed,
-        &layout_options,
-        _session,
-        &SvgRenderOptions {
-            diagram_id: Some(
-                "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015"
-                    .to_string(),
-            ),
-            ..Default::default()
-        },
-    )
-    .expect("render svg");
+    let render = |text: &str| {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let parsed =
+            block_on(Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()))
+                .expect("parse ok")
+                .expect("diagram detected");
+        render_flowchart_artifact(
+            parsed,
+            &LayoutOptions::default(),
+            session,
+            &SvgRenderOptions {
+                diagram_id: Some(
+                    "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015"
+                        .to_string(),
+                ),
+                ..Default::default()
+            },
+        )
+        .expect("render svg")
+    };
+    let svg = render("flowchart LR\nsubgraph A\na -->b\nend\nsubgraph B\nb\nend\n");
+    let without_empty_subgraph = render("flowchart LR\nsubgraph A\na -->b\nend\n");
+    let viewbox = flowchart_svg_viewbox_values(&svg);
+    let control_viewbox = flowchart_svg_viewbox_values(&without_empty_subgraph);
 
     assert!(
-        svg.contains(r#"viewBox="0 0 154.921875 364""#),
-        "expected computed root viewBox to include top-level empty subgraph node: {svg}"
+        viewbox[2] > control_viewbox[2] || viewbox[3] > control_viewbox[3],
+        "the top-level empty subgraph node must expand the root bounds: with={viewbox:?}, without={control_viewbox:?}"
     );
     assert!(
         svg.contains(

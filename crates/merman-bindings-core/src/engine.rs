@@ -1168,21 +1168,18 @@ mod tests {
             .expect("omitted selectors do not conflict or invoke the callback");
         }
 
-        for selector in ["vendored", "parity", "deterministic"] {
-            let options = format!(r#"{{"environment":{{"text_measurement":"{selector}"}}}}"#);
-            let error = BindingEngine::from_options_and_services(
-                options.as_bytes(),
-                BindingEngineServices::new()
-                    .with_host_text_measurer(Arc::new(PanicHostTextMeasurer)),
-            )
-            .err()
-            .expect("an explicit selector must conflict with the constructor service");
-            assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
-            assert_eq!(
-                error.message(),
-                "constructor service `host-text-measurement` conflicts with explicit option `environment.text_measurement`"
-            );
-        }
+        let options = r#"{"environment":{"text_measurement":"deterministic"}}"#;
+        let error = BindingEngine::from_options_and_services(
+            options.as_bytes(),
+            BindingEngineServices::new().with_host_text_measurer(Arc::new(PanicHostTextMeasurer)),
+        )
+        .err()
+        .expect("an explicit selector must conflict with the constructor service");
+        assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
+        assert_eq!(
+            error.message(),
+            "constructor service `host-text-measurement` conflicts with explicit option `environment.text_measurement`"
+        );
 
         let null_error = BindingEngine::from_options_and_services(
             br#"{"environment":{"text_measurement":null}}"#,
@@ -1202,7 +1199,6 @@ mod tests {
         assert_eq!(counter.calls(), 0, "construction must not call the host");
 
         for options in [
-            br#"{"environment":{"text_measurement":"vendored"}}"#.as_slice(),
             br#"{"environment":{"text_measurement":"deterministic"}}"#.as_slice(),
             br#"{"environment":{"text_measurement":null}}"#.as_slice(),
         ] {
@@ -1214,6 +1210,22 @@ mod tests {
                 .expect_err("request-local selector must conflict before operation work");
             assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
             assert_eq!(counter.calls(), 0);
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn legacy_text_measurement_selectors_are_rejected() {
+        for selector in ["vendored", "parity"] {
+            let options = format!(r#"{{"environment":{{"text_measurement":"{selector}"}}}}"#);
+            let error = BindingEngine::from_options(options.as_bytes())
+                .err()
+                .expect("legacy text measurement selector must be rejected");
+            assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
+            assert_eq!(
+                error.message(),
+                format!("unsupported environment.text_measurement: {selector}")
+            );
         }
     }
 

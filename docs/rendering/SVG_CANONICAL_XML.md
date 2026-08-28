@@ -45,9 +45,6 @@ deterministic.
   - Rounds numeric tokens to reduce float drift (default: `3`)
   - In `strict` mode this also normalizes `data-points` by decoding the Base64 JSON payload, rounding JSON numbers,
     and re-encoding.
-- `--text-measurer deterministic|vendored`
-  - Default: `vendored` (uses vendored font tables where available, falls back deterministically)
-
 ## Outputs
 
 When mismatches are found, the canonical XML files are written to:

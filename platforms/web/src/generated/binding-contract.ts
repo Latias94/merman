@@ -252,22 +252,22 @@ export const BINDING_OPTION_GROUP_SPECS = [
 
 export const TEXT_MEASUREMENT_PROVIDER_SPECS = [
   {
+    "id": "deterministic",
+    "source": "svg-pipeline",
+    "constructor_service_id": null
+  },
+  {
     "id": "host-callback",
     "source": "constructor-service",
     "constructor_service_id": "host-text-measurement"
-  },
-  {
-    "id": "vendored",
-    "source": "svg-pipeline",
-    "constructor_service_id": null
   }
 ] as const;
 
 export const TEXT_MEASUREMENT_PROVIDER_IDS = [
-  "host-callback",
-  "vendored"
+  "deterministic",
+  "host-callback"
 ] as const;
-export const VENDORED_TEXT_MEASUREMENT_PROVIDER_ID = "vendored" as const;
+export const DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID = "deterministic" as const;
 export const HOST_CALLBACK_TEXT_MEASUREMENT_PROVIDER_ID = "host-callback" as const;
 
 export const CONSTRUCTOR_SERVICE_SPECS = [

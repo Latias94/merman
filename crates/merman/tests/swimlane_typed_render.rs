@@ -229,13 +229,6 @@ fn docs_basic_layout() -> Value {
     layout.layout()["layout"]["SwimlaneDiagram"].clone()
 }
 
-fn assert_near(actual: f64, expected: f64) {
-    assert!(
-        (actual - expected).abs() <= 0.5,
-        "expected {actual} to be within 0.5 of upstream {expected}"
-    );
-}
-
 fn number(value: &Value, field: &str) -> f64 {
     value[field]
         .as_f64()
@@ -401,34 +394,64 @@ A -->|`This is **bold**`| B
 }
 
 #[test]
-fn docs_basic_geometry_matches_mermaid_11_16_swimlane_pipeline() {
+fn docs_basic_geometry_preserves_swimlane_topology() {
     let layout = docs_basic_layout();
     let nodes = &layout["nodes"];
 
+    let request = by_id(nodes, "request");
     let receive = by_id(nodes, "receive");
+    let triage = by_id(nodes, "triage");
     let investigate = by_id(nodes, "investigate");
-    assert_near(number(receive, "x"), 1158.2842718965264);
-    assert_near(number(investigate, "x"), 598.6351692445817);
+    let answer = by_id(nodes, "answer");
+    let fix = by_id(nodes, "fix");
+
+    assert_eq!(number(request, "x"), number(triage, "x"));
+    assert_eq!(number(receive, "x"), number(answer, "x"));
+    assert_eq!(number(receive, "x"), number(fix, "x"));
+    assert!(number(request, "x") < number(investigate, "x"));
+    assert!(number(investigate, "x") < number(receive, "x"));
+    assert!(number(request, "y") < number(triage, "y"));
+    assert!(number(triage, "y") < number(investigate, "y"));
+    assert_eq!(number(investigate, "y"), number(fix, "y"));
 
     let known = by_id(nodes, "edge-label-triage-answer-L_triage_answer_0");
-    assert_near(number(known, "x"), 600.4116671982632);
-    assert_near(number(known, "y"), 267.171875);
+    assert_eq!(number(known, "y"), number(triage, "y"));
+    assert!(number(triage, "x") < number(known, "x"));
+    assert!(number(known, "x") < number(answer, "x"));
 
     let code_change = by_id(
         nodes,
         "edge-label-triage-investigate-L_triage_investigate_0",
     );
-    assert_near(number(code_change, "x"), 272.70430337229084);
-    assert_near(number(code_change, "y"), 537.625);
+    assert_eq!(number(code_change, "y"), number(investigate, "y"));
+    assert!(number(triage, "x") < number(code_change, "x"));
+    assert!(number(code_change, "x") < number(investigate, "x"));
 
+    let customer = by_id(&layout["lanes"], "Customer");
+    let support = by_id(&layout["lanes"], "Support");
     let engineering = by_id(&layout["lanes"], "Engineering");
-    assert_near(number(engineering, "width"), 1349.2452093965264);
+    assert!(number(customer, "y") < number(support, "y"));
+    assert!(number(support, "y") < number(engineering, "y"));
+    assert_eq!(number(customer, "width"), number(support, "width"));
+    assert_eq!(number(support, "width"), number(engineering, "width"));
+    assert!(number(engineering, "width").is_finite());
+    assert!(number(engineering, "width") > 0.0);
 
     let bounds = &layout["bounds"];
-    assert_near(number(bounds, "min_x"), -95.9453125);
-    assert_near(number(bounds, "max_x"), 1253.2998968965264);
-    assert_near(number(bounds, "min_y"), -63.0);
-    assert_near(number(bounds, "max_y"), 600.625);
+    let min_x = number(bounds, "min_x");
+    let max_x = number(bounds, "max_x");
+    let min_y = number(bounds, "min_y");
+    let max_y = number(bounds, "max_y");
+    assert!(min_x.is_finite() && max_x.is_finite() && min_x < max_x);
+    assert!(min_y.is_finite() && max_y.is_finite() && min_y < max_y);
+    for node in nodes.as_array().expect("layout nodes") {
+        let half_width = number(node, "width") / 2.0;
+        let half_height = number(node, "height") / 2.0;
+        assert!(number(node, "x") - half_width >= min_x);
+        assert!(number(node, "x") + half_width <= max_x);
+        assert!(number(node, "y") - half_height >= min_y);
+        assert!(number(node, "y") + half_height <= max_y);
+    }
 }
 
 #[test]

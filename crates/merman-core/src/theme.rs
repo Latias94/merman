@@ -22,19 +22,31 @@ pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
 const THEME_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 
 // Generated from the content-pinned Mermaid runtime by `xtask gen-theme-snapshot`.
-static GENERATED_THEME_ARTIFACT: OnceLock<GeneratedThemeArtifact> = OnceLock::new();
+static GENERATED_THEME_RUNTIME: OnceLock<GeneratedThemeRuntimeArtifact> = OnceLock::new();
+
+#[cfg(test)]
+static GENERATED_THEME_AUDIT: OnceLock<GeneratedThemeAuditArtifact> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct GeneratedThemeArtifact {
+struct GeneratedThemeRuntimeArtifact {
     schema_version: u32,
     provenance: GeneratedThemeProvenance,
     themes: Map<String, Value>,
     dark_mode_true: Map<String, Value>,
+    oracle_case_count: usize,
+}
+
+#[cfg(test)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GeneratedThemeAuditArtifact {
+    schema_version: u32,
+    provenance: GeneratedThemeProvenance,
     oracle_cases: Vec<Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct GeneratedThemeProvenance {
     generator: String,
@@ -204,6 +216,8 @@ const THEME_PROGRAMS: &[ThemeProgram] = &[
     ),
 ];
 
+const THEME_ORACLE_CASE_COUNT: usize = THEME_PROGRAMS.len() * 5 + 11;
+
 impl ThemeProgram {
     const fn new(
         name: &'static str,
@@ -227,7 +241,7 @@ impl ThemeProgram {
     }
 
     fn default_snapshot(self) -> &'static Map<String, Value> {
-        generated_theme_artifact()
+        generated_theme_runtime()
             .themes
             .get(self.name)
             .and_then(Value::as_object)
@@ -235,7 +249,7 @@ impl ThemeProgram {
     }
 
     fn dark_mode_snapshot(self) -> &'static Map<String, Value> {
-        generated_theme_artifact()
+        generated_theme_runtime()
             .dark_mode_true
             .get(self.name)
             .and_then(Value::as_object)
@@ -415,27 +429,14 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
     }
 }
 
-fn generated_theme_artifact() -> &'static GeneratedThemeArtifact {
-    GENERATED_THEME_ARTIFACT.get_or_init(|| {
-        let artifact: GeneratedThemeArtifact =
+fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
+    GENERATED_THEME_RUNTIME.get_or_init(|| {
+        let artifact: GeneratedThemeRuntimeArtifact =
             serde_json::from_str(include_str!("generated/theme_variables_11_16_1.json"))
-                .expect("generated Mermaid theme artifact JSON is valid");
+                .expect("generated Mermaid theme runtime JSON is valid");
         assert_eq!(artifact.schema_version, THEME_ARTIFACT_SCHEMA_VERSION);
-        assert_eq!(
-            artifact.provenance.mermaid_version,
-            crate::baseline::PINNED_MERMAID_BASELINE_VERSION
-        );
-        assert_eq!(
-            artifact.provenance.mermaid_source_tag,
-            crate::baseline::PINNED_MERMAID_BASELINE_TAG
-        );
-        assert_eq!(
-            artifact.provenance.generator,
-            "cargo run -p xtask -- gen-theme-snapshot"
-        );
-        assert_eq!(artifact.provenance.mermaid_source_commit.len(), 40);
-        assert_eq!(artifact.provenance.mermaid_package_sha256.len(), 64);
-        assert_eq!(artifact.oracle_cases.len(), THEME_PROGRAMS.len() * 5 + 11);
+        assert_generated_theme_provenance(&artifact.provenance);
+        assert_eq!(artifact.oracle_case_count, THEME_ORACLE_CASE_COUNT);
         for program in THEME_PROGRAMS {
             assert!(
                 artifact
@@ -450,6 +451,42 @@ fn generated_theme_artifact() -> &'static GeneratedThemeArtifact {
                     .is_some_and(Value::is_object)
             );
         }
+        artifact
+    })
+}
+
+fn assert_generated_theme_provenance(provenance: &GeneratedThemeProvenance) {
+    assert_eq!(
+        provenance.mermaid_version,
+        crate::baseline::PINNED_MERMAID_BASELINE_VERSION
+    );
+    assert_eq!(
+        provenance.mermaid_source_tag,
+        crate::baseline::PINNED_MERMAID_BASELINE_TAG
+    );
+    assert_eq!(
+        provenance.generator,
+        "cargo run -p xtask -- gen-theme-snapshot"
+    );
+    assert_eq!(provenance.mermaid_source_commit.len(), 40);
+    assert_eq!(provenance.mermaid_package_sha256.len(), 64);
+}
+
+#[cfg(test)]
+fn generated_theme_audit() -> &'static GeneratedThemeAuditArtifact {
+    GENERATED_THEME_AUDIT.get_or_init(|| {
+        let artifact: GeneratedThemeAuditArtifact = serde_json::from_str(include_str!(
+            "../../../fixtures/_verification/theme_variables_oracle_11_16_1.json"
+        ))
+        .expect("generated Mermaid theme audit JSON is valid");
+        assert_eq!(artifact.schema_version, THEME_ARTIFACT_SCHEMA_VERSION);
+        assert_generated_theme_provenance(&artifact.provenance);
+        assert_eq!(artifact.provenance, generated_theme_runtime().provenance);
+        assert_eq!(artifact.oracle_cases.len(), THEME_ORACLE_CASE_COUNT);
+        assert_eq!(
+            artifact.oracle_cases.len(),
+            generated_theme_runtime().oracle_case_count
+        );
         artifact
     })
 }
@@ -3194,7 +3231,7 @@ mod tests {
         }
 
         let mut mismatches = Vec::new();
-        for case in &generated_theme_artifact().oracle_cases {
+        for case in &generated_theme_audit().oracle_cases {
             let id = case.get("id").and_then(Value::as_str).unwrap();
             let theme = case.get("theme").and_then(Value::as_str).unwrap();
             let overrides = case.get("overrides").cloned().unwrap();

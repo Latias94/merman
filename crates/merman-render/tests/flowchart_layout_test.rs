@@ -1003,7 +1003,7 @@ fn flowchart_html_multiline_edge_label_has_multiple_lines() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    // The parity measurer normalizes `<br/>` into `\\n`, so multiline labels should get larger
+    // The deterministic measurer normalizes `<br/>` into `\\n`, so multiline labels should get larger
     // height than a single-line label.
     let text = "flowchart TB\nA -->|line1<br/>line2| B\n";
 
@@ -2383,7 +2383,7 @@ classDef border border:1px solid red;
 }
 
 #[test]
-fn flowchart_whole_label_font_style_italic_affects_node_label_layout() {
+fn flowchart_deterministic_fallback_keeps_font_style_geometry_font_agnostic() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
@@ -2415,8 +2415,8 @@ classDef italic font-style:italic;
     let normal = node("B");
 
     assert!(
-        italic.width > normal.width + 0.5,
-        "expected whole-label font-style:italic to widen label-driven node width: italic={}, normal={}",
+        (italic.width - normal.width).abs() < 1e-6,
+        "the deterministic fallback must not invent font-specific italic advances: italic={}, normal={}",
         italic.width,
         normal.width
     );

@@ -73,7 +73,7 @@ def valid_catalog():
             "system_adapter_ids": ["system-clock"],
             "text_measurement": {
                 "protocol_version": merman.TEXT_MEASUREMENT_PROTOCOL_VERSION,
-                "provider_ids": ["host-callback", "vendored"],
+                "provider_ids": ["deterministic", "host-callback"],
             },
         },
         "output_contracts": [
@@ -241,7 +241,7 @@ class RuntimeCatalogTest(unittest.TestCase):
             "system_adapter_ids": [],
             "text_measurement": {
                 "protocol_version": merman.TEXT_MEASUREMENT_PROTOCOL_VERSION,
-                "provider_ids": ["host-callback", "vendored"],
+                "provider_ids": ["deterministic", "host-callback"],
             },
         }
         catalog["metadata_ids"] = [
@@ -282,7 +282,7 @@ class RuntimeCatalogTest(unittest.TestCase):
         self.assertEqual(parsed["capabilities"]["capability_ids"], ["png"])
         self.assertEqual(
             parsed["capabilities"]["text_measurement"]["provider_ids"],
-            ["host-callback", "vendored"],
+            ["deterministic", "host-callback"],
         )
 
     def test_rejects_internal_svg_pipeline_without_text_measurement(self):
@@ -303,7 +303,7 @@ class RuntimeCatalogTest(unittest.TestCase):
 
     def test_rejects_constructor_service_without_its_provider(self):
         catalog = valid_catalog()
-        catalog["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
+        catalog["capabilities"]["text_measurement"]["provider_ids"] = ["deterministic"]
 
         with self.assertRaisesRegex(
             merman.MermanRuntimeCatalogError,
@@ -382,12 +382,12 @@ class RuntimeCatalogTest(unittest.TestCase):
         icon_only["constructor_service_contracts"] = [
             icon_only["constructor_service_contracts"][1]
         ]
-        icon_only["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
+        icon_only["capabilities"]["text_measurement"]["provider_ids"] = ["deterministic"]
 
         empty = valid_catalog()
         empty["constructor_service_ids"] = []
         empty["constructor_service_contracts"] = []
-        empty["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
+        empty["capabilities"]["text_measurement"]["provider_ids"] = ["deterministic"]
 
         for catalog in [icon_only, empty]:
             with self.subTest(catalog=catalog):
@@ -556,9 +556,9 @@ class RuntimeCatalogTest(unittest.TestCase):
             "svg",
         ]
         capabilities["text_measurement"]["provider_ids"] = [
+            "deterministic",
             "future-provider",
             "host-callback",
-            "vendored",
         ]
         capabilities["text_measurement"]["future_measurement_metadata"] = True
         catalog["metadata_ids"].insert(2, "future-metadata")
@@ -821,12 +821,12 @@ class RuntimeCatalogTest(unittest.TestCase):
         wrong_protocol = valid_catalog()
         wrong_protocol["capabilities"]["text_measurement"]["protocol_version"] += 1
 
-        missing_vendored = valid_catalog()
-        missing_vendored["capabilities"]["text_measurement"]["provider_ids"] = [
+        missing_deterministic = valid_catalog()
+        missing_deterministic["capabilities"]["text_measurement"]["provider_ids"] = [
             "host-callback"
         ]
 
-        for catalog in [missing, without_svg, wrong_protocol, missing_vendored]:
+        for catalog in [missing, without_svg, wrong_protocol, missing_deterministic]:
             with self.subTest(catalog=catalog):
                 with self.assertRaises(merman.MermanRuntimeCatalogError):
                     merman.get_runtime_catalog(FakeEngine(catalog))

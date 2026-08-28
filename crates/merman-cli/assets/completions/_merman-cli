@@ -168,7 +168,6 @@ _arguments "${_arguments_options[@]}" : \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '--presentation-profile=[First-party presentation profile applied below explicit Mermaid configuration]:PRESENTATION_PROFILE:(merman-modern)' \
-'--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
 '--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -256,7 +255,6 @@ _arguments "${_arguments_options[@]}" : \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '--presentation-profile=[First-party presentation profile applied below explicit Mermaid configuration]:PRESENTATION_PROFILE:(merman-modern)' \
-'--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
 '--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -378,7 +376,6 @@ _arguments "${_arguments_options[@]}" : \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
-'--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
 '--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -447,7 +444,6 @@ _arguments "${_arguments_options[@]}" : \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '--presentation-profile=[First-party presentation profile applied below explicit Mermaid configuration]:PRESENTATION_PROFILE:(merman-modern)' \
-'--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default]:MATH_RENDERER:(none ratex)' \
 '-w+[Width of the page]:CONTAINER_WIDTH:_default' \
 '--width=[Width of the page]:CONTAINER_WIDTH:_default' \
