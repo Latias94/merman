@@ -14,6 +14,8 @@
   error-mode: "panic",
 )
 
+#show raw.where(lang: "mermaid-default-error"): show-mermaid-blocks(width: 100%)
+
 ```mermaid-explicit
 flowchart TD
   Explicit[Explicit raw block] --> Rendered[Rendered image]
@@ -25,6 +27,11 @@ sequenceDiagram
   participant merman
   Typst->>merman: Render this raw block with document context
   merman-->>Typst: Return SVG bytes
+```
+
+```mermaid-default-error
+flowchart TD
+  Invalid -->
 ```
 
 Raw block fixture passed.

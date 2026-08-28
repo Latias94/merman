@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:05636a35bffb668c46ff20910cfc4044874d9d4b94372cac69074ac7fb3b2e08"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:67006b703e99cc3e132c86118185f608d036a113c571c9dccd59369a78a23781"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -170,7 +170,6 @@ static const char *const MERMAN_CAPABILITY_RUSTDOC_TARGETS[] = {
 
 static const char *const MERMAN_CAPABILITY_RUSTDOC_IMPLICATIONS[] = {
     "layout-cytoscape",
-    "layout-elk",
     "markdown",
     "math",
 };
@@ -215,7 +214,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "parallel-markdown", "tool", "Compile parallel CLI Markdown batch processing.", MERMAN_CAPABILITY_PARALLEL_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "pdf", "output", "Export rendered diagrams as PDF.", MERMAN_CAPABILITY_PDF_TARGETS, 1, NULL, 0 },
     { "png", "output", "Export rendered diagrams as PNG.", MERMAN_CAPABILITY_PNG_TARGETS, 1, NULL, 0 },
-    { "rustdoc", "tool", "Compile checked static Mermaid fragment generation for Rustdoc.", MERMAN_CAPABILITY_RUSTDOC_TARGETS, 1, MERMAN_CAPABILITY_RUSTDOC_IMPLICATIONS, 4 },
+    { "rustdoc", "tool", "Compile checked static Mermaid fragment generation for Rustdoc.", MERMAN_CAPABILITY_RUSTDOC_TARGETS, 1, MERMAN_CAPABILITY_RUSTDOC_IMPLICATIONS, 3 },
     { "shell-completions", "tool", "Compile CLI shell completion generation.", MERMAN_CAPABILITY_SHELL_COMPLETIONS_TARGETS, 1, NULL, 0 },
     { "svg", "output", "Render Mermaid input as SVG.", MERMAN_CAPABILITY_SVG_TARGETS, 3, NULL, 0 },
     { "system-clock", "adapter", "Compile the native system clock adapter.", MERMAN_CAPABILITY_SYSTEM_CLOCK_TARGETS, 1, NULL, 0 },

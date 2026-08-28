@@ -9,11 +9,11 @@ pub(super) fn extract_style_property_with_checkpoints<E>(
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<String>, E> {
     let mut found = None;
-    for (order, declaration) in split_style_declarations(style, checkpoint)?
-        .into_iter()
-        .enumerate()
-    {
+    let mut declarations = StyleDeclarationScanner::new(style);
+    let mut order = 0usize;
+    while let Some(declaration) = declarations.next_with_checkpoints(checkpoint)? {
         checkpoint_loop(order, checkpoint)?;
+        order = order.saturating_add(1);
         let Some(colon) = declaration.find(':') else {
             continue;
         };
@@ -30,36 +30,56 @@ pub(super) fn extract_style_property_with_checkpoints<E>(
     Ok(found)
 }
 
-pub(super) fn split_style_declarations<'a, E>(
+pub(super) struct StyleDeclarationScanner<'a> {
     style: &'a str,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Vec<&'a str>, E> {
-    let mut declarations = Vec::new();
-    let mut start = 0usize;
-    let mut quote = None;
-    let mut paren_depth = 0usize;
-    for (iteration, (offset, character)) in style.char_indices().enumerate() {
-        checkpoint_loop(iteration, checkpoint)?;
-        if let Some(current_quote) = quote {
-            if character == current_quote {
-                quote = None;
-            }
-            continue;
-        }
-        match character {
-            '\'' | '"' => quote = Some(character),
-            '(' => paren_depth = paren_depth.saturating_add(1),
-            ')' => paren_depth = paren_depth.saturating_sub(1),
-            ';' if paren_depth == 0 => {
-                declarations.push(&style[start..offset]);
-                start = offset + character.len_utf8();
-            }
-            _ => {}
+    cursor: usize,
+    finished: bool,
+}
+
+impl<'a> StyleDeclarationScanner<'a> {
+    pub(super) const fn new(style: &'a str) -> Self {
+        Self {
+            style,
+            cursor: 0,
+            finished: false,
         }
     }
-    declarations.push(&style[start..]);
-    checkpoint()?;
-    Ok(declarations)
+
+    pub(super) fn next_with_checkpoints<E>(
+        &mut self,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&'a str>, E> {
+        if self.finished {
+            return Ok(None);
+        }
+        let start = self.cursor;
+        let mut quote = None;
+        let mut paren_depth = 0usize;
+        for (iteration, (relative, character)) in self.style[start..].char_indices().enumerate() {
+            checkpoint_loop(iteration, checkpoint)?;
+            if let Some(current_quote) = quote {
+                if character == current_quote {
+                    quote = None;
+                }
+                continue;
+            }
+            match character {
+                '\'' | '"' => quote = Some(character),
+                '(' => paren_depth = paren_depth.saturating_add(1),
+                ')' => paren_depth = paren_depth.saturating_sub(1),
+                ';' if paren_depth == 0 => {
+                    let end = start + relative;
+                    self.cursor = end + character.len_utf8();
+                    checkpoint()?;
+                    return Ok(Some(&self.style[start..end]));
+                }
+                _ => {}
+            }
+        }
+        self.finished = true;
+        checkpoint()?;
+        Ok(Some(&self.style[start..]))
+    }
 }
 
 fn strip_important(value: &str) -> &str {

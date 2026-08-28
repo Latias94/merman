@@ -103,7 +103,7 @@ pub(super) fn apply_subgraph_direction_overrides(
             group_index,
             &group_member_indices,
             placements,
-            context.width_profile,
+            context.policy,
             resources,
         )? {
             shift_external_nodes_away_from_group(

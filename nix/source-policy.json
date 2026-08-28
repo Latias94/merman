@@ -12,6 +12,7 @@
     "capabilities"
   ],
   "script_files": [
+    "scripts/ascii_capability_contract.py",
     "scripts/verify_cli_installation.py"
   ],
   "excluded_directory_names": [

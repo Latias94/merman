@@ -347,6 +347,10 @@ void decodesTypedMetadataCatalogs() {
     'semantic_coverage': 'partial',
     'primary_projection': 'diagrammatic',
     'structured_text_fallback': false,
+    'layout_profiles': ['canonical', 'compact'],
+    'width_profiles': ['unicode', 'cjk'],
+    'encodings': ['plain', 'ansi16'],
+    'fallback_encodings': ['plain'],
     'support_level': 'partial',
     'supported_semantics': ['nodes', 'edges'],
     'limits': ['html-labels'],
@@ -432,6 +436,10 @@ void decodesTypedMetadataCatalogs() {
         ascii.semanticCoverage == 'partial' &&
         ascii.primaryProjection == 'diagrammatic' &&
         !ascii.structuredTextFallback &&
+        ascii.layoutProfiles.last == 'compact' &&
+        ascii.widthProfiles.last == 'cjk' &&
+        ascii.encodings.last == 'ansi16' &&
+        ascii.fallbackEncodings.single == 'plain' &&
         family.metadataId == 'flowchart' &&
         family.familyId == 'flowchart' &&
         family.hasDetector &&
@@ -464,6 +472,10 @@ void acceptsAdditiveTypedMetadataFields() {
     'semantic_coverage': 'partial',
     'primary_projection': 'diagrammatic',
     'structured_text_fallback': false,
+    'layout_profiles': ['canonical'],
+    'width_profiles': ['unicode'],
+    'encodings': ['plain'],
+    'fallback_encodings': <String>[],
     'support_level': 'partial',
     'supported_semantics': <String>[],
     'limits': <String>[],

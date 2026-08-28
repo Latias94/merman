@@ -4,6 +4,11 @@ This private crate contains the two U14 transport candidates. It is deliberately
 
 It is not a public Node binding. Applications that need a supported Node or static-site path should invoke `merman-cli` as a child process until one in-process transport passes the repository's admission gates.
 
-Both `transport-napi` and `transport-wasm` require the direct `svg`, `layout-cytoscape`, and `layout-elk` features. Those leaves forward to `merman-bindings-core`; both candidates call the same `BindingEngine::execute(BindingOperationRequest)` path. The private static-SVG recipe deliberately omits math because the candidate has no separate package identity for that specialist closure. Neither transport accepts a JavaScript text-measurement callback.
+Both `transport-napi` and `transport-wasm` require the direct `svg`, `layout-cytoscape`, and
+`layout-elk` features. Those leaves forward to `merman-bindings-core`; both candidates call the
+same `BindingEngine::execute(BindingOperationRequest)` path. These private static-SVG candidates
+therefore have an explicit EPL-2.0 ELK notice/provenance obligation; the recipe deliberately omits
+math because the candidate has no separate package identity for that specialist closure. Neither
+transport accepts a JavaScript text-measurement callback.
 
 The build owner is `platforms/node/scripts/build-candidate.mjs`. Do not build this crate with an ambient default feature set or reuse the browser package's WASM output.

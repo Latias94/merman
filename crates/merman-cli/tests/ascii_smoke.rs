@@ -45,6 +45,46 @@ fn run_ascii_with_resource_limit(limit_id: &str, max: u64, source: &str) -> Outp
     )
 }
 
+fn assert_plain_ascii_report(bytes: &[u8]) -> serde_json::Value {
+    assert!(
+        !bytes.windows(2).any(|window| window == b"\x1b["),
+        "report bytes must not contain ANSI escapes: {bytes:?}"
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(bytes).expect("ASCII report should be one JSON artifact");
+    assert_eq!(report["kind"], "ascii");
+    assert_eq!(report["encoding"], "plain");
+    assert_eq!(report["schema_version"], 2);
+    let text = report["text"].as_str().expect("report text");
+    assert!(!text.contains('\u{1b}'), "report text must be escape-free");
+    report
+}
+
+fn assert_ascii_error_report(
+    bytes: &[u8],
+    expected_code: &str,
+    expected_category: &str,
+) -> serde_json::Value {
+    assert!(
+        !bytes.windows(2).any(|window| window == b"\x1b["),
+        "error report bytes must not contain ANSI escapes: {bytes:?}"
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(bytes).expect("ASCII error report should be one JSON artifact");
+    assert_eq!(report["kind"], "ascii_error");
+    assert_eq!(report["encoding"], "plain");
+    assert_eq!(report["schema_version"], 1);
+    assert_eq!(report["error"]["code"], expected_code);
+    assert_eq!(report["error"]["category"], expected_category);
+    assert!(
+        report["error"]["message"]
+            .as_str()
+            .is_some_and(|message| !message.contains('\u{1b}')),
+        "error report message must be terminal-safe: {report}"
+    );
+    report
+}
+
 #[cfg(unix)]
 fn open_pty() -> (fs::File, fs::File) {
     let mut master = -1;
@@ -121,6 +161,37 @@ fn cli_ascii_diagnostic_does_not_echo_source_or_terminal_controls() {
             !stderr.contains(control),
             "raw control {control:?} leaked into stderr: {stderr:?}"
         );
+    }
+}
+
+#[test]
+fn cli_clap_diagnostic_normalizes_untrusted_terminal_controls() {
+    for value in ["12\rOWNED", "12\u{202e}34"] {
+        let output = run_with_stdin(
+            &[
+                "render",
+                "--format",
+                "ascii",
+                "--ascii-max-width",
+                value,
+                "-",
+            ],
+            "flowchart TD\nA --> B",
+        );
+
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty(), "failure must not write a payload");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains("invalid value"),
+            "unexpected stderr:\n{stderr}"
+        );
+        for control in ['\r', '\u{202e}'] {
+            assert!(
+                !stderr.contains(control),
+                "raw control {control:?} leaked into stderr: {stderr:?}"
+            );
+        }
     }
 }
 
@@ -248,6 +319,166 @@ fn cli_renders_plain_ascii_output_to_file() {
 }
 
 #[test]
+fn ascii_report_is_plain_for_pipe_file_and_host_color_overrides() {
+    let source = "flowchart LR\nA[Hello] --> B[World]";
+    let piped = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "unicode",
+            "--ascii-report",
+            "--ascii-color",
+            "auto",
+            "-",
+        ],
+        source,
+    );
+    assert!(piped.status.success(), "stderr: {:?}", piped.stderr);
+    assert_plain_ascii_report(&piped.stdout);
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let report_path = tmp.path().join("report.txt");
+    let report_arg = report_path.to_string_lossy().into_owned();
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut child = Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "ascii",
+            "--ascii-report",
+            "--ascii-color",
+            "auto",
+            "--output",
+            report_arg.as_str(),
+            "-",
+        ])
+        .env("CLICOLOR_FORCE", "1")
+        .env("COLORTERM", "truecolor")
+        .env("TERM", "xterm-256color")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn CLI");
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(source.as_bytes())
+        .expect("write stdin");
+    let file_output = child.wait_with_output().expect("wait for CLI");
+    assert!(
+        file_output.status.success(),
+        "stderr: {:?}",
+        file_output.stderr
+    );
+    assert_plain_ascii_report(&fs::read(report_path).expect("read report file"));
+}
+
+#[test]
+fn ascii_report_rejects_explicit_styled_output() {
+    for color in ["ansi16", "ansi256", "truecolor", "html"] {
+        let output = run_with_stdin(
+            &[
+                "render",
+                "--format",
+                "unicode",
+                "--ascii-report",
+                "--ascii-color",
+                color,
+                "-",
+            ],
+            "flowchart LR\nA[Hello] --> B[World]",
+        );
+
+        assert!(
+            !output.status.success(),
+            "{color} report unexpectedly succeeded"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "failed report must emit no payload"
+        );
+        let report = assert_ascii_error_report(
+            &output.stderr,
+            "merman.cli.ascii_report.requires_plain",
+            "usage",
+        );
+        assert_eq!(report["error"]["details"]["field"], "ascii_color");
+    }
+}
+
+#[test]
+fn ascii_report_width_failure_is_typed_json_without_partial_stdout() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "unicode",
+            "--ascii-report",
+            "--ascii-max-width",
+            "5",
+            "--ascii-overflow",
+            "error",
+            "-",
+        ],
+        "flowchart LR\nA[Hello] --> B[World]",
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "failed report must not publish a partial success artifact"
+    );
+    let report =
+        assert_ascii_error_report(&output.stderr, "merman.ascii.width_overflow", "content");
+    assert_eq!(report["error"]["details"]["requested_max_width"], 5);
+    assert!(
+        report["error"]["details"]["actual_width"]
+            .as_u64()
+            .is_some_and(|actual| actual > 5)
+    );
+    assert_eq!(report["error"]["details"]["width_profile"], "unicode");
+}
+
+#[cfg(unix)]
+#[test]
+fn ascii_report_is_plain_on_a_real_terminal_stdout() {
+    let (master, slave) = open_pty();
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut child = Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "unicode",
+            "--ascii-report",
+            "--ascii-color",
+            "auto",
+            "-",
+        ])
+        .env("COLORTERM", "truecolor")
+        .env("TERM", "xterm-256color")
+        .env_remove("NO_COLOR")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(slave))
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn CLI with PTY stdout");
+    let reader = std::thread::spawn(move || read_pty(master));
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(b"flowchart LR\nA[Hello] --> B[World]")
+        .expect("write stdin");
+
+    let output = child.wait_with_output().expect("wait for CLI");
+    let stdout = reader.join().expect("join PTY reader");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    assert_plain_ascii_report(&stdout);
+}
+
+#[test]
 fn auto_color_honors_process_environment_before_rendering() {
     let source = "flowchart LR\nA[Hello] --> B[World]";
     let exe = assert_cmd::cargo_bin!("merman-cli");
@@ -305,6 +536,90 @@ fn auto_color_honors_process_environment_before_rendering() {
             .any(|bytes| bytes == b"\x1b["),
         "a non-empty NO_COLOR value must disable color"
     );
+}
+
+#[test]
+fn ascii_report_resource_failure_preserves_stable_limit_details() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--ascii-report",
+            "--resource-limit",
+            "max_ascii_output_bytes=1",
+            "-",
+        ],
+        "flowchart LR\nA --> B",
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let report =
+        assert_ascii_error_report(&output.stderr, "merman.ascii.resource_limit", "content");
+    let resource = &report["error"]["details"]["resource_limit"];
+    assert_eq!(resource["id"], "max_ascii_output_bytes");
+    assert_eq!(resource["phase"], "ascii_output");
+    assert_eq!(resource["maximum"], 1);
+    assert_eq!(resource["cause"], "ceiling");
+    assert_eq!(resource["profile"], "trusted-native");
+    assert!(resource["actual"].as_u64().is_some_and(|actual| actual > 1));
+}
+
+#[test]
+fn ascii_report_source_limit_failure_preserves_stable_limit_details() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--ascii-report",
+            "--resource-limit",
+            "max_source_bytes=5",
+            "-",
+        ],
+        "flowchart LR\nA --> B",
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let report =
+        assert_ascii_error_report(&output.stderr, "merman.input.resource_limit", "content");
+    let resource = &report["error"]["details"]["resource_limit"];
+    assert_eq!(resource["id"], "max_source_bytes");
+    assert_eq!(resource["phase"], "source");
+    assert_eq!(resource["maximum"], 5);
+    assert_eq!(resource["cause"], "ceiling");
+    assert_eq!(resource["profile"], "trusted-native");
+    assert!(resource["actual"].as_u64().is_some_and(|actual| actual > 5));
+}
+
+#[test]
+fn ascii_report_model_limit_failure_preserves_stable_limit_details() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--ascii-report",
+            "--resource-limit",
+            "max_model_items=1",
+            "-",
+        ],
+        "flowchart LR\nA --> B",
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let report =
+        assert_ascii_error_report(&output.stderr, "merman.input.resource_limit", "content");
+    let resource = &report["error"]["details"]["resource_limit"];
+    assert_eq!(resource["id"], "max_model_items");
+    assert_eq!(resource["phase"], "layout_model");
+    assert_eq!(resource["maximum"], 1);
+    assert_eq!(resource["cause"], "ceiling");
+    assert_eq!(resource["profile"], "trusted-native");
+    assert!(resource["actual"].as_u64().is_some_and(|actual| actual > 1));
 }
 
 #[cfg(unix)]

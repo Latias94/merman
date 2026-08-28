@@ -17,8 +17,12 @@ pub(super) fn build_lifeline_line(
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
     let width = resources.checked_grid_add(layout.total_width, 1)?;
-    let mut line =
-        blank_line_with_checkpoints(width, layout.width_profile, resources, checkpoints)?;
+    let mut line = blank_line_with_checkpoints(
+        width,
+        layout.policy.terminal_width_profile,
+        resources,
+        checkpoints,
+    )?;
     for (index, center) in layout.participant_centers.iter().enumerate() {
         checkpoints.tick()?;
         if !visible_actors.get(index).copied().unwrap_or(true) {

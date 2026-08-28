@@ -46,8 +46,10 @@ their public workflow requires them. Those owner-specific compile combinations d
 global capability implications.
 
 The repository-wide result aggregate is `complete-svg`, exposed by the `merman` facade and the
-`merman-rustdoc` integration crate. It means `svg + layout-cytoscape + layout-elk + math`. It does
-not include system adapters, analysis, ASCII, or binary exports.
+`merman-rustdoc` integration crate. It means `svg + layout-cytoscape + math`; it deliberately does
+not include the optional EPL-2.0 ELK implementation. Add the explicit `complete-svg-elk` aggregate
+when that closure is intended and its notices/provenance will accompany the artifact. Neither
+aggregate includes system adapters, analysis, ASCII, or binary exports.
 
 Native binding crates (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and the internal
 `merman-android-jni` transport) additionally expose the owner-local `native-runtime` feature. It
@@ -68,10 +70,11 @@ select their own direct leaf set instead.
 | --- | --- | --- |
 | Deterministic SVG in Rust | `merman` | Default `complete-svg`, or `default-features = false, features = ["svg"]` for basic SVG |
 | Full SVG semantics in Rust | `merman` | `default-features = false, features = ["complete-svg"]` |
+| Full SVG semantics plus ELK | `merman` | `default-features = false, features = ["complete-svg-elk"]` |
 | Lint and diagnostics | `merman-analysis` | No feature; the crate is default-empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `analysis, editor` |
 | Standalone LSP server | `merman-lsp` | `--no-default-features --features stdio` |
-| Complete CLI | `merman-cli` | Its default direct leaf set, or the exact `cli-release` recipe |
+| Complete CLI | `merman-cli` | Default direct leaves without ELK, or the exact `cli-release` recipe with ELK |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features analysis` |
 | Checked Rustdoc fragments | `merman-cli rustdoc` | CLI `rustdoc`; documented crates consume committed files through native `include_str!` |
 | One-step Rustdoc attributes | `merman-rustdoc` | Default `complete-svg`, or an explicit smaller renderer closure |
@@ -250,16 +253,18 @@ Use `--no-default-features --features markdown` for the smallest sequential Mark
 ## Rustdoc
 
 Rustdoc has two independently distributed static-SVG workflows. The CLI `rustdoc` tool leaf
-enables complete deterministic rendering for an explicit `build/check` authoring workflow; it does
-not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are committed,
+enables deterministic SVG rendering with Cytoscape and math for an explicit `build/check` authoring
+workflow; it does not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are committed,
 packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
 `#![doc = include_str!(...)]`. This gives the documented crate zero attributable Merman packages
 in its normal/build Cargo graph, supports crate-level docs, and makes diagram updates reviewable.
 
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
-`complete-svg` feature intentionally compiles SVG, Cytoscape, ELK, and math into the proc-macro
-host. Optional dependency gating can keep that closure out of ordinary builds, but selecting the
-documentation feature, `--all-features`, or docs.rs metadata still compiles it.
+`complete-svg` feature intentionally compiles SVG, Cytoscape, and math into the proc-macro host.
+The explicit `complete-svg-elk` feature adds the EPL-2.0 ELK closure when a documentation artifact
+needs it. Optional dependency gating can keep that closure out of ordinary builds, but selecting
+the explicit ELK feature, `--all-features`, or an artifact profile that lists `layout-elk` compiles
+it.
 
 | Concern | Checked CLI generation | Attribute macro |
 | --- | --- | --- |
@@ -317,11 +322,12 @@ svg = engine.render_svg("flowchart TD\n  A --> B", None)
 
 The default Android, Apple, Python, and Flutter native packages include SVG, both supported layout
 engines, ASCII, analysis, validation, and document analysis. They omit math, PNG, JPEG, PDF, and
-native runtime adapters to reduce distributed binary size. Their generated APIs keep those
-operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
+native runtime adapters to reduce distributed binary size. Because these are prebuilt ELK artifacts,
+their package-specific notices and source provenance are part of the release contract. Their
+generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
 missing-capability errors before exposing optional output choices.
 
-Flutter uses `flutter pub add 'merman:^0.8.0-alpha.5'` and `Merman.open()`. Android consumes the
+Flutter's current published baseline uses `flutter pub add 'merman:^0.8.0-alpha.5'` and `Merman.open()`. The workspace source candidate is `0.8.0-alpha.6`; do not present that candidate as a pub.dev installation until its registry evidence exists. Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 1 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
@@ -341,12 +347,7 @@ flowchart TD
 ```)
 ```
 
-The current source tree stages an unreleased `0.2.0` wrapper with SVG, analysis, Cytoscape, and ELK.
-Build it locally and use Typst's `--package-path` until that version is published. Math is not
-advertised until its pure-WASM font, license, import, and parity admission is complete. The source
-package always enforces its constrained resource policy; caller options may tighten it but cannot
-replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md)
-for the published/source version boundary.
+The current source tree prepares a `0.2.0` Typst wrapper candidate from Merman `0.8.0-alpha.6`, requiring Typst `0.15.0`, with SVG, analysis, Cytoscape, and ELK. Build it locally and use Typst's `--package-path` until registry publication is verified. The package includes the ELK dependency closure and its accompanying EPL-2.0 notices; Math is not advertised until its pure-WASM font, license, import, and parity admission is complete. The source package always enforces its constrained resource policy; caller options may tighten it but cannot replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md) for the published/source version boundary.
 
 Native bindings expose the same flat runtime catalog. The catalog contains stable
 `capability_ids`, `operation_ids`, and `output_ids`. Do not infer capabilities from exported

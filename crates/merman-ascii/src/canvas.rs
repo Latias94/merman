@@ -12,8 +12,8 @@ use crate::safe_text::{
 };
 pub(crate) use crate::terminal::CanvasColor;
 use crate::terminal::{
-    CanvasStyle, GlyphArena, ResolvedCanvasStyle, SurfaceCellCheckpoints, TerminalCell,
-    TerminalCellText, owner_index, primary_width_with_checkpoints, style_at,
+    Ansi16Style, CanvasStyle, GlyphArena, ResolvedCanvasStyle, SurfaceCellCheckpoints,
+    TerminalCell, TerminalCellText, owner_index, primary_width_with_checkpoints, style_at,
     try_write_primary_cell_from_surface_with_resources_and_checkpoint,
     try_write_primary_deferred_style_with_resources_and_checkpoints,
     try_write_primary_grapheme_style_with_resources_and_checkpoint,
@@ -1430,6 +1430,10 @@ fn encode_surface_row(
         });
     }
 
+    if mode == AsciiColorMode::Ansi16 {
+        return encode_surface_row_ansi16(output, cells, arena, deferred, resources, execution);
+    }
+
     let mut active_style = ResolvedCanvasStyle::default();
     visit_primary_cells(cells, execution, |cell| {
         let has_text = cell.deferred_text_id().is_some() || cell.try_output_text(arena)?.is_some();
@@ -1482,6 +1486,52 @@ fn encode_surface_row(
             }
             AsciiColorMode::Plain => {}
         }
+    }
+    Ok(())
+}
+
+fn encode_surface_row_ansi16(
+    output: &mut impl TerminalOutputSink,
+    cells: &[TerminalCell],
+    arena: &GlyphArena,
+    deferred: Option<&DeferredTextRegistry<'_>>,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> crate::Result<()> {
+    let mut active_style = Ansi16Style::default();
+    visit_primary_cells(cells, execution, |cell| {
+        let has_text = cell.deferred_text_id().is_some() || cell.try_output_text(arena)?.is_some();
+        if has_text {
+            let desired_style = cell.raw_style().resolve_ansi16();
+            if desired_style != active_style {
+                if !active_style.is_plain() {
+                    output.push_str("\u{1b}[0m")?;
+                }
+                if !desired_style.is_plain() {
+                    push_ansi16_start(output, desired_style)?;
+                }
+                active_style = desired_style;
+            }
+            if let Some(id) = cell.deferred_text_id() {
+                let deferred = deferred.ok_or_else(missing_deferred_text_resolver)?;
+                push_deferred_terminal_text(
+                    output,
+                    deferred,
+                    id,
+                    AsciiColorMode::Ansi16,
+                    resources,
+                )?;
+            } else {
+                let text = cell
+                    .try_output_text(arena)?
+                    .ok_or_else(missing_deferred_text_resolver)?;
+                push_terminal_text(output, text)?;
+            }
+        }
+        Ok(())
+    })?;
+    if !active_style.is_plain() {
+        output.push_str("\u{1b}[0m")?;
     }
     Ok(())
 }
@@ -1555,7 +1605,6 @@ fn push_ansi_start(
 ) -> crate::Result<()> {
     if let Some(color) = style.foreground {
         match mode {
-            AsciiColorMode::Ansi16 => out.push_str(ansi16_foreground_start(color))?,
             AsciiColorMode::Ansi256 => {
                 out.write_fmt(format_args!("\u{1b}[38;5;{}m", ansi256_index(color)))?;
             }
@@ -1565,12 +1614,11 @@ fn push_ansi_start(
                     color.r, color.g, color.b
                 ))?;
             }
-            AsciiColorMode::Plain | AsciiColorMode::Html => {}
+            AsciiColorMode::Ansi16 | AsciiColorMode::Plain | AsciiColorMode::Html => {}
         }
     }
     if let Some(color) = style.background {
         match mode {
-            AsciiColorMode::Ansi16 => out.push_str(ansi16_background_start(color))?,
             AsciiColorMode::Ansi256 => {
                 out.write_fmt(format_args!("\u{1b}[48;5;{}m", ansi256_index(color)))?;
             }
@@ -1580,8 +1628,18 @@ fn push_ansi_start(
                     color.r, color.g, color.b
                 ))?;
             }
-            AsciiColorMode::Plain | AsciiColorMode::Html => {}
+            AsciiColorMode::Ansi16 | AsciiColorMode::Plain | AsciiColorMode::Html => {}
         }
+    }
+    Ok(())
+}
+
+fn push_ansi16_start(out: &mut impl TerminalOutputSink, style: Ansi16Style) -> crate::Result<()> {
+    if let Some(color) = style.foreground {
+        out.push_str(color.foreground_start())?;
+    }
+    if let Some(color) = style.background {
+        out.push_str(color.background_start())?;
     }
     Ok(())
 }
@@ -1591,52 +1649,6 @@ fn ansi256_index(color: AsciiRgb) -> u16 {
     let g = color.g as u16 * 5 / 255;
     let b = color.b as u16 * 5 / 255;
     16 + 36 * r + 6 * g + b
-}
-
-fn ansi16_foreground_start(color: AsciiRgb) -> &'static str {
-    ansi16_start(color, false)
-}
-
-fn ansi16_background_start(color: AsciiRgb) -> &'static str {
-    ansi16_start(color, true)
-}
-
-fn ansi16_start(color: AsciiRgb, background: bool) -> &'static str {
-    const PALETTE: [(AsciiRgb, &str, &str); 16] = [
-        (AsciiRgb::new(0x00, 0x00, 0x00), "\u{1b}[30m", "\u{1b}[40m"),
-        (AsciiRgb::new(0x80, 0x00, 0x00), "\u{1b}[31m", "\u{1b}[41m"),
-        (AsciiRgb::new(0x00, 0x80, 0x00), "\u{1b}[32m", "\u{1b}[42m"),
-        (AsciiRgb::new(0x80, 0x80, 0x00), "\u{1b}[33m", "\u{1b}[43m"),
-        (AsciiRgb::new(0x00, 0x00, 0x80), "\u{1b}[34m", "\u{1b}[44m"),
-        (AsciiRgb::new(0x80, 0x00, 0x80), "\u{1b}[35m", "\u{1b}[45m"),
-        (AsciiRgb::new(0x00, 0x80, 0x80), "\u{1b}[36m", "\u{1b}[46m"),
-        (AsciiRgb::new(0xc0, 0xc0, 0xc0), "\u{1b}[37m", "\u{1b}[47m"),
-        (AsciiRgb::new(0x80, 0x80, 0x80), "\u{1b}[90m", "\u{1b}[100m"),
-        (AsciiRgb::new(0xff, 0x00, 0x00), "\u{1b}[91m", "\u{1b}[101m"),
-        (AsciiRgb::new(0x00, 0xff, 0x00), "\u{1b}[92m", "\u{1b}[102m"),
-        (AsciiRgb::new(0xff, 0xff, 0x00), "\u{1b}[93m", "\u{1b}[103m"),
-        (AsciiRgb::new(0x00, 0x00, 0xff), "\u{1b}[94m", "\u{1b}[104m"),
-        (AsciiRgb::new(0xff, 0x00, 0xff), "\u{1b}[95m", "\u{1b}[105m"),
-        (AsciiRgb::new(0x00, 0xff, 0xff), "\u{1b}[96m", "\u{1b}[106m"),
-        (AsciiRgb::new(0xff, 0xff, 0xff), "\u{1b}[97m", "\u{1b}[107m"),
-    ];
-
-    PALETTE
-        .iter()
-        .min_by_key(|(candidate, _, _)| color_distance(*candidate, color))
-        .map(|(_, fg, bg)| if background { *bg } else { *fg })
-        .unwrap_or(if background {
-            "\u{1b}[47m"
-        } else {
-            "\u{1b}[37m"
-        })
-}
-
-fn color_distance(a: AsciiRgb, b: AsciiRgb) -> u32 {
-    let dr = a.r as i32 - b.r as i32;
-    let dg = a.g as i32 - b.g as i32;
-    let db = a.b as i32 - b.b as i32;
-    (dr * dr + dg * dg + db * db) as u32
 }
 
 fn push_html_span_start(
@@ -1969,7 +1981,7 @@ mod tests {
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
         let cases = [
             (AsciiColorMode::Plain, "<&中\n"),
-            (AsciiColorMode::Ansi16, "\u{1b}[30m<&中\u{1b}[0m\n"),
+            (AsciiColorMode::Ansi16, "<&中\n"),
             (AsciiColorMode::Ansi256, "\u{1b}[38;5;16m<&中\u{1b}[0m\n"),
             (
                 AsciiColorMode::TrueColor,
@@ -2025,7 +2037,7 @@ mod tests {
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
         let cases = [
             (AsciiColorMode::Plain, "<&中\n"),
-            (AsciiColorMode::Ansi16, "\u{1b}[30m<&中\u{1b}[0m\n"),
+            (AsciiColorMode::Ansi16, "<&中\n"),
             (AsciiColorMode::Ansi256, "\u{1b}[38;5;16m<&中\u{1b}[0m\n"),
             (
                 AsciiColorMode::TrueColor,
@@ -2095,7 +2107,7 @@ mod tests {
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
         let cases = [
             (AsciiColorMode::Plain, "<&中\n"),
-            (AsciiColorMode::Ansi16, "\u{1b}[30m<&中\u{1b}[0m\n"),
+            (AsciiColorMode::Ansi16, "<&中\n"),
             (AsciiColorMode::Ansi256, "\u{1b}[38;5;16m<&中\u{1b}[0m\n"),
             (
                 AsciiColorMode::TrueColor,
@@ -2966,11 +2978,48 @@ mod tests {
     }
 
     #[test]
-    fn finish_ansi16_encodes_nearest_role_foreground() {
+    fn finish_ansi16_maps_edge_arrow_to_a_named_terminal_accent() {
         let theme = AsciiColorTheme::default_light()
-            .with_role(AsciiColorRole::EdgeLine, AsciiRgb::from_hex24(0xff0000));
+            .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::from_hex24(0xff0000));
         let mut canvas = Canvas::new(1, 1);
-        canvas.set_role(0, 0, 'R', AsciiColorRole::EdgeLine);
+        canvas.set_role(0, 0, 'R', AsciiColorRole::EdgeArrow);
+
+        let output = canvas
+            .finish_with_options(
+                &AsciiRenderOptions::ascii()
+                    .with_color_mode(AsciiColorMode::Ansi16)
+                    .with_color_theme(theme),
+            )
+            .expect("ANSI16 canvas should encode");
+
+        assert_eq!(output, "\u{1b}[36mR\u{1b}[0m\n");
+    }
+
+    #[test]
+    fn finish_ansi16_keeps_primary_text_at_terminal_reset() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0xff0000));
+        let mut canvas = Canvas::new(1, 1);
+        canvas.set_role(0, 0, 'T', AsciiColorRole::Text);
+
+        let output = canvas
+            .finish_with_options(
+                &AsciiRenderOptions::ascii()
+                    .with_color_mode(AsciiColorMode::Ansi16)
+                    .with_color_theme(theme),
+            )
+            .expect("ANSI16 canvas should encode");
+
+        assert_eq!(output, "T\n");
+    }
+
+    #[test]
+    fn finish_ansi16_quantizes_authored_rgb_without_using_the_theme() {
+        let theme = AsciiColorTheme::default_light();
+        let mut canvas = Canvas::new(1, 1);
+        canvas
+            .try_set_color(0, 0, 'R', AsciiRgb::from_hex24(0xff0000))
+            .expect("direct color should fit");
 
         let output = canvas
             .finish_with_options(

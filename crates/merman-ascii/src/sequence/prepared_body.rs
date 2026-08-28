@@ -242,7 +242,7 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         resources: &mut ResourceContext,
         checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
-        for _ in 0..layout.message_spacing {
+        for _ in 0..layout.policy.message_spacing {
             checkpoints.tick()?;
             self.push_lifeline(
                 step.active_counts,
@@ -357,7 +357,6 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         actor_state: SequenceActorRenderState<'_>,
         diagram: &'diagram AsciiSequenceDiagram,
         layout: &SequenceLayout,
-        mirror_actors: bool,
         resources: &mut ResourceContext,
         checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
@@ -366,14 +365,7 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         let extent = self.extent;
         let transaction = resources.clone();
         let result = transaction.transaction(|_| {
-            self.finish_transactional(
-                actor_state,
-                diagram,
-                layout,
-                mirror_actors,
-                resources,
-                checkpoints,
-            )
+            self.finish_transactional(actor_state, diagram, layout, resources, checkpoints)
         });
         if result.is_err() {
             self.batches.truncate(batch_count);
@@ -388,7 +380,6 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         actor_state: SequenceActorRenderState<'_>,
         diagram: &'diagram AsciiSequenceDiagram,
         layout: &SequenceLayout,
-        mirror_actors: bool,
         resources: &mut ResourceContext,
         checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
@@ -399,7 +390,7 @@ impl<'diagram> SequencePreparedBody<'diagram> {
             resources,
             checkpoints,
         )?;
-        if mirror_actors {
+        if layout.policy.mirror_actors {
             let extent = participant_box_batch_extent(
                 diagram,
                 layout,
@@ -935,8 +926,12 @@ fn render_participant_box_rows(
     let resource_view: &ResourceContext = resources;
     for row in rows {
         checkpoints.tick()?;
-        let mut line =
-            blank_line_with_checkpoints(0, layout.width_profile, resource_view, checkpoints)?;
+        let mut line = blank_line_with_checkpoints(
+            0,
+            layout.policy.terminal_width_profile,
+            resource_view,
+            checkpoints,
+        )?;
         for index in 0..participants.diagram.participants.len() {
             checkpoints.tick()?;
             if !visible_actors.get(index).copied().unwrap_or(true) {
@@ -1041,8 +1036,12 @@ fn build_participant_box_row(
         .copied()
         .ok_or_else(|| unsupported("participant layout"))?;
     let total_width = resources.checked_grid_add(width, super::BOX_BORDER_WIDTH)?;
-    let mut line =
-        blank_line_with_checkpoints(total_width, layout.width_profile, resources, checkpoints)?;
+    let mut line = blank_line_with_checkpoints(
+        total_width,
+        layout.policy.terminal_width_profile,
+        resources,
+        checkpoints,
+    )?;
     let center_offset = resources.checked_grid_add(width / 2, 1)?;
     let right = resources.checked_grid_add(width, 1)?;
     match row {
@@ -1071,7 +1070,7 @@ fn build_participant_box_row(
                 .checked_sub(top_padding)
                 .and_then(|index| label_lines.get(index));
             let label_width = row_label
-                .map(|line| display_width_with_profile(line, layout.width_profile))
+                .map(|line| display_width_with_profile(line, layout.policy.terminal_width_profile))
                 .unwrap_or(0);
             let left_padding = width
                 .checked_sub(label_width)

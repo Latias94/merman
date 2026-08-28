@@ -48,6 +48,24 @@ class PackageLegalMaterialTests(unittest.TestCase):
             {"LICENSE-MIT", "LICENSE-APACHE", "src/lib.rs"},
         )
 
+    def test_package_listing_paths_are_normalized_for_windows(self) -> None:
+        (self.root / "THIRD_PARTY_NOTICES.md").write_text("notice\n", encoding="utf-8")
+        licenses = self.root / "THIRD_PARTY_LICENSES/demo"
+        licenses.mkdir(parents=True)
+        (licenses / "LICENSE").write_text("license\n", encoding="utf-8")
+
+        package = self.package()
+        package["metadata"] = {"merman-legal": {"third-party-bundle": True}}
+        verify.verify_package_listing(
+            package,
+            {
+                "LICENSE-MIT",
+                "LICENSE-APACHE",
+                "THIRD_PARTY_NOTICES.md",
+                r"THIRD_PARTY_LICENSES\demo\LICENSE",
+            },
+        )
+
     def test_epl_package_requires_full_epl_text(self) -> None:
         with self.assertRaisesRegex(verify.PackageLegalMaterialError, "EPL-2.0"):
             verify.verify_package_listing(self.package("EPL-2.0"), {"src/lib.rs"})

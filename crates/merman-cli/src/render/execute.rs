@@ -24,6 +24,7 @@ pub(crate) fn execute_render(
                     let request = merman::AsciiRequest {
                         options: text.options,
                         resources: text.resources,
+                        viewport: text.viewport,
                     };
                     let output = text
                         .renderer
@@ -37,7 +38,12 @@ pub(crate) fn execute_render(
                     let merman::RenderOutput::Ascii(Some(rendered)) = output else {
                         return Err(CliError::NoDiagram);
                     };
-                    ExecutedArtifact::text(rendered.into_bytes(), permit)
+                    let bytes = if text.report {
+                        ascii_report_json(&rendered)?
+                    } else {
+                        rendered.into_bytes()
+                    };
+                    ExecutedArtifact::text(bytes, permit)
                 }
                 #[cfg(feature = "svg")]
                 PreparedSingleOutput::Graphical { renderer, .. } => {
@@ -65,6 +71,14 @@ pub(crate) fn execute_render(
 }
 
 #[cfg(feature = "ascii")]
+fn ascii_report_json(output: &merman::ascii::AsciiOutput) -> Result<Vec<u8>, CliError> {
+    if output.encoding != merman::ascii::AsciiOutputEncoding::Plain {
+        return Err(CliError::AsciiReportRequiresPlain);
+    }
+    serde_json::to_vec(&output.report()).map_err(CliError::json_output)
+}
+
+#[cfg(feature = "ascii")]
 fn map_ascii_render_error(
     error: merman::RenderError,
     resources: merman::ascii::AsciiResourcePolicy,
@@ -74,10 +88,12 @@ fn map_ascii_render_error(
             CliError::Ascii(merman::ascii::AsciiDiagnostic::from(error))
         }
         merman::RenderError::ResourceLimitExceeded(error) => {
-            if merman::ascii::AsciiResourceLimitId::from_stable_id(error.id).is_none() {
-                return CliError::Render(merman::RenderError::ResourceLimitExceeded(error));
-            }
-            CliError::ascii_resource(error, resources.profile())
+            let profile = error
+                .provenance
+                .as_ref()
+                .and_then(|provenance| provenance.profile)
+                .unwrap_or_else(|| resources.profile());
+            CliError::ascii_resource(error, profile)
         }
         other => CliError::from(other),
     }

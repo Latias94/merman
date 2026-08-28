@@ -192,6 +192,7 @@ fn route_body_admission_rejects_reserved_node_cells_before_commit() {
     let mut occupancy = SceneOccupancy::try_new_for_routes(
         &graph_layout,
         1,
+        4,
         &mut resources,
         AsciiExecution::for_test(&policy),
     )

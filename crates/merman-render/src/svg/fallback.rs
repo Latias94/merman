@@ -117,6 +117,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     let mut generated_elements = 0usize;
     let mut g_stack: Vec<GFrame> = Vec::new();
     let mut source_stack: Vec<SourceElement> = Vec::new();
+    let mut source_stack_overflow_depth = 0usize;
     let mut cascade_index = None;
     let mut i = 0usize;
     let mut iteration = 0usize;
@@ -145,7 +146,9 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
             if name.eq_ignore_ascii_case("g") {
                 let _ = g_stack.pop();
             }
-            if source_stack
+            if source_stack_overflow_depth > 0 {
+                source_stack_overflow_depth -= 1;
+            } else if source_stack
                 .last()
                 .is_some_and(|element| element.local_name.eq_ignore_ascii_case(name))
             {
@@ -198,21 +201,23 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                 checkpoint()?;
                 let raw_lines = htmlish_to_text_lines(inner, checkpoint)?;
                 if !raw_lines.is_empty() {
-                    let cascade = match cascade_index.as_ref() {
+                    let cascade = match cascade_index.as_mut() {
                         Some(cascade) => cascade,
                         None => {
-                            let cascade = CascadeIndex::new(svg, checkpoint)?;
-                            if let Some((actual, maximum)) = cascade.universal_postings_overflow() {
-                                selector_limit(actual, maximum)?;
-                            }
+                            let cascade = CascadeIndex::new(svg, checkpoint, selector_limit)?;
                             cascade_index = Some(cascade);
                             cascade_index
-                                .as_ref()
+                                .as_mut()
                                 .expect("cascade index was initialized")
                         }
                     };
-                    let typography =
-                        cascade.resolve_foreign_object(&source_stack, tag, inner, checkpoint)?;
+                    let typography = cascade.resolve_foreign_object(
+                        &source_stack,
+                        tag,
+                        inner,
+                        checkpoint,
+                        selector_limit,
+                    )?;
                     let wants_label_bkg = inner.contains("labelBkg");
                     let writer_background = if wants_label_bkg {
                         writer_owned_fallback_background(tag, checkpoint)?
@@ -268,12 +273,13 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                             preflight_generated,
                         )?;
                     } else if let Some(label_bkg) = &typography.label_background {
-                        let label_bkg = escape_xml_attr_with_checkpoints(label_bkg, checkpoint)?;
+                        let escaped_label_bkg =
+                            escape_xml_attr_with_checkpoints(label_bkg, checkpoint)?;
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
                                 r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
-                                abs_x, abs_y, width, height, label_bkg,
+                                abs_x, abs_y, width, height, escaped_label_bkg,
                             ),
                             1,
                             svg.len(),
@@ -346,7 +352,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                                 escaped_fill,
                                 source_classes_attr,
                                 escaped_style,
-                                text,
+                                text
                             ),
                             1,
                             svg.len(),
@@ -398,11 +404,21 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                 g_stack.push(GFrame::from_g_tag(tag, checkpoint)?);
             }
             if !is_self_closing(tag) {
-                source_stack.push(CascadeIndex::source_element(
-                    tag,
-                    Namespace::Svg,
-                    checkpoint,
-                )?);
+                if source_stack_overflow_depth > 0 {
+                    source_stack_overflow_depth = source_stack_overflow_depth.saturating_add(1);
+                } else if source_stack.len() >= cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
+                    selector_limit(
+                        source_stack.len().saturating_add(1),
+                        cascade::MAX_SELECTOR_ANCESTRY_DEPTH,
+                    )?;
+                    source_stack_overflow_depth = 1;
+                } else {
+                    source_stack.push(CascadeIndex::source_element(
+                        tag,
+                        Namespace::Svg,
+                        checkpoint,
+                    )?);
+                }
             }
         }
 
@@ -639,38 +655,47 @@ mod tests {
     }
 
     #[test]
-    fn foreign_object_overlay_preserves_writer_owned_occurrence_backgrounds() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg{background-color:#64748b}.edgeLabel rect{fill:#0f172a !important}</style><g class="edgeLabel"><foreignObject data-merman-fallback-occurrence="state-transition-label-background:edge0" data-merman-fallback-background-fill="#dc2626" x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>First</p></div></foreignObject></g><g class="edgeLabel"><foreignObject data-merman-fallback-occurrence="state-transition-label-background:edge1" data-merman-fallback-background-fill="#16a34a" x="50" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>Second</p></div></foreignObject></g></svg>"##;
+    fn foreign_object_overlay_does_not_inherit_background_color_by_default() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g style="background-color:#ff0000"><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>Hello</p></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(svg);
+        assert!(
+            !out.contains(r##"fill="#ff0000""##),
+            "background-color is not inherited by a child without a specified value: {out}"
+        );
 
-        for (occurrence, fill) in [
-            ("state-transition-label-background:edge0", "#dc2626"),
-            ("state-transition-label-background:edge1", "#16a34a"),
-        ] {
-            let document = roxmltree::Document::parse(&out).expect("valid fallback SVG XML");
-            let group = document
-                .descendants()
-                .find(|node| {
-                    node.has_tag_name("g")
-                        && node.attribute("data-merman-fallback-occurrence") == Some(occurrence)
-                })
-                .unwrap_or_else(|| panic!("missing fallback occurrence {occurrence}: {out}"));
-            let rect = group
-                .children()
-                .find(|node| node.has_tag_name("rect"))
-                .unwrap_or_else(|| panic!("missing fallback rect for {occurrence}: {out}"));
-            assert_eq!(
-                rect.attribute("data-merman-fallback-occurrence"),
-                Some(occurrence)
+        let explicit_initial = r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg{background-color:initial}</style><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>Hello</p></div></foreignObject></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(explicit_initial);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+        assert!(
+            !fallback.contains("rgba(232, 232, 232, 0.5)"),
+            "explicit background-color: initial must not become the compatibility gray: {out}"
+        );
+
+        for clear in ["transparent", "initial"] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg{{background-color:#ff0000}}.labelBkg .clear{{background-color:{clear}}}</style><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="clear">Hello</span></div></foreignObject></svg>"#,
             );
-            assert_eq!(rect.attribute("fill"), Some(fill));
-            let expected_style = format!("fill:{fill} !important");
-            assert_eq!(
-                rect.attribute("style"),
-                Some(expected_style.as_str()),
-                "the writer-owned terminal fill must outrank legacy .edgeLabel rect CSS: {out}"
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            let fallback = out
+                .split(r#"data-merman-foreignobject="fallback""#)
+                .nth(1)
+                .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+            assert!(
+                !fallback.contains(r##"fill="#ff0000""##)
+                    && !fallback.contains("rgba(232, 232, 232, 0.5)"),
+                "a specified {clear} descendant must clear the parent fallback background: {out}"
             );
         }
+
+        let inherited_child = r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg{background-color:#ff0000}.labelBkg .keep{background-color:inherit}</style><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="keep">Hello</span></div></foreignObject></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(inherited_child);
+        assert!(
+            out.contains(r##"fill="#ff0000""##),
+            "an explicit inherit descendant must retain the nearest resolved background: {out}"
+        );
     }
 
     #[test]
@@ -712,21 +737,6 @@ mod tests {
                 && out.contains("font-weight: 600")
                 && out.contains("font-style: italic"),
             "expected font context to propagate: {out}"
-        );
-    }
-
-    #[test]
-    fn inline_ancestor_fill_outranks_class_styles_in_foreign_object_fallback() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.label{fill:#333}</style><g class="label" style="color:transparent;fill:transparent"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span>Hidden</span></div></foreignObject></g></svg>"##;
-        let out = foreign_object_label_fallback_svg_text(svg);
-
-        assert!(
-            out.contains(r#"fill="transparent""#),
-            "inline terminal paint must remain the fallback winner: {out}"
-        );
-        assert!(
-            !out.contains(r##"fill="#333""##),
-            "class paint must not override inline terminal paint: {out}"
         );
     }
 
@@ -862,6 +872,17 @@ mod tests {
             "a valid-but-unadmitted sibling must not discard an admitted branch: {out}"
         );
 
+        for selector in [".a + .b", ".a ~ .b", "svg|a", "*|span", "a||b"] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><style>{selector},.nodeLabel{{font-size:13px}}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#,
+            );
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            assert!(
+                out.contains("font-size: 13px"),
+                "valid unsupported selector must preserve its admitted sibling ({selector}): {out}"
+            );
+        }
+
         let invalid = r#"
 <svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel,{font-size:13px}</style><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(invalid);
@@ -885,6 +906,44 @@ mod tests {
             out.contains("font-size: 16px") && !out.contains("font-size: 10px"),
             "an invalid compound must invalidate its complete selector list: {out}"
         );
+
+        for operator in ["|=", "^=", "$=", "*="] {
+            let selector = format!("[data-tags{operator}choice],.nodeLabel");
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><style>{selector}{{font-size:13px}}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></svg>"#,
+            );
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            assert!(
+                out.contains("font-size: 13px"),
+                "a valid-but-unadmitted attribute operator must preserve an admitted sibling ({operator}): {out}"
+            );
+        }
+
+        let malformed_attribute = r#"
+<svg xmlns="http://www.w3.org/2000/svg"><style>[data-tags^=],.nodeLabel{font-size:13px}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(malformed_attribute);
+        assert!(
+            out.contains("font-size: 16px") && !out.contains("font-size: 13px"),
+            "a malformed attribute selector must invalidate its complete selector list: {out}"
+        );
+
+        for malformed_selector in [
+            "span:hover@bad",
+            "span:hover$bad",
+            "span:hover #",
+            "span:hover .",
+            "span:hover [data-tags=\"foo\" junk]",
+            "a | b",
+        ] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><style>{malformed_selector},.nodeLabel{{font-size:13px}}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></svg>"#,
+            );
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            assert!(
+                out.contains("font-size: 16px") && !out.contains("font-size: 13px"),
+                "malformed unsupported selector must invalidate its sibling list ({malformed_selector}): {out}"
+            );
+        }
     }
 
     #[test]
@@ -968,6 +1027,47 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_overlay_rejects_malformed_functional_paints() {
+        for invalid in [
+            "rgb(foo)",
+            "rgba(1)",
+            "hsl(1 2 3)",
+            "hsla(10,20%,30%,oops)",
+            "rgb(1,2,3)garbage",
+            "rgb(1, 2 3)",
+            "hsl(1, 2% 3%)",
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{{color:#123456;color:{invalid} !important}}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></svg>"##,
+            );
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            let fallback = out
+                .split(r#"data-merman-foreignobject="fallback""#)
+                .nth(1)
+                .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+            assert!(
+                fallback.contains(r##"fill="#123456""##) && !fallback.contains(invalid),
+                "an invalid functional paint must not hide a lower valid declaration ({invalid}): {out}"
+            );
+        }
+
+        for valid in [
+            "rgb(18 52 86 / .5)",
+            "rgb(18, 52, 86)",
+            "hsl(210, 65%, 20%)",
+        ] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{{color:{valid}}}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></svg>"#,
+            );
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            assert!(
+                out.contains(&format!(r#"fill="{valid}""#)),
+                "a valid Mermaid functional paint must remain admitted ({valid}): {out}"
+            );
+        }
+    }
+
+    #[test]
     fn foreign_object_overlay_keeps_late_universal_winners() {
         let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
         for _ in 0..super::cascade::MAX_UNIVERSAL_POSTINGS {
@@ -1018,6 +1118,284 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_overlay_bounds_ordinary_selector_postings() {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
+        for index in 0..super::cascade::MAX_SELECTOR_POSTINGS {
+            if index > 0 {
+                svg.push(',');
+            }
+            svg.push_str(".posting");
+            svg.push_str(&index.to_string());
+        }
+        svg.push_str(r#"{font-size:12px}.nodeLabel{font-size:19px}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel posting"#);
+        svg.push_str(&(super::cascade::MAX_SELECTOR_POSTINGS - 1).to_string());
+        svg.push_str(r#"">Alpha</span></div></foreignObject></svg>"#);
+
+        let out = foreign_object_label_fallback_svg_text(&svg);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+        assert!(
+            fallback.contains("font-size: 12px") && !fallback.contains("font-size: 19px"),
+            "the infallible helper must ignore ordinary postings beyond the private cap: {out}"
+        );
+
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let mut checkpoint = || Ok::<(), &'static str>(());
+        let mut selector_limit = |actual, maximum| {
+            assert_eq!(actual, super::cascade::MAX_SELECTOR_POSTINGS + 1);
+            assert_eq!(maximum, super::cascade::MAX_SELECTOR_POSTINGS);
+            Err("selector limit")
+        };
+        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+            &svg,
+            &measurer,
+            &mut checkpoint,
+            &mut selector_limit,
+            &mut preflight,
+        );
+
+        assert_eq!(result, Err("selector limit"));
+    }
+
+    #[test]
+    fn foreign_object_overlay_rejects_oversized_selector_stylesheet() {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
+        svg.extend(std::iter::repeat_n(
+            ' ',
+            super::cascade::MAX_SELECTOR_STYLESHEET_BYTES + 1,
+        ));
+        svg.push_str(
+            r#"</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></svg>"#,
+        );
+
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let mut checkpoint = || Ok::<(), &'static str>(());
+        let mut selector_limit = |actual, maximum| {
+            assert_eq!(actual, super::cascade::MAX_SELECTOR_STYLESHEET_BYTES + 1);
+            assert_eq!(maximum, super::cascade::MAX_SELECTOR_STYLESHEET_BYTES);
+            Err("selector limit")
+        };
+        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+            &svg,
+            &measurer,
+            &mut checkpoint,
+            &mut selector_limit,
+            &mut preflight,
+        );
+
+        assert_eq!(result, Err("selector limit"));
+
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .begin_session()
+            .unwrap();
+        let error = crate::svg::pipeline::SvgPipeline::resvg_safe()
+            .process_to_string(&svg, &session)
+            .expect_err("the public pipeline must preserve the selector resource error");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected a resource limit error");
+        };
+        assert_eq!(
+            limit.phase,
+            crate::resources::ResourceLimitPhase::SvgPostprocess
+        );
+        assert_eq!(limit.limit, "svg_fallback_selector_index");
+        assert_eq!(limit.cause, crate::resources::ResourceLimitCause::Ceiling);
+        assert_eq!(
+            (limit.actual, limit.max),
+            (
+                super::cascade::MAX_SELECTOR_STYLESHEET_BYTES + 1,
+                super::cascade::MAX_SELECTOR_STYLESHEET_BYTES,
+            )
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_discards_a_rule_over_the_declaration_cap() {
+        let mut svg = String::from(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel{font-size:12px;"#,
+        );
+        for _ in 1..super::cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE {
+            svg.push_str("font-weight:400;");
+        }
+        svg.push_str(
+            r#"font-size:19px}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></svg>"#,
+        );
+
+        let out = foreign_object_label_fallback_svg_text(&svg);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+        assert!(
+            fallback.contains("font-size: 16px")
+                && !fallback.contains("font-size: 12px")
+                && !fallback.contains("font-size: 19px"),
+            "an over-limit declaration block must be discarded atomically: {out}"
+        );
+
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let mut checkpoint = || Ok::<(), &'static str>(());
+        let mut selector_limit = |actual, maximum| {
+            assert_eq!(
+                actual,
+                super::cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE + 1
+            );
+            assert_eq!(maximum, super::cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE);
+            Err("selector limit")
+        };
+        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+            &svg,
+            &measurer,
+            &mut checkpoint,
+            &mut selector_limit,
+            &mut preflight,
+        );
+        assert_eq!(result, Err("selector limit"));
+    }
+
+    #[test]
+    fn foreign_object_overlay_discards_a_selector_list_over_the_component_cap() {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.nodeLabel"#);
+        for _ in 0..super::cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH {
+            svg.push_str(".extra");
+        }
+        svg.push_str(
+            r#",.nodeLabel{font-size:19px}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></svg>"#,
+        );
+
+        let out = foreign_object_label_fallback_svg_text(&svg);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+        assert!(
+            fallback.contains("font-size: 16px") && !fallback.contains("font-size: 19px"),
+            "a selector-list resource overflow must not retain an admitted sibling: {out}"
+        );
+
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let mut checkpoint = || Ok::<(), &'static str>(());
+        let mut selector_limit = |actual, maximum| {
+            assert_eq!(
+                actual,
+                super::cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH + 1
+            );
+            assert_eq!(maximum, super::cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH);
+            Err("selector limit")
+        };
+        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+            &svg,
+            &measurer,
+            &mut checkpoint,
+            &mut selector_limit,
+            &mut preflight,
+        );
+        assert_eq!(result, Err("selector limit"));
+    }
+
+    #[test]
+    fn foreign_object_overlay_accounts_for_source_selector_width_in_match_work() {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg"><style>"#);
+        for index in 0..512 {
+            if index > 0 {
+                svg.push(',');
+            }
+            svg.push_str(".hit.missing");
+            svg.push_str(&index.to_string());
+        }
+        svg.push_str(
+            r#"{font-size:12px}.hit{font-size:19px}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="hit"#,
+        );
+        for index in 0..3000 {
+            svg.push_str(" filler");
+            svg.push_str(&index.to_string());
+        }
+        svg.push_str(r#"">Alpha</span></div></foreignObject></svg>"#);
+
+        let out = foreign_object_label_fallback_svg_text(&svg);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output"));
+        assert!(
+            fallback.contains("font-size: 16px")
+                && !fallback.contains("font-size: 12px")
+                && !fallback.contains("font-size: 19px"),
+            "an exhausted match budget must skip all stylesheet candidates for the element"
+        );
+
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let mut checkpoint = || Ok::<(), &'static str>(());
+        let mut selector_limit = |actual, maximum| {
+            assert!(actual > maximum);
+            assert_eq!(maximum, super::cascade::MAX_SELECTOR_MATCH_WORK);
+            Err("selector limit")
+        };
+        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+            &svg,
+            &measurer,
+            &mut checkpoint,
+            &mut selector_limit,
+            &mut preflight,
+        );
+        assert_eq!(result, Err("selector limit"));
+    }
+
+    #[test]
+    fn foreign_object_overlay_bounds_source_ancestry_before_building_paths() {
+        let mut svg = String::from(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><style>a{font-size:12px}</style>"#,
+        );
+        for _ in 0..=super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
+            svg.push_str("<a>");
+        }
+        svg.push_str(
+            r#"<foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml">Alpha</div></foreignObject>"#,
+        );
+        for _ in 0..=super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
+            svg.push_str("</a>");
+        }
+        svg.push_str("</svg>");
+
+        let out = foreign_object_label_fallback_svg_text(&svg);
+        let fallback = out
+            .split(r#"data-merman-foreignobject="fallback""#)
+            .nth(1)
+            .unwrap_or_else(|| panic!("expected fallback output: {out}"));
+        assert!(
+            fallback.contains("font-size: 16px") && !fallback.contains("font-size: 12px"),
+            "an over-deep source path must use the bounded fallback defaults: {out}"
+        );
+
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let mut checkpoint = || Ok::<(), &'static str>(());
+        let mut selector_limit = |actual, maximum| {
+            assert_eq!(actual, super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH + 1);
+            assert_eq!(maximum, super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH);
+            Err("selector limit")
+        };
+        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+            &svg,
+            &measurer,
+            &mut checkpoint,
+            &mut selector_limit,
+            &mut preflight,
+        );
+        assert_eq!(result, Err("selector limit"));
+    }
+
+    #[test]
     fn foreign_object_overlay_resolves_nested_label_background_descendants() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg .nested{background-color:#c0ffee}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="nested">Alpha</span></div></foreignObject></svg>"##;
         let out = foreign_object_label_fallback_svg_text(svg);
@@ -1029,6 +1407,43 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_overlay_resolves_classless_common_background_owner() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edgeLabel{background-color:#c0ffee}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel">Alpha</span></div></foreignObject></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(r##"<rect x="0" y="0" width="80" height="30" fill="#c0ffee"/>"##),
+            "a classless common XHTML background owner must drive the fallback rect: {out}"
+        );
+
+        let shorthand = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edgeLabel{background:#ececff}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel">Alpha</span></div></foreignObject></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(shorthand);
+        assert!(
+            out.contains(r##"<rect x="0" y="0" width="80" height="30" fill="#ececff"/>"##),
+            "a color-only background shorthand must resolve on the real XHTML owner: {out}"
+        );
+
+        let current_color = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edgeLabel{color:#123456;background-color:currentColor}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel">Alpha</span></div></foreignObject></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(current_color);
+        assert!(
+            out.contains(r##"<rect x="0" y="0" width="80" height="30" fill="#123456"/>"##)
+                && !out.contains(r#"fill="currentcolor""#),
+            "background currentColor must be materialized before leaving XHTML context: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_does_not_expand_partial_run_background() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.highlight{background-color:#c0ffee}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="highlight">Alpha</span><span>Beta</span></div></foreignObject></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            !out.contains(r##"<rect x="0" y="0" width="80" height="30" fill="#c0ffee"/>"##),
+            "a background that covers only one rich-text run must not expand to the complete fallback label: {out}"
+        );
+    }
+
+    #[test]
     fn foreign_object_overlay_classifies_common_xhtml_type_selectors() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><style>a{font-size:13px}code{font-weight:600}label{font-style:italic}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><label><code><a>Alpha</a></code></label></div></foreignObject></svg>"#;
         let out = foreign_object_label_fallback_svg_text(svg);
@@ -1036,6 +1451,17 @@ mod tests {
         assert!(out.contains("font-size: 13px"), "got: {out}");
         assert!(out.contains("font-weight: 600"), "got: {out}");
         assert!(out.contains("font-style: italic"), "got: {out}");
+    }
+
+    #[test]
+    fn foreign_object_overlay_keeps_unprefixed_type_selectors_namespace_neutral() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><style>a{font-size:13px}</style><a><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></a></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains("font-size: 13px"),
+            "an unprefixed type selector must match the real SVG ancestor namespace: {out}"
+        );
     }
 
     #[test]
@@ -1201,26 +1627,6 @@ mod tests {
         assert!(
             out.contains(">Import / WebSurface / Data Egress Gates</text>"),
             "explicit nowrap labels should keep the existing single-line fallback behavior: {out}"
-        );
-    }
-
-    #[test]
-    fn prepared_foreign_object_uses_explicit_lines_and_emits_canonical_line_ids() {
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject data-merman-prepared-text-label="merman-prepared-state-7" width="48" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 48px; text-align: center; width: 48px;"><span class="nodeLabel"><p>Alpha Beta<br />Gamma Delta</p></span></div></foreignObject></g></svg>"#;
-        let out = foreign_object_label_fallback_svg_text(svg);
-
-        assert!(
-            out.contains(r#"id="merman-prepared-state-7-line-0""#)
-                && out.contains(r#"id="merman-prepared-state-7-line-1""#),
-            "prepared fallback lines must retain their label identity: {out}"
-        );
-        assert!(
-            out.contains(">Alpha Beta</text>") && out.contains(">Gamma Delta</text>"),
-            "prepared lines must not be wrapped a second time: {out}"
-        );
-        assert!(
-            !out.contains("merman-prepared-state-7-line-2"),
-            "prepared fallback must emit exactly one token per explicit line: {out}"
         );
     }
 }

@@ -34,7 +34,10 @@ use crate::cli::{NativeRenderOptions, RenderArgs, RenderFormat};
 #[cfg(feature = "rustdoc")]
 use crate::cli::{RustdocArgs, RustdocCommand};
 #[cfg(feature = "ascii")]
-use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs, TextWidthProfile};
+use crate::cli::{
+    TextCharset, TextColorMode, TextDirection, TextLayoutProfile, TextOutputCliArgs,
+    TextWidthProfile,
+};
 use crate::error::CliError;
 use crate::resources::ResolvedResourcePolicy;
 use merman::runtime::RuntimePolicy;
@@ -65,6 +68,9 @@ pub(crate) struct ColorEnvironment {
     pub(crate) term: Option<String>,
 }
 
+// Feature-gated command variants are resolved once at the CLI boundary; boxing every large
+// render variant would add an allocation to the hot dispatch path without changing ownership.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub(crate) enum ResolvedInvocation {
     Capabilities(CapabilitiesArgs),
@@ -263,6 +269,9 @@ impl ResolvedDestination {
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
+// Text rendering carries the canonical ASCII policy and resource records by value; boxing this
+// dispatch enum would add an allocation without changing the ownership boundary.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub(crate) enum ResolvedOutput {
     #[cfg(feature = "svg")]
@@ -275,6 +284,8 @@ pub(crate) enum ResolvedOutput {
         destination: ResolvedDestination,
         options: Box<merman::ascii::AsciiRenderOptions>,
         resources: merman::ascii::AsciiResourcePolicy,
+        viewport: merman::ascii::AsciiViewportPolicy,
+        report: bool,
     },
     #[cfg(feature = "png")]
     Png {
@@ -1212,11 +1223,15 @@ fn resolved_native_output(
                         CliError::InvalidInput(format!("invalid ASCII resource limit: {error}"))
                     })?;
             }
-            let options = resolve_text_output_options(format, &options.text, &destination, facts)?;
+            let viewport = resolve_text_viewport_options(&options.text)?;
+            let render_options =
+                resolve_text_output_options(format, &options.text, &destination, facts)?;
             Ok(ResolvedOutput::Text {
                 destination,
-                options: Box::new(options),
+                options: Box::new(render_options),
                 resources,
+                viewport,
+                report: options.text.ascii_report,
             })
         }
         #[cfg(feature = "svg")]
@@ -1277,6 +1292,7 @@ fn resolve_text_output_options(
         #[cfg(feature = "svg")]
         _ => unreachable!("text options are resolved only for text output"),
     };
+    options.layout_profile = resolve_text_layout_profile(args);
     if let Some(charset) = args.ascii_charset {
         options.charset = match charset {
             TextCharset::Ascii => merman::ascii::AsciiCharset::Ascii,
@@ -1289,26 +1305,16 @@ fn resolve_text_output_options(
             TextWidthProfile::Cjk => merman::ascii::TerminalWidthProfile::Cjk,
         };
     }
+    if let Some(width) = args.ascii_flowchart_wrap_width {
+        options = options.with_flowchart_node_label_wrap_width(width);
+    }
     if let Some(direction) = args.ascii_direction {
         options.default_direction = match direction {
             TextDirection::LeftRight => merman::ascii::AsciiDirection::LeftRight,
             TextDirection::TopDown => merman::ascii::AsciiDirection::TopDown,
         };
     }
-    if let Some(color_mode) = args.ascii_color {
-        let color_mode = match color_mode {
-            TextColorMode::Auto => resolve_auto_text_color(facts, destination),
-            explicit => explicit,
-        };
-        options.color_mode = match color_mode {
-            TextColorMode::Plain => merman::ascii::AsciiColorMode::Plain,
-            TextColorMode::Ansi16 => merman::ascii::AsciiColorMode::Ansi16,
-            TextColorMode::Ansi256 => merman::ascii::AsciiColorMode::Ansi256,
-            TextColorMode::Truecolor => merman::ascii::AsciiColorMode::TrueColor,
-            TextColorMode::Html => merman::ascii::AsciiColorMode::Html,
-            TextColorMode::Auto => unreachable!("automatic text color is resolved above"),
-        };
-    }
+    options.color_mode = resolve_text_color_mode(args, destination, facts)?;
     options.sequence_mirror_actors = args.sequence_mirror_actors;
     if let Some(height) = args.xychart_vertical_plot_height {
         options.xychart_vertical_plot_height = height;
@@ -1323,6 +1329,70 @@ fn resolve_text_output_options(
         .validate()
         .map_err(|error| CliError::InvalidInput(format!("invalid ASCII options: {error}")))?;
     Ok(options)
+}
+
+#[cfg(feature = "ascii")]
+fn resolve_text_color_mode(
+    args: &TextOutputCliArgs,
+    destination: &ResolvedDestination,
+    facts: &InvocationFacts,
+) -> Result<merman::ascii::AsciiColorMode, CliError> {
+    if args.ascii_report {
+        return match args.ascii_color {
+            None | Some(TextColorMode::Plain | TextColorMode::Auto) => {
+                Ok(merman::ascii::AsciiColorMode::Plain)
+            }
+            Some(
+                TextColorMode::Ansi16
+                | TextColorMode::Ansi256
+                | TextColorMode::Truecolor
+                | TextColorMode::Html,
+            ) => Err(CliError::AsciiReportRequiresPlain),
+        };
+    }
+
+    let color_mode = match args.ascii_color.unwrap_or(TextColorMode::Plain) {
+        TextColorMode::Auto => resolve_auto_text_color(facts, destination),
+        explicit => explicit,
+    };
+    Ok(match color_mode {
+        TextColorMode::Plain => merman::ascii::AsciiColorMode::Plain,
+        TextColorMode::Ansi16 => merman::ascii::AsciiColorMode::Ansi16,
+        TextColorMode::Ansi256 => merman::ascii::AsciiColorMode::Ansi256,
+        TextColorMode::Truecolor => merman::ascii::AsciiColorMode::TrueColor,
+        TextColorMode::Html => merman::ascii::AsciiColorMode::Html,
+        TextColorMode::Auto => unreachable!("automatic text color is resolved above"),
+    })
+}
+
+#[cfg(feature = "ascii")]
+fn resolve_text_viewport_options(
+    args: &TextOutputCliArgs,
+) -> Result<merman::ascii::AsciiViewportPolicy, CliError> {
+    let overflow = match args.ascii_overflow {
+        crate::cli::TextOverflowPolicy::Allow => merman::ascii::OverflowPolicy::Allow,
+        crate::cli::TextOverflowPolicy::Fallback => merman::ascii::OverflowPolicy::Fallback,
+        crate::cli::TextOverflowPolicy::Error => merman::ascii::OverflowPolicy::Error,
+    };
+    let mut viewport = merman::ascii::AsciiViewportPolicy::default().overflow(overflow);
+    if let Some(max_width) = args.ascii_max_width {
+        viewport = viewport.max_width(max_width);
+    }
+    if args.ascii_trim_trailing_spaces {
+        viewport = viewport.trim(merman::ascii::AsciiTrimPolicy::TrimTrailingSpaces);
+    }
+    viewport
+        .validate()
+        .map_err(|error| CliError::InvalidInput(format!("invalid ASCII viewport: {error}")))?;
+    Ok(viewport)
+}
+
+#[cfg(feature = "ascii")]
+fn resolve_text_layout_profile(args: &TextOutputCliArgs) -> merman::ascii::AsciiLayoutProfile {
+    match args.ascii_layout_profile {
+        TextLayoutProfile::Canonical => merman::ascii::AsciiLayoutProfile::Canonical,
+        TextLayoutProfile::Compact => merman::ascii::AsciiLayoutProfile::Compact,
+    }
 }
 
 #[cfg(feature = "ascii")]
@@ -1831,12 +1901,24 @@ fn text_options_are_configured(options: &TextOutputCliArgs) -> bool {
     options.sequence_mirror_actors
         || options.ascii_charset.is_some()
         || options.ascii_width_profile.is_some()
+        || options.ascii_flowchart_wrap_width.is_some()
         || options.ascii_direction.is_some()
         || options.ascii_color.is_some()
         || options.xychart_vertical_plot_height.is_some()
         || options.xychart_category_band_width.is_some()
         || options.xychart_horizontal_plot_width.is_some()
         || options.ascii_max_grid_cells.is_some()
+        || options.ascii_max_width.is_some()
+        || !matches!(
+            options.ascii_overflow,
+            crate::cli::TextOverflowPolicy::Allow
+        )
+        || options.ascii_trim_trailing_spaces
+        || !matches!(
+            options.ascii_layout_profile,
+            crate::cli::TextLayoutProfile::Canonical
+        )
+        || options.ascii_report
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -2077,6 +2159,73 @@ mod tests {
 
     #[cfg(feature = "ascii")]
     #[test]
+    fn report_output_normalizes_auto_color_to_plain_for_every_host_context() {
+        let args = TextOutputCliArgs {
+            ascii_color: Some(crate::cli::TextColorMode::Auto),
+            ascii_report: true,
+            ..TextOutputCliArgs::default()
+        };
+        let cases = [
+            (
+                ResolvedDestination::Stdout,
+                color_facts(
+                    true,
+                    false,
+                    false,
+                    Some("truecolor"),
+                    Some("xterm-256color"),
+                ),
+            ),
+            (
+                ResolvedDestination::Stdout,
+                color_facts(false, false, false, None, Some("xterm")),
+            ),
+            (
+                ResolvedDestination::File(PathBuf::from("report.json")),
+                color_facts(true, false, true, Some("truecolor"), Some("xterm-256color")),
+            ),
+            (
+                ResolvedDestination::Stdout,
+                color_facts(true, true, false, Some("truecolor"), Some("dumb")),
+            ),
+        ];
+
+        for (destination, facts) in cases {
+            let resolved =
+                resolve_text_output_options(RenderFormat::Unicode, &args, &destination, &facts)
+                    .expect("report auto color should normalize to plain");
+            assert_eq!(resolved.color_mode, merman::ascii::AsciiColorMode::Plain);
+        }
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn report_output_rejects_every_explicit_styled_encoding() {
+        for color_mode in [
+            crate::cli::TextColorMode::Ansi16,
+            crate::cli::TextColorMode::Ansi256,
+            crate::cli::TextColorMode::Truecolor,
+            crate::cli::TextColorMode::Html,
+        ] {
+            let args = TextOutputCliArgs {
+                ascii_color: Some(color_mode),
+                ascii_report: true,
+                ..TextOutputCliArgs::default()
+            };
+            let error = resolve_text_output_options(
+                RenderFormat::Ascii,
+                &args,
+                &ResolvedDestination::Stdout,
+                &color_facts(true, false, false, Some("truecolor"), Some("xterm")),
+            )
+            .expect_err("styled report output must fail during invocation normalization");
+
+            assert!(matches!(error, CliError::AsciiReportRequiresPlain));
+        }
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
     fn text_output_options_resolve_cjk_width_profile() {
         let args = TextOutputCliArgs {
             ascii_width_profile: Some(crate::cli::TextWidthProfile::Cjk),
@@ -2094,6 +2243,52 @@ mod tests {
         assert_eq!(
             resolved.terminal_width_profile,
             merman::ascii::TerminalWidthProfile::Cjk
+        );
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn text_output_options_resolve_viewport_and_compact_profile() {
+        let args = TextOutputCliArgs {
+            ascii_max_width: Some(80),
+            ascii_overflow: crate::cli::TextOverflowPolicy::Fallback,
+            ascii_trim_trailing_spaces: true,
+            ascii_layout_profile: crate::cli::TextLayoutProfile::Compact,
+            ..TextOutputCliArgs::default()
+        };
+        let viewport = resolve_text_viewport_options(&args).expect("resolve viewport");
+        assert_eq!(viewport.max_width, Some(80));
+        assert_eq!(viewport.overflow, merman::ascii::OverflowPolicy::Fallback);
+        assert_eq!(
+            viewport.trim,
+            merman::ascii::AsciiTrimPolicy::TrimTrailingSpaces
+        );
+        let options = resolve_text_output_options(
+            RenderFormat::Ascii,
+            &args,
+            &ResolvedDestination::Stdout,
+            &facts(false),
+        )
+        .expect("resolve compact options");
+        assert_eq!(
+            options.layout_profile,
+            merman::ascii::AsciiLayoutProfile::Compact
+        );
+    }
+
+    #[cfg(all(feature = "ascii", feature = "svg"))]
+    #[test]
+    fn compact_layout_profile_requires_text_output() {
+        let mut options = NativeRenderOptions::default();
+        options.text.ascii_layout_profile = crate::cli::TextLayoutProfile::Compact;
+
+        let error = validate_native_output_options(RenderFormat::Svg, &options)
+            .expect_err("compact text profile must not be ignored for SVG output");
+
+        assert!(
+            error
+                .to_string()
+                .contains("text output options require --format ascii or --format unicode")
         );
     }
 

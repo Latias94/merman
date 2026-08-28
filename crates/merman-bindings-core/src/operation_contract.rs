@@ -109,7 +109,7 @@ impl BindingOutputPlanContract {
     }
 }
 
-/// Stable generator input for operation metadata and its nested versioned decoders.
+/// Stable generator input for operation metadata and output-plan decoders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct BindingOperationMetadataContract {
@@ -236,7 +236,39 @@ const PDF_FILTER_IMAGE_FIELDS: &[BindingJsonFieldContract] = &[
     field("limited", "boolean", true, None, false),
 ];
 
+const ASCII_FIELDS: &[BindingJsonFieldContract] = &[
+    field("kind", "string", true, None, false),
+    field("schema_version", "unsigned-integer", true, Some(16), false),
+    field("family", "string", true, None, true),
+    field("projection", "string", true, None, false),
+    field("encoding", "string", true, None, false),
+    field("primary_width", "unsigned-integer", true, Some(64), false),
+    field("primary_height", "unsigned-integer", true, Some(64), false),
+    field("emitted_width", "unsigned-integer", true, Some(64), false),
+    field("emitted_height", "unsigned-integer", true, Some(64), false),
+    field("width_profile", "string", true, None, false),
+    field("layout_profile", "string", true, None, false),
+    field(
+        "requested_max_width",
+        "unsigned-integer",
+        false,
+        Some(64),
+        false,
+    ),
+    field("overflowed", "boolean", true, None, false),
+    field("outcome", "string", true, None, false),
+    field("fallback_capability", "string", true, None, false),
+    field("fallback_attempted", "boolean", true, None, false),
+    field("fallback_reason", "string", false, None, false),
+    field("trimmed", "boolean", true, None, false),
+    field("lossiness", "string", true, None, false),
+];
+
 const OUTPUT_PLANS: &[BindingOutputPlanContract] = &[
+    BindingOutputPlanContract {
+        kind: "ascii",
+        fields: ASCII_FIELDS,
+    },
     BindingOutputPlanContract {
         kind: "raster",
         fields: RASTER_FIELDS,
@@ -467,8 +499,7 @@ mod tests {
             .find(|field| field.name() == "byte_length")
             .unwrap();
         assert_eq!(byte_length.integer_width_bits(), Some(64));
-        assert_eq!(contract.output_plans().len(), 2);
-
+        assert_eq!(contract.output_plans().len(), 3);
         let evidence = &contract.theme_execution_evidence_versions()[0];
         assert_eq!(evidence.version(), 1);
         assert_eq!(evidence.max_id_utf8_bytes(), 128);
@@ -477,6 +508,18 @@ mod tests {
         assert_eq!(evidence.fields().len(), 8);
         assert_eq!(evidence.fields()[1].name(), "family_id");
         assert_eq!(evidence.fields()[2].name(), "theme_status");
+        let ascii = contract
+            .output_plans()
+            .iter()
+            .find(|plan| plan.kind() == "ascii")
+            .expect("ASCII output plan contract");
+        let encoding = ascii
+            .fields()
+            .iter()
+            .find(|field| field.name() == "encoding")
+            .expect("ASCII encoding field");
+        assert_eq!(encoding.json_type(), "string");
+        assert!(encoding.required());
     }
 
     #[test]

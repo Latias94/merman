@@ -1,7 +1,8 @@
 #![cfg(feature = "ascii")]
 
 use merman::ascii::{
-    AsciiError, AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitId, AsciiResourcePolicy,
+    AsciiError, AsciiOutputOutcome, AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitId,
+    AsciiResourcePolicy, AsciiViewportPolicy, OverflowPolicy,
 };
 use merman::resources::ResourceProfile;
 use merman::{
@@ -58,9 +59,33 @@ fn renderer_renders_ascii_flowchart_from_mermaid_text() {
     };
 
     assert_eq!(
-        rendered,
+        rendered.text,
         "+---+     +---+\n|   |     |   |\n| A |---->| B |\n|   |     |   |\n+---+     +---+\n"
     );
+}
+
+#[test]
+fn facade_report_exposes_bounded_fallback_without_remeasuring_text() {
+    let output = Renderer::new()
+        .with_parse_options(merman::ParseOptions::strict())
+        .render(RenderRequest::ascii(
+            "flowchart LR\nA[Alpha] --> B[Beta]",
+            OperationControl::new(),
+            AsciiRequest {
+                options: AsciiRenderOptions::ascii(),
+                viewport: AsciiViewportPolicy::with_max_width(5).overflow(OverflowPolicy::Fallback),
+                ..Default::default()
+            },
+        ))
+        .unwrap();
+    let RenderOutput::Ascii(Some(report)) = output else {
+        panic!("diagram not detected");
+    };
+    assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
+    assert!(report.emitted_extent.width <= 5);
+    let flattened = report.text.replace('\n', "");
+    assert!(flattened.contains("Alpha"));
+    assert!(flattened.contains("Beta"));
 }
 
 #[test]
@@ -96,8 +121,9 @@ bar [2, 8]
         };
 
         assert!(
-            rendered.contains(expected),
-            "expected {expected:?} in rendered output:\n{rendered}"
+            rendered.text.contains(expected),
+            "expected {expected:?} in rendered output:\n{}",
+            rendered.text
         );
     }
 }
@@ -154,7 +180,7 @@ fn renderer_uses_ascii_options_for_padding() {
     };
 
     assert_eq!(
-        rendered,
+        rendered.text,
         "+---+  +---+\n|   |  |   |\n| A |->| B |\n|   |  |   |\n+---+  +---+\n"
     );
 }
@@ -180,11 +206,16 @@ fn canonical_ascii_renderer_applies_flowchart_node_label_wrapping() {
 
     for expected in ["Alpha", "Beta", "Gamma", "Delta"] {
         assert!(
-            rendered.contains(expected),
-            "missing {expected:?}:\n{rendered}"
+            rendered.text.contains(expected),
+            "missing {expected:?}:\n{}",
+            rendered.text
         );
     }
-    assert!(!rendered.contains("Alpha Beta Gamma Delta"), "{rendered}");
+    assert!(
+        !rendered.text.contains("Alpha Beta Gamma Delta"),
+        "{}",
+        rendered.text
+    );
 }
 
 #[test]
@@ -201,23 +232,23 @@ fn renderer_renders_sequence_with_unicode_defaults() {
         panic!("diagram not detected");
     };
 
-    assert!(rendered.contains("┌"));
-    assert!(rendered.contains("Hello"));
-    assert!(rendered.contains("►"));
+    assert!(rendered.text.contains("┌"));
+    assert!(rendered.text.contains("Hello"));
+    assert!(rendered.text.contains("►"));
 }
 
 #[test]
 fn renderer_returns_no_ascii_when_no_diagram_is_detected() {
-    let rendered = Renderer::new()
+    let error = Renderer::new()
         .with_parse_options(merman::ParseOptions::lenient())
         .render(RenderRequest::ascii(
             "this is just prose",
             OperationControl::new(),
             AsciiRequest::default(),
         ))
-        .unwrap();
+        .expect_err("a missing ASCII diagram should be a typed facade error");
 
-    assert!(matches!(rendered, RenderOutput::Ascii(None)));
+    assert!(matches!(error, merman::RenderError::NoDiagram));
 }
 
 #[test]

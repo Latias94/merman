@@ -33,6 +33,18 @@
   }
 }
 
+#let resolve-diagram-id(profile-id, profile-diagram-id, direct-id, direct-diagram-id) = {
+  if direct-diagram-id != none {
+    direct-diagram-id
+  } else if direct-id != none {
+    direct-id
+  } else if profile-diagram-id != none {
+    profile-diagram-id
+  } else {
+    profile-id
+  }
+}
+
 #let merge-dict(base, override, name) = {
   let base = dictionary-or-none(base, name)
   let override = dictionary-or-none(override, name)
@@ -370,6 +382,18 @@
   )
 }
 
+#let opaque-render-config(binding-options, direct-options: none, profile-options: none) = {
+  (
+    binding_options: binding-options,
+    direct_layout: none,
+    direct_options: direct-options,
+    direct_container_width: none,
+    profile_layout: none,
+    profile_layout_container_width: none,
+    profile_options: profile-options,
+  )
+}
+
 #let render-config(
   options: none,
   profile: none,
@@ -397,79 +421,79 @@
 ) = {
   let profile = validated-profile(profile)
   let profile-options = profile-field(profile, "options")
-  let profile-site-config = profile-field(profile, "site-config", alt: "site_config")
-  let profile-typography = profile-field(profile, "typography")
-  let profile-theme-input = theme-input(
-    profile-field(profile, "diagram-theme", alt: "diagram_theme"),
-    profile-field(profile, "theme-preset", alt: "theme_preset"),
-    "merman profile",
-  )
-  let direct-theme-input = theme-input(diagram-theme, theme-preset, "merman options")
-  let selected-theme-input = if direct-theme-input != none {
-    direct-theme-input
-  } else {
-    profile-theme-input
-  }
-  let profile-layout = profile-field(profile, "layout")
-  let profile-layout-container-width = layout-container-width(profile-layout)
-  let profile-environment = profile-field(profile, "environment")
-  let profile-text-measurement = profile-field(profile, "text-measurement")
-  let profile-math-renderer = profile-field(profile, "math-renderer")
-
-  let profile-site-config = apply-mermaid-theme-site-config(
-    profile-site-config,
-    profile-field(profile, "theme-variables", alt: "theme_variables"),
-    profile-field(profile, "theme-name", alt: "theme_name"),
-    profile-field(profile, "base-theme", alt: "base_theme"),
-  )
-  let site-config = if site-config == none {
-    profile-site-config
-  } else {
-    dictionary-or-none(site-config, "merman site-config")
-  }
-  let site-config = apply-mermaid-theme-site-config(
-    site-config,
-    theme-variables,
-    theme-name,
-    base-theme,
-  )
-  let pipeline = choose-value(profile-field(profile, "pipeline"), pipeline, default: "resvg-safe")
-  let id = choose-value(profile-field(profile, "id"), id)
-  let diagram-id = choose-value(profile-field(profile, "diagram-id", alt: "diagram_id"), diagram-id)
-  let background = choose-value(profile-field(profile, "background"), background)
-  let drop-native-duplicate-fallbacks = choose-value(
-    profile-field(
-      profile,
-      "drop-native-duplicate-fallbacks",
-      alt: "drop_native_duplicate_fallbacks",
-    ),
-    drop-native-duplicate-fallbacks,
-  )
-  let container-width = choose-value(
-    profile-field(profile, "container-width", alt: "container_width"),
-    container-width,
-  )
-  let container-height = choose-value(
-    profile-field(profile, "container-height", alt: "container_height"),
-    container-height,
-  )
-  let fixed-today = choose-value(profile-field(profile, "fixed-today", alt: "fixed_today"), fixed-today)
-  let fixed-local-offset-minutes = choose-value(
-    profile-field(profile, "fixed-local-offset-minutes", alt: "fixed_local_offset_minutes"),
-    fixed-local-offset-minutes,
-  )
-  let text-style = merged-typography-style(
-    context-text-style,
-    profile-typography,
-    typography,
-  )
-  let diagram-theme-selection = build-theme-selection(selected-theme-input, text-style)
-
-  let binding-options = if options != none {
-    options
+  if options != none {
+    opaque-render-config(options, direct-options: options)
   } else if profile-options != none {
-    profile-options
+    opaque-render-config(profile-options, profile-options: profile-options)
   } else {
+    let profile-site-config = profile-field(profile, "site-config", alt: "site_config")
+    let profile-typography = profile-field(profile, "typography")
+    let profile-theme-input = theme-input(
+      profile-field(profile, "diagram-theme", alt: "diagram_theme"),
+      profile-field(profile, "theme-preset", alt: "theme_preset"),
+      "merman profile",
+    )
+    let direct-theme-input = theme-input(diagram-theme, theme-preset, "merman options")
+    let selected-theme-input = if direct-theme-input != none {
+      direct-theme-input
+    } else {
+      profile-theme-input
+    }
+    let profile-layout = profile-field(profile, "layout")
+    let profile-layout-container-width = layout-container-width(profile-layout)
+    let profile-environment = profile-field(profile, "environment")
+    let profile-text-measurement = profile-field(profile, "text-measurement")
+    let profile-math-renderer = profile-field(profile, "math-renderer")
+
+    let profile-site-config = apply-mermaid-theme-site-config(
+      profile-site-config,
+      profile-field(profile, "theme-variables", alt: "theme_variables"),
+      profile-field(profile, "theme-name", alt: "theme_name"),
+      profile-field(profile, "base-theme", alt: "base_theme"),
+    )
+    let site-config = if site-config == none {
+      profile-site-config
+    } else {
+      dictionary-or-none(site-config, "merman site-config")
+    }
+    let site-config = apply-mermaid-theme-site-config(
+      site-config,
+      theme-variables,
+      theme-name,
+      base-theme,
+    )
+    let pipeline = choose-value(profile-field(profile, "pipeline"), pipeline, default: "resvg-safe")
+    let profile-id = profile-field(profile, "id")
+    let profile-diagram-id = profile-field(profile, "diagram-id", alt: "diagram_id")
+    let background = choose-value(profile-field(profile, "background"), background)
+    let drop-native-duplicate-fallbacks = choose-value(
+      profile-field(
+        profile,
+        "drop-native-duplicate-fallbacks",
+        alt: "drop_native_duplicate_fallbacks",
+      ),
+      drop-native-duplicate-fallbacks,
+    )
+    let container-width = choose-value(
+      profile-field(profile, "container-width", alt: "container_width"),
+      container-width,
+    )
+    let container-height = choose-value(
+      profile-field(profile, "container-height", alt: "container_height"),
+      container-height,
+    )
+    let fixed-today = choose-value(profile-field(profile, "fixed-today", alt: "fixed_today"), fixed-today)
+    let fixed-local-offset-minutes = choose-value(
+      profile-field(profile, "fixed-local-offset-minutes", alt: "fixed_local_offset_minutes"),
+      fixed-local-offset-minutes,
+    )
+    let text-style = merged-typography-style(
+      context-text-style,
+      profile-typography,
+      typography,
+    )
+    let diagram-theme-selection = build-theme-selection(selected-theme-input, text-style)
+
     let binding-options = (
       version: 3,
       fixed_today: fixed-today,
@@ -492,28 +516,32 @@
         ),
       ),
       svg: (
-        diagram_id: choose-value(id, diagram-id),
+        diagram_id: resolve-diagram-id(
+          profile-id,
+          profile-diagram-id,
+          id,
+          diagram-id,
+        ),
         pipeline: pipeline,
         root_background_color: background,
         drop_native_duplicate_fallbacks: drop-native-duplicate-fallbacks,
       ),
     )
-    if diagram-theme-selection == none {
+    let binding-options = if diagram-theme-selection == none {
       binding-options
     } else {
       (: ..binding-options, theme: diagram-theme-selection)
     }
+    (
+      binding_options: binding-options,
+      direct_layout: layout,
+      direct_options: none,
+      direct_container_width: container-width,
+      profile_layout: profile-layout,
+      profile_layout_container_width: profile-layout-container-width,
+      profile_options: none,
+    )
   }
-
-  (
-    binding_options: binding-options,
-    direct_layout: layout,
-    direct_options: options,
-    direct_container_width: container-width,
-    profile_layout: profile-layout,
-    profile_layout_container_width: profile-layout-container-width,
-    profile_options: profile-options,
-  )
 }
 
 #let config-with-context-width(config, width) = {

@@ -281,7 +281,7 @@ calibration wrapper:
 
 ```bash
 CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
-  --example layout_work_calibration --features complete-svg
+  --example layout_work_calibration --features complete-svg-elk
 
 python3 tools/bench/run_layout_work_calibration.py \
   --authoritative-date YYYY-MM-DD \

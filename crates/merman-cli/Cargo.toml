@@ -69,7 +69,6 @@ default = [
     "icons",
     "jpeg",
     "layout-cytoscape",
-    "layout-elk",
     "markdown",
     "math",
     "network-icons",
@@ -128,7 +127,6 @@ parallel-markdown = ["markdown", "dep:rayon"]
 rustdoc = [
     "markdown",
     "layout-cytoscape",
-    "layout-elk",
     "math",
     "dep:merman-render",
     "dep:sha2",

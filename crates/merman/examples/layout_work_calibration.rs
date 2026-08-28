@@ -23,12 +23,13 @@ const ARCHITECTURE_BOUNDARY_NODES: usize = 32;
 const MINIMUM_HEADROOM_UNITS: usize = 100_000;
 const MINIMUM_HEADROOM_PERCENT: f64 = 10.0;
 const CEILING_ROUNDING_QUANTUM: usize = 100_000;
-const EXPECTED_CALIBRATION_FEATURES: [&str; 5] = [
+const EXPECTED_CALIBRATION_FEATURES: [&str; 6] = [
     "svg",
     "layout-cytoscape",
     "layout-elk",
     "math",
     "complete-svg",
+    "complete-svg-elk",
 ];
 
 #[derive(Debug)]
@@ -1575,6 +1576,9 @@ fn enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "complete-svg") {
         features.push("complete-svg");
     }
+    if cfg!(feature = "complete-svg-elk") {
+        features.push("complete-svg-elk");
+    }
     features
 }
 
@@ -1582,7 +1586,7 @@ fn validate_calibration_features() -> Result<(), Box<dyn Error>> {
     let enabled = enabled_features();
     if enabled != EXPECTED_CALIBRATION_FEATURES {
         return Err(format!(
-            "layout calibration requires exactly the complete-svg feature closure; enabled={enabled:?}"
+            "layout calibration requires exactly the complete-svg-elk feature closure; enabled={enabled:?}"
         )
         .into());
     }

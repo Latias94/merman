@@ -322,6 +322,9 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
         graph_layout,
         edges,
         charset,
+        &crate::options::AsciiRenderOptions::ascii()
+            .flowchart_layout()
+            .graph_policy(),
         resources,
         AsciiExecution::for_test(&policy),
     )
@@ -332,6 +335,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     graph_layout: &GraphLayout,
     edges: &'a [AsciiGraphEdge],
     charset: &GraphCharset,
+    policy: &crate::options::GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RouteScenePlan<'a>> {
@@ -368,6 +372,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     let mut occupancy = SceneOccupancy::try_new_for_routes(
         graph_layout,
         canonical_edges.len(),
+        policy.edge_label_lane_radius,
         resources,
         execution,
     )?;

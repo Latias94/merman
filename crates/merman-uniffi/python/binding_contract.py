@@ -61,7 +61,7 @@ CAPABILITY_SPECS = (
     },
     {
         "id": "rustdoc",
-        "implication_ids": ("layout-cytoscape", "layout-elk", "markdown", "math"),
+        "implication_ids": ("layout-cytoscape", "markdown", "math"),
     },
     {
         "id": "shell-completions",

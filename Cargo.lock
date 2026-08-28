@@ -2497,6 +2497,8 @@ version = "0.8.0-alpha.6"
 dependencies = [
  "dugong",
  "merman-core",
+ "serde",
+ "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.20",
  "unicode-segmentation",

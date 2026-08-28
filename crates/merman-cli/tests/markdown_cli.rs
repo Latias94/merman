@@ -74,7 +74,7 @@ fn encoded_path_component(value: &str) -> String {
     use std::fmt::Write as _;
 
     #[cfg(windows)]
-    let units = value.encode_utf16().map(|unit| u32::from(unit));
+    let units = value.encode_utf16().map(u32::from);
     #[cfg(not(windows))]
     let units = value.as_bytes().iter().copied().map(u32::from);
 
@@ -119,7 +119,8 @@ fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 }
 
 #[test]
-fn native_batch_applies_the_selected_theme_preset() {
+#[cfg(feature = "layout-elk")]
+fn native_batch_applies_the_selected_presentation_profile() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::write(temp.path().join("input.md"), TWO_CHARTS).expect("write Markdown input");
 
@@ -130,8 +131,8 @@ fn native_batch_applies_the_selected_theme_preset() {
             "input.md",
             "--output-dir",
             "generated",
-            "--theme-preset",
-            "editor-dark",
+            "--presentation-profile",
+            "merman-modern",
             "--quiet",
         ],
     );
@@ -140,52 +141,10 @@ fn native_batch_applies_the_selected_theme_preset() {
     let svg = fs::read_to_string(temp.path().join("generated/input-1.svg"))
         .expect("read generated Flowchart SVG");
     assert!(
-        svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
-        "batch rendering should use the same typed theme path: {svg}"
-    );
-    assert!(!svg.contains(r#"data-look="neo""#), "{svg}");
-}
-
-#[cfg(feature = "png")]
-#[test]
-fn native_png_batch_reuses_terminal_accessibility_metadata() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    fs::write(
-        temp.path().join("input.md"),
-        r#"# Diagram
-
-```mermaid
-flowchart LR
-accTitle: Accessible export title
-accDescr: Accessible export description
-A --> B
-```
-"#,
-    )
-    .expect("write Markdown input");
-
-    let output = run_in(
-        temp.path(),
-        &[
-            "batch",
-            "input.md",
-            "--output-dir",
-            "generated",
-            "--format",
-            "png",
-            "--quiet",
-        ],
-    );
-    assert_success(&output);
-
-    let png = fs::read(temp.path().join("generated/input-1.png")).expect("read generated PNG");
-    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
-    let rewritten =
-        fs::read_to_string(temp.path().join("generated/input.md")).expect("read rewrite");
-    assert!(
-        rewritten.contains(
-            r#"![Accessible export description](./input-1.png "Accessible export title")"#
-        )
+        svg.contains(
+            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
+        ),
+        "batch rendering should use the same typed presentation path: {svg}"
     );
 }
 

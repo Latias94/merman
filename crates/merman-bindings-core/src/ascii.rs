@@ -19,17 +19,18 @@ pub(crate) struct AsciiOperationConfig {
     runtime_policy: merman::runtime::RuntimePolicy,
     parse_options: merman::ParseOptions,
     render_options: merman::ascii::AsciiRenderOptions,
+    viewport: merman::ascii::AsciiViewportPolicy,
     ascii_resources: merman::ascii::AsciiResourcePolicy,
     resources: merman::resources::InputResourcePolicy,
     site_config: Option<merman::MermaidConfig>,
 }
 
 impl CachedAsciiEngine {
-    pub(crate) fn render_ascii(
+    pub(crate) fn render_ascii_output(
         &self,
         source: &[u8],
         control: merman::OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
+    ) -> Result<merman::ascii::AsciiOutput, BindingError> {
         let source = source_text(source)?;
         let output = self
             .renderer
@@ -44,9 +45,7 @@ impl CachedAsciiEngine {
                 "canonical renderer returned the wrong output variant for `ascii`",
             ));
         };
-        rendered
-            .map(String::into_bytes)
-            .ok_or_else(no_diagram_error)
+        rendered.ok_or_else(no_diagram_error)
     }
 }
 
@@ -66,6 +65,7 @@ impl AsciiOperationConfig {
             merman::ParseOptions::strict()
         };
         let render_options = ascii_options_from_json(options)?;
+        let viewport = ascii_viewport_from_json(options)?;
         let ascii_resources = binding_ascii_resource_policy(options.analysis.resources.as_ref())?;
         let resources = binding_input_resource_policy(options.analysis.resources.as_ref())?;
         let site_config = binding_site_config(options)?;
@@ -73,6 +73,7 @@ impl AsciiOperationConfig {
             runtime_policy,
             parse_options,
             render_options,
+            viewport,
             ascii_resources,
             resources,
             site_config,
@@ -84,6 +85,7 @@ impl AsciiOperationConfig {
         let request = merman::AsciiRequest {
             options: self.render_options,
             resources: self.ascii_resources,
+            viewport: self.viewport,
         };
         let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
@@ -101,6 +103,43 @@ impl AsciiOperationConfig {
     }
 }
 
+fn ascii_viewport_from_json(
+    options: &crate::common::BindingOptions,
+) -> Result<merman::ascii::AsciiViewportPolicy, BindingError> {
+    let Some(ascii) = options.ascii.as_ref() else {
+        return Ok(merman::ascii::AsciiViewportPolicy::default());
+    };
+    let overflow = match ascii.overflow.as_deref().map(option_key).as_deref() {
+        None | Some("allow") => merman::ascii::OverflowPolicy::Allow,
+        Some("fallback") => merman::ascii::OverflowPolicy::Fallback,
+        Some("error") => merman::ascii::OverflowPolicy::Error,
+        Some(_) => {
+            return Err(invalid_ascii_option(
+                "ascii.overflow",
+                "expected `allow`, `fallback`, or `error`",
+            ));
+        }
+    };
+    let trim = if ascii.trim_trailing_spaces.unwrap_or(false) {
+        merman::ascii::AsciiTrimPolicy::TrimTrailingSpaces
+    } else {
+        merman::ascii::AsciiTrimPolicy::Preserve
+    };
+    let mut viewport = merman::ascii::AsciiViewportPolicy::default()
+        .overflow(overflow)
+        .trim(trim);
+    if let Some(max_width) = ascii.max_width {
+        viewport = viewport.max_width(max_width);
+    }
+    viewport.validate().map_err(|error| {
+        BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("invalid ascii viewport: {error}"),
+        )
+    })?;
+    Ok(viewport)
+}
+
 fn ascii_options_from_json(
     options: &crate::common::BindingOptions,
 ) -> Result<merman::ascii::AsciiRenderOptions, BindingError> {
@@ -109,6 +148,18 @@ fn ascii_options_from_json(
     };
 
     let mut render_options = merman::ascii::AsciiRenderOptions::unicode();
+    if let Some(profile) = ascii.layout_profile.as_deref() {
+        render_options.layout_profile = match option_key(profile).as_str() {
+            "canonical" => merman::ascii::AsciiLayoutProfile::Canonical,
+            "compact" => merman::ascii::AsciiLayoutProfile::Compact,
+            _ => {
+                return Err(invalid_ascii_option(
+                    "ascii.layout_profile",
+                    "expected `canonical` or `compact`",
+                ));
+            }
+        };
+    }
     if let Some(charset) = ascii.charset.as_deref() {
         render_options.charset = ascii_charset(charset)?;
     }
@@ -128,16 +179,16 @@ fn ascii_options_from_json(
         render_options.box_border_padding = padding;
     }
     if let Some(padding) = ascii.graph_padding_x {
-        render_options.graph_padding_x = padding;
+        render_options = render_options.with_graph_padding_x(padding);
     }
     if let Some(padding) = ascii.graph_padding_y {
-        render_options.graph_padding_y = padding;
+        render_options = render_options.with_graph_padding_y(padding);
     }
     if let Some(width) = ascii.flowchart_node_label_wrap_width {
-        render_options.flowchart_node_label_wrap_width = width;
+        render_options = render_options.with_flowchart_node_label_wrap_width(width);
     }
     if let Some(spacing) = ascii.sequence_participant_spacing {
-        render_options.sequence_participant_spacing = spacing;
+        render_options = render_options.with_sequence_participant_spacing(spacing);
     }
     if let Some(spacing) = ascii.sequence_message_spacing {
         render_options.sequence_message_spacing = spacing;
@@ -300,6 +351,7 @@ fn classify_render_error(
     resource_profile: merman::resources::ResourceProfile,
 ) -> BindingError {
     match err {
+        merman::RenderError::NoDiagram => no_diagram_error(),
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
         merman::RenderError::RuntimePolicy(err) => runtime_policy_error(err),
         merman::RenderError::Parse(err) => crate::common::parse_error(err),
@@ -414,6 +466,119 @@ mod tests {
 
         assert!(text.contains("Hello"));
         assert!(text.contains("World"));
+    }
+
+    #[test]
+    fn render_ascii_result_exposes_the_canonical_report_plan() {
+        let options = br#"{
+            "ascii": {
+                "maxWidth": 10,
+                "overflow": "fallback",
+                "trimTrailingSpaces": true
+            }
+        }"#;
+        let result = crate::render_ascii_result(
+            b"timeline\ntitle Basic\n2024 : Event with a long authored value",
+            options,
+        )
+        .expect("timeline fallback should produce a report-bearing result");
+        let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan() else {
+            panic!("ASCII operation must expose its canonical output plan");
+        };
+
+        assert_eq!(
+            result.data(),
+            crate::render_ascii(
+                b"timeline\ntitle Basic\n2024 : Event with a long authored value",
+                options,
+            )
+            .unwrap()
+        );
+        assert_eq!(plan.family(), "timeline");
+        assert_eq!(plan.projection(), "structured_text");
+        assert_eq!(plan.schema_version(), 2);
+        assert_eq!(plan.encoding(), "plain");
+        assert_eq!(plan.outcome(), "fallback");
+        assert_eq!(plan.requested_max_width(), Some(10));
+        assert!(plan.fallback_attempted());
+
+        let metadata: serde_json::Value =
+            serde_json::from_slice(result.metadata_json()).expect("metadata JSON");
+        assert_eq!(metadata["output_plan"]["kind"], "ascii");
+        assert_eq!(metadata["output_plan"]["encoding"], "plain");
+        assert_eq!(
+            metadata["output_plan"]["emitted_width"],
+            plan.emitted_width()
+        );
+    }
+
+    #[test]
+    fn styled_ascii_results_identify_their_exact_encoding() {
+        for (color_mode, expected_encoding, required_bytes) in [
+            ("ansi16", "ansi16", "\u{1b}["),
+            ("ansi256", "ansi256", "\u{1b}[38;5;"),
+            ("truecolor", "truecolor", "\u{1b}[38;2;"),
+            ("html", "html", "<span style=\""),
+        ] {
+            let options = format!(
+                r##"{{"ascii":{{"color_mode":"{color_mode}","theme":{{"foreground":"#010101","background":"#ffffff","line":"#020202","accent":"#030303","border":"#040404"}}}}}}"##
+            );
+            let result = crate::render_ascii_result(
+                b"flowchart LR\nA[Hello] -- yes --> B[World]",
+                options.as_bytes(),
+            )
+            .unwrap_or_else(|error| panic!("{color_mode} render should succeed: {error:?}"));
+            let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+            else {
+                panic!("ASCII operation must expose an ASCII output plan");
+            };
+
+            assert_eq!(plan.encoding(), expected_encoding);
+            assert!(
+                String::from_utf8_lossy(result.data()).contains(required_bytes),
+                "{color_mode} bytes do not match metadata: {:?}",
+                result.data()
+            );
+        }
+    }
+
+    #[test]
+    fn binding_rejects_styled_complete_fallback_requests_before_rendering() {
+        let error = render_ascii(
+            b"flowchart LR\nA[Alpha] --> B[Beta]",
+            br#"{ "ascii": { "color_mode": "ansi16", "max_width": 5, "overflow": "fallback" } }"#,
+        )
+        .expect_err("styled fallback combinations are not admitted");
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(
+            error.message().contains("ascii_viewport.overflow"),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn ascii_viewport_aliases_and_invalid_width_are_strict() {
+        for options in [
+            br#"{ "ascii": { "max_width": 10, "overflow": "error" } }"#.as_slice(),
+            br#"{ "ascii": { "maxWidth": 10, "overflow": "error" } }"#.as_slice(),
+        ] {
+            let error = render_ascii(b"flowchart LR\nA[Alpha] --> B[Beta]", options)
+                .expect_err("error overflow policy should reject a wide graph");
+            assert_eq!(error.status(), BindingStatus::RenderError);
+            assert!(error.message().contains("width"), "{error:?}");
+            let diagnostic = error
+                .diagnostic_details()
+                .expect("width overflow should expose numeric diagnostic details");
+            assert_eq!(diagnostic.requested_max_width, Some(10));
+            assert!(diagnostic.actual_width.is_some());
+            assert_eq!(diagnostic.width_profile.as_deref(), Some("unicode"));
+        }
+
+        let error = render_ascii(b"flowchart TD\nA", br#"{ "ascii": { "maxWidth": 0 } }"#)
+            .expect_err("zero max width must be rejected before rendering");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("max_width"), "{error:?}");
     }
 
     #[test]
@@ -594,6 +759,34 @@ mod tests {
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("ascii.width_profile"), "{error:?}");
+    }
+
+    #[test]
+    fn ascii_layout_profile_accepts_snake_and_camel_case() {
+        for options_json in [
+            br#"{ "ascii": { "layout_profile": "compact" } }"#.as_slice(),
+            br#"{ "ascii": { "layoutProfile": "compact" } }"#.as_slice(),
+        ] {
+            let options = crate::common::parse_options(options_json).expect("valid options");
+            let compiled = ascii_options_from_json(&options).expect("ASCII options compile");
+            assert_eq!(
+                compiled.layout_profile,
+                merman::ascii::AsciiLayoutProfile::Compact
+            );
+        }
+    }
+
+    #[test]
+    fn ascii_layout_profile_rejects_unknown_values() {
+        let options =
+            crate::common::parse_options(br#"{ "ascii": { "layout_profile": "dense" } }"#)
+                .expect("JSON shape parses");
+        let error = ascii_options_from_json(&options).expect_err("unknown profile is rejected");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(
+            error.message().contains("ascii.layout_profile"),
+            "{error:?}"
+        );
     }
 
     #[test]

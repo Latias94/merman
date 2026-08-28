@@ -62,7 +62,7 @@ pub(super) fn render_journey_diagram(
     }
     push_orphan_tasks(&mut document, model, &section_plan, execution)?;
 
-    document.finish()
+    document.finish_with_execution(execution)
 }
 
 impl SectionedTextTask for JourneyRenderTask {

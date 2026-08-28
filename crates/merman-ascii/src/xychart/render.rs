@@ -14,6 +14,7 @@ use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::error::AsciiError;
 use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
+use crate::options::XyChartLayoutPolicy;
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
@@ -188,12 +189,13 @@ impl ChartOrientation {
     }
 }
 
-pub(crate) fn render_xychart_diagram_with_execution(
+pub(crate) fn render_xychart_diagram_with_resolved_policy(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
+    layout: XyChartLayoutPolicy,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    render_xychart_diagram_controlled(model, options, execution)
+    render_xychart_diagram_controlled(model, options, layout, execution)
 }
 
 #[cfg(test)]
@@ -202,7 +204,12 @@ pub(crate) fn render_xychart_diagram_with_resources(
     options: &AsciiRenderOptions,
     resources: AsciiResourcePolicy,
 ) -> Result<String> {
-    render_xychart_diagram_controlled(model, options, AsciiExecution::for_test(&resources))
+    render_xychart_diagram_controlled(
+        model,
+        options,
+        options.xychart_layout(),
+        AsciiExecution::for_test(&resources),
+    )
 }
 
 #[cfg(test)]
@@ -216,6 +223,7 @@ fn render_xychart_diagram_with_resources_and_work(
     let result = render_xychart_diagram_controlled_with_base(
         model,
         options,
+        options.xychart_layout(),
         AsciiExecution::for_test(&policy),
         &base_resources,
     );
@@ -225,15 +233,20 @@ fn render_xychart_diagram_with_resources_and_work(
 fn render_xychart_diagram_controlled(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
+    layout: XyChartLayoutPolicy,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let base_resources = ResourceContext::new(*execution.resources());
-    render_xychart_diagram_controlled_with_base(model, options, execution, &base_resources)
+    // Start from the execution-owned context so a top-level report shares the render-wide
+    // layout/document ledger with any later fallback attempt. Standalone family tests still get
+    // an isolated context through `AsciiExecution::new_resource_context`.
+    let base_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    render_xychart_diagram_controlled_with_base(model, options, layout, execution, &base_resources)
 }
 
 fn render_xychart_diagram_controlled_with_base(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
+    layout: XyChartLayoutPolicy,
     execution: AsciiExecution<'_>,
     base_resources: &ResourceContext,
 ) -> Result<String> {
@@ -246,7 +259,7 @@ fn render_xychart_diagram_controlled_with_base(
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let emit_resources =
             execution.resource_context(&resources, merman_core::OperationPhase::Emit);
-        let rendered = empty::render(model, orientation, options, emit_resources)?;
+        let rendered = empty::render(model, orientation, options, emit_resources, execution)?;
         checkpoint_emitted_lines(&rendered, execution)?;
         return Ok(rendered);
     }
@@ -255,13 +268,13 @@ fn render_xychart_diagram_controlled_with_base(
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let emit_resources =
             execution.resource_context(&resources, merman_core::OperationPhase::Emit);
-        let rendered = empty::render(model, orientation, options, emit_resources)?;
+        let rendered = empty::render(model, orientation, options, emit_resources, execution)?;
         checkpoint_emitted_lines(&rendered, execution)?;
         return Ok(rendered);
     }
 
     let chars = ChartChars::from_options(options);
-    let plot_area = XyChartPlotArea::from_options(options);
+    let plot_area = XyChartPlotArea::from_policy(layout);
     let horizontal = orientation.is_horizontal();
     let plot_extent = if horizontal {
         plot_area
@@ -1831,6 +1844,11 @@ fn finish_chart_lines_controlled(
         return Ok(String::new());
     }
 
+    execution.admit_primary_extent(
+        document.width,
+        document.lines.len(),
+        options.terminal_width_profile,
+    )?;
     finish_styled_lines_with_resources_with_execution(
         &document.lines,
         options,

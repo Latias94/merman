@@ -47,7 +47,7 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersionV5() == 5 else {
+guard merman.bindingApiVersionV7() == 7 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
@@ -165,11 +165,18 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
-- Move API 4 generated source and native libraries together to API 5. `MermanOperationRequestV4`
-  remains the current request record; add `control: nil` to generic request construction until the
-  host adopts `MermanOperationControl`. Handle the optional `diagnostic`
+- Move API 6 generated source and native libraries together to API 7. API 7 preserves the ASCII
+  layout/width/encoding/fallback admission arrays and schema-2 output-plan encoding, and protects
+  the merged `MermanDiagramFamilyCapability.familyId` record plus the versioned
+  `themeCatalogJson()` metadata catalog; the generated source and native library must move
+  atomically. `MermanOperationRequestV4` remains the current
+  request record; add `control: nil` to generic request construction until the host adopts
+  `MermanOperationControl`. Handle the optional `diagnostic`
   `MermanDiagnosticErrorDetails` payload on `MermanError.Binding` instead of inferring parser or
   ASCII failures from display text.
+- (Historical) Move API 5 generated source and native libraries together to API 6. API 6 added
+  the ASCII layout/width/encoding/fallback admission arrays and schema-2 output-plan encoding;
+  regenerate the source and native library atomically.
 - Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
   required; byte-returning methods remain available. Switch on `outputPlan.kind`, inspect the
   optional `raster` or `pdfFilterImages` payload, and retain `rawJson` for future kinds.

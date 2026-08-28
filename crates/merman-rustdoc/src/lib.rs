@@ -20,10 +20,12 @@
 //! `cfg_attr(doc, ...)`. The macro only expands during rustdoc builds, but Cargo will still compile
 //! the dependency during ordinary builds.
 //!
-//! The default enables complete deterministic SVG rendering: `svg`, Cytoscape layout, ELK layout,
-//! and math, without system clock, time-zone, random, or timing adapters. For an expert minimal
-//! closure, use `default-features = false, features = ["svg"]`; add `layout-cytoscape`,
-//! `layout-elk`, or `math` only when those deliberately selected diagrams need them.
+//! The default enables deterministic SVG rendering: `svg`, Cytoscape layout, and math, without
+//! the optional EPL-2.0 ELK implementation or system clock, time-zone, random, or timing
+//! adapters. Use `complete-svg-elk` only when the artifact intentionally carries the ELK closure
+//! and its notices. For an expert minimal closure, use `default-features = false, features =
+//! ["svg"]`; add `layout-cytoscape`, `layout-elk`, or `math` only when those deliberately selected
+//! diagrams need them.
 //!
 //! If you want ordinary builds to avoid compiling `merman-rustdoc`, make it optional behind a
 //! documentation feature:

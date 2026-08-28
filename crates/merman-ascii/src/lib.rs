@@ -20,6 +20,7 @@ mod kanban;
 mod mindmap;
 mod operation;
 mod options;
+mod output;
 mod packet;
 mod relation_graph;
 mod resource;
@@ -41,7 +42,15 @@ pub use capability::{
 };
 pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
-pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions, TerminalWidthProfile};
+pub use options::{
+    AsciiCharset, AsciiDirection, AsciiLayoutProfile, AsciiRenderOptions, TerminalWidthProfile,
+};
+pub use output::{
+    ASCII_OUTPUT_SCHEMA_VERSION, AsciiExtent, AsciiFallbackCapability, AsciiFallbackReason,
+    AsciiOutput, AsciiOutputEncoding, AsciiOutputMetadata, AsciiOutputOutcome, AsciiOutputReport,
+    AsciiOverflowPolicy, AsciiProjection, AsciiTrimPolicy, AsciiViewportPolicy, FallbackMetadata,
+    Lossiness, OverflowPolicy,
+};
 pub use resource::{
     ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiResourceLimitCause,
     AsciiResourceLimitDescriptor, AsciiResourceLimitExceeded, AsciiResourceLimitId,
@@ -69,10 +78,38 @@ use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::runtime::OperationContext;
+use merman_core::{MermaidConfig, ParseMetadata};
+use options::{
+    FlowchartLayoutPolicy, GraphLayoutPolicy, ResolvedAsciiPolicies, SequenceLayoutPolicy,
+    XyChartLayoutPolicy,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct AsciiRenderer {
     options: AsciiRenderOptions,
+}
+
+struct AsciiRenderRequest<'a> {
+    viewport: AsciiViewportPolicy,
+    control: &'a merman_core::OperationControl,
+    context: &'a OperationContext,
+    resources: AsciiResourcePolicy,
+}
+
+impl<'a> AsciiRenderRequest<'a> {
+    const fn new(
+        viewport: AsciiViewportPolicy,
+        control: &'a merman_core::OperationControl,
+        context: &'a OperationContext,
+        resources: AsciiResourcePolicy,
+    ) -> Self {
+        Self {
+            viewport,
+            control,
+            context,
+            resources,
+        }
+    }
 }
 
 impl AsciiRenderer {
@@ -87,8 +124,8 @@ impl AsciiRenderer {
 
     /// Renders a typed model using caller-owned operation control, runtime context, and resources.
     ///
-    /// This is the crate's only public rendering entrypoint. It never creates a replacement
-    /// operation, deadline, runtime context, or resource policy.
+    /// This convenience entrypoint projects the canonical report down to text. It never creates
+    /// a replacement operation, deadline, runtime context, or resource policy.
     pub fn render_model(
         &self,
         model: &RenderSemanticModel,
@@ -97,13 +134,168 @@ impl AsciiRenderer {
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let execution = operation::AsciiExecution::new(control, &resources);
+        let policies = self.options.resolve_policies();
         render_model_with_execution(
             model,
             None,
-            &self.options,
+            &policies.options,
+            &policies,
             execution,
             context.local_time_zone(),
         )
+    }
+
+    /// Renders a typed model and returns logical extent/projection/overflow metadata.
+    pub fn render_model_report(
+        &self,
+        model: &RenderSemanticModel,
+        viewport: AsciiViewportPolicy,
+        control: &merman_core::OperationControl,
+        context: &OperationContext,
+        resources: AsciiResourcePolicy,
+    ) -> Result<AsciiOutput> {
+        let metadata = ParseMetadata {
+            diagram_type: model.kind().to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        };
+        self.render_report(
+            model,
+            None,
+            &metadata,
+            AsciiRenderRequest::new(viewport, control, context, resources),
+        )
+    }
+
+    fn render_report(
+        &self,
+        model: &RenderSemanticModel,
+        flowchart_context: Option<&FlowchartRenderContext>,
+        metadata: &ParseMetadata,
+        request: AsciiRenderRequest<'_>,
+    ) -> Result<AsciiOutput> {
+        let AsciiRenderRequest {
+            viewport,
+            control,
+            context,
+            resources,
+        } = request;
+        viewport.validate()?;
+        let render_ledger = resource::ResourceContext::new(resources);
+        let execution = operation::AsciiExecution::new(control, &resources)
+            .with_viewport(viewport)
+            .with_render_ledger(&render_ledger);
+        let policies = self.options.resolve_policies();
+        let options = policies.options;
+        let capability = output::capability_for(model);
+        validate_fallback_request(capability, &policies, viewport)?;
+        let projection = output::projection_for(capability);
+        let encoding = policies.output.encoding;
+        let fallback_capability =
+            capability.is_some_and(|capability| capability.supports_fallback_encoding(encoding));
+        let rendered = match render_model_with_execution(
+            model,
+            flowchart_context,
+            &options,
+            &policies,
+            execution,
+            context.local_time_zone(),
+        ) {
+            Ok(rendered) => rendered,
+            Err(AsciiError::PrimaryViewportOverflow {
+                actual_width,
+                height,
+                ..
+            }) => {
+                let primary_extent = output::AsciiExtent::new(actual_width, height);
+                if !fallback_capability {
+                    return Err(AsciiError::FallbackUnavailable {
+                        diagram_type: model.kind().to_string(),
+                        max_width: viewport
+                            .max_width
+                            .expect("primary overflow requires a width bound"),
+                        actual_width,
+                    });
+                }
+                return output::build_semantic_fallback(
+                    model,
+                    metadata,
+                    primary_extent,
+                    output::OutputBuildContext {
+                        color_mode: policies.output.color_mode,
+                        profile: policies.output.terminal_width_profile,
+                        layout_profile: policies.layout.profile,
+                        policy: viewport,
+                        execution,
+                    },
+                );
+            }
+            Err(error) => return Err(error),
+        };
+        let primary = output::MeasuredOutput::measure(
+            rendered,
+            policies.output.color_mode,
+            policies.output.terminal_width_profile,
+            execution,
+        )?;
+        let primary_extent = primary.metrics().extent;
+        let overflowed = viewport
+            .max_width
+            .is_some_and(|max_width| primary_extent.width > max_width);
+        if overflowed && viewport.overflow == output::OverflowPolicy::Fallback {
+            if !fallback_capability {
+                return Err(AsciiError::FallbackUnavailable {
+                    diagram_type: model.kind().to_string(),
+                    max_width: viewport.max_width.expect("fallback requires a width bound"),
+                    actual_width: primary_extent.width,
+                });
+            }
+            if projection == AsciiProjection::StructuredText {
+                return output::build_structured_fallback(
+                    model.kind(),
+                    primary,
+                    output::OutputBuildContext {
+                        color_mode: policies.output.color_mode,
+                        profile: policies.output.terminal_width_profile,
+                        layout_profile: policies.layout.profile,
+                        policy: viewport,
+                        execution,
+                    },
+                );
+            }
+            drop(primary);
+            return output::build_semantic_fallback(
+                model,
+                metadata,
+                primary_extent,
+                output::OutputBuildContext {
+                    color_mode: policies.output.color_mode,
+                    profile: policies.output.terminal_width_profile,
+                    layout_profile: policies.layout.profile,
+                    policy: viewport,
+                    execution,
+                },
+            );
+        }
+        let mut output = output::build_output(
+            model.kind(),
+            primary,
+            projection,
+            output::OutputBuildContext {
+                color_mode: policies.output.color_mode,
+                profile: policies.output.terminal_width_profile,
+                layout_profile: policies.layout.profile,
+                policy: viewport,
+                execution,
+            },
+        )?;
+        output.fallback.capability = if fallback_capability {
+            output::AsciiFallbackCapability::Available
+        } else {
+            output::AsciiFallbackCapability::Unsupported
+        };
+        Ok(output)
     }
 
     /// Renders one parser-owned model together with its render-only semantic context.
@@ -116,12 +308,32 @@ impl AsciiRenderer {
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let execution = operation::AsciiExecution::new(control, &resources);
+        let policies = self.options.resolve_policies();
         render_model_with_execution(
             parsed.model(),
             parsed.flowchart_render_context(),
-            &self.options,
+            &policies.options,
+            &policies,
             execution,
             context.local_time_zone(),
+        )
+    }
+
+    /// Renders a parser-owned model and returns logical extent/projection/overflow metadata.
+    #[doc(hidden)]
+    pub fn render_parsed_report(
+        &self,
+        parsed: &ParsedDiagramRender,
+        viewport: AsciiViewportPolicy,
+        control: &merman_core::OperationControl,
+        context: &OperationContext,
+        resources: AsciiResourcePolicy,
+    ) -> Result<AsciiOutput> {
+        self.render_report(
+            parsed.model(),
+            parsed.flowchart_render_context(),
+            parsed.metadata(),
+            AsciiRenderRequest::new(viewport, control, context, resources),
         )
     }
 }
@@ -130,18 +342,24 @@ fn render_model_with_execution(
     model: &RenderSemanticModel,
     flowchart_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
+    policies: &ResolvedAsciiPolicies,
     execution: operation::AsciiExecution<'_>,
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Admission)?;
     options.validate()?;
+    validate_primary_request(output::capability_for(model), policies)?;
 
     let rendered = match model {
         RenderSemanticModel::Class(model) => render_class_model(model, options, &execution),
         RenderSemanticModel::Er(model) => render_er_model(model, options, &execution),
-        RenderSemanticModel::Flowchart(model) => {
-            render_flowchart_model(model, flowchart_context, options, &execution)
-        }
+        RenderSemanticModel::Flowchart(model) => render_flowchart_model(
+            model,
+            flowchart_context,
+            options,
+            policies.layout.flowchart,
+            &execution,
+        ),
         RenderSemanticModel::Gantt(model) => {
             render_gantt_model(model, options, local_time_zone, &execution)
         }
@@ -150,10 +368,16 @@ fn render_model_with_execution(
         RenderSemanticModel::Kanban(model) => render_kanban_model(model, options, &execution),
         RenderSemanticModel::Mindmap(model) => render_mindmap_model(model, options, &execution),
         RenderSemanticModel::Packet(model) => render_packet_model(model, options, &execution),
-        RenderSemanticModel::Sequence(model) => render_sequence_model(model, options, &execution),
-        RenderSemanticModel::State(model) => render_state_model(model, options, &execution),
+        RenderSemanticModel::Sequence(model) => {
+            render_sequence_model(model, options, policies.layout.sequence, &execution)
+        }
+        RenderSemanticModel::State(model) => {
+            render_state_model(model, options, policies.layout.state, &execution)
+        }
         RenderSemanticModel::Timeline(model) => render_timeline_model(model, options, &execution),
-        RenderSemanticModel::XyChart(model) => render_xychart_model(model, options, &execution),
+        RenderSemanticModel::XyChart(model) => {
+            render_xychart_model(model, options, policies.layout.xychart, &execution)
+        }
         RenderSemanticModel::TreeView(model) => render_tree_view_model(model, options, &execution),
         RenderSemanticModel::Error(_)
         | RenderSemanticModel::CustomJson(_)
@@ -181,6 +405,54 @@ fn render_model_with_execution(
     Ok(rendered)
 }
 
+fn validate_primary_request(
+    capability: Option<AsciiCapability>,
+    policies: &ResolvedAsciiPolicies,
+) -> Result<()> {
+    let Some(capability) = capability.filter(|capability| capability.is_supported()) else {
+        return Ok(());
+    };
+    if !capability.supports_layout_profile(policies.layout.profile) {
+        return Err(AsciiError::InvalidOption {
+            field: "layout_profile",
+            message: "is not admitted for this diagram family",
+        });
+    }
+    if !capability.supports_width_profile(policies.output.terminal_width_profile) {
+        return Err(AsciiError::InvalidOption {
+            field: "terminal_width_profile",
+            message: "is not admitted for this diagram family",
+        });
+    }
+    if !capability.supports_encoding(policies.output.encoding) {
+        return Err(AsciiError::InvalidOption {
+            field: "color_mode",
+            message: "is not admitted for this diagram family",
+        });
+    }
+    Ok(())
+}
+
+fn validate_fallback_request(
+    capability: Option<AsciiCapability>,
+    policies: &ResolvedAsciiPolicies,
+    viewport: AsciiViewportPolicy,
+) -> Result<()> {
+    if viewport.overflow != OverflowPolicy::Fallback {
+        return Ok(());
+    }
+    let Some(capability) = capability.filter(|capability| capability.is_supported()) else {
+        return Ok(());
+    };
+    if !capability.supports_fallback_encoding(policies.output.encoding) {
+        return Err(AsciiError::InvalidOption {
+            field: "ascii_viewport.overflow",
+            message: "fallback is not admitted for the selected output encoding",
+        });
+    }
+    Ok(())
+}
+
 fn render_class_model(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
@@ -201,25 +473,26 @@ fn render_flowchart_model(
     model: &FlowchartModel,
     render_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
+    layout: FlowchartLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let base_resources = resource::ResourceContext::new(*execution.resources());
     let mut semantic_resources =
-        execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+        execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let graph = graph::from_flowchart_model_with_execution(
         model,
         render_context,
-        options,
+        layout,
         &mut semantic_resources,
         *execution,
     )?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let mut layout_resources =
         execution.resource_context(&semantic_resources, merman_core::OperationPhase::Layout);
-    graph::render_graph_with_resources_and_execution(
+    graph::render_graph_with_resolved_policy_and_execution(
         &graph,
         options,
+        layout.graph_policy(),
         &mut layout_resources,
         *execution,
     )
@@ -283,20 +556,17 @@ fn render_packet_model(
 fn render_sequence_model(
     model: &SequenceDiagramRenderModel,
     options: &AsciiRenderOptions,
+    layout: SequenceLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let mut resources = resource::ResourceContext::new(*execution.resources());
-    let diagram = sequence::from_sequence_model(
-        model,
-        options.terminal_width_profile,
-        &mut resources,
-        *execution,
-    )?;
-    sequence::render_sequence_diagram_with_execution(
+    let mut resources = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    let diagram = sequence::from_sequence_model(model, layout, &mut resources, *execution)?;
+    sequence::render_sequence_diagram_with_resolved_policy(
         &diagram,
         model.title.as_deref().filter(|title| !title.is_empty()),
         options,
+        layout,
         &mut resources,
         *execution,
     )
@@ -305,12 +575,12 @@ fn render_sequence_model(
 fn render_state_model(
     model: &StateDiagramRenderModel,
     options: &AsciiRenderOptions,
+    layout: GraphLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let base_resources = resource::ResourceContext::new(*execution.resources());
     let mut semantic_resources =
-        execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+        execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let graph = state::from_state_model_with_context_and_execution(
         model,
         options.terminal_width_profile,
@@ -320,9 +590,10 @@ fn render_state_model(
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let mut layout_resources =
         execution.resource_context(&semantic_resources, merman_core::OperationPhase::Layout);
-    graph::render_graph_with_resources_and_execution(
+    graph::render_graph_with_resolved_policy_and_execution(
         &graph,
         options,
+        layout,
         &mut layout_resources,
         *execution,
     )
@@ -340,10 +611,11 @@ fn render_timeline_model(
 fn render_xychart_model(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
+    layout: XyChartLayoutPolicy,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    xychart::render_xychart_diagram_with_execution(model, options, *execution)
+    xychart::render_xychart_diagram_with_resolved_policy(model, options, layout, *execution)
 }
 
 fn render_tree_view_model(

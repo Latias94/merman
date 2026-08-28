@@ -91,19 +91,20 @@ class CliProcessMatrixTests(unittest.TestCase):
                 self.assertTrue(profile.name)
                 self.assertTrue(profile.workflow)
 
-    def test_cli_defaults_are_all_public_features(self) -> None:
+    def test_cli_defaults_omit_only_the_explicit_elk_leaf(self) -> None:
         cargo_toml = tomllib.loads(
             (matrix.REPO_ROOT / "crates/merman-cli/Cargo.toml").read_text(
                 encoding="utf-8"
             )
         )
         features = cargo_toml["features"]
+        public_features = set(features) - {"default"}
         self.assertSetEqual(
             set(features["default"]),
-            set(features) - {"default"},
-            "workspace default tests only replace a separate all-features run "
-            "while every public CLI feature is enabled by default",
+            public_features - {"layout-elk"},
+            "workspace defaults intentionally omit only the explicit EPL-2.0 ELK leaf",
         )
+        self.assertNotIn("layout-elk", features["default"])
 
     def test_unlocked_commands_project_every_selection_exactly(self) -> None:
         self.assertListEqual(

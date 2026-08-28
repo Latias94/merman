@@ -1865,7 +1865,7 @@ fn er_color_html_wraps_dense_relation_summary_roles_without_changing_plain_text(
     let theme = AsciiColorTheme::default_light()
         .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x101010))
         .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x202020))
-        .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x303030))
+        .with_role(AsciiColorRole::Section, AsciiRgb::from_hex24(0x303030))
         .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x505050));
     let options = AsciiRenderOptions::ascii()
         .with_color_mode(AsciiColorMode::Html)

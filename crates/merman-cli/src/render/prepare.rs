@@ -54,6 +54,8 @@ pub(super) struct PreparedTextRender {
     pub(super) renderer: Box<crate::config::ConfiguredRenderer>,
     pub(super) options: merman::ascii::AsciiRenderOptions,
     pub(super) resources: merman::ascii::AsciiResourcePolicy,
+    pub(super) viewport: merman::ascii::AsciiViewportPolicy,
+    pub(super) report: bool,
     pub(super) admission: BackendAdmission,
 }
 
@@ -352,6 +354,8 @@ fn prepare_single(
             destination,
             options,
             resources: legacy_resources,
+            viewport,
+            report,
         } => {
             let options = *options;
             let mut resources = common.resources.ascii_policy();
@@ -380,6 +384,8 @@ fn prepare_single(
                     renderer: Box::new(renderer),
                     options,
                     resources,
+                    viewport,
+                    report,
                     admission,
                 })),
                 publications,
@@ -678,7 +684,8 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
             resources
                 .render_policy()
                 .value(merman::svg::ResourceLimitId::MaxSvgBytes),
-        );
+        )
+        .with_profile(resources.profile());
     }
     let _ = raw_svg;
     InputLimit::new(
@@ -687,6 +694,7 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
             .input_policy()
             .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
     )
+    .with_profile(resources.profile())
 }
 
 #[cfg(all(test, feature = "rustdoc"))]

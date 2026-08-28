@@ -104,7 +104,7 @@ impl RelationDocumentPlan {
             }
             lines.push(RelationGraphLine::try_with_role(
                 "relations:",
-                AsciiColorRole::MutedText,
+                AsciiColorRole::Section,
                 options.terminal_width_profile,
                 resources,
             )?);

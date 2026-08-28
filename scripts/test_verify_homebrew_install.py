@@ -15,15 +15,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_homebrew_install as verifier
 import verify_cli_installation as installation_verifier
+from ascii_capability_contract import canonical_ascii_capabilities
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORT_ASSETS_SINCE = "0.8.0"
 
 
+def ascii_capabilities_contract() -> dict[str, object]:
+    return canonical_ascii_capabilities()
+
+
 class HomebrewInstallVerifierTests(unittest.TestCase):
-    def test_contract_four_adds_the_rustdoc_command_and_manpages(self) -> None:
-        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 4)
+    def test_contract_five_retains_the_rustdoc_command_and_manpages(self) -> None:
+        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 5)
         self.assertIn("rustdoc", verifier.COMMANDS)
         self.assertEqual(len(verifier.MANPAGE_NAMES), 15)
         self.assertTrue(
@@ -270,6 +275,40 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
+    def test_ascii_capability_subcontract_is_exact(self) -> None:
+        for mutation in ("missing_encodings", "missing_swimlane", "extra_field"):
+            with self.subTest(mutation=mutation):
+                with self.installation_fixture() as fixture:
+                    ascii_contract = fixture.capabilities["ascii"]
+                    if mutation == "missing_encodings":
+                        flowchart = next(
+                            family
+                            for family in ascii_contract["families"]
+                            if family["family"] == "flowchart"
+                        )
+                        flowchart.pop("encodings")
+                    elif mutation == "missing_swimlane":
+                        ascii_contract["detected_type_mappings"] = [
+                            mapping
+                            for mapping in ascii_contract["detected_type_mappings"]
+                            if mapping["detected_type"] != "swimlane"
+                        ]
+                    else:
+                        ascii_contract["families"][0]["unknown"] = None
+
+                    with self.assertRaisesRegex(
+                        verifier.HomebrewVerificationError,
+                        "ASCII",
+                    ):
+                        verifier.verify_homebrew_install(
+                            formula_version="0.8.0",
+                            support_assets_since=SUPPORT_ASSETS_SINCE,
+                            prefix=fixture.prefix,
+                            binary=fixture.binary,
+                            contract_root=fixture.contract_root,
+                            runner=fixture.run,
+                        )
+
     def test_capability_and_output_sets_reject_drift_and_duplicates(self) -> None:
         cases = (
             ("capabilities", "extra", "capability set differs"),
@@ -435,6 +474,7 @@ class InstallationFixture:
             "outputs": [
                 {"id": identifier} for identifier in profile["expected"]["outputs"]
             ],
+            "ascii": ascii_capabilities_contract(),
         }
 
     def __enter__(self):

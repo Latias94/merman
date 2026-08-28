@@ -184,7 +184,6 @@ const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
     id: "rustdoc",
     implicationIds: <String>{
       "layout-cytoscape",
-      "layout-elk",
       "markdown",
       "math",
     },

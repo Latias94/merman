@@ -16,6 +16,11 @@ SPEC.loader.exec_module(verifier)
 
 
 class RecoveryPathPolicyTests(unittest.TestCase):
+    def test_ascii_capability_helper_is_trusted_but_not_recovery_mutable(self) -> None:
+        helper = "scripts/ascii_capability_contract.py"
+        self.assertIn(helper, verifier.TRUSTED_FILES)
+        self.assertNotIn(helper, verifier.RECOVERY_PATHS)
+
     def test_accepts_only_the_needed_subset_of_admitted_paths(self) -> None:
         verifier.verify_recovery_paths(
             (

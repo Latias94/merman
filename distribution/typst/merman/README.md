@@ -2,19 +2,14 @@
 
 Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
-`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project.
+`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents the `0.2.0` package and requires Typst `0.15.0` or newer.
 
-> [!NOTE]
-> Typst Universe currently publishes `@preview/merman:0.1.0`, which requires Typst 0.14.0 or
-> newer. This source-tree README documents the unreleased `0.2.0` wrapper, which requires Typst
-> 0.15.0 and must be built locally until it is published.
-
-## Published quick start
+## Quick Start
 
 Import `mermaid` and pass a Mermaid source string:
 
 ```typst
-#import "@preview/merman:0.1.0": mermaid
+#import "@preview/merman:0.2.0": mermaid
 
 #mermaid("
 flowchart TD
@@ -27,14 +22,12 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.2.0` (source tree, unreleased) | `0.8.0-alpha.5` | `3` | Requires a local package build and Typst `--package-path`. |
-| `0.1.0` (Typst Universe) | `0.8.0-alpha.1` | `1` | Current published wrapper. |
+| `0.2.0` (source tree, unreleased) | `0.8.0-alpha.6` | `3` | Requires a local package build and Typst `--package-path`. |
+| `0.1.0` (Typst Universe) | `0.8.0-alpha.1` | `1` | Previous package API. |
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 3 and native ABI 3.
 
-The remaining API and example sections describe the unreleased `0.2.0` source tree. Build the
-package as described in [Development](#development) and compile with the generated local package
-path before running those examples.
+The API and example sections below describe the `0.2.0` package.
 
 ## Examples
 
@@ -48,6 +41,7 @@ path before running those examples.
 - [presentation.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/presentation.typ): dark slide-sized output using a compiled theme preset.
 - [svg-export.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/svg-export.typ): raw SVG and structured render payloads.
 - [theme-authoring.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/theme-authoring.typ): materialize a shared definition, inspect support, and copy an editable preset recipe.
+- [elk.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/elk.typ): Mermaid's `layout: elk` frontmatter and the bundled ELK backend.
 
 Package fixtures are grouped by behavior family under [tests](https://github.com/Latias94/merman/tree/main/distribution/typst/merman/tests): API, option normalization, render environments, context, errors, figures, raw blocks, README examples, historical issues, and visual smoke coverage. These links point to the source repository because examples and tests are not included in the published Typst package.
 
@@ -118,6 +112,8 @@ Profiles work with `mermaid(...)`, `mermaid-figure(...)`, `mermaid-svg(...)`, `m
 
 For normal documents, start with `width`, `theme-name`, `theme-variables`, `theme-preset` or `diagram-theme`, `background`, `typography`, `document-context`, and reusable `profile` values. Lower-level renderer fields remain available when you need parity debugging or deterministic fixture control, but they are not the main authoring path.
 
+`base-theme` is a lower-priority compatibility alias for `theme-name`; prefer `theme-name` in new documents. When both are supplied, `theme-name` wins.
+
 Raw `options` always wins. Without it, precedence is field-specific and deterministic:
 
 - site config: profile full object, profile `theme-name`/`theme-variables`, direct full object, direct `theme-name`/`theme-variables`;
@@ -127,6 +123,10 @@ Raw `options` always wins. Without it, precedence is field-specific and determin
 - scalar fields: direct value, profile value, package or renderer default.
 
 `theme-name` and `theme-variables` replace the Mermaid `theme` or `themeVariables` field at their layer; they do not deep-merge individual theme-variable keys. `theme-preset` selects one complete compiled preset, so it cannot be combined with `typography` or `document-context`; use `diagram-theme` when typography must be composed into an explicit spec.
+
+A direct `site-config` object replaces the profile `site-config` object; use the direct `theme-name` and `theme` shorthands when you want the documented theme-layer precedence instead of replacing the full object.
+
+A profile that contains raw `options` is an opaque binding-options bundle: it bypasses the profile and call-site shorthands. Pass a direct raw `options` dictionary to replace that bundle, or use the structured profile fields when you want field-level overrides.
 
 ## Raw Blocks
 
@@ -143,6 +143,8 @@ flowchart LR
   Typst --> SVG
 ```
 ````
+
+Raw-block show rules default to `error-mode: "placeholder"`, so one invalid fence stays visible as a marked block instead of aborting the whole document. Pass `error-mode: "panic"` when a document-wide rule must fail the compile on the first render error.
 
 Avoid setting a fixed `id` in a document-wide raw-block show rule unless the document has only one Mermaid block; otherwise multiple diagrams will share the same SVG id.
 
@@ -229,7 +231,7 @@ Common parameters:
 - `typography`: high-level font and size intent projected to `theme.spec.typography.default`.
 - `theme-preset`: compiled Merman diagram-theme preset, such as `"editor-dark"` or `"ayu-dark"`.
 - `diagram-theme`: one complete `DiagramThemeSpec` body, wrapped as top-level `theme.spec`.
-- `id`: stable SVG root id. `diagram-id` is kept as the lower-level binding name and takes precedence when both are provided.
+- `id`: stable SVG root id. `diagram-id` is the lower-level binding name; precedence is direct `diagram-id`, direct `id`, profile `diagram-id`, then profile `id`.
 - `background`: SVG root background color, mapped to `svg.root_background_color`.
 - `theme-name`: Mermaid theme name, such as `"base"` or `"dark"`.
 - `theme-variables`: Mermaid `themeVariables`.
@@ -251,6 +253,8 @@ Advanced renderer parameters:
 
 Typst does not expose the removed `scoped-css` or `css-override-policy` high-level controls. Use `diagram-theme`, `theme-variables`, or `background` for document-owned presentation needs.
 
+Use `typography` for Typst-facing font intent: it accepts Typst font descriptors, absolute Typst lengths, and numeric or string CSS pixels. It is projected into the typed `theme.spec.typography.default` object rather than a raw CSS or host-theme escape hatch.
+
 ### `mermaid-profile(..)`
 
 Returns a reusable Typst settings dictionary. Profiles normalize into the same binding options used by direct parameters, so they do not create a second rendering path. The removed `presentation-profile`, `host-theme`, `merman-modern`, `scoped-css`, and `css-override-policy` inputs are not compatibility aliases; handwritten dictionaries using a removed field fail with a migration diagnostic.
@@ -267,7 +271,7 @@ Figure layout parameters are forwarded to Typst's native `figure`: `placement`, 
 
 Returns the rendered SVG as a string instead of embedding it as an image.
 
-This value-returning API does not enter Typst `context`; pass `typography`, `theme-preset`/`diagram-theme`, `layout`, or `container-width` explicitly when exporting SVG text.
+This value-returning API does not enter Typst `context`; pass `typography`, `theme-preset`/`diagram-theme`, `layout`, or `container-width` explicitly when exporting SVG text. Rendering failures panic; use `mermaid-result(...)` when the document needs programmatic error handling.
 
 ### `mermaid-result(source, ..)`
 
@@ -283,6 +287,7 @@ Returns a structured render payload:
 ```
 
 The result also includes `operation`, `kind`, and `capability_id`. On failure, these fields let callers distinguish a missing compiled capability from invalid input or a general render error without parsing `message`.
+Resource-limit failures additionally expose `details.resource` with the stable limit id, profile, and actual/max values.
 
 ### `analyze-mermaid(source, ..)`
 
@@ -334,6 +339,8 @@ structured operation envelope used by rendering, including `ok`, `code_name`, `k
 and an optional `capability_id`. The plugin always applies its constrained resource policy; caller
 options may tighten that policy but cannot loosen it.
 
+Invalid Mermaid source remains a schema-1 analysis payload with `valid: false`; transport, options, and missing-capability failures use the structured operation envelope instead.
+
 ### `merman-capabilities()`
 
 Returns the compiled plugin capability payload, including the current text measurement boundary:
@@ -371,6 +378,22 @@ The package is written to:
 dist/typst/merman/0.2.0
 ```
 
+The source package carries the examples shown above so they remain readable in the package review. `typst.toml` excludes `examples/**` from the runtime download; tests stay in the Merman source repository and are not bundled.
+
+For a manual local install, copy that directory to `<package-root>/preview/merman/0.2.0` and pass the parent directory to Typst:
+
+```text
+<package-root>/preview/merman/0.2.0/typst.toml
+<package-root>/preview/merman/0.2.0/lib.typ
+<package-root>/preview/merman/0.2.0/merman_typst_plugin.wasm
+```
+
+```sh
+typst compile --package-path <package-root> document.typ
+```
+
+The `typst-package-smoke` command creates this preview layout automatically in a temporary directory.
+
 For local `@preview` smoke tests, copy the built package under a preview namespace package path and compile with `--package-path`:
 
 ```sh
@@ -400,4 +423,6 @@ The sole package profile, `publish`, enables SVG rendering, analysis, the comple
 
 ## License
 
-Merman is available under either MIT or Apache-2.0. The package includes the complete project license in `LICENSE`, source and embedded-resource attribution in `THIRD_PARTY_NOTICES.md`, and the corresponding third-party terms in `THIRD_PARTY_LICENSES/`. The machine-readable Cargo dependency report remains in the [source repository's release evidence](https://github.com/Latias94/merman/tree/main/docs/release) instead of being duplicated in the downloaded Typst package.
+The wrapper and Merman-authored code are available under either MIT or Apache-2.0. The embedded ELK-derived implementation is a separate component under EPL-2.0; it does not relicense the rest of the package. `THIRD_PARTY_NOTICES.md` records the exact source revision, relationship, and scope for ELK and the other embedded or translated components, while `THIRD_PARTY_LICENSES/` contains their applicable legal files. Preserve these materials when redistributing the package or a derivative artifact.
+
+The machine-readable Cargo dependency report remains in the source repository's release evidence instead of being duplicated in the downloaded Typst package.

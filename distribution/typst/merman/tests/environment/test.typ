@@ -67,6 +67,20 @@
 )
 #assert(raw-options-result.ok, message: "raw options should bypass every high-level environment field")
 
+#let raw-options-with-invalid-typography = mermaid-result(
+  source,
+  profile: mermaid-profile(typography: (unsupported: true)),
+  typography: (also-unsupported: true),
+  options: (
+    version: 2,
+    svg: (pipeline: "readable"),
+  ),
+)
+#assert(
+  raw-options-with-invalid-typography.ok,
+  message: "raw options should bypass invalid profile and direct typography shorthands",
+)
+
 #let invalid-text-result = mermaid-result(source, text-measurement: "typst-font-assets")
 #assert(not invalid-text-result.ok, message: "an unknown text measurement profile must fail closed")
 #assert.eq(invalid-text-result.code_name, "MERMAN_INVALID_ARGUMENT")

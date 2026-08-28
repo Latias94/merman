@@ -6,7 +6,14 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
-use merman_render::resources::{RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase};
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
+
+#[cfg(windows)]
+const DEEP_GROUP_LAYOUT_STACK_SIZE: usize = 512 * 1024;
+#[cfg(not(windows))]
+const DEEP_GROUP_LAYOUT_STACK_SIZE: usize = 128 * 1024;
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
     let engine = Engine::new();
@@ -205,6 +212,7 @@ architecture-beta
     let Error::ResourceLimitExceeded(limit) = error else {
         panic!("expected a layout work resource error");
     };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
     assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
     assert_eq!(limit.limit, "max_layout_work_units");
     assert_eq!(limit.actual, 55);
@@ -262,25 +270,17 @@ fn architecture_parse_for_render_model_handles_deep_group_chain() {
 fn architecture_layout_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-        .expect("parse ok")
-        .expect("diagram detected");
-    // Keep the constrained thread's caller shallow so this guards the family preparation frame.
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let options = LayoutOptions::default();
+    let engine = Engine::new();
     let handle = std::thread::Builder::new()
-        .name("architecture-deep-group-family-prepare".to_string())
-        .stack_size(128 * 1024)
-        .spawn(move || family::prepare(parsed, &options, session).expect("layout ok"))
-        .expect("spawn architecture deep group family preparation test");
-    let artifact = handle
+        .name("architecture-deep-group-layout".to_string())
+        // The public artifact pipeline needs more stack headroom on Windows/MSVC than the
+        // parse-only path while retaining the 128 KiB contract on other platforms.
+        .stack_size(DEEP_GROUP_LAYOUT_STACK_SIZE)
+        .spawn(move || layout_architecture_with_engine(&engine, &source))
+        .expect("spawn architecture deep group layout test");
+    let layout = handle
         .join()
-        .expect("architecture family preparation should fit a 128 KiB stack");
-    let projection = artifact.layout_json().expect("serialize layout");
-    let layout: ArchitectureDiagramLayout =
-        serde_json::from_value(projection["layout"]["ArchitectureDiagram"].clone())
-            .expect("architecture layout projection");
+        .expect("architecture deep group layout should finish without stack overflow");
 
     assert!(
         layout.nodes.iter().any(|node| node.id == "leaf"),

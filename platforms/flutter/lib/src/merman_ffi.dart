@@ -811,6 +811,10 @@ class MermanAsciiCapability {
     required this.semanticCoverage,
     required this.primaryProjection,
     required this.structuredTextFallback,
+    required this.layoutProfiles,
+    required this.widthProfiles,
+    required this.encodings,
+    required this.fallbackEncodings,
     required this.supportLevel,
     required this.supportedSemantics,
     required this.limits,
@@ -822,6 +826,10 @@ class MermanAsciiCapability {
   final String? semanticCoverage;
   final String primaryProjection;
   final bool structuredTextFallback;
+  final List<String> layoutProfiles;
+  final List<String> widthProfiles;
+  final List<String> encodings;
+  final List<String> fallbackEncodings;
   final String supportLevel;
   final List<String> supportedSemantics;
   final List<String> limits;
@@ -853,6 +861,30 @@ class MermanAsciiCapability {
         json,
         'structured_text_fallback',
         'ASCII capability',
+      ),
+      layoutProfiles: List.unmodifiable(
+        _requiredStringList(
+          json,
+          'layout_profiles',
+          'ASCII capability.layout_profiles',
+        ),
+      ),
+      widthProfiles: List.unmodifiable(
+        _requiredStringList(
+          json,
+          'width_profiles',
+          'ASCII capability.width_profiles',
+        ),
+      ),
+      encodings: List.unmodifiable(
+        _requiredStringList(json, 'encodings', 'ASCII capability.encodings'),
+      ),
+      fallbackEncodings: List.unmodifiable(
+        _requiredStringList(
+          json,
+          'fallback_encodings',
+          'ASCII capability.fallback_encodings',
+        ),
       ),
       supportLevel: _requiredString(json, 'support_level', 'ASCII capability'),
       supportedSemantics: List.unmodifiable(

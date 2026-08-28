@@ -8,6 +8,17 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
+- Advanced the direct UniFFI binding API to `7` because the merged diagram-family capability record
+  changed after API 6 added ASCII layout/width/encoding/fallback admission arrays and schema-2
+  output-plan encoding. API 7 replaces `binding_api_version_v6()` with `binding_api_version_v7()`
+  so stale generated packages fail before decoding the changed family record and
+  `theme_catalog_json()` metadata shape. Regenerate and deploy the Python package and native
+  library together.
+- (Historical) Advanced the direct UniFFI binding API to `6` because `MermanAsciiCapability` gained
+  layout/width/encoding/fallback admission arrays and `MermanAsciiOutputPlan` gained schema-2
+  encoding. API 6 replaced `binding_api_version_v5()` with `binding_api_version_v6()` so stale
+  generated packages failed before decoding either changed record. Regenerate and deploy the Python
+  package and native library together.
 - Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. `MermanError.Binding.cancellation` reports the observed reason and phase independently from resource-limit details.
 - Advanced the direct UniFFI binding API to `5` after adding required lint-rule `tags`, replacing the alpha.5 diagram-family taxonomy fields with the core-owned `family_id`, and revising `MermanAsciiCapability` plus `MermanError.Binding` wire layouts. API 5
   replaces `transport_api_version()` with `binding_api_version_v5()` and removes the API 4 probe

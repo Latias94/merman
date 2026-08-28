@@ -73,7 +73,6 @@ export const CAPABILITY_SPECS = [
     "id": "rustdoc",
     "implication_ids": [
       "layout-cytoscape",
-      "layout-elk",
       "markdown",
       "math"
     ]

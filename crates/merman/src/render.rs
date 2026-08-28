@@ -7,6 +7,7 @@
 use crate::operation_runner::Operation;
 #[cfg(feature = "svg")]
 use crate::operation_runner::OperationExecution;
+use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
 #[cfg(feature = "ascii")]
 use merman_core::OperationPhase;
 use merman_core::{
@@ -15,6 +16,12 @@ use merman_core::{
     resources::InputResourcePolicy,
 };
 
+#[cfg(feature = "ascii")]
+use merman_ascii::{
+    AsciiError, AsciiOutput, AsciiRenderOptions, AsciiResourcePolicy, AsciiViewportPolicy,
+};
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use merman_export::ExportError;
 #[cfg(feature = "svg")]
 mod document;
 #[cfg(feature = "svg")]
@@ -23,7 +30,6 @@ mod environment;
 mod evidence;
 #[cfg(feature = "svg")]
 mod target_admission;
-use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
 
 #[cfg(feature = "jpeg")]
 pub use document::PreparedJpegExport;
@@ -62,10 +68,6 @@ impl OperationExecutionPath {
 }
 #[cfg(all(feature = "svg", feature = "internal-theme-acceptance"))]
 pub(crate) use evidence::{ThemeAcceptanceEvidenceProjection, ThemeEvidenceScopeProjection};
-#[cfg(feature = "ascii")]
-use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-use merman_export::ExportError;
 #[cfg(feature = "svg")]
 use merman_render::{
     LayoutOptions, ResourceLimitExceeded as SvgResourceLimitExceeded,
@@ -124,6 +126,8 @@ impl SvgLayoutOutput {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RenderError {
+    #[error("no Mermaid diagram detected")]
+    NoDiagram,
     #[error(transparent)]
     Cancelled(#[from] OperationCancelled),
     #[error(transparent)]
@@ -412,6 +416,10 @@ fn map_export_error(error: ExportError) -> RenderError {
 ///
 /// The semantic target is available in every feature configuration. SVG, ASCII, and terminal
 /// export variants are feature-gated leaves of the same dispatch seam.
+// Keep the request enum by-value: callers construct a single target request directly and the
+// feature-gated variants already own their complete render policy. Boxing only the ASCII leaf
+// would make the public constructors inconsistent without reducing the actual render payload.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum RenderTarget {
@@ -466,6 +474,7 @@ impl Default for SvgRequest {
 pub struct AsciiRequest {
     pub options: AsciiRenderOptions,
     pub resources: AsciiResourcePolicy,
+    pub viewport: AsciiViewportPolicy,
 }
 
 #[cfg(feature = "png")]
@@ -598,7 +607,7 @@ pub enum RenderOutput {
     #[cfg(feature = "svg")]
     SvgPlan(Option<merman_render::family::RenderCapabilityPlan>),
     #[cfg(feature = "ascii")]
-    Ascii(Option<String>),
+    Ascii(Option<AsciiOutput>),
     #[cfg(feature = "png")]
     Png(Option<RasterOutput>),
     #[cfg(feature = "jpeg")]
@@ -693,6 +702,10 @@ impl Renderer {
         let semantic =
             operation.parse_render_model(source, parse_options.unwrap_or(self.parse_options))?;
         let Some(semantic) = semantic else {
+            #[cfg(feature = "ascii")]
+            if matches!(&target, RenderTarget::Ascii(_)) {
+                return Err(RenderError::NoDiagram);
+            }
             return Ok(RenderOutput::empty(target));
         };
         semantic.render(target)
@@ -914,14 +927,15 @@ fn render_document_target(
 fn render_ascii_target(
     semantic: SemanticArtifact,
     request: AsciiRequest,
-) -> Result<Option<String>, RenderError> {
+) -> Result<Option<AsciiOutput>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let renderer = merman_ascii::AsciiRenderer::new(request.options);
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let renderer = renderer.map_err(map_ascii_error)?;
-    let result = renderer.render_parsed(
+    let result = renderer.render_parsed_report(
         &parsed,
+        request.viewport,
         &operation.control,
         &operation.context,
         request.resources,

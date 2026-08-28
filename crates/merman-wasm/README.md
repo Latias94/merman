@@ -96,7 +96,17 @@ npm run build:wasm:full --prefix platforms/web
 - `svg` adds browser SVG operations and JavaScript interop.
 - `layout-cytoscape`, `layout-elk`, and `math` imply `svg`.
 
-The complete `@mermanjs/web` package uses the `web-full` profile. Other public packages map to their own descriptor-owned profiles and contain exactly one matching WASM artifact.
+The complete `@mermanjs/web` package uses the `web-full` profile. Other public packages map to their
+own descriptor-owned profiles and contain exactly one matching WASM artifact. Profiles that list
+`layout-elk` intentionally carry the EPL-2.0 ELK closure; the profile-specific notice bundle is
+part of the package contract.
+
+## License And Notices
+
+Merman-owned code is available under MIT or Apache-2.0. A WASM package's license and notice set is
+profile-specific: packages with `layout-elk` carry the EPL-2.0 ELK closure, and packages with
+`math` may carry the OFL-1.1 RaTeX font closure. Use the generated package manifest and bundled
+notices as the distribution authority.
 
 ## Size Verification
 

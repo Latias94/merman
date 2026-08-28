@@ -34,13 +34,14 @@
           let
             package = self.packages.${system}.default;
             source = package.source;
+            scriptFiles = package.sourcePolicy.script_files;
           in
           nixpkgs.legacyPackages.${system}.runCommand "merman-cli-source-contract" { } ''
             test -f ${source}/Cargo.toml
             test -f ${source}/Cargo.lock
             test -f ${source}/crates/merman-cli/assets/completions/merman-cli.bash
             test -f ${source}/capabilities/artifact-profiles-v1.json
-            test -f ${source}/scripts/verify_cli_installation.py
+            ${nixpkgs.lib.concatMapStringsSep "\n" (relative: "test -f ${source}/${relative}") scriptFiles}
             test ! -e ${source}/.git
             test ! -e ${source}/repo-ref
             test ! -e ${source}/target
@@ -49,7 +50,9 @@
             test ! -e ${source}/crates/merman-node
             test ! -e ${source}/crates/merman-node/target
             test ! -e ${source}/crates/merman-wasm/target
-            test "$(find ${source}/scripts -mindepth 1 -maxdepth 1 | wc -l)" -eq 1
+            test "$(find ${source}/scripts -mindepth 1 -maxdepth 1 | wc -l)" -eq ${
+              toString (builtins.length scriptFiles)
+            }
             touch "$out"
           '';
       });

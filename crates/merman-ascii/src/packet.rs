@@ -40,7 +40,7 @@ pub(super) fn render_packet_diagram(
         }
     }
 
-    document.finish()
+    document.finish_with_execution(execution)
 }
 
 fn validate_packet_blocks(

@@ -33,110 +33,28 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
     "merman-ffi",
     "merman-lsp",
     "merman-render",
-    "merman-theme-contract",
     "merman-typst-plugin",
     "merman-uniffi",
     "merman-wasm",
 ];
-struct FeatureInventory {
-    package: &'static str,
-    public_extras: &'static [&'static str],
-    internal_extras: &'static [&'static str],
-}
-
-// This is the single declarative inventory. Internal features are listed here so the
-// release preflight can account for them without treating them as public product surface.
-const FEATURE_INVENTORY: &[FeatureInventory] = &[
-    FeatureInventory {
-        package: "merman",
-        public_extras: &["complete-svg"],
-        internal_extras: &["internal-theme-acceptance"],
-    },
-    FeatureInventory {
-        package: "merman-analysis",
-        public_extras: &[],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-android-jni",
-        public_extras: &["native-runtime"],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-ascii",
-        public_extras: &[],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-bindings-core",
-        public_extras: &["native-runtime"],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-cli",
-        public_extras: &[],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-core",
-        public_extras: &["operation-deadlines", "test-support"],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-editor-core",
-        public_extras: &[],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-export",
-        public_extras: &[],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-ffi",
-        public_extras: &["native-runtime"],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-lsp",
-        public_extras: &["stdio"],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-render",
-        public_extras: &[],
-        internal_extras: &["fuzzing", "internal-theme-acceptance"],
-    },
-    FeatureInventory {
-        package: "merman-rustdoc",
-        public_extras: &["complete-svg"],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-theme-contract",
-        public_extras: &[],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-typst-plugin",
-        public_extras: &[],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-uniffi",
-        public_extras: &["binding-generation", "native-runtime"],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "merman-wasm",
-        public_extras: &[],
-        internal_extras: &[],
-    },
-    FeatureInventory {
-        package: "roughr-merman",
-        public_extras: &["host-random", "legacy-compat"],
-        internal_extras: &[],
-    },
+const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
+    ("merman", &["complete-svg", "complete-svg-elk"]),
+    ("merman-analysis", &[]),
+    ("merman-android-jni", &["native-runtime"]),
+    ("merman-ascii", &[]),
+    ("merman-bindings-core", &["native-runtime"]),
+    ("merman-cli", &[]),
+    ("merman-core", &["operation-deadlines", "test-support"]),
+    ("merman-editor-core", &[]),
+    ("merman-export", &[]),
+    ("merman-ffi", &["native-runtime"]),
+    ("merman-lsp", &["stdio"]),
+    ("merman-render", &[]),
+    ("merman-rustdoc", &["complete-svg", "complete-svg-elk"]),
+    ("merman-typst-plugin", &[]),
+    ("merman-uniffi", &["binding-generation", "native-runtime"]),
+    ("merman-wasm", &[]),
+    ("roughr-merman", &["host-random", "legacy-compat"]),
 ];
 const SVG_ENGINE_FEATURES: &[&str] = &["layout-cytoscape", "layout-elk", "math"];
 const RETIRED_BINDING_RUNTIME_FEATURES: &[&str] =
@@ -154,7 +72,7 @@ const NATIVE_RUNTIME_FORWARDERS: &[(&str, &str)] = &[
     ("merman-ffi", "merman-bindings-core"),
     ("merman-uniffi", "merman-bindings-core"),
 ];
-const PRODUCT_FEATURE_CONTRACTS: usize = 5;
+const PRODUCT_FEATURE_CONTRACTS: usize = 7;
 
 fn transport_packages() -> impl Iterator<Item = &'static str> {
     TRANSPORT_TARGETS.iter().map(|(package, _)| *package)
@@ -167,10 +85,11 @@ fn wasm_transport_packages() -> impl Iterator<Item = &'static str> {
 }
 
 fn complete_svg_features() -> impl Iterator<Item = &'static str> {
-    SVG_ENGINE_FEATURES
-        .iter()
-        .copied()
-        .chain(std::iter::once("svg"))
+    ["layout-cytoscape", "math", "svg"].into_iter()
+}
+
+fn complete_svg_elk_features() -> impl Iterator<Item = &'static str> {
+    ["complete-svg", "layout-elk"].into_iter()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -557,7 +476,7 @@ impl FeatureGraph {
         report.empty_defaults = self.validate_empty_default_contracts(EMPTY_DEFAULT_PACKAGES)?;
         report.published_defaults =
             self.validate_published_default_contracts(PUBLISHED_DEFAULT_CONTRACTS)?;
-        report.feature_allowlists = self.validate_feature_allowlists()?;
+        report.feature_allowlists = self.validate_public_feature_allowlists()?;
         report.forwarding_edges = self.validate_feature_forwarding(FEATURE_FORWARDING_CONTRACTS)?
             + self.validate_native_runtime_feature_contract()?;
         report.dependency_feature_boundaries =
@@ -587,14 +506,10 @@ impl FeatureGraph {
         Ok(packages.len())
     }
 
-    fn validate_feature_allowlists(&self) -> Result<usize, XtaskError> {
+    fn validate_public_feature_allowlists(&self) -> Result<usize, XtaskError> {
         let mut checked = 0;
-        for inventory in FEATURE_INVENTORY {
-            self.validate_feature_allowlist(
-                inventory.package,
-                inventory.public_extras,
-                inventory.internal_extras,
-            )?;
+        for (package_name, extras) in PUBLIC_FEATURE_ALLOWLIST_EXTRAS {
+            self.validate_public_feature_allowlist(package_name, extras)?;
             checked += 1;
         }
         Ok(checked)
@@ -624,11 +539,10 @@ impl FeatureGraph {
         Ok(contracts.len())
     }
 
-    fn validate_feature_allowlist(
+    fn validate_public_feature_allowlist(
         &self,
         package_name: &str,
-        public_extras: &[&str],
-        internal_extras: &[&str],
+        extras: &[&str],
     ) -> Result<(), XtaskError> {
         let package = self.package(package_name)?;
         let mut allowed = self
@@ -636,12 +550,7 @@ impl FeatureGraph {
             .into_iter()
             .collect::<BTreeSet<_>>();
         allowed.insert("default".to_string());
-        allowed.extend(
-            public_extras
-                .iter()
-                .chain(internal_extras)
-                .map(|feature| (*feature).to_string()),
-        );
+        allowed.extend(extras.iter().map(|feature| (*feature).to_string()));
         let unexpected = package
             .features
             .keys()
@@ -650,25 +559,9 @@ impl FeatureGraph {
             .collect::<Vec<_>>();
         if !unexpected.is_empty() {
             return Err(matrix_error(format!(
-                "{}: unexpected Cargo features outside the canonical inventory: {}",
+                "{}: unexpected public Cargo features outside the canonical allowlist: {}",
                 package.manifest_path.display(),
                 unexpected.join(", ")
-            )));
-        }
-        package.features.get("default").ok_or_else(|| {
-            matrix_error(format!(
-                "{}: package must declare an explicit `default` feature",
-                package.manifest_path.display()
-            ))
-        })?;
-        let default_closure = self.local_closure(package_name, ["default"])?;
-        if let Some(feature) = internal_extras
-            .iter()
-            .find(|feature| default_closure.contains(**feature))
-        {
-            return Err(matrix_error(format!(
-                "{}: internal Cargo feature `{feature}` must not be enabled by the default feature closure",
-                package.manifest_path.display()
             )));
         }
         Ok(())
@@ -824,6 +717,17 @@ impl FeatureGraph {
             )));
         }
 
+        let complete_svg_elk = direct_feature_members(facade, "complete-svg-elk")?;
+        let expected_complete_svg_elk = complete_svg_elk_features()
+            .map(|feature| feature.to_string())
+            .collect::<BTreeSet<_>>();
+        if complete_svg_elk != expected_complete_svg_elk {
+            return Err(matrix_error(format!(
+                "{}: `complete-svg-elk` must contain exactly {expected_complete_svg_elk:?}; found {complete_svg_elk:?}",
+                facade.manifest_path.display()
+            )));
+        }
+
         let rustdoc = self.package("merman-rustdoc")?;
         let rustdoc_defaults = direct_feature_members(rustdoc, "default")?;
         if rustdoc_defaults != expected_defaults {
@@ -837,6 +741,14 @@ impl FeatureGraph {
         if rustdoc_complete_svg != expected_complete_svg {
             return Err(matrix_error(format!(
                 "{}: merman-rustdoc `complete-svg` must contain exactly {expected_complete_svg:?}; found {rustdoc_complete_svg:?}",
+                rustdoc.manifest_path.display()
+            )));
+        }
+
+        let rustdoc_complete_svg_elk = direct_feature_members(rustdoc, "complete-svg-elk")?;
+        if rustdoc_complete_svg_elk != expected_complete_svg_elk {
+            return Err(matrix_error(format!(
+                "{}: merman-rustdoc `complete-svg-elk` must contain exactly {expected_complete_svg_elk:?}; found {rustdoc_complete_svg_elk:?}",
                 rustdoc.manifest_path.display()
             )));
         }
@@ -857,9 +769,17 @@ impl FeatureGraph {
             })?;
         let published_features = dist_recipe.features.into_iter().collect::<BTreeSet<_>>();
         let cli_defaults = direct_feature_members(cli, "default")?;
-        if cli_defaults != published_features {
+        if !published_features.contains("layout-elk") {
             return Err(matrix_error(format!(
-                "{}: CLI default must match the published cargo-dist recipe; expected {published_features:?}, found {cli_defaults:?}",
+                "{}: published cargo-dist recipe must retain explicit `layout-elk`; found {published_features:?}",
+                cli.manifest_path.display()
+            )));
+        }
+        let mut expected_cli_defaults = published_features.clone();
+        expected_cli_defaults.remove("layout-elk");
+        if cli_defaults != expected_cli_defaults {
+            return Err(matrix_error(format!(
+                "{}: CLI default must equal the published cargo-dist recipe minus explicit `layout-elk`; expected {expected_cli_defaults:?}, found {cli_defaults:?}",
                 cli.manifest_path.display()
             )));
         }
@@ -1307,13 +1227,34 @@ fn run_host_artifact_case(
 mod tests {
     use super::*;
 
-    const CLI_DEFAULT_FEATURES: &[&str] = &[
+    const CLI_RELEASE_FEATURES: &[&str] = &[
         "analysis",
         "ascii",
         "icons",
         "jpeg",
         "layout-cytoscape",
         "layout-elk",
+        "markdown",
+        "math",
+        "network-icons",
+        "parallel-markdown",
+        "pdf",
+        "png",
+        "rustdoc",
+        "shell-completions",
+        "svg",
+        "system-clock",
+        "system-random",
+        "system-timezone",
+        "system-timing",
+    ];
+
+    const CLI_DEFAULT_FEATURES: &[&str] = &[
+        "analysis",
+        "ascii",
+        "icons",
+        "jpeg",
+        "layout-cytoscape",
         "markdown",
         "math",
         "network-icons",
@@ -1391,20 +1332,16 @@ mod tests {
                 "merman",
                 &[
                     ("default", &["complete-svg"]),
-                    (
-                        "complete-svg",
-                        &["svg", "layout-cytoscape", "layout-elk", "math"],
-                    ),
+                    ("complete-svg", &["svg", "layout-cytoscape", "math"]),
+                    ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
             ),
             package(
                 "merman-rustdoc",
                 &[
                     ("default", &["complete-svg"]),
-                    (
-                        "complete-svg",
-                        &["svg", "layout-cytoscape", "layout-elk", "math"],
-                    ),
+                    ("complete-svg", &["svg", "layout-cytoscape", "math"]),
+                    ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
             ),
             package_with_metadata(
@@ -1413,7 +1350,7 @@ mod tests {
                 serde_json::json!({
                     "dist": {
                         "default-features": false,
-                        "features": CLI_DEFAULT_FEATURES
+                        "features": CLI_RELEASE_FEATURES
                     }
                 }),
             ),
@@ -1510,7 +1447,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_default_must_match_the_published_cargo_dist_recipe() {
+    fn cli_default_must_be_the_release_recipe_without_elk() {
         let mut graph = product_contract_graph();
         graph.packages.get_mut("merman-cli").unwrap().metadata["dist"]["features"] =
             serde_json::json!(["analysis"]);
@@ -1519,7 +1456,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("CLI default must match the published cargo-dist recipe"),
+                .contains("published cargo-dist recipe must retain explicit `layout-elk`"),
             "{error}"
         );
     }
@@ -1560,7 +1497,11 @@ mod tests {
         );
         assert_eq!(
             complete_svg_features().collect::<Vec<_>>(),
-            vec!["layout-cytoscape", "layout-elk", "math", "svg"]
+            vec!["layout-cytoscape", "math", "svg"]
+        );
+        assert_eq!(
+            complete_svg_elk_features().collect::<Vec<_>>(),
+            vec!["complete-svg", "layout-elk"]
         );
     }
 
@@ -1679,41 +1620,22 @@ mod tests {
     }
 
     #[test]
-    fn feature_inventory_rejects_retired_presets() {
+    fn public_feature_allowlist_rejects_retired_presets() {
         let graph = graph(vec![package(
             "merman-wasm",
             &[("default", &[]), ("svg", &[]), ("full", &["svg"])],
         )]);
 
         let error = graph
-            .validate_feature_allowlist("merman-wasm", &[], &[])
-            .unwrap_err();
-        assert!(
-            error.to_string().contains("unexpected Cargo features"),
-            "{error}"
-        );
-        assert!(error.to_string().contains("full"), "{error}");
-    }
-
-    #[test]
-    fn internal_features_must_not_be_enabled_by_the_default_feature_closure() {
-        let graph = graph(vec![package(
-            "merman",
-            &[
-                ("default", &["complete-svg"]),
-                ("complete-svg", &["internal-theme-acceptance"]),
-                ("internal-theme-acceptance", &[]),
-            ],
-        )]);
-
-        let error = graph
-            .validate_feature_allowlist("merman", &["complete-svg"], &["internal-theme-acceptance"])
+            .validate_public_feature_allowlist("merman-wasm", &[])
             .unwrap_err();
         assert!(
             error
                 .to_string()
-                .contains("must not be enabled by the default feature closure")
+                .contains("unexpected public Cargo features"),
+            "{error}"
         );
+        assert!(error.to_string().contains("full"), "{error}");
     }
 
     #[test]

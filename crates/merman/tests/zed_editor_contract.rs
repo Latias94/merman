@@ -396,6 +396,33 @@ fn zed_like_pipeline_separates_pre_injection_metrics_from_host_hooks() {
 }
 
 #[test]
+fn zed_like_edge_label_fallback_uses_theme_background() {
+    let svg = render_zed_safe(
+        "zed-edge-label-background",
+        "flowchart TD\n  A[Start] -->|Yes| B[Done]",
+    );
+    assert_zed_safe_svg("zed-edge-label-background", &svg);
+
+    let document = roxmltree::Document::parse(&svg).expect("valid Zed SVG XML");
+    let fallback_group = document.descendants().find(|node| {
+        node.has_tag_name("g")
+            && node.attribute("data-merman-foreignobject") == Some("fallback")
+            && node.descendants().any(|descendant| {
+                descendant.has_tag_name("text")
+                    && descendant.text().is_some_and(|text| text.trim() == "Yes")
+            })
+    });
+    let rect_fill = fallback_group
+        .and_then(|group| group.children().find(|child| child.has_tag_name("rect")))
+        .and_then(|rect| rect.attribute("fill"));
+    assert_eq!(
+        rect_fill,
+        Some("#282c33"),
+        "edge-label fallback should use the configured Zed theme background: {svg}"
+    );
+}
+
+#[test]
 fn zed_like_after_render_css_is_a_paint_only_host_composition() {
     let source = r#"classDiagram
     class User {

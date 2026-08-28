@@ -55,6 +55,10 @@ export function useAsciiSupport() {
 function normalizeCapability(capability: AsciiCapability): AsciiCapability {
   return {
     ...capability,
+    layout_profiles: [...capability.layout_profiles],
+    width_profiles: [...capability.width_profiles],
+    encodings: [...capability.encodings],
+    fallback_encodings: [...capability.fallback_encodings],
     supported_semantics: [...capability.supported_semantics],
     limits: [...capability.limits],
     evidence: capability.evidence.map((evidence) => ({ ...evidence })),

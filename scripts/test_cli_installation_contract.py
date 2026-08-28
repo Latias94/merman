@@ -136,7 +136,7 @@ class CliInstallationContractTests(unittest.TestCase):
             ):
                 contract.validate_repository_contract(root)
 
-    def test_default_dist_and_release_features_cannot_diverge(self) -> None:
+    def test_default_features_must_be_release_features_without_elk(self) -> None:
         with self.mutated_repository(
             "crates/merman-cli/Cargo.toml",
             'default = [\n    "analysis",',
@@ -144,7 +144,7 @@ class CliInstallationContractTests(unittest.TestCase):
         ) as root:
             with self.assertRaisesRegex(
                 contract.InstallationContractError,
-                "same complete feature set",
+                "minus explicit layout-elk",
             ):
                 contract.validate_repository_contract(root)
 

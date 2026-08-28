@@ -40,6 +40,7 @@ EXPECTED_DIST_INCLUDES = {
     ],
 }
 TRUSTED_FILES = (
+    "scripts/ascii_capability_contract.py",
     "scripts/test_verify_cli_release_archive.py",
     "scripts/test_verify_lsp_release_archive.py",
     "scripts/verify_cli_release_archive.py",

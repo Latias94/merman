@@ -6,12 +6,15 @@ registry metadata maintained by Homebrew, Scoop, or WinGet.
 
 ## Canonical release profile
 
-The complete CLI is defined by the `cli-release` entry in
-`capabilities/artifact-profiles-v1.json`. The same 19 direct features must appear in three places:
+The complete CLI release is defined by the `cli-release` entry in
+`capabilities/artifact-profiles-v1.json`. Its 19 direct features must match in two places:
 
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
-- the CLI's default feature list, which keeps `cargo install merman-cli` complete and predictable.
+
+The CLI's default feature list intentionally contains the same release capabilities except for
+`layout-elk`. This keeps `cargo install merman-cli` useful without silently adding the EPL-2.0 ELK
+closure; users who need ELK should select it explicitly or use the published release archive.
 
 Both cargo-dist and `cli-release` use Cargo's `dist` profile and disable Cargo default features
 before selecting that explicit list. Run the installation contract before changing a target,
@@ -27,18 +30,20 @@ layout accepted by `scripts/verify_cli_release_archive.py`.
 ## CLI contract migration
 
 Complete releases governed by this source contract report capability document schema 2 and CLI
-contract 4. Contract 4 advertises `-f/--format` for native `render` and `batch`, makes `lint`
-text-first while keeping explicit JSON stable, removes no-op configuration and rendering controls
-from `detect`, and adds the feature-gated top-level `rustdoc` command with `build` and `check`
-subcommands. The complete release command inventory is `batch`, `capabilities`, `completion`,
-`detect`, `fix`, `layout`, `lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`. The
-archive, installation, and Homebrew verifiers require that exact contract.
+contract 5. Contract 5 retains contract 4's `-f/--format` native spelling, text-first `lint`,
+narrowed `detect`, and feature-gated top-level `rustdoc` workflow. It adds the ASCII capability
+subcontract and the Plain JSON stderr failure channel selected by `--ascii-report`. The complete
+release command inventory remains `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
+`lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`. The archive, installation, and
+Homebrew verifiers require that exact contract.
 
 Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
 the explicit compatibility command while remaining absent from help and completions. The separate
 native `render -e` / `batch -e` migration aliases map to `-f`, retain their bounded warning even
 when quiet, and are removed in `v0.9.0`. The explicit `merman-cli mmdc` command and its
-`-e/--outputFormat` option remain supported.
+`-e/--outputFormat` option remain supported. ASCII report mode suppresses that human migration
+warning so a failed `--ascii-report` invocation still emits exactly one schema-1 Plain JSON stderr
+document and no mixed diagnostic text.
 
 ## Installation channels
 
@@ -47,7 +52,7 @@ when quiet, and are removed in `v0.9.0`. The explicit `merman-cli mmdc` command 
 | Direct GitHub archive | cargo-dist `cli-release` binary | Yes, under `completions/` and `man/` | Published release artifact |
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
 | `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
-| `cargo install merman-cli` | crates.io source | No | Complete defaults; custom features supported |
+| `cargo install merman-cli` | crates.io source | No | Default capabilities without ELK; custom features supported |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
 | Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
 | Scoop candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
@@ -71,7 +76,7 @@ Users extracting an archive directly should verify its adjacent `.sha256` file f
 archives use a `merman-cli-<target>/` wrapper; the Windows ZIP is flat. In both cases, the logical
 payload contains the executable, package README, repository changelog and licenses,
 `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/`. CLI archives additionally contain
-`completions/` and `man/`. Contract 4 carries 15 manual pages, including the top-level
+`completions/` and `man/`. Contract 5 retains 15 manual pages, including the top-level
 `merman-cli-rustdoc.1` page and the nested `merman-cli-rustdoc-build.1` and
 `merman-cli-rustdoc-check.1` pages.
 
@@ -258,7 +263,7 @@ is invalid and cannot fall back to the current branch's implementation. The inst
 capability schema and digest must also match that tag's declared capability authority.
 
 Formula versions below `0.8.0` retain the legacy binary-only contract. The `0.8.x` release line must
-expose CLI contract 4, match the complete `cli-release` capability set, install four Homebrew
+expose CLI contract 5, match the complete `cli-release` capability set, install four Homebrew
 completion files, and install all 15 man pages. The inventory includes
 `merman-cli-rustdoc.1`, `merman-cli-rustdoc-build.1`, and `merman-cli-rustdoc-check.1`. A later
 release line may advance the contract through its tag-owned verifier. `SUPPORT_ASSETS_SINCE` in

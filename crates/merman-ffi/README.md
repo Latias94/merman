@@ -33,6 +33,7 @@ The committed `c-abi-native` artifact profile owns the complete host C ABI recip
 
 ```sh
 # Complete C ABI reference artifact: SVG, analysis, ASCII, exports, layouts, math, and native adapters.
+# This explicit recipe includes the EPL-2.0 ELK and OFL-1.1 font closures; ship the matching notices.
 cargo build -p merman-ffi --profile native-sdk --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
 
 # A semantic-only embedding.
@@ -193,6 +194,12 @@ Merman provides deterministic vendored text measurement by default. A preview ho
 
 ## Feature Selection
 
+There is intentionally no `complete-svg` aggregate in this ABI crate. Select direct leaves so the
+source and artifact closure stays visible to the host build; `layout-elk` is an explicit EPL-2.0
+choice and `math` brings the separately licensed RaTeX/font materials. The Cargo feature list is
+not itself a complete legal notice; use the exact artifact recipe and release-matched notices for
+the library you distribute.
+
 The public feature names describe callable capabilities:
 
 - `svg`, `analysis`, and `ascii` enable their corresponding operation families.
@@ -215,4 +222,8 @@ Use the generated runtime catalog to determine what the loaded artifact actually
 
 ## License And Notices
 
-Merman is available under MIT or Apache-2.0. The crate archive includes the release-matched `LICENSE-MIT` and `LICENSE-APACHE` texts. Project-wide source provenance and third-party legal materials are recorded in [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).
+Merman is available under MIT or Apache-2.0. The crate archive includes the release-matched
+`LICENSE-MIT` and `LICENSE-APACHE` texts. A selected FFI artifact may additionally contain EPL-2.0
+ELK code and OFL-1.1 math fonts; distribute the artifact-specific notices and source provenance
+with that build. Project-wide materials are recorded in
+[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).

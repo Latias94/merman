@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:05636a35bffb668c46ff20910cfc4044874d9d4b94372cac69074ac7fb3b2e08"
+    "digest": "sha256:67006b703e99cc3e132c86118185f608d036a113c571c9dccd59369a78a23781"
   },
   "profiles": [
     {
@@ -135,7 +135,7 @@
     },
     {
       "id": "cli-release",
-      "description": "Current complete command-line release build.",
+      "description": "Current complete command-line release build with explicit ELK and math/font closures.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-cli",
@@ -751,7 +751,7 @@
     },
     {
       "id": "rust-static-svg",
-      "description": "Static SVG facade build without compiled system adapters.",
+      "description": "Static SVG facade build with explicit Cytoscape, ELK, and math/font closures; without compiled system adapters.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman",
@@ -799,7 +799,7 @@
     },
     {
       "id": "rustdoc-static-svg",
-      "description": "Deterministic static-SVG rustdoc proc-macro build.",
+      "description": "Deterministic static-SVG rustdoc proc-macro build with explicit Cytoscape, ELK, and math/font closures.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-rustdoc",

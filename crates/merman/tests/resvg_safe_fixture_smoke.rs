@@ -1200,6 +1200,37 @@ fn fallback_owner_representatives_render_typed_resvg_safe() {
 }
 
 #[test]
+fn block_edge_label_fallback_keeps_the_real_mermaid_background_owner() {
+    let relative_name = "fixtures/block/stress_block_font_size_precedence_001.mmd";
+    let source = std::fs::read_to_string(workspace_root().join(relative_name))
+        .unwrap_or_else(|error| panic!("read {relative_name}: {error}"));
+    let svg = render_resvg_safe_for_fixture("block-edge-background", &source, relative_name, false);
+    let document = roxmltree::Document::parse(&svg).expect("valid resvg-safe Block SVG");
+    let fallback = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-merman-foreignobject") == Some("fallback")
+                && node.descendants().any(|child| {
+                    child
+                        .text()
+                        .is_some_and(|text| text.contains("Wide edge label"))
+                })
+        })
+        .unwrap_or_else(|| panic!("missing Block edge-label fallback group: {svg}"));
+    let fill = fallback
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .and_then(|node| node.attribute("fill"))
+        .unwrap_or_else(|| panic!("missing Block edge-label background rect: {svg}"));
+
+    assert!(
+        fill.starts_with("rgba(232,232,232") && fill.contains("0.8"),
+        "the fallback rect must use Block's real span.edgeLabel background: {fill}"
+    );
+}
+
+#[test]
 fn boundary_fixtures_render_typed_resvg_safe() {
     let fixtures = boundary_fixture_paths();
     assert!(

@@ -24,6 +24,7 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_cli_release_archive as verifier
+from ascii_capability_contract import canonical_ascii_capabilities
 import release_archive as archive_core
 import release_process as process_core
 
@@ -225,7 +226,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 4,
+        "cli_contract_version": 5,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],
@@ -238,7 +239,12 @@ def valid_capabilities_payload(
         "commands": CLI_RELEASE_COMMANDS,
         "capabilities": capabilities,
         "outputs": outputs,
+        "ascii": valid_ascii_capabilities_payload(),
     }
+
+
+def valid_ascii_capabilities_payload() -> dict[str, object]:
+    return canonical_ascii_capabilities()
 
 
 def required_files(target: str) -> dict[str, bytes]:
@@ -1532,6 +1538,41 @@ class RuntimeContractTests(unittest.TestCase):
                     lambda value: value["descriptor"].__setitem__(
                         "digest",
                         "sha256:" + "0" * 64,
+                    ),
+                ),
+                ("ASCII", lambda value: value.pop("ascii")),
+                (
+                    "ASCII report",
+                    lambda value: value["ascii"]["report"].__setitem__(
+                        "encoding",
+                        "ansi16",
+                    ),
+                ),
+                (
+                    "ASCII flowchart",
+                    lambda value: next(
+                        family
+                        for family in value["ascii"]["families"]
+                        if family["family"] == "flowchart"
+                    ).__setitem__("layout_profiles", ["canonical"]),
+                ),
+                (
+                    "ASCII flowchart capability fields",
+                    lambda value: next(
+                        family
+                        for family in value["ascii"]["families"]
+                        if family["family"] == "flowchart"
+                    ).pop("encodings"),
+                ),
+                (
+                    "ASCII detector mappings",
+                    lambda value: value["ascii"].__setitem__(
+                        "detected_type_mappings",
+                        [
+                            mapping
+                            for mapping in value["ascii"]["detected_type_mappings"]
+                            if mapping["detected_type"] != "swimlane"
+                        ],
                     ),
                 ),
             )

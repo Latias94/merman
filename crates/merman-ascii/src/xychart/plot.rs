@@ -1,6 +1,7 @@
 use crate::color::AsciiColorRole;
 use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
+use crate::options::XyChartLayoutPolicy;
 use crate::resource::{
     AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
 };
@@ -94,11 +95,15 @@ pub(super) struct XyChartPlotArea {
 
 impl XyChartPlotArea {
     pub(super) fn from_options(options: &AsciiRenderOptions) -> Self {
+        Self::from_policy(options.xychart_layout())
+    }
+
+    pub(super) fn from_policy(policy: XyChartLayoutPolicy) -> Self {
         Self {
-            vertical_height: options.xychart_vertical_plot_height,
-            category_band_width: options.xychart_category_band_width,
-            horizontal_width: options.xychart_horizontal_plot_width,
-            width_profile: options.terminal_width_profile,
+            vertical_height: policy.vertical_plot_height,
+            category_band_width: policy.category_band_width,
+            horizontal_width: policy.horizontal_plot_width,
+            width_profile: policy.terminal_width_profile,
         }
     }
 

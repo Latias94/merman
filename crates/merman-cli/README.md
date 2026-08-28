@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, committed Rustdoc fragment generation, optional layout engines, math, icons, completions, and native runtime adapters.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, committed Rustdoc fragment generation, Cytoscape layout, math, icons, completions, and native runtime adapters. ELK layout remains an explicit opt-in because it adds the EPL-2.0 ELK closure.
 
 The command line has four explicit workflows:
 
@@ -47,7 +47,7 @@ From a local checkout:
 cargo install --path crates/merman-cli
 ```
 
-The standard commands above and project release artifacts select the complete `cli-release` capability set. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the same features with their package manager's release profile. Channels also differ in which support files they place on disk and who publishes them:
+The standard source-install command uses the default capability set, which deliberately omits ELK. Project release artifacts select the complete `cli-release` capability set, including ELK, and ship the matching notices. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the default features unless you select an explicit profile. Channels also differ in which support files they place on disk and who publishes them:
 
 | Channel | Binary source | Completion and man pages | Availability |
 | --- | --- | --- | --- |
@@ -338,7 +338,7 @@ The default feature set is the complete local product. Cargo features are additi
 | `--no-default-features --features svg` | Basic deterministic SVG |
 | `--no-default-features --features ascii` | ASCII/Unicode without SVG |
 | `--no-default-features --features markdown` | Sequential native Markdown batch and SVG |
-| `--no-default-features --features rustdoc` | Static Rustdoc fragment build/check with deterministic SVG, both layout engines, and math |
+| `--no-default-features --features rustdoc` | Static Rustdoc fragment build/check with deterministic SVG, Cytoscape layout, and math |
 | `--no-default-features --features icons` | SVG plus bounded local Iconify packs |
 | `--no-default-features --features png` | SVG plus PNG only |
 | `--no-default-features --features pdf` | SVG plus vector PDF only |
@@ -350,9 +350,9 @@ cargo install merman-cli --version 0.8.0-alpha.6 --locked \
   --no-default-features --features analysis
 ```
 
-Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
+Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. `layout-elk` is the explicit EPL-2.0 boundary; add it only when the resulting artifact will distribute the corresponding notices and provenance. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 4`, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs. Contract 4 records the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and the feature-gated top-level `rustdoc` workflow; automation that depends on CLI behavior should version-check this field independently from the JSON schema.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 5`, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs. Contract 5 retains the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow from contract 4. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 
 ## Rendering And Runtime Policy
 
@@ -363,9 +363,21 @@ merman-cli render diagram.mmd --format svg --svg-pipeline readable
 merman-cli render diagram.mmd --format png --raster-fit-width 1600
 merman-cli render diagram.mmd --format pdf --pdf-filter-scale 4
 merman-cli render diagram.mmd --format unicode --ascii-color auto
+merman-cli render diagram.mmd --format unicode --ascii-layout-profile compact \
+  --ascii-max-width 80 --ascii-overflow fallback --ascii-report
 ```
 
 PNG/JPEG use a bounded Rust raster pipeline. PDF keeps vector geometry and bounds localized filter and embedded-image raster work. They are not Chromium screenshots. ASCII/Unicode support is family-specific; see the [support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md).
+
+`--ascii-report` is a machine-safe JSON channel. It always emits Plain text: `--ascii-color auto`
+resolves to Plain in report mode, while an explicit ANSI16/ANSI256/TrueColor/HTML request is
+rejected. The report uses ASCII output schema 2 and includes `encoding`, logical primary/emitted
+extents, layout and width profiles, and typed overflow/fallback state. A final line terminator is not
+counted as another logical row. Viewport fallback is currently Plain-only. `compact` is admitted only
+for Flowchart and Sequence; other supported families reject that layout profile rather than
+inheriting unrelated density policy. Once report mode is selected, failures use ASCII error-report
+schema 1 on stderr with a stable code, category, terminal-safe message, and typed details; stdout and
+the requested output target remain unpublished.
 
 Runtime behavior is deterministic by default even when system adapters are compiled. This also applies to `mmdc` and is a deliberate divergence from Chromium's ambient date, time zone, and randomness. A complete default binary can opt into upstream-like host state:
 
@@ -478,4 +490,8 @@ omitted commands, options, and values stay omitted. A build without that feature
 
 ## License
 
-Licensed under either Apache-2.0 or MIT at your option.
+Merman's own code is licensed under either Apache-2.0 or MIT at your option. The ordinary Cargo
+default intentionally excludes the optional EPL-2.0 ELK implementation, but the `cli-release`
+archive includes ELK and the math/font closure selected by its profile. Release archives include
+the matching `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES/`; source-built distributions must
+carry the notices for the features they select.

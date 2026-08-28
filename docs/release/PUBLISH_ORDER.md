@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-08-18
+Last updated: 2026-08-25
 
 ## Version Decision
 
@@ -34,6 +34,12 @@ Version `0.1.0` is published on crates.io and npm from tag `tree-sitter-mermaid-
 `34ddaccbfb8b4a7a502e67122b2cd709b4989e19`. Its standalone GitHub Release is intentionally
 deferred so it can be announced alongside the next Merman product release; the two releases retain
 their own tags and version identities.
+
+## Typst Package Surface
+
+The Typst wrapper is an independent publication surface. The current candidate is `@preview/merman:0.2.0`, built from the prepared Merman `0.8.0-alpha.6` source line and Typst compiler `0.15.0`. It is not published by crates.io: `merman-typst-plugin@0.8.0-alpha.6` is the Cargo transport crate, while `@preview/merman:0.2.0` is the user-facing Typst package containing the frozen wrapper, WASM artifact, provenance manifests, and third-party legal materials.
+
+Before a Typst registry submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the generated `merman_package.manifest.json`, `merman_typst_plugin.manifest.json`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` before submission. These are prepare/preflight checks only; manual Typst Universe submission requires explicit channel authorization. After submission, query the registry for the exact `0.2.0` package and update the package README and this file with observed publication evidence.
 
 ## Publish Order
 

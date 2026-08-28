@@ -23,6 +23,25 @@ test("fallback uses the complete generated binding capability projection", () =>
       ({ primary_projection }) => primary_projection !== "none"
     ).map(({ diagram_type }) => diagram_type)
   );
+
+  const flowchart = FALLBACK_ASCII_CAPABILITIES.find(
+    ({ diagram_type }) => diagram_type === "flowchart"
+  );
+  assert.deepEqual(flowchart?.layout_profiles, ["canonical", "compact"]);
+  assert.deepEqual(flowchart?.width_profiles, ["unicode", "cjk"]);
+  assert.deepEqual(flowchart?.encodings, [
+    "plain",
+    "ansi16",
+    "ansi256",
+    "truecolor",
+    "html",
+  ]);
+  assert.deepEqual(flowchart?.fallback_encodings, ["plain"]);
+
+  const state = FALLBACK_ASCII_CAPABILITIES.find(
+    ({ diagram_type }) => diagram_type === "state"
+  );
+  assert.deepEqual(state?.layout_profiles, ["canonical"]);
 });
 
 test("support labels follow the generated projection kind", () => {

@@ -1,8 +1,8 @@
 mod support;
 
 use merman_ascii::{
-    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
-    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiLayoutProfile,
+    AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::flowchart::{

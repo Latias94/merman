@@ -1,6 +1,6 @@
 mod support;
 
-use merman_ascii::{AsciiColorMode, AsciiError, AsciiRenderOptions};
+use merman_ascii::{AsciiColorMode, AsciiError, AsciiLayoutProfile, AsciiRenderOptions};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
@@ -119,6 +119,32 @@ fn state_labels_do_not_use_flowchart_node_label_wrap_width() {
     assert!(
         rendered.contains("Alpha Beta Gamma Delta"),
         "flowchart label wrapping must not affect state nodes:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_layout_does_not_inherit_the_flowchart_compact_profile() {
+    let input = concat!(
+        "stateDiagram-v2\n",
+        "state Parent {\n",
+        "  A --> B: advance\n",
+        "}\n",
+        "Parent --> Done: finish",
+    );
+    render_state(input, &AsciiRenderOptions::ascii())
+        .expect("canonical state layout should render");
+    let error = render_state(
+        input,
+        &AsciiRenderOptions::ascii().with_layout_profile(AsciiLayoutProfile::Compact),
+    )
+    .expect_err("State must reject the unadmitted Flowchart compact profile");
+
+    assert_eq!(
+        error,
+        AsciiError::InvalidOption {
+            field: "layout_profile",
+            message: "is not admitted for this diagram family",
+        }
     );
 }
 

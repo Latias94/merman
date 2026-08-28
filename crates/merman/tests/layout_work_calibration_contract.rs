@@ -1,4 +1,5 @@
 #![cfg(all(
+    feature = "complete-svg-elk",
     feature = "svg",
     feature = "layout-cytoscape",
     feature = "layout-elk",
