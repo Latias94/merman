@@ -132,7 +132,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         .count();
     let mut width_before_highlight =
         layout.total_width - highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
-    for line in &layout.lines {
+    for (line_index, line) in layout.lines.iter().enumerate() {
         if line.kind == "horizontal"
             && let Some(node) = layout.nodes.get(next_node)
         {
@@ -152,22 +152,26 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         if let Some(stroke_width_token) = emitted_stroke_width_token {
             let _ = write!(
                 &mut out,
-                r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                r#"<line id="treeView-edge-{}{semantic_suffix}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                line_index,
                 fmt(line.x1),
                 fmt(line.y1),
                 fmt(line.x2),
                 fmt(line.y2),
-                stroke_width_token
+                stroke_width_token,
+                semantic_suffix = crate::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX,
             );
         } else {
             let _ = write!(
                 &mut out,
-                r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                r#"<line id="treeView-edge-{}{semantic_suffix}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                line_index,
                 fmt(line.x1),
                 fmt(line.y1),
                 fmt(line.x2),
                 fmt(line.y2),
-                fmt(line.stroke_width)
+                fmt(line.stroke_width),
+                semantic_suffix = crate::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX,
             );
         }
         out.checkpoint()?;

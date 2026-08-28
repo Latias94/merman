@@ -79,6 +79,7 @@ fn write_flowchart_cluster_shape(
     ctx: &FlowchartRenderCtx<'_>,
     compiled_styles: &FlowchartCompiledStyles,
     rect_style: &str,
+    fill_path_id: &str,
     fill: &str,
     stroke: &str,
     left: f64,
@@ -110,7 +111,8 @@ fn write_flowchart_cluster_shape(
             let border_style = cluster_rough_border_style(rect_style);
             let _ = write!(
                 out,
-                r#"<g><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} /><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
+                r#"<g><path id="{}" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} /><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
+                escape_xml_display(fill_path_id),
                 escape_xml_display(&fill_d),
                 escape_xml_display(fill),
                 fmt_display(FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT as f64),
@@ -242,6 +244,11 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             ),
         });
     };
+    let fill_path_id = format!(
+        "{}{}",
+        cluster_dom_id,
+        crate::svg::RENDERER_SEMANTIC_FILL_PATH_SUFFIX
+    );
     ctx.checkpoint_emit()?;
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");
@@ -289,6 +296,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             ctx,
             &compiled_styles,
             &rect_style,
+            &fill_path_id,
             fill,
             stroke,
             left,
@@ -396,6 +404,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         ctx,
         &compiled_styles,
         &rect_style,
+        &fill_path_id,
         fill,
         stroke,
         left,

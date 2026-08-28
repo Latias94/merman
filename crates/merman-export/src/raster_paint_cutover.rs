@@ -439,6 +439,14 @@ struct PathObservation {
     visible: bool,
     fill: Option<PaintObservation>,
     stroke: Option<PaintObservation>,
+    semantic_paint_binding: SemanticPaintBinding,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SemanticPaintBinding {
+    Native,
+    FillFromStroke,
+    FillAndStrokeFromStroke,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -467,15 +475,44 @@ impl TargetPath {
 impl PathObservation {
     fn paint(&self, facet: RasterPaintCutoverFacet) -> Option<PaintObservation> {
         match facet {
-            RasterPaintCutoverFacet::Fill => self.fill,
-            RasterPaintCutoverFacet::Stroke => self.stroke,
+            RasterPaintCutoverFacet::Fill => match self.semantic_paint_binding {
+                SemanticPaintBinding::Native => self.fill,
+                SemanticPaintBinding::FillFromStroke
+                | SemanticPaintBinding::FillAndStrokeFromStroke => self.stroke,
+            },
+            RasterPaintCutoverFacet::Stroke => match self.semantic_paint_binding {
+                SemanticPaintBinding::FillFromStroke => None,
+                SemanticPaintBinding::Native | SemanticPaintBinding::FillAndStrokeFromStroke => {
+                    self.stroke
+                }
+            },
         }
     }
 
     fn geometry(&self, facet: RasterPaintCutoverFacet) -> Option<[u8; 32]> {
         match facet {
-            RasterPaintCutoverFacet::Fill => Some(self.fill_geometry_digest),
-            RasterPaintCutoverFacet::Stroke => self.stroke_geometry_digest,
+            RasterPaintCutoverFacet::Fill => match self.semantic_paint_binding {
+                SemanticPaintBinding::Native => Some(self.fill_geometry_digest),
+                SemanticPaintBinding::FillFromStroke
+                | SemanticPaintBinding::FillAndStrokeFromStroke => self.stroke_geometry_digest,
+            },
+            RasterPaintCutoverFacet::Stroke => match self.semantic_paint_binding {
+                SemanticPaintBinding::FillFromStroke => None,
+                SemanticPaintBinding::Native | SemanticPaintBinding::FillAndStrokeFromStroke => {
+                    self.stroke_geometry_digest
+                }
+            },
+        }
+    }
+
+    fn region(&self, facet: RasterPaintCutoverFacet) -> [u32; 4] {
+        match facet {
+            RasterPaintCutoverFacet::Fill => match self.semantic_paint_binding {
+                SemanticPaintBinding::Native => self.fill_region_bits,
+                SemanticPaintBinding::FillFromStroke
+                | SemanticPaintBinding::FillAndStrokeFromStroke => self.stroke_region_bits,
+            },
+            RasterPaintCutoverFacet::Stroke => self.stroke_region_bits,
         }
     }
 }
@@ -515,16 +552,18 @@ fn observe_paint_tree(
     );
     let mut requested_targets = Vec::new();
     for (path_index, path) in paths.iter().enumerate() {
-        let fill_control = paint_is_opaque_control(path.fill, control_rgb);
-        let stroke_control = paint_is_opaque_control(path.stroke, control_rgb);
+        let fill_control =
+            paint_is_opaque_control(path.paint(RasterPaintCutoverFacet::Fill), control_rgb);
+        let stroke_control =
+            paint_is_opaque_control(path.paint(RasterPaintCutoverFacet::Stroke), control_rgb);
         if !fill_control && !stroke_control {
             continue;
         }
         let region_bits = union_control_regions(
             fill_control,
-            path.fill_region_bits,
+            path.region(RasterPaintCutoverFacet::Fill),
             stroke_control,
-            path.stroke_region_bits,
+            path.region(RasterPaintCutoverFacet::Stroke),
         );
         update_usize(&mut target_hasher, path_index);
         target_hasher.update(path.path_digest);
@@ -536,8 +575,12 @@ fn observe_paint_tree(
         target_facets_by_path[path_index] = [fill_control, stroke_control];
 
         let requested_region_bits = match requested_facet {
-            RasterPaintCutoverFacet::Fill if fill_control => Some(path.fill_region_bits),
-            RasterPaintCutoverFacet::Stroke if stroke_control => Some(path.stroke_region_bits),
+            RasterPaintCutoverFacet::Fill if fill_control => {
+                Some(path.region(RasterPaintCutoverFacet::Fill))
+            }
+            RasterPaintCutoverFacet::Stroke if stroke_control => {
+                Some(path.region(RasterPaintCutoverFacet::Stroke))
+            }
             RasterPaintCutoverFacet::Fill | RasterPaintCutoverFacet::Stroke => None,
         };
         if let Some(requested_region_bits) = requested_region_bits {
@@ -758,22 +801,40 @@ fn collect_group_paths(
     paths: &mut Vec<PathObservation>,
     effect_hasher: &mut Sha256,
 ) -> Result<()> {
-    collect_group_paths_with_transform(group, paths, None, effect_hasher)
+    collect_group_paths_with_transform(
+        group,
+        paths,
+        None,
+        SemanticPaintBinding::Native,
+        effect_hasher,
+    )
 }
 
 fn collect_group_paths_with_transform(
     group: &usvg::Group,
     paths: &mut Vec<PathObservation>,
     extra_transform: Option<tiny_skia::Transform>,
+    inherited_binding: SemanticPaintBinding,
     effect_hasher: &mut Sha256,
 ) -> Result<()> {
     hash_group_effects(group, effect_hasher)?;
+    let group_binding = semantic_paint_binding_from_id(group.id()).unwrap_or(inherited_binding);
     for node in group.children() {
         match node {
-            usvg::Node::Group(child) => {
-                collect_group_paths_with_transform(child, paths, extra_transform, effect_hasher)?
+            usvg::Node::Group(child) => collect_group_paths_with_transform(
+                child,
+                paths,
+                extra_transform,
+                group_binding,
+                effect_hasher,
+            )?,
+            usvg::Node::Path(path) => {
+                paths.push(observe_path_with_binding(
+                    path,
+                    extra_transform,
+                    group_binding,
+                )?);
             }
-            usvg::Node::Path(path) => paths.push(observe_path(path, extra_transform)?),
             // `usvg` keeps the glyph paths in a text node's flattened group in local
             // coordinates. The text node's absolute translation is applied by `resvg` during
             // rendering, but is not present on those flattened paths themselves.
@@ -781,6 +842,7 @@ fn collect_group_paths_with_transform(
                 text.flattened(),
                 paths,
                 Some(text.abs_transform()),
+                group_binding,
                 effect_hasher,
             )?,
             usvg::Node::Image(_) => {
@@ -879,6 +941,14 @@ fn observe_path(
     path: &usvg::Path,
     extra_transform: Option<tiny_skia::Transform>,
 ) -> Result<PathObservation> {
+    observe_path_with_binding(path, extra_transform, SemanticPaintBinding::Native)
+}
+
+fn observe_path_with_binding(
+    path: &usvg::Path,
+    extra_transform: Option<tiny_skia::Transform>,
+    inherited_binding: SemanticPaintBinding,
+) -> Result<PathObservation> {
     let transform = path.abs_transform();
     let fill_bbox = map_rect(path.abs_bounding_box(), extra_transform)?;
     let stroke_bbox = map_rect(path.abs_stroke_bounding_box(), extra_transform)?;
@@ -918,6 +988,9 @@ fn observe_path(
     }
     path_hasher.update([u8::from(path.is_visible())]);
 
+    let semantic_paint_binding =
+        semantic_paint_binding_from_id(path.id()).unwrap_or(inherited_binding);
+
     Ok(PathObservation {
         path_digest: path_hasher.finalize().into(),
         shape_digest,
@@ -928,7 +1001,18 @@ fn observe_path(
         visible: path.is_visible(),
         fill: path.fill().map(observe_fill),
         stroke: path.stroke().map(observe_stroke),
+        semantic_paint_binding,
     })
+}
+
+fn semantic_paint_binding_from_id(id: &str) -> Option<SemanticPaintBinding> {
+    if id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX) {
+        Some(SemanticPaintBinding::FillAndStrokeFromStroke)
+    } else if id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_PATH_SUFFIX) {
+        Some(SemanticPaintBinding::FillFromStroke)
+    } else {
+        None
+    }
 }
 
 fn fill_geometry_digest(fill: Option<&usvg::Fill>) -> [u8; 32] {
@@ -1426,6 +1510,50 @@ mod tests {
             RasterPaintCutoverFacet::Fill,
             "#dc2626",
         ));
+    }
+
+    #[test]
+    fn renderer_owned_fill_marker_can_bind_fill_to_stroke_channel() {
+        let solid = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path id="cluster{}" d="M4 4H16V16H4Z" fill="none" stroke="#dc2626" stroke-width="3"/></svg>"##,
+            merman_render::svg::RENDERER_SEMANTIC_FILL_PATH_SUFFIX
+        );
+        let transparent = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path id="cluster{}" d="M4 4H16V16H4Z" fill="none" stroke="transparent" stroke-width="3"/></svg>"##,
+            merman_render::svg::RENDERER_SEMANTIC_FILL_PATH_SUFFIX
+        );
+
+        let pair = encode_pair(
+            &solid,
+            &transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+        )
+        .expect("renderer-owned semantic fill marker should be honored");
+        let (_, _, receipt) = pair.into_parts();
+        assert!(receipt.proves_semantics());
+    }
+
+    #[test]
+    fn renderer_owned_fill_and_stroke_marker_can_bind_both_facets_to_stroke_channel() {
+        let solid = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path id="lifeline{}" d="M10 2V18" fill="none" stroke="#dc2626" stroke-width="3"/></svg>"##,
+            merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX
+        );
+        let transparent = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path id="lifeline{}" d="M10 2V18" fill="none" stroke="transparent" stroke-width="3"/></svg>"##,
+            merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX
+        );
+
+        for facet in [
+            RasterPaintCutoverFacet::Fill,
+            RasterPaintCutoverFacet::Stroke,
+        ] {
+            let pair = encode_pair(&solid, &transparent, facet, "#dc2626")
+                .expect("renderer-owned dual semantic marker should be honored");
+            let (_, _, receipt) = pair.into_parts();
+            assert!(receipt.proves_semantics());
+        }
     }
 
     #[test]

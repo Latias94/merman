@@ -236,6 +236,10 @@ Bob-->>Alice: Back"#,
     assert_scoped_definition_id(&svg, "m15-sequence", "stickTopArrowHead");
     assert_scoped_definition_id(&svg, "m15-sequence", "stickBottomArrowHead");
     assert!(
+        svg.contains(r#"id="actor0-merman-fill-stroke-paint""#),
+        "expected renderer-owned semantic lifeline marker:\n{svg}"
+    );
+    assert!(
         svg.contains(r#"data-et="life-line" data-id="Alice""#),
         "expected sequence lifeline data attributes:\n{svg}"
     );
