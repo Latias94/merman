@@ -73,6 +73,20 @@ Cropping remains blocking through an independent browser-mounted oracle. It moun
 derives painted descendant rectangles from browser layout rather than production bounds, and
 requires SVG, HTML, MathML, and `foreignObject` content to remain inside the final viewport. Its
 single epsilon covers coordinate quantization only; it is never fixture- or family-specific.
+The oracle runs after the blocking DOM and semantic gates. It removes SVG text, font-laid-out HTML
+label paint, and RoughJS paths in a second capture so browser-owned paint remains diagnostic while
+shapes, markers, images, and non-label `foreignObject` content remain structural. Structural
+inheritance compares only the maximum outward paint depth on each root edge: a new edge or deeper
+local edge blocks. Sparse paint is measured from the root boundary, and corner paint belongs to
+every crossed edge. Capture-boundary evidence and marker paint whose capture reach cannot be
+bounded always block. Bounded capture-limit inheritance requires the same reason, a no-larger
+capture envelope, and no deeper geometry extent on any edge.
+
+The sole exceptional root-paint residual is stored in
+`fixtures/_verification/root-viewport-residuals.json`. It binds exact local and pinned-upstream SVG
+hashes and a closed reason for XYChart's text-measurement-sensitive, out-of-domain linear
+extrapolation. Receipt drift and unused receipts fail the gate; the catalog cannot express a numeric
+or family tolerance.
 
 ### Strict mode is not a release gate
 
@@ -98,8 +112,8 @@ production behavior.
 
 - Releases are gated on deterministic semantic/layout snapshots, blocking DOM parity except for
   exact reviewed browser-text-layout receipts, blocking root invariants and
-  measurement-independent exact roots, and independent browser-mounted cropping containment. The
-  accepted receipts remain visible in the generated comparison reports and CI log counts.
+  measurement-independent exact roots, and independent browser-mounted cropping containment. Exact
+  browser-text and root-paint receipts remain visible in generated reports and CI log counts.
 - “Strict SVG XML equality” is not promised for early releases; it remains an explicit future
   convergence goal.
 - Exact browser bbox movement remains attributable diagnostic evidence and cannot alter production

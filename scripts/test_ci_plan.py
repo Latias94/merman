@@ -122,6 +122,7 @@ class PlannerTests(unittest.TestCase):
             "playground/tests/package-lock.json": True,
             "playground/tests/package.json": True,
             "playground/tests/root-viewport-oracle.ts": True,
+            "playground/tests/root-viewport-residuals.ts": True,
             "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json": True,
             "crates/merman/benches/ascii_pipeline.rs": False,
             "crates/merman/examples/render_terminal.rs": False,

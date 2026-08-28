@@ -2,8 +2,8 @@ import type { Page } from "playwright";
 
 export const ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX = 1 / 64;
 export const ROOT_VIEWPORT_PAINT_GUARD_CSS_PX = 16;
-export const ROOT_VIEWPORT_MAX_CAPTURE_CSS_PX = 4096;
-export const ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX = 1;
+export const ROOT_VIEWPORT_MAX_CAPTURE_DIMENSION_CSS_PX = 16_384;
+export const ROOT_VIEWPORT_MAX_CAPTURE_AREA_CSS_PX = 4096 * 4096;
 
 const ROOT_VIEWPORT_HOST_WIDTH_CSS_PX = 1200;
 const ROOT_VIEWPORT_AUDIT_PAGE_CSS_PX =
@@ -44,7 +44,8 @@ export type PaintAuditIndeterminateReason =
   | "capture-boundary"
   | "capture-limit"
   | "image-decode-failed"
-  | "image-decode-unavailable";
+  | "image-decode-unavailable"
+  | "marker-capture-unbounded";
 
 export type PaintAuditSnapshot = {
   status: "collected" | "indeterminate" | "missing-root";
@@ -100,22 +101,47 @@ export function classifyRootViewportContainment(
   local: RootViewportAudit,
   upstream: RootViewportAudit | null,
 ): RootViewportContainmentClassification {
+  if (local.paintAudit.status === "missing-root") return "blocking";
+  if (
+    local.paintAudit.indeterminateReasons.includes("capture-boundary") ||
+    local.paintAudit.indeterminateReasons.includes("marker-capture-unbounded")
+  ) {
+    return "blocking";
+  }
   if (local.paintAudit.status === "collected" && local.violations.length === 0) {
     return "contained";
   }
   if (
     local.paintAudit.status === "collected" &&
+    local.violations.length > 0 &&
     local.structuralViolations.length === 0
   ) {
     return "browser-owned-diagnostic";
   }
-  if (local.paintAudit.status === "missing-root" || upstream === null) return "blocking";
+  if (upstream === null) return "blocking";
   if (local.paintAudit.status === "indeterminate") {
     return indeterminateEvidenceIsNoWorse(local, upstream)
       ? "upstream-inherited"
       : "blocking";
   }
-  return paintEvidenceIsNoWorse(local, upstream) ? "upstream-inherited" : "blocking";
+  return structuralEdgeDepthIsNoWorse(local, upstream)
+    ? "upstream-inherited"
+    : "blocking";
+}
+
+export function exactRootViewportResidualEvidenceIsEligible(
+  local: RootViewportAudit,
+  upstream: RootViewportAudit | null,
+): boolean {
+  return (
+    upstream !== null &&
+    local.root !== null &&
+    upstream.root !== null &&
+    local.paintAudit.status === "collected" &&
+    upstream.paintAudit.status === "collected" &&
+    local.paintAudit.indeterminateReasons.length === 0 &&
+    upstream.paintAudit.indeterminateReasons.length === 0
+  );
 }
 
 function indeterminateEvidenceIsNoWorse(
@@ -127,42 +153,94 @@ function indeterminateEvidenceIsNoWorse(
   if (!sameValues(local.paintAudit.indeterminateReasons, upstream.paintAudit.indeterminateReasons)) {
     return false;
   }
-  return paintEvidenceIsNoWorse(local, upstream);
+  if (local.paintAudit.indeterminateReasons.includes("capture-limit")) {
+    if (local.paintAudit.indeterminateReasons.length !== 1) return false;
+    return captureLimitEvidenceIsNoWorse(local, upstream);
+  }
+  return structuralEdgeDepthIsNoWorse(local, upstream, true);
 }
 
-function paintEvidenceIsNoWorse(
+function captureLimitEvidenceIsNoWorse(
   local: RootViewportAudit,
   upstream: RootViewportAudit,
 ): boolean {
   if (
     local.root === null ||
     upstream.root === null ||
-    !["collected", "indeterminate"].includes(upstream.paintAudit.status)
+    local.paintAudit.guardCssPx !== upstream.paintAudit.guardCssPx ||
+    local.paintAudit.captureWidthCssPx === null ||
+    upstream.paintAudit.captureWidthCssPx === null ||
+    local.paintAudit.captureWidthCssPx > upstream.paintAudit.captureWidthCssPx ||
+    local.paintAudit.captureHeightCssPx === null ||
+    upstream.paintAudit.captureHeightCssPx === null ||
+    local.paintAudit.captureHeightCssPx > upstream.paintAudit.captureHeightCssPx
   ) {
     return false;
   }
-  if (local.structuralPixelKeys.length > upstream.structuralPixelKeys.length) {
+  const localDepths = geometryOutwardDepths(local.root, local.geometryUnion);
+  const upstreamDepths = geometryOutwardDepths(upstream.root, upstream.geometryUnion);
+  return (Object.keys(localDepths) as RootViewportEdge[]).every(
+    (edge) => localDepths[edge] <= upstreamDepths[edge],
+  );
+}
+
+function geometryOutwardDepths(
+  root: RectSnapshot,
+  geometry: RectSnapshot | null,
+): Record<RootViewportEdge, number> {
+  return {
+    top: Math.max(0, -(geometry?.top ?? 0)),
+    right: Math.max(0, (geometry?.right ?? root.width) - root.width),
+    bottom: Math.max(0, (geometry?.bottom ?? root.height) - root.height),
+    left: Math.max(0, -(geometry?.left ?? 0)),
+  };
+}
+
+function structuralEdgeDepthIsNoWorse(
+  local: RootViewportAudit,
+  upstream: RootViewportAudit,
+  allowIndeterminateUpstream = false,
+): boolean {
+  if (local.root === null || upstream.root === null) return false;
+  const localRoot = local.root;
+  const upstreamRoot = upstream.root;
+  if (
+    (upstream.paintAudit.status !== "collected" &&
+      !(allowIndeterminateUpstream && upstream.paintAudit.status === "indeterminate"))
+  ) {
     return false;
   }
-  const upstreamPixels = new Set(upstream.structuralPixelKeys);
-  return local.structuralPixelKeys.every((pixel) => {
-    if (upstreamPixels.has(pixel)) return true;
-    const [x, y] = pixel.split(",").map(Number);
-    for (
-      let deltaY = -ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX;
-      deltaY <= ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX;
-      deltaY += 1
-    ) {
-      for (
-        let deltaX = -ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX;
-        deltaX <= ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX;
-        deltaX += 1
-      ) {
-        if (upstreamPixels.has(`${x + deltaX},${y + deltaY}`)) return true;
-      }
-    }
-    return false;
-  });
+  const upstreamDepths = new Map<RootViewportEdge, number>();
+  for (const violation of upstream.structuralViolations) {
+    upstreamDepths.set(
+      violation.edge,
+      Math.max(
+        upstreamDepths.get(violation.edge) ?? 0,
+        violationDepth(upstreamRoot, violation),
+      ),
+    );
+  }
+  return local.structuralViolations.every(
+    (violation) =>
+      violationDepth(localRoot, violation) <=
+      (upstreamDepths.get(violation.edge) ?? 0),
+  );
+}
+
+function violationDepth(
+  root: RectSnapshot,
+  violation: PaintedPixelViolation,
+): number {
+  switch (violation.edge) {
+    case "top":
+      return Math.max(0, -violation.rect.top);
+    case "right":
+      return Math.max(0, violation.rect.right - Math.ceil(root.width));
+    case "bottom":
+      return Math.max(0, violation.rect.bottom - Math.ceil(root.height));
+    case "left":
+      return Math.max(0, -violation.rect.left);
+  }
 }
 
 function sameValues<T extends string>(left: T[], right: T[]): boolean {
@@ -333,6 +411,18 @@ async function setBrowserOwnedPaintSuppressed(page: Page, suppressed: boolean): 
       style.textContent = `
         .root-viewport-audit-host text,
         .root-viewport-audit-host text * { visibility: hidden !important; }
+        .root-viewport-audit-host foreignObject * {
+          -webkit-text-fill-color: transparent !important;
+          -webkit-text-stroke-color: transparent !important;
+          text-decoration-color: transparent !important;
+          text-shadow: none !important;
+        }
+        .root-viewport-audit-host .label foreignObject * {
+          background-color: transparent !important;
+          border-color: transparent !important;
+          box-shadow: none !important;
+          outline-color: transparent !important;
+        }
         .root-viewport-audit-host [${roughPathAttribute}] {
           fill-opacity: 0 !important;
           stroke-opacity: 0 !important;
@@ -358,7 +448,8 @@ async function mountSvg(
       quantizationEpsilon,
       guardCssPx,
       hostWidthCssPx,
-      maxCaptureCssPx,
+      maxCaptureDimensionCssPx,
+      maxCaptureAreaCssPx,
     }) => {
       function quantize(value: number): number {
         return Math.round(value / quantizationEpsilon) * quantizationEpsilon;
@@ -381,10 +472,16 @@ async function mountSvg(
 
       function unionRects(rects: RectSnapshot[]): RectSnapshot | null {
         if (rects.length === 0) return null;
-        const left = Math.min(...rects.map((rect) => rect.left));
-        const top = Math.min(...rects.map((rect) => rect.top));
-        const right = Math.max(...rects.map((rect) => rect.right));
-        const bottom = Math.max(...rects.map((rect) => rect.bottom));
+        let left = Number.POSITIVE_INFINITY;
+        let top = Number.POSITIVE_INFINITY;
+        let right = Number.NEGATIVE_INFINITY;
+        let bottom = Number.NEGATIVE_INFINITY;
+        for (const rect of rects) {
+          left = Math.min(left, rect.left);
+          top = Math.min(top, rect.top);
+          right = Math.max(right, rect.right);
+          bottom = Math.max(bottom, rect.bottom);
+        }
         return {
           left,
           top,
@@ -446,6 +543,7 @@ async function mountSvg(
           rootPixelBounds: null,
         };
       }
+      const rootSvg = svg;
 
       host.style.width = `${hostWidthCssPx}px`;
       svg.style.setProperty("overflow", "visible", "important");
@@ -514,6 +612,107 @@ async function mountSvg(
         }
       }
 
+      function expandedRect(rect: RectSnapshot, amount: number): RectSnapshot {
+        const left = quantize(rect.left - amount);
+        const top = quantize(rect.top - amount);
+        const right = quantize(rect.right + amount);
+        const bottom = quantize(rect.bottom + amount);
+        return {
+          left,
+          top,
+          right,
+          bottom,
+          width: quantize(right - left),
+          height: quantize(bottom - top),
+        };
+      }
+
+      function activeMarkerReachCssPx(
+        element: SVGGraphicsElement,
+        style: CSSStyleDeclaration,
+      ): number | null {
+        let maxReach = 0;
+        for (const markerReference of [style.markerStart, style.markerMid, style.markerEnd]) {
+          if (!markerReference || markerReference === "none") continue;
+          const match = /^url\((["']?)(#[^)"']+)\1\)$/u.exec(markerReference.trim());
+          if (match === null) return null;
+          const marker = document.getElementById(match[2].slice(1));
+          if (marker === null) continue;
+          if (!(marker instanceof SVGMarkerElement) || !rootSvg.contains(marker)) return null;
+          const reach = markerReachCssPx(marker, element, style);
+          if (reach === null) return null;
+          maxReach = Math.max(maxReach, reach);
+        }
+        return maxReach;
+      }
+
+      function markerReachCssPx(
+        marker: SVGMarkerElement,
+        referencingElement: SVGGraphicsElement,
+        referencingStyle: CSSStyleDeclaration,
+      ): number | null {
+        if (getComputedStyle(marker).overflow !== "hidden") return null;
+        const values = [
+          marker.markerWidth.baseVal.value,
+          marker.markerHeight.baseVal.value,
+          marker.refX.baseVal.value,
+          marker.refY.baseVal.value,
+        ];
+        if (values.some((value) => !Number.isFinite(value))) return null;
+        const [markerWidth, markerHeight, refX, refY] = values;
+        if (markerWidth <= 0 || markerHeight <= 0) return 0;
+
+        const viewBox = marker.viewBox.baseVal;
+        let minX = 0;
+        let minY = 0;
+        let userWidth = markerWidth;
+        let userHeight = markerHeight;
+        let viewportScale = 1;
+        if (marker.hasAttribute("viewBox")) {
+          if (
+            !Number.isFinite(viewBox.x) ||
+            !Number.isFinite(viewBox.y) ||
+            !Number.isFinite(viewBox.width) ||
+            !Number.isFinite(viewBox.height) ||
+            viewBox.width <= 0 ||
+            viewBox.height <= 0
+          ) {
+            return null;
+          }
+          minX = viewBox.x;
+          minY = viewBox.y;
+          userWidth = viewBox.width;
+          userHeight = viewBox.height;
+          viewportScale = Math.max(
+            markerWidth / viewBox.width,
+            markerHeight / viewBox.height,
+          );
+        }
+
+        const unitsScale =
+          marker.getAttribute("markerUnits") === "userSpaceOnUse"
+            ? 1
+            : Number.parseFloat(referencingStyle.strokeWidth || "");
+        if (!Number.isFinite(unitsScale) || unitsScale < 0) return null;
+        const screenMatrix = referencingElement.getScreenCTM();
+        if (screenMatrix === null) return null;
+        const matrixScale = Math.hypot(
+          screenMatrix.a,
+          screenMatrix.b,
+          screenMatrix.c,
+          screenMatrix.d,
+        );
+        if (!Number.isFinite(matrixScale) || matrixScale < 0) return null;
+        const maxDx =
+          Math.max(Math.abs(minX - refX), Math.abs(minX + userWidth - refX)) *
+          viewportScale;
+        const maxDy =
+          Math.max(Math.abs(minY - refY), Math.abs(minY + userHeight - refY)) *
+          viewportScale;
+        const reach = (Math.hypot(maxDx, maxDy) + 1) * unitsScale * matrixScale;
+        return Number.isFinite(reach) ? reach : null;
+      }
+
       for (const element of svg.querySelectorAll<SVGGraphicsElement>(paintedSelectors)) {
         if (element.closest("defs,clipPath,mask,marker,pattern,symbol")) continue;
         const style = getComputedStyle(element);
@@ -531,8 +730,15 @@ async function mountSvg(
           styledElement = styledElement.parentElement;
         }
         const rect = quantizedRect(element.getBoundingClientRect());
-        if (rect.width === 0 && rect.height === 0) continue;
-        geometryRects.push(rect);
+        const markerReach = activeMarkerReachCssPx(element, style);
+        if (markerReach === null) {
+          indeterminateReasons.add("marker-capture-unbounded");
+        }
+        const captureRect = markerReach !== null && markerReach > 0
+          ? expandedRect(rect, markerReach)
+          : rect;
+        if (captureRect.width === 0 && captureRect.height === 0) continue;
+        geometryRects.push(captureRect);
 
         if (element instanceof SVGForeignObjectElement) {
           for (const htmlElement of element.querySelectorAll<HTMLElement>("*")) {
@@ -580,7 +786,9 @@ async function mountSvg(
       const screenshotWidth = leftPadding + rootPixelWidth + rightPadding;
       const screenshotHeight = topPadding + rootPixelHeight + bottomPadding;
       const captureExceedsLimit =
-        screenshotWidth > maxCaptureCssPx || screenshotHeight > maxCaptureCssPx;
+        screenshotWidth > maxCaptureDimensionCssPx ||
+        screenshotHeight > maxCaptureDimensionCssPx ||
+        screenshotWidth * screenshotHeight > maxCaptureAreaCssPx;
       if (captureExceedsLimit) {
         indeterminateReasons.add("capture-limit");
       } else {
@@ -612,7 +820,8 @@ async function mountSvg(
       quantizationEpsilon: ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
       guardCssPx: ROOT_VIEWPORT_PAINT_GUARD_CSS_PX,
       hostWidthCssPx: ROOT_VIEWPORT_HOST_WIDTH_CSS_PX,
-      maxCaptureCssPx: ROOT_VIEWPORT_MAX_CAPTURE_CSS_PX,
+      maxCaptureDimensionCssPx: ROOT_VIEWPORT_MAX_CAPTURE_DIMENSION_CSS_PX,
+      maxCaptureAreaCssPx: ROOT_VIEWPORT_MAX_CAPTURE_AREA_CSS_PX,
     },
   );
 }
@@ -683,7 +892,7 @@ async function auditScreenshotPixels(
         bottom: { paintedPixelCount: 0, bounds: null, reachesAuditBoundary: false },
         left: { paintedPixelCount: 0, bounds: null, reachesAuditBoundary: false },
       };
-      const pixelKeys: string[] = [];
+      const pixelKeys = new Set<string>();
 
       const strips: Array<{
         edge: RootViewportEdge;
@@ -696,9 +905,9 @@ async function auditScreenshotPixels(
         {
           edge: "right",
           x: root.right,
-          y: root.top,
+          y: 0,
           width: canvas.width - root.right,
-          height: root.bottom - root.top,
+          height: canvas.height,
         },
         {
           edge: "bottom",
@@ -710,9 +919,9 @@ async function auditScreenshotPixels(
         {
           edge: "left",
           x: 0,
-          y: root.top,
+          y: 0,
           width: root.left,
-          height: root.bottom - root.top,
+          height: canvas.height,
         },
       ];
 
@@ -735,13 +944,13 @@ async function auditScreenshotPixels(
               pageX === canvas.width - 1 ||
               pageY === canvas.height - 1;
             recordPixel(edges[strip.edge], pageX, pageY, atAuditBoundary);
-            pixelKeys.push(`${pageX - root.left},${pageY - root.top}`);
+            pixelKeys.add(`${pageX - root.left},${pageY - root.top}`);
           }
         }
       }
 
       return {
-        pixelKeys,
+        pixelKeys: [...pixelKeys],
         edges: strips.map(({ edge }) => ({
           edge,
           paintedPixelCount: edges[edge].paintedPixelCount,

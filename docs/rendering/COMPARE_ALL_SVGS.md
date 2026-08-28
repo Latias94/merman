@@ -74,6 +74,14 @@ Example:
 
 - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root`
 
+The Linux release lane follows the successful DOM/semantic comparison with
+`npm run oracle:root-viewport --prefix playground/tests`. The browser oracle mounts the generated
+SVGs in Chromium, captures transparent alpha outside each root, and compares structural overflow
+with the pinned upstream artifact. Browser-owned SVG text, HTML label paint, and RoughJS output are
+diagnostic. A new structural overflow edge or a deeper edge is blocking. The only exact root-paint
+receipt catalog is `fixtures/_verification/root-viewport-residuals.json`; each entry binds both SVG
+hashes, and stale or unused entries fail rather than widening a tolerance.
+
 ## Notes
 
 - `parity-root` depends on the headless `getBBox()`-like bounds approximation in `merman-render`.
