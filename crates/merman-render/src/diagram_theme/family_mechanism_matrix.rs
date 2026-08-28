@@ -451,6 +451,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::PIE, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL)
         }
+        (DiagramFamilyId::PIE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
+        }
         _ => None,
     }
 }
@@ -1752,6 +1755,18 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::PIE
         && target == ThemeTarget::Title
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::PIE
+        && target == ThemeTarget::Text
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             facet,
@@ -4719,6 +4734,20 @@ mod tests {
                 Fill,
                 Solid,
                 vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::PIE,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::PIE,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
             ),
             (
                 DiagramFamilyId::PIE,

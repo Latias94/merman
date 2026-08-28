@@ -496,12 +496,12 @@ fn pie_title_fill_is_independent_from_legacy_text_fill() {
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(
         evidence.compatibility_residual_count(),
-        1,
-        "the typed title coexists with the legacy text projection"
+        0,
+        "typed Pie title and section text routes have no compatibility residual"
     );
 }
 

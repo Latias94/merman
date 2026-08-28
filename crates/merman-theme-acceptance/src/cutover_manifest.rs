@@ -11,7 +11,7 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 26;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 27;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
@@ -322,7 +322,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 148] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 150] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -820,6 +820,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 148] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::PIE,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::PIE,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::BLOCK,
@@ -1698,7 +1712,8 @@ mod tests {
         GANTT_TASK_ACTIVE_FILL_PROJECTIONS, MANIFEST, NODE_FILL_PROJECTIONS,
         NODE_LABEL_FILL_PROJECTIONS, NODE_STROKE_PROJECTIONS, PIE_SLICE_FILL_PROJECTIONS,
         PIE_SLICE_STROKE_PROJECTIONS, PROJECTION_ACTIONS, RouteAuthorization, RouteTombstone,
-        authorize_cutover_routes, reconcile_manifest, validate_projection_actions,
+        TEXT_FILL_PROJECTIONS, authorize_cutover_routes, reconcile_manifest,
+        validate_projection_actions,
     };
 
     fn current_inventory() -> Vec<(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)> {
@@ -1815,6 +1830,20 @@ mod tests {
                 }
         }));
 
+        let pie_text_routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::PIE
+                    && route.id.target() == ThemeTarget::Text
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(pie_text_routes.len(), 2);
+        assert!(pie_text_routes.iter().all(|route| {
+            route.id.selector() == ThemeRouteCutoverSelector::StaticUnqualified
+                && route.id.facet() == ThemeRouteCutoverFacet::Fill
+                && route.projections == TEXT_FILL_PROJECTIONS
+        }));
+
         let class_node_default = ACTIVE_ROUTES
             .iter()
             .filter(|route| {
@@ -1843,7 +1872,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 26);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 27);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

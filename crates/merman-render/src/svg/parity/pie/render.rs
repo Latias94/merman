@@ -277,6 +277,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         .then(|| paint_plan.outer_stroke_css())
         .flatten();
     let title_fill = paint_plan.title_fill_css();
+    let text_fill = paint_plan.text_fill_css();
     let css_emission = write_pie_css_with_theme_overrides(
         &mut out,
         diagram_id.semantic_str(),
@@ -284,6 +285,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         slice_stroke,
         outer_stroke,
         title_fill,
+        text_fill,
     )?;
     if let Some(receipt) = paint_receipt.as_mut() {
         if let Some(stroke) = slice_stroke {
@@ -310,6 +312,9 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
                 crate::pie::PIE_TITLE_CLASS,
                 css_emission.title_fill(),
             );
+        }
+        if text_fill.is_some() {
+            receipt.record_text_stylesheet(paint_plan, "slice", css_emission.section_text_fill());
         }
     }
     out.push_str(r#"</style><g/>"#);
@@ -376,14 +381,24 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
 
     for slice in &layout.slices {
         options.checkpoint_emit()?;
+        let text = format!("{}%", slice.percent);
+        let element_start = out.len();
         let _ = write!(
             &mut out,
             r#"<text transform="translate({x},{y})" class="slice" style="text-anchor: middle;">{text}</text>"#,
             x = fmt(slice.text_x),
             y = fmt(slice.text_y),
-            text = escape_xml(&format!("{}%", slice.percent))
+            text = escape_xml(&text)
         );
         out.checkpoint()?;
+        if text_fill.is_some()
+            && let Some(receipt) = paint_receipt.as_mut()
+        {
+            let terminal_class =
+                emitted_attribute_matches(out.as_str(), element_start, r#" class=""#, "slice")
+                    .then_some("slice");
+            receipt.record_slice_text(terminal_class, &text);
+        }
     }
 
     out.push_str("</g>");
