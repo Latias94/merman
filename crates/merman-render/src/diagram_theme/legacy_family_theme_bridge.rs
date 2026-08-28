@@ -806,7 +806,7 @@ fn compile_pie_family(
     contributions.add_typography(reader);
     contributions.add_theme_variables(
         "title.fill",
-        [("pieTitleTextColor", reader.text_fill(ThemeTarget::Title))],
+        [("pieTitleTextColor", reader.fill(ThemeTarget::Title))],
     );
     contributions.add_theme_variables(
         "text.fill",

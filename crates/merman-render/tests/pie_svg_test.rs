@@ -500,8 +500,8 @@ fn pie_title_fill_is_independent_from_legacy_text_fill() {
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(
         evidence.compatibility_residual_count(),
-        2,
-        "the typed title coexists with the legacy text and typography projections"
+        1,
+        "the typed title coexists with the legacy text projection"
     );
 }
 

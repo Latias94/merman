@@ -142,8 +142,6 @@ impl CssFontFamilyOverride {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StyleDeclarationBoundary<'a> {
     raw: &'a str,
-    affects_font_family: bool,
-    important: bool,
 }
 
 impl<'a> StyleDeclarationBoundary<'a> {
@@ -173,11 +171,13 @@ fn css_font_family_winner<'a>(
             match parse_style_declaration(boundary.raw()) {
                 Some(declaration) => observe_css_font_family_ownership(&mut winner, &declaration),
                 None => {
-                    if boundary.affects_font_family
-                        && winner.is_none_or(|current| boundary.important || !current.important)
+                    let (affects_font_family, important) =
+                        declaration_metadata_for_fallback(boundary.raw());
+                    if affects_font_family
+                        && winner.is_none_or(|current| important || !current.important)
                     {
                         winner = Some(CssFontFamilyOverride {
-                            important: boundary.important,
+                            important,
                             ownership: CssFontFamilyOwnership::Unverified,
                         });
                     }
@@ -215,26 +215,14 @@ pub(crate) fn visit_style_declaration_boundaries_with_checkpoints<'a, E>(
     while !parser.is_exhausted() {
         checkpoint()?;
         let start = parser.position();
-        let boundary = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
-            let property = declaration.expect_ident_cloned()?;
-            declaration.expect_colon()?;
-            let important = declaration_has_trailing_important(declaration);
-            let property = property.as_ref();
-            let affects_font_family = property.eq_ignore_ascii_case("font-family")
-                || property.eq_ignore_ascii_case("font")
-                || property.eq_ignore_ascii_case("all");
-            Ok::<_, ParseError<'_, ()>>((affects_font_family, important))
+        let _ = parser.parse_until_after(Delimiter::Semicolon, |_declaration| {
+            Ok::<_, ParseError<'_, ()>>(())
         });
         let raw = parser.slice(start..parser.position()).trim();
         if raw.is_empty() {
             continue;
         }
-        let (affects_font_family, important) = boundary.unwrap_or((false, false));
-        if !visit(StyleDeclarationBoundary {
-            raw,
-            affects_font_family,
-            important,
-        })? {
+        if !visit(StyleDeclarationBoundary { raw })? {
             break;
         }
     }
@@ -396,6 +384,26 @@ fn declaration_has_trailing_important(parser: &mut Parser<'_, '_>) -> bool {
         }
     }
     false
+}
+
+fn declaration_metadata_for_fallback(raw: &str) -> (bool, bool) {
+    let raw = raw.strip_suffix(';').unwrap_or(raw).trim();
+    let mut input = ParserInput::new(raw);
+    let mut parser = Parser::new(&mut input);
+    let Ok(property) = parser.expect_ident_cloned() else {
+        return (false, false);
+    };
+    if parser.expect_colon().is_err() {
+        return (false, false);
+    }
+    let property = property.as_ref();
+    let affects_font_family = property.eq_ignore_ascii_case("font-family")
+        || property.eq_ignore_ascii_case("font")
+        || property.eq_ignore_ascii_case("all");
+    (
+        affects_font_family,
+        declaration_has_trailing_important(&mut parser),
+    )
 }
 
 pub(crate) fn is_resource_free_css_value(value: &str) -> bool {

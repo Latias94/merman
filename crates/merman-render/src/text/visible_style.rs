@@ -193,18 +193,16 @@ fn inline_color_owner(
         return inherited.clone();
     };
     let mut winner: Option<(bool, &str)> = None;
-    for declaration in style
-        .split(';')
-        .filter_map(crate::mermaid_style::parse_style_declaration)
-        .filter(|declaration| declaration.property() == "color")
-    {
-        if !crate::mermaid_style::is_safe_browser_css_color_value(declaration.value()) {
-            continue;
+    crate::mermaid_style::visit_parsed_style_declarations(style, |declaration| {
+        if declaration.property() != "color"
+            || !crate::mermaid_style::is_safe_browser_css_color_value(declaration.value())
+        {
+            return;
         }
         if winner.is_none_or(|(important, _)| declaration.important() || !important) {
             winner = Some((declaration.important(), declaration.value()));
         }
-    }
+    });
     let Some((_, value)) = winner else {
         return inherited.clone();
     };
