@@ -45,8 +45,14 @@ even when the selected DOM profile passes. The contract is documented in
 
 `--diagnostic-browser-text-layout` is intentionally narrower than `continue-on-error`. It consults
 `fixtures/_verification/browser-text-layout-residuals.json`, whose entries bind a reviewed fixture,
-input digest, pinned upstream SVG digest, comparison mode, and complete deterministic local SVG
-digest. The catalog covers measurement-led cases in Architecture, Class, Flowchart, Gantt,
+input digest, pinned upstream SVG digest, admitted comparison modes, the exact three-decimal
+comparison policy, and a canonical deterministic local SVG signature. The local signature requires
+an `<svg>` document root, rejects processing instructions, and preserves namespace URIs, element
+order, text (including non-breaking spaces), stylesheet content, IDs, classes, and every non-path
+attribute value. Attribute order is canonicalized because it is not XML semantics. Only numeric
+operands inside `path d` are rounded to three decimals, which removes the verified last-bit
+ARM/x86/Linux float drift while retaining path commands and geometry changes visible at the gate's
+precision. The catalog covers measurement-led cases in Architecture, Class, Flowchart, Gantt,
 Journey, Sequence, Timeline, and Treemap, whose pinned Mermaid implementations derive wrapping,
 path topology, task-label placement, or adaptive font size from browser
 `getBBox()`/`getComputedTextLength()` results that the font-agnostic deterministic fallback does
@@ -54,9 +60,10 @@ not claim to reproduce.
 
 Render failures, malformed upstream or local DOM, semantic-label failures, operation-provenance
 failures, invalid roots, changed root sizing policy, unregistered fixtures, unlisted modes, changed
-input/upstream/local digests, stale receipts, and every other DOM mismatch remain blocking. A
-changed node, class, id, path, text, fixture input, or upstream baseline therefore cannot reuse an
-old receipt. Omitting the flag restores blocking upstream DOM comparison for parity work.
+input/upstream digests, changed local signatures, stale receipts, and every other DOM mismatch
+remain blocking. A changed node, class, id, text, stylesheet, namespace, element order, path command,
+or path coordinate at three-decimal precision therefore cannot reuse an old receipt. Omitting the
+flag restores blocking upstream DOM comparison for parity work.
 
 ## Root reports
 

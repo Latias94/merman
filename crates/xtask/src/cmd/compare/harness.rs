@@ -1867,6 +1867,14 @@ where
                         .map_err(XtaskError::SvgCompareFailed)?
                 }
             };
+            let local_svg_signature = browser_text_layout_residual
+                .map(|_| svgdom::canonical_local_svg_signature(local_svg, dom_decimals))
+                .transpose()
+                .map_err(|error| {
+                    XtaskError::SvgCompareFailed(format!(
+                        "canonicalize local SVG receipt signature for {diagram}/{stem}: {error}"
+                    ))
+                })?;
             if let Some(issue) = inspect_dom(&upstream_document, &local_document) {
                 issues.push(issue);
             }
@@ -1918,7 +1926,8 @@ where
                     stem,
                     input_text,
                     upstream_svg,
-                    local_svg,
+                    dom_decimals,
+                    local_svg_signature.as_ref(),
                     comparison_error,
                     failures,
                     notes,
@@ -1956,7 +1965,8 @@ fn record_upstream_dom_comparison(
     stem: &str,
     input_text: &str,
     upstream_svg: &str,
-    local_svg: &str,
+    dom_decimals: u32,
+    local_svg_signature: Option<&svgdom::CanonicalLocalSvgSignature>,
     comparison_error: Option<String>,
     failures: &mut Vec<String>,
     notes: &mut Vec<String>,
@@ -1974,23 +1984,49 @@ fn record_upstream_dom_comparison(
         && residual.is_some_and(|residual| residual.admits_mode(mode));
 
     match (comparison_error, admitted, residual) {
-        (Some(error), true, Some(residual)) => match residual.validate_local_svg(local_svg) {
-            Ok(()) => notes.push(format!(
-                "{ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX} [{mode_label}] for {diagram}/{stem}: {error}"
-            )),
-            Err(receipt_error) => failures.push(format!(
-                "[{mode_label}] {receipt_error}; the new DOM mismatch remains blocking"
-            )),
-        },
+        (Some(error), true, Some(residual)) => {
+            match validate_browser_text_layout_local_signature(
+                residual,
+                mode,
+                dom_decimals,
+                local_svg_signature,
+            ) {
+                Ok(()) => notes.push(format!(
+                    "{ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX} [{mode_label}] for {diagram}/{stem}: {error}"
+                )),
+                Err(receipt_error) => failures.push(format!(
+                    "[{mode_label}] {receipt_error}; the new DOM mismatch remains blocking"
+                )),
+            }
+        }
         (Some(error), _, _) => failures.push(format!("[{mode_label}] {error}")),
-        (None, true, Some(residual)) => match residual.validate_local_svg(local_svg) {
-            Ok(()) => failures.push(format!(
-                "[{mode_label}] stale browser text layout receipt for {diagram}/{stem}: the upstream DOM comparison now matches"
-            )),
-            Err(receipt_error) => failures.push(format!("[{mode_label}] {receipt_error}")),
-        },
+        (None, true, Some(residual)) => {
+            match validate_browser_text_layout_local_signature(
+                residual,
+                mode,
+                dom_decimals,
+                local_svg_signature,
+            ) {
+                Ok(()) => failures.push(format!(
+                    "[{mode_label}] stale browser text layout receipt for {diagram}/{stem}: the upstream DOM comparison now matches"
+                )),
+                Err(receipt_error) => failures.push(format!("[{mode_label}] {receipt_error}")),
+            }
+        }
         (None, _, _) => {}
     }
+}
+
+fn validate_browser_text_layout_local_signature(
+    residual: &super::BrowserTextLayoutResidual,
+    mode: svgdom::DomMode,
+    dom_decimals: u32,
+    local_svg_signature: Option<&svgdom::CanonicalLocalSvgSignature>,
+) -> Result<(), String> {
+    let local_svg_signature = local_svg_signature.ok_or_else(|| {
+        "browser text layout receipt is missing its canonical local SVG signature".to_string()
+    })?;
+    residual.validate_local_svg_signature(mode, dom_decimals, local_svg_signature)
 }
 
 pub(crate) fn fixture_dom_profile(
@@ -2869,17 +2905,18 @@ mod tests {
     }
 
     #[test]
-    fn browser_text_layout_receipts_accept_only_the_exact_reviewed_local_svg() {
+    fn browser_text_layout_receipts_accept_only_the_exact_reviewed_local_svg_signature() {
         let reviewed_input = "sequenceDiagram\nA->>B: probe";
         let reviewed_upstream = "<svg><text>browser</text></svg>";
         let reviewed_local = r#"<svg><g><text>wrapped text</text></g></svg>"#;
+        let reviewed_signature = svgdom::canonical_local_svg_signature(reviewed_local, 3).unwrap();
         let receipt = super::super::BrowserTextLayoutResidual::test_only(
             "sequence",
             "browser-text-layout",
             &[svgdom::DomMode::Parity],
             reviewed_input,
             reviewed_upstream,
-            reviewed_local,
+            &reviewed_signature,
         );
         let mismatch = Some("dom mismatch for browser-text-layout".to_string());
 
@@ -2893,7 +2930,8 @@ mod tests {
             "browser-text-layout",
             reviewed_input,
             reviewed_upstream,
-            reviewed_local,
+            3,
+            Some(&reviewed_signature),
             mismatch.clone(),
             &mut failures,
             &mut notes,
@@ -2923,7 +2961,8 @@ mod tests {
                 "browser-text-layout",
                 actual_input,
                 actual_upstream,
-                reviewed_local,
+                3,
+                Some(&reviewed_signature),
                 mismatch.clone(),
                 &mut failures,
                 &mut notes,
@@ -2935,6 +2974,8 @@ mod tests {
 
         let mut failures = Vec::new();
         let mut notes = Vec::new();
+        let changed_signature =
+            svgdom::canonical_local_svg_signature(r#"<svg><g><circle/></g></svg>"#, 3).unwrap();
         record_upstream_dom_comparison(
             UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
             Some(&receipt),
@@ -2943,7 +2984,8 @@ mod tests {
             "browser-text-layout",
             reviewed_input,
             reviewed_upstream,
-            r#"<svg><g><circle/></g></svg>"#,
+            3,
+            Some(&changed_signature),
             mismatch.clone(),
             &mut failures,
             &mut notes,
@@ -2961,7 +3003,8 @@ mod tests {
             "unregistered-neighbor",
             reviewed_input,
             reviewed_upstream,
-            reviewed_local,
+            3,
+            None,
             mismatch,
             &mut failures,
             &mut notes,
@@ -2979,7 +3022,8 @@ mod tests {
             "browser-text-layout",
             reviewed_input,
             reviewed_upstream,
-            reviewed_local,
+            3,
+            Some(&reviewed_signature),
             None,
             &mut failures,
             &mut notes,

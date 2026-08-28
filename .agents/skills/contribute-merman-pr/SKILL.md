@@ -81,7 +81,10 @@ cargo run --locked --release -p xtask -- compare-all-svgs \
 ```
 
 The diagnostic flag accepts only reviewed browser-text-layout receipts bound to the exact input,
-upstream SVG, mode, and complete local SVG. New or stale differences remain blocking.
+upstream SVG, admitted modes, three-decimal policy, and canonical local SVG signature. The
+signature preserves text, styles, namespaces, IDs, classes, element order, and non-path attributes;
+only `path d` numeric operands are quantized to the gate precision. New or stale differences remain
+blocking.
 `parity-root` also blocks malformed viewports, strategy changes, semantic evidence failures, and
 the deterministic root canaries. Pages CI owns the painted-content containment oracle; run the
 focused Playground desktop browser suite locally only when changing that oracle or its browser

@@ -45,8 +45,13 @@ Notes:
   Architecture, Class, Flowchart, Gantt, Journey, Sequence, Timeline, and Treemap where browser
   font measurement controls wrapping, route topology, inside/outside classification, or adaptive
   font size. A mismatch is diagnostic only when its exact fixture input, pinned upstream SVG,
-  comparison mode, and complete deterministic local SVG digests match the receipt. A new node,
-  class, id, path, text, unregistered fixture, changed digest, or stale receipt remains blocking.
+  admitted comparison mode, three-decimal policy, and canonical deterministic local SVG signature
+  match the receipt. That signature requires an `<svg>` document root, rejects processing
+  instructions, and preserves namespace URIs, element order, text, stylesheet content, IDs,
+  classes, and all non-path attributes; only numeric `path d` operands are quantized to three
+  decimals to remove verified cross-architecture last-bit drift. A new node, class, id, text,
+  stylesheet, namespace, path command, path coordinate at gate precision, unregistered fixture,
+  changed digest, or stale receipt remains blocking.
   Rendering, DOM parsing, semantic-label evidence, operation provenance, and root viewport policy
   also remain blocking.
 - `parity-root` invokes the root viewport contract for every fixture. The contract rejects an

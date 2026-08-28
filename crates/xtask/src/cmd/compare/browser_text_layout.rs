@@ -2,16 +2,17 @@
 //!
 //! The catalog is verification-only. It never changes production rendering and never accepts a
 //! new DOM shape merely because it belongs to a measurement-sensitive diagram family. A residual
-//! is diagnostic only when the fixture input, pinned upstream SVG, comparison mode, and complete
-//! deterministic local SVG digest still match an explicitly reviewed receipt.
+//! is diagnostic only when the fixture input, pinned upstream SVG, comparison mode, comparison
+//! precision, and canonical local SVG signature still match an explicitly reviewed receipt.
 
 use crate::util::{is_canonical_sha256, sha256_hex};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-const SCHEMA_VERSION: u32 = 2;
-const COMPARISON_REVISION: &str = "browser-text-layout-residual-v2";
+const SCHEMA_VERSION: u32 = 3;
+const COMPARISON_REVISION: &str = "browser-text-layout-residual-v3";
+const DOM_DECIMALS: u32 = 3;
 const MEASUREMENT_PROVIDER: &str = "deterministic";
 const CATALOG_RELATIVE_PATH: &str = "_verification/browser-text-layout-residuals.json";
 const DIAGRAMS: [&str; 8] = [
@@ -33,6 +34,7 @@ struct BrowserTextLayoutResidualCatalog {
     mermaid_source_commit: String,
     measurement_provider: String,
     comparison_revision: String,
+    dom_decimals: u32,
     entries: Vec<BrowserTextLayoutResidual>,
 }
 
@@ -44,7 +46,7 @@ pub(crate) struct BrowserTextLayoutResidual {
     modes: Vec<String>,
     input_sha256: String,
     upstream_svg_sha256: String,
-    local_svg_sha256: String,
+    local_svg_signature_sha256: String,
 }
 
 impl BrowserTextLayoutResidual {
@@ -54,8 +56,39 @@ impl BrowserTextLayoutResidual {
             .any(|candidate| candidate == mode.as_str())
     }
 
-    pub(crate) fn validate_local_svg(&self, local_svg: &str) -> Result<(), String> {
-        self.validate_digest("local SVG", &self.local_svg_sha256, local_svg.as_bytes())
+    pub(crate) fn validate_local_svg_signature(
+        &self,
+        mode: crate::svgdom::DomMode,
+        dom_decimals: u32,
+        local_signature: &crate::svgdom::CanonicalLocalSvgSignature,
+    ) -> Result<(), String> {
+        if dom_decimals != DOM_DECIMALS {
+            return Err(format!(
+                "browser text layout receipt precision drifted for {}/{}: expected {DOM_DECIMALS} DOM decimals, found {dom_decimals}",
+                self.diagram, self.fixture
+            ));
+        }
+        if local_signature.decimals() != DOM_DECIMALS {
+            return Err(format!(
+                "browser text layout local SVG signature precision drifted for {}/{}: expected {DOM_DECIMALS} decimals, found {}",
+                self.diagram,
+                self.fixture,
+                local_signature.decimals()
+            ));
+        }
+        if !self.admits_mode(mode) {
+            return Err(format!(
+                "browser text layout receipt for {}/{} does not admit {} mode",
+                self.diagram,
+                self.fixture,
+                mode.as_str()
+            ));
+        }
+        self.validate_digest(
+            "local SVG signature",
+            &self.local_svg_signature_sha256,
+            local_signature.as_bytes(),
+        )
     }
 
     pub(crate) fn validate_source_artifacts(
@@ -85,7 +118,7 @@ impl BrowserTextLayoutResidual {
         modes: &[crate::svgdom::DomMode],
         input: &str,
         upstream_svg: &str,
-        local_svg: &str,
+        local_signature: &crate::svgdom::CanonicalLocalSvgSignature,
     ) -> Self {
         Self {
             diagram: diagram.to_string(),
@@ -93,7 +126,7 @@ impl BrowserTextLayoutResidual {
             modes: modes.iter().map(|mode| mode.as_str().to_string()).collect(),
             input_sha256: sha256_hex(input.as_bytes()),
             upstream_svg_sha256: sha256_hex(upstream_svg.as_bytes()),
-            local_svg_sha256: sha256_hex(local_svg.as_bytes()),
+            local_svg_signature_sha256: sha256_hex(local_signature.as_bytes()),
         }
     }
 }
@@ -152,6 +185,7 @@ fn validate_catalog(catalog: &BrowserTextLayoutResidualCatalog) -> Result<(), St
         || catalog.mermaid_source_commit != crate::cmd::MERMAID_SOURCE_COMMIT
         || catalog.measurement_provider != MEASUREMENT_PROVIDER
         || catalog.comparison_revision != COMPARISON_REVISION
+        || catalog.dom_decimals != DOM_DECIMALS
     {
         return Err("browser text layout residual reference contract drifted".to_string());
     }
@@ -178,7 +212,10 @@ fn validate_catalog(catalog: &BrowserTextLayoutResidualCatalog) -> Result<(), St
         for (role, digest) in [
             ("input", entry.input_sha256.as_str()),
             ("upstream SVG", entry.upstream_svg_sha256.as_str()),
-            ("local SVG", entry.local_svg_sha256.as_str()),
+            (
+                "local SVG signature",
+                entry.local_svg_signature_sha256.as_str(),
+            ),
         ] {
             if !is_canonical_sha256(digest) {
                 return Err(format!(
@@ -196,16 +233,23 @@ fn validate_catalog(catalog: &BrowserTextLayoutResidualCatalog) -> Result<(), St
                     entry.diagram, entry.fixture
                 )
             })?;
+            if parsed == crate::svgdom::DomMode::Strict {
+                return Err(format!(
+                    "browser text layout residual {}/{} cannot admit strict mode",
+                    entry.diagram, entry.fixture
+                ));
+            }
+            if mode != parsed.as_str() {
+                return Err(format!(
+                    "browser text layout residual {}/{} mode {mode:?} is not canonical",
+                    entry.diagram, entry.fixture
+                ));
+            }
             let rank = match parsed {
                 crate::svgdom::DomMode::Structure => 0,
                 crate::svgdom::DomMode::Parity => 1,
                 crate::svgdom::DomMode::ParityRoot => 2,
-                crate::svgdom::DomMode::Strict => {
-                    return Err(format!(
-                        "browser text layout residual {}/{} cannot admit strict mode",
-                        entry.diagram, entry.fixture
-                    ));
-                }
+                crate::svgdom::DomMode::Strict => unreachable!("strict rejected above"),
             };
             if previous_mode_rank.is_some_and(|previous| previous >= rank) {
                 return Err(format!(
@@ -250,6 +294,10 @@ fn validate_catalog(catalog: &BrowserTextLayoutResidualCatalog) -> Result<(), St
 mod tests {
     use super::*;
 
+    fn local_signature(svg: &str, decimals: u32) -> crate::svgdom::CanonicalLocalSvgSignature {
+        crate::svgdom::canonical_local_svg_signature(svg, decimals).unwrap()
+    }
+
     #[test]
     fn committed_catalog_is_sorted_valid_and_source_backed() {
         let catalog = load_catalog().expect("browser text layout residual catalog");
@@ -263,17 +311,18 @@ mod tests {
     }
 
     #[test]
-    fn receipt_binds_the_complete_local_svg_and_exact_modes() {
+    fn receipt_binds_local_svg_signature_modes_precision_and_source_artifacts() {
         let input = "sequenceDiagram\nA->>B: probe";
         let upstream = "<svg><text>browser</text></svg>";
         let accepted = "<svg><text>wrapped</text></svg>";
+        let accepted_signature = local_signature(accepted, DOM_DECIMALS);
         let receipt = BrowserTextLayoutResidual::test_only(
             "sequence",
             "probe",
             &[crate::svgdom::DomMode::Structure],
             input,
             upstream,
-            accepted,
+            &accepted_signature,
         );
 
         assert!(receipt.admits_mode(crate::svgdom::DomMode::Structure));
@@ -281,7 +330,13 @@ mod tests {
         receipt
             .validate_source_artifacts(input.as_bytes(), upstream.as_bytes())
             .unwrap();
-        receipt.validate_local_svg(accepted).unwrap();
+        receipt
+            .validate_local_svg_signature(
+                crate::svgdom::DomMode::Structure,
+                DOM_DECIMALS,
+                &accepted_signature,
+            )
+            .unwrap();
         assert!(
             receipt
                 .validate_source_artifacts(b"changed input", upstream.as_bytes())
@@ -292,6 +347,106 @@ mod tests {
                 .validate_source_artifacts(input.as_bytes(), b"<svg><circle/></svg>")
                 .is_err()
         );
-        assert!(receipt.validate_local_svg("<svg><circle/></svg>").is_err());
+        for changed in ["<svg><text>changed</text></svg>", "<svg><circle/></svg>"] {
+            let changed_signature = local_signature(changed, DOM_DECIMALS);
+            assert!(
+                receipt
+                    .validate_local_svg_signature(
+                        crate::svgdom::DomMode::Structure,
+                        DOM_DECIMALS,
+                        &changed_signature,
+                    )
+                    .is_err()
+            );
+        }
+        assert!(
+            receipt
+                .validate_local_svg_signature(
+                    crate::svgdom::DomMode::Structure,
+                    DOM_DECIMALS + 1,
+                    &accepted_signature,
+                )
+                .is_err()
+        );
+        let wrong_precision_signature = local_signature(accepted, DOM_DECIMALS + 1);
+        assert!(
+            receipt
+                .validate_local_svg_signature(
+                    crate::svgdom::DomMode::Structure,
+                    DOM_DECIMALS,
+                    &wrong_precision_signature,
+                )
+                .is_err()
+        );
+        assert!(
+            crate::svgdom::canonical_local_svg_signature(
+                "<wrapper><svg><text>wrapped</text></svg></wrapper>",
+                DOM_DECIMALS,
+            )
+            .is_err()
+        );
+        assert!(
+            crate::svgdom::canonical_local_svg_signature(
+                r#"<?xml-stylesheet type="text/css" href="theme.css"?><svg><text>wrapped</text></svg>"#,
+                DOM_DECIMALS,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn receipt_quantizes_only_submillipixel_local_geometry_drift() {
+        let input = "flowchart LR\nA --> B";
+        let upstream = r#"<svg class="flowchart" aria-roledescription="flowchart-v2"><text>browser</text></svg>"#;
+        let reviewed = r##"<svg xmlns="http://www.w3.org/2000/svg" class="flowchart" aria-roledescription="flowchart-v2"><style>.node{fill:#333}</style><g id="node-a" class="node default" data-probe="1.00000000000001" d="7.00000000000001"><path d="M-31.92037240205123,-10 L20,30"/><text>Label&nbsp;A</text></g></svg>"##;
+        let cross_platform = r##"<svg aria-roledescription="flowchart-v2" class="flowchart" xmlns="http://www.w3.org/2000/svg"><style>.node{fill:#333}</style><g d="7.00000000000001" data-probe="1.00000000000001" class="node default" id="node-a"><path d="M-31.92037240205122,-10 L20,30"/><text>Label&#160;A</text></g></svg>"##;
+        let reviewed_signature = local_signature(reviewed, DOM_DECIMALS);
+        let cross_platform_signature = local_signature(cross_platform, DOM_DECIMALS);
+        assert_eq!(reviewed_signature, cross_platform_signature);
+
+        let receipt = BrowserTextLayoutResidual::test_only(
+            "flowchart",
+            "probe",
+            &[crate::svgdom::DomMode::Parity],
+            input,
+            upstream,
+            &reviewed_signature,
+        );
+
+        receipt
+            .validate_local_svg_signature(
+                crate::svgdom::DomMode::Parity,
+                DOM_DECIMALS,
+                &cross_platform_signature,
+            )
+            .unwrap();
+
+        for changed in [
+            reviewed.replace("Label&nbsp;A", "Changed"),
+            reviewed.replace("fill:#333", "fill:#334"),
+            reviewed.replace("id=\"node-a\"", "id=\"node-b\""),
+            reviewed.replace("1.00000000000001", "1.00000000000002"),
+            reviewed.replace("7.00000000000001", "7.00000000000002"),
+            reviewed.replace("-31.92037240205123", "-31.9"),
+            reviewed.replace(" L20,30", " C20,30 40,50 60,70"),
+            reviewed.replace(
+                "<path d=\"M-31.92037240205123,-10 L20,30\"/><text>Label&nbsp;A</text>",
+                "<text>Label&nbsp;A</text><path d=\"M-31.92037240205123,-10 L20,30\"/>",
+            ),
+            reviewed.replace("http://www.w3.org/2000/svg", "http://www.w3.org/1999/xhtml"),
+            reviewed.replace("Label&nbsp;A", "Label A"),
+        ] {
+            let changed_signature = local_signature(&changed, DOM_DECIMALS);
+            assert!(
+                receipt
+                    .validate_local_svg_signature(
+                        crate::svgdom::DomMode::Parity,
+                        DOM_DECIMALS,
+                        &changed_signature,
+                    )
+                    .is_err(),
+                "changed SVG must not reuse the receipt: {changed}"
+            );
+        }
     }
 }
