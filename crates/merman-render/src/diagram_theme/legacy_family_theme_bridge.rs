@@ -2090,6 +2090,54 @@ mod tests {
     }
 
     #[test]
+    fn every_matrix_legacy_family_has_a_nonempty_bridge_for_a_legacy_route() {
+        let mut styles = ThemeRuleSet::default();
+        let mut expected_legacy_families = BTreeSet::new();
+        let paint = FamilyThemePaintKind::Solid;
+        for &family in DiagramFamilyId::all() {
+            let Some(target) = ThemeTarget::ALL.iter().copied().find(|&target| {
+                target != ThemeTarget::Canvas
+                    && target.valid_for(family)
+                    && classify_rule_facet(
+                        family,
+                        target,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        FamilyThemeRuleFacet::Fill(paint),
+                    ) == FamilyThemeDisposition::LegacyCompatibility
+            }) else {
+                continue;
+            };
+            styles = styles.with_rule(
+                ThemeRule::new(
+                    target,
+                    ThemeStylePatch::default().with_fill(solid("#123456")),
+                )
+                .for_family(family),
+            );
+            expected_legacy_families.insert(family);
+        }
+
+        let spec = DiagramThemeSpec::new().with_styles(styles);
+        let family_programs = FamilyThemeProgramCache::new(Arc::new(spec));
+        for &family in DiagramFamilyId::all() {
+            let dispatch = legacy_family_dispatch(family).expect("built-in family dispatch");
+            let program = family_programs.get_or_compile(family);
+            if expected_legacy_families.contains(&family) {
+                assert_ne!(dispatch, LegacyFamilyDispatch::NoLegacy, "family={family}");
+                assert!(program.has_legacy_compatibility(), "family={family}");
+                let artifact = compile_selected_family(&family_programs, family)
+                    .expect("legacy family bridge must compile");
+                assert!(
+                    !artifact.overlay.is_empty(),
+                    "matrix-declared legacy route was silently dropped for {family}"
+                );
+            } else {
+                assert!(!program.has_legacy_compatibility(), "family={family}");
+            }
+        }
+    }
+
+    #[test]
     fn unknown_selected_family_fails_without_populating_the_cache() {
         let spec = Arc::new(DiagramThemeSpec::new());
         let family_programs = Arc::new(FamilyThemeProgramCache::new(Arc::clone(&spec)));
@@ -2347,7 +2395,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_pie_title_fill_suppresses_only_the_title_bridge_contribution() {
+    fn direct_pie_title_and_text_fill_suppress_their_bridge_contributions() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default()
                 .with_rule(
@@ -2365,17 +2413,21 @@ mod tests {
                     .for_family(DiagramFamilyId::PIE),
                 ),
         );
-        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::PIE);
+        let bridge_instance = bridge(&spec);
+        let artifact = bridge_instance.compile_for_family(DiagramFamilyId::PIE);
 
         assert!(
             !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.pie.title.fill")
         );
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
         assert!(
-            artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.pie.text.fill")
+            !bridge_instance.owns_contribution_id("merman.legacy-family-theme.v1.pie.title.fill")
+        );
+        assert!(
+            !bridge_instance.owns_contribution_id("merman.legacy-family-theme.v1.pie.text.fill")
         );
     }
 
