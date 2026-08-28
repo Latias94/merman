@@ -1,4 +1,4 @@
-#import "@preview/merman:0.2.0": show-mermaid-blocks
+#import "@preview/merman:0.3.0": show-mermaid-blocks
 
 #set page(width: 12cm, margin: 10mm)
 #set text(font: "Arial", size: 13pt)

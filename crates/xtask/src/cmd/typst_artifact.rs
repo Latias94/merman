@@ -1720,7 +1720,7 @@ mod tests {
             write(&workspace.join("Cargo.lock"), "version = 4\n");
             write(
                 &workspace.join("distribution/typst/merman/typst.toml"),
-                "[package]\nname = \"merman\"\nversion = \"0.2.0\"\n",
+                "[package]\nname = \"merman\"\nversion = \"0.3.0\"\n",
             );
             write(
                 &workspace.join("crates/plugin/Cargo.toml"),
@@ -1790,7 +1790,7 @@ mod tests {
                 cargo_manifest_path: PathBuf::from("crates/plugin/Cargo.toml"),
                 artifact_name: "merman_typst_plugin.wasm".to_string(),
                 cargo_package_version: "0.8.0-alpha.3".to_string(),
-                typst_package_version: "0.2.0".to_string(),
+                typst_package_version: "0.3.0".to_string(),
                 plugin_abi_version: 2,
                 mermaid_version: "11.16.0".to_string(),
                 mermaid_source_commit: "7c0cafcf42e76bfaf79d0cbbd12edb986612f014".to_string(),

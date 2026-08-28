@@ -79,7 +79,7 @@ The repository-owned delivery routes are:
    before it is enabled.
 10. Independent Cargo, scoped npm, and GitHub publication for `tree-sitter-mermaid` through
     `release-tree-sitter-mermaid.yml` after both registry identities are bootstrapped.
-11. Manual Typst Universe submission for `@preview/merman:0.2.0`; this wrapper has an independent
+11. Manual Typst Universe submission for `@preview/merman:0.3.0`; this wrapper has an independent
     version axis and is not published by the crates.io workflow or a workspace tag.
 
 ## CI Gates

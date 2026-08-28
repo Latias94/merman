@@ -2,14 +2,14 @@
 
 Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
-`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents the `0.2.0` package and requires Typst `0.15.0` or newer.
+`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents the `0.3.0` package and requires Typst `0.15.0` or newer.
 
 ## Quick Start
 
 Import `mermaid` and pass a Mermaid source string:
 
 ```typst
-#import "@preview/merman:0.2.0": mermaid
+#import "@preview/merman:0.3.0": mermaid
 
 #mermaid("
 flowchart TD
@@ -22,12 +22,15 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
+| `0.3.0` | `0.8.0-alpha.6` | `2` | Size-optimized WASM package; requires Typst `0.15.0` or newer. |
 | `0.2.0` | `0.8.0-alpha.6` | `2` | Requires Typst `0.15.0` or newer. |
 | `0.1.0` | `0.8.0-alpha.1` | `1` | Previous package API. |
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including `presentation` for first-party profiles and host themes, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
 
-The API and example sections below describe the `0.2.0` package.
+The API and example sections below describe the `0.3.0` package.
+
+Version `0.3.0` rebuilds the plugin after removing ICU4X collation data and generated font-metric tables from the production WebAssembly closure. Layout still uses the deterministic Unicode-aware measurement provider, and the host text-measurement callback seam remains available to transports that can provide one. The Typst plugin ABI remains `2`; this release changes the packaged implementation closure, not the exported protocol.
 
 ## Examples
 
@@ -46,7 +49,7 @@ Package fixtures are grouped by behavior family under `distribution/typst/merman
 
 ## ELK Layout
 
-The `0.2.0` publish profile includes Mermaid's ELK layout backend. Select it in Mermaid source with frontmatter:
+The `0.3.0` publish profile includes Mermaid's ELK layout backend. Select it in Mermaid source with frontmatter:
 
 ```typst
 #mermaid("---\nconfig:\n  layout: elk\n---\nflowchart LR\n  Source --> Layout\n  Layout --> SVG\n")
@@ -142,7 +145,7 @@ A profile that contains raw `options` is an opaque binding-options bundle: it by
 Use `show-mermaid-blocks` with Typst's `raw.where` selector:
 
 ````typst
-#import "@preview/merman:0.2.0": show-mermaid-blocks
+#import "@preview/merman:0.3.0": show-mermaid-blocks
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(width: 100%)
 
@@ -160,7 +163,7 @@ Avoid setting a fixed `id` in a document-wide raw-block show rule unless the doc
 For document-context-aware rendering, pass `document-context: true`. This reads the current Typst text font, text size, and container width inside `context`, then forwards them to the renderer.
 
 ```typst
-#import "@preview/merman:0.2.0": show-mermaid-blocks
+#import "@preview/merman:0.3.0": show-mermaid-blocks
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
   document-context: true,
@@ -329,17 +332,17 @@ The release build requires `wasm-tools` and Binaryen `wasm-opt version 131`. The
 The package is written to:
 
 ```sh
-dist/typst/merman/0.2.0
+dist/typst/merman/0.3.0
 ```
 
 The source package carries the examples shown above so they remain readable in the package review. `typst.toml` excludes `examples/**` from the runtime download; tests stay in the Merman source repository and are not bundled.
 
-For a manual local install, copy that directory to `<package-root>/preview/merman/0.2.0` and pass the parent directory to Typst:
+For a manual local install, copy that directory to `<package-root>/preview/merman/0.3.0` and pass the parent directory to Typst:
 
 ```text
-<package-root>/preview/merman/0.2.0/typst.toml
-<package-root>/preview/merman/0.2.0/lib.typ
-<package-root>/preview/merman/0.2.0/merman_typst_plugin.wasm
+<package-root>/preview/merman/0.3.0/typst.toml
+<package-root>/preview/merman/0.3.0/lib.typ
+<package-root>/preview/merman/0.3.0/merman_typst_plugin.wasm
 ```
 
 ```sh

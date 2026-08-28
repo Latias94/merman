@@ -1,6 +1,6 @@
 [package]
 name = "merman"
-version = "0.2.0"
+version = "0.3.0"
 entrypoint = "lib.typ"
 compiler = "0.15.0"
 authors = ["Mingzhen Zhuang <@Latias94>"]

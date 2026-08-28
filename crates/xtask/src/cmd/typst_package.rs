@@ -1736,7 +1736,7 @@ mod tests {
     fn package_transaction_replaces_the_complete_version_directory() {
         let temporary = tempfile::tempdir().unwrap();
         let parent = temporary.path().join("merman");
-        let package = parent.join("0.2.0");
+        let package = parent.join("0.3.0");
         fs::create_dir_all(&package).unwrap();
         fs::write(package.join("obsolete.txt"), "obsolete").unwrap();
         let staging = tempfile::Builder::new()
@@ -1755,7 +1755,7 @@ mod tests {
     fn package_transaction_restores_the_previous_version_on_install_failure() {
         let temporary = tempfile::tempdir().unwrap();
         let parent = temporary.path().join("merman");
-        let package = parent.join("0.2.0");
+        let package = parent.join("0.3.0");
         fs::create_dir_all(&package).unwrap();
         fs::write(package.join("previous.txt"), "previous").unwrap();
         let staging = tempfile::Builder::new()
@@ -1808,7 +1808,7 @@ mod tests {
                 .unwrap();
         assert_eq!(manifest.schema_version, 1);
         assert_eq!(manifest.package_name, "merman");
-        assert_eq!(manifest.package_version, "0.2.0");
+        assert_eq!(manifest.package_version, "0.3.0");
         assert_eq!(manifest.profile, "publish");
         assert_eq!(manifest.wrapper.path, "lib.typ");
         assert_eq!(manifest.plugin.wasm.sha256, sha256_hex(b"wasm"));
@@ -1839,14 +1839,14 @@ mod tests {
                 "typst.toml".to_string(),
             ])
         );
-        assert!(fixture.out_dir.join("merman/.locks/0.2.0.lock").exists());
+        assert!(fixture.out_dir.join("merman/.locks/0.3.0.lock").exists());
     }
 
     #[test]
     fn source_drift_after_snapshot_aborts_and_preserves_the_previous_package() {
         let temporary = tempfile::tempdir().unwrap();
         let fixture = package_fixture(&temporary);
-        let package = fixture.out_dir.join("merman/0.2.0");
+        let package = fixture.out_dir.join("merman/0.3.0");
         fs::create_dir_all(&package).unwrap();
         fs::write(package.join("previous.txt"), "previous").unwrap();
 
@@ -1879,7 +1879,7 @@ mod tests {
             &fixture.artifact_wasm,
             &fixture.artifact_manifest,
             "publish",
-            "0.2.0",
+            "0.3.0",
         )
         .unwrap();
         let manifest = package_manifest(&fixture.source_snapshot, "publish", &plugin).unwrap();
@@ -1967,7 +1967,7 @@ mod tests {
         fs::create_dir_all(package_source.join("tests/api")).unwrap();
         fs::write(
             package_source.join("typst.toml"),
-            "[package]\nname = \"merman\"\nversion = \"0.2.0\"\nentrypoint = \"lib.typ\"\nexclude = [\"examples/**\"]\n",
+            "[package]\nname = \"merman\"\nversion = \"0.3.0\"\nentrypoint = \"lib.typ\"\nexclude = [\"examples/**\"]\n",
         )
         .unwrap();
         fs::write(package_source.join("lib.typ"), "#let render = () => none").unwrap();
@@ -1998,7 +1998,7 @@ mod tests {
         let artifact_manifest_value = serde_json::json!({
             "profile": "publish",
             "cargo_package_version": "0.8.0-alpha.3",
-            "typst_package_version": "0.2.0",
+            "typst_package_version": "0.3.0",
             "artifact": {
                 "file": "merman_typst_plugin.wasm",
                 "sha256": sha256_hex(b"wasm"),

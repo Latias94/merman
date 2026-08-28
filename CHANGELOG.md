@@ -8,6 +8,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 The next workspace release remains in development. This section records only completed user-visible outcomes since alpha.5; its final version and release scope have not been selected.
 
+### Typst Package 0.3.0
+
+- Rebuilt the Typst package after removing ICU4X collation data and generated font-metric tables from the production WebAssembly closure. The package now uses Merman's deterministic Unicode-aware measurement fallback, keeps the existing host measurement callback seam, and retains Typst plugin ABI 2. This materially reduces the downloaded WASM without changing the exported plugin protocol.
+
 ### Breaking changes
 
 - Advanced the machine-readable CLI contract from `4` to `5`. ASCII-enabled artifacts now expose
