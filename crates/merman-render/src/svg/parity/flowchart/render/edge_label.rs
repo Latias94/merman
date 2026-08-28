@@ -22,6 +22,39 @@ fn padded_html_edge_label_background(padding: f64, width: f64, height: f64) -> S
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SvgEdgeLabelBox {
+    translate_x: f64,
+    translate_y: f64,
+    background_x: f64,
+    background_y: f64,
+    background_width: f64,
+    background_height: f64,
+}
+
+fn centered_svg_edge_label_box(
+    layout_width: f64,
+    layout_height: f64,
+    text_bbox_y: f64,
+) -> SvgEdgeLabelBox {
+    const BACKGROUND_PADDING_PX: f64 = 2.0;
+
+    let background_width = layout_width.max(0.0);
+    let background_height = layout_height.max(0.0);
+    let text_height = (background_height - 2.0 * BACKGROUND_PADDING_PX).max(0.0);
+    SvgEdgeLabelBox {
+        // Mermaid emits centered SVG text (`text-anchor="middle"`) and centers the text bbox,
+        // not the padded label rectangle. A symmetric deterministic bbox therefore needs no
+        // horizontal translation.
+        translate_x: 0.0,
+        translate_y: -(text_bbox_y + text_height / 2.0),
+        background_x: -background_width / 2.0,
+        background_y: text_bbox_y - BACKGROUND_PADDING_PX,
+        background_width,
+        background_height,
+    }
+}
+
 fn position_flowchart_edge_label(
     dagre_anchor: crate::model::LayoutPoint,
     geom: &FlowchartEdgePathGeom,
@@ -183,12 +216,19 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     false,
                 ) {
                     if !label_text.is_empty() {
+                        let label_box = centered_svg_edge_label_box(4.0, 4.0, 0.0);
                         let _ = write!(
                             out,
-                            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate(-2,-2)"><g><rect class="background" style="" x="-2" y="-2" width="4" height="4"/>"#,
+                            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                             fmt_display(x),
                             fmt_display(y),
                             escape_xml_display(&edge.id),
+                            fmt_display(label_box.translate_x),
+                            fmt_display(label_box.translate_y),
+                            fmt_display(label_box.background_x),
+                            fmt_display(label_box.background_y),
+                            fmt_display(label_box.background_width),
+                            fmt_display(label_box.background_height),
                         );
                         if label_type == "markdown" {
                             write_flowchart_svg_text_markdown_wrapped_centered(
@@ -214,27 +254,26 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         return;
                     }
                 } else {
-                    let w = lbl.width.max(0.0);
-                    let h = lbl.height.max(0.0);
-                    let (dx, dy) = if w > 0.0 && h > 0.0 {
-                        (-w / 2.0, -h / 2.0)
-                    } else {
-                        (0.0, 0.0)
-                    };
-                    let background_y = crate::text::flowchart_svg_edge_label_background_y_px(
-                        edge_metrics_style.as_ref(),
+                    let label_box = centered_svg_edge_label_box(
+                        lbl.width,
+                        lbl.height,
+                        ctx.measurer.measure_svg_create_text_bbox_y_offset_px(
+                            &label_text_plain,
+                            edge_metrics_style.as_ref(),
+                        ),
                     );
                     let _ = write!(
                         out,
-                        r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="{}" width="{}" height="{}"/>"#,
+                        r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                         fmt_display(x),
                         fmt_display(y),
                         escape_xml_display(&edge.id),
-                        fmt_display(dx),
-                        fmt_display(dy),
-                        fmt_display(background_y),
-                        fmt_display(w),
-                        fmt_display(h)
+                        fmt_display(label_box.translate_x),
+                        fmt_display(label_box.translate_y),
+                        fmt_display(label_box.background_x),
+                        fmt_display(label_box.background_y),
+                        fmt_display(label_box.background_width),
+                        fmt_display(label_box.background_height)
                     );
                     if label_type == "markdown" {
                         write_flowchart_svg_text_markdown_wrapped_centered(
@@ -269,22 +308,26 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
                     crate::text::WrapMode::SvgLike,
                 );
-                let w = (metrics.width + 4.0).max(1.0);
-                let h = (metrics.height + 4.0).max(1.0);
-                let background_y = crate::text::flowchart_svg_edge_label_background_y_px(
-                    edge_metrics_style.as_ref(),
+                let label_box = centered_svg_edge_label_box(
+                    (metrics.width + 4.0).max(1.0),
+                    (metrics.height + 4.0).max(1.0),
+                    ctx.measurer.measure_svg_create_text_bbox_y_offset_px(
+                        &label_text_plain,
+                        edge_metrics_style.as_ref(),
+                    ),
                 );
                 let _ = write!(
                     out,
-                    r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="{}" width="{}" height="{}"/>"#,
+                    r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                     fmt_display(x),
                     fmt_display(y),
                     escape_xml_display(&edge.id),
-                    fmt_display(-w / 2.0),
-                    fmt_display(-h / 2.0),
-                    fmt_display(background_y),
-                    fmt_display(w),
-                    fmt_display(h)
+                    fmt_display(label_box.translate_x),
+                    fmt_display(label_box.translate_y),
+                    fmt_display(label_box.background_x),
+                    fmt_display(label_box.background_y),
+                    fmt_display(label_box.background_width),
+                    fmt_display(label_box.background_height)
                 );
                 if label_type == "markdown" {
                     write_flowchart_svg_text_markdown_wrapped_centered(
@@ -578,6 +621,21 @@ mod tests {
             emitted_d_for_label: None,
             bounds_skipped_for_viewbox: false,
         }
+    }
+
+    #[test]
+    fn svg_edge_label_box_centers_text_and_its_padded_background() {
+        let label_box = centered_svg_edge_label_box(104.0, 24.0, 3.0);
+        assert_eq!(label_box.translate_x, 0.0);
+        assert_eq!(label_box.translate_y, -13.0);
+        assert_eq!(label_box.background_x, -52.0);
+        assert_eq!(label_box.background_y, 1.0);
+        assert_eq!(label_box.background_width, 104.0);
+        assert_eq!(label_box.background_height, 24.0);
+
+        let translated_background_center_y =
+            label_box.translate_y + label_box.background_y + label_box.background_height / 2.0;
+        assert_eq!(translated_background_center_y, 0.0);
     }
 
     #[test]

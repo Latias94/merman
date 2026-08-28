@@ -146,7 +146,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "f0a363449f36ce971159e860a7ac95083c05b627f6eb159b4437c722b115f035",
+      "local_svg_signature_sha256": "dbb24df67bf0c1c9ec00ea2da47c2000739af0f9eec03d09bb95f2f4437a15a6",
       "input_sha256": "97f50a262a6d0a4ad2abd210f5669eda8f99751e2030239c3b3ce28d09ee44fc",
       "upstream_svg_sha256": "d7f52e48e5824f649af9bd4f656311a643ea3f56c772da85cad1a8b8c4d2494a"
     },
@@ -158,7 +158,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "6c93d99980205b2bfa6fbaba8c33cb83b0627290f4fee632b161f53140b432d7",
+      "local_svg_signature_sha256": "04c2d2ae0e1e4f14724103d2c47f8ae0f0ed88c00fe6211c313238c5a8d849b4",
       "input_sha256": "4ba55d5793d9470302ffb39389f8d2f66b52cfbfc0bf81182948f4e9ceb4554d",
       "upstream_svg_sha256": "a38604fce8b8b408eaef89b4513f127c4adeed50ce9b3ce1b313502d948d61dd"
     },
@@ -191,7 +191,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "0c93a644c641ab5cb3970fd148b6e03ac6e9d26e47ba61453fbe6e1e99504449",
+      "local_svg_signature_sha256": "17b7fe1965ead6d3a9248194900b783a5f91ebaff615c509a186310ec7d7dbaf",
       "input_sha256": "6c368dfbec7975bdcd4dbe8ff2221cce0e193c95a82678176b95c62c35c6244b",
       "upstream_svg_sha256": "652a7aa5df30fcf2372dda69c0cf94b63ba6eb089a3d8f73eec31324b1cad336"
     },
@@ -268,7 +268,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "da7fa41fed0901b590561a26c1d7640509616f4ce8eeb6ba107fd6438ad2fd58",
+      "local_svg_signature_sha256": "9a8ceeeb64afbc1621aa57b0b84c9a7d5b19d1c59ba7159cb91cd13ba09b08ef",
       "input_sha256": "a955ea641d8a353cd8c632a6ab2d35fe341cf1c30031afed817a0ec648640e22",
       "upstream_svg_sha256": "21d70ff9685e0c2ee3543d42b7e8c5f1833e6abc657fdb57c3cf2d1c0d7042f4"
     },
@@ -279,7 +279,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "00482fed30c84bcfd1f6fdd156f1c546e8d6c4334eb1ca95dde6952fa535df8b",
+      "local_svg_signature_sha256": "c39be70173ccfdbd5df8342931d98ed200b27fe472805f41f82bb4778dcef4d9",
       "input_sha256": "8dc230fc47d717c7bb403e6a982d7a16a630372b430f67b273417461f1154536",
       "upstream_svg_sha256": "c1e23012622347169c9a90dd21ff919bc073b5c482b9a4db74878ca26f5a31f5"
     },

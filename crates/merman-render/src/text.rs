@@ -39,8 +39,7 @@ pub(crate) use metrics::{
     mermaid_markdown_to_wrapped_word_lines,
 };
 pub(crate) use svg_metrics::{
-    flowchart_svg_edge_label_background_y_px, svg_title_bbox_vertical_extents_px,
-    svg_wrapped_first_line_bbox_height_px,
+    svg_title_bbox_vertical_extents_px, svg_wrapped_first_line_bbox_height_px,
 };
 pub use types::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use whitespace::{

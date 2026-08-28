@@ -4,6 +4,8 @@ use super::super::SvgDiagramId;
 use super::super::root_svg;
 use super::super::util::escape_xml_into;
 
+const MINIMUM_PAINT_INSET_PX: f64 = 1.0;
+
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub family_kind: crate::family::RenderFamilyKind,
     pub diagram_id: SvgDiagramId<'a>,
@@ -32,7 +34,7 @@ pub(super) struct FlowchartSvgDocument<'a> {
 pub(super) fn prepare_flowchart_svg_document(
     request: FlowchartSvgDocumentRequest<'_>,
 ) -> FlowchartSvgDocument<'_> {
-    let root_bounds = root_svg::DiagramBounds::from_extents(
+    let root_bounds = flowchart_root_bounds(
         request.bbox_min_x,
         request.bbox_min_y,
         request.bbox_max_x,
@@ -71,6 +73,30 @@ pub(super) fn prepare_flowchart_svg_document(
     }
 }
 
+fn flowchart_root_bounds(
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+    diagram_padding: f64,
+) -> root_svg::DiagramBounds {
+    // Flowchart paint can cross geometry extrema by roughly one CSS pixel because of the default
+    // stroke and rasterization. Supplement finite user padding below that threshold so the total
+    // inset is at least one pixel, while leaving invalid non-finite values to root validation.
+    let paint_guard = if diagram_padding.is_finite() {
+        (MINIMUM_PAINT_INSET_PX - diagram_padding.max(0.0)).max(0.0)
+    } else {
+        0.0
+    };
+    root_svg::DiagramBounds::from_extents(
+        min_x - paint_guard,
+        min_y - paint_guard,
+        max_x + paint_guard,
+        max_y + paint_guard,
+        diagram_padding,
+    )
+}
+
 impl FlowchartSvgDocument<'_> {
     pub(super) fn push_root_open(&self, out: &mut String) -> crate::Result<root_svg::RootDocument> {
         let mut root_chrome = root_svg::RootChrome::new(self.diagram_id, self.diagram_type);
@@ -101,5 +127,31 @@ impl FlowchartSvgDocument<'_> {
             escape_xml_into(out, descr);
             out.push_str("</desc>");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn small_padding_keeps_a_family_local_minimum_paint_inset() {
+        let guarded = flowchart_root_bounds(10.0, 20.0, 110.0, 220.0, 0.0);
+        assert_eq!(guarded.min_x, 9.0);
+        assert_eq!(guarded.min_y, 19.0);
+        assert_eq!(guarded.width, 102.0);
+        assert_eq!(guarded.height, 202.0);
+
+        let fractional = flowchart_root_bounds(10.0, 20.0, 110.0, 220.0, 0.25);
+        assert_eq!(fractional.min_x, 9.0);
+        assert_eq!(fractional.min_y, 19.0);
+        assert_eq!(fractional.width, 102.0);
+        assert_eq!(fractional.height, 202.0);
+
+        let padded = flowchart_root_bounds(10.0, 20.0, 110.0, 220.0, 8.0);
+        assert_eq!(padded.min_x, 2.0);
+        assert_eq!(padded.min_y, 12.0);
+        assert_eq!(padded.width, 116.0);
+        assert_eq!(padded.height, 216.0);
     }
 }

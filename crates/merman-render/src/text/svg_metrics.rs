@@ -3,7 +3,6 @@
 use super::TextStyle;
 
 const SVG_DEFAULT_FIRST_LINE_BBOX_EM: f64 = 1.1875;
-const SVG_EDGE_LABEL_BASELINE_BBOX_EM: f64 = 1.125;
 const SVG_DEFAULT_TITLE_ASCENT_EM: f64 = 0.9444444444;
 const SVG_DEFAULT_TITLE_DESCENT_EM: f64 = 0.262;
 
@@ -26,12 +25,6 @@ pub(crate) fn svg_bbox_round_px_ties_to_even(v: f64) -> f64 {
 
 pub(crate) fn svg_wrapped_first_line_bbox_height_px(style: &TextStyle) -> f64 {
     svg_bbox_round_px_ties_to_even(style.font_size.max(1.0) * SVG_DEFAULT_FIRST_LINE_BBOX_EM)
-}
-
-pub(crate) fn flowchart_svg_edge_label_background_y_px(style: &TextStyle) -> f64 {
-    let baseline_box_h =
-        svg_bbox_round_px_ties_to_even(style.font_size.max(1.0) * SVG_EDGE_LABEL_BASELINE_BBOX_EM);
-    baseline_box_h - svg_wrapped_first_line_bbox_height_px(style)
 }
 
 pub(crate) fn svg_title_bbox_vertical_extents_px(style: &TextStyle) -> (f64, f64) {

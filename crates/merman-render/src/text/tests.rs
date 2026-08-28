@@ -1106,10 +1106,10 @@ fn flowchart_svg_layout_metrics_follow_the_shared_text_operation() {
 }
 
 #[test]
-fn courier_svg_and_html_operations_keep_operation_specific_heights() {
+fn svg_and_html_operations_keep_operation_specific_heights() {
     let measurer = DeterministicTextMeasurer::default();
     let style = TextStyle {
-        font_family: Some("courier".to_string()),
+        font_family: None,
         font_size: 16.0,
         font_weight: None,
         font_style: None,
@@ -1142,35 +1142,6 @@ fn default_font_html_hyphenated_compound_wraps_at_dynamic_limit() {
     assert!(metrics.width <= limit);
     assert!(metrics.height > unwrapped.height);
     assert!(metrics.line_count > 1);
-}
-
-#[test]
-fn flowchart_svg_edge_label_background_y_is_font_agnostic() {
-    let trebuchet = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let courier = TextStyle {
-        font_family: Some("courier".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let courier_stack = TextStyle {
-        font_family: Some("\"Courier New\", courier, monospace;".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-        font_style: None,
-    };
-
-    assert_eq!(flowchart_svg_edge_label_background_y_px(&trebuchet), -1.0);
-    assert_eq!(flowchart_svg_edge_label_background_y_px(&courier), -1.0);
-    assert_eq!(
-        flowchart_svg_edge_label_background_y_px(&courier_stack),
-        -1.0
-    );
 }
 
 #[test]

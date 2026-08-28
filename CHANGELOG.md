@@ -80,6 +80,10 @@ The next workspace release remains in development. This section records only com
 
 ### Fixed
 
+- Made deterministic SVG text measurement independent of CSS font-family names and count Unicode
+  grapheme sequences such as ZWJ emoji, modifiers, flags, and keycaps once. Flowchart SVG edge
+  labels now center from their emitted text bbox, zero-padding Flowcharts retain their painted
+  stroke, and empty Pie diagrams retain the base canvas needed by the outer circle.
 - `merman-rustdoc` now defaults to browser-parity SVG instead of adding a second visible text
   fallback beside each native HTML label. Explicit `readable` and `resvg-safe` pipelines remain
   available for consumers that need SVG text fallbacks. #81

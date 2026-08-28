@@ -291,6 +291,11 @@ pub(crate) fn layout_pie_diagram_typed(
     let title_right = base_w / 2.0 + title_width / 2.0;
     let min_x = title_left.min(0.0);
     let max_x = chart_and_legend_width.max(title_right);
+    let max_x = if model.sections.is_empty() {
+        max_x.max(base_w)
+    } else {
+        max_x
+    };
 
     Ok(PieDiagramLayout {
         bounds: Some(Bounds {
@@ -386,6 +391,26 @@ mod tests {
             *measurer.calls.lock().expect("measurement calls"),
             ["Legend".to_string(), "Title".to_string()]
         );
+    }
+
+    #[test]
+    fn empty_pie_bounds_still_contain_the_painted_circle() {
+        let measurer = RecordingBoundingClientRectMeasurer::default();
+        for config in [
+            serde_json::json!({}),
+            serde_json::json!({"pie": {"legendPosition": "top"}}),
+        ] {
+            let layout = super::layout_pie_diagram_typed(
+                &PieDiagramRenderModel::default(),
+                None,
+                &config,
+                &measurer,
+            )
+            .expect("empty pie layout");
+            let bounds = layout.bounds.expect("empty pie bounds");
+            assert!(bounds.min_x <= layout.center_x - layout.outer_radius);
+            assert!(bounds.max_x >= layout.center_x * 2.0);
+        }
     }
 
     #[test]
