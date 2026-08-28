@@ -90,8 +90,8 @@ Flowchart/State/Sequence by Standalone SVG/PNG cells execute successfully and th
 now seals that exact ledger with `C6aEligibilityReceipt`. Remaining C5 and C7a pre-freeze witnesses
 still block the public authoring contract.
 
-The current private cutover manifest is version 26 and contains 146 route-level authorization
-witnesses producing 162 artifact witnesses. These witnesses prove only that the named bridge
+The current private cutover manifest is version 26 and contains 148 route-level authorization
+witnesses producing 164 artifact witnesses. These witnesses prove only that the named bridge
 projections may be retired;
 they do not increase C6a's 18-cell count. The Sequence role-paint witnesses cover both participant
 and box-title ActorLabel terminals, plus the label keyword, primary body, and alternate-section
@@ -136,10 +136,10 @@ fonts and no residuals, and the declared critical-mechanism union. Route-cutover
 JPEG/PDF smoke results are outside this type boundary and cannot increase C6a eligibility. C7a
 remains blocked by the separate C5 and pre-freeze authoring/consumer gates.
 The renderer-owned support-claim manifest is now an independent core authority at internal revision
-10. Its coarse Rust projection has landed; cross-transport/public rollout, preset qualification, and
+11. Its coarse Rust projection has landed; cross-transport/public rollout, preset qualification, and
 the remaining C7a authoring-consumer gates are still incomplete.
 KTD23 independently freezes 56 historical dead-projection route shapes and 112 transparent/solid
-production bridge probes. This nonvisual retirement manifest neither changes the KTD17 146/162
+production bridge probes. This nonvisual retirement manifest neither changes the KTD17 148/164
 denominator nor creates a C6 cell. Family-owned occurrence facts then decide whether each
 Unsupported winner is a visible residual or `NotApplicable`; acceptance consumes only opaque
 production receipt digests and does not reconstruct terminal DOM or CSS.
