@@ -1660,6 +1660,36 @@ mod tests {
     }
 
     #[test]
+    fn manifest_claim_keys_are_unique() {
+        use std::collections::BTreeSet;
+
+        let mut rule_keys = BTreeSet::new();
+        for claim in RULE_CLAIMS {
+            for &facet in claim.facets {
+                assert!(
+                    rule_keys.insert((claim.family, claim.target, facet)),
+                    "duplicate rule claim key: {}|{}|{}",
+                    claim.family,
+                    claim.target,
+                    facet,
+                );
+            }
+        }
+
+        let mut base_keys = BTreeSet::new();
+        for claim in BASE_CLAIMS {
+            for &property in claim.properties {
+                assert!(
+                    base_keys.insert((claim.family, property)),
+                    "duplicate base typography claim key: {}|{}",
+                    claim.family,
+                    property,
+                );
+            }
+        }
+    }
+
+    #[test]
     fn unknown_family_ids_fail_closed_to_missing() {
         assert_eq!(
             rule_claim_for_ids("future-family", "node", "fill"),
