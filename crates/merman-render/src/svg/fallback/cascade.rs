@@ -1,4 +1,8 @@
-use super::css::StyleDeclarationScanner;
+use crate::mermaid_style::{
+    is_supported_css_color_value, is_supported_css_font_style_value,
+    is_supported_css_font_weight_value, parse_style_declaration,
+    visit_style_declaration_boundaries_with_checkpoints,
+};
 use crate::svg::pipeline::{
     SvgTagScanner, checkpoint_loop, end_tag_name, find_tag_end_with_checkpoints,
     find_with_checkpoints, start_tag_name, trim_with_checkpoints,
@@ -8,7 +12,6 @@ use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserInput, ParserState,
     QualifiedRuleParser, StyleSheetParser, Token,
 };
-use merman_core::theme_color::ThemeColor;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -1328,8 +1331,8 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
                     .iter()
                     .any(|unit| parse_css_number_with_unit(&lower, unit).is_some())
         }
-        "font-weight" => is_admitted_font_weight(&lower),
-        "font-style" => matches!(lower.as_str(), "normal" | "italic" | "oblique"),
+        "font-weight" => is_supported_css_font_weight_value(&lower),
+        "font-style" => is_supported_css_font_style_value(&lower),
         "fill" => is_admitted_paint(&lower),
         "color" | "background-color" => lower != "none" && is_admitted_paint(&lower),
         "font-family" => is_admitted_font_family(value),
@@ -1349,14 +1352,6 @@ fn parse_css_number_with_unit(value: &str, unit: &str) -> Option<f64> {
     number.parse::<f64>().ok().and_then(bounded_positive)
 }
 
-fn is_admitted_font_weight(value: &str) -> bool {
-    matches!(value, "normal" | "bold" | "bolder" | "lighter")
-        || value
-            .parse::<u16>()
-            .ok()
-            .is_some_and(|weight| (1..=1000).contains(&weight))
-}
-
 fn is_admitted_font_family(value: &str) -> bool {
     !value
         .chars()
@@ -1367,28 +1362,23 @@ fn is_admitted_paint(value: &str) -> bool {
     if matches!(value, "none" | "transparent" | "currentcolor") {
         return true;
     }
-    if value.starts_with('#') {
-        return value
-            .strip_prefix('#')
-            .is_some_and(|hex| cssparser::color::parse_hash_color(hex.as_bytes()).is_ok());
-    }
-    if cssparser::color::parse_named_color(value).is_ok() {
-        return true;
-    }
     let Some(open) = value.find('(') else {
-        return false;
+        return is_supported_css_color_value(value);
     };
-    let name = &value[..open];
-    matches!(name, "rgb" | "rgba" | "hsl" | "hsla")
-        && has_consistent_color_function_separators(value, name, open)
-        && ThemeColor::parse(value).is_ok()
+    let function = &value[..open];
+    matches!(function, "rgb" | "rgba" | "hsl" | "hsla")
+        && has_admitted_color_function_shape(value, function, open)
+        && is_supported_css_color_value(value)
 }
 
-fn has_consistent_color_function_separators(value: &str, name: &str, open: usize) -> bool {
-    let Some(without_close) = value.strip_suffix(')') else {
-        return false;
-    };
-    let Some(body) = without_close.get(open + 1..) else {
+/// Preserve the fallback renderer's intentionally narrow static-color contract.
+/// The shared color parser accepts modern CSS forms, while this writer rejects mixed comma/space
+/// separators because it preserves the admitted spelling verbatim in generated SVG.
+fn has_admitted_color_function_shape(value: &str, function: &str, open: usize) -> bool {
+    let Some(body) = value
+        .strip_suffix(')')
+        .and_then(|value| value.get(open + 1..))
+    else {
         return false;
     };
     if !body.contains(',') {
@@ -1398,7 +1388,7 @@ fn has_consistent_color_function_separators(value: &str, name: &str, open: usize
         return false;
     }
 
-    let rgb_like = matches!(name, "rgb" | "rgba");
+    let rgb_like = matches!(function, "rgb" | "rgba");
     let mut component_count = 0usize;
     let mut rgb_channels_are_percent = None;
     for component in body.split(',') {
@@ -2446,80 +2436,33 @@ fn parse_declarations_with_limit<E>(
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<ParsedDeclarations, E> {
     let mut declarations = Vec::new();
-    let mut scanner = StyleDeclarationScanner::new(style);
     let mut order = 0usize;
-    while let Some(raw) = scanner.next_with_checkpoints(checkpoint)? {
-        checkpoint_loop(order, checkpoint)?;
-        let Some(colon) = find_css_declaration_colon(raw, checkpoint)? else {
-            order = order.saturating_add(1);
-            continue;
+    let mut limit_exceeded = None;
+    visit_style_declaration_boundaries_with_checkpoints(style, checkpoint, |boundary| {
+        let current_order = order;
+        order = order.saturating_add(1);
+        let Some(parsed) = parse_style_declaration(boundary.raw()) else {
+            return Ok(true);
         };
-        let property = raw[..colon].trim();
-        let (value, important) = split_trailing_important(&raw[colon + 1..]);
-        if property.is_empty() || value.is_empty() {
-            order = order.saturating_add(1);
-            continue;
+        if parsed.property().is_empty() || parsed.value().is_empty() {
+            return Ok(true);
         }
         if declarations.len() >= maximum {
-            return Ok(ParsedDeclarations {
-                declarations,
-                limit_exceeded: Some((maximum.saturating_add(1), maximum)),
-            });
+            limit_exceeded = Some((maximum.saturating_add(1), maximum));
+            return Ok(false);
         }
         declarations.push(Declaration {
-            property: property.to_ascii_lowercase(),
-            value: value.to_string(),
-            important,
-            order,
+            property: parsed.property().to_owned(),
+            value: parsed.value().to_owned(),
+            important: parsed.important(),
+            order: current_order,
         });
-        order = order.saturating_add(1);
-    }
-    checkpoint()?;
+        Ok(true)
+    })?;
     Ok(ParsedDeclarations {
         declarations,
-        limit_exceeded: None,
+        limit_exceeded,
     })
-}
-
-fn find_css_declaration_colon<E>(
-    declaration: &str,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Option<usize>, E> {
-    let mut quote = None;
-    let mut paren_depth = 0usize;
-    for (iteration, (offset, character)) in declaration.char_indices().enumerate() {
-        checkpoint_loop(iteration, checkpoint)?;
-        if let Some(current_quote) = quote {
-            if character == current_quote {
-                quote = None;
-            }
-            continue;
-        }
-        match character {
-            '\'' | '"' => quote = Some(character),
-            '(' => paren_depth = paren_depth.saturating_add(1),
-            ')' => paren_depth = paren_depth.saturating_sub(1),
-            ':' if paren_depth == 0 => return Ok(Some(offset)),
-            _ => {}
-        }
-    }
-    checkpoint()?;
-    Ok(None)
-}
-
-fn split_trailing_important(value: &str) -> (&str, bool) {
-    let value = value.trim();
-    let Some(marker) = value.rfind('!') else {
-        return (value, false);
-    };
-    if value[marker + '!'.len_utf8()..]
-        .trim()
-        .eq_ignore_ascii_case("important")
-    {
-        (value[..marker].trim(), true)
-    } else {
-        (value, false)
-    }
 }
 
 fn resolve_font_size(

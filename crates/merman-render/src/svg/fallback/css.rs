@@ -1,4 +1,7 @@
-use crate::svg::pipeline::{checkpoint_loop, trim_with_checkpoints};
+use crate::mermaid_style::{
+    parse_style_declaration, strip_css_important,
+    visit_style_declaration_boundaries_with_checkpoints,
+};
 
 /// Reads the final declaration for one non-metric HTML fallback helper property.
 /// Typography itself is resolved by `cascade`, which retains source context and
@@ -9,93 +12,20 @@ pub(super) fn extract_style_property_with_checkpoints<E>(
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<String>, E> {
     let mut found = None;
-    let mut declarations = StyleDeclarationScanner::new(style);
-    let mut order = 0usize;
-    while let Some(declaration) = declarations.next_with_checkpoints(checkpoint)? {
-        checkpoint_loop(order, checkpoint)?;
-        order = order.saturating_add(1);
-        let Some(colon) = declaration.find(':') else {
-            continue;
-        };
-        let name = trim_with_checkpoints(&declaration[..colon], checkpoint)?;
-        if !name.eq_ignore_ascii_case(property) {
-            continue;
+    visit_style_declaration_boundaries_with_checkpoints(style, checkpoint, |boundary| {
+        if let Some(declaration) = parse_style_declaration(boundary.raw())
+            && declaration.property().eq_ignore_ascii_case(property)
+            && !declaration.value().is_empty()
+        {
+            found = Some(declaration.value().to_string());
         }
-        let value = strip_important(&declaration[colon + 1..]);
-        if !value.is_empty() {
-            found = Some(value.to_string());
-        }
-    }
-    checkpoint()?;
+        Ok(true)
+    })?;
     Ok(found)
 }
 
-pub(super) struct StyleDeclarationScanner<'a> {
-    style: &'a str,
-    cursor: usize,
-    finished: bool,
-}
-
-impl<'a> StyleDeclarationScanner<'a> {
-    pub(super) const fn new(style: &'a str) -> Self {
-        Self {
-            style,
-            cursor: 0,
-            finished: false,
-        }
-    }
-
-    pub(super) fn next_with_checkpoints<E>(
-        &mut self,
-        checkpoint: &mut impl FnMut() -> Result<(), E>,
-    ) -> Result<Option<&'a str>, E> {
-        if self.finished {
-            return Ok(None);
-        }
-        let start = self.cursor;
-        let mut quote = None;
-        let mut paren_depth = 0usize;
-        for (iteration, (relative, character)) in self.style[start..].char_indices().enumerate() {
-            checkpoint_loop(iteration, checkpoint)?;
-            if let Some(current_quote) = quote {
-                if character == current_quote {
-                    quote = None;
-                }
-                continue;
-            }
-            match character {
-                '\'' | '"' => quote = Some(character),
-                '(' => paren_depth = paren_depth.saturating_add(1),
-                ')' => paren_depth = paren_depth.saturating_sub(1),
-                ';' if paren_depth == 0 => {
-                    let end = start + relative;
-                    self.cursor = end + character.len_utf8();
-                    checkpoint()?;
-                    return Ok(Some(&self.style[start..end]));
-                }
-                _ => {}
-            }
-        }
-        self.finished = true;
-        checkpoint()?;
-        Ok(Some(&self.style[start..]))
-    }
-}
-
-fn strip_important(value: &str) -> &str {
-    let value = value.trim();
-    let lower = value.to_ascii_lowercase();
-    let Some(offset) = lower.rfind("!important") else {
-        return value;
-    };
-    if !lower[offset + "!important".len()..].trim().is_empty() {
-        return value;
-    }
-    value[..offset].trim()
-}
-
 pub(super) fn parse_css_px_value(value: &str) -> Option<f64> {
-    let value = strip_important(value);
+    let value = strip_css_important(value);
     let number = value
         .strip_suffix("px")
         .or_else(|| value.strip_suffix("PX"))
@@ -121,5 +51,29 @@ mod tests {
         )
         .unwrap();
         assert_eq!(value.as_deref(), Some("20px"));
+    }
+
+    #[test]
+    fn helper_keeps_semicolons_inside_css_strings() {
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        let value = extract_style_property_with_checkpoints(
+            "font-family: \"a;b\", sans-serif; width: 20px;",
+            "font-family",
+            &mut checkpoint,
+        )
+        .unwrap();
+        assert_eq!(value.as_deref(), Some("\"a;b\", sans-serif"));
+    }
+
+    #[test]
+    fn helper_keeps_escaped_quotes_and_semicolons_inside_css_strings() {
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        let value = extract_style_property_with_checkpoints(
+            r#"font-family: "a\";b", sans-serif; width: 20px;"#,
+            "font-family",
+            &mut checkpoint,
+        )
+        .unwrap();
+        assert_eq!(value.as_deref(), Some(r#""a\";b", sans-serif"#));
     }
 }

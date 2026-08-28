@@ -140,10 +140,16 @@ impl CssFontFamilyOverride {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct StyleDeclarationBoundary<'a> {
+pub(crate) struct StyleDeclarationBoundary<'a> {
     raw: &'a str,
     affects_font_family: bool,
     important: bool,
+}
+
+impl<'a> StyleDeclarationBoundary<'a> {
+    pub(crate) const fn raw(self) -> &'a str {
+        self.raw
+    }
 }
 
 pub(crate) fn css_font_family_ownership<'a>(
@@ -164,7 +170,7 @@ fn css_font_family_winner<'a>(
     let mut winner = None;
     for declaration_list in declarations {
         visit_style_declaration_boundaries(declaration_list, |boundary| {
-            match parse_style_declaration(boundary.raw) {
+            match parse_style_declaration(boundary.raw()) {
                 Some(declaration) => observe_css_font_family_ownership(&mut winner, &declaration),
                 None => {
                     if boundary.affects_font_family
@@ -187,10 +193,53 @@ pub(crate) fn visit_parsed_style_declarations<'a>(
     mut visit: impl FnMut(ParsedStyleDeclaration<'a>),
 ) {
     visit_style_declaration_boundaries(declaration_list, |boundary| {
-        if let Some(declaration) = parse_style_declaration(boundary.raw) {
+        if let Some(declaration) = parse_style_declaration(boundary.raw()) {
             visit(declaration);
         }
     });
+}
+
+/// Visits CSS declaration boundaries with the same parser used by the style ownership helpers.
+///
+/// The callback returns whether parsing should continue. Callers that enforce a declaration cap can
+/// stop immediately after the first over-limit declaration without maintaining another CSS scanner.
+/// Untrusted callers must enforce a byte ceiling before entry; checkpoints occur at declaration
+/// boundaries because `cssparser` does not expose token-progress callbacks.
+pub(crate) fn visit_style_declaration_boundaries_with_checkpoints<'a, E>(
+    declaration_list: &'a str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+    mut visit: impl FnMut(StyleDeclarationBoundary<'a>) -> Result<bool, E>,
+) -> Result<(), E> {
+    let mut input = ParserInput::new(declaration_list);
+    let mut parser = Parser::new(&mut input);
+    while !parser.is_exhausted() {
+        checkpoint()?;
+        let start = parser.position();
+        let boundary = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
+            let property = declaration.expect_ident_cloned()?;
+            declaration.expect_colon()?;
+            let important = declaration_has_trailing_important(declaration);
+            let property = property.as_ref();
+            let affects_font_family = property.eq_ignore_ascii_case("font-family")
+                || property.eq_ignore_ascii_case("font")
+                || property.eq_ignore_ascii_case("all");
+            Ok::<_, ParseError<'_, ()>>((affects_font_family, important))
+        });
+        let raw = parser.slice(start..parser.position()).trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let (affects_font_family, important) = boundary.unwrap_or((false, false));
+        if !visit(StyleDeclarationBoundary {
+            raw,
+            affects_font_family,
+            important,
+        })? {
+            break;
+        }
+    }
+    checkpoint()?;
+    Ok(())
 }
 
 /// Resolves a sequence whose items are already individual CSS declarations.
@@ -324,31 +373,15 @@ fn visit_style_declaration_boundaries<'a>(
     declaration_list: &'a str,
     mut visit: impl FnMut(StyleDeclarationBoundary<'a>),
 ) {
-    let mut input = ParserInput::new(declaration_list);
-    let mut parser = Parser::new(&mut input);
-    while !parser.is_exhausted() {
-        let start = parser.position();
-        let boundary = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
-            let property = declaration.expect_ident_cloned()?;
-            declaration.expect_colon()?;
-            let important = declaration_has_trailing_important(declaration);
-            let property = property.as_ref();
-            let affects_font_family = property.eq_ignore_ascii_case("font-family")
-                || property.eq_ignore_ascii_case("font")
-                || property.eq_ignore_ascii_case("all");
-            Ok::<_, ParseError<'_, ()>>((affects_font_family, important))
-        });
-        let raw = parser.slice(start..parser.position()).trim();
-        if raw.is_empty() {
-            continue;
-        }
-        let (affects_font_family, important) = boundary.unwrap_or((false, false));
-        visit(StyleDeclarationBoundary {
-            raw,
-            affects_font_family,
-            important,
-        });
-    }
+    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+    let _ = visit_style_declaration_boundaries_with_checkpoints(
+        declaration_list,
+        &mut checkpoint,
+        |boundary| {
+            visit(boundary);
+            Ok(true)
+        },
+    );
 }
 
 fn declaration_has_trailing_important(parser: &mut Parser<'_, '_>) -> bool {
@@ -1066,6 +1099,55 @@ mod tests {
             let parsed = parse_style_declaration(raw).expect("ordinary declaration");
             assert!(!parsed.important(), "raw={raw}");
         }
+    }
+
+    #[test]
+    fn declaration_boundary_visitor_stops_at_the_requested_boundary() {
+        let mut checkpoint_calls = 0usize;
+        let mut checkpoint = || {
+            checkpoint_calls = checkpoint_calls.saturating_add(1);
+            Ok::<(), &'static str>(())
+        };
+        let mut properties = Vec::new();
+
+        visit_style_declaration_boundaries_with_checkpoints(
+            r#"fill:red;font-family:"a;b",sans-serif;stroke:blue"#,
+            &mut checkpoint,
+            |boundary| {
+                let declaration =
+                    parse_style_declaration(boundary.raw()).expect("valid declaration boundary");
+                properties.push(declaration.property().to_owned());
+                Ok(properties.len() < 2)
+            },
+        )
+        .expect("boundary visitor succeeds");
+
+        assert_eq!(properties, ["fill", "font-family"]);
+        assert_eq!(checkpoint_calls, 3);
+    }
+
+    #[test]
+    fn declaration_boundary_visitor_propagates_checkpoint_errors() {
+        let mut checkpoint_calls = 0usize;
+        let mut checkpoint = || {
+            checkpoint_calls = checkpoint_calls.saturating_add(1);
+            (checkpoint_calls < 2).then_some(()).ok_or("cancelled")
+        };
+        let mut visited = 0usize;
+
+        let error = visit_style_declaration_boundaries_with_checkpoints(
+            "fill:red;stroke:blue",
+            &mut checkpoint,
+            |_| {
+                visited = visited.saturating_add(1);
+                Ok(true)
+            },
+        )
+        .expect_err("second checkpoint cancels parsing");
+
+        assert_eq!(error, "cancelled");
+        assert_eq!(checkpoint_calls, 2);
+        assert_eq!(visited, 1);
     }
 
     #[test]
