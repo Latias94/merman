@@ -1145,7 +1145,7 @@ fn default_font_html_hyphenated_compound_wraps_at_dynamic_limit() {
 }
 
 #[test]
-fn flowchart_svg_edge_label_background_y_selects_font_profile() {
+fn flowchart_svg_edge_label_background_y_is_font_agnostic() {
     let trebuchet = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
@@ -1166,15 +1166,15 @@ fn flowchart_svg_edge_label_background_y_selects_font_profile() {
     };
 
     assert_eq!(flowchart_svg_edge_label_background_y_px(&trebuchet), -1.0);
-    assert_eq!(flowchart_svg_edge_label_background_y_px(&courier), 0.0);
+    assert_eq!(flowchart_svg_edge_label_background_y_px(&courier), -1.0);
     assert_eq!(
         flowchart_svg_edge_label_background_y_px(&courier_stack),
-        0.0
+        -1.0
     );
 }
 
 #[test]
-fn svg_title_bbox_vertical_extents_use_courier_profile_for_courier_stacks() {
+fn svg_title_bbox_vertical_extents_are_font_agnostic() {
     let trebuchet = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 18.0,
@@ -1198,7 +1198,7 @@ fn svg_title_bbox_vertical_extents_use_courier_profile_for_courier_stacks() {
         svg_title_bbox_vertical_extents_px(&courier_stack),
         svg_title_bbox_vertical_extents_px(&courier)
     );
-    assert_ne!(
+    assert_eq!(
         svg_title_bbox_vertical_extents_px(&courier_stack),
         svg_title_bbox_vertical_extents_px(&trebuchet)
     );

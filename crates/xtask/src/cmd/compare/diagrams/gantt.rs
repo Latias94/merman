@@ -100,6 +100,7 @@ pub(super) fn compare_gantt_request(
             check_dom: request.check_dom,
             dom_plan: dom_plan.clone(),
             dom_decimals,
+            upstream_dom_drift_policy: request.upstream_dom_drift_policy,
         }),
         &mut observed_operations,
         |_, report, _paths, options| {
@@ -176,7 +177,13 @@ pub(super) fn compare_gantt_request(
         |_, _, _| {},
         |state, report, paths, options, failures, notes| {
             state.write_report(report);
-            write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
+            write_compare_result_section(
+                report,
+                options.check_dom,
+                failures,
+                &paths.out_svg_dir,
+                options.upstream_dom_drift_policy,
+            );
             write_notes_section(report, notes);
         },
     )

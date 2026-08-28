@@ -591,7 +591,7 @@ jobs:
 
       - name: SVG DOM comparison suite
         if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --report-root
+        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root
 
       - name: Install root viewport oracle dependencies
         if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
@@ -609,12 +609,14 @@ jobs:
             --upstream ../../fixtures/upstream-svgs \
             --output ../../target/root-viewport-diagnostic.json
 
-      - name: Upload root viewport oracle report
+      - name: Upload SVG parity diagnostic reports
         if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true' && always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: root-viewport-oracle-${{ github.run_attempt }}
-          path: target/root-viewport-diagnostic.json
+          name: svg-parity-diagnostics-${{ github.run_attempt }}
+          path: |
+            target/root-viewport-diagnostic.json
+            target/compare/*_report*.md
           if-no-files-found: ignore
           retention-days: 7
 

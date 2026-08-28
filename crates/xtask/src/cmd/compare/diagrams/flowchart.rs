@@ -254,6 +254,7 @@ fn run_flowchart_compare_with_math_renderer(
                 check_dom,
                 dom_plan: dom_plan.clone(),
                 dom_decimals,
+                upstream_dom_drift_policy: common.upstream_dom_drift_policy,
             },
             fixtures_root: fixtures_root_arg,
             upstream_root: upstream_root_arg,
@@ -467,7 +468,13 @@ fn run_flowchart_compare_with_math_renderer(
         |_, _, _| {},
         |state, report, paths, options, failures, notes| {
             state.observed_operations.write_report(report);
-            write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
+            write_compare_result_section(
+                report,
+                options.check_dom,
+                failures,
+                &paths.out_svg_dir,
+                options.upstream_dom_drift_policy,
+            );
             write_notes_section(report, notes);
             if parity_root_requested {
                 state.root_coverage.write_report(report);

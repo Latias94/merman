@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use super::diagrams::compare_diagram_request;
 use super::{
     AcceptedResidualPolicy, CompareEvidence, CompareRequest, CompareRunResult,
-    RootDeltaReportLimit, diagram_supports_root_delta_report, dom_mode_label,
-    parse_root_delta_report_limit,
+    RootDeltaReportLimit, UpstreamDomDriftPolicy, diagram_has_browser_text_layout_residuals,
+    diagram_supports_root_delta_report, dom_mode_label, parse_root_delta_report_limit,
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -56,6 +56,7 @@ struct CompareAllOptions {
     dom_modes: Vec<crate::svgdom::DomMode>,
     dom_decimals: Option<u32>,
     filter: Option<String>,
+    upstream_dom_drift_policy: UpstreamDomDriftPolicy,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
     only_diagrams: Vec<String>,
@@ -93,6 +94,10 @@ impl CompareAllOptions {
                 "--filter" => {
                     i += 1;
                     options.filter = args.get(i).map(|s| s.to_string());
+                }
+                "--diagnostic-browser-text-layout" => {
+                    options.upstream_dom_drift_policy =
+                        UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts;
                 }
                 "--report-root" => options.report_root = true,
                 "--report-root-all" => {
@@ -138,6 +143,7 @@ impl CompareAllOptions {
             dom_modes: &self.dom_modes,
             dom_decimals: self.dom_decimals,
             filter: self.filter.as_deref(),
+            upstream_dom_drift_policy: self.upstream_dom_drift_policy,
             report_root: self.report_root,
             root_report_limit: self.root_report_limit,
         }
@@ -255,6 +261,7 @@ struct CompareAllInvocationOptions<'a> {
     dom_modes: &'a [crate::svgdom::DomMode],
     dom_decimals: Option<u32>,
     filter: Option<&'a str>,
+    upstream_dom_drift_policy: UpstreamDomDriftPolicy,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
 }
@@ -278,6 +285,14 @@ impl CompareAllInvocationOptions<'_> {
             (!mode.is_empty()).then(|| compare_dir.join(format!("{diagram}_report_{mode}.md")))
         });
         let supports_root_report = diagram_supports_root_delta_report(diagram);
+        let upstream_dom_drift_policy = if self.upstream_dom_drift_policy
+            == UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+            && diagram_has_browser_text_layout_residuals(diagram)
+        {
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+        } else {
+            UpstreamDomDriftPolicy::Blocking
+        };
         let request = CompareRequest {
             out_path: report_path.clone(),
             filter: self.filter.map(str::to_string),
@@ -294,6 +309,7 @@ impl CompareAllInvocationOptions<'_> {
             } else {
                 AcceptedResidualPolicy::None
             },
+            upstream_dom_drift_policy,
         };
 
         DiagramCompareInvocation {
@@ -375,6 +391,7 @@ mod tests {
             "nope".to_string(),
             "--filter".to_string(),
             "upstream_info_spec".to_string(),
+            "--diagnostic-browser-text-layout".to_string(),
             "--report-root-limit".to_string(),
             "7".to_string(),
             "--diagram".to_string(),
@@ -388,6 +405,10 @@ mod tests {
         assert_eq!(options.dom_mode.as_deref(), Some("parity-root"));
         assert_eq!(options.dom_decimals, None);
         assert_eq!(options.filter.as_deref(), Some("upstream_info_spec"));
+        assert_eq!(
+            options.upstream_dom_drift_policy,
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+        );
         assert!(options.report_root);
         assert_eq!(
             options.root_report_limit,
@@ -535,6 +556,46 @@ mod tests {
                 .accepted_residual_policy,
             AcceptedResidualPolicy::ScopedDomEvidenceCatalog
         );
+    }
+
+    #[test]
+    fn browser_text_layout_drift_is_diagnostic_only_for_source_backed_families() {
+        let options = CompareAllOptions {
+            upstream_dom_drift_policy: UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+            ..Default::default()
+        };
+        let invocation = options.invocation_options();
+        let compare_dir = Path::new("target/compare");
+
+        for diagram in [
+            "architecture",
+            "class",
+            "flowchart",
+            "gantt",
+            "journey",
+            "sequence",
+            "timeline",
+            "treemap",
+        ] {
+            assert_eq!(
+                invocation
+                    .for_diagram(diagram, compare_dir)
+                    .request
+                    .upstream_dom_drift_policy,
+                UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+                "diagram={diagram}"
+            );
+        }
+        for diagram in ["info", "requirement", "state", "treeView"] {
+            assert_eq!(
+                invocation
+                    .for_diagram(diagram, compare_dir)
+                    .request
+                    .upstream_dom_drift_policy,
+                UpstreamDomDriftPolicy::Blocking,
+                "diagram={diagram}"
+            );
+        }
     }
 
     #[test]

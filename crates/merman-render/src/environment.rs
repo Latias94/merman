@@ -5,7 +5,7 @@ use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
 use crate::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
-    estimate_char_width_em, is_html_collapsible_ascii_whitespace,
+    append_text_width_em, estimate_text_width_em, is_html_collapsible_ascii_whitespace,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
@@ -15,6 +15,7 @@ use std::fmt;
 use std::num::NonZeroU64;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// A render phase that may select a distinct complete text-measurement profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -258,14 +259,17 @@ impl InlineHtmlMeasurementCarrier {
 #[derive(Debug, Clone)]
 struct BuiltinInlineRawLineWidth {
     font_size: f64,
-    em: f64,
+    committed_em: f64,
+    pending_grapheme: String,
 }
 
 /// Streaming `getComputedTextLength()` state for a qualified built-in SVG text route.
 ///
-/// Flowchart's createText wrapper probes every growing word prefix. Retaining scalar width state
-/// avoids rescanning and reallocating the complete prefix. Host-backed and opaque custom
-/// measurers cannot construct this state, so their observable callback sequence remains unchanged.
+/// Flowchart's createText wrapper probes every growing word prefix. Retaining completed grapheme
+/// width plus only the extendable final grapheme avoids rescanning the complete prefix while
+/// preserving sequence-aware Unicode width across arbitrary chunk boundaries. Host-backed and
+/// opaque custom measurers cannot construct this state, so their observable callback sequence
+/// remains unchanged.
 #[derive(Debug, Clone)]
 pub(crate) struct BuiltinSvgComputedLength {
     line: BuiltinInlineRawLineWidth,
@@ -283,9 +287,7 @@ impl BuiltinSvgComputedLength {
     }
 
     pub(crate) fn push_text(&mut self, text: &str) {
-        for ch in text.chars() {
-            self.line.push_char(ch);
-        }
+        self.line.push_text(text);
     }
 
     pub(crate) fn width_px(&self) -> f64 {
@@ -306,22 +308,42 @@ impl BuiltinInlineRawLineWidth {
     fn new(style: &TextStyle) -> Self {
         Self {
             font_size: style.font_size.max(1.0),
-            em: 0.0,
+            committed_em: 0.0,
+            pending_grapheme: String::new(),
+        }
+    }
+
+    fn push_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.pending_grapheme.push_str(text);
+        let last_grapheme_start = self
+            .pending_grapheme
+            .grapheme_indices(true)
+            .next_back()
+            .map_or(0, |(index, _)| index);
+        if last_grapheme_start > 0 {
+            append_text_width_em(
+                &mut self.committed_em,
+                &self.pending_grapheme[..last_grapheme_start],
+            );
+            self.pending_grapheme.drain(..last_grapheme_start);
         }
     }
 
     fn push_char(&mut self, ch: char) {
-        // Accumulating one scalar's em width at a time preserves the heuristic's exact
-        // left-to-right floating-point order without copying the growing line.
-        self.em += estimate_char_width_em(ch);
+        let mut encoded = [0_u8; 4];
+        self.push_text(ch.encode_utf8(&mut encoded));
     }
 
     fn width_px(&self) -> f64 {
-        self.em * self.font_size
+        (self.committed_em + estimate_text_width_em(&self.pending_grapheme)) * self.font_size
     }
 
     fn reset(&mut self) {
-        self.em = 0.0;
+        self.committed_em = 0.0;
+        self.pending_grapheme.clear();
     }
 }
 
@@ -360,6 +382,35 @@ impl BuiltinNormalizedTextWidth {
             self.line_has_non_whitespace = true;
         }
         self.line.push_char(ch);
+    }
+
+    fn push_text(&mut self, text: &str) {
+        let mut start = 0usize;
+        for (index, ch) in text.char_indices() {
+            if ch != '\n' {
+                continue;
+            }
+            self.push_line_segment(&text[start..index]);
+            self.finish_line();
+            start = index + ch.len_utf8();
+        }
+        self.push_line_segment(&text[start..]);
+    }
+
+    fn push_line_segment(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        if !self.line_has_non_whitespace
+            && text
+                .chars()
+                .any(|ch| !is_html_collapsible_ascii_whitespace(ch))
+        {
+            self.max_width_px = self.max_width_px.max(self.pending_blank_width_px);
+            self.pending_blank_width_px = 0.0;
+            self.line_has_non_whitespace = true;
+        }
+        self.line.push_text(text);
     }
 
     fn finish_line(&mut self) {
@@ -403,7 +454,7 @@ struct PendingInlineHtmlBreak {
 ///
 /// Mermaid's pinned `createText.ts:addHtmlSpan` decodes HTML into a real span, so a valid `<br>`
 /// contributes a DOM line break before `getBoundingClientRect()`. This state follows the selected
-/// built-in backend's scalar accumulation order and its existing `normalized_text_lines`
+/// built-in backend's grapheme accumulation order and its existing `normalized_text_lines`
 /// behavior, without retaining or rescanning the potentially unbounded whitespace in an
 /// incomplete tag. It intentionally recognizes only ASCII space, tab, CR, and LF inside `<br>`;
 /// the wider ECMAScript `\s` set and browser text shaping remain bounded browser residuals.
@@ -422,6 +473,10 @@ impl BuiltinInlineHtmlWidth {
     }
 
     pub(crate) fn push_text(&mut self, text: &str) {
+        if self.pending_break.is_none() && !text.contains('<') {
+            self.normalized.push_text(text);
+            return;
+        }
         for ch in text.chars() {
             self.push_char(ch);
         }
@@ -2520,6 +2575,13 @@ mod tests {
             (" \n  ", &[" ", "\n", "  "]),
             ("i\n\u{00a0}", &["i\n", "\u{00a0}"]),
             ("A\u{301}👩‍💻مرحبا世界", &["A\u{301}", "👩‍💻", "مرحبا", "世界"]),
+            ("👩‍🔬", &["👩", "\u{200d}", "🔬"]),
+            ("👨‍👩‍👧‍👦", &["👨‍", "👩", "\u{200d}👧‍", "👦"]),
+            ("👍🏽", &["👍", "🏽"]),
+            ("🇨🇳", &["🇨", "🇳"]),
+            ("1️⃣", &["1", "\u{fe0f}", "\u{20e3}"]),
+            ("😀\u{fe0e}", &["😀", "\u{fe0e}"]),
+            ("k中A+", &["k中", "A+"]),
         ];
         let style = TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -2560,6 +2622,60 @@ mod tests {
             &unknown_font,
             cases,
         );
+
+        let combining_tail = format!("A{}", "\u{0301}".repeat(1_024));
+        assert_cases(
+            &DeterministicTextMeasurer::default(),
+            deterministic_carrier,
+            &style,
+            &[(combining_tail.as_str(), &[combining_tail.as_str()])],
+        );
+    }
+
+    #[test]
+    fn builtin_svg_computed_length_stream_is_sequence_aware_and_reversible() {
+        let backend = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let cases: &[(&str, &[&str])] = &[
+            ("👩‍🔬", &["👩", "\u{200d}", "🔬"]),
+            ("👨‍👩‍👧‍👦", &["👨", "\u{200d}👩‍", "👧", "\u{200d}👦"]),
+            ("👍🏽", &["👍", "🏽"]),
+            ("🇨🇳", &["🇨", "🇳"]),
+            ("1️⃣", &["1", "\u{fe0f}", "\u{20e3}"]),
+            ("😀\u{fe0e}", &["😀", "\u{fe0e}"]),
+            ("k中A+", &["k中", "A+"]),
+        ];
+
+        for (text, chunks) in cases {
+            let mut streamed = BuiltinSvgComputedLength::deterministic(&style);
+            let mut prefix = String::new();
+            for chunk in *chunks {
+                prefix.push_str(chunk);
+                streamed.push_text(chunk);
+                let expected = backend.measure_svg_text_computed_length_px(&prefix, &style);
+                assert_eq!(
+                    streamed.width_px().to_bits(),
+                    expected.to_bits(),
+                    "text={text:?}, prefix={prefix:?}"
+                );
+            }
+
+            let checkpoint = streamed.clone();
+            let expected = backend.measure_svg_text_computed_length_px(text, &style);
+            assert_eq!(checkpoint.width_px().to_bits(), expected.to_bits());
+            streamed.push_text("A");
+            assert_ne!(
+                streamed.width_px().to_bits(),
+                checkpoint.width_px().to_bits()
+            );
+            streamed = checkpoint;
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            streamed.reset();
+            assert_eq!(streamed.width_px(), 0.0);
+        }
     }
 
     #[test]

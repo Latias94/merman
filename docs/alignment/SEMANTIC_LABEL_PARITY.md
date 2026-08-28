@@ -54,11 +54,13 @@ every entry to:
 - complete upstream and local geometry signatures;
 - a non-empty evidence kind and rationale.
 
-The current 27 entries are browser-measurement residuals: C4 5, Requirement 8, ER 2, State 5, and
-Class 7. Flowchart ELK and Architecture require exact label geometry. The largest admitted anchor
-differences are approximately `0.31px` by `5px` for C4 and `0.05px` for Class; the other admitted
-families are within `0.03px`. These values are observations, not tolerances. Admission requires the
-entire signed signature to match exactly.
+The current 30 entries are browser-measurement residuals: C4 5, Class 8, ER 2, Flowchart ELK 2,
+Requirement 8, and State 5. Architecture requires exact label geometry. The largest admitted
+anchor differences are approximately `24.948px` by `3px` for C4, `29.592px` by `0.333px` for
+Class, `14.496px` for ER, `0.957px` for Flowchart ELK, `33.07px` by `0.125px` for Requirement, and
+`0.19px` for State. The larger horizontal shifts are deterministic propagation of changed text and
+node widths through the owning layout engine, not coordinate tolerances. These values are
+observations only. Admission requires the entire signed signature to match exactly.
 
 An entry becomes stale when local geometry converges, disappears, changes, or no longer belongs to
 the signed artifact. Hash, text, key, version, schema, and comparator drift also fail. New residuals

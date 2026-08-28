@@ -71,7 +71,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("  cargo nextest run --workspace");
         println!("  cargo test -p merman-render --doc");
         println!("  cargo test -p merman --doc --features svg");
-        println!("  compare-all-svgs --check-dom --dom-modes structure,parity --dom-decimals 3");
+        println!(
+            "  compare-all-svgs --check-dom --dom-modes structure,parity --dom-decimals 3 --diagnostic-browser-text-layout"
+        );
         println!();
         println!("Optional gates:");
         println!("  --clippy        run cargo clippy --workspace --all-targets -- -D warnings");
@@ -267,6 +269,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         verification_dom_modes(options.root_parity).to_string(),
         "--dom-decimals".to_string(),
         "3".to_string(),
+        "--diagnostic-browser-text-layout".to_string(),
     ])?;
 
     if options.strict {

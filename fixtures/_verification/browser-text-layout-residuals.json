@@ -1,0 +1,1087 @@
+{
+  "schema_version": 2,
+  "mermaid_version": "11.16.1",
+  "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+  "measurement_provider": "deterministic",
+  "comparison_revision": "browser-text-layout-residual-v2",
+  "entries": [
+    {
+      "diagram": "architecture",
+      "fixture": "stress_architecture_batch3_bidirectional_and_mixed_arrows_054",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "bf7857cf9cf0e7ede45292c89a9c1519ac02f8bc5574c11db30533767cb8bf23",
+      "input_sha256": "a304e26da676f9e0595c604147e34f1e9a76d6bbec70f376ba30b6b4a49556b0",
+      "upstream_svg_sha256": "1d0f6b8b688e8d70ee4740b1a275e954b03f2e737447c3924f3333e9f30810f2"
+    },
+    {
+      "diagram": "architecture",
+      "fixture": "stress_architecture_batch3_long_group_titles_wrapping_055",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "e3a9554f04fb38b39c360f1fc6f7bf76ea3059fe53e511b79f3bba2316f37d3b",
+      "input_sha256": "405393ce844f1f1607a197a809de62c8d35abacd6e0115b0c0cc042980bc7901",
+      "upstream_svg_sha256": "b0809824f71b0290efedb2201e11a3385bba15868d26ec4124adb2a10c954421"
+    },
+    {
+      "diagram": "architecture",
+      "fixture": "stress_architecture_batch5_long_titles_and_punct_076",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "3cf813bd41122356ecc8d7927ef22b9bdeb6f98890e4871a8c7822e33401d561",
+      "input_sha256": "5c62033a5bb8afe856358da051353623621105676cabde372adb97bf11d1da46",
+      "upstream_svg_sha256": "e5efee8f81eb10d89d3b06be79215fdf131861001a9f931fcda1f66e4ba59df8"
+    },
+    {
+      "diagram": "architecture",
+      "fixture": "stress_architecture_batch6_init_fontsize_icon_size_wrap_093",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "733c61f6acf6bf8d8a4203ca84e54a7d4d1a85420930946a129630d99263e181",
+      "input_sha256": "791d561fb7423a14bd6ee0d78a48afc6114ee5545bd614f7d96df68e12db6d3a",
+      "upstream_svg_sha256": "acbc8cf1a76ebf7e8c1ebc99a62b1ca579c979e75e0c006d537d1febfd646a75"
+    },
+    {
+      "diagram": "architecture",
+      "fixture": "stress_architecture_batch6_long_group_titles_wrapping_extreme_095",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "87bf6aaf204a48a53882f1c6f41f1a4d99c1eee7d5690d9bb576932d4023a88d",
+      "input_sha256": "1ee82cdd1baf22c01f8911da01f727f81ed51afcf34dbf46d1fb0deb846b8f37",
+      "upstream_svg_sha256": "53c9f567c6cd5a70d04b3d655e9115bd32cb0e50697d721ba3e23ebd6fc46fd4"
+    },
+    {
+      "diagram": "architecture",
+      "fixture": "stress_architecture_html_titles_and_escapes_041",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "b3ba14a7bd475cfb2f863710dbd4e232f93a8f9260356440f7c25539c2fa8503",
+      "input_sha256": "2233a34c2d3d4f7820984a903ba6086737252ed077b448623161c7f7cac32886",
+      "upstream_svg_sha256": "8046784c9d0d590b46c0431abb2f829ee1afd276adcbb3d60392892c5a8ecdc0"
+    },
+    {
+      "diagram": "architecture",
+      "fixture": "stress_architecture_parallel_labeled_edges_038",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "9e96090c837d2e32436d680ae49e822672706164a3911a286783a8bff5f6c653",
+      "input_sha256": "d8642fbcd331cc6e32432611693cf3a5c90c6c93b7a7fe9da23e2e9a3f32812e",
+      "upstream_svg_sha256": "7a72cc953a486877b52ce5818f55718479e0f3f278c5d16d6af66b9f9fd1e4c4"
+    },
+    {
+      "diagram": "architecture",
+      "fixture": "upstream_architecture_demo_edge_label_long",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "ff14641704c5a642daa1811b57762a1caa13e92373d4da87da40a959073847b2",
+      "input_sha256": "f5165a02141e182775cd1eb98a3535dc62a4e102bfa31c9bcd68c3f866fe2c4e",
+      "upstream_svg_sha256": "a8c5893a90eb07ca7e6f2c7fd3916d4d0014e46cb2a05dff06c4681293539ccf"
+    },
+    {
+      "diagram": "architecture",
+      "fixture": "upstream_architecture_docs_service_icon_text",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "1fa863da39dc145a675051edd7b411c45a369223a9475d7b3768e52ee1de98a8",
+      "input_sha256": "b5343d2651f5c3cc98493799111a6e87c8a7dd303f94c745f720ab61ae59d678",
+      "upstream_svg_sha256": "1da5028ee000f327f8daa6da0aba6482decfac5e265b693e344961102d3172c4"
+    },
+    {
+      "diagram": "architecture",
+      "fixture": "upstream_html_demos_architecture_edge_label_test_009",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "130847923f5d52bcc7bb50479f39e31699f5c886a9958a54069ffae2180754b7",
+      "input_sha256": "1d1d960bb4d6bbb106ade24938f3ea27dc2b2349196f54c1263a1ddc9dca5f13",
+      "upstream_svg_sha256": "45b566f1badb00967d6e11b3104ed380fda83f3b3d95b6546af81fc71bfcfad8"
+    },
+    {
+      "diagram": "class",
+      "fixture": "stress_class_svg_font_size_px_string_precedence_026",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "acdd7b0bbb910c7df738ca2b3159894c114022552d926d273c6ad04960271f31",
+      "input_sha256": "43a1ed833e8d34ed0a0a1296cc55508913c7f04b8a8c9b3fc951b3a367d06f43",
+      "upstream_svg_sha256": "e1f66fdd7af56bfdfe3a11745bdd6c81d4f630adc51f37070af275efd72553f2"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "stress_flowchart_svg_label_entity_provenance_080",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "adba1966812bb4e98782ed55df6934b7588366c537d3b31265b3992eca4d0cdc",
+      "input_sha256": "97f50a262a6d0a4ad2abd210f5669eda8f99751e2030239c3b3ce28d09ee44fc",
+      "upstream_svg_sha256": "d7f52e48e5824f649af9bd4f656311a643ea3f56c772da85cad1a8b8c4d2494a"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "stress_flowchart_svglike_escaped_tags_025",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "e4133eebd0cf593be9bbfb2d2992b4c13ad547b3f7e9c79616e8bc333f1ea8f0",
+      "input_sha256": "4ba55d5793d9470302ffb39389f8d2f66b52cfbfc0bf81182948f4e9ceb4554d",
+      "upstream_svg_sha256": "a38604fce8b8b408eaef89b4513f127c4adeed50ce9b3ce1b313502d948d61dd"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "50096d5d1bd03902d941d451e54753399f7db9a34e09bf2fefbe85d3095381fd",
+      "input_sha256": "5a77779a04dd406ecf74b92b4ce39a1462ec5096ae49f86d61db7597239a7311",
+      "upstream_svg_sha256": "a7f5719867126d93dcc4244bae60ee51845728d61fb41e8f4cd9d4e86562065b"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_002",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "21455c5ed9ece9e25e81327a7a884713e2b49cc5d0622b9013a7f5f39f9ecaa2",
+      "input_sha256": "5afcaef2770ae141fb832ecbf8b9d10e95547067b447b9b513af1dd1a5615e12",
+      "upstream_svg_sha256": "bed4c6be063ee4dfd9f227c766e330ea518f806ad47128420edbd8a8e425922a"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_2_elk_should_render_a_simple_flowchart_with_diagrampadding_set_t_003",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "9e43a8f799314af89396d47fb5ec9900aa7065126394517095d768bc4e31fa2e",
+      "input_sha256": "6c368dfbec7975bdcd4dbe8ff2221cce0e193c95a82678176b95c62c35c6244b",
+      "upstream_svg_sha256": "652a7aa5df30fcf2372dda69c0cf94b63ba6eb089a3d8f73eec31324b1cad336"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_60_elk_handle_styling_for_all_node_shapes_v2_021",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "31e37e0d1730260d7a0358483c6c747305c95cb2fedbe465dcf43d16befaff11",
+      "input_sha256": "bbd7a553cffec41409bb08275eac9101abe74024bde703abe08859268ff85963",
+      "upstream_svg_sha256": "1b85e73ed60db27d26de70264f6ec5dafa1a10bafeaa4a4650413d3a63f013c1"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_7213_should_render_elk_edges_with_right_angles_not_curves_058",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "dcc90e2c7a757e9b1c37762a65897044a124de22d824c8cfbe09d67d9f363425",
+      "input_sha256": "892001b030f8c0581eeb1bbdb5a196c54763f4bd41d5ffd93ca96658a7347de7",
+      "upstream_svg_sha256": "2a93e70d5e71302d118380d4f89b91613b05050ede3b202a38391148be5f68b1"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "1bc6433142da74d4a7d15cbeeaef2d96fb0203540c0d78d35084ab5322ba7c31",
+      "input_sha256": "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0",
+      "upstream_svg_sha256": "7db68748e7ce841e29246c546a01e77a92db2bf7e6c43ac65757b8e2304c90e2"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_7_elk_should_render_a_flowchart_when_usemaxwidth_is_true_default_059",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "a3d0be766bbf3396402f0a5fe9c92b86b671b526ad3b7962ad53b34525f35ce7",
+      "input_sha256": "097317b85af3b491e8dcda60e79c1308a77a3496170849453606833d089c783e",
+      "upstream_svg_sha256": "7142510a31bc3f5d6be62d7b1e401f43902b1e0a2cee658f6c92aa63a9c08c46"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_8_elk_should_render_a_flowchart_when_usemaxwidth_is_false_060",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "9d2f7f687d974e56208cbd576d73dc2b4588704823b57d6d21e9ff5f30107bc9",
+      "input_sha256": "c29c162855a3dc40106e47065e58575940b1080ec760ff7f981e43526cf06198",
+      "upstream_svg_sha256": "1597b3b953815358b52a698592686364acc42889b7ec992534d57bcff3bf361d"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_sub_graphs_049",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "f2f74c53f045a28a41014921f141afc57bcbffab5d76ced56a4b0e1779a242dc",
+      "input_sha256": "9d7b12b1d6a4089afa6840303a8dd07dd0a49baedc57c4528395afe5d50c5a60",
+      "upstream_svg_sha256": "50485b896fd6a1e37e2b9cb9272a6e2cfba84f4aac1a52de596b852ea6dcd753"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_v2_elk_16_render_stadium_shape_008",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "c4b87f2b41a6a5cad4dfdf18446c39d1f4e18c366e773f2e24720092bcff20ad",
+      "input_sha256": "a955ea641d8a353cd8c632a6ab2d35fe341cf1c30031afed817a0ec648640e22",
+      "upstream_svg_sha256": "21d70ff9685e0c2ee3543d42b7e8c5f1833e6abc657fdb57c3cf2d1c0d7042f4"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_elk_spec_with_formatting_in_a_node_045",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "d644ee33bd677170277a243fc868b43f76657c711da4e25001fe18c1b136c21d",
+      "input_sha256": "8dc230fc47d717c7bb403e6a982d7a16a630372b430f67b273417461f1154536",
+      "upstream_svg_sha256": "c1e23012622347169c9a90dd21ff919bc073b5c482b9a4db74878ca26f5a31f5"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_v2_spec_should_render_self_loops_elk_064",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "45af3352497ed294707e4253cf098a0a45249eef8eeb05079daac814ba383a38",
+      "input_sha256": "2ada2dac48de239638668cf63815a83bb231d318e0143b9437ce03b5e51bb5b1",
+      "upstream_svg_sha256": "a9088b0ffe9577e21193c3213bba1ea9a2b658b422aaabfc54833266671a9be8"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset1_lr_md_html_false_054",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "59f034a54f876d88e7f60eec66fd230bf1cfb6658b11ed6ec0c360acc8eb14cf",
+      "input_sha256": "a868a2a0aa0d2e5f8907d349b8449c2dd5c228fdd9f1f8930083c3f917f17439",
+      "upstream_svg_sha256": "474f3c827668462f267f5a3a23cb73ae134f5e23a07192ede5ef6891965b0648"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_md_html_false_006",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "28d0a956bf90a256f608a3bea7d5af3420c8a643d620eb2013f09a9dcd2f12bb",
+      "input_sha256": "da5224a5f2b641780eb8c570f9e2dc0f8e40c77f32ec1e24a213d14f322d7c42",
+      "upstream_svg_sha256": "95947f03d2cd2591e5331c5869dc067523c8fc61b8aad00e633d120ec205ae35"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_md_html_false_070",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "ee8f24aeed7faf0750a0157b84630a1ea496cd5587f889f3964fd5a44fdcd4e4",
+      "input_sha256": "65a5bd86888e29cf4efaf832b0989270f6d79bb78942904b4d364d553068321f",
+      "upstream_svg_sha256": "52148cc3a6742b47932c250510d2de550f2ba9b919df3de2747aa4564b570dec"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_md_html_false_022",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "fa762653aa733a12756d92b585c63b1eded889feef6e0f387cd97a71133266a3",
+      "input_sha256": "4f342c2bb81cc3a6c9f891d3943312a59edfe3b6ded3cee84e6a299e84223998",
+      "upstream_svg_sha256": "610f7cb0cb5b1138cf3fc5c80196ca0dff97270da0b3325651a7303010dfbb2a"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset4_lr_md_html_false_078",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "30db6a51ab75ee592f6f12731402c0c3a2b58ab52ce0bae7e4c934735e504dbb",
+      "input_sha256": "b7b39ec2749dcf6c467ea24368fd1ca24cc86ea9346e2edaa64b5f3830210d34",
+      "upstream_svg_sha256": "54cfdf54d80d9d19053f2051fdf5b35c5efab22d250a59203774cecfcc048253"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset4_tb_md_html_false_030",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "a538d086c7aae27f3f04d3de7109f381ae9d4fea2b521841e67798cfe58af233",
+      "input_sha256": "f1eaf33783a57fd86b871a33fc856732cbd37edfaa5f730fe027f012781d5799",
+      "upstream_svg_sha256": "f8caf79dd0f7347925e79e3796b886b55c7873af81ec293988beede7f45269d7"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "ea3c385547ba140ad26f524a223ff2857ddf1207fa14f9180900be64ace462ab",
+      "input_sha256": "dd883506ad09e8c6563a46e9b30985caead36d495fdebd8bfc5fffc4b0d25798",
+      "upstream_svg_sha256": "eb0bc4af117ab0791bb5ac566b5e44fa35c9616f5258fb562eb01de291b40483"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_tb_md_html_false_038",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "f203d626353cd434bb85cbb805d5c0408d90a287d8ec8974cc44b521de9cf4c2",
+      "input_sha256": "2427b26fc30aae931e0293c324f75f1f2e085d6d46c27909f0a54743262a65a2",
+      "upstream_svg_sha256": "db6692252a8c7f3d540bfdf3b022f9a6067e0c452805a61350f10c2c6db64502"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset1_lr_md_html_false_046",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "ea2154f06be7ceb7b61aa3c21e2dbfba3ad5530495ce65aa1310c0cf8f971237",
+      "input_sha256": "40929f79fbd3ac651064ef716232d8fc4fa9d4629e55aab729a885f8982ba3f5",
+      "upstream_svg_sha256": "9c51f678d89baebcb77e578f7545d23708448fffe7ade1cac01a4dae0daaf0b8"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset1_tb_md_html_false_006",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "c49303bf0d08d48b262aae862664c145bd5ed5565ffa6620bc6d06c1285041c3",
+      "input_sha256": "91410b3229e7c6d45fccd711755914e86e7ef62ff017a67af4fe801411b13b2e",
+      "upstream_svg_sha256": "3e82b0b8de3e93994d20b29d28128d5b2832bdd5a38d2143c63a20a1805f990c"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset2_lr_md_html_false_054",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "eaf29d2f3d8ecf7a7b6970c11091ef3b45f1c7209055dfab9ea66c4c657b9a41",
+      "input_sha256": "97a12f36f21fe3999edbd07584d1b9e85e8f2b563388afc172852793c597de38",
+      "upstream_svg_sha256": "705df38471a989c39ba482e41882682994e624ee118ffbae50c81cf0bc6eb494"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset2_tb_md_html_false_014",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "d2ca4ee284b69e7b2b2d90bce085f3bb3e6c70ebe55d09fa4dcb9abad0b5c6f0",
+      "input_sha256": "8170ecd69a412685382cf7d22dda55932d2e57ae02736111ef8635b7d5dfa2f9",
+      "upstream_svg_sha256": "1d0a942836ce7b553e852fb36e41a201f1993f48aa97e615ebcd41a7edd47bbf"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_md_html_false_062",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "81066516df33d3c5e2d3340218fefdd7cd2e0da2763b0cfac89eb304c59258a0",
+      "input_sha256": "112e5a116e3b4d7d0cb8081e0d4ae146f99c5a510d14288fcb8fbba6adf252ed",
+      "upstream_svg_sha256": "470dd3528bc89254e9f8d72ae36b0e8b0fee20acbb17b1058e933f3f366011f0"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_md_html_false_022",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "115ab858e216f04d8f3dae6acd0d739841f9e102d28430d3b8185efe8b1d2ab9",
+      "input_sha256": "1316d782768ac35d24a7afac4e52bb21ca32f27e15dcb4c42cf722f4b546c48c",
+      "upstream_svg_sha256": "66b625cf2eaff24dabd4aa0ea84ecc79fedaad7686f76327be1315df84aec002"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset4_lr_md_html_false_070",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "52877363e40e39033f3ced3859ca593077725615d886cea3e62ac3a29f25e56a",
+      "input_sha256": "b091727087c0cf1cbf03eb614321a7880a599286399a705be89f65927810fc97",
+      "upstream_svg_sha256": "d4eef8379de6de060585eb07f1f8cf1d70738e4d36d9191debfdbe74170780e3"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset4_tb_md_html_false_030",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "b4b864e7e25a8ba33f7e9d159d9b83dbf546da5b0f0970d10cf8d9c96ed7cc79",
+      "input_sha256": "9ffb06af06068d4203ead08066f4710f1afc11edad697dab3f6e750eb0fee9fa",
+      "upstream_svg_sha256": "5336b2072d11fdd6e49ab86c5b46a79f4a5ab9add4ffcd55c62cb783b25f306e"
+    },
+    {
+      "diagram": "gantt",
+      "fixture": "upstream_cypress_gantt_spec_example_001",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "0fc99a6359ab1391e359d752070683b9bd4a3dd878551361e9a48b62157c524f",
+      "input_sha256": "7e62bc24ef765017f0370c6a28528b45adc6a1de1a2819d096c8732e449dcbc8",
+      "upstream_svg_sha256": "a6a1017a98738f764c50cc4eb0e677d5f8b3f821e9686773db74764bac926c9a"
+    },
+    {
+      "diagram": "gantt",
+      "fixture": "upstream_cypress_gantt_spec_handle_multiline_section_titles_with_different_line_breaks_002",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "6d753daef91d3ae89a5d24b5f1f0fa2361897f147180f74b1a428087708de7ff",
+      "input_sha256": "184a83526794cf117018114ea5739e772c94fc62605c9012b2eeabebfc8317e3",
+      "upstream_svg_sha256": "b6c12b7438f6ebb8760cb99bdcd03d6bb077f6f883cc0ca00e48be917e9d6005"
+    },
+    {
+      "diagram": "gantt",
+      "fixture": "upstream_cypress_gantt_spec_should_render_a_gantt_diagram_with_data_labels_at_the_top_when_t_010",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "47d3ece2d768e11871a9f7a2f78cabf6dbfc904f3a137d66b85b09ca45ae2106",
+      "input_sha256": "587261d13b887fdaeeee1b8910203506fead1a21b7d53d214694c24113301055",
+      "upstream_svg_sha256": "95e1af86ca5e5d330b6f931e74e2ade4ec9b93dd64ee99e0005aa6b9fdc51272"
+    },
+    {
+      "diagram": "gantt",
+      "fixture": "upstream_cypress_theme_spec_should_render_a_gantt_diagram_006",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "8b193d13059ad288250cb917d23dbe2027ee76fbe24279a905b73ef191b9bcc4",
+      "input_sha256": "e0ec29c0a9892c663ea3c922a11f0201c9b0d6351b54399599f9a99a3e8a3373",
+      "upstream_svg_sha256": "4b716e00eb9b0851eba658c1d74ee52c6c53e25bf9d87e3e0a3e654d7e4e3426"
+    },
+    {
+      "diagram": "gantt",
+      "fixture": "upstream_html_demos_gantt_gantt_chart_diagram_demos_008",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "773405d12706c0c398f3cf353aad486ce0bd09d2e5b674e26ef2b1ce455044ee",
+      "input_sha256": "c2adae9322d070815faadedd29fa8ba9d1d41c73f7cce98a1fb33d87bfed935f",
+      "upstream_svg_sha256": "83aa16d4b89de0debe7437b0a2dde7795c737e7ec39ae1420cd19edb3ea585f6"
+    },
+    {
+      "diagram": "gantt",
+      "fixture": "upstream_html_demos_gantt_gantt_chart_diagram_demos_009",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "238869e42cee6cb047791eb550b90fb38e49ea8c1113eb7029051b2b7fd956f5",
+      "input_sha256": "070786f155a740c034275caa75d5f7aaad14ebfce2d6e29db225c6bc643b5f38",
+      "upstream_svg_sha256": "a225dd2def30156db2a2f493a5a104bfc1a5b42016ed732134de989464371b6d"
+    },
+    {
+      "diagram": "journey",
+      "fixture": "upstream_cypress_journey_spec_should_wrap_long_labels_into_multiple_lines_keep_them_under_max_010",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "9eb31842b81e77e8606745c33a448b8ce00998d35f7045d1519b96dd12199021",
+      "input_sha256": "fcf4ef949317bb5aaed77c32f865c6a2b54aa18ad7e7f529762a8bc5aae5235f",
+      "upstream_svg_sha256": "4000302be3537b3bb17e82dc1278a332c3a6b01e635391134b652cd6961c45f7"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "stress_br_in_messages_notes_011",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "bcee2abf5c4bdac3e7adba6a1329d181c7933d929c495f42146a8952f2e52a6d",
+      "input_sha256": "02d97bafbbd4350a1cb9fb350a583a9ff43f0f72334efadee1cce8364634c236",
+      "upstream_svg_sha256": "4f34f1ebf69b96f8f35cfc910530ddd256acef39bf4292526619b92f37f4100a"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_right_of_actor_028",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "a814f878917165961575d8fb3e79bf91899aa532ca96d5656b0a5615f77298bd",
+      "input_sha256": "dbfac1e82d5777ba58a4e101d1f71f3f661deec5a3ad99318d754ab3e1d1ccfc",
+      "upstream_svg_sha256": "51ea8c7356b1d6852cde92b66a8b762d1a20783afce443b77dae901368ff67af"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_with_wrapping_enabled_048",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "d9333dc7308ef5697c9dc93cf8a05ff8a77381c67136934be4fcb6bbd4a5b560",
+      "input_sha256": "f93593ed1f90823b3a2c7b0d8e1d9a48d07ca7e670528b40fbab1f26ed288a65",
+      "upstream_svg_sha256": "eb328b27d81b8027545f7077c12a4d1e33999410ab87eb4071978c87c5982335"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_right_of_database_021",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "6c5fda4ddfab585e4781136412edcef1bc8dee98ea24c7fff374806e6956d938",
+      "input_sha256": "ae76484070eab54712fbbca877233ed9fbe5a4b7cc2a59018dd00b261f10ebe9",
+      "upstream_svg_sha256": "eff0a2df25f209c4930246577578e65c8104309d60d8a3ad0c1f8d33803d7bac"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_common_long_unbroken_words",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "35c42a9c1795d97a4489c7f7a5ba28b1e31d4a9c28571744a5fe31b3bde6c132",
+      "input_sha256": "b037fc3ac6fd6a899deb763e40d45008b7cb865f16bfdbcd83a92c9e09100254",
+      "upstream_svg_sha256": "e0966a756d2bda332150a8b5a69889b8b53a286f4132223625447fa9f6fc4ef5"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_common_section_br_and_entities",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "5dba62619c75e61792ff1838a0cd8b561a477a67e0cd5e3cfc0cd7002a7af375",
+      "input_sha256": "8b43ec01a9390b696985c40a5d228fba73bd8247740b0ed428fc2e0658627916",
+      "upstream_svg_sha256": "4fb6c127472dbaf6babb25aaaa2f9f240088bff439c45a6f69372cc5a9e02089"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_disable_multicolor_and_width",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "f5a514346068fb3e54ee3bfdd884ce359141e793c57fa3322471caa1ce977e7a",
+      "input_sha256": "273053e1c4564e065d4edcb18903386d683ec746fc9f94f262cfb1388e9954ae",
+      "upstream_svg_sha256": "b493ff1914eb0799fa9361545da03186112d5fb1427f7fc92da23c48cb837828"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_events_with_entities_and_ampersands",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "533d463ea17dda54a1937a26e1893f2c44c58b8795be4a26cc873246fbc5325e",
+      "input_sha256": "f4cfc5fbdd073df0179bd0b5d64436a5e567419950568f57704429ed96a8d963",
+      "upstream_svg_sha256": "81ed8bcc2f4fa98b521f0704bbe78650b08957f2f989393794fe6dfa820bca1a"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_inline_hashes_and_semicolons",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "8b65c7163c8da179bfc83a1f9db1c6b972a28342eaf1a7d15cfc2ab7e56580e5",
+      "input_sha256": "12e770968c9727eaf6506fd9fb883b50e73c8e570addfcde86fdabd601998634",
+      "upstream_svg_sha256": "33f6bc0fb3384c8d7172280e25d787c3eaa4b1afdfaea5b9ed29de51cf528bff"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_leading_trailing_spaces_and_tabs",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "5aa26ba7ac9b85ec88e83299f62ff1664a1a150576807608133fac5c8f68c2de",
+      "input_sha256": "ecb78274baf72ad9ffeab33a4865afd7923a24367b177ccc405bdc2695ea60bd",
+      "upstream_svg_sha256": "1d37ac568592960ac23f33c91aced8c3d709690bc44a5f324fd5270acb40ceb7"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_left_margin_zero",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "9b07c869a48b0fb031f3b09b9934c7b3f1746cc26aafcdf6aa6f9c855dfd3a4a",
+      "input_sha256": "7cf3b13dd6600f5003a326ae98aa5edb6d758059f2153915b22f6e2278c2ef32",
+      "upstream_svg_sha256": "26baef70a25f7877511ad135d9702a622b0b45b8c346814cedefb9dd1f72c1c2"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_many_events_single_period",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "9bceec068d5c2820c5ba487b093276a261ca502588917c28d1963626afc9bb7a",
+      "input_sha256": "0d4cb76708a6c3c31bd671c12b34eca3c13f189f8a5493e101913925da47762f",
+      "upstream_svg_sha256": "46f26d37064e3522d2eb8c87db73192d44c0d27cd0f547845375c5aa15ddc5b0"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_markdown_links_and_br",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "736a7ea112d8a5f95b6711b6b5e0996aa19c8f8c7499297a20c14aa23497a8be",
+      "input_sha256": "5a6829557710efc6f687f6d0d2e80a53084c4c53d5c85384e97d40db5ccbc252",
+      "upstream_svg_sha256": "04da23779fd553022f9ec313c6964e989f21f95148c2e031fa3a32ec3151f15e"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_non_ascii_punctuation_quotes_dashes",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "1985d1d2dd586f17672ac1476d847929fdc205d28dc4187c9e33c4f4310965ae",
+      "input_sha256": "74384b722fb83814e8530fa8708c80139734c7c45d71238dd334d2abfb4aca1e",
+      "upstream_svg_sha256": "02744f4ab6eadce83816d7051505da5b15cc1eefee14a0eb0778a4ab381af796"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_non_numeric_periods",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "1aaca8dbbc90ac17bc7c6bc5aed2a1e3ce4188d20f6a2265c78628920aa4f003",
+      "input_sha256": "4a02cb1174c4e20424bcf871c7d9c30af004bfc052071b29527689fbb051fb05",
+      "upstream_svg_sha256": "49aa034bdfa6144b77eb625d8bd7de603bcd3b9bcd144846533a78c12e9f14d9"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_task_labels_with_punctuation",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "6bc392dcfa4576c91dd51d3fa10e3c14a4e469d9870187d303625a404799fb4c",
+      "input_sha256": "d8da621f257c198b42f142653aefb0ae99417600b3357587c9a4110ec44ca3d4",
+      "upstream_svg_sha256": "47d58767f8921bf3adbd0c1f2ad616f3f6ca64dcee9c958ba250d27bf53e5245"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_unicode_cjk_and_emoji",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "a6f7ca247581d66107f24e44d3a782b348b6e50583044503b504335699b72426",
+      "input_sha256": "1b817aaaae186b79b61b132b0fc8a99711b17fc81a0eaba5b4af56d9e0fe4511",
+      "upstream_svg_sha256": "71c4aa0261aaa7ee207d037c0009bb03fe0866397b43c7e941dc509e51033d58"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_very_long_unbroken_word",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "9d3e3bd92ee9ba12d42aa73646a43436d6ba6fd04caa8c307b03e4443fb893f9",
+      "input_sha256": "33a593614560a6899a388fd9214efb4e1b1f54f1f5d7dcf30622aa970cc8eb54",
+      "upstream_svg_sha256": "d91c40add04b077bde1177232b0163f3ab5a5f96b4f915748277712760572a44"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "timeline_stress_width_large_and_long_labels",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "8e62f11de137073e376e4cb5a9b44be6bc7d3b812e0832d7c04bc328b902835f",
+      "input_sha256": "6ca8667b42c48613df0607e7d5cb0b93b2570b3131590d7acabfacc7b3ed93b5",
+      "upstream_svg_sha256": "5dc54d2e5b1260a51a4226f7d8885e03cea4c31b8af63932e852964b19179f8c"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_br_wrapping",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "ef156631376ff50eed2371878af5793e1337dce445f45f62524a5a494be05717",
+      "input_sha256": "c3cae18d3bcfbde3a026f8d904daf7e414342df49b0835e6acf83d80ac2b2ca8",
+      "upstream_svg_sha256": "fad41e7d320c6760a90df1da881d9377a43edeb2f94725b3a2c75c6d05dce6d3"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_cypress_timeline_spec_11_should_render_timeline_with_many_stacked_events_and_proper_ti_011",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "ea5faaeaa7042ad2178bd4b2709569fd7165e0ed405e0b9c8beb807b3040c544",
+      "input_sha256": "ccc5a785262d9396d52ab87d688b51c8a8eebd240d1dbf7f00c7a60428b91860",
+      "upstream_svg_sha256": "633630525d4b118d3fce93eef00384ad4390e4bedbe6eeda0006f0b13d8bc032"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_cypress_timeline_spec_14_should_render_a_vertical_timeline_diagram_with_sections_014",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "56cb0ce658f1788dce90dcdd40f75b51ff32df09b224601eeb3b91184cb8166e",
+      "input_sha256": "aa9962a8b085f5ef89ebf94f524264a38ed351e846a7a9abd83cf7cf7ec65e3d",
+      "upstream_svg_sha256": "8450dae2143a65fe43085a26554979205938d780dc5111110e0ec42a4c972597"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_cypress_timeline_spec_2_should_render_a_timeline_diagram_with_sections_002",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "2dce6670f5f499cb00a238796e2ffaa81ccbd51711897261e2d1606f8ed2c999",
+      "input_sha256": "5b167caa760a77465efb15287d11b6c14a8899fea756345052168ce22226607d",
+      "upstream_svg_sha256": "f05f188b1ebf77ec21cb9ab65db778df9f26db41a679fd853db47a7649402d88"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_cypress_timeline_spec_3_should_render_a_complex_timeline_with_sections_and_long_events_003",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "91f2c5d6bd96c7bab9ec5af3eb7269b21e48271bce8afe0e3b522730572c2702",
+      "input_sha256": "b833a4884f014e4cc88e3f05ca445d33c2353986d8ba00edc8cae730d162f0e1",
+      "upstream_svg_sha256": "e0865362b1377ca49c835dc071522845848f25dda27453755d21ff99ccbb5aa6"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_docs_timeline_grouping_of_time_periods_in_sections_ages_009",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "f8a1131db492a9e3f3d241474d45021dc419019ea18eb865590e8c83873f2c64",
+      "input_sha256": "523985f9a7ca3ab9d5477c18115fa8b8253f660a11c4bb49ccad873bb9fadb2b",
+      "upstream_svg_sha256": "cc2d608cea18fbabe314ff79fac63e93bda244dd1ad05d038acb8d3137a54ccd"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_docs_timeline_wrapping_of_text_for_long_time_periods_or_events_011",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "b998c9ac2765698a2e0da27cb0d41166807a19f16b8713804cdf8e96b8714584",
+      "input_sha256": "c2440af8294c701536f8bd1333830af0df17c8e22e596fdd05d3f2dc59e9eafd",
+      "upstream_svg_sha256": "b8d8208929164e04a59b440a0ef09e45db7bed20c577be43a027d2a6a4a989fe"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_events_markdown_multiline",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "608577ce06555bc6f009bc9590edfe9f12ddacbe0e1ade18b586fd5494925533",
+      "input_sha256": "23be8bce47f0a00c4a8ab2f0b402ca18441a1e1eea64989520839c875537e7db",
+      "upstream_svg_sha256": "e93a75f35228ba3520d9e9e5e0f7d16a06c45c5533d0f586ae6dd6fa34ee38bb"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_long_word_wrap",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "b8e293d2b0a648de963a054f9d805c94a9c3537178e9eea74c11ef4bab40624f",
+      "input_sha256": "48288d0d195d64d0f544aaee5ea0059446f7456a9dde8690037a81f530d74b37",
+      "upstream_svg_sha256": "5d99cc1df24ba0e95734d6b96067a24cc2f6160083d7370b656b2842b6f65aaf"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_pkgtests_timeline_spec_005",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "795e2edc4e99f7285734f2113a09c40d19600aa485a3acb110b3a7282a642fe7",
+      "input_sha256": "28f4c304b80b69d453025bf031034daf5ffc54ee1a06c0e62378e079fc1a9415",
+      "upstream_svg_sha256": "12570f9c091a125c052f08f829679affd787d959edb62cb893727aae6bfa05de"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "zed_pr_57644_timeline",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "43c20f75791ff8d9741d2fae17fe213244b1681a2ef17e471aeea48f155a7ca9",
+      "input_sha256": "bd86a4eff8d4d7d08627c7ff8f0493de41ee87c10d6dc47a7a0867d812329f52",
+      "upstream_svg_sha256": "49cd4d4e6aec7ee8abfcb52bdf5bfc8e1785b5eb74480154d914e3f61cc3c937"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_10_should_render_the_example_from_documentation_017",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "b43d44e7453d6e338aeaf9cdc0138589b96af5fb2303126c7c4c21e094f906e7",
+      "input_sha256": "4f2a406ac3c26e673cebedda3507567f21f5a9e6a7b6a8b79c3f7e92f38ee772",
+      "upstream_svg_sha256": "27f3409c26df8f39c79a7c4c52960170dab009f40e0a99dd4a30e8aacf2dbf9b"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_15_should_apply_multiple_classdef_properties_simultaneously_022",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "01b41cb8ddf2009245e6d7a3d806c2e44dd71b4257cd042226069b0b0555f3ee",
+      "input_sha256": "4fc451efe82e90dcbfd82825b7c87b54a9416463d040ee4c7affcd5ab8d50297",
+      "upstream_svg_sha256": "91105c0187bf7aab09665248408cad8387cc4566c007ae7642c815f6d4dc3195"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_2_should_render_a_hierarchical_treemap_002",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "9677afd83e8848e9821a6613879d19715662e5b40d6dcb2d42786ffe934b0056",
+      "input_sha256": "0afb1d991638c593343df96108ed4cb2f3c361388c4e4c260c4a853bafa88f7c",
+      "upstream_svg_sha256": "a355432f870ab1b63a546bf0a3031f65d13d7782f4cc6e45627c53161ec78ca3"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_3_should_render_a_treemap_with_styling_using_classdef_003",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "2cd87c03e213795e53db26e5dab9abaac5d13dd2f3ce4a8d9b331eafa9c6e77e",
+      "input_sha256": "64135f10e0b3a08c4013bac21d52b6cc7f076483d80613cd5283965fd6348b00",
+      "upstream_svg_sha256": "6a05bc3761c6b6ee185bd905d1528408a88eb4cbb4a1553c966502e023d0dc49"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_4_should_handle_long_text_that_wraps_004",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "9c4ed520033f89a8585bded5ae4aad6ac09f3cf27396bc42e307c011abfb7418",
+      "input_sha256": "f9384393f4c81d87dbb3902246fdcf0e47ae2b83fa07a4323884cefeda01cd10",
+      "upstream_svg_sha256": "e8c238342c313b35070803a0276c6dfb48a744db64a6de4ebbfb4bbd2420f52a"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_8_should_handle_dollar_value_formatting_with_thousands_separator_008",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "bd200a2c1c08c0bb30bb23c7f504e676c71bf9b7e83951801fb5b07b44a184b8",
+      "input_sha256": "5ed164dae8850df9eea245ff3bca737af91fac75201a428afb399598a9ac6e6a",
+      "upstream_svg_sha256": "6cdd7d5b4de7836b30de0521559e07bc54b0d61ff6a7daef3a089e85f04611eb"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_8a_should_handle_percentage_formatting_009",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "6d59366a48ae166a8ddeaaeb38c7a52ac4c1aa45f33bf29f6d784a151fe02d42",
+      "input_sha256": "8e6c95b8de173adbaafa24a0a4f9be5b1c941c607e936306961b62e0eac3b67a",
+      "upstream_svg_sha256": "0f838f657b4a962566d7f190950c36d02711070b7fbb32e049972c7cc202f084"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_8b_should_handle_decimal_formatting_010",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "4f21f2b0454afbcb5f0644db8d320e15acf946fdfcdb7c9458a1f2c028a50603",
+      "input_sha256": "f4267eab93a32d315df80e565f0a4a24343e2afba89543809198e1bb32588a3a",
+      "upstream_svg_sha256": "a37edd6bf9ce0e62fba559d4d8809038021475ba01df9bc090957ff8fcedc31e"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_8e_should_handle_simple_thousands_separator_013",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "2942d596ad28dc83ee9fa29d7d8568ddc9a8594f04754004cf0d48eb4ed23dc4",
+      "input_sha256": "8fe2970f6fa60ff9bf583af516c31044c9d2efabbad6b8572c71a0e5bbfaa50e",
+      "upstream_svg_sha256": "b017d03d122e0920114f036230214de1f2c706a7900d142e74f28c5282debfd0"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_cypress_treemap_spec_9_should_handle_a_complex_example_with_multiple_features_016",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "1308b5e6c3365e51f4ece73ab5eac104eeae1ac9b19ed3befeb300e255e7fa7a",
+      "input_sha256": "3e067d76c87fcddb5acc21829b6111b078a08bc85fc52cb1d646d8ef4c785da9",
+      "upstream_svg_sha256": "e38ddca2a8af51d0de50c268cfa2223582e6b036a2b82cbadaa23859e33b17a8"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_docs_treemap_value_formatting_017",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "caafadbf464edf387114063d39b3159e9582156e31d746c0e20826434ef7d710",
+      "input_sha256": "9c4e6d63b7c161fc8d1f2a4bf443f80308ebdcbba259a8b789cf27e049b66830",
+      "upstream_svg_sha256": "06571d475965f7f99f2c254d07bfb8cc16f9723824a5d13edf3bc71320f79e4a"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_treemap_docs_hierarchical_spec",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "1e937020b6b07b41ca27ca7787389861ad3bcf92f3118dc524efdae86d6f92f8",
+      "input_sha256": "fdb5872c1323f0b2ccded1fbe48035cf8245606589aceb2adb6256d2006da1d6",
+      "upstream_svg_sha256": "4c0a2c8970e39a5ac87006a8f8d2b3673585fb2783bf876653419eab6074a5a1"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_treemap_docs_styling_spec",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "f5a7634f8ae6d5070ae6391736d7990b85e3d28424d7e2f0d7209d85b334396b",
+      "input_sha256": "1eb9f85865808cdcdbeb54b6dca201ff5ec82ac0ff7ef5f8710363f8dc66df5d",
+      "upstream_svg_sha256": "e5186c02359ffa1c61e31809819a9940f4e553eb3c46dd6174a431a99c9f58c2"
+    },
+    {
+      "diagram": "treemap",
+      "fixture": "upstream_treemap_docs_value_format_currency_spec",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_sha256": "837467adff2efb5c0b0fee8c02eb61c3f9fe3985f6991a447bfdb975ec70ec06",
+      "input_sha256": "5f49808a953d6ce53802c1989921866b67415b9128e4845aa4cf1fb09c66e8a0",
+      "upstream_svg_sha256": "4ac70334ecbef9d4f31f81469baee16d8541f77c82109655fbf962d0b4b93bb2"
+    }
+  ]
+}

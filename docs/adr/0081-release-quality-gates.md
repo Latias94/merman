@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; updated 2026-08-27 for Mermaid `@11.16.1`, ADR-0050, ADR-0062, and ADR-0086.
+Accepted; updated 2026-08-28 for Mermaid `@11.16.1`, ADR-0050, ADR-0062, and ADR-0086.
 
 ## Context
 
@@ -30,23 +30,33 @@ For a release, we require:
 - Unit/integration test suite:
   - `cargo nextest run`
 - DOM parity checks (stable regression gates):
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3`
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout`
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3 --diagnostic-browser-text-layout`
 - Root viewport invariants and descendant parity:
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
 Notes:
 
 - The canonical built-in measurement mode is deterministic. Comparison commands do not expose a
   single-value text-measurement selector, and no browser font table is embedded to make the local
   run imitate one baseline machine.
-- `parity-root` keeps descendant parity blocking and invokes the root viewport contract for every
-  fixture. The contract rejects an invalid root SVG, malformed or non-finite viewport geometry,
-  non-positive dimensions, changed width/height strategy, changed non-numeric root style, and a
-  changed `max-width`/`viewBox` relationship.
+- `--diagnostic-browser-text-layout` consults
+  `fixtures/_verification/browser-text-layout-residuals.json`. The catalog covers reviewed cases in
+  Architecture, Class, Flowchart, Gantt, Journey, Sequence, Timeline, and Treemap where browser
+  font measurement controls wrapping, route topology, inside/outside classification, or adaptive
+  font size. A mismatch is diagnostic only when its exact fixture input, pinned upstream SVG,
+  comparison mode, and complete deterministic local SVG digests match the receipt. A new node,
+  class, id, path, text, unregistered fixture, changed digest, or stale receipt remains blocking.
+  Rendering, DOM parsing, semantic-label evidence, operation provenance, and root viewport policy
+  also remain blocking.
+- `parity-root` invokes the root viewport contract for every fixture. The contract rejects an
+  invalid root SVG, malformed or non-finite viewport geometry, non-positive dimensions, changed
+  width/height strategy, changed non-numeric root style, and a changed `max-width`/`viewBox`
+  relationship.
 - A small exact set in `fixtures/_verification/deterministic-root-contracts.json` remains bound to
-  the pinned input and upstream SVG hashes. These deterministic roots are exact release evidence,
-  not production overrides or family tolerances.
+  the pinned input and upstream SVG hashes. Only roots proven independent of browser text
+  measurement are eligible. These fixed-geometry roots are exact release evidence, not production
+  overrides or family tolerances.
 
 ### Browser diagnostics and cropping
 
@@ -81,8 +91,10 @@ production behavior.
 
 ## Consequences
 
-- Releases are gated on deterministic DOM parity modes (`structure`/`parity`), blocking root
-  invariants and deterministic root fixtures, and independent browser-mounted cropping containment.
+- Releases are gated on deterministic semantic/layout snapshots, blocking DOM parity except for
+  exact reviewed browser-text-layout receipts, blocking root invariants and
+  measurement-independent exact roots, and independent browser-mounted cropping containment. The
+  accepted receipts remain visible in the generated comparison reports and CI log counts.
 - “Strict SVG XML equality” is not promised for early releases; it remains an explicit future
   convergence goal.
 - Exact browser bbox movement remains attributable diagnostic evidence and cannot alter production

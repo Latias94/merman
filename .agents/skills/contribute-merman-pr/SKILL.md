@@ -62,7 +62,8 @@ or `--filter` run is useful while iterating but does not replace this full struc
 
 ```text
 cargo run --locked --release -p xtask -- compare-all-svgs \
-  --check-dom --dom-mode structure --dom-decimals 3
+  --check-dom --dom-mode structure --dom-decimals 3 \
+  --diagnostic-browser-text-layout
 ```
 
 When comparator or root viewport behavior changes, also run the focused root-contract tests and the
@@ -71,16 +72,20 @@ remaining blocking parity sweeps:
 ```text
 cargo nextest run --locked -p xtask -E 'test(root_contract)' --cargo-quiet
 cargo run --locked --release -p xtask -- compare-all-svgs \
-  --check-dom --dom-mode parity --dom-decimals 3
+  --check-dom --dom-mode parity --dom-decimals 3 \
+  --diagnostic-browser-text-layout
 cargo run --locked --release -p xtask -- compare-all-svgs \
   --check-dom --dom-mode parity-root --dom-decimals 3 \
+  --diagnostic-browser-text-layout \
   --report-root
 ```
 
-`parity-root` blocks descendant parity regressions, malformed viewports, strategy changes, and the
-deterministic root canaries. Browser-measured bbox numbers remain diagnostic. Pages CI owns the
-painted-content containment oracle; run the focused Playground desktop browser suite locally only
-when changing that oracle or its browser integration.
+The diagnostic flag accepts only reviewed browser-text-layout receipts bound to the exact input,
+upstream SVG, mode, and complete local SVG. New or stale differences remain blocking.
+`parity-root` also blocks malformed viewports, strategy changes, semantic evidence failures, and
+the deterministic root canaries. Pages CI owns the painted-content containment oracle; run the
+focused Playground desktop browser suite locally only when changing that oracle or its browser
+integration.
 
 Completion criterion: selected-source verification passes when applicable; the exact full structure
 gate passes for renderer, profile, normalization, or tracked-SVG changes; and the root-contract and

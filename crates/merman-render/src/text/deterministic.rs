@@ -1,6 +1,6 @@
 //! Deterministic text measurement and wrapping fallback.
 
-use super::heuristic::estimate_char_width_em;
+use super::heuristic::append_text_width_em;
 use super::line_break::html_break_spaces_segments;
 use super::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, trim_end_html_collapsible_ascii_whitespace,
@@ -17,9 +17,7 @@ struct LineWidthAccumulator {
 impl LineWidthAccumulator {
     fn push_str(&mut self, text: &str, uses_heuristic_widths: bool) {
         if uses_heuristic_widths {
-            for ch in text.chars() {
-                self.heuristic_em += estimate_char_width_em(ch);
-            }
+            append_text_width_em(&mut self.heuristic_em, text);
         } else {
             self.char_count = self.char_count.saturating_add(text.chars().count());
         }
@@ -497,6 +495,50 @@ mod tests {
 
         assert_eq!(metrics.line_count, 2);
         assert!((metrics.width - 8.5).abs() < f64::EPSILON, "{metrics:?}");
+    }
+
+    #[test]
+    fn default_width_uses_sequence_aware_unicode_display_width() {
+        let measurer = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+
+        for sequence in ["👩‍🔬", "👨‍👩‍👧‍👦", "👍🏽", "🇨🇳", "1️⃣"]
+        {
+            let metrics = measurer.measure(sequence, &style);
+            assert_eq!(metrics.width, 16.0, "sequence={sequence:?}");
+        }
+    }
+
+    #[test]
+    fn wrapping_splits_long_emoji_runs_only_at_grapheme_boundaries() {
+        let measurer = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let width_model = LineWidthModel {
+            font_size: 16.0,
+            uses_heuristic_widths: true,
+            char_width_factor: 0.6,
+        };
+
+        for (text, first, second) in [
+            ("👩‍🔬👨‍🔬", "👩‍🔬", "👨‍🔬"),
+            ("👍🏽👍🏻", "👍🏽", "👍🏻"),
+            ("🇨🇳🇺🇸", "🇨🇳", "🇺🇸"),
+            ("1️⃣2️⃣", "1️⃣", "2️⃣"),
+        ] {
+            let (head, tail) =
+                DeterministicTextMeasurer::split_token_to_width(text, 16.0, width_model);
+            assert_eq!((head, tail), (first, second), "text={text:?}");
+
+            let metrics = measurer.measure_wrapped(text, &style, Some(16.0), WrapMode::SvgLike);
+            assert_eq!(metrics.line_count, 2, "text={text:?}: {metrics:?}");
+            assert_eq!(metrics.width, 16.0, "text={text:?}: {metrics:?}");
+        }
     }
 
     #[test]

@@ -8,6 +8,9 @@ checks in one shot and aggregates failures.
 - Full suite, DOM parity enabled:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
 
+- Release policy with browser text layout reported as diagnostic:
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
+
 - Use a specific DOM comparison mode for all diagrams:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
@@ -38,6 +41,23 @@ missing registered fixtures, stale residuals, or a label/path identity mismatch 
 even when the selected DOM profile passes. The contract is documented in
 `docs/alignment/SEMANTIC_LABEL_PARITY.md`.
 
+## Browser text layout diagnostics
+
+`--diagnostic-browser-text-layout` is intentionally narrower than `continue-on-error`. It consults
+`fixtures/_verification/browser-text-layout-residuals.json`, whose entries bind a reviewed fixture,
+input digest, pinned upstream SVG digest, comparison mode, and complete deterministic local SVG
+digest. The catalog covers measurement-led cases in Architecture, Class, Flowchart, Gantt,
+Journey, Sequence, Timeline, and Treemap, whose pinned Mermaid implementations derive wrapping,
+path topology, task-label placement, or adaptive font size from browser
+`getBBox()`/`getComputedTextLength()` results that the font-agnostic deterministic fallback does
+not claim to reproduce.
+
+Render failures, malformed upstream or local DOM, semantic-label failures, operation-provenance
+failures, invalid roots, changed root sizing policy, unregistered fixtures, unlisted modes, changed
+input/upstream/local digests, stale receipts, and every other DOM mismatch remain blocking. A
+changed node, class, id, path, text, fixture input, or upstream baseline therefore cannot reuse an
+old receipt. Omitting the flag restores blocking upstream DOM comparison for parity work.
+
 ## Root reports
 
 `compare-all-svgs` forwards `--report-root` to diagram families that support the root-delta report.
@@ -65,7 +85,8 @@ Example:
   - Some drift is inherent to browser font and float behavior. Production output is never adjusted
     by fixture id; bounded browser-only residuals stay visible in parity reports and accepted
     residual policy.
-  - New or changed residuals still fail the gate. Fix source-backed semantics, layout, emitted
-    geometry, or measurement rather than adding a root pin.
+  - New or changed residuals fail the gate unless an exact browser-text-layout receipt is reviewed
+    and committed. Fix source-backed semantics, layout, or emitted geometry rather than adding a
+    root pin or font-specific fallback.
 - Semantic-label geometry always uses its independent three-decimal contract. Raising DOM
   precision to six decimals cannot disable or re-quantize signed label evidence.
