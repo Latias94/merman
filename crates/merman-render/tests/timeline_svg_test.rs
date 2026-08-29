@@ -4,10 +4,10 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, MermaidThemeCompatibility,
-    OrdinalPalette, OrdinalSelector, Specified, ThemeColorValue, ThemeGeometryPatch,
-    ThemePaintPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, InsetsPx,
+    MermaidThemeCompatibility, OrdinalPalette, OrdinalSelector, Specified, ThemeColorValue,
+    ThemeGeometryPatch, ThemePaintPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -95,6 +95,17 @@ fn timeline_event_palette_theme(colors: &[&str]) -> DiagramTheme {
             ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::TimelineEvent, palette),
         ))
         .expect("compile Timeline event palette theme")
+}
+
+fn timeline_typography_theme(font_stack: FontStack) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::TIMELINE,
+                ThemeTextStyle::default().with_font_stack(font_stack),
+            ),
+        ))
+        .expect("compile Timeline typography theme")
 }
 
 fn try_render_timeline_with_theme_and_engine(
@@ -366,6 +377,44 @@ fn timeline_event_palette_reaches_section_task_and_event_terminals() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn timeline_typed_font_stack_reaches_layout_css_and_terminal_receipt() {
+    let font_stack =
+        FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");
+    let expected_font = font_stack.as_css();
+    let theme = timeline_typography_theme(font_stack);
+    let rendered = try_render_timeline_with_theme(
+        "timeline\n    title Typography proof\n    section Plan\n        Task : Event\n",
+        &theme,
+    )
+    .expect("render typed Timeline typography");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Timeline SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Timeline stylesheet");
+
+    assert!(
+        stylesheet.contains(&format!("#merman{{font-family:{expected_font};")),
+        "typed Timeline FontStack must reach the scoped root CSS"
+    );
+    assert!(
+        stylesheet.contains(&format!(
+            "#merman :root{{--mermaid-font-family:{expected_font};}}"
+        )),
+        "typed Timeline FontStack must reach the Mermaid root variable"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }

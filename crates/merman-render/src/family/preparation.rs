@@ -515,9 +515,14 @@ fn prepare_timeline_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let layout = crate::timeline::layout_timeline_diagram_typed(
+    let typography_theme = crate::timeline::TimelineTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
+    let layout = crate::timeline::layout_timeline_diagram_typed_with_font_family(
         &model,
         meta.effective_config.as_value(),
+        Some(typography_theme.font_family_css()),
         execution.text_measurer(),
     )?;
     let event_theme = crate::timeline::TimelineEventTheme::resolve(
@@ -530,6 +535,7 @@ fn prepare_timeline_family(
         TimelineFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             event_theme,
+            typography_theme,
         },
     )))
 }

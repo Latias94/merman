@@ -60,6 +60,17 @@ impl<'a> TimelineConfigView<'a> {
         }
     }
 
+    pub(crate) fn layout_settings_with_font_family(
+        &self,
+        resolved_font_family_css: Option<&str>,
+    ) -> TimelineLayoutSettings {
+        let mut settings = self.layout_settings();
+        if let Some(font_family_css) = resolved_font_family_css {
+            settings.text_style.font_family = Some(font_family_css.to_owned());
+        }
+        settings
+    }
+
     fn text_style(&self) -> TextStyle {
         TextStyle {
             font_family: self.font_family(),

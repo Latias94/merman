@@ -1043,6 +1043,7 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::REQUIREMENT
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::QUADRANT_CHART
+            | DiagramFamilyId::TIMELINE
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1051,7 +1052,6 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
         DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::C4
             | DiagramFamilyId::JOURNEY
-            | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::TREEMAP
             | DiagramFamilyId::XY_CHART
     ) {

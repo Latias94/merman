@@ -7,10 +7,13 @@ fn timeline_css(
     diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
     theme: &TimelineTheme,
-) -> String {
+    resolved_font_family_css: &str,
+) -> TimelineCss {
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let parts =
+        info_css_parts_with_font_family(diagram_id, effective_config, resolved_font_family_css);
     let root_rule = parts.root_rule;
+    let root_typography_emitted = !root_rule.is_empty();
     let mut out = parts.css_prefix;
 
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
@@ -128,7 +131,19 @@ fn timeline_css(
     );
 
     out.push_str(&root_rule);
-    out
+    TimelineCss {
+        css: out,
+        font_family_css: parts.font_family,
+        base_typography_emitted: parts.base_typography_emitted,
+        root_typography_emitted,
+    }
+}
+
+struct TimelineCss {
+    css: String,
+    font_family_css: String,
+    base_typography_emitted: bool,
+    root_typography_emitted: bool,
 }
 
 fn write_timeline_connector(
@@ -305,6 +320,51 @@ struct TimelineEventEmissionState<'a> {
     receipt: Option<crate::timeline::TimelineEventThemeReceipt>,
 }
 
+struct TimelineTypographyEmissionState<'a> {
+    plan: &'a crate::timeline::TimelineTypographyThemePlan,
+    receipt: Option<crate::timeline::TimelineTypographyThemeReceipt<'a>>,
+}
+
+impl<'a> TimelineTypographyEmissionState<'a> {
+    fn new(
+        plan: &'a crate::timeline::TimelineTypographyThemePlan,
+        layout: &'a TimelineDiagramLayout,
+    ) -> Self {
+        Self {
+            plan,
+            receipt: plan.begin_terminal_receipt(layout),
+        }
+    }
+
+    fn record_css(&mut self, css: &TimelineCss) {
+        if let Some(receipt) = self.receipt.as_mut() {
+            receipt.record_css_emission(
+                &css.font_family_css,
+                css.base_typography_emitted,
+                css.root_typography_emitted,
+            );
+        }
+    }
+
+    fn record_text_run(&mut self, text: &str) {
+        if let Some(receipt) = self.receipt.as_mut() {
+            receipt.record_text_run(text);
+        }
+    }
+
+    fn finish(self) -> Result<()> {
+        if self
+            .receipt
+            .is_some_and(|receipt| !self.plan.record_terminal(receipt))
+        {
+            return Err(crate::Error::InvalidModel {
+                message: "Timeline typography receipt did not match the terminal SVG".to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
 impl<'a> TimelineEventEmissionState<'a> {
     fn new(theme: &'a crate::timeline::TimelineEventTheme, is_redux_theme: bool) -> Self {
         Self {
@@ -387,6 +447,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     layout: &TimelineDiagramLayout,
     _model: &TimelineDiagramRenderModel,
     event_theme: &crate::timeline::TimelineEventTheme,
+    typography_theme: &crate::timeline::TimelineTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -395,6 +456,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     render_timeline_diagram_svg_inner(
         layout,
         event_theme,
+        typography_theme,
         effective_config,
         diagram_title,
         measurer,
@@ -405,6 +467,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
 fn render_timeline_diagram_svg_inner(
     layout: &TimelineDiagramLayout,
     event_theme: &crate::timeline::TimelineEventTheme,
+    typography_theme: &crate::timeline::TimelineTypographyThemePlan,
     effective_config: &serde_json::Value,
     _diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
@@ -437,6 +500,7 @@ fn render_timeline_diagram_svg_inner(
         is_event: bool,
         event_radius: Option<(&str, f64)>,
         event_emission: &mut TimelineEventEmissionState<'_>,
+        typography_emission: &mut TimelineTypographyEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
         let node_local_id = format!("node-{node_count}");
@@ -552,6 +616,7 @@ fn render_timeline_diagram_svg_inner(
                 text = escape_xml(line)
             );
             out.checkpoint()?;
+            typography_emission.record_text_run(line);
         }
         out.push_str("</text></g></g>");
         out.checkpoint()?;
@@ -571,6 +636,7 @@ fn render_timeline_diagram_svg_inner(
         is_redux_theme: bool,
         event_radius: Option<(&'a str, f64)>,
         event_emission: &mut TimelineEventEmissionState<'_>,
+        typography_emission: &mut TimelineTypographyEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<(Option<&'a str>, bool)> {
         let output_start = out.len();
@@ -583,6 +649,7 @@ fn render_timeline_diagram_svg_inner(
             true,
             event_radius,
             event_emission,
+            typography_emission,
             options,
         )?;
         let output = out.as_str().get(output_start..).unwrap_or_default();
@@ -601,6 +668,7 @@ fn render_timeline_diagram_svg_inner(
         event: &TimelineNodeLayout,
         is_redux_theme: bool,
         event_emission: &mut TimelineEventEmissionState<'_>,
+        typography_emission: &mut TimelineTypographyEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
         let (event_index, emitted_opacity_token, emitted_opacity_matches) =
@@ -614,6 +682,7 @@ fn render_timeline_diagram_svg_inner(
             is_redux_theme,
             event_radius,
             event_emission,
+            typography_emission,
             options,
         )?;
         out.push_str("</g>");
@@ -636,6 +705,7 @@ fn render_timeline_diagram_svg_inner(
         direction: merman_core::diagrams::timeline::TimelineDirection,
         is_redux_theme: bool,
         event_emission: &mut TimelineEventEmissionState<'_>,
+        typography_emission: &mut TimelineTypographyEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
         let node = &task.node;
@@ -655,6 +725,7 @@ fn render_timeline_diagram_svg_inner(
             false,
             None,
             event_emission,
+            typography_emission,
             options,
         )?;
         out.push_str("</g>");
@@ -674,6 +745,7 @@ fn render_timeline_diagram_svg_inner(
                         event,
                         is_redux_theme,
                         event_emission,
+                        typography_emission,
                         options,
                     )?;
                 }
@@ -687,6 +759,7 @@ fn render_timeline_diagram_svg_inner(
                         event,
                         is_redux_theme,
                         event_emission,
+                        typography_emission,
                         options,
                     )?;
                     if let Some(connector) = task.connectors.get(index) {
@@ -752,11 +825,17 @@ fn render_timeline_diagram_svg_inner(
         out.checkpoint()?;
     }
 
-    let css = timeline_css(diagram_id, effective_config, &theme);
+    let mut typography_emission = TimelineTypographyEmissionState::new(typography_theme, layout);
+    let css = timeline_css(
+        diagram_id,
+        effective_config,
+        &theme,
+        typography_theme.font_family_css(),
+    );
     options.checkpoint_emit()?;
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    drop(css);
+    let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
     out.checkpoint()?;
+    typography_emission.record_css(&css);
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
     out.push_str(r#"<g/>"#);
@@ -789,6 +868,7 @@ fn render_timeline_diagram_svg_inner(
             false,
             None,
             &mut event_emission,
+            &mut typography_emission,
             options,
         )?;
         out.push_str("</g>");
@@ -804,6 +884,7 @@ fn render_timeline_diagram_svg_inner(
                 layout.direction,
                 is_redux_theme,
                 &mut event_emission,
+                &mut typography_emission,
                 options,
             )?;
         }
@@ -819,6 +900,7 @@ fn render_timeline_diagram_svg_inner(
             layout.direction,
             is_redux_theme,
             &mut event_emission,
+            &mut typography_emission,
             options,
         )?;
     }
@@ -833,6 +915,7 @@ fn render_timeline_diagram_svg_inner(
             text = escape_xml(title)
         );
         out.checkpoint()?;
+        typography_emission.record_text_run(title);
     }
 
     if layout.direction == merman_core::diagrams::timeline::TimelineDirection::LeftToRight {
@@ -853,6 +936,7 @@ fn render_timeline_diagram_svg_inner(
     options.checkpoint_emit()?;
     let rooted_svg = root_document.complete(out.finish()?)?;
     event_emission.finish()?;
+    typography_emission.finish()?;
     Ok(rooted_svg)
 }
 
@@ -1025,6 +1109,10 @@ mod tests {
         let svg = render_timeline_diagram_svg_inner(
             &layout,
             &crate::timeline::TimelineEventTheme::baseline(),
+            &crate::timeline::TimelineTypographyThemePlan::resolve(
+                None,
+                &merman_core::MermaidConfig::default(),
+            ),
             &serde_json::json!({}),
             None,
             &crate::text::DeterministicTextMeasurer::default(),

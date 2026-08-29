@@ -2763,6 +2763,52 @@ mod tests {
     }
 
     #[test]
+    fn timeline_font_stack_is_property_local_while_font_size_uses_legacy_bridge() {
+        const SOURCE: &str = "timeline\n    title Typography\n    section Plan\n    Task : Event\n";
+
+        let font_stack = super::super::FontStack::new(["Timeline Typed", "sans-serif"])
+            .expect("valid Timeline font stack");
+        let direct_spec =
+            DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
+                DiagramFamilyId::TIMELINE,
+                TextStyle::default().with_font_stack(font_stack.clone()),
+            ));
+        let direct_bridge = bridge(&direct_spec).compile_for_family(DiagramFamilyId::TIMELINE);
+        assert!(direct_bridge.overlay.is_empty());
+        assert!(direct_bridge.contribution_ids.is_empty());
+
+        let mixed_typography = TextStyle::default()
+            .with_font_stack(font_stack)
+            .with_font_size_px(24.0)
+            .expect("valid mixed Timeline typography");
+        let mixed_spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default()
+                .with_family_style(DiagramFamilyId::TIMELINE, mixed_typography),
+        );
+        let mixed_bridge = bridge(&mixed_spec).compile_for_family(DiagramFamilyId::TIMELINE);
+        assert!(
+            mixed_bridge
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.timeline.typography")
+        );
+
+        let baseline = parse(&DiagramThemeSpec::default(), SOURCE);
+        let mixed = parse(&mixed_spec, SOURCE);
+        assert_eq!(fallback_contribution_count(&mixed), 1);
+        assert_eq!(
+            mixed.effective_config.get_str("themeVariables.fontSize"),
+            Some("24px")
+        );
+        for path in ["fontFamily", "themeVariables.fontFamily"] {
+            assert_eq!(
+                mixed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed Timeline FontStack must not write legacy `{path}`"
+            );
+        }
+    }
+
+    #[test]
     fn railroad_font_stack_and_size_retire_only_the_legacy_typography_projection() {
         let typography = TextStyle::default()
             .with_font_stack(
