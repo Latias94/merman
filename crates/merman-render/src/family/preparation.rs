@@ -798,18 +798,21 @@ fn prepare_requirement_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve(
+    let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
         execution.resolved_theme(),
         &meta.effective_config,
         &model,
+        meta.title.as_deref(),
         execution.work_meter_ref(),
     )?;
-    let layout = crate::requirement::layout_requirement_diagram_typed_with_work_meter(
-        &model,
-        meta.effective_config.as_value(),
-        execution.text_measurer(),
-        execution.work_meter_ref(),
-    )?;
+    let layout =
+        crate::requirement::layout_requirement_diagram_typed_with_work_meter_and_font_family(
+            &model,
+            meta.effective_config.as_value(),
+            execution.text_measurer(),
+            paint_theme.font_family_override(),
+            execution.work_meter_ref(),
+        )?;
     Ok(BuiltinFamilyArtifact::Requirement(Box::new(
         RequirementFamilyArtifact {
             pair: FamilyPair::new(model, layout),

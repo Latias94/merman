@@ -11,8 +11,9 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -51,16 +52,19 @@ impl RequirementDividerEmission {
 pub(crate) struct RequirementPaintThemePlan {
     node_indices: BTreeMap<String, usize>,
     expectations: Arc<[NodeExpectation]>,
+    inherited_font_stack: InheritedFontStackPlan,
+    title_present: bool,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
     terminal_receipt: OnceLock<RequirementPaintThemeReceipt>,
 }
 
 impl RequirementPaintThemePlan {
-    pub(crate) fn resolve(
+    pub(crate) fn resolve_with_title(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
         model: &RequirementDiagramRenderModel,
+        title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut node_indices = BTreeMap::new();
@@ -78,10 +82,15 @@ impl RequirementPaintThemePlan {
         }
         let node_count = node_indices.len();
         let expectations = vec![NodeExpectation::default(); node_count];
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let Some(theme) = theme else {
             return Ok(Self {
                 node_indices,
                 expectations: expectations.into(),
+                inherited_font_stack,
+                title_present,
                 evidence: FamilyThemeEvidence::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
@@ -220,6 +229,8 @@ impl RequirementPaintThemePlan {
         Ok(Self {
             node_indices,
             expectations: expectations.into(),
+            inherited_font_stack,
+            title_present,
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
@@ -252,8 +263,28 @@ impl RequirementPaintThemePlan {
             .map(|expected| (expected.rule_index(), expected.css()))
     }
 
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn font_family_override(&self) -> Option<&str> {
+        self.inherited_font_stack
+            .typed_font_stack_active()
+            .then_some(self.font_family_css())
+    }
+
+    pub(crate) fn typography_requested(&self) -> bool {
+        self.inherited_font_stack.typed_font_stack_requested()
+            || self.inherited_font_stack.outcome() != InheritedFontStackOutcome::Inactive
+    }
+
     pub(crate) fn begin_terminal_receipt(&self) -> RequirementPaintThemeReceipt {
-        RequirementPaintThemeReceipt::new(Arc::clone(&self.expectations))
+        RequirementPaintThemeReceipt::with_typography(
+            Arc::clone(&self.expectations),
+            self.title_present,
+            self.typography_requested(),
+            self.font_family_css(),
+        )
     }
 
     pub(crate) fn record_terminal(&self, receipt: RequirementPaintThemeReceipt) -> bool {
@@ -263,6 +294,12 @@ impl RequirementPaintThemePlan {
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         let Some(receipt) = self.terminal_receipt.get() else {
+            if self.typography_requested() {
+                evidence.mark_residual(
+                    FamilyThemeMechanismKey::Typography,
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                );
+            }
             return evidence;
         };
         for (key, properties) in &self.pending {
@@ -281,6 +318,26 @@ impl RequirementPaintThemePlan {
                 evidence.mark_applied_with_capabilities(key.clone(), capabilities);
             } else if receipt.proves_complete() && !receipt.has_effective_rule(rule_index) {
                 evidence.mark_not_applicable(key.clone());
+            }
+        }
+        if self.typography_requested() {
+            match self.inherited_font_stack.outcome() {
+                InheritedFontStackOutcome::Typed if receipt.proves_typography() => {
+                    evidence.mark_applied_with_capabilities(
+                        FamilyThemeMechanismKey::Typography,
+                        [ThemeCapability::Typography],
+                    );
+                }
+                InheritedFontStackOutcome::ConfigOwned if receipt.proves_typography() => {
+                    evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography);
+                }
+                InheritedFontStackOutcome::Typed
+                | InheritedFontStackOutcome::ConfigOwned
+                | InheritedFontStackOutcome::Unsupported => evidence.mark_residual(
+                    FamilyThemeMechanismKey::Typography,
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                ),
+                InheritedFontStackOutcome::Inactive => {}
             }
         }
         evidence
@@ -392,18 +449,59 @@ struct RequirementPaintRuleObservation {
 pub(crate) struct RequirementPaintThemeReceipt {
     expectations: Arc<[NodeExpectation]>,
     checkpointed_nodes: Vec<bool>,
+    expected_title_count: usize,
+    emitted_title_count: usize,
+    title_matches: bool,
     attributes_match: bool,
     paint_ledger: DirectPaintTerminalLedger,
+    typography_requested: bool,
+    expected_font_family: Box<str>,
+    typography_font_family_recorded: bool,
+    typography_font_family_verified: bool,
 }
 
 impl RequirementPaintThemeReceipt {
     fn new(expectations: Arc<[NodeExpectation]>) -> Self {
+        Self::with_typography(expectations, false, false, "")
+    }
+
+    fn with_typography(
+        expectations: Arc<[NodeExpectation]>,
+        title_present: bool,
+        typography_requested: bool,
+        expected_font_family: &str,
+    ) -> Self {
         Self {
             checkpointed_nodes: vec![false; expectations.len()],
             expectations,
+            expected_title_count: usize::from(title_present),
+            emitted_title_count: 0,
+            title_matches: true,
             attributes_match: true,
             paint_ledger: DirectPaintTerminalLedger::default(),
+            typography_requested,
+            expected_font_family: expected_font_family.into(),
+            typography_font_family_recorded: false,
+            typography_font_family_verified: false,
         }
+    }
+
+    pub(crate) fn record_typography_font_family(&mut self, emitted_font_family: &str) {
+        if !self.typography_requested || self.typography_font_family_recorded {
+            self.typography_font_family_verified = false;
+            return;
+        }
+        self.typography_font_family_recorded = true;
+        self.typography_font_family_verified =
+            emitted_font_family == self.expected_font_family.as_ref();
+    }
+
+    pub(crate) fn record_title_text(&mut self, emitted_class: &str, text: &str) {
+        if text.trim().is_empty() {
+            return;
+        }
+        self.emitted_title_count = self.emitted_title_count.saturating_add(1);
+        self.title_matches &= emitted_class == "requirementDiagramTitleText";
     }
 
     pub(crate) fn record_checkpointed_node(
@@ -476,7 +574,19 @@ impl RequirementPaintThemeReceipt {
     }
 
     fn proves_complete(&self) -> bool {
-        self.attributes_match && self.checkpointed_nodes.iter().all(|entry| *entry)
+        self.attributes_match
+            && self.checkpointed_nodes.iter().all(|entry| *entry)
+            && self.emitted_title_count == self.expected_title_count
+            && self.title_matches
+            && (!self.typography_requested || self.proves_typography())
+    }
+
+    fn proves_typography(&self) -> bool {
+        !self.typography_requested
+            || (self.typography_font_family_recorded
+                && self.typography_font_family_verified
+                && self.emitted_title_count == self.expected_title_count
+                && self.title_matches)
     }
 
     fn has_effective_rule(&self, rule_index: usize) -> bool {

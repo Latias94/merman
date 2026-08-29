@@ -1,13 +1,22 @@
+mod common;
+
+use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 use merman_render::{DiagramFamilyId, LayoutOptions};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn requirement_fill_theme(fill: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
@@ -83,6 +92,14 @@ fn requirement_fill_with_ordinal_palette_theme(fill: CanvasPaint) -> DiagramThem
         .expect("compile Requirement fill and ordinal palette theme")
 }
 
+fn requirement_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::REQUIREMENT, typography),
+        ))
+        .expect("compile Requirement typography theme")
+}
+
 fn requirement_ordinal_palette_theme() -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
@@ -122,25 +139,56 @@ fn render_requirement_with_theme_requirement(
     engine: Engine,
     portability: ThemePortabilityRequirement,
 ) -> family::RenderedFamilySvg {
+    try_render_requirement_with_theme_requirement_and_environment(
+        source,
+        theme,
+        engine,
+        portability,
+        RenderEnvironment::deterministic(),
+    )
+    .expect("render themed Requirement")
+}
+
+fn render_requirement_with_theme_requirement_and_environment(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+    environment: RenderEnvironment,
+) -> family::RenderedFamilySvg {
+    try_render_requirement_with_theme_requirement_and_environment(
+        source,
+        theme,
+        engine,
+        portability,
+        environment,
+    )
+    .expect("render themed Requirement")
+}
+
+fn try_render_requirement_with_theme_requirement_and_environment(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+    environment: RenderEnvironment,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Requirement")
         .expect("detect themed Requirement");
-    let session = RenderEnvironment::deterministic()
+    let session = environment
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable Requirement session");
+        .expect("begin themed Requirement session");
 
-    family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed Requirement")
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("requirement-theme".to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("render themed Requirement")
+    family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("requirement-theme".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
 }
 
 fn render_requirement_without_theme(source: &str) -> family::RenderedFamilySvg {
@@ -255,6 +303,168 @@ fn same_named_requirement_and_element_source() -> &'static str {
     docref: Element owner
   }
 "#
+}
+
+#[derive(Debug)]
+struct RequirementTypedFontProbeMeasurer {
+    expected_font_family: String,
+    typed_calls: Arc<AtomicUsize>,
+    sans_serif_fallback_calls: Arc<AtomicUsize>,
+}
+
+impl TextMeasurer for RequirementTypedFontProbeMeasurer {
+    fn measure(&self, _text: &str, style: &TextStyle) -> TextMetrics {
+        match style.font_family.as_deref() {
+            Some(actual) if actual == self.expected_font_family => {
+                self.typed_calls.fetch_add(1, Ordering::Relaxed);
+            }
+            Some("sans-serif") => {
+                self.sans_serif_fallback_calls
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            actual => panic!(
+                "Requirement layout measurement must use the resolved font winner or Mermaid's explicit sans-serif fallback probe: {actual:?}"
+            ),
+        }
+        TextMetrics {
+            width: 100.0,
+            height: style.font_size,
+            line_count: 1,
+        }
+    }
+}
+
+#[test]
+fn requirement_typed_font_stack_reaches_measurement_stylesheet_and_evidence() {
+    let font_stack = FontStack::new(["Requirement Typed", "sans-serif"])
+        .expect("valid Requirement typed font stack");
+    let expected_font = font_stack.as_css();
+    let theme = requirement_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.requirement-typed-font-probe").unwrap(),
+        "test",
+    )
+    .unwrap();
+    let typed_calls = Arc::new(AtomicUsize::new(0));
+    let sans_serif_fallback_calls = Arc::new(AtomicUsize::new(0));
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(RequirementTypedFontProbeMeasurer {
+                expected_font_family: expected_font.clone(),
+                typed_calls: Arc::clone(&typed_calls),
+                sans_serif_fallback_calls: Arc::clone(&sans_serif_fallback_calls),
+            }),
+        )),
+    );
+    let rendered = render_requirement_with_theme_requirement_and_environment(
+        requirement_source(),
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        environment,
+    );
+    assert!(
+        typed_calls.load(Ordering::Relaxed) > 0,
+        "Requirement layout must measure at least one label with the typed font stack"
+    );
+    assert!(
+        sans_serif_fallback_calls.load(Ordering::Relaxed) > 0,
+        "the Mermaid-compatible sans-serif comparison probe should remain observable"
+    );
+    let css = requirement_stylesheet(rendered.svg());
+    for selector in [
+        "#requirement-theme",
+        "#requirement-theme svg",
+        "#requirement-theme .label",
+    ] {
+        assert!(
+            css.contains(&format!("{selector}{{font-family:{expected_font};")),
+            "missing resolved Requirement font rule for {selector}: {css}"
+        );
+    }
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn requirement_typed_font_stack_respects_source_font_family_ownership() {
+    let theme = requirement_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("Requirement Typed").expect("valid Requirement font stack"),
+    ));
+    let rendered = render_requirement_with_theme_and_engine(
+        r##"%%{init: {"themeVariables": {"fontFamily": "Source Requirement"}}}%%
+requirementDiagram
+  requirement req1 {
+    id: 1
+    text: Source-owned family
+    risk: low
+    verifymethod: analysis
+  }
+"##,
+        &theme,
+        legacy_init_theme_compat_engine(),
+    );
+    let css = requirement_stylesheet(rendered.svg());
+    assert!(
+        css.contains("#requirement-theme{font-family:Source Requirement;")
+            || css.contains("#requirement-theme svg{font-family:Source Requirement;"),
+        "source-owned Requirement font must win in final CSS: {css}"
+    );
+    assert!(!css.contains("font-family:Requirement Typed"), "{css}");
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn requirement_font_size_only_remains_a_legacy_compatibility_route() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Requirement legacy font size"),
+    );
+    let rendered = render_requirement_with_theme_requirement(
+        requirement_source(),
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let css = requirement_stylesheet(rendered.svg());
+    assert!(css.contains("#requirement-theme svg{font-family:"));
+    assert!(css.contains("font-size:24px"), "{css}");
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let error = match try_render_requirement_with_theme_requirement_and_environment(
+        requirement_source(),
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        RenderEnvironment::deterministic(),
+    ) {
+        Ok(_) => panic!("strict Requirement FontSize must retain compatibility residual"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id: DiagramFamilyId::REQUIREMENT,
+            residual_count: 1,
+        }
+    ));
 }
 
 #[test]

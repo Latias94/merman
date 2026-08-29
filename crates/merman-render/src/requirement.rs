@@ -149,12 +149,17 @@ impl RequirementPreparedArtifact {
         (&self.layout, &self.nodes, &self.edges)
     }
 
-    pub(crate) fn label_measurements_for_render<'a>(
+    pub(crate) fn label_measurements_for_render_with_font_family<'a>(
         &self,
         effective_config: &Value,
         measurer: &'a dyn TextMeasurer,
+        font_family_override: Option<&str>,
     ) -> RequirementRenderLabelMeasurements<'a> {
-        let settings = RequirementConfigView::new(effective_config).layout_settings();
+        let mut settings = RequirementConfigView::new(effective_config).layout_settings();
+        if let Some(font_family) = font_family_override {
+            settings.font_family = font_family.to_owned();
+            settings.calculation_font_family = font_family.to_owned();
+        }
         let reuse_prepared = self
             .measurement_binding
             .as_ref()
@@ -645,19 +650,21 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     resource_limits: RenderResourcePolicy,
 ) -> Result<RequirementPreparedArtifact> {
     let work_meter = OperationWorkMeter::new(resource_limits);
-    layout_requirement_diagram_typed_with_work_meter(
+    layout_requirement_diagram_typed_with_work_meter_and_font_family(
         model,
         effective_config,
         text_measurer,
+        None,
         &work_meter,
     )
 }
 
-/// Lays out a Requirement model under the cumulative work meter owned by the render operation.
-pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
+/// Lays out a Requirement model with an optional renderer-owned inherited font stack.
+pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_font_family(
     model: &RequirementDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
+    font_family_override: Option<&str>,
     work_meter: &OperationWorkMeter,
 ) -> Result<RequirementPreparedArtifact> {
     work_meter
@@ -670,7 +677,11 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
         normalize_dir(&model.direction)
     };
 
-    let cfg = RequirementConfigView::new(effective_config).layout_settings();
+    let mut cfg = RequirementConfigView::new(effective_config).layout_settings();
+    if let Some(font_family) = font_family_override {
+        cfg.font_family = font_family.to_owned();
+        cfg.calculation_font_family = font_family.to_owned();
+    }
     let measurement_binding = RequirementLabelMeasurementBinding::for_measurer(&cfg, text_measurer);
     let styles = requirement_measurement_styles(&cfg);
 

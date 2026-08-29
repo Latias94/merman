@@ -841,13 +841,48 @@ pub(super) fn requirement_css<I>(diagram_id: I, effective_config: &serde_json::V
 where
     I: SvgDiagramIdValue,
 {
+    requirement_css_with_font_family(diagram_id, effective_config, None).css
+}
+
+/// Values emitted by the Requirement stylesheet writer for terminal evidence.
+#[derive(Debug)]
+pub(super) struct RequirementCssEmission {
+    pub(super) css: String,
+    font_family: Box<str>,
+}
+
+impl RequirementCssEmission {
+    pub(super) fn font_family(&self) -> &str {
+        &self.font_family
+    }
+}
+
+pub(super) fn requirement_css_with_font_family<I>(
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    resolved_font_family: Option<&str>,
+) -> RequirementCssEmission
+where
+    I: SvgDiagramIdValue,
+{
     // Mirrors Mermaid 11.15 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last to match upstream fixtures.
     let id = CssSelectorDiagramId(diagram_id);
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let mut out = parts.css_prefix;
-    let font = parts.font_family;
-    let text_color = parts.text_color;
+    let parts = resolved_font_family.map_or_else(
+        || info_css_parts_with_config(diagram_id, effective_config),
+        |font_family| info_css_parts_with_font_family(diagram_id, effective_config, font_family),
+    );
+    let InfoCssParts {
+        css_prefix,
+        root_rule,
+        font_family,
+        text_color,
+        ..
+    } = parts;
+    let mut out = css_prefix;
+    let font_family = font_family.into_boxed_str();
+    let font = font_family.as_ref();
+    let text_color = text_color;
     let node_text_color = config_string(effective_config, &["themeVariables", "nodeTextColor"])
         .unwrap_or_else(|| text_color.clone());
 
@@ -930,8 +965,11 @@ where
         id,
         requirement_edge_label_background
     );
-    out.push_str(&parts.root_rule);
-    out
+    out.push_str(&root_rule);
+    RequirementCssEmission {
+        css: out,
+        font_family,
+    }
 }
 
 pub(super) fn er_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> Result<String>

@@ -100,7 +100,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
 ) -> Result<root_svg::RootedSvg> {
     let (layout, prepared_nodes, prepared_edges) = prepared.render_parts();
     let effective_config = sanitize_config.as_value();
-    let label_measurements = prepared.label_measurements_for_render(effective_config, measurer);
+    let font_family_override = paint_theme.font_family_override();
+    let label_measurements = prepared.label_measurements_for_render_with_font_family(
+        effective_config,
+        measurer,
+        font_family_override,
+    );
 
     fn mermaid_markdown_to_html(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
         let decoded = raw
@@ -334,7 +339,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
         .map(|n| (n.name.as_str(), n))
         .collect();
 
-    let font_family = Some(render_settings.font_family);
+    let font_family = Some(
+        font_family_override
+            .unwrap_or(render_settings.font_family.as_str())
+            .to_owned(),
+    );
     let font_size = render_settings.font_size;
     let default_fill_color = theme.color("requirementBackground", "#ECECFF");
     let default_stroke_color = theme.color("nodeBorder", "#9370DB");
@@ -521,7 +530,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str(&a11y_nodes);
 
-    let mut css = requirement_css(diagram_id, effective_config);
+    let mut css_emission =
+        requirement_css_with_font_family(diagram_id, effective_config, font_family_override);
     let color_css = requirement_color_css(
         diagram_id,
         look,
@@ -529,8 +539,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
         &background_colors,
         theme_color_limit,
     );
-    insert_requirement_color_css(&mut css, diagram_id, &color_css);
-    let _ = write!(&mut out, r#"<style>{css}</style>"#);
+    insert_requirement_color_css(&mut css_emission.css, diagram_id, &color_css);
+    let _ = write!(&mut out, r#"<style>{}</style>"#, css_emission.css);
+
+    let mut paint_theme_receipt = paint_theme.begin_terminal_receipt();
+    paint_theme_receipt.record_typography_font_family(css_emission.font_family());
 
     out.push_str("<g>");
 
@@ -679,7 +692,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
     }
     out.push_str("</g>");
 
-    let mut paint_theme_receipt = paint_theme.begin_terminal_receipt();
     out.push_str(r#"<g class="nodes">"#);
     for n in &layout.nodes {
         if n.id == "__proto__" {
@@ -1001,6 +1013,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             y = fmt(title_y),
             txt = escape_xml(title),
         );
+        paint_theme_receipt.record_title_text("requirementDiagramTitleText", title);
     }
 
     push_requirement_shadow_defs(&mut out, diagram_id.semantic_str(), effective_config);
@@ -1312,10 +1325,11 @@ mod tests {
         request: &SvgRenderOptions,
     ) -> crate::Result<String> {
         with_test_svg_execution(DiagramFamilyId::REQUIREMENT, request, |options| {
-            let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve(
+            let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
                 None,
                 effective_config,
                 model,
+                diagram_title,
                 options.work_meter(),
             )?;
             render_requirement_diagram_svg_model(
@@ -1357,10 +1371,11 @@ mod tests {
             DiagramFamilyId::REQUIREMENT,
         )
         .expect("SVG execution");
-        let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve(
+        let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
             None,
             &effective_config,
             &model,
+            None,
             execution.work_meter(),
         )?;
 

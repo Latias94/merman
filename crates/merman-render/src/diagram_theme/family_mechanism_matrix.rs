@@ -1039,6 +1039,7 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::RADAR
             | DiagramFamilyId::PIE
+            | DiagramFamilyId::REQUIREMENT
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1050,7 +1051,6 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::QUADRANT_CHART
-            | DiagramFamilyId::REQUIREMENT
             | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::TREEMAP
             | DiagramFamilyId::XY_CHART
@@ -5565,6 +5565,30 @@ mod tests {
                 "{family} must not retain a typography compatibility route"
             );
         }
+    }
+
+    #[test]
+    fn requirement_directly_owns_font_stack_and_keeps_font_size_compatibility() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("monospace")
+                    .expect("valid Requirement base font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid Requirement font size");
+        let routes = compile_base_typography_routes(DiagramFamilyId::REQUIREMENT, &typography);
+
+        assert_eq!(routes.len(), 2);
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+        }));
     }
 
     #[test]
