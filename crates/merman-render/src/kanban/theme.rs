@@ -214,23 +214,6 @@ impl KanbanTaskOccurrence {
 }
 
 impl KanbanTaskTheme {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        occurrences: Vec<KanbanTaskOccurrence>,
-        effective_config: &MermaidConfig,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        let inherited_font_stack =
-            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        Self::resolve_with_font_stack(
-            theme,
-            occurrences,
-            effective_config,
-            inherited_font_stack,
-            work_meter,
-        )
-    }
-
     pub(crate) fn resolve_with_font_stack(
         theme: Option<&ResolvedDiagramTheme>,
         occurrences: Vec<KanbanTaskOccurrence>,
@@ -562,11 +545,6 @@ impl KanbanTaskTheme {
             pending_label_keys,
             terminal_receipt: OnceLock::new(),
         })
-    }
-
-    pub(crate) fn baseline(item_count: usize) -> Self {
-        let effective_config = MermaidConfig::default();
-        Self::baseline_with_config(item_count, &effective_config)
     }
 
     pub(crate) fn baseline_with_config(
@@ -969,6 +947,7 @@ struct KanbanTaskReceiptItem {
 }
 
 impl KanbanTaskThemeReceipt {
+    #[cfg(test)]
     fn new(items: &[KanbanTaskResolvedItem], decisions: &[KanbanTaskTerminalDecision]) -> Self {
         Self::new_with_typography(
             items,
@@ -1216,6 +1195,7 @@ mod tests {
         MERMAID_TASK_RADIUS_PX,
     };
     use crate::DiagramFamilyId;
+    use crate::family::InheritedFontStackPlan;
     use crate::diagram_theme::{
         DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
         EffectInput, EffectPrimitive, FamilyThemeMechanismKey, ThemeCapability, ThemeRule,
@@ -1472,10 +1452,11 @@ mod tests {
             effect_id: bound_effect_id.to_string(),
         };
 
-        let task_theme = KanbanTaskTheme::resolve(
+        let task_theme = KanbanTaskTheme::resolve_with_font_stack(
             Some(&theme),
             vec![KanbanTaskOccurrence::new("task", [])],
             &MermaidConfig::default(),
+            InheritedFontStackPlan::resolve_property_local(Some(&theme), &MermaidConfig::default()),
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
         .expect("resolve Kanban task effect evidence fixture");

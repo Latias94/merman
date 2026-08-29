@@ -19,7 +19,8 @@ pub(crate) enum InheritedFontStackOutcome {
 /// Shared resolution core for families whose terminal text inherits one root font stack.
 ///
 /// The owning family remains responsible for its writer and occurrence receipts. This core shares
-/// only the final value and the typed/config/unsupported ownership outcome.
+/// only the final value and the FontStack ownership outcome. Unsupported sibling properties are
+/// tracked separately so they cannot suppress an independently typed FontStack route.
 #[derive(Debug)]
 pub(crate) struct InheritedFontStackPlan {
     font_family_css: Box<str>,
@@ -228,7 +229,7 @@ impl InheritedFontStackPlan {
                     )
                 });
         let mut typed_font_stack = false;
-        let mut residual_typography = false;
+        let mut font_stack_unsupported = false;
         let mut unsupported_typography_properties = BTreeSet::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match (route.mechanism(), route.disposition()) {
@@ -239,16 +240,17 @@ impl InheritedFontStackPlan {
                     typed_font_stack = true;
                 }
                 (
-                    FamilyThemeMechanism::BaseTypography(_),
+                    FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack),
                     FamilyThemeDisposition::LegacyCompatibility,
                 ) => {
-                    residual_typography = true;
+                    // The compatibility ledger owns this route; it is not a native FontStack
+                    // outcome and must not request a typed receipt.
                 }
                 (
                     FamilyThemeMechanism::BaseTypography(property),
                     FamilyThemeDisposition::Unsupported,
                 ) => {
-                    residual_typography = true;
+                    font_stack_unsupported |= property == ThemeTypographyProperty::FontStack;
                     unsupported_typography_properties.insert(property);
                 }
                 (FamilyThemeMechanism::BaseTypography(_), _)
@@ -271,7 +273,7 @@ impl InheritedFontStackPlan {
                 InheritedFontStackOutcome::ConfigOwned
             }
             _ if typed_font_stack => InheritedFontStackOutcome::Typed,
-            _ if residual_typography => InheritedFontStackOutcome::Unsupported,
+            _ if font_stack_unsupported => InheritedFontStackOutcome::Unsupported,
             _ => InheritedFontStackOutcome::Inactive,
         };
 
@@ -314,6 +316,14 @@ impl InheritedFontStackPlan {
         !self.unsupported_typography_properties.is_empty()
     }
 
+    /// Whether this family has any native typography evidence to settle.
+    ///
+    /// Legacy-compatible properties belong to the compatibility ledger and therefore do not make
+    /// the native terminal receipt path run by themselves.
+    pub(crate) fn typography_requested(&self) -> bool {
+        self.typed_font_stack_requested || self.has_unsupported_typography_properties()
+    }
+
     pub(crate) fn mark_unsupported_typography_evidence(
         &self,
         evidence: &mut FamilyThemeEvidence,
@@ -327,5 +337,66 @@ impl InheritedFontStackPlan {
                 evidence.mark_not_applicable(key);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
+    };
+
+    fn resolved_typography_theme(
+        family: DiagramFamilyId,
+        style: ThemeTextStyle,
+    ) -> ResolvedDiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(TypographySpec::default().with_family_style(family, style)),
+            )
+            .expect("compile typography fixture")
+            .resolve(family)
+    }
+
+    #[test]
+    fn legacy_font_size_does_not_request_native_font_stack_evidence() {
+        let theme = resolved_typography_theme(
+            DiagramFamilyId::REQUIREMENT,
+            ThemeTextStyle::default()
+                .with_font_size_px(24.0)
+                .expect("valid legacy font size"),
+        );
+        let plan =
+            InheritedFontStackPlan::resolve_property_local(Some(&theme), &MermaidConfig::default());
+
+        assert_eq!(plan.outcome(), InheritedFontStackOutcome::Inactive);
+        assert!(!plan.typed_font_stack_requested());
+        assert!(!plan.typography_requested());
+        assert!(!plan.has_unsupported_typography_properties());
+    }
+
+    #[test]
+    fn unsupported_sibling_does_not_suppress_typed_font_stack() {
+        let theme = resolved_typography_theme(
+            DiagramFamilyId::WARDLEY,
+            ThemeTextStyle::default()
+                .with_font_stack(FontStack::single("Typed Wardley").expect("valid font stack"))
+                .with_font_size_px(24.0)
+                .expect("valid unsupported font size"),
+        );
+        let plan =
+            InheritedFontStackPlan::resolve_property_local(Some(&theme), &MermaidConfig::default());
+
+        assert_eq!(plan.outcome(), InheritedFontStackOutcome::Typed);
+        assert!(plan.typed_font_stack_requested());
+        assert!(plan.typed_font_stack_active());
+        assert!(plan.typography_requested());
+        assert!(
+            plan.unsupported_typography_properties
+                .contains(&ThemeTypographyProperty::FontSize)
+        );
     }
 }

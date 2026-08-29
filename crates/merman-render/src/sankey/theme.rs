@@ -70,11 +70,8 @@ impl SankeyTypographyThemePlan {
         label_count: usize,
         outlined_labels: bool,
     ) -> Option<SankeyTypographyThemeReceipt> {
-        let typography_requested = self.inherited_font_stack.typed_font_stack_requested()
-            || self
-                .inherited_font_stack
-                .has_unsupported_typography_properties();
-        typography_requested
+        self.inherited_font_stack
+            .typography_requested()
             .then(|| SankeyTypographyThemeReceipt::new(label_count, outlined_labels))
     }
 

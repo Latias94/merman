@@ -9,10 +9,7 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
-use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan,
-};
+use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::theme::MermaidThemeAdapter;
 
@@ -196,15 +193,11 @@ impl RadarTypographyThemePlan {
     }
 
     fn typography_requested(&self) -> bool {
-        self.inherited_font_stack.typed_font_stack_requested()
-            || self.typed_font_size_requested
-            || self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported
+        self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
 
     fn observes_inherited_text(&self) -> bool {
-        self.inherited_font_stack.typed_font_stack_requested()
-            || self.typed_font_size_requested
-            || self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported
+        self.typography_requested()
     }
 }
 

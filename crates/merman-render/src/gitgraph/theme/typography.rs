@@ -7,10 +7,7 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan,
-};
+use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
 use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
 use crate::text::TextStyle;
 
@@ -270,9 +267,7 @@ impl GitGraphTypographyThemePlan {
     }
 
     fn typography_requested(&self) -> bool {
-        self.inherited_font_stack.typed_font_stack_requested()
-            || self.typed_font_size_requested
-            || self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported
+        self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
 
     fn text_style(&self, font_size_px: f64) -> TextStyle {

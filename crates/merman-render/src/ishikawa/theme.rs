@@ -10,10 +10,9 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::{IshikawaBranchLayout, IshikawaDiagramLayout, IshikawaTextLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -332,9 +331,7 @@ impl IshikawaTextThemePlan {
     }
 
     fn typography_requested(&self) -> bool {
-        self.inherited_font_stack.typed_font_stack_requested()
-            || self.typed_font_size_requested
-            || self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported
+        self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
 
     fn finish_typography_evidence(&self, evidence: &mut FamilyThemeEvidence) {
