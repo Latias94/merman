@@ -31,6 +31,7 @@ fn quadrantchart_transform(x: f64, y: f64, rotation: f64) -> String {
 fn write_quadrantchart_axis_labels(
     out: &mut impl SvgOutput,
     axis_labels: &[crate::model::QuadrantChartAxisLabelData],
+    mut record_text: impl FnMut(&str),
 ) -> Result<()> {
     for label in axis_labels {
         let _ = write!(
@@ -44,6 +45,7 @@ fn write_quadrantchart_axis_labels(
             text = escape_xml(&label.text),
         );
         out.checkpoint()?;
+        record_text(&label.text);
     }
     Ok(())
 }
@@ -149,11 +151,23 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         out.checkpoint()?;
     }
 
+    let mut point_theme_receipt = point_theme.begin_terminal_receipt(layout);
+
     out.push_str("<style>");
     out.checkpoint()?;
-    let css = info_css_with_config(diagram_id.semantic_str(), effective_config);
-    out.push_str(&css);
-    drop(css);
+    let css_write = write_info_css_with_font_family(
+        &mut out,
+        diagram_id.semantic_str(),
+        effective_config,
+        point_theme.font_family_css(),
+    )?;
+    if let Some(receipt) = point_theme_receipt.as_mut() {
+        receipt.record_css_emission(
+            css_write.root_font_family_css(),
+            css_write.inherited_font_family_css(),
+            css_write.root_variable_font_family_css(),
+        );
+    }
     out.checkpoint()?;
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
     out.push_str(r#"</style><g/>"#);
@@ -193,6 +207,9 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             text = escape_xml(&quadrant.text.text),
         );
         out.checkpoint()?;
+        if let Some(receipt) = point_theme_receipt.as_mut() {
+            receipt.record_quadrant_text(&quadrant.text.text);
+        }
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -221,7 +238,6 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     // Points.
     out.push_str(r#"<g class="data-points">"#);
     out.checkpoint()?;
-    let mut point_theme_receipt = point_theme.begin_terminal_receipt();
     for (point_index, point) in layout.points.iter().enumerate() {
         out.push_str(r#"<g class="data-point">"#);
         out.checkpoint()?;
@@ -266,6 +282,9 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             text = escape_xml(&point.text.text),
         );
         out.checkpoint()?;
+        if let Some(receipt) = point_theme_receipt.as_mut() {
+            receipt.record_point_text(&point.text.text);
+        }
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -275,7 +294,11 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     // Axis labels.
     out.push_str(r#"<g class="labels">"#);
     out.checkpoint()?;
-    write_quadrantchart_axis_labels(&mut out, &layout.axis_labels)?;
+    write_quadrantchart_axis_labels(&mut out, &layout.axis_labels, |text| {
+        if let Some(receipt) = point_theme_receipt.as_mut() {
+            receipt.record_axis_label(text);
+        }
+    })?;
     out.push_str("</g>");
     out.checkpoint()?;
 
@@ -294,6 +317,9 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             text = escape_xml(&t.text),
         );
         out.checkpoint()?;
+        if let Some(receipt) = point_theme_receipt.as_mut() {
+            receipt.record_title_text(&t.text);
+        }
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -390,7 +416,7 @@ mod tests {
             .collect::<Vec<_>>();
         let mut out = RejectAfterFirstWrite::default();
 
-        let error = write_quadrantchart_axis_labels(&mut out, &axis_labels)
+        let error = write_quadrantchart_axis_labels(&mut out, &axis_labels, |_| {})
             .expect_err("the rejecting sink must stop QuadrantChart axis-label emission");
 
         assert!(matches!(error, crate::Error::InvalidModel { .. }));

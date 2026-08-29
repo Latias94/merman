@@ -4,10 +4,11 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
     LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient,
     Specified, ThemeColorValue, ThemeGeometryPatch, ThemeLength, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
+    TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -44,6 +45,17 @@ fn quadrantchart_series_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) 
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(styles))
         .expect("compile Quadrant Chart series theme")
+}
+
+fn quadrantchart_typography_theme(font_stack: FontStack) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::QUADRANT_CHART,
+                ThemeTextStyle::default().with_font_stack(font_stack),
+            ),
+        ))
+        .expect("compile Quadrant Chart typography theme")
 }
 
 fn prepare_quadrantchart_family_with_theme_and_engine(
@@ -246,6 +258,86 @@ quadrantChart
 
     assert_contains(&svg, ">Body quadrant</text>");
     assert!(!svg.contains(">Frontmatter quadrant</text>"));
+}
+
+#[test]
+fn quadrantchart_typed_font_stack_reaches_scoped_css_and_terminal_receipt() {
+    let font_stack =
+        FontStack::new(["Quadrant Typed", "monospace"]).expect("valid Quadrant font stack");
+    let expected_font = font_stack.as_css();
+    let theme = quadrantchart_typography_theme(font_stack);
+    let rendered = render_quadrantchart_with_theme_and_engine(
+        r#"quadrantChart
+  title Typography proof
+  x-axis Low --> High
+  y-axis Low --> High
+  quadrant-1 Plan
+  Feature: [0.7, 0.8]
+"#,
+        &theme,
+        Engine::new(),
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid typed Quadrant Chart SVG XML");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("typed Quadrant Chart SVG must include its stylesheet");
+
+    assert!(
+        stylesheet.contains(&format!("#quadrantchart{{font-family:{expected_font};")),
+        "typed Quadrant Chart FontStack must reach the scoped root CSS"
+    );
+    assert!(
+        stylesheet.contains(&format!("#quadrantchart svg{{font-family:{expected_font};")),
+        "typed Quadrant Chart FontStack must reach nested SVG CSS"
+    );
+    assert!(
+        stylesheet.contains(&format!(
+            "#quadrantchart :root{{--mermaid-font-family:{expected_font};}}"
+        )),
+        "typed Quadrant Chart FontStack must reach the Mermaid root variable"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn quadrantchart_site_font_family_outranks_typed_font_stack() {
+    let theme = quadrantchart_typography_theme(
+        FontStack::single("Quadrant Typed").expect("valid typed Quadrant font stack"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "fontFamily": "Site Quadrant Font" }
+    })));
+    let rendered = render_quadrantchart_with_theme_and_engine(
+        "quadrantChart\nFeature: [0.5, 0.5]\n",
+        &theme,
+        engine,
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid site-owned Quadrant SVG XML");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("site-owned Quadrant Chart SVG must include its stylesheet");
+
+    assert!(stylesheet.contains("#quadrantchart{font-family:Site Quadrant Font;"));
+    assert!(!stylesheet.contains("Quadrant Typed"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

@@ -2716,6 +2716,53 @@ mod tests {
     }
 
     #[test]
+    fn quadrant_chart_font_stack_is_property_local_while_font_size_uses_legacy_bridge() {
+        const SOURCE: &str = "quadrantChart\nFeature: [0.5, 0.5]\n";
+
+        let font_stack = super::super::FontStack::new(["Quadrant Typed", "sans-serif"])
+            .expect("valid Quadrant Chart font stack");
+        let direct_spec =
+            DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
+                DiagramFamilyId::QUADRANT_CHART,
+                TextStyle::default().with_font_stack(font_stack.clone()),
+            ));
+        let direct_bridge =
+            bridge(&direct_spec).compile_for_family(DiagramFamilyId::QUADRANT_CHART);
+        assert!(direct_bridge.overlay.is_empty());
+        assert!(direct_bridge.contribution_ids.is_empty());
+
+        let mixed_typography = TextStyle::default()
+            .with_font_stack(font_stack)
+            .with_font_size_px(24.0)
+            .expect("valid mixed Quadrant Chart typography");
+        let mixed_spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default()
+                .with_family_style(DiagramFamilyId::QUADRANT_CHART, mixed_typography),
+        );
+        let mixed_bridge = bridge(&mixed_spec).compile_for_family(DiagramFamilyId::QUADRANT_CHART);
+        assert!(
+            mixed_bridge
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.quadrantChart.typography")
+        );
+
+        let baseline = parse(&DiagramThemeSpec::default(), SOURCE);
+        let mixed = parse(&mixed_spec, SOURCE);
+        assert_eq!(fallback_contribution_count(&mixed), 1);
+        assert_eq!(
+            mixed.effective_config.get_str("themeVariables.fontSize"),
+            Some("24px")
+        );
+        for path in ["fontFamily", "themeVariables.fontFamily"] {
+            assert_eq!(
+                mixed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed Quadrant Chart FontStack must not write legacy `{path}`"
+            );
+        }
+    }
+
+    #[test]
     fn railroad_font_stack_and_size_retire_only_the_legacy_typography_projection() {
         let typography = TextStyle::default()
             .with_font_stack(

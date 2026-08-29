@@ -12,19 +12,41 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
+use crate::model::QuadrantChartDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 /// Typed geometry and paint for Quadrant Chart point marks and their terminal evidence.
 #[derive(Debug)]
 pub(crate) struct QuadrantChartPointThemePlan {
     points: Box<[QuadrantChartPointThemeExpectation]>,
+    inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, QuadrantChartPointPendingEvidence>,
     terminal_receipt: OnceLock<QuadrantChartPointThemeReceipt>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct QuadrantChartTextOccurrences {
+    quadrants: usize,
+    points: usize,
+    axis_labels: usize,
+    titles: usize,
+}
+
+impl QuadrantChartTextOccurrences {
+    fn from_layout(layout: &QuadrantChartDiagramLayout) -> Self {
+        Self {
+            quadrants: layout.quadrants.len(),
+            points: layout.points.len(),
+            axis_labels: layout.axis_labels.len(),
+            titles: usize::from(layout.title.is_some()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -85,8 +107,10 @@ impl QuadrantChartPointThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let point_count = model.points.len();
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let Some(theme) = theme else {
-            return Ok(Self::baseline(point_count));
+            return Ok(Self::baseline(point_count, inherited_font_stack));
         };
 
         let config_owns_radius = merman_core::__private::config_path_overrides_typed_default(
@@ -353,20 +377,29 @@ impl QuadrantChartPointThemePlan {
 
         Ok(Self {
             points: points.into_boxed_slice(),
+            inherited_font_stack,
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
         })
     }
 
-    pub(crate) fn baseline(point_count: usize) -> Self {
+    pub(crate) fn baseline(
+        point_count: usize,
+        inherited_font_stack: InheritedFontStackPlan,
+    ) -> Self {
         Self {
             points: vec![QuadrantChartPointThemeExpectation::default(); point_count]
                 .into_boxed_slice(),
+            inherited_font_stack,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
         }
+    }
+
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.inherited_font_stack.font_family_css()
     }
 
     pub(crate) fn point_count(&self) -> usize {
@@ -395,10 +428,21 @@ impl QuadrantChartPointThemePlan {
             .map(|fill| fill.css.as_ref())
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<QuadrantChartPointThemeReceipt> {
-        let requires_receipt =
-            !self.pending.is_empty() || self.points.iter().any(|point| point.fill.is_some());
-        requires_receipt.then(|| QuadrantChartPointThemeReceipt::new(self.points.clone()))
+    pub(crate) fn begin_terminal_receipt(
+        &self,
+        layout: &QuadrantChartDiagramLayout,
+    ) -> Option<QuadrantChartPointThemeReceipt> {
+        let requires_receipt = !self.pending.is_empty()
+            || self.points.iter().any(|point| point.fill.is_some())
+            || self.inherited_font_stack.typography_requested();
+        requires_receipt.then(|| {
+            QuadrantChartPointThemeReceipt::new(
+                self.points.clone(),
+                QuadrantChartTextOccurrences::from_layout(layout),
+                self.inherited_font_stack.typography_requested(),
+                self.font_family_css(),
+            )
+        })
     }
 
     pub(crate) fn record_terminal(&self, receipt: QuadrantChartPointThemeReceipt) -> bool {
@@ -408,8 +452,45 @@ impl QuadrantChartPointThemePlan {
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         let Some(receipt) = self.terminal_receipt.get() else {
+            if self.inherited_font_stack.typography_requested() {
+                self.inherited_font_stack
+                    .mark_unsupported_typography_evidence(&mut evidence, true);
+                if self.inherited_font_stack.typed_font_stack_requested() {
+                    evidence.mark_residual(
+                        FamilyThemeMechanismKey::Typography(
+                            crate::diagram_theme::ThemeTypographyProperty::FontStack,
+                        ),
+                        FamilyThemeResidualReason::UnsupportedTypography,
+                    );
+                }
+            }
             return evidence;
         };
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_text());
+        if self.inherited_font_stack.typed_font_stack_requested() {
+            let key = FamilyThemeMechanismKey::Typography(
+                crate::diagram_theme::ThemeTypographyProperty::FontStack,
+            );
+            if !receipt.has_visible_text() {
+                evidence.mark_not_applicable(key);
+            } else if receipt.proves_font_stack()
+                && self.inherited_font_stack.typed_font_stack_active()
+            {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else {
+                match self.inherited_font_stack.outcome() {
+                    InheritedFontStackOutcome::ConfigOwned if receipt.proves_font_stack() => {
+                        evidence.mark_not_applicable(key)
+                    }
+                    InheritedFontStackOutcome::Typed
+                    | InheritedFontStackOutcome::ConfigOwned
+                    | InheritedFontStackOutcome::Unsupported => evidence
+                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
+                    InheritedFontStackOutcome::Inactive => {}
+                }
+            }
+        }
         for (key, pending) in &self.pending {
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
@@ -559,25 +640,102 @@ fn point_fill_expectation(
     })
 }
 
-/// Writer-owned proof that all point circles reached the terminal SVG in semantic order.
+/// Writer-owned proof that themed point circles and inherited typography reached the terminal SVG.
 #[derive(Debug)]
 pub(crate) struct QuadrantChartPointThemeReceipt {
     expectations: Box<[QuadrantChartPointThemeExpectation]>,
     next_point_index: usize,
     attributes_match: bool,
+    expected_text: QuadrantChartTextOccurrences,
+    emitted_text: QuadrantChartTextOccurrences,
+    visible_text_count: usize,
+    expected_font_family_css: Box<str>,
+    typography_requested: bool,
+    css_emitted: bool,
+    css_emission_unique: bool,
+    css_font_family_matches: bool,
     radius_rules: BTreeSet<usize>,
     fill_rules: BTreeSet<usize>,
 }
 
 impl QuadrantChartPointThemeReceipt {
-    fn new(expectations: Box<[QuadrantChartPointThemeExpectation]>) -> Self {
+    fn new(
+        expectations: Box<[QuadrantChartPointThemeExpectation]>,
+        expected_text: QuadrantChartTextOccurrences,
+        typography_requested: bool,
+        expected_font_family_css: &str,
+    ) -> Self {
         Self {
             expectations,
             next_point_index: 0,
             attributes_match: true,
+            expected_text,
+            emitted_text: QuadrantChartTextOccurrences::default(),
+            visible_text_count: 0,
+            expected_font_family_css: expected_font_family_css.into(),
+            typography_requested,
+            css_emitted: false,
+            css_emission_unique: true,
+            css_font_family_matches: false,
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
         }
+    }
+
+    pub(crate) fn record_css_emission(
+        &mut self,
+        root_font_family_css: &str,
+        inherited_font_family_css: &str,
+        root_variable_font_family_css: &str,
+    ) {
+        if !self.typography_requested {
+            return;
+        }
+        if self.css_emitted {
+            self.css_emission_unique = false;
+            return;
+        }
+        let expected = self.expected_font_family_css.as_ref();
+        self.css_emitted = true;
+        self.css_font_family_matches = root_font_family_css == expected
+            && inherited_font_family_css == expected
+            && root_variable_font_family_css == expected;
+    }
+
+    fn record_text(&mut self, role: QuadrantChartTextRole, text: &str) {
+        match role {
+            QuadrantChartTextRole::Quadrant => {
+                self.emitted_text.quadrants = self.emitted_text.quadrants.saturating_add(1);
+            }
+            QuadrantChartTextRole::Point => {
+                self.emitted_text.points = self.emitted_text.points.saturating_add(1);
+            }
+            QuadrantChartTextRole::AxisLabel => {
+                self.emitted_text.axis_labels = self.emitted_text.axis_labels.saturating_add(1);
+            }
+            QuadrantChartTextRole::Title => {
+                self.emitted_text.titles = self.emitted_text.titles.saturating_add(1);
+            }
+        }
+        if !text.trim().is_empty() {
+            self.visible_text_count = self.visible_text_count.saturating_add(1);
+        }
+    }
+
+    pub(crate) fn record_quadrant_text(&mut self, text: &str) {
+        self.record_text(QuadrantChartTextRole::Quadrant, text);
+    }
+
+    pub(crate) fn record_point_text(&mut self, text: &str) {
+        self.record_text(QuadrantChartTextRole::Point, text);
+    }
+
+    pub(crate) fn record_axis_label(&mut self, text: &str) {
+        self.record_text(QuadrantChartTextRole::AxisLabel, text);
+    }
+
+    pub(crate) fn record_title_text(&mut self, text: &str) {
+        self.record_text(QuadrantChartTextRole::Title, text);
     }
 
     pub(crate) fn record_checkpointed_point(
@@ -619,7 +777,24 @@ impl QuadrantChartPointThemeReceipt {
     }
 
     fn proves_complete(&self) -> bool {
-        self.next_point_index == self.expectations.len() && self.attributes_match
+        self.next_point_index == self.expectations.len()
+            && self.attributes_match
+            && self.proves_typography()
+    }
+
+    fn proves_typography(&self) -> bool {
+        !self.typography_requested
+            || (self.css_emission_unique
+                && self.css_font_family_matches
+                && self.emitted_text == self.expected_text)
+    }
+
+    fn proves_font_stack(&self) -> bool {
+        self.proves_typography()
+    }
+
+    fn has_visible_text(&self) -> bool {
+        self.visible_text_count != 0
     }
 
     fn proves_rule(&self, rule_index: usize, pending: &QuadrantChartPointPendingEvidence) -> bool {
@@ -627,6 +802,14 @@ impl QuadrantChartPointThemeReceipt {
             && (!pending.radius || self.radius_rules.contains(&rule_index))
             && (!pending.fill || self.fill_rules.contains(&rule_index))
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum QuadrantChartTextRole {
+    Quadrant,
+    Point,
+    AxisLabel,
+    Title,
 }
 
 #[derive(Debug, Default)]
@@ -647,5 +830,70 @@ struct QuadrantChartPointPendingEvidence {
 impl QuadrantChartPointPendingEvidence {
     const fn requires_terminal_proof(&self) -> bool {
         self.radius || self.fill
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn receipt(typography_requested: bool) -> QuadrantChartPointThemeReceipt {
+        QuadrantChartPointThemeReceipt::new(
+            vec![QuadrantChartPointThemeExpectation::default()].into_boxed_slice(),
+            QuadrantChartTextOccurrences {
+                quadrants: 1,
+                points: 1,
+                axis_labels: 1,
+                titles: 1,
+            },
+            typography_requested,
+            if typography_requested {
+                "QuadrantSans"
+            } else {
+                ""
+            },
+        )
+    }
+
+    fn record_complete_text_pass(receipt: &mut QuadrantChartPointThemeReceipt) {
+        receipt.record_quadrant_text("Q1");
+        receipt.record_checkpointed_point(0, None, "#123456");
+        receipt.record_point_text("Point");
+        receipt.record_axis_label("Low");
+        receipt.record_title_text("Title");
+    }
+
+    #[test]
+    fn typography_receipt_requires_matching_css_and_each_text_role() {
+        let mut complete = receipt(true);
+        complete.record_css_emission("QuadrantSans", "QuadrantSans", "QuadrantSans");
+        record_complete_text_pass(&mut complete);
+        assert!(complete.proves_complete());
+
+        let mut missing_axis = receipt(true);
+        missing_axis.record_css_emission("QuadrantSans", "QuadrantSans", "QuadrantSans");
+        missing_axis.record_quadrant_text("Q1");
+        missing_axis.record_checkpointed_point(0, None, "#123456");
+        missing_axis.record_point_text("Point");
+        missing_axis.record_title_text("Title");
+        assert!(!missing_axis.proves_complete());
+
+        let mut wrong_css = receipt(true);
+        wrong_css.record_css_emission("Wrong", "QuadrantSans", "QuadrantSans");
+        record_complete_text_pass(&mut wrong_css);
+        assert!(!wrong_css.proves_complete());
+
+        let mut duplicate_css = receipt(true);
+        duplicate_css.record_css_emission("QuadrantSans", "QuadrantSans", "QuadrantSans");
+        duplicate_css.record_css_emission("QuadrantSans", "QuadrantSans", "QuadrantSans");
+        record_complete_text_pass(&mut duplicate_css);
+        assert!(!duplicate_css.proves_complete());
+    }
+
+    #[test]
+    fn point_receipt_does_not_require_unrelated_text_when_typography_is_not_requested() {
+        let mut point_only = receipt(false);
+        point_only.record_checkpointed_point(0, None, "#123456");
+        assert!(point_only.proves_complete());
     }
 }

@@ -1195,12 +1195,12 @@ mod tests {
         MERMAID_TASK_RADIUS_PX,
     };
     use crate::DiagramFamilyId;
-    use crate::family::InheritedFontStackPlan;
     use crate::diagram_theme::{
         DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
         EffectInput, EffectPrimitive, FamilyThemeMechanismKey, ThemeCapability, ThemeRule,
         ThemeRuleSet, ThemeStylePatch, ThemeTarget,
     };
+    use crate::family::InheritedFontStackPlan;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use merman_core::MermaidConfig;
 
