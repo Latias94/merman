@@ -2429,7 +2429,7 @@ pub fn debug_build_state_diagram_dagre_graph(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::{TextMetrics, VendoredFontMetricsTextMeasurer};
+    use crate::text::{DeterministicTextMeasurer, TextMetrics};
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
     struct NonLatticeMeasurer {
@@ -2462,7 +2462,7 @@ mod tests {
         let input = build_state_diagram_dagre_input(
             model,
             parsed.metadata().effective_config.as_value(),
-            &VendoredFontMetricsTextMeasurer::default(),
+            &DeterministicTextMeasurer::default(),
         )
         .expect("build State Dagre input");
 

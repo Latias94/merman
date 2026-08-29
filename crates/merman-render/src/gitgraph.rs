@@ -80,7 +80,7 @@ fn commit_axis_start_pos(dir: &str) -> f64 {
 fn branch_label_bbox_width_px(text: &str, style: &TextStyle, measurer: &dyn TextMeasurer) -> f64 {
     // Mermaid creates the same `<text><tspan>` node for every direction and reads its `getBBox()`.
     // Keep that DOM measurement semantic intact so a host SvgBBox route can provide the exact
-    // system-font result. The vendored profile remains a deterministic fallback.
+    // system-font result. The built-in deterministic profile remains the fallback.
     measurer
         .measure_svg_tspan_text_bbox_width_px(text, style)
         .max(0.0)
@@ -823,7 +823,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::VendoredFontMetricsTextMeasurer;
+    use crate::text::DeterministicTextMeasurer;
     use merman_core::diagrams::git_graph::{
         GitGraphBranchRenderModel, GitGraphCommitRenderModel, GitGraphRenderModel,
     };
@@ -921,7 +921,7 @@ mod tests {
 
     #[test]
     fn lr_layout_uses_mermaid_11_16_branch_spine_geometry() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
 
         for (theme, expected_y) in [("default", -2.0), ("redux", 7.0)] {
             let model = GitGraphRenderModel {
@@ -982,7 +982,7 @@ mod tests {
             warning_facts: Vec::new(),
         };
         let cfg = json!({ "gitGraph": { "parallelCommits": true } });
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let layout = layout_gitgraph_diagram_typed(&model, &cfg, &measurer).unwrap();
 
         let x_by_id = layout
@@ -1028,7 +1028,7 @@ mod tests {
             warning_facts: Vec::new(),
         };
         let cfg = json!({ "gitGraph": { "parallelCommits": true } });
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let layout = layout_gitgraph_diagram_typed(&model, &cfg, &measurer).unwrap();
 
         let y_by_id = layout

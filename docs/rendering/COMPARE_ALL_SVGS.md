@@ -5,10 +5,13 @@ checks in one shot and aggregates failures.
 
 ## Run
 
-- Full suite, DOM parity enabled:
+- Strict investigation mode, where reviewed browser text-layout residuals remain blocking:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
 
-- Use a specific DOM comparison mode for all diagrams:
+- Release policy with browser text layout reported as diagnostic:
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
+
+- Use a specific strict DOM comparison mode for all diagrams:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 - Only run a subset of diagrams:
@@ -38,16 +41,46 @@ missing registered fixtures, stale residuals, or a label/path identity mismatch 
 even when the selected DOM profile passes. The contract is documented in
 `docs/alignment/SEMANTIC_LABEL_PARITY.md`.
 
-## Flowchart-specific options
+## Browser text layout diagnostics
 
-`compare-all-svgs` forwards these only to the Flowchart compare task:
+`--diagnostic-browser-text-layout` is intentionally narrower than `continue-on-error`. It consults
+`fixtures/_verification/browser-text-layout-residuals.json`, whose entries bind a reviewed fixture,
+input digest, pinned upstream SVG digest, admitted comparison modes, the exact three-decimal
+comparison policy, and a canonical deterministic local SVG signature. The local signature requires
+an `<svg>` document root, rejects processing instructions, and preserves namespace URIs, element
+order, text (including non-breaking spaces), stylesheet content, IDs, classes, and every non-path
+attribute value. Attribute order is canonicalized because it is not XML semantics. Only numeric
+operands inside `path d` are rounded to three decimals, which removes the verified last-bit
+ARM/x86/Linux float drift while retaining path commands and geometry changes visible at the gate's
+precision. The catalog covers measurement-led cases in Architecture, Class, Flowchart, Gantt,
+Journey, Sequence, Timeline, and Treemap, whose pinned Mermaid implementations derive wrapping,
+path topology, task-label placement, or adaptive font size from browser
+`getBBox()`/`getComputedTextLength()` results that the font-agnostic deterministic fallback does
+not claim to reproduce.
 
-- `--flowchart-text-measurer vendored`
-- `--report-root`
+Render failures, malformed upstream or local DOM, semantic-label failures, operation-provenance
+failures, invalid roots, changed root sizing policy, unregistered fixtures, unlisted modes, changed
+input/upstream digests, changed local signatures, stale receipts, and every other DOM mismatch
+remain blocking. A changed node, class, id, text, stylesheet, namespace, element order, path command,
+or path coordinate at three-decimal precision therefore cannot reuse an old receipt. Omitting the
+flag restores blocking upstream DOM comparison for parity work.
+
+## Root reports
+
+`compare-all-svgs` forwards `--report-root` to diagram families that support the root-delta report.
+Text measurement is always deterministic; there is no single-value selector.
 
 Example:
 
-- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root`
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root`
+
+The Linux release lane follows the successful DOM/semantic comparison with
+`npm run oracle:root-viewport --prefix playground/tests`. The browser oracle mounts the generated
+SVGs in Chromium, captures transparent alpha outside each root, and compares structural overflow
+with the pinned upstream artifact. Browser-owned SVG text, HTML label paint, and RoughJS output are
+diagnostic. A new structural overflow edge or a deeper edge is blocking. The only exact root-paint
+receipt catalog is `fixtures/_verification/root-viewport-residuals.json`; each entry binds both SVG
+hashes, and stale or unused entries fail rather than widening a tolerance.
 
 ## Notes
 
@@ -67,7 +100,8 @@ Example:
   - Some drift is inherent to browser font and float behavior. Production output is never adjusted
     by fixture id; bounded browser-only residuals stay visible in parity reports and accepted
     residual policy.
-  - New or changed residuals still fail the gate. Fix source-backed semantics, layout, emitted
-    geometry, or measurement rather than adding a root pin.
+  - New or changed residuals fail the gate unless an exact browser-text-layout receipt is reviewed
+    and committed. Fix source-backed semantics, layout, or emitted geometry rather than adding a
+    root pin or font-specific fallback.
 - Semantic-label geometry always uses its independent three-decimal contract. Raising DOM
   precision to six decimals cannot disable or re-quantize signed label evidence.

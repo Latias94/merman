@@ -460,10 +460,10 @@ fn assert_capability_catalog(
         .get("protocol_version")
         .and_then(JsonValue::as_u64)
         .is_none_or(|version| version == 0)
-        || text_measurement_provider_ids != vec!["vendored".to_string()]
+        || text_measurement_provider_ids != vec!["deterministic".to_string()]
     {
         return Err(smoke_error(format!(
-            "Typst text measurement metadata must expose only the vendored provider: {}",
+            "Typst text measurement metadata must expose only the deterministic provider: {}",
             JsonValue::Object(text_measurement.clone())
         )));
     }
@@ -1324,7 +1324,7 @@ mod tests {
                 "system_adapter_ids": [],
                 "text_measurement": {
                     "protocol_version": 1,
-                    "provider_ids": ["vendored"],
+                    "provider_ids": ["deterministic"],
                     "future_measurement_metadata": true,
                 },
                 "future_capability_metadata": {},

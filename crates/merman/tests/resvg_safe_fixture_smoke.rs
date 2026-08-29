@@ -320,11 +320,11 @@ impl TypedSvgRenderer {
         self
     }
 
-    fn with_vendored_text_measurer(mut self) -> Self {
+    fn with_deterministic_text_measurer(mut self) -> Self {
         self.request.environment = self
             .request
             .environment
-            .with_text_measurement_policy(TextMeasurementPolicy::parity());
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
         self
     }
 
@@ -423,7 +423,7 @@ fn render_resvg_safe_with_options(
     };
 
     renderer
-        .with_vendored_text_measurer()
+        .with_deterministic_text_measurer()
         .with_diagram_id(name)
         .render_resvg_safe(source)
         .unwrap_or_else(|err| panic!("{name}: typed resvg-safe render failed: {err}"))
@@ -937,7 +937,7 @@ fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
   B -->|No| D[Debug]
 "#;
     let renderer = TypedSvgRenderer::new()
-        .with_vendored_text_measurer()
+        .with_deterministic_text_measurer()
         .with_diagram_id("export-contract");
 
     let parity_svg = renderer
@@ -981,7 +981,7 @@ fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
   Campaign A: [0.3, 0.6]
 "#;
     let renderer = TypedSvgRenderer::new()
-        .with_vendored_text_measurer()
+        .with_deterministic_text_measurer()
         .with_diagram_id("quadrant-artifact-lanes");
 
     let raw_svg = renderer

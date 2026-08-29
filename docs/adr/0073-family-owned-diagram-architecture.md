@@ -154,10 +154,10 @@ receives only the narrow session projection it needs. `SvgRenderOptions` contain
 while `SvgDebugOptions` contains diagnostics. Family renderers do not construct production
 measurers or read process-global render policy.
 
-The parity environment uses named vendored measurement and deterministic time/seed policy. Host
-environments may supply host services explicitly. The operation report records the resolved routes,
-measurement provenance, time, and seed. Successful host measurements bypass vendored fallback
-facts for their routed operation.
+The built-in environment uses named deterministic measurement and deterministic time/seed policy.
+Host environments may supply host services explicitly. The operation report records the resolved
+routes, measurement provenance, time, and seed. Successful host measurements bypass the
+deterministic fallback for their routed operation.
 
 ### Root Viewport owns every root SVG
 

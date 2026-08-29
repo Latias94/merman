@@ -1352,8 +1352,8 @@ function normalizeTextMeasurementCapabilities(value: unknown): TextMeasurementCa
     value.provider_ids,
     "text measurement provider IDs"
   );
-  if (!providerIds.includes("vendored")) {
-    throw new Error("Merman WASM text measurement must include vendored support.");
+  if (!providerIds.includes("deterministic")) {
+    throw new Error("Merman WASM text measurement must include deterministic support.");
   }
   return {
     ...structuredCloneValue(value),

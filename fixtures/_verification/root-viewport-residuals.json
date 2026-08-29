@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "comparisonRevision": "browser-root-paint-containment-v10",
+  "entries": [
+    {
+      "fixture": "xychart/upstream_xychart_yaxis_range_without_title_jison_spec",
+      "localSvgSha256": "03e653222acfb940914dab95def9c05c338b3817a1d4efc6cab6393c9668b60f",
+      "upstreamSvgSha256": "47b7dedc036095d72c41eee64a52e703bd379aea9dda8f453eb570cbaba44296",
+      "reason": "deterministic-text-measurement-out-of-domain-extrapolation"
+    }
+  ]
+}

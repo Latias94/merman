@@ -484,7 +484,7 @@ impl GeneratedArtifactCheck {
             GeneratedArtifactCheck::PlaygroundAsciiCapabilities => "Playground ASCII capabilities",
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
             GeneratedArtifactCheck::ResourceContract => "resource contract",
-            GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme snapshot",
+            GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme artifacts",
             GeneratedArtifactCheck::TextMeasurementProtocol => "text-measurement protocol",
             GeneratedArtifactCheck::TypstProfileConstants => "Typst profile constants",
             GeneratedArtifactCheck::WebDiagramCatalog => "web diagram catalog",
@@ -607,15 +607,30 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
 }
 
 fn verify_theme_snapshot_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
-    let expected = PathBuf::from("crates/merman-core/src/generated/theme_variables_11_16_1.json");
-    let actual = tmp_dir.join("theme_variables_11_16_1.actual.json");
-    super::gen_theme_snapshot(vec!["--out".to_string(), actual.display().to_string()])?;
-    let expected_json: JsonValue = serde_json::from_str(&read_text(&expected)?)?;
-    let actual_json: JsonValue = serde_json::from_str(&read_text(&actual)?)?;
-    if expected_json != actual_json {
+    let expected_runtime = PathBuf::from(super::theme_snapshot::THEME_RUNTIME_OUTPUT);
+    let expected_audit = PathBuf::from(super::theme_snapshot::THEME_AUDIT_OUTPUT);
+    let actual_runtime = tmp_dir.join("theme_variables_11_16_1.actual.json");
+    let actual_audit = tmp_dir.join("theme_variables_oracle_11_16_1.actual.json");
+    super::gen_theme_snapshot(vec![
+        "--out".to_string(),
+        actual_runtime.display().to_string(),
+        "--audit-out".to_string(),
+        actual_audit.display().to_string(),
+    ])?;
+
+    let mut mismatches = Vec::new();
+    for (expected, actual) in [
+        (&expected_runtime, &actual_runtime),
+        (&expected_audit, &actual_audit),
+    ] {
+        if read_text_normalized(expected)? != read_text_normalized(actual)? {
+            mismatches.push(expected.display().to_string());
+        }
+    }
+    if !mismatches.is_empty() {
         return Ok(Some(format!(
-            "Mermaid theme snapshot mismatch: regenerate with `cargo run -p xtask -- gen-theme-snapshot` ({})",
-            expected.display()
+            "Mermaid theme artifact mismatch: regenerate with `cargo run -p xtask -- gen-theme-snapshot` ({})",
+            mismatches.join(", ")
         )));
     }
     Ok(None)
@@ -965,7 +980,7 @@ mod tests {
         );
         assert_eq!(
             GeneratedArtifactCheck::ThemeSnapshot.label(),
-            "Mermaid theme snapshot"
+            "Mermaid theme artifacts"
         );
         assert_eq!(
             GeneratedArtifactCheck::TextMeasurementProtocol.label(),

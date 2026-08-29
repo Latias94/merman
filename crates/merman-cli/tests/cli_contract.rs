@@ -616,34 +616,21 @@ fn native_render_rejects_options_for_a_different_output_kind() {
 
 #[test]
 fn native_text_render_rejects_svg_and_network_only_options() {
-    for args in [
-        [
-            "render",
-            "missing.mmd",
-            "--format",
-            "ascii",
-            "--text-measurer",
-            "deterministic",
-        ]
-        .as_slice(),
-        [
-            "render",
-            "missing.mmd",
-            "--format",
-            "ascii",
-            "--allow-network",
-        ]
-        .as_slice(),
-    ] {
-        let output = run_with_stdin(args, "");
-        assert_eq!(support::exit_code(output.status), 2, "args: {args:?}");
-        assert!(output.stdout.is_empty());
-        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-        assert!(
-            !stderr.contains("missing.mmd"),
-            "irrelevant option rejection must precede input acquisition: {args:?}\n{stderr}"
-        );
-    }
+    let args = [
+        "render",
+        "missing.mmd",
+        "--format",
+        "ascii",
+        "--allow-network",
+    ];
+    let output = run_with_stdin(&args, "");
+    assert_eq!(support::exit_code(output.status), 2, "args: {args:?}");
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("missing.mmd"),
+        "irrelevant option rejection must precede input acquisition: {args:?}\n{stderr}"
+    );
 }
 
 #[test]
@@ -907,11 +894,6 @@ fn native_render_rejects_each_irrelevant_output_option_before_input_acquisition(
         ("background on text", "ascii", &["--background", "white"]),
         ("CSS on text", "ascii", &["--css-file", "missing.css"]),
         (
-            "text measurer on text",
-            "ascii",
-            &["--text-measurer", "deterministic"],
-        ),
-        (
             "presentation profile on text",
             "ascii",
             &["--presentation-profile", "merman-modern"],
@@ -982,7 +964,6 @@ fn raw_svg_rejects_each_mermaid_only_option_before_input_acquisition() {
             "fixed local offset",
             &["--fixed-local-offset-minutes", "480"],
         ),
-        ("text measurer", &["--text-measurer", "deterministic"]),
         (
             "presentation profile",
             &["--presentation-profile", "merman-modern"],

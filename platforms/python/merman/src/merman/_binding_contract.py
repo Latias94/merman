@@ -303,20 +303,20 @@ BINDING_OPTION_GROUP_SPECS = (
 
 TEXT_MEASUREMENT_PROVIDER_SPECS = (
     {
+        "id": "deterministic",
+        "source": "svg-pipeline",
+        "constructor_service_id": None,
+    },
+    {
         "id": "host-callback",
         "source": "constructor-service",
         "constructor_service_id": "host-text-measurement",
     },
-    {
-        "id": "vendored",
-        "source": "svg-pipeline",
-        "constructor_service_id": None,
-    },
 )
 
 TEXT_MEASUREMENT_PROVIDER_IDS = (
+    "deterministic",
     "host-callback",
-    "vendored",
 )
 
 BINDING_TRANSPORT_EXPOSURE_SPECS = (
@@ -356,7 +356,7 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
         "constructor_service_candidate_ids": ("host-text-measurement",),
     },
 )
-VENDORED_TEXT_MEASUREMENT_PROVIDER_ID = "vendored"
+DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID = "deterministic"
 HOST_CALLBACK_TEXT_MEASUREMENT_PROVIDER_ID = "host-callback"
 
 CONSTRUCTOR_SERVICE_SPECS = (

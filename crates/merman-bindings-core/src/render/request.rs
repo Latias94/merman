@@ -236,7 +236,6 @@ impl RenderOperationConfig {
             if let Some(kind) = environment_json.text_measurement.as_deref() {
                 environment = environment.with_text_measurement_policy(
                     match normalize_option(kind).as_str() {
-                        "vendored" | "parity" => TextMeasurementPolicy::parity(),
                         "deterministic" => TextMeasurementPolicy::deterministic(),
                         other => {
                             return Err(BindingError::new(

@@ -1292,7 +1292,7 @@ mod tests {
                 .expect("SVG surface must report a text-measurement route")
                 .provider_ids
                 .as_slice();
-            assert!(providers.contains(&"vendored"));
+            assert!(providers.contains(&"deterministic"));
             assert_eq!(
                 providers.contains(&"host-callback"),
                 cfg!(all(feature = "svg", target_arch = "wasm32"))

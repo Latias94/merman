@@ -1,4 +1,4 @@
-#import "@preview/merman:0.2.0": mermaid
+#import "@preview/merman:0.3.0": mermaid
 
 #set page(width: auto)
 #set text(font: (name: "Inria Serif", covers: "latin-in-cjk"), size: 12pt)

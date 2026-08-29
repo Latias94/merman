@@ -1,8 +1,6 @@
 mod create_text;
 mod deterministic;
 mod flowchart_parity;
-mod font_metrics;
-mod font_metrics_data;
 mod heuristic;
 mod icons;
 mod line_break;
@@ -18,19 +16,7 @@ mod wrap;
 pub(crate) use create_text::non_markdown_svg_words;
 pub use deterministic::DeterministicTextMeasurer;
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
-pub use font_metrics::VendoredFontMetricsTextMeasurer;
-pub(crate) use font_metrics::{
-    FontMetricsTable, FontMetricsVariant, SvgVerticalDomShape, SvgVerticalProfileSet,
-    SvgVerticalSizeProfile,
-};
-pub(crate) use font_metrics_data::decode_font_metrics_tables;
-#[doc(hidden)]
-pub use font_metrics_data::{
-    FontMetricsCodecError, FontMetricsTableData, FontMetricsVariantData, SvgVerticalDomShapeData,
-    SvgVerticalProfileSetData, SvgVerticalSizeProfileData, decode_font_metrics_profile,
-    encode_font_metrics_profile,
-};
-pub(crate) use heuristic::estimate_line_width_px;
+pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
 pub use icons::replace_fontawesome_icons;
 pub(crate) use line_break::html_has_soft_break_opportunity;
 pub(crate) use markdown::{
@@ -53,9 +39,7 @@ pub(crate) use metrics::{
     mermaid_markdown_to_wrapped_word_lines,
 };
 pub(crate) use svg_metrics::{
-    FLOWCHART_DEFAULT_FONT_KEY, flowchart_svg_edge_label_background_y_px,
-    font_key_uses_courier_metrics, svg_title_bbox_vertical_extents_px,
-    svg_wrapped_first_line_bbox_height_px,
+    svg_title_bbox_vertical_extents_px, svg_wrapped_first_line_bbox_height_px,
 };
 pub use types::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use whitespace::{

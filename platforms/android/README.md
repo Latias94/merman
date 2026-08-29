@@ -141,7 +141,7 @@ MermanEngine(optionsJson = """{"svg":{"pipeline":"readable"}}""").use { engine -
 transport clones the control before engine admission and never holds the operation-control registry
 lock while parsing, analyzing, laying out, rendering, or invoking a host callback.
 
-Merman owns a deterministic vendored text measurer by default. Keep it for background jobs, tests, and content generation. Supply a `MermanEngineServices` value when Android layout must match the final `TextPaint`/`StaticLayout` font stack:
+Merman owns a deterministic, font-agnostic text measurer by default. Keep it for background jobs, tests, and content generation. Supply a `MermanEngineServices` value when Android layout must match the final `TextPaint`/`StaticLayout` font stack:
 
 ```kotlin
 val services = MermanEngineServices(

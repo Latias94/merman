@@ -4027,7 +4027,7 @@ mod tests {
         let layout = layout_flowchart_typed(
             model,
             &parsed.metadata().effective_config,
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .expect("layout ok");

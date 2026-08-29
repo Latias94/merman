@@ -270,7 +270,7 @@ function probeInstalledRuntime(installRoot, candidate) {
     `import { createNodeEngine } from ${JSON.stringify(packageName)};`,
     'const engine = await createNodeEngine({ bindingOptions: { version: 2, runtime_policy: "deterministic", resources: { profile: "trusted-native" } } });',
     'const catalog = engine.runtimeCatalog;',
-    'const runtimeCatalogPassed = catalog?.capabilities?.operation_ids?.includes("semantic-json") && catalog?.capabilities?.operation_ids?.includes("svg-plan-json") && catalog?.capabilities?.text_measurement?.provider_ids?.join(",") === "vendored";',
+    'const runtimeCatalogPassed = catalog?.capabilities?.operation_ids?.includes("semantic-json") && catalog?.capabilities?.operation_ids?.includes("svg-plan-json") && catalog?.capabilities?.text_measurement?.provider_ids?.join(",") === "deterministic";',
     'const semantic = await engine.executeOperation({ operationId: "semantic-json", source: "flowchart TD\\nA-->B", optionsJson: JSON.stringify({ version: 2 }) });',
     'const genericOperationPassed = semantic.operation_id === "semantic-json" && semantic.media_type === "application/json" && JSON.parse(semantic.data);',
     'const svgPlan = await engine.executeOperation({ operationId: "svg-plan-json", source: "flowchart TD\\nA-->B", optionsJson: JSON.stringify({ version: 2 }) });',

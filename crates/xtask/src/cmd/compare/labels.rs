@@ -3189,46 +3189,24 @@ mod tests {
         std::fs::read_to_string(path).unwrap()
     }
 
+    fn deterministic_semantic_svg(diagram: &str, fixture: &str) -> String {
+        let source = signed_semantic_source(diagram, fixture);
+        crate::cmd::compare::render_source_svg(
+            &merman::Renderer::new().with_engine(crate::cmd::compare::svg_compare_engine()),
+            &source,
+            crate::cmd::compare::svg_request(
+                merman::SvgEnvironment::deterministic(),
+                crate::cmd::compare::svg_compare_layout_opts(),
+                Some(fixture.to_string()),
+            ),
+        )
+        .unwrap()
+        .svg()
+        .to_owned()
+    }
+
     fn c4_dynamic_svg_with_reviewed_residuals() -> String {
-        let mut local = signed_c4_dynamic_svg();
-        for (upstream, reviewed) in [
-            (
-                r#"x="487.198474097224" y="641.5""#,
-                r#"x="487.2846949188151" y="645.5""#,
-            ),
-            (
-                r#"x="487.198474097224" y="658.5""#,
-                r#"x="487.2846949188151" y="662.5""#,
-            ),
-            (
-                r#"x="493.6410154384848" y="897""#,
-                r#"x="493.9486587427764" y="902""#,
-            ),
-            (
-                r#"x="577.6205949910768" y="436.5""#,
-                r#"x="577.4387868033255" y="439.5""#,
-            ),
-            (
-                r#"x="577.6205949910768" y="453.5""#,
-                r#"x="577.4387868033255" y="456.5""#,
-            ),
-            (
-                r#"x1="439.64775725593665" y1="476" x2="403.74919093851133" y2="887""#,
-                r#"x1="439.71853146853147" y1="479" x2="403.8508583690987" y2="892""#,
-            ),
-            (
-                r#"d="M456.28688524590166,887 Q457.46395034219324,837 460.99514563106794,787""#,
-                r#"d="M456.76797385620915 892 Q457.8583162994928 842 461.1293436293436 792""#,
-            ),
-            (
-                r#"d="M450.8915857605178,682 Q452.75609037579727,476.5 458.3496042216359,271""#,
-                r#"d="M450.9431330472103 686 Q452.6909599252679 479.5 457.93444055944053 273""#,
-            ),
-        ] {
-            assert!(local.contains(upstream));
-            local = local.replacen(upstream, reviewed, 1);
-        }
-        local
+        deterministic_semantic_svg("c4", C4_DYNAMIC_LABEL_FIXTURE)
     }
 
     fn signed_semantic_source(diagram: &str, fixture: &str) -> String {
@@ -3256,6 +3234,74 @@ mod tests {
             .replace(left, sentinel)
             .replace(right, left)
             .replace(sentinel, right)
+    }
+
+    fn opening_tag_before(
+        svg: &str,
+        marker: &str,
+        candidate_tags: &[&str],
+    ) -> std::ops::Range<usize> {
+        let marker_index = svg
+            .find(marker)
+            .unwrap_or_else(|| panic!("missing marker {marker:?}"));
+        let start = candidate_tags
+            .iter()
+            .flat_map(|tag| [format!("<{tag} "), format!("<{tag}>")])
+            .filter_map(|prefix| svg[..marker_index].rfind(&prefix))
+            .max()
+            .unwrap_or_else(|| {
+                panic!("missing one of {candidate_tags:?} before marker {marker:?}")
+            });
+        let end = start
+            + svg[start..]
+                .find('>')
+                .expect("opening tag should be terminated")
+            + 1;
+        start..end
+    }
+
+    fn replace_attribute_before(
+        svg: &str,
+        marker: &str,
+        candidate_tags: &[&str],
+        attribute: &str,
+        replacement: &str,
+    ) -> String {
+        let tag = opening_tag_before(svg, marker, candidate_tags);
+        let opening = &svg[tag.clone()];
+        let prefix = format!(r#"{attribute}=""#);
+        let value_start = tag.start
+            + opening
+                .find(&prefix)
+                .unwrap_or_else(|| panic!("missing attribute {attribute:?} in {opening:?}"))
+            + prefix.len();
+        let value_end = value_start
+            + svg[value_start..]
+                .find('"')
+                .expect("attribute value should be terminated");
+        let mut changed = svg.to_string();
+        changed.replace_range(value_start..value_end, replacement);
+        changed
+    }
+
+    fn insert_attribute_before(
+        svg: &str,
+        marker: &str,
+        candidate_tags: &[&str],
+        attribute: &str,
+        value: &str,
+    ) -> String {
+        let tag = opening_tag_before(svg, marker, candidate_tags);
+        let mut changed = svg.to_string();
+        changed.insert_str(tag.end - 1, &format!(r#" {attribute}="{value}""#));
+        changed
+    }
+
+    fn remove_element_before(svg: &str, marker: &str, candidate_tags: &[&str]) -> String {
+        let tag = opening_tag_before(svg, marker, candidate_tags);
+        let mut changed = svg.to_string();
+        changed.replace_range(tag, "");
+        changed
     }
 
     #[test]
@@ -3709,16 +3755,17 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_elk_semantic_gate_accepts_the_exact_signed_fixture() {
+    fn flowchart_elk_semantic_gate_accepts_all_exact_reviewed_residuals() {
         let source = signed_semantic_source("flowchart", FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE);
         let upstream = signed_semantic_svg("flowchart", FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE);
+        let local = deterministic_semantic_svg("flowchart", FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE);
 
         let outcome = compare_registered_semantic_labels(
             "flowchart",
             FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE,
             &source,
             &upstream,
-            &upstream,
+            &local,
             3,
         )
         .unwrap()
@@ -3726,7 +3773,7 @@ mod tests {
 
         assert!(outcome.issues.is_empty());
         assert_eq!(outcome.evidence.compared_samples, 2);
-        assert_eq!(outcome.evidence.accepted_residuals, 0);
+        assert_eq!(outcome.evidence.accepted_residuals, 2);
     }
 
     #[test]
@@ -4228,10 +4275,12 @@ mod tests {
     fn c4_semantic_label_gate_rejects_previous_large_offset() {
         let source = signed_c4_dynamic_source();
         let upstream = signed_c4_dynamic_svg();
-        let local = c4_dynamic_svg_with_reviewed_residuals().replacen(
-            r#"x="493.9486587427764" y="902""#,
-            r#"x="593.9486587427764" y="842""#,
-            1,
+        let local = replace_attribute_before(
+            &c4_dynamic_svg_with_reviewed_residuals(),
+            "2: Calls isAuthenticated() on",
+            &["text"],
+            "x",
+            "593.047697368421",
         );
 
         let outcome = compare_registered_semantic_labels(
@@ -4325,15 +4374,19 @@ mod tests {
         let source = signed_c4_dynamic_source();
         let upstream = signed_c4_dynamic_svg();
         let local = c4_dynamic_svg_with_reviewed_residuals();
-        let changed_path = local.replacen(
-            "M456.76797385620915 892 Q457.8583162994928 842 461.1293436293436 792",
-            "M456.76797385620915 892 Q457.8583162994928 842 462.1293436293436 792",
-            1,
+        let changed_path = replace_attribute_before(
+            &local,
+            "2: Calls isAuthenticated() on",
+            &["path", "line"],
+            "d",
+            "M0 0L1 1",
         );
-        let changed_stroke = local.replacen(
-            r##"stroke="#444444" marker-end"##,
-            r##"stroke="#abcdef" marker-end"##,
-            1,
+        let changed_stroke = replace_attribute_before(
+            &local,
+            "2: Calls isAuthenticated() on",
+            &["path", "line"],
+            "stroke",
+            "#abcdef",
         );
 
         let path_outcome = compare_registered_semantic_labels(
@@ -4381,11 +4434,14 @@ mod tests {
             ".marker{fill:#abcdef;stroke:#333333;}",
             1,
         );
-        let changed_ancestor = local.replacen(
-            "<g><line x1=\"439.71853146853147\"",
-            "<g style=\"opacity: .5\"><line x1=\"439.71853146853147\"",
-            1,
+        let changed_ancestor = insert_attribute_before(
+            &local,
+            "2: Calls isAuthenticated() on",
+            &["g"],
+            "style",
+            "opacity: .5",
         );
+        assert_ne!(changed_stylesheet, local);
 
         let stylesheet_outcome = compare_registered_semantic_labels(
             "c4",
@@ -4427,11 +4483,8 @@ mod tests {
         let source = signed_c4_dynamic_source();
         let upstream = signed_c4_dynamic_svg();
         let local = c4_dynamic_svg_with_reviewed_residuals();
-        let path = format!(
-            r##"<path fill="none" stroke-width="1" stroke="#444444" d="M456.76797385620915 892 Q457.8583162994928 842 461.1293436293436 792" marker-end="url(#{C4_DYNAMIC_LABEL_FIXTURE}-arrowhead)"/>"##
-        );
-        assert!(local.contains(&path));
-        let missing_edge = local.replacen(&path, "", 1);
+        let missing_edge =
+            remove_element_before(&local, "2: Calls isAuthenticated() on", &["path", "line"]);
 
         let error = compare_registered_semantic_labels(
             "c4",
@@ -4660,26 +4713,36 @@ mod tests {
     #[test]
     fn label_residual_catalog_requires_keys_that_match_the_registered_adapter() {
         let mut json = serde_json::from_str::<serde_json::Value>(LABEL_RESIDUAL_CATALOG).unwrap();
-        {
-            let entry = &mut json["entries"][0];
-            entry["diagram"] = serde_json::Value::String("flowchart".to_string());
-            entry["fixture"] =
-                serde_json::Value::String(FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE.to_string());
-            entry["input_sha256"] = serde_json::Value::String(
-                "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0".to_string(),
-            );
-            entry["upstream_svg_sha256"] = serde_json::Value::String(
-                "7db68748e7ce841e29246c546a01e77a92db2bf7e6c43ac65757b8e2304c90e2".to_string(),
-            );
-        }
+        let entry = json["entries"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|entry| {
+                entry["diagram"] == "flowchart"
+                    && entry["fixture"] == FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE
+            })
+            .unwrap();
+        let valid_key = entry["semantic_key"].clone();
+        entry["semantic_key"] = serde_json::json!({
+            "kind": "c4_relation",
+            "relation_index": 1,
+            "role": "message"
+        });
 
         let mismatch = parse_label_residual_catalog(&json.to_string(), 3).unwrap_err();
         assert!(mismatch.contains("is invalid for adapter FlowchartElk"));
 
-        json["entries"][0]["semantic_key"] = serde_json::json!({
-            "kind": "stable_edge",
-            "edge_key": "L_a1_a2_0"
-        });
+        let entry = json["entries"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|entry| {
+                entry["diagram"] == "flowchart"
+                    && entry["fixture"] == FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE
+                    && entry["semantic_key"]["kind"] == "c4_relation"
+            })
+            .unwrap();
+        entry["semantic_key"] = valid_key;
         parse_label_residual_catalog(&json.to_string(), 3).unwrap();
     }
 

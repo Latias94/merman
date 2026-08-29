@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-06-03
-- Last amended: 2026-07-20
+- Last amended: 2026-08-27
 
 ## Context
 
@@ -61,16 +61,22 @@ boundaries or change emitted SVG.
    use `theme_token` terminology so they cannot be confused with color evaluation.
 
 6. Theme changes are verified in separate lanes:
-   - a generated artifact records the pinned Mermaid package hash, source tag, source commit,
-     complete default snapshots, complete `darkMode=true` snapshots, and a compact override-value
-     oracle;
+   - a compact runtime artifact records the pinned Mermaid package hash, source tag, source commit,
+     complete default snapshots, complete `darkMode=true` snapshots, and the expected oracle case
+     count;
+   - a separate repository-level audit artifact records the same provenance and the complete
+     override-value oracle; it is consumed only by tests and generated-artifact verification, is
+     not embedded in production binaries, and is not included in the published `merman-core`
+     source package;
    - raw theme snapshots and raw SVG assert exact selected-release tokens;
    - Chromium tests inspect computed styles for visible behavior;
    - resvg-safe tests assert XML-safe, rasterizable, explicit values.
 
    `cargo run -p xtask -- gen-theme-snapshot` is the only supported refresh path. It executes the
-   content-pinned Mermaid runtime, and `verify-theme-snapshot` plus the umbrella
-   `verify-generated` command reject provenance or behavior drift.
+   content-pinned Mermaid runtime once and writes both artifacts from that projection.
+   `verify-theme-snapshot` plus the umbrella `verify-generated` command compare both generated
+   files with a format-sensitive comparison after line-ending and trailing-newline normalization,
+   and reject provenance, formatting, or behavior drift.
 
 7. Host or product styling remains outside parity rendering. Host theme profiles and postprocessors
    may map product roles, but they do not mutate Mermaid's resolved theme state or redefine family
@@ -81,6 +87,8 @@ boundaries or change emitted SVG.
 - Override order and value provenance are testable instead of implicit in mutation order.
 - Release snapshots and executable semantics have separate ownership: generated JSON supplies
   exact constants and oracle evidence, while Rust owns runtime evaluation without JavaScript.
+- Runtime artifacts carry only data needed for evaluation and lightweight integrity checks; larger
+  behavior-oracle evidence stays outside published crates and linked products.
 - Font-only and partial overrides preserve upstream palettes across all consumers.
 - Duplicate RGB/HSL engines and family-local palette heuristics are deleted rather than kept as
   compatibility fallbacks.

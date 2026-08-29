@@ -266,7 +266,7 @@ checkpoint, run the repository's relevant complete gates serially. The broad par
 
 ```bash
 cargo run -p xtask -- verify --strict
-cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout
 ```
 
 The exact gate set depends on the owner, but must include applicable semantic/model, layout, SVG,

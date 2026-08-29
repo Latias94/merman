@@ -521,7 +521,7 @@ mod tests {
             "<span class='foo bar'>X</span>",
         );
         let wrapped = wrap_flowchart_svg_source_word_lines(
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             &source,
             &crate::text::TextStyle::default(),
             Some(1_000.0),

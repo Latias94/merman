@@ -4,6 +4,7 @@ use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::StateDiagramLayout;
 use merman_render::resources::RenderResourcePolicy;
+use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode};
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -269,7 +270,7 @@ fn state_layout_reflows_at_the_expanded_html_min_content_width() {
         .expect("state A");
 
     assert!(
-        node.width > 160.0,
+        node.width > 120.0,
         "min-content must be allowed to widen the configured 120px table: {node:?}"
     );
     assert_eq!(
@@ -280,6 +281,7 @@ fn state_layout_reflows_at_the_expanded_html_min_content_width() {
 
 #[test]
 fn state_layout_measures_note_markup_as_rendered_html() {
+    let literal_markup = "<a href='https://mermaid.js.org/' target='_blank'><code>note about mermaid</code></a><br/> <img src=x onerror=alert(1)>";
     let layout = layout_state_from_text(
         r#"stateDiagram-v2
 A
@@ -294,14 +296,20 @@ end note
         .iter()
         .find(|node| node.id.contains("----note-"))
         .expect("rendered note");
+    let literal_metrics = DeterministicTextMeasurer::default().measure_wrapped(
+        literal_markup,
+        &TextStyle::default(),
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
 
     assert!(
-        (190.0..=220.0).contains(&note.width),
-        "markup must contribute rendered content, not literal tag text: {note:?}"
+        note.width < literal_metrics.width + 16.0,
+        "markup must contribute rendered content, not literal tag text: note={note:?}, literal={literal_metrics:?}"
     );
     assert!(
-        note.height <= 120.0,
-        "HTML tags must not be counted as wrapped text lines: {note:?}"
+        note.height < literal_metrics.height + 16.0,
+        "HTML tags must not be counted as wrapped text lines: note={note:?}, literal={literal_metrics:?}"
     );
 }
 

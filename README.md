@@ -211,6 +211,10 @@ theming, sanitization, and SVG DOM structure. It does not promise byte-for-byte 
 
 Browser font fallback, `getBBox()` floats, `foreignObject`, HTML labels, and RoughJS path geometry
 can still produce documented differences where a robust headless equivalent is unavailable.
+Merman's built-in text measurer is deterministic and font-agnostic; products with a host
+measurement service should use the final display stack as the primary authority and retain the
+built-in measurer as a per-request fallback. The Typst plugin has no such synchronous host import
+and uses deterministic measurement only.
 Mermaid-style SVG may contain HTML labels. Use `SvgPipeline::resvg_safe()` or a typed PNG, JPEG, or
 PDF target when the consumer cannot render `foreignObject`.
 The resvg-safe fallback resolves supported typography from the original SVG/XHTML context before

@@ -1310,7 +1310,7 @@ classDiagram
 }
 
 #[test]
-fn class_svg_px_string_theme_font_size_uses_mermaid_svg_label_wrapping() {
+fn class_svg_px_string_theme_font_size_drives_svg_label_wrapping_without_losing_text() {
     let svg = render_class_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
         r##"%%{init: {"theme": "base", "fontSize": 10, "themeVariables": {"fontSize": "24px"}, "htmlLabels": false} }%%
@@ -1323,18 +1323,49 @@ classDiagram
 "##,
     );
 
-    assert_eq!(
-        svg.matches("text-outer-tspan").count(),
-        10,
-        "the title plus three three-line members should emit ten outer tspans: {svg}"
-    );
-    assert_eq!(
-        svg.matches("text-inner-tspan").count(),
-        10,
-        "each outer tspan should contain one text run after wrapping: {svg}"
-    );
-    assert!(
-        svg.contains(r#">String</tspan></tspan>"#),
-        "Mermaid 11.16 should wrap each type suffix onto a standalone third row: {svg}"
-    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+    let labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|class| class == "label"))
+        })
+        .map(|node| {
+            let rows = node
+                .descendants()
+                .filter(|descendant| {
+                    descendant.has_tag_name("tspan")
+                        && descendant.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_whitespace()
+                                .any(|class| class == "text-outer-tspan")
+                        })
+                })
+                .map(|row| {
+                    row.descendants()
+                        .filter_map(|descendant| descendant.text().filter(|_| descendant.is_text()))
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>();
+            (rows.join(" "), rows.len())
+        })
+        .collect::<Vec<_>>();
+
+    for expected in [
+        "+veryLongMemberNameToWrapTheLayoutProbe: String",
+        "+anotherVeryLongMemberNameToWrapTheLayoutProbe: String",
+        "+thirdVeryLongMemberNameToWrapTheLayoutProbe: String",
+    ] {
+        let expected_compact = expected.split_whitespace().collect::<String>();
+        let (_, rows) = labels
+            .iter()
+            .find(|(text, _)| text.split_whitespace().collect::<String>() == expected_compact)
+            .unwrap_or_else(|| panic!("missing complete wrapped member {expected:?}: {labels:?}"));
+        assert!(
+            *rows >= 2,
+            "24px theme text should wrap the long member without depending on a font-specific row boundary: {labels:?}"
+        );
+    }
 }

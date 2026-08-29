@@ -33,6 +33,10 @@ generated bindings together.
 | `DocumentWorkspace::upsert(...)` | `analyze_document_snapshot_with_shared_text(...)` and caller-owned document storage |
 | `DocumentWorkspace::build_analysis_context_with_shared_text(...)` | `analyze_document_context_with_shared_text(...)` |
 | `DocumentAnalysisOutcome` | `Result<DocumentAnalysisContext, AnalysisRejection>` |
+| `VendoredFontMetricsTextMeasurer`, `TextMeasurementPolicy::parity()`, or `RenderEnvironment::parity()` | `DeterministicTextMeasurer`, `TextMeasurementPolicy::deterministic()`, or `RenderEnvironment::deterministic()`; install a host callback when layout must use the final display stack |
+| Options JSON `environment.text_measurement` value `vendored` or `parity` | `deterministic`; the removed names are rejected rather than retained as aliases |
+| Runtime text-measurement provider ID `vendored` | `deterministic`; host-capable products also advertise `host-callback`, while Typst advertises deterministic only |
+| CLI/xtask `--text-measurer`, `--flowchart-text-measurer`, or `measure-text --measurer` | Remove the option; these command paths always use deterministic measurement |
 
 The binding-result envelope remains version `1` because its JSON shape is unchanged. Consumers
 that match `details.diagnostic.code` must update parser-code expectations from `merman.ascii.*` to
@@ -79,6 +83,14 @@ by the one-shot call.
 inside `SvgRequest` or `AsciiRequest`, while runtime policy, input admission, cancellation, and the
 monotonic deadline belong to the renderer/request operation. Resource exhaustion and cancellation
 remain distinct errors and neither returns partial output.
+
+The built-in deterministic measurer no longer embeds the bounded Headless Chrome 131 font tables.
+It uses font-agnostic Unicode-width and wrapping rules, so geometry may change where a previous
+table supplied browser-specific advances, kerning, baseline facts, or quantization. Treat this as a
+breaking output change: use the host callback when the final font stack is authoritative, and do
+not copy browser values back into production lookup tables. Swimlane identifier tie-breaks are now
+stable UTF-16 code-unit order; locale-sensitive coordinate differences for mixed-case, accented,
+or non-Latin identifiers are a documented browser residual rather than an ICU runtime dependency.
 
 ```rust
 use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};

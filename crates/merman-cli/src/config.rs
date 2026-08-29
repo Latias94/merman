@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 #[cfg(feature = "svg")]
-use crate::cli::{MathRendererKind, TextMeasurerKind};
+use crate::cli::MathRendererKind;
 #[cfg(feature = "svg")]
 use crate::invocation::ResolvedRenderOptions;
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -23,7 +23,6 @@ use merman::SvgEnvironment;
 #[cfg(feature = "svg")]
 use merman::svg::{
     IconRegistry, LayoutOptions, MathRenderer, Presentation, PresentationProfile, SvgRenderOptions,
-    TextMeasurementPolicy,
 };
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -272,7 +271,6 @@ pub(crate) fn rustdoc_renderer_for_resolved(
 #[derive(Debug, Clone, Copy)]
 struct RendererInputs<'a> {
     presentation_profile: Option<PresentationProfile>,
-    text_measurer: TextMeasurerKind,
     math_renderer: Option<MathRendererKind>,
     container_width: Option<f64>,
     container_height: Option<f64>,
@@ -285,7 +283,6 @@ impl<'a> RendererInputs<'a> {
     fn from_resolved(render: &'a ResolvedRenderOptions) -> Self {
         Self {
             presentation_profile: render.presentation_profile,
-            text_measurer: render.text_measurer,
             math_renderer: render.math_renderer,
             container_width: render.container_width,
             container_height: render.container_height,
@@ -304,9 +301,8 @@ fn renderer_from_config(
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
 ) -> Result<ConfiguredRenderer, CliError> {
-    let mut environment = SvgEnvironment::deterministic()
-        .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
-        .with_resource_policy(resources.render_policy());
+    let mut environment =
+        SvgEnvironment::deterministic().with_resource_policy(resources.render_policy());
     if let Some(kind) = render.math_renderer {
         environment = match math_renderer(kind)? {
             Some(renderer) => environment.with_math_renderer(renderer),
@@ -378,13 +374,6 @@ pub(crate) fn ascii_renderer_for_resolved(
 }
 
 #[cfg(feature = "svg")]
-fn text_measurement_policy(kind: TextMeasurerKind) -> TextMeasurementPolicy {
-    match kind {
-        TextMeasurerKind::Deterministic => TextMeasurementPolicy::deterministic(),
-        TextMeasurerKind::Vendored => TextMeasurementPolicy::parity(),
-    }
-}
-
 #[cfg(feature = "svg")]
 fn math_renderer(
     kind: MathRendererKind,
@@ -421,7 +410,6 @@ mod tests {
     fn resolved_render(math_renderer: Option<MathRendererKind>) -> ResolvedRenderOptions {
         ResolvedRenderOptions {
             presentation_profile: None,
-            text_measurer: TextMeasurerKind::Vendored,
             math_renderer,
             container_width: None,
             container_height: None,

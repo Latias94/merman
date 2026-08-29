@@ -47,7 +47,7 @@ export interface LayoutOptions {
 }
 
 export interface RenderEnvironmentOptions {
-  text_measurement?: "vendored" | "parity" | "deterministic";
+  text_measurement?: "deterministic";
   math_renderer?: "none" | "ratex";
 }
 

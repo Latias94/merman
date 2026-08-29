@@ -86,11 +86,11 @@ impl TypedSvgRenderer {
         self
     }
 
-    fn with_vendored_text_measurer(mut self) -> Self {
+    fn with_deterministic_text_measurer(mut self) -> Self {
         self.request.environment = self
             .request
             .environment
-            .with_text_measurement_policy(TextMeasurementPolicy::parity());
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
         self
     }
 
@@ -130,7 +130,7 @@ fn themed_renderer(preset: HostThemePreset, name: &str) -> TypedSvgRenderer {
     TypedSvgRenderer::new()
         .with_presentation(Presentation::new().with_theme(theme))
         .with_svg_pipeline(pipeline)
-        .with_vendored_text_measurer()
+        .with_deterministic_text_measurer()
         .with_diagram_id(name)
 }
 
@@ -553,7 +553,7 @@ fn gruvbox_presentation_theme_keeps_er_relationship_label_fallbacks_readable() {
 #[test]
 fn presentation_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
     let plain = TypedSvgRenderer::new()
-        .with_vendored_text_measurer()
+        .with_deterministic_text_measurer()
         .with_diagram_id("gitgraph-plain-baseline")
         .render_svg(USER_GITGRAPH_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("plain gitGraph render failed: {err}"))

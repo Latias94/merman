@@ -9,7 +9,7 @@ Policy:
 - Every imported fixture must remain traceable to an upstream source file.
 - After each batch, keep the global parity gates green:
   - `cargo nextest run`
-  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
 ## High priority (diagram parity risk)
 

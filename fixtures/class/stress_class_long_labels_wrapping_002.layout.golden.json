@@ -5,16 +5,16 @@
       "nodes": [
         {
           "id": "VeryLongClassName_With_Dashes-And_Underscores",
-          "x": 337.322,
-          "y": 96.0,
-          "width": 674.644,
-          "height": 192.0,
+          "x": 357.402,
+          "y": 72.0,
+          "width": 714.804,
+          "height": 144.0,
           "is_cluster": false
         },
         {
           "id": "AnotherExtremelyLongNamedClass",
-          "x": 337.322,
-          "y": 377.0,
+          "x": 357.402,
+          "y": 329.0,
           "width": 378.636,
           "height": 126.0,
           "is_cluster": false
@@ -29,21 +29,21 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 337.322,
-              "y": 192.0
+              "x": 357.402,
+              "y": 144.0
             },
             {
-              "x": 337.322,
-              "y": 253.0
+              "x": 357.402,
+              "y": 205.0
             },
             {
-              "x": 337.322,
-              "y": 314.0
+              "x": 357.402,
+              "y": 266.0
             }
           ],
           "label": {
-            "x": 337.322,
-            "y": 253.0,
+            "x": 357.402,
+            "y": 205.0,
             "width": 200.0,
             "height": 72.0
           },
@@ -60,8 +60,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 674.644,
-        "max_y": 440.0
+        "max_x": 714.804,
+        "max_y": 392.0
       }
     }
   }

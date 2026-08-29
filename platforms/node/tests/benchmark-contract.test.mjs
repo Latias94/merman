@@ -199,7 +199,7 @@ const RUNTIME_CATALOG = {
     system_adapter_ids: [],
     text_measurement: {
       protocol_version: 1,
-      provider_ids: ["vendored"],
+      provider_ids: ["deterministic"],
     },
   },
   output_contracts: [{
@@ -1269,8 +1269,8 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
 
   const uncallableRuntimeProvider = structuredClone(receipt);
   uncallableRuntimeProvider.runtime.catalog.capabilities.text_measurement.provider_ids = [
+    "deterministic",
     "host-callback",
-    "vendored",
   ];
   uncallableRuntimeProvider.runtime.catalog_digest = digestJson(
     uncallableRuntimeProvider.runtime.catalog,

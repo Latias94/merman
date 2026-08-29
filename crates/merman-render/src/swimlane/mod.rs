@@ -16,33 +16,18 @@ use crate::model::{
 };
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
-use icu_collator::{Collator, options::CollatorOptions};
-use icu_locale_core::Locale;
 use merman_core::MermaidConfig;
 use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
 use std::cmp::Ordering;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
-/// Locale used by the pinned Mermaid/Puppeteer evidence and by the browser's default `localeCompare`.
-pub(crate) const MERMAID_LAYOUT_COLLATION_LOCALE: &str = "en-US";
-
-/// Compare identifiers with the same Unicode collation semantics as Mermaid's JavaScript layout.
+/// Compare identifiers by their UTF-16 code units.
 ///
-/// Mermaid calls `String.prototype.localeCompare` in the Swimlane ordering passes. Rust's byte or
-/// scalar-value ordering is observably different for case, accents, and supplementary characters,
-/// so use a baked ICU4X collator with the attested `en-US` locale. The singleton keeps the data
-/// tables out of the hot comparator path and makes the result independent of the host process
-/// locale.
-pub(crate) fn mermaid_identifier_locale_cmp(left: &str, right: &str) -> Ordering {
-    static COLLATOR: OnceLock<icu_collator::CollatorBorrowed<'static>> = OnceLock::new();
-    let collator = COLLATOR.get_or_init(|| {
-        let locale = MERMAID_LAYOUT_COLLATION_LOCALE
-            .parse::<Locale>()
-            .expect("the pinned Mermaid collation locale must parse");
-        Collator::try_new(locale.into(), CollatorOptions::default())
-            .expect("compiled ICU4X collation data must contain en-US")
-    });
-    collator.compare(left, right)
+/// This matches JavaScript's relational string ordering while remaining independent of host
+/// locale and bundled collation data. Every Swimlane algorithmic tie-break uses this comparator so
+/// hash-map iteration order cannot affect cycle removal, layering, or lane ordering.
+pub(crate) fn deterministic_identifier_cmp(left: &str, right: &str) -> Ordering {
+    left.encode_utf16().cmp(right.encode_utf16())
 }
 
 fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
@@ -232,24 +217,22 @@ fn swimlane_layout_preflight_work_units(nodes: usize, edges: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        mermaid_identifier_locale_cmp, swimlane_core_layout_work_units,
+        deterministic_identifier_cmp, swimlane_core_layout_work_units,
         swimlane_layout_preflight_work_units,
     };
 
     #[test]
-    fn identifier_order_matches_attested_mermaid_en_us_locale_compare() {
-        // Expected order was generated in the pinned Puppeteer/Chromium 131
-        // artifact with `ids.sort((a, b) => a.localeCompare(b, 'en-US'))`.
+    fn identifier_order_is_stable_utf16_code_unit_order() {
         let mut ids = [
-            "B", "a", "A", "b", "a.1", "A.1", "a-1", "A-1", "a_1", "A_1", "A10", "a2", "Z", "z",
-            "ä", "å", "Å", "é", "e", "E", "ß", "ss", "中", "阿", "😀", "🧪",
+            "B", "a", "A", "b", "a.1", "a-1", "a_1", "Z", "z", "é", "e", "中", "\u{e000}", "😀",
+            "🧪",
         ];
-        ids.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
+        ids.sort_by(|left, right| deterministic_identifier_cmp(left, right));
         assert_eq!(
             ids,
             [
-                "🧪", "😀", "a", "A", "å", "Å", "ä", "a_1", "A_1", "a-1", "A-1", "a.1", "A.1",
-                "A10", "a2", "b", "B", "e", "E", "é", "ss", "ß", "z", "Z", "中", "阿",
+                "A", "B", "Z", "a", "a-1", "a.1", "a_1", "b", "e", "z", "é", "中", "😀", "🧪",
+                "\u{e000}",
             ]
         );
     }

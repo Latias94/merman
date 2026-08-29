@@ -232,7 +232,6 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut dom_mode: Option<String> = None;
     let mut dom_decimals: Option<u32> = None;
     let mut filter: Option<String> = None;
-    let mut text_measurer: Option<String> = None;
     let mut upstream_root_arg: Option<PathBuf> = None;
     let mut fixtures_root_arg: Option<PathBuf> = None;
     let mut out_root_arg: Option<PathBuf> = None;
@@ -258,10 +257,6 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             "--filter" => {
                 i += 1;
                 filter = args.get(i).map(|s| s.to_string());
-            }
-            "--text-measurer" => {
-                i += 1;
-                text_measurer = args.get(i).map(|s| s.trim().to_ascii_lowercase());
             }
             "--upstream-root" => {
                 i += 1;
@@ -299,12 +294,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         .parse::<svgdom::DomMode>()
         .map_err(|_| XtaskError::Usage)?;
 
-    let text_measurement_policy = match text_measurer.as_deref().unwrap_or("vendored") {
-        "deterministic" => merman::svg::TextMeasurementPolicy::deterministic(),
-        _ => merman::svg::TextMeasurementPolicy::parity(),
-    };
-    let verification_environment = merman::SvgEnvironment::deterministic()
-        .with_text_measurement_policy(text_measurement_policy.clone());
+    let verification_environment = merman::SvgEnvironment::deterministic();
     let mut observed_operations =
         super::ObservedRenderOperations::from_environment(&verification_environment)?;
 
@@ -500,8 +490,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let mut environment = merman::SvgEnvironment::deterministic()
-                .with_text_measurement_policy(text_measurement_policy.clone());
+            let mut environment = merman::SvgEnvironment::deterministic();
             if matches!(diagram.as_str(), "flowchart" | "sequence")
                 && let Some(renderer) = node_math_renderer.clone()
             {

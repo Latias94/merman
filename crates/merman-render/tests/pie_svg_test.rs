@@ -428,7 +428,7 @@ fn empty_pie_root_viewport_is_finite_for_headless_rendering() {
     let svg = render_pie_from_text("pie");
 
     assert!(
-        svg.contains(r#"viewBox="0 0 225 450""#),
+        svg.contains(r#"viewBox="0 0 450 450""#),
         "empty pie should keep the finite Mermaid empty-root viewport: {svg}"
     );
     assert!(

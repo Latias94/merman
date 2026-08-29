@@ -9,11 +9,32 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+const ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX: &str =
+    "accepted exact browser text layout residual";
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AcceptedResidualPolicy {
     #[default]
     None,
     ScopedDomEvidenceCatalog,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UpstreamDomDriftPolicy {
+    #[default]
+    Blocking,
+    ExactBrowserTextLayoutReceipts,
+}
+
+impl UpstreamDomDriftPolicy {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Blocking => "blocking",
+            Self::ExactBrowserTextLayoutReceipts => {
+                "exact browser-text-layout receipts (reviewed drift is diagnostic)"
+            }
+        }
+    }
 }
 
 impl AcceptedResidualPolicy {
@@ -137,8 +158,8 @@ pub(crate) struct CompareRequest {
     pub(crate) dom_decimals: Option<u32>,
     pub(crate) report_root: bool,
     pub(crate) root_report_limit: Option<super::RootDeltaReportLimit>,
-    pub(crate) flowchart_text_measurer: Option<String>,
     pub(crate) accepted_residual_policy: AcceptedResidualPolicy,
+    pub(crate) upstream_dom_drift_policy: UpstreamDomDriftPolicy,
 }
 
 impl Default for CompareRequest {
@@ -152,8 +173,8 @@ impl Default for CompareRequest {
             dom_decimals: None,
             report_root: false,
             root_report_limit: None,
-            flowchart_text_measurer: None,
             accepted_residual_policy: AcceptedResidualPolicy::None,
+            upstream_dom_drift_policy: UpstreamDomDriftPolicy::Blocking,
         }
     }
 }
@@ -232,6 +253,10 @@ impl CompareRequest {
                     request.filter = args.get(i).cloned();
                 }
                 "--check-dom" => request.check_dom = true,
+                "--diagnostic-browser-text-layout" => {
+                    request.upstream_dom_drift_policy =
+                        UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts;
+                }
                 "--dom-mode" => {
                     i += 1;
                     let mode = args
@@ -661,6 +686,7 @@ pub(crate) struct CompareRunOptions<'a> {
     pub(crate) check_dom: bool,
     pub(crate) dom_plan: DomComparisonPlan,
     pub(crate) dom_decimals: u32,
+    pub(crate) upstream_dom_drift_policy: UpstreamDomDriftPolicy,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -1034,6 +1060,7 @@ pub(crate) fn run_canonical_svg_compare(
             check_dom: request.check_dom,
             dom_plan: dom_plan.clone(),
             dom_decimals,
+            upstream_dom_drift_policy: request.upstream_dom_drift_policy,
         }),
         &mut state,
         |_, report, paths, options| {
@@ -1262,6 +1289,7 @@ pub(crate) fn run_canonical_svg_compare(
                     options.check_dom,
                     failures,
                     &paths.out_svg_dir,
+                    options.upstream_dom_drift_policy,
                 );
                 write_notes_section(report, notes);
             }
@@ -1293,6 +1321,11 @@ pub(crate) fn write_verification_policy_metadata(
         report,
         "- Accepted residual policy: `{}`",
         request.accepted_residual_policy.label()
+    );
+    let _ = writeln!(
+        report,
+        "- Upstream DOM drift policy: `{}`",
+        request.upstream_dom_drift_policy.label()
     );
     let _ = writeln!(report, "- Root-delta diagnostics: `{root_diagnostics}`");
 }
@@ -1601,6 +1634,7 @@ where
                     &run.dom_plan,
                     false,
                     run.dom_decimals,
+                    run.upstream_dom_drift_policy,
                     |upstream_document, local_document| {
                         inspect_dom(state, stem, upstream_document, local_document, false)
                     },
@@ -1636,6 +1670,7 @@ where
                     &run.dom_plan,
                     browser_math_dimensions_are_diagnostic,
                     run.dom_decimals,
+                    run.upstream_dom_drift_policy,
                     |upstream_document, local_document| {
                         inspect_dom(
                             state,
@@ -1667,6 +1702,17 @@ where
     failures.extend(evidence.gate_failures(run.diagram, run.check_dom));
     evidence.write_report(&mut report);
     write_report(state, &mut report, &compare_paths, &run, &failures, &notes);
+    let accepted_browser_text_layout_residuals = notes
+        .iter()
+        .filter(|note| note.starts_with(ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX))
+        .count();
+    if accepted_browser_text_layout_residuals > 0 {
+        println!(
+            "accepted {accepted_browser_text_layout_residuals} exact browser-text-layout residual comparisons for {} (report={})",
+            run.diagram,
+            compare_paths.out_path.display()
+        );
+    }
 
     if let Some(parent) = compare_paths.out_path.parent() {
         fs::create_dir_all(parent)
@@ -1728,6 +1774,7 @@ fn write_rendered_fixture_with_parsed_dom<InspectDom>(
     dom_plan: &DomComparisonPlan,
     browser_math_dimensions_are_diagnostic: bool,
     dom_decimals: u32,
+    upstream_dom_drift_policy: UpstreamDomDriftPolicy,
     mut inspect_dom: InspectDom,
 ) -> Result<FixtureComparisonEvidence, XtaskError>
 where
@@ -1813,6 +1860,21 @@ where
         } else {
             let mut upstream_document = upstream_document.expect("checked upstream DOM parse");
             let mut local_document = local_document.expect("checked local DOM parse");
+            let browser_text_layout_residual = match upstream_dom_drift_policy {
+                UpstreamDomDriftPolicy::Blocking => None,
+                UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts => {
+                    super::browser_text_layout_residual(diagram, stem)
+                        .map_err(XtaskError::SvgCompareFailed)?
+                }
+            };
+            let local_svg_signature = browser_text_layout_residual
+                .map(|_| svgdom::canonical_local_svg_signature(local_svg, dom_decimals))
+                .transpose()
+                .map_err(|error| {
+                    XtaskError::SvgCompareFailed(format!(
+                        "canonicalize local SVG receipt signature for {diagram}/{stem}: {error}"
+                    ))
+                })?;
             if let Some(issue) = inspect_dom(&upstream_document, &local_document) {
                 issues.push(issue);
             }
@@ -1856,9 +1918,20 @@ where
                     descendant_comparisons.push((comparison_key, error.clone()));
                     error
                 };
-                if let Some(error) = comparison_error {
-                    failures.push(format!("[{mode_label}] {error}"));
-                }
+                record_upstream_dom_comparison(
+                    upstream_dom_drift_policy,
+                    browser_text_layout_residual,
+                    requested_mode,
+                    diagram,
+                    stem,
+                    input_text,
+                    upstream_svg,
+                    dom_decimals,
+                    local_svg_signature.as_ref(),
+                    comparison_error,
+                    failures,
+                    notes,
+                );
             }
         }
         failures.extend(issues);
@@ -1881,6 +1954,79 @@ where
         },
         semantic_labels,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_upstream_dom_comparison(
+    policy: UpstreamDomDriftPolicy,
+    residual: Option<&super::BrowserTextLayoutResidual>,
+    mode: svgdom::DomMode,
+    diagram: &str,
+    stem: &str,
+    input_text: &str,
+    upstream_svg: &str,
+    dom_decimals: u32,
+    local_svg_signature: Option<&svgdom::CanonicalLocalSvgSignature>,
+    comparison_error: Option<String>,
+    failures: &mut Vec<String>,
+    notes: &mut Vec<String>,
+) {
+    let mode_label = dom_mode_label(mode);
+    if policy == UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+        && let Some(residual) = residual
+        && let Err(error) =
+            residual.validate_source_artifacts(input_text.as_bytes(), upstream_svg.as_bytes())
+    {
+        failures.push(format!("[{mode_label}] {error}"));
+        return;
+    }
+    let admitted = policy == UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+        && residual.is_some_and(|residual| residual.admits_mode(mode));
+
+    match (comparison_error, admitted, residual) {
+        (Some(error), true, Some(residual)) => {
+            match validate_browser_text_layout_local_signature(
+                residual,
+                mode,
+                dom_decimals,
+                local_svg_signature,
+            ) {
+                Ok(()) => notes.push(format!(
+                    "{ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX} [{mode_label}] for {diagram}/{stem}: {error}"
+                )),
+                Err(receipt_error) => failures.push(format!(
+                    "[{mode_label}] {receipt_error}; the new DOM mismatch remains blocking"
+                )),
+            }
+        }
+        (Some(error), _, _) => failures.push(format!("[{mode_label}] {error}")),
+        (None, true, Some(residual)) => {
+            match validate_browser_text_layout_local_signature(
+                residual,
+                mode,
+                dom_decimals,
+                local_svg_signature,
+            ) {
+                Ok(()) => failures.push(format!(
+                    "[{mode_label}] stale browser text layout receipt for {diagram}/{stem}: the upstream DOM comparison now matches"
+                )),
+                Err(receipt_error) => failures.push(format!("[{mode_label}] {receipt_error}")),
+            }
+        }
+        (None, _, _) => {}
+    }
+}
+
+fn validate_browser_text_layout_local_signature(
+    residual: &super::BrowserTextLayoutResidual,
+    mode: svgdom::DomMode,
+    dom_decimals: u32,
+    local_svg_signature: Option<&svgdom::CanonicalLocalSvgSignature>,
+) -> Result<(), String> {
+    let local_svg_signature = local_svg_signature.ok_or_else(|| {
+        "browser text layout receipt is missing its canonical local SVG signature".to_string()
+    })?;
+    residual.validate_local_svg_signature(mode, dom_decimals, local_svg_signature)
 }
 
 pub(crate) fn fixture_dom_profile(
@@ -2005,6 +2151,7 @@ pub(crate) fn write_compare_result_section(
     check_dom: bool,
     failures: &[String],
     out_svg_dir: &Path,
+    upstream_dom_drift_policy: UpstreamDomDriftPolicy,
 ) {
     if !check_dom {
         let _ = writeln!(
@@ -2013,7 +2160,13 @@ pub(crate) fn write_compare_result_section(
             out_svg_dir.display()
         );
     } else if failures.is_empty() {
-        let _ = writeln!(report, "\n## Result\n\nAll fixtures matched.\n");
+        let result = match upstream_dom_drift_policy {
+            UpstreamDomDriftPolicy::Blocking => "All fixtures matched.",
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts => {
+                "All blocking checks passed. Exact reviewed browser-text-layout residuals are listed under Notes when present."
+            }
+        };
+        let _ = writeln!(report, "\n## Result\n\n{result}\n");
     } else {
         let _ = writeln!(report, "\n## Mismatches\n");
         for failure in failures {
@@ -2655,6 +2808,7 @@ mod tests {
                         check_dom: true,
                         dom_plan: DomComparisonPlan::single(svgdom::DomMode::Structure),
                         dom_decimals: 3,
+                        upstream_dom_drift_policy: UpstreamDomDriftPolicy::Blocking,
                     },
                     fixtures_root: Some(fixtures_root.clone()),
                     upstream_root: Some(upstream_root.clone()),
@@ -2732,6 +2886,7 @@ mod tests {
             &DomComparisonPlan::single(svgdom::DomMode::Structure),
             false,
             3,
+            UpstreamDomDriftPolicy::Blocking,
             |_, _| None,
         )
         .expect("writing the local SVG should succeed");
@@ -2747,6 +2902,134 @@ mod tests {
         assert!(failures.iter().any(|failure| {
             failure.contains("label or associated edge geometry differs without an exact residual")
         }));
+    }
+
+    #[test]
+    fn browser_text_layout_receipts_accept_only_the_exact_reviewed_local_svg_signature() {
+        let reviewed_input = "sequenceDiagram\nA->>B: probe";
+        let reviewed_upstream = "<svg><text>browser</text></svg>";
+        let reviewed_local = r#"<svg><g><text>wrapped text</text></g></svg>"#;
+        let reviewed_signature = svgdom::canonical_local_svg_signature(reviewed_local, 3).unwrap();
+        let receipt = super::super::BrowserTextLayoutResidual::test_only(
+            "sequence",
+            "browser-text-layout",
+            &[svgdom::DomMode::Parity],
+            reviewed_input,
+            reviewed_upstream,
+            &reviewed_signature,
+        );
+        let mismatch = Some("dom mismatch for browser-text-layout".to_string());
+
+        let mut failures = Vec::new();
+        let mut notes = Vec::new();
+        record_upstream_dom_comparison(
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+            Some(&receipt),
+            svgdom::DomMode::Parity,
+            "sequence",
+            "browser-text-layout",
+            reviewed_input,
+            reviewed_upstream,
+            3,
+            Some(&reviewed_signature),
+            mismatch.clone(),
+            &mut failures,
+            &mut notes,
+        );
+        assert!(failures.is_empty(), "{failures:?}");
+        assert_eq!(notes.len(), 1);
+
+        for (actual_input, actual_upstream, drifted_role) in [
+            (
+                "sequenceDiagram\nA->>B: changed",
+                reviewed_upstream,
+                "input drifted",
+            ),
+            (
+                reviewed_input,
+                "<svg><text>changed browser baseline</text></svg>",
+                "upstream SVG drifted",
+            ),
+        ] {
+            let mut failures = Vec::new();
+            let mut notes = Vec::new();
+            record_upstream_dom_comparison(
+                UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+                Some(&receipt),
+                svgdom::DomMode::Parity,
+                "sequence",
+                "browser-text-layout",
+                actual_input,
+                actual_upstream,
+                3,
+                Some(&reviewed_signature),
+                mismatch.clone(),
+                &mut failures,
+                &mut notes,
+            );
+            assert_eq!(failures.len(), 1, "source artifact drift must block");
+            assert!(failures[0].contains(drifted_role), "{failures:?}");
+            assert!(notes.is_empty());
+        }
+
+        let mut failures = Vec::new();
+        let mut notes = Vec::new();
+        let changed_signature =
+            svgdom::canonical_local_svg_signature(r#"<svg><g><circle/></g></svg>"#, 3).unwrap();
+        record_upstream_dom_comparison(
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+            Some(&receipt),
+            svgdom::DomMode::Parity,
+            "sequence",
+            "browser-text-layout",
+            reviewed_input,
+            reviewed_upstream,
+            3,
+            Some(&changed_signature),
+            mismatch.clone(),
+            &mut failures,
+            &mut notes,
+        );
+        assert_eq!(failures.len(), 1, "a new DOM shape must block");
+        assert!(notes.is_empty());
+
+        let mut failures = Vec::new();
+        let mut notes = Vec::new();
+        record_upstream_dom_comparison(
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+            None,
+            svgdom::DomMode::Parity,
+            "sequence",
+            "unregistered-neighbor",
+            reviewed_input,
+            reviewed_upstream,
+            3,
+            None,
+            mismatch,
+            &mut failures,
+            &mut notes,
+        );
+        assert_eq!(failures.len(), 1, "an unregistered neighbor must block");
+        assert!(notes.is_empty());
+
+        let mut failures = Vec::new();
+        let mut notes = Vec::new();
+        record_upstream_dom_comparison(
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+            Some(&receipt),
+            svgdom::DomMode::Parity,
+            "sequence",
+            "browser-text-layout",
+            reviewed_input,
+            reviewed_upstream,
+            3,
+            Some(&reviewed_signature),
+            None,
+            &mut failures,
+            &mut notes,
+        );
+        assert_eq!(failures.len(), 1, "a stale receipt must block");
+        assert!(notes.is_empty());
     }
 
     #[test]
@@ -2786,6 +3069,7 @@ mod tests {
             ]),
             false,
             3,
+            UpstreamDomDriftPolicy::Blocking,
             |upstream_document, local_document| {
                 super::super::record_fixture_root_evidence_from_dom(
                     &mut root_coverage,
@@ -2860,6 +3144,7 @@ mod tests {
                         svgdom::DomMode::ParityRoot,
                     ]),
                     dom_decimals: 3,
+                    upstream_dom_drift_policy: UpstreamDomDriftPolicy::Blocking,
                 },
                 fixtures_root: Some(fixtures_root),
                 upstream_root: Some(upstream_root),
@@ -2891,6 +3176,7 @@ mod tests {
                     options.check_dom,
                     failures,
                     &paths.out_svg_dir,
+                    options.upstream_dom_drift_policy,
                 );
                 write_notes_section(report, notes);
             },
@@ -2962,6 +3248,7 @@ mod tests {
                     check_dom: true,
                     dom_plan: DomComparisonPlan::single(svgdom::DomMode::Parity),
                     dom_decimals: 3,
+                    upstream_dom_drift_policy: UpstreamDomDriftPolicy::Blocking,
                 },
                 fixtures_root: Some(fixtures_root),
                 upstream_root: Some(upstream_root),
@@ -3034,6 +3321,7 @@ mod tests {
                     check_dom: true,
                     dom_plan: DomComparisonPlan::single(svgdom::DomMode::Parity),
                     dom_decimals: 3,
+                    upstream_dom_drift_policy: UpstreamDomDriftPolicy::Blocking,
                 },
                 fixtures_root: Some(fixtures_root),
                 upstream_root: Some(upstream_root),
@@ -3101,6 +3389,7 @@ mod tests {
                     check_dom: false,
                     dom_plan: DomComparisonPlan::single(svgdom::DomMode::Structure),
                     dom_decimals: 3,
+                    upstream_dom_drift_policy: UpstreamDomDriftPolicy::Blocking,
                 },
                 fixtures_root: Some(fixtures_root),
                 upstream_root: Some(upstream_root),
@@ -3116,6 +3405,7 @@ mod tests {
                     options.check_dom,
                     failures,
                     &paths.out_svg_dir,
+                    options.upstream_dom_drift_policy,
                 );
                 write_notes_section(report, notes);
             },

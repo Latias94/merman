@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 pub const RUNTIME_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const PRESENTATION_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK: &str = "host-callback";
-pub const TEXT_MEASUREMENT_PROVIDER_VENDORED: &str = "vendored";
+pub const TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC: &str = "deterministic";
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
@@ -25,7 +25,7 @@ static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 /// The text-measurement routes exposed by one artifact.
 ///
 /// The protocol version belongs to the independently versioned text-measurement contract. Provider
-/// IDs describe actual installation routes, not Cargo features: `vendored` is the built-in
+/// IDs describe actual installation routes, not Cargo features: `deterministic` is the built-in
 /// renderer measurer and `host-callback` means this transport accepts a host callback.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
@@ -1085,8 +1085,8 @@ mod tests {
             assert_eq!(
                 text_measurement.provider_ids,
                 [
+                    TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC,
                     TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
-                    TEXT_MEASUREMENT_PROVIDER_VENDORED,
                 ]
             );
         }

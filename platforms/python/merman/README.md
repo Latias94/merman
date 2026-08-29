@@ -81,7 +81,7 @@ before the next checkpoint, so hard preemption requires a worker or process boun
 
 ## Text Measurement
 
-Merman owns a deterministic vendored text measurer by default. Keep it for servers, CLIs, CI, and documentation builds.
+Merman owns a deterministic, font-agnostic text measurer by default. Keep it for servers, CLIs, CI, and documentation builds.
 
 GUI, browser automation, and WebView hosts can implement `MermanTextMeasurer`, start with `MermanEngineServices()`, call `with_text_measurer(...)`, and pass the returned immutable bundle to `MermanEngine(options_json, services)`. The original bundle remains unchanged, and the callback is immutable for that engine; construct a different engine to change or remove it. Text-measurement protocol 1 exposes 19 exact operations (`0..18`), and each handled `MermanTextMeasureResult` must use the `MermanTextMeasurementResultKind` required by `request.operation`. Return `None` for operations that cannot be measured synchronously and faithfully. Invalid results and Python exceptions delivered through UniFFI's generated callback trampoline fall back for that operation; Merman does not claim to catch arbitrary foreign unwinds outside that generated boundary.
 

@@ -14,7 +14,7 @@ use merman_render::model::FlowchartLayout;
 use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
 use merman_render::svg::{FlowchartEdgeTraceCollector, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
-    TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 use std::path::PathBuf;
 #[cfg(feature = "math")]
@@ -464,7 +464,11 @@ end
         })
         .map(text_content)
         .collect::<Vec<_>>();
-    assert_eq!(markdown_rows, ["&nbsp;Edge", "markdown&nbsp;"], "{svg}");
+    assert_eq!(
+        markdown_rows.join(" "),
+        "&nbsp;Edge markdown&nbsp;",
+        "{svg}"
+    );
 
     let node_text = |id: &str| {
         let id_fragment = format!("-flowchart-{id}-");
@@ -778,6 +782,96 @@ fn flowchart_svg_viewbox_values(svg: &str) -> [f64; 4] {
     [values[0], values[1], values[2], values[3]]
 }
 
+fn svg_translate_values(transform: &str) -> [f64; 2] {
+    let values = transform
+        .strip_prefix("translate(")
+        .and_then(|value| value.strip_suffix(')'))
+        .unwrap_or_else(|| panic!("expected translate(...), got {transform:?}"))
+        .split([',', ' '])
+        .filter(|part| !part.is_empty())
+        .map(|part| part.parse::<f64>().expect("translate number"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        values.len(),
+        2,
+        "expected two translate values: {transform}"
+    );
+    [values[0], values[1]]
+}
+
+fn flowchart_svg_edge_label_geometry(svg: &str, data_id: &str) -> ([f64; 2], [f64; 2], [f64; 4]) {
+    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some(data_id)
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.split_ascii_whitespace().any(|part| part == "label"))
+        })
+        .unwrap_or_else(|| panic!("edge label {data_id}: {svg}"));
+    let outer = label.parent().expect("edgeLabel parent");
+    assert!(
+        outer.attribute("class").is_some_and(|class| {
+            class
+                .split_ascii_whitespace()
+                .any(|part| part == "edgeLabel")
+        }),
+        "edge label parent: {svg}"
+    );
+    let background = label
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "background")
+                })
+        })
+        .expect("edge label background");
+    let number = |name: &str| {
+        background
+            .attribute(name)
+            .unwrap_or_else(|| panic!("edge label background {name}"))
+            .parse::<f64>()
+            .unwrap_or_else(|_| panic!("edge label background {name} number"))
+    };
+    (
+        svg_translate_values(outer.attribute("transform").expect("edgeLabel transform")),
+        svg_translate_values(label.attribute("transform").expect("label transform")),
+        [number("x"), number("y"), number("width"), number("height")],
+    )
+}
+
+fn assert_flowchart_svg_edge_label_is_centered_and_contained(svg: &str, data_id: &str) {
+    let (anchor, translate, rect) = flowchart_svg_edge_label_geometry(svg, data_id);
+    let [rect_x, rect_y, rect_width, rect_height] = rect;
+    assert!(
+        (translate[0] + rect_x + rect_width / 2.0).abs() < 1e-9,
+        "edge label background must be horizontally centered on its anchor: {svg}"
+    );
+    assert!(
+        (translate[1] + rect_y + rect_height / 2.0).abs() < 1e-9,
+        "edge label background must be vertically centered on its anchor: {svg}"
+    );
+
+    let [viewbox_x, viewbox_y, viewbox_width, viewbox_height] = flowchart_svg_viewbox_values(svg);
+    let viewbox = [viewbox_x, viewbox_y, viewbox_width, viewbox_height];
+    let left = anchor[0] + translate[0] + rect_x;
+    let top = anchor[1] + translate[1] + rect_y;
+    let right = left + rect_width;
+    let bottom = top + rect_height;
+    assert!(
+        left >= viewbox_x - 1e-9
+            && top >= viewbox_y - 1e-9
+            && right <= viewbox_x + viewbox_width + 1e-9
+            && bottom <= viewbox_y + viewbox_height + 1e-9,
+        "edge label background must remain inside the root viewBox: rect={rect:?}, anchor={anchor:?}, translate={translate:?}, viewBox={viewbox:?}, svg={svg}"
+    );
+}
+
 fn foreign_object_width_for_data_id(svg: &str, data_id: &str) -> f64 {
     let data_marker = format!(r#"<g class="label" data-id="{data_id}""#);
     let data_start = svg.find(&data_marker).expect("data-id marker");
@@ -868,14 +962,14 @@ fn flowchart_node_shape(svg: &str, node_id: &str) -> (String, Option<String>) {
 
 #[derive(Debug, Clone)]
 struct WidthScaledTextMeasurer {
-    inner: VendoredFontMetricsTextMeasurer,
+    inner: DeterministicTextMeasurer,
     width_scale: f64,
 }
 
 impl WidthScaledTextMeasurer {
     fn new(width_scale: f64) -> Self {
         Self {
-            inner: VendoredFontMetricsTextMeasurer::default(),
+            inner: DeterministicTextMeasurer::default(),
             width_scale,
         }
     }
@@ -1021,7 +1115,7 @@ fn flowchart_svg_handles_deep_subgraph_chain() {
 }
 
 #[test]
-fn flowchart_diagram_padding_zero_is_preserved() {
+fn flowchart_diagram_padding_zero_keeps_zero_user_padding_and_paint_guard() {
     let default = render_flowchart_svg_from_text(
         r#"flowchart TB
 A
@@ -1037,14 +1131,42 @@ A
     let default_viewbox = flowchart_svg_viewbox_values(&default);
     let zero_viewbox = flowchart_svg_viewbox_values(&zero);
 
-    assert!(
-        (default_viewbox[2] - zero_viewbox[2] - 16.0).abs() < 1e-6,
-        "default diagramPadding=8 should add 16px width over diagramPadding=0; default={default_viewbox:?}, zero={zero_viewbox:?}"
-    );
-    assert!(
-        (default_viewbox[3] - zero_viewbox[3] - 16.0).abs() < 1e-6,
-        "default diagramPadding=8 should add 16px height over diagramPadding=0; default={default_viewbox:?}, zero={zero_viewbox:?}"
-    );
+    // Zero remains distinct from the default 8px user padding. The zero-padding viewport adds
+    // only the family-local 1px paint guard on each side, so the net size delta is 2 * (8 - 1).
+    for axis in [2, 3] {
+        assert!(
+            (default_viewbox[axis] - zero_viewbox[axis] - 14.0).abs() < 1e-6,
+            "default diagramPadding=8 should add 14px over the zero-padding paint guard; default={default_viewbox:?}, zero={zero_viewbox:?}"
+        );
+    }
+    for axis in [0, 1] {
+        assert!(
+            (zero_viewbox[axis] - default_viewbox[axis] - 7.0).abs() < 1e-6,
+            "diagramPadding=0 should retain only the 1px paint guard rather than the default 8px padding; default={default_viewbox:?}, zero={zero_viewbox:?}"
+        );
+    }
+}
+
+#[test]
+fn swimlane_small_diagram_padding_keeps_the_minimum_paint_inset() {
+    let render = |padding: &str| {
+        render_flowchart_svg_from_text(&format!(
+            r#"%%{{init: {{"flowchart": {{"diagramPadding": {padding}}}}}}}%%
+swimlane-beta LR
+A --> B
+"#,
+        ))
+    };
+    let zero = flowchart_svg_viewbox_values(&render("0"));
+    let fractional = flowchart_svg_viewbox_values(&render("0.5"));
+    let one = flowchart_svg_viewbox_values(&render("1"));
+
+    for axis in 0..4 {
+        assert!(
+            (zero[axis] - fractional[axis]).abs() < 1e-9 && (zero[axis] - one[axis]).abs() < 1e-9,
+            "diagramPadding 0, 0.5, and 1 should provide the same minimum paint inset: zero={zero:?}, fractional={fractional:?}, one={one:?}"
+        );
+    }
 }
 
 #[test]
@@ -1097,7 +1219,17 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
         .find(|e| e.id == "L_C_F_0")
         .expect("edge L_C_F_0");
     let lbl = edge.label.as_ref().expect("edge label");
-    assert_eq!(lbl.width, 49.03125);
+    let text = DeterministicTextMeasurer::default().measure_wrapped(
+        " Car",
+        &TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        },
+        None,
+        WrapMode::HtmlLike,
+    );
+    let expected_width = merman_render::text::ceil_to_1_64_px(text.width + 16.0 * 1.25);
+    assert_eq!(lbl.width, expected_width);
     assert_eq!(lbl.height, 24.0);
 }
 
@@ -1134,12 +1266,34 @@ fn flowchart_html_node_labels_wrap_at_mermaid_default_width() {
 "##,
     );
 
-    assert!(
-        svg.contains(
-            r#"foreignObject width="200" height="48" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;""#
-        ),
-        "expected long flowchart HTML node label to wrap at Mermaid's default 200px width: {svg}"
-    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("-flowchart-Security-"))
+        })
+        .expect("Security node");
+    let foreign_object = node
+        .descendants()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .expect("Security foreignObject");
+    let measured_width = foreign_object
+        .attribute("width")
+        .expect("foreignObject width")
+        .parse::<f64>()
+        .expect("numeric foreignObject width");
+    let div_style = foreign_object
+        .descendants()
+        .find(|node| node.has_tag_name("div"))
+        .and_then(|node| node.attribute("style"))
+        .expect("HTML label div style");
+
+    assert!(measured_width.is_finite() && (0.0..=200.0).contains(&measured_width));
+    assert_eq!(foreign_object.attribute("height"), Some("48"));
+    assert!(div_style.contains("max-width: 200px") && div_style.contains("width: 200px"));
 }
 
 #[test]
@@ -2225,6 +2379,31 @@ flowchart LR
         .count();
 
     assert_eq!(rows, 3, "{svg}");
+    assert_eq!(
+        label.attribute("transform"),
+        Some("translate(0,0)"),
+        "{svg}"
+    );
+    let (_, _, background) = flowchart_svg_edge_label_geometry(&svg, "L_A_B_0");
+    assert_eq!(background, [-2.0, -2.0, 4.0, 4.0], "{svg}");
+    assert_flowchart_svg_edge_label_is_centered_and_contained(&svg, "L_A_B_0");
+}
+
+#[test]
+fn flowchart_svg_edge_label_background_is_centered_and_contained() {
+    let svg = render_flowchart_svg_from_text(
+        r#"---
+config:
+  htmlLabels: false
+---
+flowchart LR
+  A -->|ordinary edge label| B
+"#,
+    );
+
+    let (_, translate, _) = flowchart_svg_edge_label_geometry(&svg, "L_A_B_0");
+    assert_eq!(translate[0], 0.0, "{svg}");
+    assert_flowchart_svg_edge_label_is_centered_and_contained(&svg, "L_A_B_0");
 }
 
 #[test]
@@ -2541,31 +2720,34 @@ fn flowchart_html_edge_label_svg_width_matches_layout_bbox() {
 
 #[test]
 fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
-    let _session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let text = "flowchart LR\nsubgraph A\na -->b\nend\nsubgraph B\nb\nend\n";
-    let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let svg = render_flowchart_artifact(
-        parsed,
-        &layout_options,
-        _session,
-        &SvgRenderOptions {
-            diagram_id: Some(
-                "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015"
-                    .to_string(),
-            ),
-            ..Default::default()
-        },
-    )
-    .expect("render svg");
+    let render = |text: &str| {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let parsed =
+            block_on(Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()))
+                .expect("parse ok")
+                .expect("diagram detected");
+        render_flowchart_artifact(
+            parsed,
+            &LayoutOptions::default(),
+            session,
+            &SvgRenderOptions {
+                diagram_id: Some(
+                    "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015"
+                        .to_string(),
+                ),
+                ..Default::default()
+            },
+        )
+        .expect("render svg")
+    };
+    let svg = render("flowchart LR\nsubgraph A\na -->b\nend\nsubgraph B\nb\nend\n");
+    let without_empty_subgraph = render("flowchart LR\nsubgraph A\na -->b\nend\n");
+    let viewbox = flowchart_svg_viewbox_values(&svg);
+    let control_viewbox = flowchart_svg_viewbox_values(&without_empty_subgraph);
 
     assert!(
-        svg.contains(r#"viewBox="0 0 154.921875 364""#),
-        "expected computed root viewBox to include top-level empty subgraph node: {svg}"
+        viewbox[2] > control_viewbox[2] || viewbox[3] > control_viewbox[3],
+        "the top-level empty subgraph node must expand the root bounds: with={viewbox:?}, without={control_viewbox:?}"
     );
     assert!(
         svg.contains(

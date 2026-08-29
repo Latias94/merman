@@ -99,7 +99,7 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
     }
 
     // Mermaid serializes generated CSS with comma-separated font-family lists and no extra
-    // whitespace around commas. Keep that spelling stable for SVG parity and font-metric keys.
+    // whitespace around commas. Keep that spelling stable for SVG parity.
     let mut parts: Vec<String> = Vec::new();
     let mut cur = String::new();
     let mut in_single = false;

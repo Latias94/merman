@@ -8,6 +8,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 The next workspace release remains in development. This section records only completed user-visible outcomes since alpha.5; its final version and release scope have not been selected.
 
+### Typst Package 0.3.0
+
+- Rebuilt the Typst package after removing ICU4X collation data and generated font-metric tables from the production WebAssembly closure. The package now uses Merman's deterministic Unicode-aware measurement fallback and retains Typst plugin ABI 2. The host measurement callback seam remains available to other transports that can provide that service; the Typst package itself is deterministic-only. This materially reduces the downloaded WASM without changing the exported plugin protocol.
+
 ### Breaking changes
 
 - Advanced the machine-readable CLI contract from `4` to `5`. ASCII-enabled artifacts now expose
@@ -76,6 +80,10 @@ The next workspace release remains in development. This section records only com
 
 ### Fixed
 
+- Made deterministic SVG text measurement independent of CSS font-family names and count Unicode
+  grapheme sequences such as ZWJ emoji, modifiers, flags, and keycaps once. Flowchart SVG edge
+  labels now center from their emitted text bbox, zero-padding Flowcharts retain their painted
+  stroke, and empty Pie diagrams retain the base canvas needed by the outer circle.
 - `merman-rustdoc` now defaults to browser-parity SVG instead of adding a second visible text
   fallback beside each native HTML label. Explicit `readable` and `resvg-safe` pipelines remain
   available for consumers that need SVG text fallbacks. #81

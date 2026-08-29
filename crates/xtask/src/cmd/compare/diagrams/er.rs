@@ -114,6 +114,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
             check_dom: request.common.check_dom,
             dom_plan: dom_plan.clone(),
             dom_decimals,
+            upstream_dom_drift_policy: request.common.upstream_dom_drift_policy,
         }),
         &mut state,
         |_, report, _paths, options| {
@@ -279,7 +280,13 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                     row.local_max_width,
                 );
             }
-            write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
+            write_compare_result_section(
+                report,
+                options.check_dom,
+                failures,
+                &paths.out_svg_dir,
+                options.upstream_dom_drift_policy,
+            );
         },
     )
 }

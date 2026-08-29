@@ -102,6 +102,8 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
     let mmdc_presentation_profiles = bash_option_values(&script, "mmdc", "--presentation-profile");
     assert_eq!(mmdc_presentation_profiles, expected_presentation_profiles);
 
+    assert!(!script.contains("--text-measurer"));
+
     let mmdc_themes = bash_option_values(&script, "mmdc", "--theme");
     assert_eq!(
         mmdc_themes,

@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": -0.5,
         "min_y": 0.0,
-        "max_x": 150.4,
+        "max_x": 156.8,
         "max_y": 110.4
       },
-      "total_width": 150.4,
+      "total_width": 156.8,
       "total_height": 110.4,
       "row_indent": 10.0,
       "padding_x": 5.0,
@@ -55,11 +55,11 @@
           "depth": 2.0,
           "x": 30.0,
           "y": 55.2,
-          "width": 120.4,
+          "width": 126.8,
           "height": 27.6,
           "label_x": 35.0,
           "label_y": 69.0,
-          "label_width": 110.4,
+          "label_width": 116.8,
           "label_height": 17.6
         },
         {

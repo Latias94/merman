@@ -469,7 +469,7 @@ assert.deepEqual(capabilities.system_adapter_ids, []);
 if (hasCapability("svg")) {
   assert.deepEqual(capabilities.text_measurement, {
     protocol_version: textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-    provider_ids: ["host-callback", "vendored"],
+    provider_ids: ["deterministic", "host-callback"],
   });
 } else {
   assert.equal(capabilities.text_measurement, null);

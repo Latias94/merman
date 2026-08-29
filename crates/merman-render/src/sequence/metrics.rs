@@ -604,7 +604,7 @@ mod tests {
     #[cfg(feature = "math")]
     #[test]
     fn sequence_math_measurement_handles_multiple_formulas_on_one_line() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let renderer = crate::math::RatexMathRenderer;
         let config = merman_core::MermaidConfig::default();
         let style = crate::text::TextStyle::default();
@@ -629,7 +629,7 @@ mod tests {
     #[cfg(feature = "math")]
     #[test]
     fn sequence_math_measurement_ignores_unclosed_delimiters_on_plain_lines() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let renderer = crate::math::RatexMathRenderer;
         let config = merman_core::MermaidConfig::default();
         let style = crate::text::TextStyle::default();

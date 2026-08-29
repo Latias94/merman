@@ -43,6 +43,22 @@ pub(crate) struct ParsedSvgDom<'input> {
     signatures: BTreeMap<DomSignatureKey, SvgDomNode>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct CanonicalLocalSvgSignature {
+    decimals: u32,
+    canonical: String,
+}
+
+impl CanonicalLocalSvgSignature {
+    pub(crate) const fn decimals(&self) -> u32 {
+        self.decimals
+    }
+
+    pub(crate) fn as_bytes(&self) -> &[u8] {
+        self.canonical.as_bytes()
+    }
+}
+
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct DomComparatorWorkCounts {
@@ -1426,6 +1442,48 @@ fn build_node(
     }
 }
 
+fn normalize_unclosed_img_tags(s: &str) -> String {
+    fn re_unquoted_attr_value() -> &'static Regex {
+        static ONCE: OnceLock<Regex> = OnceLock::new();
+        // In HTML it is legal to omit quotes for attribute values (e.g. `src=x`), but
+        // `roxmltree` parses XML and requires quotes. Normalize the common case we see in
+        // Mermaid's `<foreignObject>` XHTML.
+        ONCE.get_or_init(|| Regex::new(r#"(\s[\w:-]+)=([^\s"'<>]+)"#).unwrap())
+    }
+
+    let mut out = String::with_capacity(s.len());
+    let mut idx = 0usize;
+    while let Some(rel) = s[idx..].find("<img") {
+        let start = idx + rel;
+        out.push_str(&s[idx..start]);
+        let Some(gt_rel) = s[start..].find('>') else {
+            out.push_str(&s[start..]);
+            return out;
+        };
+        let end = start + gt_rel;
+
+        // Include the closing `>` for easier normalization.
+        let tag_full = &s[start..=end];
+        let mut tag_norm = re_unquoted_attr_value()
+            .replace_all(tag_full, r#"$1="$2""#)
+            .to_string();
+
+        // Ensure the void tag is self-closed so the surrounding SVG becomes valid XML.
+        if tag_norm.ends_with('>') {
+            let inner = tag_norm[..tag_norm.len() - 1].trim_end();
+            if !inner.ends_with('/') {
+                tag_norm.pop();
+                tag_norm.push_str("/>");
+            }
+        }
+
+        out.push_str(&tag_norm);
+        idx = end + 1;
+    }
+    out.push_str(&s[idx..]);
+    out
+}
+
 pub(crate) fn normalize_xml_entities(svg: &str) -> Cow<'_, str> {
     // Mermaid SVG output (especially `<foreignObject>` XHTML) can contain HTML-ish constructs
     // that are valid in a browser DOM, but not valid XML:
@@ -1443,53 +1501,23 @@ pub(crate) fn normalize_xml_entities(svg: &str) -> Cow<'_, str> {
         return Cow::Borrowed(svg);
     }
 
-    fn normalize_unclosed_img_tags(s: &str) -> String {
-        fn re_unquoted_attr_value() -> &'static Regex {
-            static ONCE: OnceLock<Regex> = OnceLock::new();
-            // In HTML it is legal to omit quotes for attribute values (e.g. `src=x`), but
-            // `roxmltree` parses XML and requires quotes. Normalize the common case we see in
-            // Mermaid's `<foreignObject>` XHTML.
-            ONCE.get_or_init(|| Regex::new(r#"(\s[\w:-]+)=([^\s"'<>]+)"#).unwrap())
-        }
-
-        let mut out = String::with_capacity(s.len());
-        let mut idx = 0usize;
-        while let Some(rel) = s[idx..].find("<img") {
-            let start = idx + rel;
-            out.push_str(&s[idx..start]);
-            let Some(gt_rel) = s[start..].find('>') else {
-                out.push_str(&s[start..]);
-                return out;
-            };
-            let end = start + gt_rel;
-
-            // Include the closing `>` for easier normalization.
-            let tag_full = &s[start..=end];
-            let mut tag_norm = re_unquoted_attr_value()
-                .replace_all(tag_full, r#"$1="$2""#)
-                .to_string();
-
-            // Ensure the void tag is self-closed so the surrounding SVG becomes valid XML.
-            if tag_norm.ends_with('>') {
-                let inner = tag_norm[..tag_norm.len() - 1].trim_end();
-                if !inner.ends_with('/') {
-                    tag_norm.pop();
-                    tag_norm.push_str("/>");
-                }
-            }
-
-            out.push_str(&tag_norm);
-            idx = end + 1;
-        }
-        out.push_str(&s[idx..]);
-        out
-    }
-
     let mut out = svg.to_string();
     if out.contains("&nbsp;") || out.contains("&#160;") || out.contains("&#xA0;") {
         out = out.replace("&nbsp;", " ");
         out = out.replace("&#160;", " ").replace("&#xA0;", " ");
     }
+    if out.contains("<img") {
+        out = normalize_unclosed_img_tags(&out);
+    }
+    Cow::Owned(out)
+}
+
+fn normalize_xml_for_local_signature(svg: &str) -> Cow<'_, str> {
+    if !(svg.contains("&nbsp;") || svg.contains("<img")) {
+        return Cow::Borrowed(svg);
+    }
+
+    let mut out = svg.replace("&nbsp;", "&#160;");
     if out.contains("<img") {
         out = normalize_unclosed_img_tags(&out);
     }
@@ -1645,6 +1673,117 @@ fn write_canonical_node(out: &mut String, n: &SvgDomNode, depth: usize) {
     out.push_str(">\n");
 }
 
+fn expanded_xml_name(namespace: Option<&str>, local_name: &str) -> String {
+    match namespace {
+        Some(namespace) => format!("{{{namespace}}}{local_name}"),
+        None => local_name.to_string(),
+    }
+}
+
+fn is_local_signature_quantized_attr(
+    node: roxmltree::Node<'_, '_>,
+    attribute: roxmltree::Attribute<'_, '_>,
+) -> bool {
+    // Cross-architecture evidence currently identifies only last-bit drift in generated path
+    // coordinates. Keep every other attribute byte-exact and preserve path commands while
+    // quantizing their numeric operands to the comparison precision.
+    node.tag_name().name() == "path"
+        && matches!(
+            node.tag_name().namespace(),
+            None | Some("http://www.w3.org/2000/svg")
+        )
+        && attribute.name() == "d"
+        && attribute.namespace().is_none()
+}
+
+fn write_canonical_local_svg_node(out: &mut String, node: roxmltree::Node<'_, '_>, decimals: u32) {
+    debug_assert!(node.is_element());
+    let name = expanded_xml_name(node.tag_name().namespace(), node.tag_name().name());
+    out.push('<');
+    out.push_str(&name);
+
+    let mut attrs = node
+        .attributes()
+        .map(|attribute| {
+            let name = expanded_xml_name(attribute.namespace(), attribute.name());
+            let value = if is_local_signature_quantized_attr(node, attribute) {
+                normalize_numeric_tokens(attribute.value(), decimals)
+            } else {
+                attribute.value().to_string()
+            };
+            (name, value)
+        })
+        .collect::<Vec<_>>();
+    attrs.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    for (name, value) in attrs {
+        out.push(' ');
+        out.push_str(&name);
+        out.push_str("=\"");
+        out.push_str(&escape_xml_attr(&value));
+        out.push('"');
+    }
+
+    let has_content = node
+        .children()
+        .any(|child| child.is_element() || child.is_text());
+    if !has_content {
+        out.push_str("/>");
+        return;
+    }
+
+    out.push('>');
+    for child in node.children() {
+        if child.is_element() {
+            write_canonical_local_svg_node(out, child, decimals);
+        } else if child.is_text()
+            && let Some(text) = child.text()
+        {
+            out.push_str(&escape_xml_text(text));
+        }
+    }
+    out.push_str("</");
+    out.push_str(&name);
+    out.push('>');
+}
+
+pub(crate) fn canonical_local_svg_signature(
+    svg: &str,
+    decimals: u32,
+) -> Result<CanonicalLocalSvgSignature, String> {
+    let document_start = svg.strip_prefix('\u{feff}').unwrap_or(svg);
+    if document_start
+        .strip_prefix("<?xml")
+        .and_then(|rest| rest.as_bytes().first())
+        .is_some_and(|byte| byte.is_ascii_whitespace())
+    {
+        return Err(
+            "XML declarations are not permitted in a canonical local SVG signature".to_string(),
+        );
+    }
+    let normalized = normalize_xml_for_local_signature(svg);
+    let document =
+        roxmltree::Document::parse(normalized.as_ref()).map_err(|error| error.to_string())?;
+    if document.descendants().any(|node| node.is_pi()) {
+        return Err(
+            "processing instructions are not permitted in a canonical local SVG signature"
+                .to_string(),
+        );
+    }
+    let root = document.root_element();
+    if root.tag_name().name() != "svg" {
+        return Err(format!(
+            "expected <svg> document root, found <{}>",
+            root.tag_name().name()
+        ));
+    }
+    let mut canonical = String::new();
+    write_canonical_local_svg_node(&mut canonical, root, decimals);
+    Ok(CanonicalLocalSvgSignature {
+        decimals,
+        canonical,
+    })
+}
+
 pub(crate) fn canonical_xml(svg: &str, mode: DomMode, decimals: u32) -> Result<String, String> {
     let dom = dom_signature(svg, mode, decimals)?;
     let mut out = String::new();
@@ -1763,6 +1902,18 @@ pub(crate) fn format_dom_diffs(differences: &[String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_local_svg_signature_rejects_xml_declarations() {
+        for svg in [
+            r#"<?xml version="1.0"?><svg/>"#,
+            "\u{feff}<?xml version=\"1.0\" encoding=\"UTF-16\"?><svg/>",
+        ] {
+            let error = canonical_local_svg_signature(svg, 3)
+                .expect_err("XML declarations must not be omitted from the receipt contract");
+            assert!(error.contains("XML declarations are not permitted"));
+        }
+    }
 
     #[test]
     fn dom_mode_parser_is_strict_and_display_is_canonical() {

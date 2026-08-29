@@ -51,7 +51,7 @@ pub struct SvgEnvironment {
 impl SvgEnvironment {
     /// Creates the deterministic default SVG service set.
     pub fn deterministic() -> Self {
-        let text_measurement = TextMeasurementPolicy::parity();
+        let text_measurement = TextMeasurementPolicy::deterministic();
         Self {
             backend: BackendRenderEnvironment::deterministic()
                 .with_text_measurement_policy(text_measurement.clone()),

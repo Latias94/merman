@@ -396,7 +396,7 @@ title Routed title
 
     assert!(
         host.calls.load(Ordering::Relaxed) > 0,
-        "Treemap must not bypass the session with a family-local vendored measurer"
+        "Treemap must not bypass the session with a family-local deterministic measurer"
     );
     assert!(
         host_session

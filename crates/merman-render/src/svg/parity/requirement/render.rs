@@ -976,9 +976,7 @@ mod tests {
     use super::super::*;
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
-    use crate::text::{
-        TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
-    };
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
     use merman_core::diagrams::requirement::{
         RequirementDiagramRenderModel, RequirementRenderElement, RequirementRenderNode,
         RequirementRenderRelationship,
@@ -997,7 +995,7 @@ mod tests {
 
     #[derive(Default)]
     struct CountingRequirementMeasurer {
-        inner: VendoredFontMetricsTextMeasurer,
+        inner: DeterministicTextMeasurer,
         mermaid_dimensions: Cell<usize>,
         wrapped: Cell<usize>,
     }
@@ -1378,7 +1376,7 @@ mod tests {
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({
             "securityLevel": "strict"
         }));
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
             config.as_value(),
@@ -1419,7 +1417,7 @@ mod tests {
             },
         ];
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
             config.as_value(),
@@ -1471,7 +1469,7 @@ mod tests {
             ..empty_requirement_model()
         };
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
             config.as_value(),
@@ -1553,7 +1551,7 @@ mod tests {
             ..empty_requirement_model()
         };
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
             config.as_value(),
@@ -1679,7 +1677,7 @@ mod tests {
             ..empty_requirement_model()
         };
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
             &model,
             config.as_value(),
@@ -1723,7 +1721,7 @@ mod tests {
 
     #[test]
     fn requirement_root_honors_disabled_max_width() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let options = SvgRenderOptions {
             diagram_id: Some("requirementFixed".to_string()),
             ..SvgRenderOptions::default()
@@ -1754,7 +1752,7 @@ mod tests {
 
     #[test]
     fn requirement_root_is_derived_for_formerly_pinned_fixture_ids() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let pinned_options = SvgRenderOptions {
             diagram_id: Some(
                 "upstream_cypress_requirementdiagram_unified_spec_example_025".to_string(),
@@ -1781,7 +1779,7 @@ mod tests {
 
     #[test]
     fn requirement_title_uses_pre_title_bounds_and_state_margin() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let options = SvgRenderOptions {
             diagram_id: Some("requirementTitle".to_string()),
             ..SvgRenderOptions::default()
@@ -1805,8 +1803,8 @@ mod tests {
     }
 
     #[test]
-    fn requirement_html_labels_use_xhtml_and_source_wrap_styles() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    fn requirement_html_labels_use_xhtml_and_deterministic_wrap_styles() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let config = serde_json::json!({
             "fontFamily": "trebuchet ms, verdana, arial, sans-serif",
             "fontSize": 10,
@@ -1845,7 +1843,6 @@ mod tests {
 
         assert!(svg.contains(r#"<div xmlns="http://www.w3.org/1999/xhtml""#));
         assert!(svg.contains("display: table; white-space: break-spaces;"));
-        assert!(svg.contains("display: table-cell; white-space: nowrap;"));
         assert!(svg.contains(&format!("max-width: {expected_max_width}px;")));
         assert!(svg.contains(&format!("width: {expected_max_width}px;")));
         assert!(svg.contains(r#"class="nodeLabel markdown-node-label""#));

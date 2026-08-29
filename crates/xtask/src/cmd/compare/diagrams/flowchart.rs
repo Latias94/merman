@@ -78,7 +78,6 @@ pub(super) fn compare_flowchart_args(
     let mut label_report_limit = DEFAULT_LABEL_DELTA_REPORT_LIMIT;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode = fact.default_dom_mode.to_string();
-    let mut text_measurer: String = "vendored".to_string();
     let mut force_elk_fixture: bool = false;
 
     let mut i = 0;
@@ -135,13 +134,6 @@ pub(super) fn compare_flowchart_args(
                     .map_err(|_| XtaskError::Usage)?
                     .to_string();
             }
-            "--text-measurer" => {
-                i += 1;
-                text_measurer = args
-                    .get(i)
-                    .map(|s| s.trim().to_ascii_lowercase())
-                    .unwrap_or_else(|| "deterministic".to_string());
-            }
             "--force-elk-fixture" => force_elk_fixture = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -160,7 +152,6 @@ pub(super) fn compare_flowchart_args(
                 dom_decimals: Some(dom_decimals),
                 report_root,
                 root_report_limit: Some(root_report_limit),
-                flowchart_text_measurer: Some(text_measurer),
                 ..CompareRequest::default()
             },
             fixtures_root: fixtures_root_arg,
@@ -235,33 +226,13 @@ fn run_flowchart_compare_with_math_renderer(
     let dom_plan = super::super::DomComparisonPlan::from_request(&common, fact.default_dom_mode)
         .map_err(CompareRunFailure::without_evidence)?;
     let parity_root_requested = check_dom && dom_plan.contains(crate::svgdom::DomMode::ParityRoot);
-    let text_measurer = common
-        .flowchart_text_measurer
-        .clone()
-        .unwrap_or_else(|| "vendored".to_string());
-
     let should_report_root = report_root || parity_root_requested;
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = merman_render::LayoutOptions::default();
     let observed_math_renderer = flowchart_math_renderer
         .clone()
         .map(ObservedNodeMathRenderer::new);
-    let text_measurement = match text_measurer.as_str() {
-        "vendored" | "vendored-font" | "vendored-font-metrics" => {
-            merman::svg::TextMeasurementPolicy::parity()
-        }
-        "deterministic" => merman::svg::TextMeasurementPolicy::deterministic(),
-        other => {
-            return Err(CompareRunFailure::without_evidence(
-                XtaskError::SvgCompareFailed(format!(
-                    "unsupported Flowchart text measurer: {other}"
-                )),
-            ));
-        }
-    };
-    let mut environment = merman::SvgEnvironment::deterministic()
-        .with_text_measurement_policy(text_measurement)
-        .without_math_renderer();
+    let mut environment = merman::SvgEnvironment::deterministic().without_math_renderer();
     if let Some(renderer) = observed_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
@@ -283,6 +254,7 @@ fn run_flowchart_compare_with_math_renderer(
                 check_dom,
                 dom_plan: dom_plan.clone(),
                 dom_decimals,
+                upstream_dom_drift_policy: common.upstream_dom_drift_policy,
             },
             fixtures_root: fixtures_root_arg,
             upstream_root: upstream_root_arg,
@@ -293,11 +265,10 @@ fn run_flowchart_compare_with_math_renderer(
             write_flowchart_upstream_metadata(report, &paths.upstream_dir, options.filter);
             let _ = writeln!(
                 report,
-                "- Command: `{}`\n- Modes: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Forced ELK fixtures: `{}`\n",
+                "- Command: `{}`\n- Modes: `{}`\n- Decimals: `{}`\n- Text measurement: `deterministic`\n- Math renderer: `{}`\n- Forced ELK fixtures: `{}`\n",
                 fact.command,
                 options.dom_plan.label(),
                 options.dom_decimals,
-                text_measurer,
                 if flowchart_math_renderer.is_some() {
                     "node-katex"
                 } else {
@@ -497,7 +468,13 @@ fn run_flowchart_compare_with_math_renderer(
         |_, _, _| {},
         |state, report, paths, options, failures, notes| {
             state.observed_operations.write_report(report);
-            write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
+            write_compare_result_section(
+                report,
+                options.check_dom,
+                failures,
+                &paths.out_svg_dir,
+                options.upstream_dom_drift_policy,
+            );
             write_notes_section(report, notes);
             if parity_root_requested {
                 state.root_coverage.write_report(report);
@@ -1170,8 +1147,9 @@ mod tests {
             &renderer,
             source,
             svg_request(
-                merman::SvgEnvironment::deterministic()
-                    .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::parity()),
+                merman::SvgEnvironment::deterministic().with_text_measurement_policy(
+                    merman::svg::TextMeasurementPolicy::deterministic(),
+                ),
                 merman_render::LayoutOptions::default(),
                 Some(stem.to_string()),
             ),
@@ -1187,7 +1165,6 @@ mod tests {
                 out_path: Some(root.join("report.md")),
                 check_dom: true,
                 dom_mode: Some("parity".to_string()),
-                flowchart_text_measurer: Some("vendored".to_string()),
                 ..CompareRequest::default()
             },
             fixtures_root: Some(root.join("fixtures")),

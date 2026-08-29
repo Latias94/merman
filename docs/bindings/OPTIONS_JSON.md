@@ -82,7 +82,7 @@ than translated implicitly.
     "screen_available_width": 1440
   },
   "environment": {
-    "text_measurement": "vendored",
+    "text_measurement": "deterministic",
     "math_renderer": "none"
   },
   "resources": {
@@ -422,7 +422,7 @@ update requests rather than relying on an alias.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `environment.text_measurement` | string | `vendored` | `vendored`, `parity`, or `deterministic`. |
+| `environment.text_measurement` | string | `deterministic` | The only built-in value is `deterministic`; install a host callback through the engine service API when the final display stack should own geometry. |
 | `environment.math_renderer` | string | `none` | `none` or `ratex`. `ratex` requires the `math` feature. |
 
 This is a breaking schema change: `layout.text_measurer` and `layout.math_renderer` are rejected.

@@ -1,8 +1,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
 use merman_render::text::{
-    TextMeasurer, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
-    measure_html_with_inline_styles,
+    DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode, measure_html_with_inline_styles,
 };
 use std::hint::black_box;
 
@@ -69,7 +68,7 @@ fn rich_inline_html(visible_bytes: usize, run_count: usize, break_count: usize) 
 }
 
 fn bench_text_measure_stress(c: &mut Criterion) {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("deterministic benchmark session");

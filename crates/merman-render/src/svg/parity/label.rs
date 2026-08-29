@@ -179,10 +179,7 @@ fn write_svg_text_impl(
 ) {
     open_svg_text(out, include_style.then_some(""), center_text);
 
-    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines_for_wrap_mode(
-        text,
-        crate::text::WrapMode::SvgLike,
-    );
+    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class);
         out.push_str("</text>");

@@ -14,14 +14,6 @@ pub(crate) fn is_canonical_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-pub(crate) fn has_extension(path: &Path, ext: &str) -> bool {
-    path.extension().is_some_and(|e| e == ext)
-}
-
-pub(crate) fn is_file_with_extension(path: &Path, ext: &str) -> bool {
-    path.is_file() && has_extension(path, ext)
-}
-
 pub(crate) fn read_text(path: &Path) -> Result<String, XtaskError> {
     fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
         path: path.display().to_string(),

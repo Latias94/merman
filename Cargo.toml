@@ -96,8 +96,6 @@ uniffi = { version = "0.32.0", default-features = false }
 futures = { version = "0.3.31", default-features = false }
 hashbrown = { version = "0.17.1", default-features = false, features = ["equivalent"] }
 hickory-resolver = { version = "0.26.1", default-features = false, features = ["tokio", "system-config"] }
-icu_collator = { version = "2.2.1", default-features = false, features = ["compiled_data"] }
-icu_locale_core = { version = "2.2.0", default-features = false, features = ["alloc"] }
 lol_html = "3.0"
 url = "2.5.4"
 cssparser = "0.36.0"

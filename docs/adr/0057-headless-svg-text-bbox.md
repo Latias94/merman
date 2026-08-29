@@ -7,7 +7,7 @@ Accepted
 ## Dates
 
 - Proposed: 2026-02-03
-- Updated: 2026-07-15
+- Updated: 2026-08-27
 
 ## Baseline
 
@@ -36,15 +36,15 @@ untracked measurement implementation.
 routes the `Layout`, `Wrap`, `SvgBBox`, and `ComputedLength` phases independently.
 `begin_session()` freezes those routes once for the whole operation and records their provenance.
 
-The parity environment uses the pinned vendored measurement profile. Hosts may install an explicit
+The built-in environment uses the deterministic measurement profile. Hosts may install an explicit
 host profile or phase-specific route, but a family renderer must not construct or silently select a
 production measurer. Architecture, Treemap, and other measurement-sensitive families consume the
 operation's routed measurer like every other family.
 
-A successful host result is authoritative for the requested phase and DOM operation. It bypasses
-vendored calibration entirely; vendored facts are only the deterministic fallback for an absent,
-failed, or invalid host result according to the configured route. Distinct browser operations such
-as direct `<text>.getBBox()`, `<text><tspan>.getBBox()`, and
+A successful host result is authoritative for the requested phase and DOM operation. The built-in
+deterministic measurer is the per-request fallback for an absent, failed, unsupported, or invalid
+host result according to the configured route. Distinct browser operations such as direct
+`<text>.getBBox()`, `<text><tspan>.getBBox()`, and
 `<text>.getComputedTextLength()` remain distinct measurement operations instead of being collapsed
 into one approximate width.
 
@@ -54,21 +54,15 @@ style. Callers such as TreeView use this operation because Mermaid lays out each
 exact browser result. A host must not answer it with tspan bounds, generic line height, or a
 font-size multiplier.
 
-The vendored profile mirrors that distinction. Its internal `MRMFNT05` blob stores four named SVG
-vertical DOM shapes: direct raw `<text>`, `<text>` with one child `<tspan>`,
-`createFormattedText(...)`, and the Architecture middle-baseline form of
-`createFormattedText(...)`. Raw operation 18 and the tspan bbox operation perform separate shape
-lookups. Neither trait defaults nor runtime helpers silently substitute one profile for the other.
+The deterministic profile preserves the operation distinction but does not claim to reconstruct a
+browser DOM shape from embedded font facts. It applies stable, font-agnostic rules to each requested
+result shape. Raw operation 18 and the tspan bbox operation remain separate protocol operations even
+when the fallback approximation happens to produce related values. Trait defaults and runtime
+helpers must not silently substitute one operation for another.
 
-The generator probes each shape over the canonical font-stack, variant, integer-size, and glyph
-domain and proves glyph-union composition with pair strings. It emits an explicit shape alias only
-when every canonical fact is bit-identical. Otherwise the shape has an independent profile. The
-`mermaid-calculate-text-dimensions` profile remains operation-owned and reads its body-attached
-single-tspan facts rather than borrowing the direct-text profile.
-
-`MRMFNT05` is an internal generated-data schema, not a public binding ABI. Native ABI versioning is
-owned separately by `contracts/abi/merman-v3.json`; changing this generated-data format does not change the
-native ABI.
+The former `MRMFNT05` generated-data schema and browser-probe generator were removed by ADR-0086.
+The native text-measurement protocol remains owned separately by the binding contracts; removing an
+internal provider does not change its operation codes or result kinds.
 
 ### Baseline-bearing DOM probes remain distinct
 
@@ -86,14 +80,10 @@ by `createFormattedText(...)`) as operation 14,
 the exact DOM shapes using isolated probes, or clear inherited baseline and anchor state between
 requests; operation 14 must not be reused as the answer for operation 17.
 
-The vendored profile stores ordinary and middle-baseline bbox y/height facts independently using
-the actual nested outer/inner tspan DOM. It does not derive either answer from raw text bounds, a
-probe glyph such as `M`, or a middle-baseline shift formula. Glyph-union and string-composition
-proofs gate exact profile use in the same way as the raw and single-tspan shapes.
-
-Inputs outside the canonical integer-size and glyph domain use a separately named approximate
-high-resolution fallback. That fallback is deterministic but is not described as an exact browser
-fact. A successful host result remains authoritative and bypasses it.
+The built-in fallback answers ordinary and middle-baseline requests independently but does not
+describe either answer as an exact browser fact. A host that can reproduce the actual DOM and font
+state remains authoritative; a host that cannot should leave the operation unhandled rather than
+derive one operation from the other.
 
 ### `getBBox()` approximation remains a layered model
 
@@ -106,11 +96,11 @@ fact. A successful host result remains authoritative and bypasses it.
 2. **Text layer**
    - Families whose emitted text lacks concrete surrounding geometry must contribute a text-bound
      estimate through the `SvgBBox` measurement route.
-   - The vendored profile uses Mermaid-like SVG text extents and whitespace tokenization. Its
-     generated data is limited to general font and DOM-shape facts such as glyph advances, kerning,
-     trigrams, and endpoint overhangs. Complete label strings and fixture ids are not valid keys.
-   - Synthetic browser probes generate fallback facts; the fixture corpus validates them
-     independently and does not train full-string answers.
+   - The deterministic profile uses stable character classes, Unicode display width, spacing,
+     line-height, and width-based wrapping. It has no named-font, glyph, kerning, trigram, DOM-shape,
+     complete-label, or fixture lookup tables.
+   - Browser probes and the fixture corpus validate residuals independently; they are never runtime
+     inputs.
    - Families may own higher-level bounds, such as Architecture service-label bounds, rather than
      teaching the generic geometry pass every nested `<tspan>` and inherited style behavior.
 
@@ -149,7 +139,7 @@ provenance, host injection, and reproducible verification.
 
 - Text measurement is explicit, phase-aware, and observable for one complete operation.
 - Hosts can replace documented phases without accidentally leaving another family on a hidden
-  vendored adapter, and successful host results bypass fallback facts.
+  adapter, and successful host results bypass the deterministic fallback.
 - Generic geometry bounds remain stable while measurement-sensitive families contribute precise
   source-backed bounds.
 - Root viewport behavior has one policy owner even though family content-bounds algorithms differ.
@@ -162,3 +152,4 @@ provenance, host injection, and reproducible verification.
 - ADR-0081: Release Quality Gates
 - ADR-0062: No Production Fixture Overrides
 - ADR-0073: Family-Owned Diagram Architecture
+- ADR-0086: Deterministic Text Measurement Without Vendored Font Tables

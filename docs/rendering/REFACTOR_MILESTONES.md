@@ -13,9 +13,9 @@ Scope:
 - `cargo fmt --check`
 - `cargo nextest run`
 - SVG DOM gates:
-  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --flowchart-text-measurer vendored`
-  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3 --flowchart-text-measurer vendored`
-  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored`
+  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout`
+  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3 --diagnostic-browser-text-layout`
+  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
 ## Milestones
 
@@ -81,7 +81,8 @@ Exit criteria:
 
 Deliverables:
 
-- A reproducible `gen-font-metrics` command that emits only generalized font and DOM-shape facts.
+- Browser/font residuals are measured as verification evidence; no `gen-font-metrics` command or
+  generated font table is part of the production toolchain.
 - An architecture guard that rejects fixture ids and complete-label answers in production data.
 
 Exit criteria:

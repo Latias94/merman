@@ -1894,9 +1894,9 @@ class MermanRuntimeCatalog {
           'runtime text measurement providers',
         ),
       );
-      if (!providers.contains('vendored')) {
+      if (!providers.contains('deterministic')) {
         throw MermanException.contract(
-          'SVG runtime contract must expose the vendored text measurement provider',
+          'SVG runtime contract must expose the deterministic text measurement provider',
         );
       }
     }

@@ -20,11 +20,11 @@ Scope:
 Global gates (must stay green):
 
 - `cargo nextest run`
-- `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout`
 
 The release-strength root gate is:
 
-- `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+- `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
 All 35 primary families participate in the root evidence contract. Family-specific browser or
 RoughJS movement remains visible through browser diagnostics and family owner documents; it is not

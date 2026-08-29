@@ -65,7 +65,6 @@
                   "section_class": "section--1",
                   "label": "SupercalifragilisticexpialidociousSupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
                   "label_lines": [
-                    "",
                     "SupercalifragilisticexpialidociousSupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
                   ],
                   "kind": "event"
@@ -107,7 +106,6 @@
                   "section_class": "section--1",
                   "label": "AnotherLongTokenWithoutSpacesAnotherLongTokenWithoutSpacesAnotherLongTokenWithoutSpaces",
                   "label_lines": [
-                    "",
                     "AnotherLongTokenWithoutSpacesAnotherLongTokenWithoutSpacesAnotherLongTokenWithoutSpaces"
                   ],
                   "kind": "event"

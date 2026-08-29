@@ -123,11 +123,12 @@ Classification:
   measurements.
 - Eleven residuals are ASCII direct-text bbox quantization differences. Their signed width deltas
   range from one to two `1/64px` browser lattice steps, including both positive and negative
-  directions. A uniform correction would therefore be wrong; exact convergence requires a
-  reusable direct-text horizontal DOM profile rather than fixture or complete-label values.
+  directions. A uniform correction would therefore be wrong; exact convergence requires an
+  authoritative host measurement rather than fixture values, complete-label values, or a bundled
+  browser font profile.
 - Two residuals contain emoji or other non-ASCII glyphs. The upstream macOS Chromium baseline
-  resolves those glyphs through system fallback fonts, while the deterministic vendored profile
-  deliberately has no OS-specific fallback-font table. Their width and row-height differences are
+  resolves those glyphs through system fallback fonts, while the deterministic fallback is
+  deliberately font-agnostic. Their width and row-height differences are
   therefore browser/system-font measurements, not TreeView layout semantics.
 - `RawBBoxWidth` and `RawBBoxHeight` are already distinct render-environment operations. A host
   with the installed browser fonts can answer them exactly without a TreeView-specific ABI.

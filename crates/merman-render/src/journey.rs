@@ -385,10 +385,7 @@ pub(crate) fn layout_journey_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use crate::text::{
-        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
-        VendoredFontMetricsTextMeasurer,
-    };
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use merman_core::diagrams::journey::JourneyDiagramRenderModel;
     use serde_json::json;
 
@@ -418,7 +415,7 @@ mod tests {
 
     #[test]
     fn journey_actor_legend_width_preserves_profile_bounding_client_rect_result() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let style = super::journey_actor_legend_text_style(&json!({}));
 
         for line in [
@@ -463,8 +460,8 @@ mod tests {
     }
 
     #[test]
-    fn journey_actor_legend_wraps_with_mermaid_legend_text_style_and_config_width() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+    fn journey_actor_legend_wraps_with_the_configured_width() {
+        let measurer = DeterministicTextMeasurer::default();
         let style = super::journey_actor_legend_text_style(&json!({}));
 
         let lines = super::wrap_actor_label_lines(
@@ -474,13 +471,16 @@ mod tests {
             &style,
         );
 
+        assert!(lines.len() > 1, "{lines:?}");
         assert_eq!(
-            lines,
-            vec![
-                "This is a long label that will be split into".to_string(),
-                "multiple lines to test the wrapping".to_string(),
-                "functionality".to_string(),
-            ]
+            lines.join(" "),
+            "This is a long label that will be split into multiple lines to test the wrapping functionality"
+        );
+        assert!(
+            lines.iter().all(|line| {
+                super::journey_actor_legend_line_width_px(line, &measurer, &style) <= 320.0
+            }),
+            "{lines:?}"
         );
     }
 }
