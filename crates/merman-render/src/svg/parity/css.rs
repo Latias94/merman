@@ -972,7 +972,24 @@ where
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ErCssEmission {
+    pub(super) css: String,
+    pub(super) font_family: Box<str>,
+}
+
 pub(super) fn er_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> Result<String>
+where
+    I: SvgDiagramIdValue,
+{
+    Ok(er_css_with_font_family(diagram_id, effective_config, None)?.css)
+}
+
+pub(super) fn er_css_with_font_family<I>(
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    resolved_font_family: Option<&str>,
+) -> Result<ErCssEmission>
 where
     I: SvgDiagramIdValue,
 {
@@ -982,7 +999,9 @@ where
     let id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
     let theme = SvgTheme::new(effective_config);
-    let font = theme.font_family_css();
+    let font = resolved_font_family
+        .map(str::to_owned)
+        .unwrap_or_else(|| theme.font_family_css());
     let font_size = crate::config::config_theme_or_root_font_size_px_opt(effective_config)
         .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
         .unwrap_or(16.0)
@@ -1091,7 +1110,10 @@ where
     .expect("String-backed ER neo CSS emission cannot fail");
     write_mermaid_base_css_root_rule(&mut out, id, &font)
         .expect("String-backed ER root CSS emission cannot fail");
-    Ok(out)
+    Ok(ErCssEmission {
+        css: out,
+        font_family: font.into_boxed_str(),
+    })
 }
 
 fn pie_theme_option(

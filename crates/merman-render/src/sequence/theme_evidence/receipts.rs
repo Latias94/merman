@@ -1191,6 +1191,18 @@ impl SequenceTypographyThemeReceipt {
         )
     }
 
+    pub(super) fn base_property_relevant_occurrences(
+        &self,
+        property: ThemeTypographyProperty,
+    ) -> usize {
+        let role_candidates = [&self.actor, &self.message, &self.note, &self.loop_label]
+            .iter()
+            .filter(|role| role.base_typed_properties.contains(&property))
+            .map(|role| role.label_candidate_count())
+            .sum::<usize>();
+        role_candidates.saturating_add(self.base.inherited_occurrences(property))
+    }
+
     pub(super) fn role(
         &self,
         role: crate::sequence::SequenceTypographyRole,
@@ -1252,33 +1264,23 @@ fn typography_rule_matches(
     };
     let mut font_family_count = 0usize;
     let mut font_size_count = 0usize;
-    for declaration in body.split_terminator(';') {
-        let Some((property, value)) = declaration.split_once(':') else {
-            return false;
-        };
-        match property {
+    let valid =
+        visit_valid_stylesheet_declarations(body, |declaration| match declaration.property() {
             "font-family" => {
                 font_family_count = font_family_count.saturating_add(1);
-                if value != expected_font_family {
-                    return false;
-                }
+                declaration.value() == expected_font_family
             }
             "font-size" => {
                 font_size_count = font_size_count.saturating_add(1);
-                let Some(value) = value.strip_suffix("px") else {
-                    return false;
-                };
-                let Ok(value) = value.parse::<f64>() else {
-                    return false;
-                };
-                if value.to_bits() != expected_font_size_bits {
-                    return false;
-                }
+                declaration
+                    .value()
+                    .strip_suffix("px")
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .is_some_and(|value| value.to_bits() == expected_font_size_bits)
             }
-            _ => {}
-        }
-    }
-    font_family_count == 1 && font_size_count == 1
+            _ => true,
+        });
+    valid && font_family_count == 1 && font_size_count == 1
 }
 
 fn font_family_variable_rule_matches(
@@ -1290,18 +1292,41 @@ fn font_family_variable_rule_matches(
         return false;
     };
     let mut declaration_count = 0usize;
-    for declaration in body.split_terminator(';') {
-        let Some((property, value)) = declaration.split_once(':') else {
-            return false;
-        };
-        if property == "--mermaid-font-family" {
+    let valid = visit_valid_stylesheet_declarations(body, |declaration| {
+        if declaration.property() == "--mermaid-font-family" {
             declaration_count = declaration_count.saturating_add(1);
-            if value != expected_font_family {
-                return false;
-            }
+            declaration.value() == expected_font_family
+        } else {
+            true
         }
-    }
-    declaration_count == 1
+    });
+    valid && declaration_count == 1
+}
+
+fn visit_valid_stylesheet_declarations(
+    declaration_list: &str,
+    mut visit: impl FnMut(&crate::mermaid_style::ParsedStyleDeclaration<'_>) -> bool,
+) -> bool {
+    let mut valid = true;
+    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+    let _ = crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+        declaration_list,
+        &mut checkpoint,
+        |boundary| {
+            let Some(declaration) = crate::mermaid_style::parse_style_declaration(boundary.raw())
+            else {
+                valid = false;
+                return Ok(false);
+            };
+            if visit(&declaration) {
+                Ok(true)
+            } else {
+                valid = false;
+                Ok(false)
+            }
+        },
+    );
+    valid
 }
 
 fn is_base_inherited_text(node: &roxmltree::Node<'_, '_>) -> bool {

@@ -6,7 +6,7 @@ use crate::diagram_theme::{
     OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RootThemeEvaluation,
     RootThemeMechanismKey, RootThemeVerification, Specified, TextStylePatch, ThemeCapability,
     ThemeColorValue, ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, TypographySpec,
+    ThemeTextStyle, ThemeTypographyProperty, TypographySpec,
 };
 use std::sync::{Arc, Mutex};
 
@@ -2339,7 +2339,10 @@ A[Alpha] -->|message| B[Beta]
         );
         assert_eq!(
             rendered.style_report().theme_applied_mechanisms(),
-            &[FamilyThemeMechanismKey::Typography]
+            &[
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize),
+            ]
         );
         assert!(
             rendered
@@ -2409,17 +2412,18 @@ A[Alpha]
         .expect("local NodeLabel owners must account for base typography");
 
         assert!(
-            !rendered
-                .style_report()
-                .theme_applied_mechanisms()
-                .contains(&FamilyThemeMechanismKey::Typography),
+            !rendered.style_report().theme_applied_mechanisms().contains(
+                &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack,)
+            ),
             "{family}"
         );
         assert!(
             rendered
                 .style_report()
                 .theme_not_applicable_mechanisms()
-                .contains(&FamilyThemeMechanismKey::Typography),
+                .contains(&FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontStack,
+                )),
             "{family}"
         );
         for rule_index in [0, 1] {
@@ -2493,10 +2497,9 @@ A[Alpha]
 
         assert!(rendered.svg().contains("class=\"flowchartTitleText\""));
         assert!(
-            rendered
-                .style_report()
-                .theme_applied_mechanisms()
-                .contains(&FamilyThemeMechanismKey::Typography),
+            rendered.style_report().theme_applied_mechanisms().contains(
+                &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack,)
+            ),
             "{family}"
         );
         assert!(rendered.style_report().theme_applied_mechanisms().contains(
@@ -2550,16 +2553,17 @@ A["<span style='font-size:31px'>Alpha</span>"]
 
     assert!(rendered.svg().contains("font-size:31px"));
     assert!(
-        !rendered
-            .style_report()
-            .theme_applied_mechanisms()
-            .contains(&FamilyThemeMechanismKey::Typography)
+        !rendered.style_report().theme_applied_mechanisms().contains(
+            &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize,)
+        )
     );
     assert!(
         rendered
             .style_report()
             .theme_not_applicable_mechanisms()
-            .contains(&FamilyThemeMechanismKey::Typography),
+            .contains(&FamilyThemeMechanismKey::Typography(
+                ThemeTypographyProperty::FontSize,
+            )),
         "applied={:?} not_applicable={:?} residuals={:?}",
         rendered.style_report().theme_applied_mechanisms(),
         rendered.style_report().theme_not_applicable_mechanisms(),
@@ -2618,17 +2622,18 @@ A[测试]:::local --> B[Base]
         .expect("the unshadowed label must prove base typography");
 
         assert!(
-            rendered
-                .style_report()
-                .theme_applied_mechanisms()
-                .contains(&FamilyThemeMechanismKey::Typography),
+            rendered.style_report().theme_applied_mechanisms().contains(
+                &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack,)
+            ),
             "{family}"
         );
         assert!(
             !rendered
                 .style_report()
                 .theme_not_applicable_mechanisms()
-                .contains(&FamilyThemeMechanismKey::Typography),
+                .contains(&FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontStack,
+                )),
             "{family}"
         );
         assert!(rendered.style_report().theme_residuals().is_empty());
@@ -2739,7 +2744,10 @@ A[测试] -->|测试| B[测试]
             );
             assert_eq!(
                 rendered.style_report().theme_not_applicable_mechanisms(),
-                &[FamilyThemeMechanismKey::Typography]
+                &[
+                    FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
+                    FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize),
+                ]
             );
             assert!(rendered.style_report().theme_residuals().is_empty());
             assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
@@ -2787,7 +2795,10 @@ end
     assert!(rendered.svg().contains("font-size:23px"));
     assert_eq!(
         rendered.style_report().theme_applied_mechanisms(),
-        &[FamilyThemeMechanismKey::Typography]
+        &[
+            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
+            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize),
+        ]
     );
     assert!(
         rendered
@@ -2880,7 +2891,10 @@ end
         );
         assert_eq!(
             rendered.style_report().theme_not_applicable_mechanisms(),
-            &[FamilyThemeMechanismKey::Typography]
+            &[
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize),
+            ]
         );
         assert!(rendered.style_report().theme_residuals().is_empty());
         assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
@@ -2982,7 +2996,10 @@ A->>B: Base Message
     );
     assert_eq!(
         rendered.style_report().theme_applied_mechanisms(),
-        &[FamilyThemeMechanismKey::Typography]
+        &[
+            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
+            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize),
+        ]
     );
     assert!(rendered.style_report().theme_residuals().is_empty());
 }
@@ -3030,7 +3047,10 @@ fn sequence_oversized_base_font_stack_remains_direct_through_the_terminal_writer
     assert!(rendered.svg().contains("font-size:18px"));
     assert_eq!(
         rendered.style_report().theme_applied_mechanisms(),
-        &[FamilyThemeMechanismKey::Typography]
+        &[
+            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
+            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize),
+        ]
     );
     assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
     assert!(rendered.style_report().theme_residuals().is_empty());
@@ -3083,7 +3103,10 @@ Note over A,B: Note
         assert!(!rendered.svg().contains("font-size:41px"), "{origin}");
         assert_eq!(
             rendered.style_report().theme_applied_mechanisms(),
-            &[FamilyThemeMechanismKey::Typography],
+            &[
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize),
+            ],
             "{origin}"
         );
         assert!(
@@ -7435,7 +7458,7 @@ fn require_portable_accepts_sequence_message_scalar_strokes_after_line_emission(
 }
 
 #[test]
-fn sequence_message_stroke_winner_accounts_for_shadowed_fill_rule() {
+fn sequence_message_stroke_winner_ignores_shadowed_compatibility_fill() {
     for stroke_first in [false, true] {
         let fill_rule = ThemeRule::new(
             ThemeTarget::Message,
@@ -7482,7 +7505,6 @@ fn sequence_message_stroke_winner_accounts_for_shadowed_fill_rule() {
         .expect("shadowed Message fill must not leave strict evidence incomplete");
 
         let stroke_index = usize::from(!stroke_first);
-        let fill_index = usize::from(stroke_first);
         assert!(
             rendered
                 .svg()
@@ -7500,13 +7522,14 @@ fn sequence_message_stroke_winner_accounts_for_shadowed_fill_rule() {
                 target: ThemeTarget::Message,
             }]
         );
-        assert_eq!(
-            rendered.style_report().theme_not_applicable_mechanisms(),
-            &[FamilyThemeMechanismKey::Rule {
-                index: fill_index,
-                target: ThemeTarget::Message,
-            }]
+        assert!(
+            rendered
+                .style_report()
+                .theme_not_applicable_mechanisms()
+                .is_empty(),
+            "compatibility-only fill must stay outside native family evidence"
         );
+        assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
         assert!(rendered.style_report().theme_residuals().is_empty());
     }
 }
@@ -9498,10 +9521,9 @@ fn state_family_typography_is_shared_by_layout_and_terminal_svg() {
     .expect("render State SVG");
 
     assert!(
-        rendered
-            .style_report()
-            .theme_applied_mechanisms()
-            .contains(&FamilyThemeMechanismKey::Typography),
+        rendered.style_report().theme_applied_mechanisms().contains(
+            &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize,)
+        ),
         "State typography terminal evidence was not sealed: {:?}\n{}",
         rendered.style_report(),
         rendered.svg(),
@@ -9568,8 +9590,13 @@ fn state_spacing_without_prepared_text_is_suppressed_and_reported() {
             .theme_residuals()
             .iter()
             .any(|residual| {
-                residual.key() == &FamilyThemeMechanismKey::Typography
-                    && residual.reason() == FamilyThemeResidualReason::UnsupportedTypography
+                matches!(
+                    residual.key(),
+                    FamilyThemeMechanismKey::Typography(
+                        ThemeTypographyProperty::LetterSpacing
+                            | ThemeTypographyProperty::WordSpacing
+                    )
+                ) && residual.reason() == FamilyThemeResidualReason::UnsupportedTypography
             })
     );
 }

@@ -383,8 +383,10 @@ fn class_mixed_typography_composes_in_best_effort_but_remains_nonportable() {
     assert!(rendered.svg().contains("font-size:24px;"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
 
     let error = try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new())
         .err()
@@ -396,6 +398,40 @@ fn class_mixed_typography_composes_in_best_effort_but_remains_nonportable() {
             residual_count: 1,
         }
     ));
+}
+
+#[test]
+fn class_unsupported_typography_is_property_local_to_the_typed_font_stack() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("ClassTyped").expect("valid Class font stack"))
+        .with_font_weight(700)
+        .expect("valid unsupported Class font weight");
+    let theme = class_typography_theme(typography);
+    let source = "classDiagram\n  class Alpha\n";
+    let rendered = try_render_class_svg_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders Class with unsupported font weight");
+
+    assert!(rendered.svg().contains("ClassTyped"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let error = match try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()) {
+        Ok(_) => panic!("strict Class must reject unsupported font weight"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::CLASS, 1))
+    );
 }
 
 #[test]

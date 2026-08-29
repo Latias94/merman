@@ -217,7 +217,8 @@ pub(crate) fn prepare_er_labels(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Arc<ErPreparedLabels> {
-    let settings = ErConfigView::new(effective_config).layout_settings(&model.direction);
+    let settings = ErConfigView::new(effective_config)
+        .layout_settings_with_font_family(&model.direction, None);
     Arc::new(ErPreparedLabels::prepare(model, measurer, &settings))
 }
 
@@ -630,10 +631,11 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
 }
 
 #[cfg(not(feature = "layout-elk"))]
-pub(crate) fn layout_er_diagram_typed(
+pub(crate) fn layout_er_diagram_typed_with_font_family(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
+    font_family_css: Option<&str>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErDiagramLayout> {
     let mut work_control = OperationLayoutWorkControl::new(work_meter);
@@ -642,6 +644,7 @@ pub(crate) fn layout_er_diagram_typed(
         effective_config,
         measurer,
         ErElkAuthority::Raw,
+        font_family_css,
         &mut work_control,
     )
 }
@@ -651,11 +654,12 @@ pub(crate) fn layout_er_diagram_typed(
 ///
 /// This remains crate-private so the public typed API stays fail-closed for ELK's unseeded
 /// `randomSeed = 0` source sentinel.
-pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed(
+pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed_and_font_family(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     operation_seed: elk::ElkOperationSeed,
+    font_family_css: Option<&str>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErDiagramLayout> {
     let mut work_control = OperationLayoutWorkControl::new(work_meter);
@@ -664,6 +668,7 @@ pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed(
         effective_config,
         measurer,
         ErElkAuthority::Operation(operation_seed),
+        font_family_css,
         &mut work_control,
     )
 }
@@ -681,9 +686,11 @@ fn layout_er_diagram_typed_with_elk_authority(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     elk_authority: ErElkAuthority,
+    font_family_css: Option<&str>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
-    let settings = ErConfigView::new(effective_config).layout_settings(&model.direction);
+    let settings = ErConfigView::new(effective_config)
+        .layout_settings_with_font_family(&model.direction, font_family_css);
     let adapter_work = er_layout_adapter_work(model, work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
@@ -1444,8 +1451,8 @@ mod tests {
             });
 
         let effective_config = serde_json::json!({ "layout": "elk" });
-        let settings =
-            super::ErConfigView::new(&effective_config).layout_settings(&model.direction);
+        let settings = super::ErConfigView::new(&effective_config)
+            .layout_settings_with_font_family(&model.direction, None);
         let prepared_labels = super::ErPreparedLabels::prepare(
             &model,
             &VendoredFontMetricsTextMeasurer::default(),
@@ -1611,8 +1618,8 @@ mod tests {
                 entity_b: "entity-ENTITY-0".to_string(),
                 ..Default::default()
             });
-        let settings =
-            super::ErConfigView::new(&serde_json::Value::Null).layout_settings(&model.direction);
+        let settings = super::ErConfigView::new(&serde_json::Value::Null)
+            .layout_settings_with_font_family(&model.direction, None);
         let prepared = super::ErPreparedLabels::prepare(
             &model,
             &VendoredFontMetricsTextMeasurer::default(),

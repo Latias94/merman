@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use crate::diagram_theme::{FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability};
+use crate::diagram_theme::{
+    FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability, ThemeTypographyProperty,
+};
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
     InheritedFontStackPlan,
@@ -82,7 +84,8 @@ impl ClassTypographyThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
     ) -> Self {
-        let inherited_font_stack = InheritedFontStackPlan::resolve(theme, effective_config);
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let configured_layout_font =
             super::super::config::ClassConfigView::new(effective_config.as_value())
                 .layout_font_family_css();
@@ -151,114 +154,114 @@ impl ClassTypographyThemePlan {
         edge_use_html_labels: bool,
         sanitize_config: Option<&merman_core::MermaidConfig>,
     ) -> Option<ClassTypographyThemeReceipt> {
-        self.inherited_font_stack
-            .typed_font_stack_active()
-            .then(|| {
-                let mut terminals_match = true;
-                let mut nodes = BTreeMap::new();
-                let node_style_facts = self.node_style_facts.get();
-                terminals_match &= node_style_facts.is_some_and(|facts| {
-                    facts.len() == model.classes.len()
-                        && facts
-                            .keys()
-                            .all(|id| model.classes.contains_key(id.as_ref()))
-                });
-                for (id, _) in &model.classes {
-                    let expected_visible = node_style_facts
-                        .and_then(|facts| facts.get(id.as_str()))
-                        .map(|facts| facts.visible_run_count() != 0)
-                        .unwrap_or_else(|| {
-                            terminals_match = false;
-                            false
-                        });
-                    insert_terminal_expectation(
-                        &mut nodes,
-                        id,
-                        expected_visible,
-                        &mut terminals_match,
-                    );
-                }
-                for note in &model.notes {
-                    insert_terminal_expectation(
-                        &mut nodes,
-                        &note.id,
-                        class_note_expected_visibility(
-                            &note.text,
-                            diagram_use_html_labels,
-                            sanitize_config,
-                        ),
-                        &mut terminals_match,
-                    );
-                }
-                for interface in &model.interfaces {
-                    let label =
-                        crate::entities::decode_entities_minimal_cow(interface.label.trim());
-                    insert_terminal_expectation(
-                        &mut nodes,
-                        &interface.id,
-                        !label.trim().is_empty(),
-                        &mut terminals_match,
-                    );
-                }
-
-                let mut namespaces = BTreeMap::new();
-                for id in model.namespaces.keys() {
-                    insert_terminal_expectation(
-                        &mut namespaces,
-                        id,
-                        !super::super::class_namespace_label(model, id)
-                            .trim()
-                            .is_empty(),
-                        &mut terminals_match,
-                    );
-                }
-
-                let mut edges = BTreeMap::new();
-                for relation in &model.relations {
-                    let label =
-                        class_edge_label_expected_visibility(&relation.title, edge_use_html_labels);
-                    let start = class_terminal_expected_visibility(
-                        relation.relation_title_1.as_deref().unwrap_or_default(),
-                    );
-                    let end = class_terminal_expected_visibility(
-                        relation.relation_title_2.as_deref().unwrap_or_default(),
-                    );
-                    if edges
-                        .insert(
-                            relation.id.as_str().into(),
-                            ClassTypographyEdgeCheckpoint {
-                                label: ClassTypographyTerminalCheckpoint::new(label),
-                                cardinalities: [
-                                    ClassTypographyTerminalCheckpoint::new(false),
-                                    ClassTypographyTerminalCheckpoint::new(start),
-                                    ClassTypographyTerminalCheckpoint::new(end),
-                                    ClassTypographyTerminalCheckpoint::new(false),
-                                ],
-                            },
-                        )
-                        .is_some()
-                    {
+        (self.inherited_font_stack.typed_font_stack_active()
+            || self
+                .inherited_font_stack
+                .has_unsupported_typography_properties())
+        .then(|| {
+            let mut terminals_match = true;
+            let mut nodes = BTreeMap::new();
+            let node_style_facts = self.node_style_facts.get();
+            terminals_match &= node_style_facts.is_some_and(|facts| {
+                facts.len() == model.classes.len()
+                    && facts
+                        .keys()
+                        .all(|id| model.classes.contains_key(id.as_ref()))
+            });
+            for (id, _) in &model.classes {
+                let expected_visible = node_style_facts
+                    .and_then(|facts| facts.get(id.as_str()))
+                    .map(|facts| facts.visible_run_count() != 0)
+                    .unwrap_or_else(|| {
                         terminals_match = false;
-                    }
-                }
-
-                ClassTypographyThemeReceipt {
-                    expected_font_family_css: self.stylesheet_font_family_css().into(),
-                    css_emission: None,
-                    css_emission_unique: true,
-                    nodes,
-                    namespaces,
-                    edges,
-                    diagram_title: ClassTypographyTerminalCheckpoint::new(
-                        diagram_title.is_some_and(|title| !title.trim().is_empty()),
+                        false
+                    });
+                insert_terminal_expectation(&mut nodes, id, expected_visible, &mut terminals_match);
+            }
+            for note in &model.notes {
+                insert_terminal_expectation(
+                    &mut nodes,
+                    &note.id,
+                    class_note_expected_visibility(
+                        &note.text,
+                        diagram_use_html_labels,
+                        sanitize_config,
                     ),
-                    terminals_match,
+                    &mut terminals_match,
+                );
+            }
+            for interface in &model.interfaces {
+                let label = crate::entities::decode_entities_minimal_cow(interface.label.trim());
+                insert_terminal_expectation(
+                    &mut nodes,
+                    &interface.id,
+                    !label.trim().is_empty(),
+                    &mut terminals_match,
+                );
+            }
+
+            let mut namespaces = BTreeMap::new();
+            for id in model.namespaces.keys() {
+                insert_terminal_expectation(
+                    &mut namespaces,
+                    id,
+                    !super::super::class_namespace_label(model, id)
+                        .trim()
+                        .is_empty(),
+                    &mut terminals_match,
+                );
+            }
+
+            let mut edges = BTreeMap::new();
+            for relation in &model.relations {
+                let label =
+                    class_edge_label_expected_visibility(&relation.title, edge_use_html_labels);
+                let start = class_terminal_expected_visibility(
+                    relation.relation_title_1.as_deref().unwrap_or_default(),
+                );
+                let end = class_terminal_expected_visibility(
+                    relation.relation_title_2.as_deref().unwrap_or_default(),
+                );
+                if edges
+                    .insert(
+                        relation.id.as_str().into(),
+                        ClassTypographyEdgeCheckpoint {
+                            label: ClassTypographyTerminalCheckpoint::new(label),
+                            cardinalities: [
+                                ClassTypographyTerminalCheckpoint::new(false),
+                                ClassTypographyTerminalCheckpoint::new(start),
+                                ClassTypographyTerminalCheckpoint::new(end),
+                                ClassTypographyTerminalCheckpoint::new(false),
+                            ],
+                        },
+                    )
+                    .is_some()
+                {
+                    terminals_match = false;
                 }
-            })
+            }
+
+            ClassTypographyThemeReceipt {
+                expected_font_family_css: self.stylesheet_font_family_css().into(),
+                css_emission: None,
+                css_emission_unique: true,
+                nodes,
+                namespaces,
+                edges,
+                diagram_title: ClassTypographyTerminalCheckpoint::new(
+                    diagram_title.is_some_and(|title| !title.trim().is_empty()),
+                ),
+                terminals_match,
+            }
+        })
     }
 
     pub(crate) fn record_terminal(&self, receipt: Option<ClassTypographyThemeReceipt>) -> bool {
-        if self.inherited_font_stack.typed_font_stack_active() {
+        if self.inherited_font_stack.typed_font_stack_active()
+            || self
+                .inherited_font_stack
+                .has_unsupported_typography_properties()
+        {
             receipt.is_some_and(|receipt| {
                 receipt.structurally_complete() && self.terminal_receipt.set(receipt).is_ok()
             })
@@ -269,7 +272,14 @@ impl ClassTypographyThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        let key = FamilyThemeMechanismKey::Typography;
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(
+                &mut evidence,
+                self.terminal_receipt
+                    .get()
+                    .is_none_or(ClassTypographyThemeReceipt::has_visible_font_run),
+            );
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         match self.inherited_font_stack.outcome() {
             InheritedFontStackOutcome::Typed => {
                 match self.terminal_receipt.get() {
@@ -552,6 +562,10 @@ impl ClassTypographyThemeReceipt {
     fn has_applied_font_run(&self) -> bool {
         let facts = self.terminal_facts();
         facts.layout_inherited_runs != 0 || facts.writer_inherited_runs != 0
+    }
+
+    fn has_visible_font_run(&self) -> bool {
+        self.terminal_facts().visible_runs != 0
     }
 
     fn has_unverified_font_run(&self) -> bool {

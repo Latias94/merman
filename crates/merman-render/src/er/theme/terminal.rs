@@ -92,6 +92,8 @@ pub(super) struct TextTerminalExpectation {
     pub(super) paint: Option<ExpectedPaint>,
     pub(super) visible_run_count: usize,
     pub(super) inherited_color_run_count: usize,
+    pub(super) inherited_font_family_run_count: usize,
+    pub(super) unverified_font_family_run_count: usize,
 }
 
 impl TextTerminalExpectation {
@@ -160,6 +162,8 @@ pub(crate) struct ErEntityThemeReceipt {
     relation_markers: BTreeMap<String, PaintTerminalCheckpoint>,
     records_text_terminals: bool,
     attributes_match: bool,
+    typography_expected_font_family: Option<Box<str>>,
+    typography_emitted_font_family: Option<Box<str>>,
     effective_by_rule: BTreeMap<usize, usize>,
     emitted_by_rule: BTreeMap<usize, usize>,
     unverified_rules: BTreeSet<usize>,
@@ -170,6 +174,7 @@ impl ErEntityThemeReceipt {
         expectations: Vec<EntityExpectation>,
         text_terminals: BTreeMap<ErTextTerminalId, TextTerminalExpectation>,
         table_rows: BTreeMap<ErTableRowTerminalId, Option<ExpectedPaint>>,
+        typography_expected_font_family: Option<Box<str>>,
     ) -> Self {
         Self {
             checkpointed_entities: vec![false; expectations.len()],
@@ -202,6 +207,8 @@ impl ErEntityThemeReceipt {
             relation_markers: BTreeMap::new(),
             records_text_terminals: true,
             attributes_match: true,
+            typography_expected_font_family,
+            typography_emitted_font_family: None,
             effective_by_rule: BTreeMap::new(),
             emitted_by_rule: BTreeMap::new(),
             unverified_rules: BTreeSet::new(),
@@ -216,6 +223,18 @@ impl ErEntityThemeReceipt {
 
     pub(crate) const fn records_text_terminals(&self) -> bool {
         self.records_text_terminals
+    }
+
+    pub(crate) fn record_typography_css_emission(&mut self, font_family: &str) {
+        let Some(expected) = self.typography_expected_font_family.as_deref() else {
+            return;
+        };
+        if self.typography_emitted_font_family.is_some() {
+            self.attributes_match = false;
+            return;
+        }
+        self.typography_emitted_font_family = Some(font_family.into());
+        self.attributes_match &= expected == font_family;
     }
 
     pub(super) fn with_relation_terminals(
@@ -292,12 +311,16 @@ impl ErEntityThemeReceipt {
         actual_terminal_style: &str,
         visible_run_count: usize,
         inherited_color_run_count: usize,
+        inherited_font_family_run_count: usize,
+        unverified_font_family_run_count: usize,
     ) {
         self.record_text_terminal(
             ErTextTerminalId::entity_name(entity_id),
             actual_terminal_style,
             visible_run_count,
             inherited_color_run_count,
+            inherited_font_family_run_count,
+            unverified_font_family_run_count,
         );
     }
 
@@ -309,12 +332,16 @@ impl ErEntityThemeReceipt {
         actual_terminal_style: &str,
         visible_run_count: usize,
         inherited_color_run_count: usize,
+        inherited_font_family_run_count: usize,
+        unverified_font_family_run_count: usize,
     ) {
         self.record_text_terminal(
             ErTextTerminalId::attribute(entity_id, row_index, role),
             actual_terminal_style,
             visible_run_count,
             inherited_color_run_count,
+            inherited_font_family_run_count,
+            unverified_font_family_run_count,
         );
     }
 
@@ -324,12 +351,16 @@ impl ErEntityThemeReceipt {
         actual_terminal_style: &str,
         visible_run_count: usize,
         inherited_color_run_count: usize,
+        inherited_font_family_run_count: usize,
+        unverified_font_family_run_count: usize,
     ) {
         self.record_text_terminal(
             ErTextTerminalId::relation_label(relationship_index),
             actual_terminal_style,
             visible_run_count,
             inherited_color_run_count,
+            inherited_font_family_run_count,
+            unverified_font_family_run_count,
         );
     }
 
@@ -339,6 +370,8 @@ impl ErEntityThemeReceipt {
         actual_terminal_style: &str,
         visible_run_count: usize,
         inherited_color_run_count: usize,
+        inherited_font_family_run_count: usize,
+        unverified_font_family_run_count: usize,
     ) {
         if !self.records_text_terminals {
             return;
@@ -355,6 +388,10 @@ impl ErEntityThemeReceipt {
         self.attributes_match &= checkpoint.expectation.visible_run_count == visible_run_count;
         self.attributes_match &=
             checkpoint.expectation.inherited_color_run_count == inherited_color_run_count;
+        self.attributes_match &= checkpoint.expectation.inherited_font_family_run_count
+            == inherited_font_family_run_count;
+        self.attributes_match &= checkpoint.expectation.unverified_font_family_run_count
+            == unverified_font_family_run_count;
         // The generic native fallback emits one fill per label, so mixed inherited and inline
         // colors cannot attest a portable typed foreground even when the browser terminal is exact.
         if let Some(expected) = checkpoint.expectation.paint.as_ref()
@@ -479,6 +516,25 @@ impl ErEntityThemeReceipt {
             && !self.unverified_rules.contains(&rule_index)
             && self.emitted_by_rule.get(&rule_index).copied().unwrap_or(0) != 0
     }
+
+    pub(super) fn proves_typography(&self) -> bool {
+        let Some(expected) = self.typography_expected_font_family.as_deref() else {
+            return false;
+        };
+        self.proves_complete()
+            && self.typography_emitted_font_family.as_deref() == Some(expected)
+            && self.text_terminals.values().any(|entry| {
+                entry.expectation.visible_run_count > 0
+                    && entry.expectation.inherited_font_family_run_count
+                        == entry.expectation.visible_run_count
+                    && entry.expectation.unverified_font_family_run_count == 0
+            })
+            && self.text_terminals.values().all(|entry| {
+                entry.expectation.inherited_font_family_run_count
+                    == entry.expectation.visible_run_count
+                    && entry.expectation.unverified_font_family_run_count == 0
+            })
+    }
 }
 
 fn merge_relation_marker_expectation(
@@ -581,7 +637,7 @@ mod tests {
     use super::*;
 
     fn empty_receipt(expectations: Vec<EntityExpectation>) -> ErEntityThemeReceipt {
-        ErEntityThemeReceipt::new(expectations, BTreeMap::new(), BTreeMap::new())
+        ErEntityThemeReceipt::new(expectations, BTreeMap::new(), BTreeMap::new(), None)
     }
 
     #[test]
@@ -633,9 +689,12 @@ mod tests {
                     }),
                     visible_run_count: 2,
                     inherited_color_run_count: 2,
+                    inherited_font_family_run_count: 2,
+                    unverified_font_family_run_count: 0,
                 },
             )]),
             BTreeMap::new(),
+            None,
         );
         receipt.record_attribute_text(
             "entity-A-0",
@@ -644,6 +703,8 @@ mod tests {
             "color:#123456;fill:#123456",
             2,
             2,
+            2,
+            0,
         );
 
         assert!(receipt.proves_complete());
@@ -664,15 +725,61 @@ mod tests {
                     }),
                     visible_run_count: 3,
                     inherited_color_run_count: 2,
+                    inherited_font_family_run_count: 3,
+                    unverified_font_family_run_count: 0,
                 },
             )]),
             BTreeMap::new(),
+            None,
         );
-        receipt.record_relation_label_text(0, "color:#123456;fill:#123456", 3, 2);
+        receipt.record_relation_label_text(0, "color:#123456;fill:#123456", 3, 2, 3, 0);
 
         assert!(receipt.proves_complete());
         assert!(receipt.has_effective_rule(7));
         assert!(!receipt.proves_rule(7));
+    }
+
+    #[test]
+    fn typography_receipt_requires_writer_css_and_inherited_font_runs() {
+        let id = ErTextTerminalId::entity_name("entity-A-0");
+        let mut receipt = ErEntityThemeReceipt::new(
+            Vec::new(),
+            BTreeMap::from([(
+                id,
+                TextTerminalExpectation {
+                    paint: None,
+                    visible_run_count: 1,
+                    inherited_color_run_count: 1,
+                    inherited_font_family_run_count: 1,
+                    unverified_font_family_run_count: 0,
+                },
+            )]),
+            BTreeMap::new(),
+            Some("Inter, sans-serif".into()),
+        );
+
+        receipt.record_typography_css_emission("Inter, sans-serif");
+        receipt.record_entity_name_text("entity-A-0", "", 1, 1, 1, 0);
+        assert!(receipt.proves_typography());
+
+        let mut unverified = ErEntityThemeReceipt::new(
+            Vec::new(),
+            BTreeMap::from([(
+                ErTextTerminalId::entity_name("entity-A-0"),
+                TextTerminalExpectation {
+                    paint: None,
+                    visible_run_count: 1,
+                    inherited_color_run_count: 1,
+                    inherited_font_family_run_count: 0,
+                    unverified_font_family_run_count: 1,
+                },
+            )]),
+            BTreeMap::new(),
+            Some("Inter, sans-serif".into()),
+        );
+        unverified.record_typography_css_emission("Inter, sans-serif");
+        unverified.record_entity_name_text("entity-A-0", "", 1, 1, 0, 1);
+        assert!(!unverified.proves_typography());
     }
 
     #[test]
@@ -686,6 +793,7 @@ mod tests {
             Vec::new(),
             BTreeMap::new(),
             BTreeMap::from([(id.clone(), Some(expectation.clone()))]),
+            None,
         );
         wrong.record_table_row("entity-A-0", 0, "fill:#123456");
         assert!(!wrong.proves_complete());
@@ -694,6 +802,7 @@ mod tests {
             Vec::new(),
             BTreeMap::new(),
             BTreeMap::from([(id, Some(expectation))]),
+            None,
         );
         duplicate.record_table_row("entity-A-0", 0, "color:#abcdef;fill:#abcdef");
         duplicate.record_table_row("entity-A-0", 0, "color:#abcdef;fill:#abcdef");

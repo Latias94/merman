@@ -49,11 +49,8 @@ impl RadarTypographyThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
     ) -> Self {
-        let inherited_font_stack = InheritedFontStackPlan::resolve_with_typed_sibling_owners(
-            theme,
-            effective_config,
-            &[ThemeTypographyProperty::FontSize],
-        );
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let typed_font_size_requested = theme.is_some_and(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 route.mechanism()
@@ -66,9 +63,7 @@ impl RadarTypographyThemePlan {
                 effective_config,
                 "themeVariables.fontSize",
             );
-        let typed_font_size_active = typed_font_size_requested
-            && !config_owns_font_size
-            && inherited_font_stack.outcome() != InheritedFontStackOutcome::Unsupported;
+        let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_css = match theme {
             Some(theme) if typed_font_size_active => {
                 format!("{}px", theme.typography().font_size_px())
@@ -125,34 +120,77 @@ impl RadarTypographyThemePlan {
             return evidence;
         }
 
-        let key = FamilyThemeMechanismKey::Typography;
         let Some(receipt) = self.terminal_receipt.get() else {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            for (property, requested) in [
+                (
+                    ThemeTypographyProperty::FontStack,
+                    self.inherited_font_stack.typed_font_stack_requested(),
+                ),
+                (
+                    ThemeTypographyProperty::FontSize,
+                    self.typed_font_size_requested,
+                ),
+            ] {
+                if requested {
+                    evidence.mark_residual(
+                        FamilyThemeMechanismKey::Typography(property),
+                        FamilyThemeResidualReason::UnsupportedTypography,
+                    );
+                }
+            }
             return evidence;
         };
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(
+                &mut evidence,
+                receipt.has_visible_title
+                    || receipt.has_visible_axis_label
+                    || receipt.has_visible_legend_label,
+            );
         let has_visible_typography = receipt.has_visible_title
             || receipt.has_visible_axis_label
             || receipt.has_visible_legend_label;
         if !has_visible_typography {
-            evidence.mark_not_applicable(key);
+            for (property, requested) in [
+                (
+                    ThemeTypographyProperty::FontStack,
+                    self.inherited_font_stack.typed_font_stack_requested(),
+                ),
+                (
+                    ThemeTypographyProperty::FontSize,
+                    self.typed_font_size_requested,
+                ),
+            ] {
+                if requested {
+                    evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(property));
+                }
+            }
             return evidence;
         }
-        if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            return evidence;
-        }
-
         let font_stack_applied =
             self.inherited_font_stack.typed_font_stack_active() && has_visible_typography;
         let font_size_applied = self.typed_font_size_active && receipt.has_visible_title;
-        if font_stack_applied || font_size_applied {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-        } else {
-            debug_assert!(
-                self.inherited_font_stack.typed_font_stack_requested()
-                    || self.typed_font_size_requested
-            );
-            evidence.mark_not_applicable(key);
+        for (property, requested, applied) in [
+            (
+                ThemeTypographyProperty::FontStack,
+                self.inherited_font_stack.typed_font_stack_requested(),
+                font_stack_applied,
+            ),
+            (
+                ThemeTypographyProperty::FontSize,
+                self.typed_font_size_requested,
+                font_size_applied,
+            ),
+        ] {
+            if !requested {
+                continue;
+            }
+            let key = FamilyThemeMechanismKey::Typography(property);
+            if applied {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
         }
         evidence
     }
@@ -165,6 +203,7 @@ impl RadarTypographyThemePlan {
 
     fn observes_inherited_text(&self) -> bool {
         self.inherited_font_stack.typed_font_stack_requested()
+            || self.typed_font_size_requested
             || self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported
     }
 }
@@ -606,7 +645,14 @@ mod tests {
         receipt.record_legend_label(0, "Legend");
         receipt.record_title(true);
         assert!(complete.record_terminal(receipt));
-        assert_eq!(complete.finish_evidence().applied().len(), 1);
+        let complete_evidence = complete.finish_evidence();
+        let applied = complete_evidence.applied();
+        assert!(applied.contains(&FamilyThemeMechanismKey::Typography(
+            ThemeTypographyProperty::FontStack,
+        )));
+        assert!(applied.contains(&FamilyThemeMechanismKey::Typography(
+            ThemeTypographyProperty::FontSize,
+        )));
 
         let missing_title = RadarTypographyThemePlan::resolve(Some(&theme), &config);
         let mut receipt = missing_title
@@ -616,7 +662,17 @@ mod tests {
         receipt.record_axis_label(0, "Axis");
         receipt.record_legend_label(0, "Legend");
         assert!(!missing_title.record_terminal(receipt));
-        assert_eq!(missing_title.finish_evidence().residuals().len(), 1);
+        let missing_title_evidence = missing_title.finish_evidence();
+        let residuals = missing_title_evidence.residuals();
+        assert_eq!(residuals.len(), 2);
+        assert!(residuals.iter().all(|residual| {
+            matches!(
+                residual.key(),
+                FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
+                )
+            )
+        }));
     }
 
     #[test]
@@ -656,6 +712,16 @@ mod tests {
             receipt.record_title(true);
         });
 
-        assert_eq!(plan.finish_evidence().residuals().len(), 1);
+        let evidence = plan.finish_evidence();
+        let residuals = evidence.residuals();
+        assert_eq!(residuals.len(), 2);
+        assert!(residuals.iter().all(|residual| {
+            matches!(
+                residual.key(),
+                FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
+                )
+            )
+        }));
     }
 }

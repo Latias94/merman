@@ -98,11 +98,8 @@ impl GitGraphTypographyThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
     ) -> Self {
-        let inherited_font_stack = InheritedFontStackPlan::resolve_with_typed_sibling_owners(
-            theme,
-            effective_config,
-            &[ThemeTypographyProperty::FontSize],
-        );
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let typed_font_size_requested = theme.is_some_and(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 route.mechanism()
@@ -115,9 +112,7 @@ impl GitGraphTypographyThemePlan {
                 effective_config,
                 "themeVariables.fontSize",
             );
-        let typed_font_size_active = typed_font_size_requested
-            && !config_owns_font_size
-            && inherited_font_stack.outcome() != InheritedFontStackOutcome::Unsupported;
+        let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_px = match theme {
             Some(theme) if typed_font_size_active => f64::from(theme.typography().font_size_px()),
             _ => config_f64_css_px(effective_config.as_value(), &["themeVariables", "fontSize"])
@@ -212,32 +207,64 @@ impl GitGraphTypographyThemePlan {
             return evidence;
         }
 
-        let key = FamilyThemeMechanismKey::Typography;
-        if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            return evidence;
-        }
         let Some(receipt) = self.terminal_receipt.get() else {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            self.inherited_font_stack
+                .mark_unsupported_typography_evidence(&mut evidence, true);
+            for (property, requested) in [
+                (
+                    ThemeTypographyProperty::FontStack,
+                    self.inherited_font_stack.typed_font_stack_requested(),
+                ),
+                (
+                    ThemeTypographyProperty::FontSize,
+                    self.typed_font_size_requested,
+                ),
+            ] {
+                if requested {
+                    evidence.mark_residual(
+                        FamilyThemeMechanismKey::Typography(property),
+                        FamilyThemeResidualReason::UnsupportedTypography,
+                    );
+                }
+            }
             return evidence;
         };
 
-        let typed_typography_active =
-            self.inherited_font_stack.typed_font_stack_active() || self.typed_font_size_active;
-        if typed_typography_active && receipt.has_visible_unmeasurable_role_font_size_terminal {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            return evidence;
-        }
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(
+                &mut evidence,
+                receipt.has_visible_font_stack_terminal,
+            );
 
-        let font_stack_applied = self.inherited_font_stack.typed_font_stack_active()
-            && receipt.has_visible_font_stack_terminal;
-        let font_size_applied = self.typed_font_size_active
-            && (receipt.has_visible_branch_label
-                || receipt.has_visible_base_dependent_role_font_size_terminal);
-        if font_stack_applied || font_size_applied {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-        } else {
-            evidence.mark_not_applicable(key);
+        let statuses = [
+            (
+                ThemeTypographyProperty::FontStack,
+                self.inherited_font_stack.typed_font_stack_requested(),
+                self.inherited_font_stack.typed_font_stack_active()
+                    && receipt.has_visible_font_stack_terminal,
+                false,
+            ),
+            (
+                ThemeTypographyProperty::FontSize,
+                self.typed_font_size_requested,
+                self.typed_font_size_active
+                    && (receipt.has_visible_branch_label
+                        || receipt.has_visible_base_dependent_role_font_size_terminal),
+                receipt.has_visible_unmeasurable_role_font_size_terminal,
+            ),
+        ];
+        for (property, requested, applied, unmeasurable) in statuses {
+            if !requested {
+                continue;
+            }
+            let key = FamilyThemeMechanismKey::Typography(property);
+            if unmeasurable {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            } else if applied {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
         }
         evidence
     }
@@ -631,7 +658,14 @@ mod tests {
         let plan = typography_plan();
         let layout = layout();
         assert!(plan.record_terminal(complete_receipt(&plan, &layout)));
-        assert_eq!(plan.finish_evidence().applied().len(), 1);
+        let evidence = plan.finish_evidence();
+        let applied = evidence.applied();
+        assert!(applied.contains(&FamilyThemeMechanismKey::Typography(
+            ThemeTypographyProperty::FontStack,
+        )));
+        assert!(applied.contains(&FamilyThemeMechanismKey::Typography(
+            ThemeTypographyProperty::FontSize,
+        )));
     }
 
     #[test]
@@ -753,7 +787,18 @@ mod tests {
         let inherited_seal = inherited.terminal_receipt.get().expect("terminal seal");
         assert!(inherited_seal.has_visible_base_dependent_role_font_size_terminal);
         assert!(!inherited_seal.has_visible_unmeasurable_role_font_size_terminal);
-        assert_eq!(inherited.finish_evidence().applied().len(), 1);
+        let inherited_evidence = inherited.finish_evidence();
+        let inherited_applied = inherited_evidence.applied();
+        assert!(
+            inherited_applied.contains(&FamilyThemeMechanismKey::Typography(
+                ThemeTypographyProperty::FontStack,
+            ))
+        );
+        assert!(
+            inherited_applied.contains(&FamilyThemeMechanismKey::Typography(
+                ThemeTypographyProperty::FontSize,
+            ))
+        );
 
         let unmeasurable = typography_plan_with_config(MermaidConfig::from_value(json!({
             "themeVariables": {

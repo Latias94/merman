@@ -557,57 +557,56 @@ fn finish_base_typography(
     if routes.is_empty() {
         return;
     }
-    let key = crate::diagram_theme::FamilyThemeMechanismKey::Typography;
     let Some(receipt) = receipt else {
         return;
     };
-    if receipt.base_relevant_occurrences() == 0 {
-        evidence.mark_not_applicable(key);
-        return;
-    }
-    if routes
-        .iter()
-        .any(|(_, disposition)| *disposition == FamilyThemeDisposition::Unsupported)
-    {
-        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-        return;
-    }
-
-    let typed_properties = routes
-        .iter()
-        .filter_map(|(property, disposition)| {
-            (*disposition == FamilyThemeDisposition::TypedAdapter).then_some(*property)
-        })
-        .collect::<Vec<_>>();
-    if typed_properties.is_empty() {
-        return;
-    }
-    if typed_properties
-        .iter()
-        .all(|property| !receipt.base.has_typed_property(*property))
-    {
-        evidence.mark_not_applicable(key);
-        return;
-    }
-    if !receipt.base.terminal_svg_observed() {
-        return;
-    }
-    if typed_properties
-        .iter()
-        .any(|property| receipt.base_property_incomplete(*property))
-    {
-        return;
-    }
-    if typed_properties
-        .iter()
-        .any(|property| receipt.base_property_applied(*property))
-    {
-        if receipt.base.stylesheet_verified() {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+    for (property, disposition) in routes {
+        let key = crate::diagram_theme::FamilyThemeMechanismKey::Typography(*property);
+        let relevant_occurrences = match property {
+            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
+                receipt.base_property_relevant_occurrences(*property)
+            }
+            ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => receipt.base_relevant_occurrences(),
+        };
+        match disposition {
+            FamilyThemeDisposition::LegacyCompatibility => {}
+            FamilyThemeDisposition::Unsupported => {
+                if relevant_occurrences == 0 {
+                    evidence.mark_not_applicable(key);
+                } else {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                }
+            }
+            FamilyThemeDisposition::TypedAdapter => {
+                if relevant_occurrences == 0 || !receipt.base.has_typed_property(*property) {
+                    evidence.mark_not_applicable(key);
+                } else if !receipt.base.terminal_svg_observed()
+                    || receipt.base_property_incomplete(*property)
+                {
+                    // The route reached a visible surface, but the final SVG has not provided
+                    // enough independent facts to promote it.
+                } else if receipt.base_property_applied(*property)
+                    && receipt.base.stylesheet_verified()
+                {
+                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                } else {
+                    // A visible typed route whose terminal evidence is missing or mismatched is
+                    // not "not applicable". Keep it residual so strict portability cannot be
+                    // satisfied by a false ownership claim.
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                }
+            }
         }
-        return;
     }
-    evidence.mark_not_applicable(key);
 }
 
 fn finish_typography_rules(

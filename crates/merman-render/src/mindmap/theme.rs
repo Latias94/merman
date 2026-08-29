@@ -7,7 +7,8 @@ use merman_core::diagrams::mindmap::{MindmapDiagramRenderEdge, MindmapDiagramRen
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
-    ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty,
+    ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
@@ -257,7 +258,8 @@ impl MindmapNodePalettePlan {
             return Ok(plan);
         };
 
-        plan.inherited_font_stack = InheritedFontStackPlan::resolve(Some(theme), config);
+        plan.inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(Some(theme), config);
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
         plan.resolve_node_palette(theme, visited, work_meter)?;
         plan.resolve_edge_stroke(theme, work_meter)?;
@@ -501,7 +503,7 @@ impl MindmapNodePalettePlan {
             node_count: model.nodes.len(),
             node_terminal_receipt: OnceLock::new(),
             edge_terminal_receipt: OnceLock::new(),
-            inherited_font_stack: InheritedFontStackPlan::resolve(None, config),
+            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(None, config),
         }
     }
 
@@ -585,6 +587,9 @@ impl MindmapNodePalettePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        let has_visible_typography = self.node_count != 0;
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, has_visible_typography);
         if let Some(key) = self.palette_key.clone() {
             match self.node_terminal_receipt.get() {
                 Some(receipt) if receipt.unsupported_surface => evidence
@@ -616,21 +621,25 @@ impl MindmapNodePalettePlan {
                 }
             }
         }
-        if self.inherited_font_stack.outcome() != InheritedFontStackOutcome::Inactive {
-            let typography_key = FamilyThemeMechanismKey::Typography;
+        if self.inherited_font_stack.typed_font_stack_requested() {
+            let typography_key =
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
             match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::Typed => match self.node_terminal_receipt.get() {
-                    Some(receipt) if receipt.proves_font_stack(self.font_family_css()) => {
-                        evidence.mark_applied_with_capabilities(
+                InheritedFontStackOutcome::Typed if has_visible_typography => {
+                    match self.node_terminal_receipt.get() {
+                        Some(receipt) if receipt.proves_font_stack(self.font_family_css()) => {
+                            evidence.mark_applied_with_capabilities(
+                                typography_key,
+                                [ThemeCapability::Typography],
+                            );
+                        }
+                        _ => evidence.mark_residual(
                             typography_key,
-                            [ThemeCapability::Typography],
-                        );
+                            FamilyThemeResidualReason::UnsupportedTypography,
+                        ),
                     }
-                    _ => evidence.mark_residual(
-                        typography_key,
-                        FamilyThemeResidualReason::UnsupportedTypography,
-                    ),
-                },
+                }
+                InheritedFontStackOutcome::Typed => evidence.mark_not_applicable(typography_key),
                 InheritedFontStackOutcome::ConfigOwned => {
                     evidence.mark_not_applicable(typography_key)
                 }

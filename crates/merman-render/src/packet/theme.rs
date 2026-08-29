@@ -33,7 +33,6 @@ enum PacketTypographyOutcome {
     Inactive,
     TypedFontStack,
     ConfigOwned,
-    Unsupported,
 }
 
 #[derive(Debug)]
@@ -80,6 +79,7 @@ pub(crate) struct PacketTypographyThemePlan {
     text_color_ownership: PacketTextColorOwnership,
     evidence: FamilyThemeEvidence,
     outcome: PacketTypographyOutcome,
+    unsupported_properties: BTreeSet<ThemeTypographyProperty>,
     compatibility_surface_candidate: bool,
     canonical_dark_mode: bool,
     rule_observations: BTreeMap<FamilyThemeMechanismKey, PacketRuleObservation>,
@@ -105,6 +105,7 @@ impl PacketTypographyThemePlan {
                 text_color_ownership,
                 evidence: FamilyThemeEvidence::default(),
                 outcome: PacketTypographyOutcome::Inactive,
+                unsupported_properties: BTreeSet::new(),
                 compatibility_surface_candidate: false,
                 canonical_dark_mode: packet_dark_mode_is_canonical(effective_config),
                 rule_observations: BTreeMap::new(),
@@ -116,7 +117,7 @@ impl PacketTypographyThemePlan {
 
         let config_owns_font_stack = packet_config_owns_font_stack(effective_config);
         let mut typed_font_stack = false;
-        let mut unsupported_typography = false;
+        let mut unsupported_properties = BTreeSet::new();
         let byte_label_style = theme.style_with_work_meter(
             ThemeTarget::PacketByteLabel,
             ThemeVariant::Default,
@@ -159,7 +160,12 @@ impl PacketTypographyThemePlan {
                 {
                     typed_font_stack = true;
                 }
-                FamilyThemeMechanism::BaseTypography(_) => unsupported_typography = true,
+                FamilyThemeMechanism::BaseTypography(property)
+                    if route.disposition() == FamilyThemeDisposition::Unsupported =>
+                {
+                    unsupported_properties.insert(property);
+                }
+                FamilyThemeMechanism::BaseTypography(_) => {}
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
                     target,
@@ -219,15 +225,12 @@ impl PacketTypographyThemePlan {
             }
         }
 
-        let font_family_css =
-            if typed_font_stack && !config_owns_font_stack && !unsupported_typography {
-                theme.typography().font_stack().as_css()
-            } else {
-                configured_font
-            };
-        let outcome = if unsupported_typography {
-            PacketTypographyOutcome::Unsupported
-        } else if typed_font_stack && config_owns_font_stack {
+        let font_family_css = if typed_font_stack && !config_owns_font_stack {
+            theme.typography().font_stack().as_css()
+        } else {
+            configured_font
+        };
+        let outcome = if typed_font_stack && config_owns_font_stack {
             PacketTypographyOutcome::ConfigOwned
         } else if typed_font_stack {
             PacketTypographyOutcome::TypedFontStack
@@ -247,6 +250,7 @@ impl PacketTypographyThemePlan {
             text_color_ownership,
             evidence: FamilyThemeEvidence::from_theme(Some(theme)),
             outcome,
+            unsupported_properties,
             compatibility_surface_candidate,
             canonical_dark_mode: packet_dark_mode_is_canonical(effective_config),
             rule_observations,
@@ -306,7 +310,7 @@ impl PacketTypographyThemePlan {
             return evidence;
         };
         let receipt = &terminal.receipt;
-        let key = FamilyThemeMechanismKey::Typography;
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if receipt.has_visible_text() {
             match self.outcome {
                 PacketTypographyOutcome::TypedFontStack
@@ -319,13 +323,18 @@ impl PacketTypographyThemePlan {
                     evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
                 }
                 PacketTypographyOutcome::ConfigOwned => evidence.mark_not_applicable(key),
-                PacketTypographyOutcome::Unsupported => {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-                }
                 PacketTypographyOutcome::Inactive => {}
             }
         } else {
             evidence.mark_not_applicable(key);
+        }
+        for property in &self.unsupported_properties {
+            let key = FamilyThemeMechanismKey::Typography(*property);
+            if receipt.has_visible_text() {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
         }
         for route in &self.unsupported_routes {
             if route.is_applicable(receipt) {

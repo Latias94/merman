@@ -633,8 +633,9 @@ fn pie_mixed_font_stack_and_size_keeps_the_stack_but_fails_closed() {
         [expected_font]
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }
@@ -655,7 +656,8 @@ fn pie_explicit_default_title_fill_remains_on_the_compatibility_bridge() {
         ["#2563eb"]
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.required_count(), 0);
+    assert_eq!(evidence.accounted_count(), 0);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 1);
 

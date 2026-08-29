@@ -622,24 +622,31 @@ fn prepare_er_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
+    let inherited_font_stack = crate::family::InheritedFontStackPlan::resolve_property_local(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
     #[cfg(feature = "layout-elk")]
-    let layout = crate::er::layout_er_diagram_typed_with_elk_operation_seed(
+    let layout = crate::er::layout_er_diagram_typed_with_elk_operation_seed_and_font_family(
         &model,
         meta.effective_config.as_value(),
         execution.text_measurer(),
         execution.elk_operation_seed(),
+        Some(inherited_font_stack.font_family_css()),
         execution.work_meter(),
     )?;
     #[cfg(not(feature = "layout-elk"))]
-    let layout = crate::er::layout_er_diagram_typed(
+    let layout = crate::er::layout_er_diagram_typed_with_font_family(
         &model,
         meta.effective_config.as_value(),
         execution.text_measurer(),
+        Some(inherited_font_stack.font_family_css()),
         execution.work_meter(),
     )?;
     let entity_theme = crate::er::ErEntityThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
+        inherited_font_stack,
         crate::er::ErConfigView::new(meta.effective_config.as_value()).relationship_html_labels(),
         &model,
         &layout,

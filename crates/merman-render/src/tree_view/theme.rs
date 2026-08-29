@@ -8,7 +8,7 @@ use merman_core::diagrams::tree_view::{
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, Specified,
-    ThemeCapability, ThemeTarget, ThemeVariant,
+    ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -26,6 +26,7 @@ use super::config::DEFAULT_LINE_THICKNESS;
 pub(crate) struct TreeViewThemePlan {
     line_thickness_override: Option<TreeViewTerminalStrokeWidth>,
     expected_line_count: usize,
+    has_visible_typography: bool,
     label_color: Option<TreeViewPaintAssignment>,
     line_color: Option<TreeViewPaintAssignment>,
     icon_color: Option<TreeViewPaintAssignment>,
@@ -156,7 +157,8 @@ impl TreeViewThemePlan {
             return Ok(Self::baseline(0));
         };
         let (node_count, expected_line_count) = tree_view_terminal_counts(&model.root);
-        let inherited_font_stack = InheritedFontStackPlan::resolve(Some(theme), effective_config);
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(Some(theme), effective_config);
         let label_color;
         let line_color;
         let icon_color;
@@ -389,13 +391,7 @@ impl TreeViewThemePlan {
         for route in theme.family_mechanism_routes().iter().copied() {
             let key = theme.family_mechanism_key(route);
             match route.mechanism() {
-                FamilyThemeMechanism::BaseTypography(_) => match inherited_font_stack.outcome() {
-                    InheritedFontStackOutcome::Typed => {}
-                    InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
-                    InheritedFontStackOutcome::Unsupported => evidence
-                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
-                    InheritedFontStackOutcome::Inactive => evidence.mark_not_applicable(key),
-                },
+                FamilyThemeMechanism::BaseTypography(_) => {}
                 FamilyThemeMechanism::RuleFacet {
                     target:
                         ThemeTarget::NodeLabel
@@ -425,6 +421,7 @@ impl TreeViewThemePlan {
         Ok(Self {
             line_thickness_override,
             expected_line_count,
+            has_visible_typography: node_count != 0,
             label_color,
             line_color,
             icon_color,
@@ -440,11 +437,12 @@ impl TreeViewThemePlan {
         Self {
             line_thickness_override: None,
             expected_line_count,
+            has_visible_typography: false,
             label_color: None,
             line_color: None,
             icon_color: None,
             icon_fallback_color: None,
-            inherited_font_stack: InheritedFontStackPlan::resolve(
+            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
                 None,
                 &merman_core::MermaidConfig::default(),
             ),
@@ -479,6 +477,8 @@ impl TreeViewThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, self.has_visible_typography);
         if let Some(receipt) = self.terminal_receipt.get() {
             if let Some(key) = self.pending_stroke_width_key.clone() {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::BorderStyling]);
@@ -512,13 +512,25 @@ impl TreeViewThemePlan {
                     );
                 }
             }
-            if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Typed
-                && receipt.font_family_matches(self.inherited_font_stack.font_family_css())
-            {
-                evidence.mark_applied_with_capabilities(
-                    FamilyThemeMechanismKey::Typography,
-                    [ThemeCapability::Typography],
-                );
+        }
+        if self.inherited_font_stack.typed_font_stack_requested() {
+            let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+            match self.inherited_font_stack.outcome() {
+                InheritedFontStackOutcome::Typed if !self.has_visible_typography => {
+                    evidence.mark_not_applicable(key);
+                }
+                InheritedFontStackOutcome::Typed
+                    if self.terminal_receipt.get().is_some_and(|receipt| {
+                        receipt.font_family_matches(self.inherited_font_stack.font_family_css())
+                    }) =>
+                {
+                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                }
+                InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
+                InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::Unsupported => {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                }
+                InheritedFontStackOutcome::Inactive => {}
             }
         }
         evidence

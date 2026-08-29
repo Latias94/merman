@@ -5,7 +5,7 @@ use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability,
-    ThemeTarget, ThemeVariant,
+    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
@@ -52,7 +52,10 @@ impl SankeyTypographyThemePlan {
         effective_config: &MermaidConfig,
     ) -> Self {
         Self {
-            inherited_font_stack: InheritedFontStackPlan::resolve(theme, effective_config),
+            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
+                theme,
+                effective_config,
+            ),
             evidence: FamilyThemeEvidence::from_theme(theme),
             terminal_receipt: OnceLock::new(),
         }
@@ -67,12 +70,12 @@ impl SankeyTypographyThemePlan {
         label_count: usize,
         outlined_labels: bool,
     ) -> Option<SankeyTypographyThemeReceipt> {
-        match self.inherited_font_stack.outcome() {
-            InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::ConfigOwned => Some(
-                SankeyTypographyThemeReceipt::new(label_count, outlined_labels),
-            ),
-            InheritedFontStackOutcome::Inactive | InheritedFontStackOutcome::Unsupported => None,
-        }
+        let typography_requested = self.inherited_font_stack.typed_font_stack_requested()
+            || self
+                .inherited_font_stack
+                .has_unsupported_typography_properties();
+        typography_requested
+            .then(|| SankeyTypographyThemeReceipt::new(label_count, outlined_labels))
     }
 
     pub(crate) fn record_terminal(&self, receipt: SankeyTypographyThemeReceipt) -> bool {
@@ -83,31 +86,37 @@ impl SankeyTypographyThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Inactive {
-            return evidence;
-        }
-        let key = FamilyThemeMechanismKey::Typography;
-        if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            return evidence;
-        }
         let Some(receipt) = self.terminal_receipt.get() else {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            self.inherited_font_stack
+                .mark_unsupported_typography_evidence(&mut evidence, true);
+            if self.inherited_font_stack.typed_font_stack_requested() {
+                evidence.mark_residual(
+                    FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                );
+            }
             return evidence;
         };
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_label);
+        if !self.inherited_font_stack.typed_font_stack_requested() {
+            return evidence;
+        }
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if !receipt.has_visible_label {
             evidence.mark_not_applicable(key);
             return evidence;
         }
-        match self.inherited_font_stack.outcome() {
-            InheritedFontStackOutcome::Typed => {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+        if self.inherited_font_stack.typed_font_stack_active() {
+            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+        } else {
+            match self.inherited_font_stack.outcome() {
+                InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
+                InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::Unsupported => {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography)
+                }
+                InheritedFontStackOutcome::Inactive => {}
             }
-            InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
-            InheritedFontStackOutcome::Unsupported => {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
-            InheritedFontStackOutcome::Inactive => {}
         }
         evidence
     }

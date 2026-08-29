@@ -35,6 +35,15 @@ impl<'a> KanbanConfigView<'a> {
         }
     }
 
+    pub(crate) fn layout_settings_with_font_family(
+        &self,
+        font_family: &str,
+    ) -> KanbanLayoutSettings {
+        let mut settings = self.layout_settings();
+        settings.text_style.font_family = Some(font_family.to_owned());
+        settings
+    }
+
     pub(crate) fn look(&self) -> DiagramLook<'a> {
         config_diagram_look(self.effective_config)
     }
@@ -133,6 +142,22 @@ mod tests {
             Some("Inter, sans-serif")
         );
         assert_eq!(settings.text_style.font_size, 20.0);
+    }
+
+    #[test]
+    fn kanban_layout_settings_can_use_resolved_font_family() {
+        let cfg = json!({
+            "fontFamily": "Configured, sans-serif",
+            "kanban": { "sectionWidth": 240 }
+        });
+        let settings =
+            KanbanConfigView::new(&cfg).layout_settings_with_font_family("Typed, sans-serif");
+
+        assert_eq!(settings.section_width, 240.0);
+        assert_eq!(
+            settings.text_style.font_family.as_deref(),
+            Some("Typed, sans-serif")
+        );
     }
 
     #[test]

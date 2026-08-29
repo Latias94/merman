@@ -4,10 +4,10 @@ use std::sync::OnceLock;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
-    Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
@@ -186,6 +186,10 @@ fn last_source_style_value<'a>(
 pub(crate) struct ErEntityThemePlan {
     entity_indices: BTreeMap<String, usize>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
+    inherited_font_stack: InheritedFontStackPlan,
+    font_stack_pending: bool,
+    font_stack_residual: bool,
+    font_stack_not_applicable: bool,
     expectations: Vec<EntityExpectation>,
     text_terminal_evidence_enabled: bool,
     text_terminals: BTreeMap<ErTextTerminalId, TextTerminalExpectation>,
@@ -200,6 +204,7 @@ impl ErEntityThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
+        inherited_font_stack: InheritedFontStackPlan,
         relationship_html_labels: bool,
         model: &merman_core::diagrams::er::ErDiagramRenderModel,
         layout: &crate::model::ErDiagramLayout,
@@ -221,6 +226,10 @@ impl ErEntityThemePlan {
             return Ok(Self {
                 entity_indices,
                 entity_source_styles,
+                inherited_font_stack,
+                font_stack_pending: false,
+                font_stack_residual: false,
+                font_stack_not_applicable: false,
                 expectations: Vec::new(),
                 text_terminal_evidence_enabled: false,
                 text_terminals: BTreeMap::new(),
@@ -238,7 +247,7 @@ impl ErEntityThemePlan {
                 FamilyThemeMechanism::RuleFacet {
                     target: ThemeTarget::Text,
                     ..
-                }
+                } | FamilyThemeMechanism::BaseTypography(_)
             )
         });
         let mut text_terminals = if needs_text_terminal_evidence {
@@ -254,6 +263,21 @@ impl ErEntityThemePlan {
         let mermaid_owns_relation_text =
             mermaid_owns_relation_text_fill(effective_config, relationship_html_labels);
         let relation_stroke_source_owned = mermaid_owns_relation_stroke(effective_config);
+        let source_owns_font_family = entity_source_styles
+            .iter()
+            .any(|style| style.text_value("font-family").is_some());
+        let has_visible_text = !text_terminals.is_empty();
+        let font_stack_requested = inherited_font_stack.typed_font_stack_requested();
+        let font_stack_pending = has_visible_text
+            && font_stack_requested
+            && inherited_font_stack.typed_font_stack_active()
+            && !source_owns_font_family;
+        let font_stack_not_applicable = font_stack_requested
+            && (!has_visible_text || !inherited_font_stack.typed_font_stack_active());
+        let font_stack_residual = font_stack_requested
+            && has_visible_text
+            && !font_stack_pending
+            && !font_stack_not_applicable;
         let mut expectations = expectations;
         let mut winner_properties = BTreeSet::<(usize, ThemeTarget, ResolvedStyleProperty)>::new();
         let mut expected_capabilities =
@@ -522,6 +546,10 @@ impl ErEntityThemePlan {
         Ok(Self {
             entity_indices,
             entity_source_styles,
+            inherited_font_stack,
+            font_stack_pending,
+            font_stack_residual,
+            font_stack_not_applicable,
             expectations,
             text_terminal_evidence_enabled: needs_text_terminal_evidence,
             text_terminals,
@@ -535,6 +563,10 @@ impl ErEntityThemePlan {
 
     pub(crate) fn index_for_entity_id(&self, entity_id: &str) -> Option<usize> {
         self.entity_indices.get(entity_id).copied()
+    }
+
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.inherited_font_stack.font_family_css()
     }
 
     pub(crate) fn source_style(&self, entity_index: usize) -> Option<&ErEntitySourceStyle> {
@@ -615,6 +647,8 @@ impl ErEntityThemePlan {
             self.expectations.clone(),
             text_terminals,
             self.table_rows.clone(),
+            self.font_stack_pending
+                .then(|| self.font_family_css().into()),
         );
         let receipt = if self.text_terminal_evidence_enabled {
             receipt
@@ -625,7 +659,11 @@ impl ErEntityThemePlan {
     }
 
     pub(crate) fn record_terminal(&self, receipt: ErEntityThemeReceipt) -> bool {
-        if self.pending.is_empty() {
+        // Terminal completeness protects all renderer-owned paint/geometry receipts. Typography
+        // ownership is deliberately evaluated later: an unmeasured source font is a legitimate
+        // BestEffort residual and must not abort SVG emission. RequirePortable rejects that
+        // residual through the frozen family report instead.
+        if self.pending.is_empty() && !self.font_stack_pending {
             return true;
         }
         receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
@@ -633,13 +671,37 @@ impl ErEntityThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, !self.text_terminals.is_empty());
+        let font_stack_key =
+            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+        if self.font_stack_pending {
+            if let Some(receipt) = self.terminal_receipt.get()
+                && receipt.proves_typography()
+            {
+                evidence
+                    .mark_applied_with_capabilities(font_stack_key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_residual(
+                    font_stack_key,
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                );
+            }
+        } else if self.font_stack_not_applicable {
+            evidence.mark_not_applicable(font_stack_key);
+        } else if self.font_stack_residual {
+            evidence.mark_residual(
+                font_stack_key,
+                FamilyThemeResidualReason::UnsupportedTypography,
+            );
+        }
         let Some(receipt) = self.terminal_receipt.get() else {
             return evidence;
         };
         for (key, capabilities) in &self.pending {
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
-                FamilyThemeMechanismKey::Typography
+                FamilyThemeMechanismKey::Typography(_)
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
@@ -803,6 +865,8 @@ fn insert_text_terminal(
                 paint: None,
                 visible_run_count: facts.visible_run_count(),
                 inherited_color_run_count: facts.inherited_color_run_count(),
+                inherited_font_family_run_count: facts.inherited_font_family_run_count(),
+                unverified_font_family_run_count: facts.unverified_font_family_run_count(),
             },
         );
     }

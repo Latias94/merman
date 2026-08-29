@@ -1038,8 +1038,10 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::VENN
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::RADAR
+            | DiagramFamilyId::ER
             | DiagramFamilyId::PIE
             | DiagramFamilyId::REQUIREMENT
+            | DiagramFamilyId::KANBAN
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1047,9 +1049,7 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
         family,
         DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::C4
-            | DiagramFamilyId::ER
             | DiagramFamilyId::JOURNEY
-            | DiagramFamilyId::KANBAN
             | DiagramFamilyId::QUADRANT_CHART
             | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::TREEMAP

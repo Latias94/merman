@@ -218,8 +218,9 @@ fn radar_mixed_typography_is_direct_and_portable() {
     assert!(stylesheet.contains("#radar :root{--mermaid-font-family:RadarMixed;}"));
 
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }
@@ -334,7 +335,7 @@ fn radar_typography_config_ownership_is_property_local() {
 }
 
 #[test]
-fn radar_unsupported_typography_sibling_suppresses_the_direct_pair() {
+fn radar_unsupported_typography_sibling_keeps_independent_direct_properties() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(
             FontStack::single("RadarSuppressed").expect("valid suppressed Radar font stack"),
@@ -354,11 +355,12 @@ fn radar_unsupported_typography_sibling_suppresses_the_direct_pair() {
     )
     .expect("BestEffort renders unsupported Radar typography");
     let stylesheet = radar_stylesheet(rendered.svg());
-    assert!(!stylesheet.contains("RadarSuppressed"));
-    assert!(!stylesheet.contains("font-size:24px;"));
+    assert!(stylesheet.contains("RadarSuppressed"));
+    assert!(stylesheet.contains("font-size:24px;"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.required_count(), 3);
+    assert_eq!(evidence.accounted_count(), 3);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
 

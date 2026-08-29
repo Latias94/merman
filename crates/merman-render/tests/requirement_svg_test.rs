@@ -386,6 +386,7 @@ fn requirement_typed_font_stack_reaches_measurement_stylesheet_and_evidence() {
 
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
@@ -444,9 +445,10 @@ fn requirement_font_size_only_remains_a_legacy_compatibility_route() {
     assert!(css.contains("font-size:24px"), "{css}");
 
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.required_count(), 0);
+    assert_eq!(evidence.accounted_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 
     let error = match try_render_requirement_with_theme_requirement_and_environment(
         requirement_source(),
@@ -465,6 +467,46 @@ fn requirement_font_size_only_remains_a_legacy_compatibility_route() {
             residual_count: 1,
         }
     ));
+}
+
+#[test]
+fn requirement_unsupported_typography_is_property_local_to_the_typed_font_stack() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(
+            FontStack::single("RequirementTyped").expect("valid Requirement font stack"),
+        )
+        .with_font_weight(700)
+        .expect("valid unsupported Requirement font weight");
+    let theme = requirement_typography_theme(typography);
+    let rendered = render_requirement_with_theme_requirement(
+        requirement_source(),
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+
+    assert!(requirement_stylesheet(rendered.svg()).contains("font-family:RequirementTyped"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let error = match try_render_requirement_with_theme_requirement_and_environment(
+        requirement_source(),
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        RenderEnvironment::deterministic(),
+    ) {
+        Ok(_) => panic!("strict Requirement must reject unsupported font weight"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::REQUIREMENT, 1))
+    );
 }
 
 #[test]

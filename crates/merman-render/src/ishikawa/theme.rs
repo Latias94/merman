@@ -62,11 +62,8 @@ impl IshikawaTextThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut expectations = terminal_domain(layout);
-        let inherited_font_stack = InheritedFontStackPlan::resolve_with_typed_sibling_owners(
-            theme,
-            effective_config,
-            &[ThemeTypographyProperty::FontSize],
-        );
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let typed_font_size_requested = theme.is_some_and(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 route.mechanism()
@@ -79,9 +76,7 @@ impl IshikawaTextThemePlan {
                 effective_config,
                 "themeVariables.fontSize",
             );
-        let typed_font_size_active = typed_font_size_requested
-            && !config_owns_font_size
-            && inherited_font_stack.outcome() != InheritedFontStackOutcome::Unsupported;
+        let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_css = match theme {
             Some(theme) if typed_font_size_active => {
                 format!("{}px", theme.typography().font_size_px())
@@ -296,18 +291,33 @@ impl IshikawaTextThemePlan {
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         let Some(receipt) = self.terminal_receipt.get() else {
+            self.inherited_font_stack
+                .mark_unsupported_typography_evidence(&mut evidence, !self.expectations.is_empty());
             if self.typography_requested() {
-                evidence.mark_residual(
-                    FamilyThemeMechanismKey::Typography,
-                    FamilyThemeResidualReason::UnsupportedTypography,
-                );
+                for (property, requested) in [
+                    (
+                        ThemeTypographyProperty::FontStack,
+                        self.inherited_font_stack.typed_font_stack_requested(),
+                    ),
+                    (
+                        ThemeTypographyProperty::FontSize,
+                        self.typed_font_size_requested,
+                    ),
+                ] {
+                    if requested {
+                        evidence.mark_residual(
+                            FamilyThemeMechanismKey::Typography(property),
+                            FamilyThemeResidualReason::UnsupportedTypography,
+                        );
+                    }
+                }
             }
             return evidence;
         };
         for (key, capabilities) in &self.pending {
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
-                FamilyThemeMechanismKey::Typography
+                FamilyThemeMechanismKey::Typography(_)
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
@@ -331,20 +341,34 @@ impl IshikawaTextThemePlan {
         if !self.typography_requested() {
             return;
         }
-        let key = FamilyThemeMechanismKey::Typography;
-        if self.expectations.is_empty() {
-            evidence.mark_not_applicable(key);
-        } else if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-        } else if self.inherited_font_stack.typed_font_stack_active()
-            || (self.typed_font_size_active
-                && self.expectations.iter().any(|expectation| {
-                    expectation.typography_terminal == IshikawaTypographyTerminal::InheritedBaseSize
-                }))
-        {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-        } else {
-            evidence.mark_not_applicable(key);
+        let font_size_has_terminal = self.expectations.iter().any(|expectation| {
+            expectation.typography_terminal == IshikawaTypographyTerminal::InheritedBaseSize
+        });
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(evidence, !self.expectations.is_empty());
+        for (property, requested, applied) in [
+            (
+                ThemeTypographyProperty::FontStack,
+                self.inherited_font_stack.typed_font_stack_requested(),
+                self.inherited_font_stack.typed_font_stack_active(),
+            ),
+            (
+                ThemeTypographyProperty::FontSize,
+                self.typed_font_size_requested,
+                self.typed_font_size_active && font_size_has_terminal,
+            ),
+        ] {
+            if !requested {
+                continue;
+            }
+            let key = FamilyThemeMechanismKey::Typography(property);
+            if self.expectations.is_empty() {
+                evidence.mark_not_applicable(key);
+            } else if applied {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
         }
     }
 }

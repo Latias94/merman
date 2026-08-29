@@ -5,7 +5,7 @@ use merman_core::MermaidConfig;
 use super::WardleyDiagramLayout;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ThemeCapability,
+    ThemeCapability, ThemeTypographyProperty,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
@@ -158,7 +158,10 @@ impl WardleyTypographyThemePlan {
         effective_config: &MermaidConfig,
     ) -> Self {
         Self {
-            inherited_font_stack: InheritedFontStackPlan::resolve(theme, effective_config),
+            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
+                theme,
+                effective_config,
+            ),
             evidence: FamilyThemeEvidence::from_theme(theme),
             unsupported_routes: wardley_unsupported_routes(theme),
             terminal_receipt: OnceLock::new(),
@@ -247,24 +250,31 @@ impl WardleyTypographyThemePlan {
         let Some(receipt) = self.terminal_receipt.get() else {
             return evidence;
         };
-        let key = FamilyThemeMechanismKey::Typography;
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_text());
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if !receipt.has_visible_text() {
             evidence.mark_not_applicable(key);
             return evidence;
         }
-        match self.inherited_font_stack.outcome() {
-            InheritedFontStackOutcome::Typed if receipt.proves_font_stack() => {
+        if self.inherited_font_stack.typed_font_stack_active() {
+            if receipt.proves_font_stack() {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            }
-            InheritedFontStackOutcome::ConfigOwned if receipt.proves_font_stack() => {
-                evidence.mark_not_applicable(key);
-            }
-            InheritedFontStackOutcome::Typed
-            | InheritedFontStackOutcome::ConfigOwned
-            | InheritedFontStackOutcome::Unsupported => {
+            } else {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
-            InheritedFontStackOutcome::Inactive => {}
+        } else {
+            match self.inherited_font_stack.outcome() {
+                InheritedFontStackOutcome::ConfigOwned if receipt.proves_font_stack() => {
+                    evidence.mark_not_applicable(key);
+                }
+                InheritedFontStackOutcome::Typed
+                | InheritedFontStackOutcome::ConfigOwned
+                | InheritedFontStackOutcome::Unsupported => {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                }
+                InheritedFontStackOutcome::Inactive => {}
+            }
         }
         evidence
     }

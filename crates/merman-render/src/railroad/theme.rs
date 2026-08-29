@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 use merman_core::MermaidConfig;
@@ -17,7 +18,6 @@ enum RailroadTypographyOutcome {
     Inactive,
     Typed,
     ConfigOwned,
-    Unsupported,
 }
 
 #[derive(Debug)]
@@ -240,6 +240,11 @@ pub(crate) struct RailroadTypographyThemePlan {
     style: RailroadStyle,
     evidence: FamilyThemeEvidence,
     outcome: RailroadTypographyOutcome,
+    unsupported_properties: BTreeSet<ThemeTypographyProperty>,
+    typed_font_stack_requested: bool,
+    typed_font_size_requested: bool,
+    typed_font_stack_active: bool,
+    typed_font_size_active: bool,
     unsupported_routes: Box<[RailroadUnsupportedRoute]>,
     terminal_receipt: OnceLock<RailroadSurfaceReceipt>,
 }
@@ -255,6 +260,11 @@ impl RailroadTypographyThemePlan {
                 style,
                 evidence: FamilyThemeEvidence::default(),
                 outcome: RailroadTypographyOutcome::Inactive,
+                unsupported_properties: BTreeSet::new(),
+                typed_font_stack_requested: false,
+                typed_font_size_requested: false,
+                typed_font_stack_active: false,
+                typed_font_size_active: false,
                 unsupported_routes: Box::new([]),
                 terminal_receipt: OnceLock::new(),
             };
@@ -264,7 +274,7 @@ impl RailroadTypographyThemePlan {
         let config_owns_font_size = railroad_config_owns_font_size(effective_config);
         let mut typed_font_stack = false;
         let mut typed_font_size = false;
-        let mut unsupported_typography = false;
+        let mut unsupported_properties = BTreeSet::new();
         let mut unsupported_routes = Vec::new();
 
         for route in theme.family_mechanism_routes().iter().copied() {
@@ -279,7 +289,12 @@ impl RailroadTypographyThemePlan {
                 {
                     typed_font_size = true;
                 }
-                FamilyThemeMechanism::BaseTypography(_) => unsupported_typography = true,
+                FamilyThemeMechanism::BaseTypography(property)
+                    if route.disposition() == FamilyThemeDisposition::Unsupported =>
+                {
+                    unsupported_properties.insert(property);
+                }
+                FamilyThemeMechanism::BaseTypography(_) => {}
                 FamilyThemeMechanism::RuleFacet {
                     target,
                     selector,
@@ -315,10 +330,8 @@ impl RailroadTypographyThemePlan {
             }
         }
 
-        let typed_font_stack_applied =
-            typed_font_stack && !config_owns_font_stack && !unsupported_typography;
-        let typed_font_size_applied =
-            typed_font_size && !config_owns_font_size && !unsupported_typography;
+        let typed_font_stack_applied = typed_font_stack && !config_owns_font_stack;
+        let typed_font_size_applied = typed_font_size && !config_owns_font_size;
         if typed_font_stack_applied {
             style.font_family = theme.typography().font_stack().as_css();
         }
@@ -328,9 +341,7 @@ impl RailroadTypographyThemePlan {
 
         let requested_typed_typography = typed_font_stack || typed_font_size;
         let applied_typed_typography = typed_font_stack_applied || typed_font_size_applied;
-        let outcome = if unsupported_typography {
-            RailroadTypographyOutcome::Unsupported
-        } else if applied_typed_typography {
+        let outcome = if applied_typed_typography {
             RailroadTypographyOutcome::Typed
         } else if requested_typed_typography {
             RailroadTypographyOutcome::ConfigOwned
@@ -342,6 +353,11 @@ impl RailroadTypographyThemePlan {
             style,
             evidence: FamilyThemeEvidence::from_theme(Some(theme)),
             outcome,
+            unsupported_properties,
+            typed_font_stack_requested: typed_font_stack,
+            typed_font_size_requested: typed_font_size,
+            typed_font_stack_active: typed_font_stack_applied,
+            typed_font_size_active: typed_font_size_applied,
             unsupported_routes: unsupported_routes.into_boxed_slice(),
             terminal_receipt: OnceLock::new(),
         }
@@ -364,27 +380,71 @@ impl RailroadTypographyThemePlan {
         let Some(receipt) = self.terminal_receipt.get() else {
             return evidence;
         };
-        let key = FamilyThemeMechanismKey::Typography;
         if !receipt.has_styled_text() {
-            evidence.mark_not_applicable(key);
+            for (property, requested) in [
+                (
+                    ThemeTypographyProperty::FontStack,
+                    self.typed_font_stack_requested,
+                ),
+                (
+                    ThemeTypographyProperty::FontSize,
+                    self.typed_font_size_requested,
+                ),
+            ] {
+                if requested {
+                    evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(property));
+                }
+            }
+            for property in &self.unsupported_properties {
+                evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(*property));
+            }
             for route in &self.unsupported_routes {
                 evidence.mark_not_applicable(route.key.clone());
             }
             return evidence;
         }
 
-        match self.outcome {
-            RailroadTypographyOutcome::Typed if receipt.typography_stylesheet_verified() => {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+        for (property, requested, active) in [
+            (
+                ThemeTypographyProperty::FontStack,
+                self.typed_font_stack_requested,
+                self.typed_font_stack_active,
+            ),
+            (
+                ThemeTypographyProperty::FontSize,
+                self.typed_font_size_requested,
+                self.typed_font_size_active,
+            ),
+        ] {
+            if !requested {
+                continue;
             }
-            RailroadTypographyOutcome::Typed => {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            let key = FamilyThemeMechanismKey::Typography(property);
+            match self.outcome {
+                RailroadTypographyOutcome::ConfigOwned if !active => {
+                    evidence.mark_not_applicable(key)
+                }
+                RailroadTypographyOutcome::Typed | RailroadTypographyOutcome::ConfigOwned
+                    if receipt.typography_stylesheet_verified() && active =>
+                {
+                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                }
+                RailroadTypographyOutcome::Typed | RailroadTypographyOutcome::ConfigOwned
+                    if !active =>
+                {
+                    evidence.mark_not_applicable(key);
+                }
+                RailroadTypographyOutcome::Typed | RailroadTypographyOutcome::ConfigOwned => {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                }
+                RailroadTypographyOutcome::Inactive => {}
             }
-            RailroadTypographyOutcome::ConfigOwned => evidence.mark_not_applicable(key),
-            RailroadTypographyOutcome::Unsupported => {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
-            RailroadTypographyOutcome::Inactive => {}
+        }
+        for property in &self.unsupported_properties {
+            evidence.mark_residual(
+                FamilyThemeMechanismKey::Typography(*property),
+                FamilyThemeResidualReason::UnsupportedTypography,
+            );
         }
         for route in &self.unsupported_routes {
             if route.is_applicable(receipt) {
@@ -514,7 +574,7 @@ mod tests {
         assert!(plan.record_terminal(receipt));
 
         let evidence = plan.finish_evidence();
-        assert_eq!(evidence.applied().len(), 1);
+        assert_eq!(evidence.applied().len(), 2);
         assert!(evidence.residuals().is_empty());
     }
 
@@ -533,10 +593,13 @@ mod tests {
 
         let evidence = plan.finish_evidence();
         assert!(evidence.applied().is_empty());
-        assert_eq!(evidence.residuals().len(), 1);
-        assert_eq!(
-            evidence.residuals()[0].reason(),
-            FamilyThemeResidualReason::UnsupportedTypography
+        assert_eq!(evidence.residuals().len(), 2);
+        assert!(
+            evidence
+                .residuals()
+                .iter()
+                .all(|residual| residual.reason()
+                    == FamilyThemeResidualReason::UnsupportedTypography)
         );
     }
 }

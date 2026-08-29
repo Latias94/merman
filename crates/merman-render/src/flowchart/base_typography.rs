@@ -16,7 +16,6 @@ enum FlowchartBaseTypographyOutcome {
     Inactive,
     Typed,
     ConfigOwned,
-    Unsupported,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -45,6 +44,9 @@ struct FlowchartBaseTypographyPlanInner {
     font_size_px: f64,
     html_font_size_px: f64,
     outcome: FlowchartBaseTypographyOutcome,
+    unsupported_properties: BTreeSet<ThemeTypographyProperty>,
+    typed_font_stack_requested: bool,
+    typed_font_size_requested: bool,
     typed_font_stack_selected: bool,
     typed_font_size_selected: bool,
     terminal_receipt: Mutex<FlowchartBaseTypographyReceipt>,
@@ -153,6 +155,9 @@ impl FlowchartBaseTypographyPlan {
                 configured_font_size,
                 configured_html_style.font_size,
                 FlowchartBaseTypographyOutcome::Inactive,
+                BTreeSet::new(),
+                false,
+                false,
                 false,
                 false,
             );
@@ -161,7 +166,7 @@ impl FlowchartBaseTypographyPlan {
         let ownership = super::flowchart_typography_config_ownership(effective_config);
         let mut typed_font_stack = false;
         let mut typed_font_size = false;
-        let mut unsupported_typography = false;
+        let mut unsupported_properties = BTreeSet::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
@@ -174,17 +179,20 @@ impl FlowchartBaseTypographyPlan {
                 {
                     typed_font_size = true;
                 }
-                FamilyThemeMechanism::BaseTypography(_) => unsupported_typography = true,
-                FamilyThemeMechanism::RuleFacet { .. }
+                FamilyThemeMechanism::BaseTypography(property)
+                    if route.disposition() == FamilyThemeDisposition::Unsupported =>
+                {
+                    unsupported_properties.insert(property);
+                }
+                FamilyThemeMechanism::BaseTypography(_)
+                | FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
 
-        let typed_font_stack_applied =
-            typed_font_stack && !ownership.font_stack && !unsupported_typography;
-        let typed_font_size_applied =
-            typed_font_size && !ownership.font_size && !unsupported_typography;
+        let typed_font_stack_applied = typed_font_stack && !ownership.font_stack;
+        let typed_font_size_applied = typed_font_size && !ownership.font_size;
         let font_family = if typed_font_stack_applied {
             theme.typography().font_stack().as_css()
         } else {
@@ -202,9 +210,7 @@ impl FlowchartBaseTypographyPlan {
         };
         let requested = typed_font_stack || typed_font_size;
         let applied = typed_font_stack_applied || typed_font_size_applied;
-        let outcome = if unsupported_typography {
-            FlowchartBaseTypographyOutcome::Unsupported
-        } else if applied {
+        let outcome = if applied {
             FlowchartBaseTypographyOutcome::Typed
         } else if requested {
             FlowchartBaseTypographyOutcome::ConfigOwned
@@ -217,6 +223,9 @@ impl FlowchartBaseTypographyPlan {
             font_size,
             html_font_size,
             outcome,
+            unsupported_properties,
+            typed_font_stack,
+            typed_font_size,
             typed_font_stack_applied,
             typed_font_size_applied,
         )
@@ -227,6 +236,9 @@ impl FlowchartBaseTypographyPlan {
         font_size_px: f64,
         html_font_size_px: f64,
         outcome: FlowchartBaseTypographyOutcome,
+        unsupported_properties: BTreeSet<ThemeTypographyProperty>,
+        typed_font_stack_requested: bool,
+        typed_font_size_requested: bool,
         typed_font_stack_selected: bool,
         typed_font_size_selected: bool,
     ) -> Self {
@@ -236,6 +248,9 @@ impl FlowchartBaseTypographyPlan {
                 font_size_px,
                 html_font_size_px,
                 outcome,
+                unsupported_properties,
+                typed_font_stack_requested,
+                typed_font_size_requested,
                 typed_font_stack_selected,
                 typed_font_size_selected,
                 terminal_receipt: Mutex::new(FlowchartBaseTypographyReceipt::default()),
@@ -282,6 +297,7 @@ impl FlowchartBaseTypographyPlan {
 
     pub(crate) fn requires_terminal_evidence(&self) -> bool {
         !matches!(self.inner.outcome, FlowchartBaseTypographyOutcome::Inactive)
+            || !self.inner.unsupported_properties.is_empty()
     }
 
     pub(crate) fn begin_terminal_emission(&self) {
@@ -377,16 +393,25 @@ impl FlowchartBaseTypographyPlan {
             .terminal_receipt
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let key = FamilyThemeMechanismKey::Typography;
         if receipt.visible_text_occurrences.is_empty() && !receipt.unidentified_visible_text {
-            evidence.mark_not_applicable(key);
+            if self.inner.typed_font_stack_requested {
+                evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontStack,
+                ));
+            }
+            if self.inner.typed_font_size_requested {
+                evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontSize,
+                ));
+            }
+            for property in &self.inner.unsupported_properties {
+                evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(*property));
+            }
             return evidence;
         }
 
         match self.inner.outcome {
             FlowchartBaseTypographyOutcome::Typed => {
-                let requested_properties = usize::from(self.inner.typed_font_stack_selected)
-                    + usize::from(self.inner.typed_font_size_selected);
                 let font_stack = property_terminal_status(
                     self.inner.typed_font_stack_selected,
                     receipt.stylesheet_font_stack_verified,
@@ -405,24 +430,57 @@ impl FlowchartBaseTypographyPlan {
                     &receipt.font_size_shadowed,
                     receipt.font_size_unverified,
                 );
-                let reached_properties =
-                    usize::from(font_stack.is_applied()) + usize::from(font_size.is_applied());
-                if reached_properties == requested_properties && requested_properties > 0 {
-                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-                } else if reached_properties == 0
-                    && font_stack.is_not_applicable()
-                    && font_size.is_not_applicable()
-                {
-                    evidence.mark_not_applicable(key);
-                } else {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                for (property, requested, selected, status) in [
+                    (
+                        ThemeTypographyProperty::FontStack,
+                        self.inner.typed_font_stack_requested,
+                        self.inner.typed_font_stack_selected,
+                        font_stack,
+                    ),
+                    (
+                        ThemeTypographyProperty::FontSize,
+                        self.inner.typed_font_size_requested,
+                        self.inner.typed_font_size_selected,
+                        font_size,
+                    ),
+                ] {
+                    if !requested {
+                        continue;
+                    }
+                    let key = FamilyThemeMechanismKey::Typography(property);
+                    if !selected || status.is_not_applicable() {
+                        evidence.mark_not_applicable(key);
+                    } else if status.is_applied() {
+                        evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                    } else {
+                        evidence
+                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                    }
                 }
             }
-            FlowchartBaseTypographyOutcome::Unsupported => {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            FlowchartBaseTypographyOutcome::ConfigOwned => {
+                for (property, requested) in [
+                    (
+                        ThemeTypographyProperty::FontStack,
+                        self.inner.typed_font_stack_requested,
+                    ),
+                    (
+                        ThemeTypographyProperty::FontSize,
+                        self.inner.typed_font_size_requested,
+                    ),
+                ] {
+                    if requested {
+                        evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(property));
+                    }
+                }
             }
-            FlowchartBaseTypographyOutcome::ConfigOwned => evidence.mark_not_applicable(key),
             FlowchartBaseTypographyOutcome::Inactive => {}
+        }
+        for property in &self.inner.unsupported_properties {
+            evidence.mark_residual(
+                FamilyThemeMechanismKey::Typography(*property),
+                FamilyThemeResidualReason::UnsupportedTypography,
+            );
         }
         evidence
     }
@@ -506,7 +564,8 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
+        DiagramThemeCompiler, DiagramThemeSpec, FontStack, FontStyle, ThemeTextStyle,
+        TypographySpec,
     };
 
     fn typed_plan(config: MermaidConfig) -> FlowchartBaseTypographyPlan {
@@ -624,6 +683,71 @@ mod tests {
         plan.record_label_emission(FlowchartBaseTypographyLabelEmission::diagram_title());
 
         let evidence = plan.finish_evidence(Some(&resolved));
-        assert_eq!(evidence.applied(), &[FamilyThemeMechanismKey::Typography],);
+        assert_eq!(
+            evidence.applied(),
+            &[FamilyThemeMechanismKey::Typography(
+                ThemeTypographyProperty::FontStack,
+            )],
+        );
+    }
+
+    #[test]
+    fn unsupported_base_typography_properties_do_not_block_typed_properties() {
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").expect("valid test font"))
+            .with_font_size_px(23.0)
+            .expect("valid test font size")
+            .with_font_weight(700)
+            .expect("valid test font weight")
+            .with_font_style(FontStyle::Italic);
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::FLOWCHART, typography),
+            ))
+            .expect("compile mixed Flowchart typography test theme");
+        let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
+        let plan = FlowchartBaseTypographyPlan::resolve(
+            Some(&resolved),
+            &MermaidConfig::from_value(serde_json::json!({})),
+        );
+
+        plan.begin_terminal_emission();
+        plan.record_stylesheet_emission(
+            plan.inner.font_family_css.as_ref(),
+            plan.inner.font_size_px,
+        );
+        plan.record_label_emission(FlowchartBaseTypographyLabelEmission::new(
+            Some(super::super::FlowchartSvgLabelOwner::Node(0)),
+            true,
+            true,
+        ));
+
+        let evidence = plan.finish_evidence(Some(&resolved));
+        assert!(
+            evidence
+                .applied()
+                .contains(&FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontStack,
+                ))
+        );
+        assert!(
+            evidence
+                .applied()
+                .contains(&FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontSize,
+                ))
+        );
+        for property in [
+            ThemeTypographyProperty::FontWeight,
+            ThemeTypographyProperty::FontStyle,
+        ] {
+            let key = FamilyThemeMechanismKey::Typography(property);
+            assert!(
+                evidence
+                    .residuals()
+                    .iter()
+                    .any(|residual| residual.key() == &key)
+            );
+        }
     }
 }

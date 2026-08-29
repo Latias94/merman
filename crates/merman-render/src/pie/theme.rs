@@ -8,7 +8,7 @@ use crate::config::config_string;
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
-    Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -803,6 +803,9 @@ impl PieThemePlan {
 
     pub(crate) fn typography_requested(&self) -> bool {
         self.inherited_font_stack.typed_font_stack_requested()
+            || self
+                .inherited_font_stack
+                .has_unsupported_typography_properties()
     }
 
     pub(crate) fn begin_terminal_receipt<'a>(
@@ -828,32 +831,30 @@ impl PieThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        match self.inherited_font_stack.outcome() {
-            InheritedFontStackOutcome::Inactive => {}
-            InheritedFontStackOutcome::Unsupported => evidence.mark_residual(
-                FamilyThemeMechanismKey::Typography,
-                FamilyThemeResidualReason::UnsupportedTypography,
-            ),
-            InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::ConfigOwned => {
-                match self.terminal_evidence.get() {
-                    Some(terminal) if terminal.typography_not_applicable => {
-                        evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography)
-                    }
-                    Some(terminal) if terminal.typography_applied => {
-                        if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::Typed {
-                            evidence.mark_applied_with_capabilities(
-                                FamilyThemeMechanismKey::Typography,
-                                [ThemeCapability::Typography],
-                            );
-                        } else {
-                            evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography);
-                        }
-                    }
-                    _ => evidence.mark_residual(
-                        FamilyThemeMechanismKey::Typography,
-                        FamilyThemeResidualReason::UnsupportedTypography,
-                    ),
-                }
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+        let Some(terminal) = self.terminal_evidence.get() else {
+            self.inherited_font_stack
+                .mark_unsupported_typography_evidence(&mut evidence, true);
+            if self.inherited_font_stack.typed_font_stack_requested() {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            }
+            return evidence;
+        };
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, terminal.typography_applied);
+        if self.inherited_font_stack.typed_font_stack_requested() {
+            if terminal.typography_not_applicable {
+                evidence.mark_not_applicable(key);
+            } else if self.inherited_font_stack.typed_font_stack_active()
+                && terminal.typography_applied
+            {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::ConfigOwned
+                && terminal.typography_applied
+            {
+                evidence.mark_not_applicable(key);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
         }
         if let Some(key) = self.palette_key.clone() {

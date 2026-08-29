@@ -229,20 +229,30 @@ impl ErrorTypographyThemePlan {
         let Some(receipt) = self.terminal_receipt.get() else {
             return evidence;
         };
-        let key = FamilyThemeMechanismKey::Typography;
-        match self.inherited_font_stack.outcome() {
-            InheritedFontStackOutcome::Typed if receipt.proves_font_stack() => {
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(
+                &mut evidence,
+                receipt.message_text_count != 0 || receipt.version_text_count != 0,
+            );
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+        if self.inherited_font_stack.typed_font_stack_active() {
+            if receipt.proves_font_stack() {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            }
-            InheritedFontStackOutcome::ConfigOwned if receipt.proves_font_stack() => {
-                evidence.mark_not_applicable(key);
-            }
-            InheritedFontStackOutcome::Typed
-            | InheritedFontStackOutcome::ConfigOwned
-            | InheritedFontStackOutcome::Unsupported => {
+            } else {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
-            InheritedFontStackOutcome::Inactive => {}
+        } else {
+            match self.inherited_font_stack.outcome() {
+                InheritedFontStackOutcome::ConfigOwned if receipt.proves_font_stack() => {
+                    evidence.mark_not_applicable(key);
+                }
+                InheritedFontStackOutcome::Typed
+                | InheritedFontStackOutcome::ConfigOwned
+                | InheritedFontStackOutcome::Unsupported => {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                }
+                InheritedFontStackOutcome::Inactive => {}
+            }
         }
         evidence
     }

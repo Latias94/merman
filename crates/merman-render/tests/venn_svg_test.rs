@@ -275,11 +275,12 @@ fn venn_mixed_font_stack_and_size_fails_closed_without_legacy_projection() {
     )
     .expect("BestEffort renders the mixed Venn typography residual");
 
-    assert!(!rendered.svg().contains("VennMixed"));
+    assert!(rendered.svg().contains("VennMixed"));
     assert!(!rendered.svg().contains("font-size:24px"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 

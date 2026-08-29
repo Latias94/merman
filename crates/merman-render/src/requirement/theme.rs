@@ -7,7 +7,7 @@ use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
     FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
-    ThemeCapability, ThemeTarget, ThemeVariant,
+    ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
@@ -293,10 +293,15 @@ impl RequirementPaintThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(
+                &mut evidence,
+                self.title_present || !self.expectations.is_empty(),
+            );
         let Some(receipt) = self.terminal_receipt.get() else {
             if self.typography_requested() {
                 evidence.mark_residual(
-                    FamilyThemeMechanismKey::Typography,
+                    FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                     FamilyThemeResidualReason::UnsupportedTypography,
                 );
             }
@@ -305,7 +310,7 @@ impl RequirementPaintThemePlan {
         for (key, properties) in &self.pending {
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
-                FamilyThemeMechanismKey::Typography
+                FamilyThemeMechanismKey::Typography(_)
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
@@ -324,17 +329,19 @@ impl RequirementPaintThemePlan {
             match self.inherited_font_stack.outcome() {
                 InheritedFontStackOutcome::Typed if receipt.proves_typography() => {
                     evidence.mark_applied_with_capabilities(
-                        FamilyThemeMechanismKey::Typography,
+                        FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                         [ThemeCapability::Typography],
                     );
                 }
                 InheritedFontStackOutcome::ConfigOwned if receipt.proves_typography() => {
-                    evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography);
+                    evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(
+                        ThemeTypographyProperty::FontStack,
+                    ));
                 }
                 InheritedFontStackOutcome::Typed
                 | InheritedFontStackOutcome::ConfigOwned
                 | InheritedFontStackOutcome::Unsupported => evidence.mark_residual(
-                    FamilyThemeMechanismKey::Typography,
+                    FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                     FamilyThemeResidualReason::UnsupportedTypography,
                 ),
                 InheritedFontStackOutcome::Inactive => {}

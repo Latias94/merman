@@ -815,7 +815,12 @@ fn retirement_descriptor_digest(descriptor: ThemeLegacyProjectionRetirementDescr
     for value in ThemeLegacyRouteValue::ALL {
         update_len_prefixed(&mut hasher, value.id().as_bytes());
     }
-    for projection in descriptor.former_projections() {
+    // Acceptance canonicalizes projection sets before hashing. Keep the renderer
+    // seal independent from declaration order as well, so reordering a static
+    // inventory row cannot invalidate an otherwise identical retirement receipt.
+    let mut projections = descriptor.former_projections().to_vec();
+    projections.sort_unstable();
+    for projection in projections {
         update_len_prefixed(&mut hasher, projection.contribution_suffix().as_bytes());
         update_len_prefixed(&mut hasher, projection.assignment_path().as_bytes());
     }
@@ -914,5 +919,30 @@ mod tests {
             descriptor.id().family_id() != DiagramFamilyId::CLASS
                 || descriptor.id().target() != ThemeTarget::Title
         }));
+    }
+
+    #[test]
+    fn retirement_descriptor_digest_is_independent_of_projection_declaration_order() {
+        const DECLARED_ORDER: &[ThemeLegacyProjectionKey] = &[
+            projection("node.fill", "themeVariables.primaryColor"),
+            projection("node.fill", "themeVariables.mainBkg"),
+        ];
+        const REVERSED_ORDER: &[ThemeLegacyProjectionKey] = &[
+            projection("node.fill", "themeVariables.mainBkg"),
+            projection("node.fill", "themeVariables.primaryColor"),
+        ];
+        let id = ThemeLegacyRouteId::new(
+            DiagramFamilyId::TREE_VIEW,
+            ThemeTarget::Node,
+            ThemeLegacyRouteSelector::StaticUnqualified,
+            ThemeLegacyRouteFacet::Fill,
+        );
+        let declared = ThemeLegacyProjectionRetirementDescriptor::new(id, DECLARED_ORDER);
+        let reversed = ThemeLegacyProjectionRetirementDescriptor::new(id, REVERSED_ORDER);
+
+        assert_eq!(
+            retirement_descriptor_digest(declared),
+            retirement_descriptor_digest(reversed)
+        );
     }
 }

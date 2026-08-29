@@ -539,7 +539,7 @@ impl JourneyTaskTheme {
         for (key, pending) in &self.pending {
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
-                FamilyThemeMechanismKey::Typography
+                FamilyThemeMechanismKey::Typography(_)
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };

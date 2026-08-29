@@ -4,7 +4,9 @@ use super::admission::ThemeCapability;
 use super::mechanisms::{
     collect_effect_graph_capabilities, collect_style_patch_capabilities, paint_capabilities,
 };
-use super::{CanvasSpec, DiagramTheme, DiagramThemeSpec, Specified, ThemeTarget};
+use super::{
+    CanvasSpec, DiagramTheme, DiagramThemeSpec, Specified, ThemeTarget, ThemeTypographyProperty,
+};
 
 /// Evaluation state for mechanisms that apply outside a selected diagram family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,7 +42,7 @@ pub(crate) enum RootThemeMechanismKey {
 /// contract because one rule can mix supported and unsupported facets.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum FamilyThemeMechanismKey {
-    Typography,
+    Typography(ThemeTypographyProperty),
     Rule {
         index: usize,
         target: ThemeTarget,
@@ -57,7 +59,7 @@ pub(crate) enum FamilyThemeMechanismKey {
 impl std::fmt::Display for FamilyThemeMechanismKey {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Typography => formatter.write_str("typography"),
+            Self::Typography(property) => write!(formatter, "typography[{}]", property.id()),
             Self::Rule { index, target } => write!(formatter, "rule[{index}:{}]", target.id()),
             Self::OrdinalPalette { target } => {
                 write!(formatter, "ordinal-palette[{}]", target.id())

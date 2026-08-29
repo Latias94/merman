@@ -1,10 +1,10 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, InsetsPx,
     MermaidThemeCompatibility, OrdinalPalette, OrdinalSelector, Specified, ThemeColorValue,
     ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -79,6 +79,17 @@ fn kanban_task_label_rule(color: &str, ordinal: usize) -> ThemeRule {
 
 fn kanban_task_label_theme(color: &str) -> DiagramTheme {
     kanban_task_rules_theme([kanban_task_label_rule(color, 1)])
+}
+
+fn kanban_typography_theme(style: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default()
+                    .with_family_style(merman_render::DiagramFamilyId::KANBAN, style),
+            ),
+        )
+        .expect("compile Kanban typography theme")
 }
 
 fn render_kanban_with_theme_and_engine(
@@ -1189,5 +1200,43 @@ fn kanban_task_radius_is_not_applicable_without_items() {
     render_kanban_svg_with_theme(
         "kanban\n  todo[Todo]\n",
         &kanban_task_radius_theme(Specified::Value(8.0)),
+    );
+}
+
+#[test]
+fn kanban_unsupported_typography_is_property_local_to_the_typed_font_stack() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("KanbanTyped").expect("valid Kanban font stack"))
+        .with_font_weight(700)
+        .expect("valid unsupported Kanban font weight");
+    let theme = kanban_typography_theme(typography);
+    let source = "kanban\n  todo[Todo]\n    task[Task]\n";
+    let rendered = render_kanban_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+
+    assert!(rendered.svg().contains("font-family:KanbanTyped"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let error = match try_render_kanban_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    ) {
+        Ok(_) => panic!("strict Kanban must reject unsupported font weight"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::KANBAN, 1))
     );
 }

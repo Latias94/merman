@@ -11,8 +11,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::EventModelingDiagramLayout;
@@ -54,21 +54,14 @@ struct EventModelingTextRuleObservation {
     residual: Option<FamilyThemeResidualReason>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EventModelingTypographyOutcome {
-    Inactive,
-    Typed,
-    ConfigOwned,
-    Unsupported,
-}
-
 /// Final Event Modeling text styling shared by terminal emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct EventModelingTextThemePlan {
     typed_fill: Option<DirectStaticPaint>,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Option<Box<str>>,
-    typography_outcome: EventModelingTypographyOutcome,
+    typed_font_size_requested: bool,
+    typed_font_size_active: bool,
     occurrences: EventModelingTextOccurrences,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, ThemeCapability>,
@@ -83,11 +76,8 @@ impl EventModelingTextThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let occurrences = EventModelingTextOccurrences::from_layout(layout);
-        let inherited_font_stack = InheritedFontStackPlan::resolve_with_typed_sibling_owners(
-            theme,
-            effective_config,
-            &[ThemeTypographyProperty::FontSize],
-        );
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let Some(theme) = theme else {
             let configured_font_size_css = config_css_number_or_string(
                 effective_config.as_value(),
@@ -98,6 +88,8 @@ impl EventModelingTextThemePlan {
                 occurrences,
                 inherited_font_stack,
                 configured_font_size_css,
+                false,
+                false,
             ));
         };
 
@@ -137,7 +129,6 @@ impl EventModelingTextThemePlan {
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let mut observations = BTreeMap::<usize, EventModelingTextRuleObservation>::new();
         let mut typed_font_size = false;
-        let mut unsupported_typography = false;
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
@@ -231,9 +222,10 @@ impl EventModelingTextThemePlan {
                 }
                 FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
                     if route.disposition() == FamilyThemeDisposition::TypedAdapter => {}
-                FamilyThemeMechanism::BaseTypography(_) => {
-                    unsupported_typography = true;
-                }
+                // Base typography is reconciled by property in `finish_evidence`. The shared
+                // inherited-font plan records every Unsupported property so mixed requests do
+                // not make a supported sibling disappear from the terminal writer.
+                FamilyThemeMechanism::BaseTypography(_) => {}
                 FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
@@ -276,8 +268,7 @@ impl EventModelingTextThemePlan {
                 effective_config,
                 "themeVariables.fontSize",
             );
-        let typed_font_size_active =
-            typed_font_size && !config_owns_font_size && !unsupported_typography;
+        let typed_font_size_active = typed_font_size && !config_owns_font_size;
         let font_size_css = if typed_font_size_active {
             Some(format!("{}px", theme.typography().font_size_px()).into_boxed_str())
         } else {
@@ -287,27 +278,13 @@ impl EventModelingTextThemePlan {
             )
             .map(String::into_boxed_str)
         };
-        let typography_outcome = if unsupported_typography
-            || inherited_font_stack.outcome() == InheritedFontStackOutcome::Unsupported
-        {
-            EventModelingTypographyOutcome::Unsupported
-        } else if inherited_font_stack.outcome() == InheritedFontStackOutcome::Typed
-            || typed_font_size_active
-        {
-            EventModelingTypographyOutcome::Typed
-        } else if inherited_font_stack.outcome() == InheritedFontStackOutcome::ConfigOwned
-            || config_owns_font_size
-        {
-            EventModelingTypographyOutcome::ConfigOwned
-        } else {
-            EventModelingTypographyOutcome::Inactive
-        };
 
         Ok(Self {
             typed_fill,
             inherited_font_stack,
             font_size_css,
-            typography_outcome,
+            typed_font_size_requested: typed_font_size,
+            typed_font_size_active,
             occurrences,
             evidence,
             pending,
@@ -319,12 +296,15 @@ impl EventModelingTextThemePlan {
         occurrences: EventModelingTextOccurrences,
         inherited_font_stack: InheritedFontStackPlan,
         font_size_css: Option<Box<str>>,
+        typed_font_size_requested: bool,
+        typed_font_size_active: bool,
     ) -> Self {
         Self {
             typed_fill: None,
             inherited_font_stack,
             font_size_css,
-            typography_outcome: EventModelingTypographyOutcome::Inactive,
+            typed_font_size_requested,
+            typed_font_size_active,
             occurrences,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
@@ -362,25 +342,33 @@ impl EventModelingTextThemePlan {
                 evidence.mark_applied_with_capabilities(key.clone(), [*capability]);
             }
         }
-        let typography_key = FamilyThemeMechanismKey::Typography;
-        match (self.typography_outcome, terminal_verified) {
-            (EventModelingTypographyOutcome::Inactive, _) => {}
-            (_, false) => evidence.mark_residual(
-                typography_key,
-                FamilyThemeResidualReason::UnsupportedTypography,
+        let has_visible_terminals = self.occurrences.total() != 0;
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, has_visible_terminals);
+        let properties = [
+            (
+                ThemeTypographyProperty::FontStack,
+                self.inherited_font_stack.typed_font_stack_requested(),
+                self.inherited_font_stack.typed_font_stack_active(),
             ),
-            (_, true) if self.occurrences.total() == 0 => {
-                evidence.mark_not_applicable(typography_key)
-            }
-            (EventModelingTypographyOutcome::Typed, true) => evidence
-                .mark_applied_with_capabilities(typography_key, [ThemeCapability::Typography]),
-            (EventModelingTypographyOutcome::ConfigOwned, true) => {
-                evidence.mark_not_applicable(typography_key)
-            }
-            (EventModelingTypographyOutcome::Unsupported, true) => evidence.mark_residual(
-                typography_key,
-                FamilyThemeResidualReason::UnsupportedTypography,
+            (
+                ThemeTypographyProperty::FontSize,
+                self.typed_font_size_requested,
+                self.typed_font_size_active,
             ),
+        ];
+        for (property, requested, active) in properties {
+            if !requested {
+                continue;
+            }
+            let key = FamilyThemeMechanismKey::Typography(property);
+            if !has_visible_terminals || !active {
+                evidence.mark_not_applicable(key);
+            } else if terminal_verified {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            }
         }
         evidence
     }

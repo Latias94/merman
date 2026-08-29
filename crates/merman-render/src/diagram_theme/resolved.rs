@@ -124,6 +124,25 @@ pub(crate) enum ThemeTypographyProperty {
     Wrap,
 }
 
+impl ThemeTypographyProperty {
+    pub(crate) const fn id(self) -> &'static str {
+        match self {
+            Self::FontStack => "font-stack",
+            Self::FontSize => "font-size",
+            Self::FontWeight => "font-weight",
+            Self::FontStyle => "font-style",
+            Self::LineHeight => "line-height",
+            Self::LetterSpacing => "letter-spacing",
+            Self::WordSpacing => "word-spacing",
+            Self::Transform => "transform",
+            Self::Decoration => "decoration",
+            Self::TextAlign => "text-align",
+            Self::WhiteSpace => "white-space",
+            Self::Wrap => "wrap",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum ResolvedStyleProperty {
     Fill,
@@ -765,9 +784,25 @@ impl ResolvedDiagramTheme {
         self.program.ordinal_palette_disposition(target)
     }
 
-    pub(crate) fn family_mechanism_keys(&self) -> Vec<super::application::FamilyThemeMechanismKey> {
+    /// Returns mechanisms owned by native family evidence.
+    ///
+    /// Compatibility-only routes are deliberately excluded: their runtime contribution is
+    /// recorded by the compatibility ledger and must never be promoted to typed, unsupported, or
+    /// not-applicable family evidence. A key shared by multiple facets remains present whenever at
+    /// least one facet is owned by the native evidence path.
+    pub(crate) fn family_evidence_mechanism_keys(
+        &self,
+    ) -> Vec<super::application::FamilyThemeMechanismKey> {
+        use super::family_mechanism_matrix::FamilyThemeDisposition;
+
         let mut keys = Vec::new();
-        for route in self.program.mechanism_routes().iter().copied() {
+        for route in self
+            .program
+            .mechanism_routes()
+            .iter()
+            .copied()
+            .filter(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        {
             let key = self.family_mechanism_key(route);
             if !keys.contains(&key) {
                 keys.push(key);
@@ -784,7 +819,9 @@ impl ResolvedDiagramTheme {
         use super::family_mechanism_matrix::FamilyThemeMechanism;
 
         match route.mechanism() {
-            FamilyThemeMechanism::BaseTypography(_) => FamilyThemeMechanismKey::Typography,
+            FamilyThemeMechanism::BaseTypography(property) => {
+                FamilyThemeMechanismKey::Typography(property)
+            }
             FamilyThemeMechanism::RuleFacet {
                 rule_index, target, ..
             } => FamilyThemeMechanismKey::Rule {

@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 use std::sync::OnceLock;
 
+#[cfg(test)]
+use crate::diagram_theme::ThemeTypographyProperty;
 use crate::diagram_theme::{FamilyThemeMechanismKey, ThemeCapability};
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -1088,7 +1090,7 @@ mod tests {
                 ),
             ],
             BTreeMap::from([(
-                FamilyThemeMechanismKey::Typography,
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                 StatePendingTerminalMechanism {
                     capabilities: BTreeSet::from([ThemeCapability::Typography]),
                     occurrences: BTreeSet::from([
@@ -1124,7 +1126,7 @@ mod tests {
                 ),
             ],
             BTreeMap::from([(
-                FamilyThemeMechanismKey::Typography,
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                 StatePendingTerminalMechanism {
                     capabilities: BTreeSet::from([ThemeCapability::SolidPaint]),
                     occurrences,
@@ -1286,7 +1288,7 @@ mod tests {
                 ),
             ],
             BTreeMap::from([(
-                FamilyThemeMechanismKey::Typography,
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                 StatePendingTerminalMechanism {
                     capabilities: BTreeSet::from([
                         ThemeCapability::Typography,
@@ -1326,7 +1328,7 @@ mod tests {
                     "color:#f8fafc",
                 )],
                 BTreeMap::from([(
-                    FamilyThemeMechanismKey::Typography,
+                    FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                     StatePendingTerminalMechanism {
                         capabilities: BTreeSet::from([ThemeCapability::Typography]),
                         occurrences: BTreeSet::from([occurrence.clone()]),
@@ -1363,7 +1365,7 @@ mod tests {
                 ),
             ],
             BTreeMap::from([(
-                FamilyThemeMechanismKey::Typography,
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                 StatePendingTerminalMechanism {
                     capabilities: BTreeSet::from([ThemeCapability::Typography]),
                     occurrences: BTreeSet::from([

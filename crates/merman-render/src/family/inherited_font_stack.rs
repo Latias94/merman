@@ -1,5 +1,8 @@
+use std::collections::BTreeSet;
+
 use merman_core::MermaidConfig;
 
+use super::{FamilyThemeEvidence, FamilyThemeResidualReason};
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, ResolvedDiagramTheme, ThemeTypographyProperty,
 };
@@ -23,12 +26,7 @@ pub(crate) struct InheritedFontStackPlan {
     outcome: InheritedFontStackOutcome,
     typed_font_stack_requested: bool,
     typed_font_stack_active: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SiblingTypographyPolicy {
-    SuppressUnsupported,
-    ComposeFontStack,
+    unsupported_typography_properties: BTreeSet<ThemeTypographyProperty>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -196,61 +194,19 @@ fn required_axis_extent(measured_extent: f64, available_ratio: f64) -> f64 {
 }
 
 impl InheritedFontStackPlan {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
-    ) -> Self {
-        let configured_font = crate::config::config_font_family_css(effective_config.as_value());
-        Self::resolve_inner(
-            theme,
-            effective_config,
-            configured_font,
-            SiblingTypographyPolicy::SuppressUnsupported,
-            &[],
-        )
-    }
-
-    /// Resolves the font stack while requiring the family plan to name every other typed
-    /// typography property that it consumes directly.
-    pub(crate) fn resolve_with_typed_sibling_owners(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
-        owned_typed_siblings: &[ThemeTypographyProperty],
-    ) -> Self {
-        let configured_font = crate::config::config_font_family_css(effective_config.as_value());
-        Self::resolve_inner(
-            theme,
-            effective_config,
-            configured_font,
-            SiblingTypographyPolicy::SuppressUnsupported,
-            owned_typed_siblings,
-        )
-    }
-
     /// Resolves the font stack independently from unsupported sibling typography properties.
-    ///
-    /// This is appropriate only for families whose final writer can preserve the supported
-    /// font-family assignment while reporting sibling properties as aggregate residual evidence.
     pub(crate) fn resolve_property_local(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
     ) -> Self {
         let configured_font = crate::config::config_font_family_css(effective_config.as_value());
-        Self::resolve_inner(
-            theme,
-            effective_config,
-            configured_font,
-            SiblingTypographyPolicy::ComposeFontStack,
-            &[],
-        )
+        Self::resolve_inner(theme, effective_config, configured_font)
     }
 
     fn resolve_inner(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
         configured_font: String,
-        sibling_policy: SiblingTypographyPolicy,
-        owned_typed_siblings: &[ThemeTypographyProperty],
     ) -> Self {
         let Some(theme) = theme else {
             return Self {
@@ -258,6 +214,7 @@ impl InheritedFontStackPlan {
                 outcome: InheritedFontStackOutcome::Inactive,
                 typed_font_stack_requested: false,
                 typed_font_stack_active: false,
+                unsupported_typography_properties: BTreeSet::new(),
             };
         };
 
@@ -272,58 +229,50 @@ impl InheritedFontStackPlan {
                 });
         let mut typed_font_stack = false;
         let mut residual_typography = false;
-        let mut blocking_sibling_typography = false;
+        let mut unsupported_typography_properties = BTreeSet::new();
         for route in theme.family_mechanism_routes().iter().copied() {
-            match route.mechanism() {
-                FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
-                    if route.disposition() == FamilyThemeDisposition::TypedAdapter =>
-                {
+            match (route.mechanism(), route.disposition()) {
+                (
+                    FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack),
+                    FamilyThemeDisposition::TypedAdapter,
+                ) => {
                     typed_font_stack = true;
                 }
-                FamilyThemeMechanism::BaseTypography(_)
-                    if route.disposition() != FamilyThemeDisposition::TypedAdapter =>
-                {
+                (
+                    FamilyThemeMechanism::BaseTypography(_),
+                    FamilyThemeDisposition::LegacyCompatibility,
+                ) => {
                     residual_typography = true;
-                    blocking_sibling_typography |=
-                        route.disposition() == FamilyThemeDisposition::Unsupported;
                 }
-                FamilyThemeMechanism::BaseTypography(property)
-                    if owned_typed_siblings.contains(&property) => {}
-                FamilyThemeMechanism::BaseTypography(_) => {
-                    // A matrix row is not sufficient proof that a sibling property has a final
-                    // writer. The family must declare that owner at this call site.
+                (
+                    FamilyThemeMechanism::BaseTypography(property),
+                    FamilyThemeDisposition::Unsupported,
+                ) => {
                     residual_typography = true;
-                    blocking_sibling_typography = true;
+                    unsupported_typography_properties.insert(property);
                 }
-                FamilyThemeMechanism::RuleFacet { .. }
-                | FamilyThemeMechanism::OrdinalPalette { .. }
-                | FamilyThemeMechanism::EffectBinding { .. } => {}
+                (FamilyThemeMechanism::BaseTypography(_), _)
+                | (FamilyThemeMechanism::RuleFacet { .. }, _)
+                | (FamilyThemeMechanism::OrdinalPalette { .. }, _)
+                | (FamilyThemeMechanism::EffectBinding { .. }, _) => {}
             }
         }
 
-        // A legacy sibling remains non-portable, but it does not own the font-family assignment.
-        // Best-effort rendering therefore composes the typed stack with that compatibility value.
-        // A typed sibling is ignored only when the family explicitly names its terminal owner.
-        // Families with a genuinely independent font-family terminal may also compose an
-        // unsupported sibling; aggregate families suppress the font stack until every requested
-        // property is owned.
-        let typed_font_stack_active = typed_font_stack
-            && !config_owns_font_stack
-            && (sibling_policy == SiblingTypographyPolicy::ComposeFontStack
-                || !blocking_sibling_typography);
+        // Legacy and unsupported siblings remain non-portable, but neither owns the font-family
+        // assignment. Each property is settled by its own evidence or compatibility ledger.
+        let typed_font_stack_active = typed_font_stack && !config_owns_font_stack;
         let font_family_css = if typed_font_stack_active {
             theme.typography().font_stack().as_css()
         } else {
             configured_font
         };
-        let outcome = if residual_typography {
-            InheritedFontStackOutcome::Unsupported
-        } else if typed_font_stack && config_owns_font_stack {
-            InheritedFontStackOutcome::ConfigOwned
-        } else if typed_font_stack {
-            InheritedFontStackOutcome::Typed
-        } else {
-            InheritedFontStackOutcome::Inactive
+        let outcome = match () {
+            _ if typed_font_stack && config_owns_font_stack => {
+                InheritedFontStackOutcome::ConfigOwned
+            }
+            _ if typed_font_stack => InheritedFontStackOutcome::Typed,
+            _ if residual_typography => InheritedFontStackOutcome::Unsupported,
+            _ => InheritedFontStackOutcome::Inactive,
         };
 
         Self {
@@ -331,6 +280,7 @@ impl InheritedFontStackPlan {
             outcome,
             typed_font_stack_requested: typed_font_stack,
             typed_font_stack_active,
+            unsupported_typography_properties,
         }
     }
 
@@ -346,17 +296,36 @@ impl InheritedFontStackPlan {
     ///
     /// Families whose unthemed baseline has no font writer use this bit to avoid changing their
     /// terminal DOM unless the typed route was actually requested. It remains true when explicit
-    /// configuration owns the winning value or a sibling typography property makes the combined
-    /// mechanism fail closed.
+    /// configuration owns the winning value or a sibling typography property is handled by a
+    /// separate evidence ledger.
     pub(crate) const fn typed_font_stack_requested(&self) -> bool {
         self.typed_font_stack_requested
     }
 
     /// Whether the typed font stack owns the emitted and measured font-family value.
     ///
-    /// This remains true when a sibling typography property is legacy-compatible. The aggregate
-    /// outcome is still `Unsupported` in that case so portability evidence remains fail-closed.
+    /// Property-local families settle legacy and unsupported sibling properties through their own
+    /// evidence keys, so those siblings do not change this font-stack ownership result.
     pub(crate) const fn typed_font_stack_active(&self) -> bool {
         self.typed_font_stack_active
+    }
+
+    pub(crate) fn has_unsupported_typography_properties(&self) -> bool {
+        !self.unsupported_typography_properties.is_empty()
+    }
+
+    pub(crate) fn mark_unsupported_typography_evidence(
+        &self,
+        evidence: &mut FamilyThemeEvidence,
+        has_visible_terminals: bool,
+    ) {
+        for property in self.unsupported_typography_properties.iter().copied() {
+            let key = crate::diagram_theme::FamilyThemeMechanismKey::Typography(property);
+            if has_visible_terminals {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
+        }
     }
 }

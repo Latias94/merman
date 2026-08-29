@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::diagram_theme::LineHeight;
 #[cfg(test)]
-use crate::diagram_theme::ThemeResourcePolicy;
+use crate::diagram_theme::{ThemeResourcePolicy, ThemeTypographyProperty};
 use crate::entities::decode_mermaid_entities_for_render_text;
 use crate::resources::{
     OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
@@ -860,11 +860,11 @@ mod tests {
         ));
         assert!(emission_style.contains("fill:#111827 !important"));
         assert!(!emission_style.contains("text-transform"));
-        assert!(
-            evidence
-                .applied()
-                .contains(&crate::diagram_theme::FamilyThemeMechanismKey::Typography)
-        );
+        assert!(evidence.applied().contains(
+            &crate::diagram_theme::FamilyThemeMechanismKey::Typography(
+                ThemeTypographyProperty::FontStack
+            )
+        ));
         assert!(evidence.residuals().is_empty());
 
         prepared_label

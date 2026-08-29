@@ -11,9 +11,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
@@ -114,7 +113,9 @@ impl GanttTaskTerminalExpectation {
 pub(crate) struct GanttTaskTheme {
     tasks: Box<[GanttTaskTerminalExpectation]>,
     font_family_css: Box<str>,
-    typography_outcome: InheritedFontStackOutcome,
+    typed_font_stack_requested: bool,
+    typed_font_stack_active: bool,
+    unsupported_typography_properties: BTreeSet<ThemeTypographyProperty>,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, GanttTaskPendingEvidence>,
     layout_occurrences: OnceLock<Box<[usize]>>,
@@ -128,12 +129,14 @@ impl GanttTaskTheme {
         tasks: &[GanttRenderTask],
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
-        let (font_family_css, typography_outcome) =
-            resolve_gantt_font_stack(theme, effective_config);
+        let typography = resolve_gantt_font_stack(theme, effective_config);
         let Some(theme) = theme else {
             let mut baseline = Self::baseline(tasks);
-            baseline.font_family_css = font_family_css;
-            baseline.typography_outcome = typography_outcome;
+            baseline.font_family_css = typography.font_family_css;
+            baseline.typed_font_stack_requested = typography.typed_font_stack_requested;
+            baseline.typed_font_stack_active = typography.typed_font_stack_active;
+            baseline.unsupported_typography_properties =
+                typography.unsupported_typography_properties;
             return Ok(baseline);
         };
 
@@ -330,8 +333,10 @@ impl GanttTaskTheme {
 
         Ok(Self {
             tasks: task_expectations.into_boxed_slice(),
-            font_family_css,
-            typography_outcome,
+            font_family_css: typography.font_family_css,
+            typed_font_stack_requested: typography.typed_font_stack_requested,
+            typed_font_stack_active: typography.typed_font_stack_active,
+            unsupported_typography_properties: typography.unsupported_typography_properties,
             evidence,
             pending,
             layout_occurrences: OnceLock::new(),
@@ -347,7 +352,9 @@ impl GanttTaskTheme {
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             font_family_css: crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.into(),
-            typography_outcome: InheritedFontStackOutcome::Inactive,
+            typed_font_stack_requested: false,
+            typed_font_stack_active: false,
+            unsupported_typography_properties: BTreeSet::new(),
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
             layout_occurrences: OnceLock::new(),
@@ -415,7 +422,8 @@ impl GanttTaskTheme {
                 .tasks
                 .iter()
                 .any(|task| task.fill.is_some() || task.stroke.is_some())
-            || self.typography_outcome == InheritedFontStackOutcome::Typed;
+            || self.typed_font_stack_active
+            || !self.unsupported_typography_properties.is_empty();
         requires_receipt.then(|| {
             let Some(layout_occurrences) = self.layout_occurrences.get() else {
                 return GanttTaskThemeReceipt::invalid(self.task_count());
@@ -430,7 +438,7 @@ impl GanttTaskTheme {
                 GanttTaskThemeReceipt::new_with_typography(
                     expectations,
                     self.font_family_css.as_ref(),
-                    self.typography_outcome == InheritedFontStackOutcome::Typed,
+                    self.typed_font_stack_active,
                 )
             }
         })
@@ -448,7 +456,7 @@ impl GanttTaskTheme {
             };
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
-                FamilyThemeMechanismKey::Typography
+                FamilyThemeMechanismKey::Typography(_)
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
@@ -459,31 +467,38 @@ impl GanttTaskTheme {
                 );
             }
         }
-        let typography_key = FamilyThemeMechanismKey::Typography;
-        match self.typography_outcome {
-            InheritedFontStackOutcome::Typed => {
-                if self
-                    .terminal_receipt
-                    .get()
-                    .is_some_and(GanttTaskThemeReceipt::proves_typography)
-                {
-                    evidence.mark_applied_with_capabilities(
-                        typography_key,
-                        [ThemeCapability::Typography],
-                    );
-                } else {
-                    evidence.mark_residual(
-                        typography_key,
-                        FamilyThemeResidualReason::UnsupportedTypography,
-                    );
-                }
+        let terminal_observed = self.terminal_receipt.get().is_some();
+        let has_visible_typography = self
+            .terminal_receipt
+            .get()
+            .is_some_and(GanttTaskThemeReceipt::has_visible_typography);
+        for property in &self.unsupported_typography_properties {
+            let key = FamilyThemeMechanismKey::Typography(*property);
+            if terminal_observed && !has_visible_typography {
+                evidence.mark_not_applicable(key);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
-            InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(typography_key),
-            InheritedFontStackOutcome::Unsupported => evidence.mark_residual(
-                typography_key,
-                FamilyThemeResidualReason::UnsupportedTypography,
-            ),
-            InheritedFontStackOutcome::Inactive => {}
+        }
+
+        if self.typed_font_stack_requested {
+            let typography_key =
+                FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+            if !self.typed_font_stack_active || (terminal_observed && !has_visible_typography) {
+                evidence.mark_not_applicable(typography_key);
+            } else if self
+                .terminal_receipt
+                .get()
+                .is_some_and(GanttTaskThemeReceipt::proves_typography)
+            {
+                evidence
+                    .mark_applied_with_capabilities(typography_key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_residual(
+                    typography_key,
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                );
+            }
         }
         evidence
     }
@@ -515,20 +530,30 @@ fn gantt_config_owns_font_stack(config: &MermaidConfig) -> bool {
     .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path))
 }
 
+#[derive(Debug)]
+struct GanttTypographyResolution {
+    font_family_css: Box<str>,
+    typed_font_stack_requested: bool,
+    typed_font_stack_active: bool,
+    unsupported_typography_properties: BTreeSet<ThemeTypographyProperty>,
+}
+
 fn resolve_gantt_font_stack(
     theme: Option<&ResolvedDiagramTheme>,
     effective_config: &MermaidConfig,
-) -> (Box<str>, InheritedFontStackOutcome) {
+) -> GanttTypographyResolution {
     let configured_font = gantt_config_font_family_css(effective_config);
     let Some(theme) = theme else {
-        return (
-            configured_font.into_boxed_str(),
-            InheritedFontStackOutcome::Inactive,
-        );
+        return GanttTypographyResolution {
+            font_family_css: configured_font.into_boxed_str(),
+            typed_font_stack_requested: false,
+            typed_font_stack_active: false,
+            unsupported_typography_properties: BTreeSet::new(),
+        };
     };
 
     let mut typed_font_stack = false;
-    let mut unsupported_typography = false;
+    let mut unsupported_typography_properties = BTreeSet::new();
     for route in theme.family_mechanism_routes().iter().copied() {
         match route.mechanism() {
             FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
@@ -536,10 +561,10 @@ fn resolve_gantt_font_stack(
             {
                 typed_font_stack = true;
             }
-            FamilyThemeMechanism::BaseTypography(_)
+            FamilyThemeMechanism::BaseTypography(property)
                 if route.disposition() == FamilyThemeDisposition::Unsupported =>
             {
-                unsupported_typography = true;
+                unsupported_typography_properties.insert(property);
             }
             FamilyThemeMechanism::BaseTypography(_)
             | FamilyThemeMechanism::RuleFacet { .. }
@@ -549,21 +574,18 @@ fn resolve_gantt_font_stack(
     }
 
     let config_owned = gantt_config_owns_font_stack(effective_config);
-    let font_family = if typed_font_stack && !config_owned && !unsupported_typography {
+    let typed_font_stack_active = typed_font_stack && !config_owned;
+    let font_family = if typed_font_stack_active {
         theme.typography().font_stack().as_css()
     } else {
         configured_font
     };
-    let outcome = if unsupported_typography {
-        InheritedFontStackOutcome::Unsupported
-    } else if typed_font_stack && config_owned {
-        InheritedFontStackOutcome::ConfigOwned
-    } else if typed_font_stack {
-        InheritedFontStackOutcome::Typed
-    } else {
-        InheritedFontStackOutcome::Inactive
-    };
-    (font_family.into(), outcome)
+    GanttTypographyResolution {
+        font_family_css: font_family.into(),
+        typed_font_stack_requested: typed_font_stack,
+        typed_font_stack_active,
+        unsupported_typography_properties,
+    }
 }
 
 fn typed_radius(theme: &ResolvedDiagramTheme, style: &ResolvedThemeStyle) -> (f64, Option<usize>) {
@@ -838,9 +860,13 @@ impl GanttTaskThemeReceipt {
     }
 
     pub(crate) fn record_typography_text(&mut self, text: &str) {
-        if self.typography_required && !text.trim().is_empty() {
+        if !text.trim().is_empty() {
             self.typography_text_count = self.typography_text_count.saturating_add(1);
         }
+    }
+
+    fn has_visible_typography(&self) -> bool {
+        self.typography_text_count != 0
     }
 
     fn proves_complete(&self) -> bool {
@@ -912,10 +938,8 @@ mod tests {
         .expect("resolve Gantt typography theme");
 
         assert_eq!(task_theme.font_family_css(), "Inter");
-        assert_eq!(
-            task_theme.typography_outcome,
-            InheritedFontStackOutcome::Typed
-        );
+        assert!(task_theme.typed_font_stack_requested);
+        assert!(task_theme.typed_font_stack_active);
         assert!(task_theme.bind_layout_occurrences(vec![0]));
         let mut receipt = task_theme
             .begin_terminal_receipt()
@@ -951,20 +975,35 @@ mod tests {
         )
         .expect("resolve mixed Gantt typography");
 
-        assert_eq!(
-            task_theme.typography_outcome,
-            InheritedFontStackOutcome::Unsupported
-        );
+        assert!(task_theme.typed_font_stack_requested);
+        assert!(task_theme.typed_font_stack_active);
         assert!(
             task_theme
-                .finish_evidence()
-                .residuals()
-                .iter()
-                .any(|residual| {
-                    residual.key() == &FamilyThemeMechanismKey::Typography
-                        && residual.reason() == FamilyThemeResidualReason::UnsupportedTypography
-                })
+                .unsupported_typography_properties
+                .contains(&ThemeTypographyProperty::FontWeight)
         );
+        assert!(task_theme.bind_layout_occurrences(vec![0]));
+        let mut receipt = task_theme
+            .begin_terminal_receipt()
+            .expect("mixed typography receipt");
+        receipt.record_typography_css("Inter");
+        receipt.record_typography_text("visible task label");
+        receipt.record_checkpointed_task(0, "", "", "", "0", "task task0", 3.0, 3.0, None, None);
+        assert!(task_theme.record_terminal(receipt));
+
+        let evidence = task_theme.finish_evidence();
+        assert!(
+            evidence
+                .applied()
+                .contains(&FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontStack
+                ))
+        );
+        assert!(evidence.residuals().iter().any(|residual| {
+            residual.key()
+                == &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontWeight)
+                && residual.reason() == FamilyThemeResidualReason::UnsupportedTypography
+        }));
     }
 
     #[test]

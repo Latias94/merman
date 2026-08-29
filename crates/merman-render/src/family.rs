@@ -700,7 +700,7 @@ impl FamilyThemeEvidence {
         let Some(theme) = theme else {
             return Self::default();
         };
-        let required = theme.family_mechanism_keys();
+        let required = theme.family_evidence_mechanism_keys();
         Self {
             required_index: required.iter().cloned().collect(),
             required,
@@ -713,7 +713,7 @@ impl FamilyThemeEvidence {
     }
 
     fn not_applicable(theme: Option<&ResolvedDiagramTheme>) -> bool {
-        theme.is_none_or(|theme| theme.family_mechanism_keys().is_empty())
+        theme.is_none_or(|theme| theme.family_evidence_mechanism_keys().is_empty())
     }
 
     pub(crate) fn mark_applied(&mut self, key: FamilyThemeMechanismKey) {

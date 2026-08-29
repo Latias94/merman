@@ -1,3 +1,4 @@
+use super::super::css::er_css_with_font_family;
 use super::super::*;
 
 // ER diagram SVG renderer implementation (split from parity.rs).
@@ -84,7 +85,7 @@ fn er_redux_color_css_insertion_point(css: &str, diagram_id: &str) -> usize {
         .unwrap_or(css.len())
 }
 
-fn write_er_style(
+fn write_er_style_with_font_family(
     out: &mut impl SvgOutput,
     diagram_id: &str,
     data_look: &str,
@@ -92,8 +93,10 @@ fn write_er_style(
     border_colors: &[String],
     background_colors: &[String],
     theme_color_limit: usize,
-) -> Result<()> {
-    let css = er_css(diagram_id, effective_config)?;
+    resolved_font_family: Option<&str>,
+) -> Result<String> {
+    let emission = er_css_with_font_family(diagram_id, effective_config, resolved_font_family)?;
+    let css = emission.css;
     let insertion_point = er_redux_color_css_insertion_point(&css, diagram_id);
 
     out.push_str("<style>");
@@ -109,7 +112,8 @@ fn write_er_style(
     )?;
     out.push_str(&css[insertion_point..]);
     out.push_str("</style>");
-    out.checkpoint()
+    out.checkpoint()?;
+    Ok(emission.font_family.into())
 }
 
 type ErStyleDeclaration = crate::diagram_theme::PreparedSourceStyleDeclaration;
@@ -314,7 +318,8 @@ pub(crate) fn render_er_diagram_svg_model(
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
-    let er_render_settings = crate::er::ErConfigView::new(effective_config).render_settings();
+    let er_render_settings = crate::er::ErConfigView::new(effective_config)
+        .render_settings_with_font_family(Some(entity_theme.font_family_css()));
     let is_elk_layout = er_render_settings.is_elk_layout;
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_color_theme = is_er_redux_color_theme(effective_config);
@@ -542,7 +547,7 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    write_er_style(
+    let emitted_font_family = write_er_style_with_font_family(
         &mut out,
         diagram_id.semantic_str(),
         data_look,
@@ -550,7 +555,9 @@ pub(crate) fn render_er_diagram_svg_model(
         &redux_border_colors,
         &redux_background_colors,
         theme_color_limit,
+        Some(entity_theme.font_family_css()),
     )?;
+    entity_theme_receipt.record_typography_css_emission(&emitted_font_family);
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -960,6 +967,8 @@ pub(crate) fn render_er_diagram_svg_model(
                         &relation_label_terminal_style,
                         facts.visible_run_count(),
                         facts.inherited_color_run_count(),
+                        facts.inherited_font_family_run_count(),
+                        facts.unverified_font_family_run_count(),
                     );
                 }
             } else {
@@ -1161,6 +1170,14 @@ pub(crate) fn render_er_diagram_svg_model(
                         .label
                         .visible_style_facts()
                         .inherited_color_run_count(),
+                    measure
+                        .label
+                        .visible_style_facts()
+                        .inherited_font_family_run_count(),
+                    measure
+                        .label
+                        .visible_style_facts()
+                        .unverified_font_family_run_count(),
                 );
             }
             continue;
@@ -1503,6 +1520,14 @@ pub(crate) fn render_er_diagram_svg_model(
                     .label
                     .visible_style_facts()
                     .inherited_color_run_count(),
+                measure
+                    .label
+                    .visible_style_facts()
+                    .inherited_font_family_run_count(),
+                measure
+                    .label
+                    .visible_style_facts()
+                    .unverified_font_family_run_count(),
             );
         }
 
@@ -1680,6 +1705,8 @@ pub(crate) fn render_er_diagram_svg_model(
                             &typed_text_terminal_style(paint),
                             facts.visible_run_count(),
                             facts.inherited_color_run_count(),
+                            facts.inherited_font_family_run_count(),
+                            facts.unverified_font_family_run_count(),
                         );
                     }
                 }
@@ -2059,7 +2086,7 @@ mod tests {
         assert!(!dark_css.contains("fill:"), "{dark_css}");
 
         let mut merged = String::new();
-        super::write_er_style(
+        super::write_er_style_with_font_family(
             &mut merged,
             "er",
             "classic",
@@ -2067,6 +2094,7 @@ mod tests {
             &borders,
             &backgrounds,
             2,
+            None,
         )
         .unwrap();
         let colors = merged.find("[data-color-id=").unwrap();
@@ -2111,7 +2139,7 @@ mod tests {
         assert_eq!(color_indices.get(&zeta.id), Some(&0));
         assert_eq!(color_indices.get(&alpha.id), Some(&1));
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        let settings = crate::er::ErConfigView::new(&config).render_settings();
+        let settings = crate::er::ErConfigView::new(&config).render_settings_with_font_family(None);
         let measure = |entity: &ErEntityRenderModel| {
             crate::er::measure_entity_box(
                 entity,
@@ -2166,6 +2194,10 @@ mod tests {
             let entity_theme = crate::er::ErEntityThemePlan::resolve(
                 None,
                 &effective_config,
+                crate::family::InheritedFontStackPlan::resolve_property_local(
+                    None,
+                    &effective_config,
+                ),
                 crate::er::ErConfigView::new(effective_config.as_value())
                     .relationship_html_labels(),
                 &model,
@@ -2197,7 +2229,7 @@ mod tests {
     fn er_font_family_css_uses_mermaid_default_fallback_for_raw_config() {
         assert_eq!(
             crate::er::ErConfigView::new(&json!({}))
-                .text_style()
+                .text_style_with_font_family(None)
                 .font_family
                 .as_deref(),
             Some(crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS)
@@ -2213,7 +2245,7 @@ mod tests {
                     "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
                 }
             }))
-            .text_style()
+            .text_style_with_font_family(None)
             .font_family
             .as_deref(),
             Some(r#""IBM Plex Sans",Arial,sans-serif"#)

@@ -320,6 +320,7 @@ fn eventmodeling_typed_font_stack_reaches_both_text_selectors_and_strict_receipt
     )));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
@@ -362,6 +363,7 @@ fn eventmodeling_typed_font_size_reaches_css_and_strict_receipt() {
 
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
@@ -474,8 +476,9 @@ fn eventmodeling_mixed_typography_is_direct_and_portable() {
     assert!(stylesheet.contains("EventModelingMixed"));
     assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
@@ -569,7 +572,7 @@ fn eventmodeling_font_size_is_not_applicable_without_visible_text_terminals() {
 }
 
 #[test]
-fn eventmodeling_unsupported_typography_sibling_suppresses_direct_font_size() {
+fn eventmodeling_unsupported_typography_sibling_keeps_direct_font_size() {
     let typography = ThemeTextStyle::default()
         .with_font_size_px(24.0)
         .expect("valid Event Modeling font size")
@@ -584,11 +587,12 @@ fn eventmodeling_unsupported_typography_sibling_suppresses_direct_font_size() {
     )
     .expect("BestEffort renders unsupported Event Modeling typography");
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
-    assert!(!stylesheet.contains("font-size: 24px;"), "{stylesheet}");
+    assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
 
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }

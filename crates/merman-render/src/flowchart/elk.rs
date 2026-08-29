@@ -2037,7 +2037,7 @@ mod tests {
 
         let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
             &model,
-            &FlowchartRenderLabelSources::default(),
+            &FlowchartRenderContext::default(),
             &config,
             &measurer,
             None,
@@ -2184,7 +2184,7 @@ mod tests {
 
         build_flowchart_elk_graph_with_render_labels_and_work_control(
             &model,
-            &FlowchartRenderLabelSources::default(),
+            &FlowchartRenderContext::default(),
             &config,
             &measurer,
             None,

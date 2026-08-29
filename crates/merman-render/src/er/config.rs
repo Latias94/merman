@@ -28,8 +28,12 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    pub(super) fn layout_settings(&self, direction: &str) -> ErLayoutSettings {
-        let label_style = self.text_style();
+    pub(super) fn layout_settings_with_font_family(
+        &self,
+        direction: &str,
+        font_family_override: Option<&str>,
+    ) -> ErLayoutSettings {
+        let label_style = self.text_style_with_font_family(font_family_override);
         let attr_style = TextStyle {
             font_family: label_style.font_family.clone(),
             font_size: label_style.font_size.max(1.0),
@@ -68,8 +72,13 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    pub(crate) fn render_settings(&self) -> ErRenderSettings {
-        let font_family = self.font_family_css();
+    pub(crate) fn render_settings_with_font_family(
+        &self,
+        font_family_override: Option<&str>,
+    ) -> ErRenderSettings {
+        let font_family = font_family_override
+            .map(str::to_owned)
+            .unwrap_or_else(|| self.font_family_css());
         let font_size = self.font_size().max(1.0);
         ErRenderSettings {
             is_elk_layout: self.is_elk_layout(),
@@ -124,9 +133,16 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    pub(crate) fn text_style(&self) -> TextStyle {
+    pub(crate) fn text_style_with_font_family(
+        &self,
+        font_family_override: Option<&str>,
+    ) -> TextStyle {
         TextStyle {
-            font_family: Some(self.font_family_css()),
+            font_family: Some(
+                font_family_override
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| self.font_family_css()),
+            ),
             font_size: self.font_size(),
             font_weight: None,
             font_style: None,
@@ -296,7 +312,7 @@ mod tests {
             }
         });
 
-        let settings = ErConfigView::new(&cfg).layout_settings("LR");
+        let settings = ErConfigView::new(&cfg).layout_settings_with_font_family("LR", None);
 
         assert_eq!(settings.algorithm, ErLayoutAlgorithm::Dagre);
         assert_eq!(settings.graph.rankdir, RankDir::LR);
@@ -382,11 +398,13 @@ mod tests {
             }
         });
 
-        let settings = ErConfigView::new(&cfg).render_settings();
+        let settings = ErConfigView::new(&cfg).render_settings_with_font_family(None);
 
         assert!(settings.is_elk_layout);
         assert_eq!(
-            ErConfigView::new(&cfg).layout_settings("TB").algorithm,
+            ErConfigView::new(&cfg)
+                .layout_settings_with_font_family("TB", None)
+                .algorithm,
             ErLayoutAlgorithm::Elk
         );
         assert_eq!(settings.diagram_look, "handDrawn");
@@ -401,7 +419,7 @@ mod tests {
         let root_fallback = ErConfigView::new(&json!({
             "titleTopMargin": 33
         }))
-        .render_settings();
+        .render_settings_with_font_family(None);
         assert_eq!(root_fallback.title_top_margin, 33.0);
         assert_eq!(
             root_fallback.insert_title_top_margin,

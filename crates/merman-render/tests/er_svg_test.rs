@@ -1,10 +1,10 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
     LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, Specified,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant, materialize_theme,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec, materialize_theme,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -630,6 +630,154 @@ fn er_visible_text_and_relation_label_have_direct_terminal_receipts() {
         })
         .unwrap_or_else(|| panic!("native ER relationship label: {native_svg}"));
     assert_eq!(relationship_label.attribute("fill"), Some("#112233"));
+}
+
+#[test]
+fn er_font_stack_is_measured_and_emitted_by_the_typed_family_plan() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::ER,
+                ThemeTextStyle::default().with_font_stack(
+                    FontStack::single("ErTypedFont").expect("valid ER font stack"),
+                ),
+            ),
+        ))
+        .expect("compile ER typed FontStack theme");
+    let source = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
+    let artifact = prepare_er_family_with_theme_and_engine(source, &theme, Engine::new());
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render typed ER FontStack");
+
+    assert!(
+        rendered.svg().contains("font-family:ErTypedFont"),
+        "typed ER FontStack must reach the final stylesheet: {}",
+        rendered.svg()
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn er_font_stack_remains_typed_when_font_size_stays_legacy() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("ErTypedFont").expect("valid ER font stack"))
+        .with_font_size_px(23.0)
+        .expect("valid ER legacy sibling font size");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default()
+                    .with_family_style(merman_render::DiagramFamilyId::ER, typography),
+            ),
+        )
+        .expect("compile ER mixed typography theme");
+    let source = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("prepare ER mixed typography in best-effort mode");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render ER mixed typography");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+
+    assert!(completion.output().contains("font-family:ErTypedFont"));
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
+}
+
+#[test]
+fn er_configured_font_family_owns_the_font_stack_route() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::ER,
+                ThemeTextStyle::default().with_font_stack(
+                    FontStack::single("ErTypedFont").expect("valid ER font stack"),
+                ),
+            ),
+        ))
+        .expect("compile ER configured-owner theme");
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "themeVariables": {"fontFamily": "ConfigFont, sans-serif"}
+    })));
+    let source = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
+    let artifact = prepare_er_family_with_theme_and_engine(source, &theme, engine);
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render ER configured font owner");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+
+    assert!(
+        completion
+            .output()
+            .contains("font-family:ConfigFont,sans-serif")
+    );
+    assert!(!completion.output().contains("font-family:ErTypedFont"));
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn er_configured_font_family_remains_not_applicable_with_a_legacy_font_size_sibling() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("ErTypedFont").expect("valid ER font stack"))
+        .with_font_size_px(23.0)
+        .expect("valid ER legacy sibling font size");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default()
+                    .with_family_style(merman_render::DiagramFamilyId::ER, typography),
+            ),
+        )
+        .expect("compile ER configured mixed typography theme");
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "themeVariables": {"fontFamily": "ConfigFont, sans-serif"}
+    })));
+    let source = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+        source,
+        &theme,
+        engine,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("prepare ER configured mixed typography");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render ER configured mixed typography");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+
+    assert!(
+        completion
+            .output()
+            .contains("font-family:ConfigFont,sans-serif")
+    );
+    assert!(!completion.output().contains("font-family:ErTypedFont"));
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
 }
 
 #[test]

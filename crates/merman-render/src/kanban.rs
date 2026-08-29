@@ -60,7 +60,7 @@ mod theme;
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
 pub(crate) use theme::{
     KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskTerminalDecision, KanbanTaskTheme,
-    KanbanTaskThemeReceipt,
+    KanbanTaskThemeReceipt, KanbanTypographyFacts,
 };
 
 #[derive(Debug)]
@@ -270,8 +270,10 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         .policy()
         .check_model_complexity(ModelComplexity::from_kanban(model))?;
     work_meter.charge(kanban_layout_work_units(model))?;
+    let inherited_font_stack =
+        crate::family::InheritedFontStackPlan::resolve_property_local(theme, effective_config);
     let config_view = KanbanConfigView::new(effective_config.as_value());
-    let cfg = config_view.layout_settings();
+    let cfg = config_view.layout_settings_with_font_family(inherited_font_stack.font_family_css());
     let ticket_base_url = config_view.ticket_base_url();
     let section_width = cfg.section_width;
     let viewbox_padding = cfg.viewbox_padding;
@@ -375,8 +377,13 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     }
     debug_assert_eq!(task_occurrences.len(), item_capacity);
     debug_assert_eq!(prepared_task_titles.len(), item_capacity);
-    let task_theme =
-        KanbanTaskTheme::resolve(theme, task_occurrences, effective_config, work_meter)?;
+    let task_theme = KanbanTaskTheme::resolve_with_font_stack(
+        theme,
+        task_occurrences,
+        effective_config,
+        inherited_font_stack,
+        work_meter,
+    )?;
     let mut max_label_height = section_label_height_baseline;
     let mut sections: Vec<KanbanSectionLayout> = Vec::with_capacity(section_inputs.len());
     let mut items: Vec<KanbanItemLayout> = Vec::with_capacity(item_capacity);
@@ -596,7 +603,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
         layout: layout.clone(),
         sections,
         items,
-        task_theme: KanbanTaskTheme::baseline(layout.items.len()),
+        task_theme: KanbanTaskTheme::baseline_with_config(layout.items.len(), effective_config),
     }
 }
 

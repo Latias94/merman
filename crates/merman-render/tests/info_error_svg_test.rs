@@ -923,7 +923,7 @@ fn lenient_error_retires_font_size_compatibility_but_keeps_the_typed_theme_resid
         "lenient-error-font-stack-size-best-effort",
         &expected_font,
     );
-    assert_residual_evidence(rendered, 1, 0, 1);
+    assert_residual_evidence(rendered, 2, 1, 1);
 
     let error = try_render_family(
         family,

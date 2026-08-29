@@ -479,9 +479,9 @@ fn railroad_typed_font_stack_and_size_drive_layout_css_and_terminal_text_receipt
     drop(document);
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
@@ -554,10 +554,10 @@ fn railroad_explicit_font_config_outranks_theme_variables_and_typed_typography()
 
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.accounted_count(), 2);
         assert_eq!(evidence.applied_count(), 0);
-        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 2);
         assert_eq!(evidence.theme_residual_count(), 0);
         assert_eq!(evidence.compatibility_residual_count(), 0);
         assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
@@ -606,7 +606,7 @@ fn railroad_font_config_precedence_is_property_local() {
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert_eq!(evidence.applied_count(), 1);
-        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
         assert_eq!(evidence.compatibility_residual_count(), 0);
         assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
@@ -641,7 +641,7 @@ fn railroad_direct_font_stack_is_not_limited_by_the_legacy_bridge_budget() {
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
@@ -667,10 +667,10 @@ fn railroad_typed_typography_is_not_applicable_for_an_empty_diagram() {
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);

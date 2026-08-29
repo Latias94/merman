@@ -561,9 +561,10 @@ struct StateThemeEvidenceBuilder<'a> {
     has_visible_text: bool,
     base_typography_properties: BTreeSet<ThemeTypographyProperty>,
     prepared_text_available: bool,
-    base_typography_applied: bool,
-    base_typography_residual: bool,
-    base_typography_occurrences: BTreeSet<StateThemeTerminalOccurrence>,
+    base_typography_applied: BTreeSet<ThemeTypographyProperty>,
+    base_typography_residual: BTreeSet<ThemeTypographyProperty>,
+    base_typography_occurrences:
+        BTreeMap<ThemeTypographyProperty, BTreeSet<StateThemeTerminalOccurrence>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -635,9 +636,9 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             has_visible_text: false,
             base_typography_properties,
             prepared_text_available,
-            base_typography_applied: false,
-            base_typography_residual: false,
-            base_typography_occurrences: BTreeSet::new(),
+            base_typography_applied: BTreeSet::new(),
+            base_typography_residual: BTreeSet::new(),
+            base_typography_occurrences: BTreeMap::new(),
         }
     }
 
@@ -661,7 +662,6 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             return;
         }
         let patch = semantic.map(|style| style.typography_resolution().patch());
-        let mut occurrence_applied = false;
         for property in &self.base_typography_properties {
             let resolved_property = ResolvedStyleProperty::Typography(*property);
             if shadowed_source_properties.contains(&resolved_property)
@@ -675,26 +675,34 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
                 ThemeTypographyProperty::FontStack
                 | ThemeTypographyProperty::FontSize
                 | ThemeTypographyProperty::FontWeight
-                | ThemeTypographyProperty::FontStyle => occurrence_applied = true,
+                | ThemeTypographyProperty::FontStyle => {
+                    self.base_typography_applied.insert(*property);
+                    self.base_typography_occurrences
+                        .entry(*property)
+                        .or_default()
+                        .insert(occurrence.clone());
+                }
                 ThemeTypographyProperty::LetterSpacing
                 | ThemeTypographyProperty::WordSpacing
                 | ThemeTypographyProperty::Transform => {
                     if self.prepared_text_available {
-                        occurrence_applied = true;
+                        self.base_typography_applied.insert(*property);
+                        self.base_typography_occurrences
+                            .entry(*property)
+                            .or_default()
+                            .insert(occurrence.clone());
                     } else {
-                        self.base_typography_residual = true;
+                        self.base_typography_residual.insert(*property);
                     }
                 }
                 ThemeTypographyProperty::LineHeight
                 | ThemeTypographyProperty::Decoration
                 | ThemeTypographyProperty::TextAlign
                 | ThemeTypographyProperty::WhiteSpace
-                | ThemeTypographyProperty::Wrap => self.base_typography_residual = true,
+                | ThemeTypographyProperty::Wrap => {
+                    self.base_typography_residual.insert(*property);
+                }
             }
-        }
-        if occurrence_applied {
-            self.base_typography_applied = true;
-            self.base_typography_occurrences.insert(occurrence);
         }
     }
 }
@@ -1741,23 +1749,32 @@ impl StateThemeEvidenceBuilder<'_> {
         };
 
         if theme.typography() != &ThemeTextStyle::default() {
-            if !self.has_visible_text {
-                evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography);
-            } else if self.base_typography_residual {
-                evidence.mark_residual(
-                    FamilyThemeMechanismKey::Typography,
-                    FamilyThemeResidualReason::UnsupportedTypography,
-                );
-            } else if self.base_typography_applied {
-                pending_terminal.insert(
-                    FamilyThemeMechanismKey::Typography,
-                    StatePendingTerminalMechanism {
-                        capabilities: typography_capabilities(&self.base_typography_properties),
-                        occurrences: self.base_typography_occurrences.clone(),
-                    },
-                );
-            } else {
-                evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography);
+            for property in &self.base_typography_properties {
+                let key = FamilyThemeMechanismKey::Typography(*property);
+                if !self.has_visible_text {
+                    evidence.mark_not_applicable(key);
+                } else if self.base_typography_residual.contains(property) {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                } else if self.base_typography_applied.contains(property) {
+                    let occurrences = self
+                        .base_typography_occurrences
+                        .get(property)
+                        .cloned()
+                        .unwrap_or_default();
+                    if occurrences.is_empty() {
+                        evidence.mark_not_applicable(key);
+                    } else {
+                        pending_terminal.insert(
+                            key,
+                            StatePendingTerminalMechanism {
+                                capabilities: typography_capabilities(&BTreeSet::from([*property])),
+                                occurrences,
+                            },
+                        );
+                    }
+                } else {
+                    evidence.mark_not_applicable(key);
+                }
             }
         }
 
@@ -5276,7 +5293,7 @@ mod tests {
 
         let (plan, evidence) =
             resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
-        let key = FamilyThemeMechanismKey::Typography;
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
 
         assert_eq!(plan.node("First").unwrap().text_style().font_size, 18.0);
         assert_eq!(plan.node("Second").unwrap().text_style().font_size, 20.0);
@@ -5308,7 +5325,7 @@ mod tests {
 
         let (plan, evidence) =
             resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
-        let key = FamilyThemeMechanismKey::Typography;
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
 
         assert_eq!(
             plan.node("Overridden").unwrap().text_style().font_size,
@@ -5336,7 +5353,7 @@ mod tests {
         model.nodes.push(semantic_node("Ready", "rect"));
 
         let (_, evidence) = resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
-        let key = FamilyThemeMechanismKey::Typography;
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::LineHeight);
 
         assert!(!evidence.applied().contains(&key));
         assert!(evidence.residuals().iter().any(|residual| {
@@ -5361,7 +5378,7 @@ mod tests {
         let (plan, evidence) =
             resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
         let node = plan.node("Ready").expect("prepared node style");
-        let key = FamilyThemeMechanismKey::Typography;
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::Transform);
 
         assert_eq!(
             node.resolved_label_typography()
@@ -5416,7 +5433,7 @@ mod tests {
             .resolved_label_typography()
             .prepared_typography()
             .expect("structured typography");
-        let key = FamilyThemeMechanismKey::Typography;
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::LetterSpacing);
 
         assert_eq!(prepared.letter_spacing_px(), 1.5);
         assert_eq!(prepared.word_spacing_px(), 2.5);
@@ -5559,7 +5576,9 @@ mod tests {
         assert!(
             evidence
                 .applied()
-                .contains(&FamilyThemeMechanismKey::Typography)
+                .contains(&FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontSize
+                ))
         );
         assert!(evidence.residuals().is_empty());
     }

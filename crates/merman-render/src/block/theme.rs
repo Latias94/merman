@@ -26,7 +26,6 @@ enum BlockTypographyOutcome {
     Inactive,
     Typed,
     ConfigOwned,
-    Unsupported,
 }
 
 /// Final Block typography shared by layout measurement, SVG CSS, and terminal evidence.
@@ -36,6 +35,11 @@ pub(crate) struct BlockTypographyThemePlan {
     text_style: crate::text::TextStyle,
     evidence: FamilyThemeEvidence,
     outcome: BlockTypographyOutcome,
+    unsupported_properties: BTreeSet<ThemeTypographyProperty>,
+    typed_font_stack_requested: bool,
+    typed_font_size_requested: bool,
+    config_owns_font_stack: bool,
+    config_owns_font_size: bool,
     terminal_receipt: OnceLock<BlockTypographyReceipt>,
 }
 
@@ -64,13 +68,18 @@ impl BlockTypographyThemePlan {
                 text_style,
                 evidence: FamilyThemeEvidence::default(),
                 outcome: BlockTypographyOutcome::Inactive,
+                unsupported_properties: BTreeSet::new(),
+                typed_font_stack_requested: false,
+                typed_font_size_requested: false,
+                config_owns_font_stack: false,
+                config_owns_font_size: false,
                 terminal_receipt: OnceLock::new(),
             };
         };
 
         let mut typed_font_stack = false;
         let mut typed_font_size = false;
-        let mut unsupported_typography = false;
+        let mut unsupported_properties = BTreeSet::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
@@ -83,10 +92,10 @@ impl BlockTypographyThemePlan {
                 {
                     typed_font_size = true;
                 }
-                FamilyThemeMechanism::BaseTypography(_)
+                FamilyThemeMechanism::BaseTypography(property)
                     if route.disposition() == FamilyThemeDisposition::Unsupported =>
                 {
-                    unsupported_typography = true;
+                    unsupported_properties.insert(property);
                 }
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::RuleFacet { .. }
@@ -113,10 +122,8 @@ impl BlockTypographyThemePlan {
                         path,
                     )
                 });
-        let typed_font_stack_applied =
-            typed_font_stack && !config_owns_font_stack && !unsupported_typography;
-        let typed_font_size_applied =
-            typed_font_size && !config_owns_font_size && !unsupported_typography;
+        let typed_font_stack_applied = typed_font_stack && !config_owns_font_stack;
+        let typed_font_size_applied = typed_font_size && !config_owns_font_size;
         if typed_font_stack_applied {
             text_style.font_family = Some(theme.typography().font_stack().as_css());
         }
@@ -126,9 +133,7 @@ impl BlockTypographyThemePlan {
 
         let requested_typed = typed_font_stack || typed_font_size;
         let applied_typed = typed_font_stack_applied || typed_font_size_applied;
-        let outcome = if unsupported_typography {
-            BlockTypographyOutcome::Unsupported
-        } else if applied_typed {
+        let outcome = if applied_typed {
             BlockTypographyOutcome::Typed
         } else if requested_typed {
             BlockTypographyOutcome::ConfigOwned
@@ -140,6 +145,11 @@ impl BlockTypographyThemePlan {
             text_style,
             evidence: FamilyThemeEvidence::from_theme(Some(theme)),
             outcome,
+            unsupported_properties,
+            typed_font_stack_requested: typed_font_stack,
+            typed_font_size_requested: typed_font_size,
+            config_owns_font_stack,
+            config_owns_font_size,
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -177,24 +187,52 @@ impl BlockTypographyThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        let key = FamilyThemeMechanismKey::Typography;
-        match self.outcome {
-            BlockTypographyOutcome::Typed => match self.terminal_receipt.get() {
-                Some(receipt) if receipt.proves_css() && receipt.has_visible_label() => {
-                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-                }
-                Some(receipt) if receipt.proves_css() && !receipt.has_visible_label() => {
+        let receipt = self.terminal_receipt.get();
+        for property in &self.unsupported_properties {
+            let key = FamilyThemeMechanismKey::Typography(*property);
+            if receipt.is_some_and(|receipt| !receipt.has_visible_label()) {
+                evidence.mark_not_applicable(key);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            }
+        }
+        for (property, requested, config_owned) in [
+            (
+                ThemeTypographyProperty::FontStack,
+                self.typed_font_stack_requested,
+                self.config_owns_font_stack,
+            ),
+            (
+                ThemeTypographyProperty::FontSize,
+                self.typed_font_size_requested,
+                self.config_owns_font_size,
+            ),
+        ] {
+            if !requested {
+                continue;
+            }
+            let key = FamilyThemeMechanismKey::Typography(property);
+            match self.outcome {
+                BlockTypographyOutcome::ConfigOwned if config_owned => {
                     evidence.mark_not_applicable(key);
                 }
-                Some(_) | None => {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography)
+                BlockTypographyOutcome::Typed if config_owned => {
+                    evidence.mark_not_applicable(key);
                 }
-            },
-            BlockTypographyOutcome::ConfigOwned => evidence.mark_not_applicable(key),
-            BlockTypographyOutcome::Unsupported => {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography)
+                BlockTypographyOutcome::Typed => match receipt {
+                    Some(receipt) if receipt.proves_css() && receipt.has_visible_label() => {
+                        evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                    }
+                    Some(receipt) if receipt.proves_css() && !receipt.has_visible_label() => {
+                        evidence.mark_not_applicable(key);
+                    }
+                    Some(_) | None => {
+                        evidence
+                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                    }
+                },
+                BlockTypographyOutcome::ConfigOwned | BlockTypographyOutcome::Inactive => {}
             }
-            BlockTypographyOutcome::Inactive => {}
         }
         evidence
     }
@@ -512,7 +550,7 @@ impl BlockNodePaintThemePlan {
         for (key, properties) in &self.pending {
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
-                FamilyThemeMechanismKey::Typography
+                FamilyThemeMechanismKey::Typography(_)
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };

@@ -6,7 +6,8 @@ use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
+    ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -80,7 +81,10 @@ impl VennTypographyThemePlan {
         layout: &VennDiagramLayout,
     ) -> Self {
         Self {
-            inherited_font_stack: InheritedFontStackPlan::resolve(theme, effective_config),
+            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
+                theme,
+                effective_config,
+            ),
             occurrences: VennTypographyOccurrences::from_layout(title, layout),
             evidence: theme.map_or_else(FamilyThemeEvidence::default, |theme| {
                 FamilyThemeEvidence::from_theme(Some(theme))
@@ -103,27 +107,29 @@ impl VennTypographyThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        let key = FamilyThemeMechanismKey::Typography;
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         let Some(receipt) = self.terminal_receipt.get() else {
+            self.inherited_font_stack
+                .mark_unsupported_typography_evidence(&mut evidence, true);
+            if self.inherited_font_stack.typed_font_stack_requested() {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            }
             return evidence;
         };
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, self.occurrences.total() != 0);
         if self.occurrences.total() == 0 {
             evidence.mark_not_applicable(key);
             return evidence;
         }
-        match self.inherited_font_stack.outcome() {
-            InheritedFontStackOutcome::Typed if receipt.proves() => {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            }
-            InheritedFontStackOutcome::ConfigOwned if receipt.proves() => {
-                evidence.mark_not_applicable(key);
-            }
-            InheritedFontStackOutcome::Typed
-            | InheritedFontStackOutcome::ConfigOwned
-            | InheritedFontStackOutcome::Unsupported => {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
-            InheritedFontStackOutcome::Inactive => {}
+        if self.inherited_font_stack.typed_font_stack_active() && receipt.proves() {
+            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+        } else if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::ConfigOwned
+            && receipt.proves()
+        {
+            evidence.mark_not_applicable(key);
+        } else if self.inherited_font_stack.typed_font_stack_requested() {
+            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
         }
         evidence
     }
@@ -653,7 +659,7 @@ mod tests {
         assert!(plan.record_terminal(receipt));
 
         let evidence = plan.finish_evidence();
-        assert_eq!(resolved.family_mechanism_keys().len(), 2);
+        assert_eq!(resolved.family_evidence_mechanism_keys().len(), 2);
         assert_eq!(evidence.applied().len(), 1);
         assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
         assert!(evidence.residuals().is_empty());

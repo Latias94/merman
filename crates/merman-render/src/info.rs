@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use crate::Result;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    ResolvedDiagramTheme, ThemeCapability, ThemeTarget, ThemeVariant,
+    ResolvedDiagramTheme, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -232,20 +232,27 @@ impl InfoTypographyThemePlan {
         let Some(receipt) = self.terminal_receipt.get() else {
             return evidence;
         };
-        let key = FamilyThemeMechanismKey::Typography;
-        match self.inherited_font_stack.outcome() {
-            InheritedFontStackOutcome::Typed if receipt.proves_font_stack() => {
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, receipt.version_text_count != 0);
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+        if self.inherited_font_stack.typed_font_stack_active() {
+            if receipt.proves_font_stack() {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            }
-            InheritedFontStackOutcome::ConfigOwned if receipt.proves_font_stack() => {
-                evidence.mark_not_applicable(key);
-            }
-            InheritedFontStackOutcome::Typed
-            | InheritedFontStackOutcome::ConfigOwned
-            | InheritedFontStackOutcome::Unsupported => {
+            } else {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
-            InheritedFontStackOutcome::Inactive => {}
+        } else {
+            match self.inherited_font_stack.outcome() {
+                InheritedFontStackOutcome::ConfigOwned if receipt.proves_font_stack() => {
+                    evidence.mark_not_applicable(key);
+                }
+                InheritedFontStackOutcome::Typed
+                | InheritedFontStackOutcome::ConfigOwned
+                | InheritedFontStackOutcome::Unsupported => {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                }
+                InheritedFontStackOutcome::Inactive => {}
+            }
         }
         for route in &self.direct_text_fill_routes {
             if self.config_owns_text_fill {

@@ -308,8 +308,9 @@ gitGraph
     }));
 
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
@@ -612,8 +613,10 @@ fn gitgraph_typography_config_ownership_is_property_local() {
             );
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "owner={owner}");
+            assert_eq!(evidence.accounted_count(), 2, "owner={owner}");
             assert_eq!(evidence.applied_count(), 1, "owner={owner}");
-            assert_eq!(evidence.not_applicable_count(), 0, "owner={owner}");
+            assert_eq!(evidence.not_applicable_count(), 1, "owner={owner}");
             assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
         },
     );
@@ -638,8 +641,10 @@ fn gitgraph_typography_config_ownership_is_property_local() {
             );
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "owner={owner}");
+            assert_eq!(evidence.accounted_count(), 2, "owner={owner}");
             assert_eq!(evidence.applied_count(), 1, "owner={owner}");
-            assert_eq!(evidence.not_applicable_count(), 0, "owner={owner}");
+            assert_eq!(evidence.not_applicable_count(), 1, "owner={owner}");
             assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
         },
     );
@@ -662,15 +667,17 @@ fn gitgraph_typography_config_ownership_is_property_local() {
             assert_eq!(css_property(&root, "font-size"), Some("31px"));
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "owner={owner}");
+            assert_eq!(evidence.accounted_count(), 2, "owner={owner}");
             assert_eq!(evidence.applied_count(), 1, "owner={owner}");
-            assert_eq!(evidence.not_applicable_count(), 0, "owner={owner}");
+            assert_eq!(evidence.not_applicable_count(), 1, "owner={owner}");
             assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
         },
     );
 }
 
 #[test]
-fn gitgraph_unsupported_typography_sibling_fails_closed() {
+fn gitgraph_unsupported_typography_sibling_keeps_direct_properties() {
     let theme = gitgraph_typography_theme(
         ThemeTextStyle::default()
             .with_font_stack(
@@ -709,11 +716,13 @@ fn gitgraph_unsupported_typography_sibling_fails_closed() {
     );
     assert_eq!(
         css_property(&root, "font-family"),
-        Some("\"trebuchet ms\",verdana,arial,sans-serif")
+        Some("GitGraphSuppressed")
     );
-    assert_eq!(css_property(&root, "font-size"), Some("16px"));
+    assert_eq!(css_property(&root, "font-size"), Some("23px"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.required_count(), 3);
+    assert_eq!(evidence.accounted_count(), 3);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
 }
@@ -1279,10 +1288,10 @@ fn gitgraph_qualified_edge_stroke_accounts_only_real_default_occurrence_winners(
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 3);
-    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 1);
 }

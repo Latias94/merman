@@ -4058,9 +4058,9 @@ end"#;
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.accounted_count(), 2);
-    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.required_count(), 3);
+    assert_eq!(evidence.accounted_count(), 3);
+    assert_eq!(evidence.applied_count(), 3);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 }

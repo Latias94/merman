@@ -259,8 +259,8 @@ fn block_typed_typography_reaches_layout_css_and_strict_receipt() {
         "typed Block typography must reach the writer-owned root CSS: {svg}"
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
@@ -281,7 +281,7 @@ fn block_typography_receipt_matches_writer_number_formatting() {
             .contains("#block-theme{font-family:\"Block Sans\";font-size:1px;")
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
@@ -305,9 +305,9 @@ fn block_mixed_base_typography_fails_closed() {
         ThemePortabilityRequirement::BestEffort,
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.required_count(), 3);
+    assert_eq!(evidence.accounted_count(), 3);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 1);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }
@@ -330,9 +330,9 @@ fn block_explicit_typography_ownership_outranks_typed_values() {
     assert!(svg.contains("#block-theme{font-family:Site Block Sans;font-size:30px;"));
     assert!(!svg.contains("Typed Block Sans"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.required_count(), 2);
     assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
