@@ -122,10 +122,10 @@
             "id": "b-text",
             "text": "开发\t",
             "font_size": 11.0,
-            "width": 13.2,
+            "width": 22.0,
             "x": 225.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-13.2"
+            "class": "taskText taskText0 width-22"
           }
         },
         {
@@ -153,10 +153,10 @@
             "id": "a-text",
             "text": "开发\t",
             "font_size": 11.0,
-            "width": 13.2,
+            "width": 22.0,
             "x": 300.0,
             "y": 135.5,
-            "class": "taskText taskText1 width-13.2"
+            "class": "taskText taskText1 width-22"
           }
         },
         {
@@ -184,10 +184,10 @@
             "id": "task1-text",
             "text": "测试\t",
             "font_size": 11.0,
-            "width": 13.2,
+            "width": 22.0,
             "x": 525.0,
             "y": 87.5,
-            "class": "taskText taskText0 width-13.2"
+            "class": "taskText taskText0 width-22"
           }
         },
         {
@@ -215,10 +215,10 @@
             "id": "task3-text",
             "text": "测试\t",
             "font_size": 11.0,
-            "width": 13.2,
+            "width": 22.0,
             "x": 575.0,
             "y": 159.5,
-            "class": "taskText taskText1 width-13.2"
+            "class": "taskText taskText1 width-22"
           }
         },
         {

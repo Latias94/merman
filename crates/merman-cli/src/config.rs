@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::path::Path;
 
 #[cfg(feature = "svg")]
-use crate::cli::{MathRendererKind, RenderCliArgs, TextMeasurerKind};
+use crate::cli::{MathRendererKind, RenderCliArgs};
 #[cfg(feature = "svg")]
 use crate::invocation::ResolvedRenderOptions;
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -21,8 +21,8 @@ use merman::SvgEnvironment;
 #[cfg(feature = "svg")]
 use merman::svg::{
     DiagramThemeCompiler, IconRegistry, LayoutOptions, MAX_THEME_ENCODED_BYTES_HARD_CAP,
-    SvgRenderOptions, TextMeasurementPolicy, ThemeAdmissionPolicy, ThemePreset,
-    ThemeResourcePolicy, TrustedThemeLane, TrustedThemeLanes,
+    SvgRenderOptions, ThemeAdmissionPolicy, ThemePreset, ThemeResourcePolicy, TrustedThemeLane,
+    TrustedThemeLanes,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{compile_theme_definition_json_with, compile_theme_selection_json_with};
@@ -373,7 +373,6 @@ impl<'a> ThemeInput<'a> {
 #[derive(Debug, Clone, Copy)]
 struct RendererInputs<'a> {
     theme: Option<ThemeInput<'a>>,
-    text_measurer: TextMeasurerKind,
     math_renderer: Option<MathRendererKind>,
     container_width: Option<f64>,
     container_height: Option<f64>,
@@ -390,7 +389,6 @@ impl<'a> RendererInputs<'a> {
                 render.theme_file.as_deref(),
                 render.theme_definition.as_deref(),
             )?,
-            text_measurer: render.text_measurer.unwrap_or(TextMeasurerKind::Vendored),
             math_renderer: render.math_renderer,
             container_width: render.container_width,
             container_height: render.container_height,
@@ -406,7 +404,6 @@ impl<'a> RendererInputs<'a> {
                 render.theme_file.as_deref(),
                 render.theme_definition.as_deref(),
             )?,
-            text_measurer: render.text_measurer,
             math_renderer: render.math_renderer,
             container_width: render.container_width,
             container_height: render.container_height,
@@ -427,7 +424,6 @@ fn renderer_from_config(
 ) -> Result<ConfiguredRenderer, CliError> {
     let theme_resources = ThemeResourcePolicy::for_profile(resources.profile());
     let mut environment = SvgEnvironment::deterministic()
-        .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
         .with_resource_policy(resources.render_policy())
         .with_theme_resource_ceiling(theme_resources.clone())
         .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
@@ -499,14 +495,6 @@ pub(crate) fn ascii_renderer_for_resolved(
     })
 }
 
-#[cfg(feature = "svg")]
-fn text_measurement_policy(kind: TextMeasurerKind) -> TextMeasurementPolicy {
-    match kind {
-        TextMeasurerKind::Deterministic => TextMeasurementPolicy::deterministic(),
-        TextMeasurerKind::Vendored => TextMeasurementPolicy::parity(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -534,7 +522,6 @@ mod tests {
             theme_preset: None,
             theme_file: None,
             theme_definition: None,
-            text_measurer: TextMeasurerKind::Vendored,
             math_renderer,
             container_width: None,
             container_height: None,

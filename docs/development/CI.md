@@ -68,27 +68,38 @@ checks that painted content stays inside each root viewport. It reuses that job'
 and generated SVGs, installs only the locked
 `playground/tests` dependencies and Chromium, and preserves the outer SVG's own width, height, and
 max-width while mounting it in a fixed-width host. A local paint failure triggers the same paint
-audit for its upstream SVG. This browser gate runs only after the same job's blocking DOM parity
-suite. It compares root-relative structural overflow pixels and accepts inherited evidence
-only when the local footprint is no larger and every local pixel is present in the upstream
-footprint or its immediate raster neighbor. That one-physical-pixel neighborhood handles binary
-alpha coverage moving between adjacent pixels during anti-aliasing; it is not a CSS-space or
-fixture tolerance. Root and geometry floats remain diagnostic. It repeats the alpha capture with
-SVG text and RoughJS drawing paths suppressed. Overflow attributable only to browser-owned text
-measurement or RoughJS output stays diagnostic,
-while shapes, markers, images, and `foreignObject` paint remain in the blocking pass. An
-indeterminate result is also diagnostic only when upstream has the same structured reason set and
-no new structural overflow pixel. Browser geometry and required capture dimensions remain report
-data, not a numeric acceptance policy. Paint that reaches the audit boundary always blocks because
-its full extent is unknown.
-Local-only, new, or worse structural evidence remains blocking. No
-fixture-specific tolerance or inheritance list is used.
+audit for its upstream SVG. This browser gate runs only after the same job's blocking DOM,
+semantic-label, and exact browser-text receipt checks, so fixture identity and the admitted SVG
+structure are already bound before paint evidence is compared.
+
+The first transparent capture records all paint. A second capture suppresses SVG text,
+font-laid-out HTML label text and its text-owned background/border, and RoughJS drawing paths.
+Overflow removed by that second capture remains a browser-owned diagnostic; ordinary shapes,
+markers, images, and non-label `foreignObject` paint remain structural. For structural overflow,
+the oracle compares the maximum outward painted depth independently on each root edge against the
+same upstream fixture. A new overflow edge or a deeper local edge blocks. Along-edge pixel count and
+position remain diagnostic rather than becoming a fuzzy matcher: the preceding DOM and semantic
+gates already bind the compared artifacts, while anti-aliasing and text-led layout can move an
+otherwise identical clipped stroke along an edge. Depth is measured from the root boundary rather
+than from the thickness of the painted fragment, and corner paint is attributed to every crossed
+edge.
+
+Indeterminate evidence fails closed unless upstream has the same structured reason set.
+Capture-boundary evidence and marker paint whose capture reach cannot be bounded always block. A
+pure capture-limit result may be inherited only with the same guard, a no-larger local capture
+envelope, and no deeper geometry extent on any edge; filter and image-decode cases must also have no
+deeper structural edge. The capture budget is expressed as both a maximum dimension and a maximum
+pixel area, so tall or wide moderate-area diagrams can be measured without allowing unbounded
+screenshot memory.
+
+One reviewed out-of-domain XYChart extrapolation is admitted through
+`fixtures/_verification/root-viewport-residuals.json`. This is not a numeric tolerance: the receipt
+binds the exact local and upstream SVG SHA-256 values plus a closed reason. A changed or unused
+receipt blocks. Every other local-only, new, or worse structural result remains blocking.
 The JSON report at `target/root-viewport-diagnostic.json` is uploaded as a diagnostic artifact even
 when the oracle fails; upstream browser measurements in that report remain diagnostic rather than
 an acceptance policy. The oracle expands its transparent screenshot capture from browser geometry
-only to ensure coverage; acceptance still comes from painted alpha pixels outside the root. A
-capture that exceeds the global bound, or paint such as an active filter whose extent cannot be
-proven, is indeterminate and fails closed instead of being treated as contained.
+only to ensure coverage; acceptance still comes from painted alpha pixels outside the root.
 
 Editor-language descriptors are shared inputs to the browser editor and VS Code extension. Changes
 under `contracts/editor-language/` therefore select both owners. Other shared authorities and

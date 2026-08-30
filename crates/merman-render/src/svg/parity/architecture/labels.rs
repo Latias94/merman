@@ -667,7 +667,7 @@ mod tests {
 
     #[test]
     fn architecture_plain_service_title_matches_create_text_dom() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = text_style();
         let mut out = String::new();
 
@@ -686,7 +686,7 @@ mod tests {
 
     #[test]
     fn architecture_plain_words_match_single_line_create_text_dom() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let style = text_style();
         let mut out = String::new();
 

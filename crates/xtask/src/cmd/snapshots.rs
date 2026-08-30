@@ -484,7 +484,7 @@ impl GeneratedArtifactCheck {
             GeneratedArtifactCheck::PlaygroundAsciiCapabilities => "Playground ASCII capabilities",
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
             GeneratedArtifactCheck::ResourceContract => "resource contract",
-            GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme snapshot",
+            GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme artifacts",
             GeneratedArtifactCheck::TextMeasurementProtocol => "text-measurement protocol",
             GeneratedArtifactCheck::TypstProfileConstants => "Typst profile constants",
             GeneratedArtifactCheck::WebDiagramCatalog => "web diagram catalog",
@@ -978,7 +978,7 @@ mod tests {
         );
         assert_eq!(
             GeneratedArtifactCheck::ThemeSnapshot.label(),
-            "Mermaid theme snapshot"
+            "Mermaid theme artifacts"
         );
         assert_eq!(
             GeneratedArtifactCheck::TextMeasurementProtocol.label(),

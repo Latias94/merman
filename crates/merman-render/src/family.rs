@@ -2845,8 +2845,11 @@ impl RenderedFamilySvg {
         let output_metadata = self.output_metadata()?;
         let preserves_prepared_text =
             self.prepared_text_evidence_valid && pipeline.preserves_prepared_text_evidence();
+        let requires_prepared_math_projection = pipeline.requires_prepared_math_projection();
         let preserves_prepared_math =
             self.prepared_math_evidence_valid && pipeline.preserves_prepared_math_evidence();
+        let supplies_prepared_math = self.prepared_math_evidence_valid
+            && (preserves_prepared_math || requires_prepared_math_projection);
         let source_svg = if preserves_prepared_text {
             self.prepared_text_svg
                 .take()
@@ -2861,7 +2864,7 @@ impl RenderedFamilySvg {
             source_svg,
             &output_metadata,
             &self.session,
-            preserves_prepared_math.then_some(&self.prepared_math_evidence),
+            supplies_prepared_math.then_some(&self.prepared_math_evidence),
         )?;
         if preserves_prepared_text && !self.prepared_text_ledger.is_empty() {
             let (public_svg, prepared_text_svg) = crate::svg::partition_prepared_text_label_ids(

@@ -1054,7 +1054,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_font_family(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::{TextMetrics, VendoredFontMetricsTextMeasurer};
+    use crate::text::{DeterministicTextMeasurer, TextMetrics};
     use std::cell::Cell;
 
     struct FamilySelectionMeasurer;
@@ -1083,7 +1083,7 @@ mod tests {
 
     #[derive(Default)]
     struct PhaseHeightMeasurer {
-        inner: VendoredFontMetricsTextMeasurer,
+        inner: DeterministicTextMeasurer,
         render_phase: Cell<bool>,
     }
 
@@ -1150,7 +1150,7 @@ mod tests {
 
     #[test]
     fn requirement_box_wraps_with_root_font_probe_before_group_bbox_padding() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let family = Some(crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
         let regular = TextStyle {
             font_family: family.clone(),

@@ -65,7 +65,7 @@ pub use merman_render::svg::{
 };
 pub use merman_render::text::{
     DeterministicTextMeasurer, PreparedTextLayoutReport, TextLayoutFailure, TextMeasurer,
-    TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+    TextMetrics, TextStyle, WrapMode,
 };
 pub use merman_render::{
     Error as RenderError, LayoutOptions, RenderCapability, RenderCapabilityPolicy,

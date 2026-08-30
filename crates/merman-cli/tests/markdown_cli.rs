@@ -119,8 +119,7 @@ fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 }
 
 #[test]
-#[cfg(feature = "layout-elk")]
-fn native_batch_applies_the_selected_presentation_profile() {
+fn native_batch_applies_the_selected_theme_preset() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::write(temp.path().join("input.md"), TWO_CHARTS).expect("write Markdown input");
 
@@ -131,8 +130,8 @@ fn native_batch_applies_the_selected_presentation_profile() {
             "input.md",
             "--output-dir",
             "generated",
-            "--presentation-profile",
-            "merman-modern",
+            "--theme-preset",
+            "editor-dark",
             "--quiet",
         ],
     );
@@ -141,10 +140,12 @@ fn native_batch_applies_the_selected_presentation_profile() {
     let svg = fs::read_to_string(temp.path().join("generated/input-1.svg"))
         .expect("read generated Flowchart SVG");
     assert!(
-        svg.contains(
-            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
-        ),
-        "batch rendering should use the same typed presentation path: {svg}"
+        svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
+        "batch rendering should compile the selected theme preset through the typed theme path: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"data-look="neo""#),
+        "a visual theme preset must not select a Mermaid look: {svg}"
     );
 }
 

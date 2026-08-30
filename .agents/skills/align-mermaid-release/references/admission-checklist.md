@@ -120,7 +120,9 @@ security admission; it must not weaken the canonical inline-SVG policy.
 - [ ] New or removed registrations cannot disappear from parser/editor/render/Playground inventory.
 - [ ] Focused family, parser, editor, LSP, Web, Playground, CLI, and security tests pass as applicable.
 - [ ] Workspace `nextest`, formatting, clippy, strict verification, and alignment gates pass.
-- [ ] Structure, parity, and parity-root comparisons pass without semantic whitelists.
+- [ ] Structure, parity, and parity-root comparisons pass; any browser-text-layout residual uses an
+      exact receipt bound to the fixture input, upstream SVG, comparison mode, and complete local
+      SVG, while new, changed, or stale residuals fail closed.
 - [ ] Web contracts, build, smoke, and browser tests use a fresh WASM artifact.
 - [ ] Dependency and feature changes pass target and WASM size matrices.
 - [ ] Documentation and generated status/provenance are readable and reproducible.

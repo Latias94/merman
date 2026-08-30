@@ -128,12 +128,11 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
             let hw = label_width / 2.0;
             let label_height = lbl.height;
             let hh = label_height / 2.0;
-            let svg_label_y_offset = if ctx.edge_html_labels { 0.0 } else { 1.0 };
             include_rect(
                 lbl.x - hw,
-                lbl.y + y_off - hh - svg_label_y_offset,
+                lbl.y + y_off - hh,
                 lbl.x + hw,
-                lbl.y + y_off + hh - svg_label_y_offset,
+                lbl.y + y_off + hh,
             );
         }
     }

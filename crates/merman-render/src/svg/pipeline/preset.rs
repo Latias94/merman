@@ -50,7 +50,7 @@ pub(crate) enum BuiltinSvgStage {
 }
 
 impl BuiltinSvgStage {
-    fn apply<'a>(
+    pub(super) fn apply<'a>(
         self,
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
@@ -63,6 +63,7 @@ impl BuiltinSvgStage {
             Self::PreparedMathProjection => {
                 if !svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
                     && !svg.contains(BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE)
+                    && prepared_math_evidence.is_none_or(PreparedMathEvidenceLease::is_empty)
                 {
                     return Ok(svg);
                 }

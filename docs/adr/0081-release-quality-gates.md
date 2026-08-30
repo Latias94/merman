@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; updated 2026-08-11 for Mermaid `@11.16.1`, ADR-0050, and ADR-0062.
+Accepted; updated 2026-08-28 for Mermaid `@11.16.1`, ADR-0050, ADR-0062, and ADR-0086.
 
 ## Context
 
@@ -30,23 +30,38 @@ For a release, we require:
 - Unit/integration test suite:
   - `cargo nextest run`
 - DOM parity checks (stable regression gates):
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3`
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --diagnostic-browser-text-layout`
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3 --diagnostic-browser-text-layout`
 - Root viewport invariants and descendant parity:
-  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
 Notes:
 
-- For Flowchart, use the vendored text measurer when running these gates locally to match the
-  baseline corpus assumptions:
-  - add `--flowchart-text-measurer vendored`
-- `parity-root` keeps descendant parity blocking and invokes the root viewport contract for every
-  fixture. The contract rejects an invalid root SVG, malformed or non-finite viewport geometry,
-  non-positive dimensions, changed width/height strategy, changed non-numeric root style, and a
-  changed `max-width`/`viewBox` relationship.
+- The canonical built-in measurement mode is deterministic. Comparison commands do not expose a
+  single-value text-measurement selector, and no browser font table is embedded to make the local
+  run imitate one baseline machine.
+- `--diagnostic-browser-text-layout` consults
+  `fixtures/_verification/browser-text-layout-residuals.json`. The catalog covers reviewed cases in
+  Architecture, Class, Flowchart, Gantt, Journey, Sequence, Timeline, and Treemap where browser
+  font measurement controls wrapping, route topology, inside/outside classification, or adaptive
+  font size. A mismatch is diagnostic only when its exact fixture input, pinned upstream SVG,
+  admitted comparison mode, three-decimal policy, and canonical deterministic local SVG signature
+  match the receipt. That signature requires an `<svg>` document root, rejects processing
+  instructions, and preserves namespace URIs, element order, text, stylesheet content, IDs,
+  classes, and all non-path attributes; only numeric `path d` operands are quantized to three
+  decimals to remove verified cross-architecture last-bit drift. A new node, class, id, text,
+  stylesheet, namespace, path command, path coordinate at gate precision, unregistered fixture,
+  changed digest, or stale receipt remains blocking.
+  Rendering, DOM parsing, semantic-label evidence, operation provenance, and root viewport policy
+  also remain blocking.
+- `parity-root` invokes the root viewport contract for every fixture. The contract rejects an
+  invalid root SVG, malformed or non-finite viewport geometry, non-positive dimensions, changed
+  width/height strategy, changed non-numeric root style, and a changed `max-width`/`viewBox`
+  relationship.
 - A small exact set in `fixtures/_verification/deterministic-root-contracts.json` remains bound to
-  the pinned input and upstream SVG hashes. These deterministic roots are exact release evidence,
-  not production overrides or family tolerances.
+  the pinned input and upstream SVG hashes. Only roots proven independent of browser text
+  measurement are eligible. These fixed-geometry roots are exact release evidence, not production
+  overrides or family tolerances.
 
 ### Browser diagnostics and cropping
 
@@ -58,6 +73,20 @@ Cropping remains blocking through an independent browser-mounted oracle. It moun
 derives painted descendant rectangles from browser layout rather than production bounds, and
 requires SVG, HTML, MathML, and `foreignObject` content to remain inside the final viewport. Its
 single epsilon covers coordinate quantization only; it is never fixture- or family-specific.
+The oracle runs after the blocking DOM and semantic gates. It removes SVG text, font-laid-out HTML
+label paint, and RoughJS paths in a second capture so browser-owned paint remains diagnostic while
+shapes, markers, images, and non-label `foreignObject` content remain structural. Structural
+inheritance compares only the maximum outward paint depth on each root edge: a new edge or deeper
+local edge blocks. Sparse paint is measured from the root boundary, and corner paint belongs to
+every crossed edge. Capture-boundary evidence and marker paint whose capture reach cannot be
+bounded always block. Bounded capture-limit inheritance requires the same reason, a no-larger
+capture envelope, and no deeper geometry extent on any edge.
+
+The sole exceptional root-paint residual is stored in
+`fixtures/_verification/root-viewport-residuals.json`. It binds exact local and pinned-upstream SVG
+hashes and a closed reason for XYChart's text-measurement-sensitive, out-of-domain linear
+extrapolation. Receipt drift and unused receipts fail the gate; the catalog cannot express a numeric
+or family tolerance.
 
 ### Strict mode is not a release gate
 
@@ -81,8 +110,10 @@ production behavior.
 
 ## Consequences
 
-- Releases are gated on deterministic DOM parity modes (`structure`/`parity`), blocking root
-  invariants and deterministic root fixtures, and independent browser-mounted cropping containment.
+- Releases are gated on deterministic semantic/layout snapshots, blocking DOM parity except for
+  exact reviewed browser-text-layout receipts, blocking root invariants and
+  measurement-independent exact roots, and independent browser-mounted cropping containment. Exact
+  browser-text and root-paint receipts remain visible in generated reports and CI log counts.
 - “Strict SVG XML equality” is not promised for early releases; it remains an explicit future
   convergence goal.
 - Exact browser bbox movement remains attributable diagnostic evidence and cannot alter production

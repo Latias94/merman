@@ -18,7 +18,7 @@ fixture corpus grows. For the detailed post-parity hardening phases, see:
 Exit criteria:
 
 - `cargo nextest run` is green.
-- `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` is green.
+- `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout` is green.
 - Upstream SVG baselines are stored under `fixtures/upstream-svgs/**` and are traceable to the
   pinned Mermaid CLI toolchain.
 

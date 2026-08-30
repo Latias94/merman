@@ -52,7 +52,7 @@
     ],
     "constructor_service_ids": [],
     "text_measurement_provider_ids": [
-      "vendored"
+      "deterministic"
     ]
   },
   "documents": {

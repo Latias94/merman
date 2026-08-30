@@ -26,6 +26,23 @@ pub(crate) fn project_prepared_math(
     let has_native_projection = svg.contains(PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE)
         && svg.contains(PREPARED_MATH_OCCURRENCE_ATTRIBUTE);
     if !has_browser_projection && !has_native_projection {
+        if let Some(evidence) = evidence.filter(|evidence| !evidence.is_empty()) {
+            evidence
+                .validate_unique_occurrences()
+                .map_err(projection_error)?;
+            if evidence
+                .entries()
+                .iter()
+                .any(|entry| entry.projection_fingerprint().is_none())
+            {
+                return Err(projection_error(
+                    "prepared-math occurrence is marked native-unavailable",
+                ));
+            }
+            return Err(projection_error(
+                "prepared-math evidence has no terminal occurrence marker",
+            ));
+        }
         return Ok(svg.to_owned());
     }
     if !matches!(
@@ -45,6 +62,15 @@ pub(crate) fn project_prepared_math(
         .validate_unique_occurrences()
         .map_err(projection_error)?;
     if !has_browser_projection {
+        if evidence
+            .entries()
+            .iter()
+            .any(|entry| entry.projection_fingerprint().is_none())
+        {
+            return Err(projection_error(
+                "prepared-math occurrence is marked native-unavailable",
+            ));
+        }
         return Ok(svg.to_owned());
     }
 
@@ -522,6 +548,31 @@ mod tests {
             .expect("an unowned class name must not mint or deny renderer capability");
 
         assert_eq!(output, svg);
+    }
+
+    #[test]
+    fn projection_reports_native_unavailable_before_missing_terminal_markers() {
+        let occurrence_id = crate::math::PreparedMathOccurrenceId::indexed(
+            DiagramFamilyId::FLOWCHART,
+            "node-label",
+            0,
+        );
+        let evidence = PreparedMathEvidenceLease::new(
+            vec![crate::math::PreparedMathExpectation::unavailable(
+                occurrence_id,
+                1,
+            )],
+            Vec::new(),
+        );
+
+        let error = project_prepared_math(
+            "<svg><text>$$x$$</text></svg>",
+            Some(DiagramFamilyId::FLOWCHART),
+            Some(&evidence),
+        )
+        .expect_err("native-unavailable evidence must fail before a generic marker error");
+
+        assert!(error.to_string().contains("native-unavailable"), "{error}");
     }
 
     #[test]

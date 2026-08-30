@@ -1171,13 +1171,13 @@ mod tests {
     }
 
     #[test]
-    fn complete_layout_and_math_capabilities_render_in_rustdoc_mode() {
+    fn available_layout_and_math_capabilities_render_in_rustdoc_mode() {
         let root = tempfile::tempdir().unwrap();
         let source = concat!(
             "```mermaid\n",
             "architecture-beta\n  group api(cloud)[API]\n  service server(server)[Server] in api\n",
             "```\n",
-            "```mermaid\nflowchart-elk TD\n  A --> B\n```\n",
+            "```mermaid\nflowchart TD\n  A --> B\n```\n",
             "```mermaid\nflowchart TD\n  A[\"$$x^2$$\"] --> B\n```\n",
         );
         let config = write_config(root.path(), source, "hide");
@@ -1188,6 +1188,9 @@ mod tests {
         assert_eq!(bundle.diagrams(), 3);
         assert_eq!(output.matches("data-merman-rustdoc=\"true\"").count(), 3);
         assert!(!output.contains("$$x^2$$"));
+        assert!(!output.contains("<template"), "{output}");
+        assert!(!output.contains("<foreignObject"), "{output}");
+        assert!(output.contains("merman-prepared-math-native"), "{output}");
     }
 
     #[test]

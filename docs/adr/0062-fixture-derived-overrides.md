@@ -35,17 +35,17 @@ parity difference must be fixed in semantics, layout, emitted geometry, measurem
 family's root algorithm. A browser-only residual may remain documented in verification evidence;
 it must not be copied into production as a pin.
 
-### Text measurement uses general facts
+### Text measurement uses deterministic rules
 
 Text measurement follows the operation-owned phase route defined by ADR-0057:
 
-1. A successful host measurement is authoritative for that operation and bypasses vendored facts.
-2. The deterministic headless fallback may use generated facts keyed by properties that generalize
-   to unseen text: DOM shape, font stack, font size and weight, glyph advances, kerning pairs,
-   trigrams, and endpoint overhangs.
-3. Generated measurement facts must come from synthetic browser probes or another reproducible font
-   measurement source. Fixture text may select validation coverage, but must not train a value keyed
-   by the fixture or the complete string.
+1. A successful host measurement is authoritative for that operation and bypasses the built-in
+   fallback.
+2. The deterministic headless fallback is font-agnostic. It may use stable character classes,
+   Unicode display width, spacing, line-height, and width-based wrapping, but not generated font,
+   glyph, kerning, DOM-shape, complete-string, or fixture lookup tables.
+3. Browser probes and fixture text may select validation coverage and quantify residuals, but they
+   never generate production measurement data.
 
 Full-string HTML widths, SVG extents, family label widths, and Sequence SVG tables are forbidden.
 Family-owned constants remain valid only when they are direct projections of an upstream algorithm
@@ -60,9 +60,9 @@ production output.
 Architecture and generation gates enforce the boundary:
 
 - production Rust sources contain no fixture-id or complete-text override modules or symbols;
-- generated measurement facts contain no complete fixture strings;
-- browser-probe generators are deterministic and validate against an independent fixture corpus;
-- host-measurement tests prove that a successful host result bypasses the vendored fallback; and
+- production artifacts contain no browser-probed font tables or complete fixture strings;
+- browser probes validate against an independent fixture corpus without generating runtime data;
+- host-measurement tests prove that a successful host result bypasses the deterministic fallback;
 - structural and normal parity continue to reject new or changed mismatches. Root parity uses the
   blocking root viewport contract and deterministic exact fixture set described by ADR-0050;
   browser-owned bbox numerics are emitted only as attributable diagnostics and never as production
@@ -74,7 +74,7 @@ Architecture and generation gates enforce the boundary:
 - Root and text parity failures expose the owning semantic, geometry, or measurement problem.
 - Browser-dependent results cannot always be reproduced exactly by the deterministic fallback.
   Hosts that require their system-font geometry must install a host measurer.
-- Generated data remains appropriate for reproducible font facts, but not for fixture answers.
+- Generated browser/font data is verification evidence, not a production dependency.
 - The former `report-overrides`, `audit-root-overrides`, root policy, generated root tables, and exact
   text generators are removed rather than retained as migration paths.
 
@@ -101,3 +101,4 @@ dependency. Host measurement is the correct authority when exact system-font beh
 - ADR-0081: Release Quality Gates
 - ADR-0057: Headless SVG Text `getBBox()` Approximation
 - ADR-0073: Family-Owned Diagram Architecture
+- ADR-0086: Deterministic Text Measurement Without Vendored Font Tables

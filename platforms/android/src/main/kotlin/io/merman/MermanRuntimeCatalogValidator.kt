@@ -461,10 +461,16 @@ internal object MermanRuntimeCatalogValidator {
                 ) {
                     throw MermanException("Merman text-measurement protocol version mismatch")
                 }
-                requiredSortedStringList(
+                val providers = requiredSortedStringList(
                     value.opt("provider_ids"),
                     "capabilities.text_measurement.provider_ids",
                 ).toSet()
+                if ("deterministic" !in providers) {
+                    throw MermanException(
+                        "Merman runtime text-measurement providers must include deterministic",
+                    )
+                }
+                providers
             }
             else -> throw MermanException("Merman runtime text-measurement contract is malformed")
         }

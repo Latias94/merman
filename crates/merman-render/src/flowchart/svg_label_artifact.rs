@@ -2466,7 +2466,7 @@ mod tests {
             font_size: 24.0,
             ..TextStyle::default()
         };
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let request = |max_width_px| FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "$$x^2$$",
@@ -2522,7 +2522,7 @@ mod tests {
                 .expect("math sidecar operation work meter"),
         );
         let style = TextStyle::default();
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
 
         builder.measure_for_layout(
@@ -2572,7 +2572,7 @@ mod tests {
         let builder =
             FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
         let style = TextStyle::default();
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
 
         let metrics = builder.measure_for_layout(
@@ -2619,7 +2619,7 @@ mod tests {
             "#f43f5e",
             super::super::FlowchartTerminalForegroundProvenance::InlineStyle,
         );
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
 
         builder.measure_for_layout_with_typography_overrides(

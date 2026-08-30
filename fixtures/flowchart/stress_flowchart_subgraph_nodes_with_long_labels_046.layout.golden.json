@@ -14,17 +14,17 @@
         {
           "id": "b",
           "x": 173.0,
-          "y": 273.5,
+          "y": 261.5,
           "width": 260.0,
-          "height": 102.0,
+          "height": 78.0,
           "is_cluster": false
         },
         {
           "id": "sg",
           "x": 173.0,
-          "y": 185.0,
+          "y": 173.0,
           "width": 330.0,
-          "height": 354.0,
+          "height": 330.0,
           "is_cluster": true
         }
       ],
@@ -63,9 +63,9 @@
         {
           "id": "sg",
           "x": 173.0,
-          "y": 185.0,
+          "y": 173.0,
           "width": 330.0,
-          "height": 354.0,
+          "height": 330.0,
           "diff": -4.0,
           "offset_y": 20.0,
           "title": "subgraph with long internal labels",
@@ -86,7 +86,7 @@
         "min_x": 8.0,
         "min_y": 8.0,
         "max_x": 338.0,
-        "max_y": 362.0
+        "max_y": 338.0
       }
     }
   }

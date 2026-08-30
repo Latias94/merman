@@ -77,6 +77,7 @@ _SVG_PARITY_EXACT_PATHS = frozenset(
         "playground/tests/package.json",
         "playground/tests/root-viewport-oracle.spec.ts",
         "playground/tests/root-viewport-oracle.ts",
+        "playground/tests/root-viewport-residuals.ts",
         "playground/tests/run-root-viewport-oracle.mjs",
     }
 )

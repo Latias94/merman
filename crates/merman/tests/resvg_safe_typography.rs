@@ -1,7 +1,7 @@
 #![cfg(feature = "svg")]
 
 use merman::svg::{
-    SvgPipeline, SvgRenderOptions, VendoredFontMetricsTextMeasurer,
+    DeterministicTextMeasurer, SvgPipeline, SvgRenderOptions,
     foreign_object_label_fallback_svg_text,
 };
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
@@ -182,8 +182,7 @@ fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
 #[test]
 fn fallback_text_isolated_from_svg_only_source_selectors() {
     let source = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>g.classGroup text { font-size:10px !important; fill:#ebdbb2 !important; }</style><g class="classGroup"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></g></svg>"##;
-    let svg =
-        foreign_object_label_fallback_svg_text(source, &VendoredFontMetricsTextMeasurer::default());
+    let svg = foreign_object_label_fallback_svg_text(source, &DeterministicTextMeasurer::default());
 
     assert_eq!(
         usvg_fallback_text_font_size(&svg, "Alpha"),

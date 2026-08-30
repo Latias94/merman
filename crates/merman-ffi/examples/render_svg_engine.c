@@ -27,7 +27,7 @@ static MermanNativeStatus measure_text(
     out_result->struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeTextMeasureResult);
 
     /*
-     * Returning handled = 0 asks Merman to use its vendored measurer. Real preview hosts should
+     * Returning handled = 0 asks Merman to use its deterministic fallback. Real preview hosts should
      * fill the result for only the operations they can answer from their display font stack.
      */
     out_result->handled = 0;

@@ -4,9 +4,10 @@ Date: 2026-01-19
 
 ## Status
 
-Superseded by ADR-0057 and ADR-0062 on 2026-07-15. The historical C4 complete-text pinning
-described below is no longer a production mechanism; current vendored data is limited to
-generalized Mermaid 11.16 font and DOM-shape facts.
+Superseded by ADR-0057 and ADR-0062 on 2026-07-15, then fully superseded for production text
+measurement by ADR-0086 on 2026-08-27. The font-table mechanism described below is historical and
+is no longer compiled into Merman products. Source-backed family constants that are independent of
+font lookup remain ordinary renderer code.
 
 ## Context
 

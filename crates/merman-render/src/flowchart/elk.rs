@@ -2270,7 +2270,7 @@ mod tests {
             let layout = layout_flowchart_elk_typed(
                 &model,
                 &MermaidConfig::default(),
-                &crate::text::VendoredFontMetricsTextMeasurer::default(),
+                &crate::text::DeterministicTextMeasurer::default(),
                 None,
             )
             .expect("ELK duplicate-subgraph layout");
@@ -2304,7 +2304,7 @@ mod tests {
             .expect("diagram detected");
         let graph = super::build_flowchart_elk_graph(
             &parsed,
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .expect("ELK graph ok");
@@ -2459,7 +2459,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -2503,7 +2503,7 @@ mod tests {
         let graph = build_flowchart_elk_graph_with_work_control(
             model,
             config,
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
             Some(&mut work_control),
         )
@@ -2537,7 +2537,7 @@ mod tests {
         let error = layout_flowchart_elk_typed_with_operation_seed(
             &model,
             &config,
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
             operation_seed(),
             meter,
@@ -2698,7 +2698,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -2808,7 +2808,7 @@ mod tests {
             let actual = build_flowchart_elk_graph_with_work_control(
                 &model,
                 &config,
-                &crate::text::VendoredFontMetricsTextMeasurer::default(),
+                &crate::text::DeterministicTextMeasurer::default(),
                 None,
                 Some(&mut work_control),
             )
@@ -2823,7 +2823,7 @@ mod tests {
         let error = build_flowchart_elk_graph_with_work_control(
             &model,
             &config,
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
             Some(&mut below),
         )
@@ -2888,7 +2888,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -2927,7 +2927,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -2953,7 +2953,7 @@ mod tests {
         let error = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap_err();
@@ -2995,7 +2995,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3044,7 +3044,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3102,7 +3102,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3146,7 +3146,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &config,
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3207,7 +3207,7 @@ mod tests {
         let mut graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3236,7 +3236,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3264,7 +3264,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &config,
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3307,7 +3307,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &config,
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3339,7 +3339,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &config,
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3364,7 +3364,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3387,7 +3387,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3413,7 +3413,7 @@ mod tests {
         let layout = layout_flowchart_elk_typed(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3445,7 +3445,7 @@ mod tests {
         let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3460,7 +3460,7 @@ mod tests {
         let layout = layout_flowchart_elk_typed(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();
@@ -3528,7 +3528,7 @@ mod tests {
         let layout = layout_flowchart_elk_typed(
             &model,
             &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &crate::text::DeterministicTextMeasurer::default(),
             None,
         )
         .unwrap();

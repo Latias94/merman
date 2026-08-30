@@ -2,18 +2,18 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum TextMeasurementProviderKey {
+    Deterministic,
     HostCallback,
-    Vendored,
 }
 
 impl TextMeasurementProviderKey {
-    pub const ALL: &'static [Self] = &[Self::HostCallback, Self::Vendored];
+    pub const ALL: &'static [Self] = &[Self::Deterministic, Self::HostCallback];
 
     #[must_use]
     pub const fn id(self) -> &'static str {
         match self {
+            Self::Deterministic => "deterministic",
             Self::HostCallback => "host-callback",
-            Self::Vendored => "vendored",
         }
     }
 
@@ -26,10 +26,10 @@ impl TextMeasurementProviderKey {
     #[must_use]
     pub const fn source(self) -> TextMeasurementProviderSource {
         match self {
+            Self::Deterministic => TextMeasurementProviderSource::SvgPipeline,
             Self::HostCallback => TextMeasurementProviderSource::ConstructorService(
                 ConstructorServiceKey::HostTextMeasurement,
             ),
-            Self::Vendored => TextMeasurementProviderSource::SvgPipeline,
         }
     }
 }

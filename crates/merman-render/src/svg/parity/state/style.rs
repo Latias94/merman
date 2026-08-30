@@ -114,7 +114,6 @@ where
         if style.is_empty() {
             continue;
         }
-        let marker_local_id = format!("stateDiagram-barbEnd-{ordinal}");
         let style = escape_attr(style);
         let transition_color = escape_attr(transition_color);
         let terminal_start = out.len();
@@ -122,7 +121,7 @@ where
             let _ = write!(
                 out,
                 r#"<defs><marker id="{}" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
-                escape_attr_display(scoped_svg_id(diagram_id, &marker_local_id)),
+                escape_attr_display(state_transition_marker_id(diagram_id, ordinal)),
                 transition_color,
                 transition_color,
                 style
@@ -131,7 +130,7 @@ where
             let _ = write!(
                 out,
                 r#"<defs><marker id="{}" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
-                escape_attr_display(scoped_svg_id(diagram_id, &marker_local_id)),
+                escape_attr_display(state_transition_marker_id(diagram_id, ordinal)),
                 transition_color,
                 transition_color,
                 style

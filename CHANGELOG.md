@@ -8,10 +8,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 The next workspace release remains in development. This section records only completed user-visible outcomes since alpha.5; its final version and release scope have not been selected.
 
+### Typst Package 0.3.0
+
+- Rebuilt the Typst package after removing ICU4X collation data and generated font-metric tables from the production WebAssembly closure. The package now uses Merman's deterministic Unicode-aware measurement fallback and retains Typst plugin ABI 3. The host measurement callback seam remains available to other transports that can provide that service; the Typst package itself is deterministic-only. This materially reduces the downloaded WASM without changing the exported theme-operation protocol.
+
 ### Breaking changes
 
 - Replaced the alpha.5 diagram-family capability fields `logical_family_kind` and `render_model_kind` with the core-owned `family_id`. UniFFI advances to binding API 7 so the published API 6 shape cannot be confused with the merged record; browser WASM advances to Web transport API 4, while Native C ABI 3, Android transport API 2, runtime-catalog schema 1, and Node transport API 1 remain independently versioned. The separate Typst ABI change is described below.
-- Advanced the unreleased Typst plugin to ABI `3` and added the closed `theme_operation_json` dispatcher for materialization, support discovery, and preset export. Rebuild the `0.2.0` Typst package and its embedded WebAssembly artifact together; ABI 2 hosts must reject the new module before calling it.
+- Advanced the unreleased Typst plugin to ABI `3` and added the closed `theme_operation_json` dispatcher for materialization, support discovery, and preset export. Rebuild the `0.3.0` Typst package and its embedded WebAssembly artifact together; ABI 2 hosts must reject the new module before calling it.
 - Advanced Options JSON to schema `3` because the post-alpha.5 typed-theme grammar is not wire-compatible with published schema `2`: use top-level `theme`, `raster.matte`, and `pdf.page_paint`; general bindings reject the removed `presentation`, raw-CSS, and legacy export-background fields. Runtime catalogs advertise only schema `3`, explicit schema-2 requests fail closed, and omitted versions materialize to schema `3`.
 - Replaced the prerelease `HostThemeProfile`, `Presentation`, presentation-profile, and `merman-modern` compatibility surfaces with one compiled `DiagramTheme` model. Rust callers attach it to the operation with `RenderRequest::with_theme(...)`; bindings use the closed `theme` preset-or-spec group, bounded Mermaid behavior overrides remain top-level `site_config`, and output policy remains under `svg`. Use `theme-catalog` metadata for artifact-aware preset and capability discovery.
 - Removed host-owned CSS and security controls from general binding and Web options. `site_config.themeCSS`, `site_config.secure`, `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and `svg.cssOverridePolicy` are rejected across one-shot calls, reusable constructors, and request overlays; trusted Rust and native CLI hosts retain the explicit scoped-CSS and override-policy capabilities.
@@ -27,7 +31,7 @@ The next workspace release remains in development. This section records only com
   select the new `complete-svg-elk` aggregate (or the direct `layout-elk` leaf) and distribute the
   EPL-2.0 notices and source provenance. The CLI source default likewise omits ELK, while the
   published `cli-release` archive retains it with its artifact-specific legal bundle.
-- The Typst `0.2.0` candidate now resolves diagram ids by layer and alias: direct `diagram-id`,
+- The Typst `0.3.0` candidate now resolves diagram ids by layer and alias: direct `diagram-id`,
   direct `id`, profile `diagram-id`, then profile `id`. Direct `site-config` replaces the profile
   object, while raw `options` remains an opaque binding-options bundle and bypasses shorthand
   validation (the plugin still validates the binding-options schema). Consumers that supplied both

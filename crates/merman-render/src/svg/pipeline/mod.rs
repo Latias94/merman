@@ -592,6 +592,12 @@ impl SvgPipeline {
         self.prepared_math_evidence_preserved
     }
 
+    /// Returns whether this pipeline needs renderer-owned prepared-math evidence in order to
+    /// project internal browser markers before its opaque publication passes run.
+    pub(crate) fn requires_prepared_math_projection(&self) -> bool {
+        self.static_inline_admission
+    }
+
     pub fn preset(&self) -> SvgPipelinePreset {
         self.preset
     }
@@ -746,6 +752,27 @@ impl SvgPipeline {
             Err(error) => return Err(error),
         };
         if self.static_inline_admission {
+            // Prepared math is emitted as a renderer-owned `<template>` projection inside a
+            // browser fallback. It must be materialized before the static-inline fallback and
+            // admission runs; otherwise the internal evidence marker is rejected as unsupported
+            // XHTML before the renderer-owned projection can consume it. The projection is
+            // bounded by an opaque renderer evidence fingerprint, so untrusted or forged native
+            // geometry still fails closed before the general admission pass.
+            execution.checkpoint()?;
+            current = preset::BuiltinSvgStage::PreparedMathProjection.apply(
+                current,
+                metadata,
+                execution,
+                structure,
+                prepared_math_evidence,
+            )?;
+            execution.checkpoint()?;
+            execution.preflight_svg_byte_count(current.len())?;
+            structure = final_validation::validate_well_formed_svg_with_execution(
+                current.as_ref(),
+                execution,
+            )?;
+
             static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
         }
 
@@ -1077,6 +1104,127 @@ mod tests {
             .unwrap();
 
         assert_eq!(out.as_ptr(), allocation);
+    }
+
+    #[test]
+    fn static_inline_pipeline_projects_renderer_owned_math_before_admission() {
+        let projection = concat!(
+            r#"<g data-merman-prepared-math-width="8" data-merman-prepared-math-height="9">"#,
+            r#"<path d="M0 0h1v1z"/></g>"#,
+        );
+        let occurrence_id = crate::math::PreparedMathOccurrenceId::indexed(
+            crate::DiagramFamilyId::FLOWCHART,
+            "node-label",
+            0,
+        );
+        let evidence = PreparedMathEvidenceLease::new(
+            vec![crate::math::PreparedMathExpectation::available(
+                occurrence_id.clone(),
+                crate::math::PreparedMathProjectionFingerprint::from_projection(projection),
+                1,
+            )],
+            Vec::new(),
+        );
+        let svg = format!(
+            concat!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+                r#"<foreignObject width="10" height="11"><div xmlns="http://www.w3.org/1999/xhtml">"#,
+                r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
+                r#"data-merman-prepared-math-occurrence="{}">browser"#,
+                r#"<template data-merman-prepared-math-projection="v1">{}</template>"#,
+                r#"</span></div></foreignObject></svg>"#,
+            ),
+            occurrence_id.as_str(),
+            projection,
+        );
+        let session = render_session();
+        let metadata = SvgPostprocessMetadata::from_svg(&svg)
+            .with_family_id(crate::DiagramFamilyId::FLOWCHART);
+
+        let output = SvgPipeline::parity()
+            .with_static_inline_contract("static-math")
+            .process_cow_with_metadata_and_math_evidence(
+                Cow::Borrowed(&svg),
+                &metadata,
+                &session,
+                Some(&evidence),
+            )
+            .unwrap()
+            .into_owned();
+
+        assert!(!output.contains("<template"), "{output}");
+        assert!(!output.contains("<foreignObject"), "{output}");
+        assert!(output.contains(r#"class="merman-prepared-math-native""#));
+        validate_static_inline_svg(&output, &session).unwrap();
+    }
+
+    #[test]
+    fn static_inline_pipeline_rejects_forged_math_projection_without_evidence() {
+        let svg = concat!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+            r#"<foreignObject width="10" height="11"><div xmlns="http://www.w3.org/1999/xhtml">"#,
+            r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
+            r#"data-merman-prepared-math-occurrence="flowchart/node-label/0">browser"#,
+            r#"<template data-merman-prepared-math-projection="v1">"#,
+            r#"<g data-merman-prepared-math-width="8" data-merman-prepared-math-height="9">"#,
+            r#"<path d="M0 0h1v1z"/></g></template></span></div></foreignObject></svg>"#,
+        );
+        let session = render_session();
+        let metadata =
+            SvgPostprocessMetadata::from_svg(svg).with_family_id(crate::DiagramFamilyId::FLOWCHART);
+
+        let error = SvgPipeline::parity()
+            .with_static_inline_contract("static-math")
+            .process_with_metadata(svg, &metadata, &session)
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::SvgPostprocess { ref pass, ref message }
+                if pass == "prepared-math-projection"
+                    && message.contains("renderer-owned occurrence evidence")
+        ));
+    }
+
+    #[test]
+    fn static_inline_pipeline_rejects_math_evidence_without_an_occurrence_marker() {
+        let projection = concat!(
+            r#"<g data-merman-prepared-math-width="8" data-merman-prepared-math-height="9">"#,
+            r#"<path d="M0 0h1v1z"/></g>"#,
+        );
+        let evidence = PreparedMathEvidenceLease::new(
+            vec![crate::math::PreparedMathExpectation::available(
+                crate::math::PreparedMathOccurrenceId::indexed(
+                    crate::DiagramFamilyId::FLOWCHART,
+                    "node-label",
+                    0,
+                ),
+                crate::math::PreparedMathProjectionFingerprint::from_projection(projection),
+                1,
+            )],
+            Vec::new(),
+        );
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>"#;
+        let session = render_session();
+        let metadata =
+            SvgPostprocessMetadata::from_svg(svg).with_family_id(crate::DiagramFamilyId::FLOWCHART);
+
+        let error = SvgPipeline::parity()
+            .with_static_inline_contract("static-math")
+            .process_cow_with_metadata_and_math_evidence(
+                Cow::Borrowed(svg),
+                &metadata,
+                &session,
+                Some(&evidence),
+            )
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::SvgPostprocess { ref pass, ref message }
+                if pass == "prepared-math-projection"
+                    && message.contains("no terminal occurrence marker")
+        ));
     }
 
     #[test]

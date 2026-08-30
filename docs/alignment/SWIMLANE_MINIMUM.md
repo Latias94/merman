@@ -85,40 +85,23 @@ The local implementation therefore reuses Flowchart parsing but does not treat t
 as a cosmetic alias. Artifact selection follows the effective layout, and the dedicated layout
 pipeline owns lane geometry and routing before the shared Flowchart SVG emitter renders it.
 
-## Identifier Collation
+## Identifier Ordering
 
-Mermaid's Swimlane ordering passes use `String.prototype.localeCompare(id, undefined)`
-with the browser's default `en-US` locale. The Rust implementation uses ICU4X's baked
-`en-US` collator so ordering is independent of the host process locale. This is a semantic
-dependency of the layout backend, not an optional presentation feature.
+Swimlane ordering must be stable across native and WebAssembly hosts. Merman therefore uses a
+lexicographic UTF-16 code-unit comparison as its identifier tie-break, matching JavaScript's
+ordinary string-order domain without embedding a locale database. The comparison is total,
+deterministic, and independent of the process locale.
 
-The expected Unicode ordering in the renderer regression test was generated with the pinned
-Puppeteer 23.11.1 headless Chromium 131 artifact:
-
-```sh
-node - <<'NODE'
-const puppeteer = require('./tools/mermaid-cli/node_modules/puppeteer');
-(async () => {
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: process.env.CHROME_BIN,
-    args: ['--no-sandbox'],
-  });
-  const page = await browser.newPage();
-  console.log(await page.evaluate(() => {
-    const ids = ['Z', 'z', 'ä', 'a', 'A', 'å', 'Å', 'é', 'e', 'E', 'ß', 'ss', '中', '阿', '😀', '🧪'];
-    return ids.sort((a, b) => a.localeCompare(b, 'en-US'));
-  }));
-  await browser.close();
-})();
-NODE
-```
-
-Set `CHROME_BIN` to the locked Chrome 131 executable used by the upstream SVG provenance run.
+Pinned Mermaid paths that call `localeCompare` can choose a different order for mixed case,
+diacritics, or non-Latin identifiers according to the browser's ICU build and locale. Merman does
+not treat that host-sensitive collation as a semantic dependency of the layout backend. Fixtures
+cover ASCII and representative Unicode tie-breaks so changes to the deterministic contract remain
+visible.
 
 ## Residual Boundary
 
-Browser font rasterization, `getBBox()` floats, and pixel snapshots remain bounded headless
-residuals under the repository-wide parity policy. They are not normalized away by the Swimlane
-comparator. Any future DOM or geometry mismatch must be resolved from Mermaid source behavior or
-documented as a browser-dependent residual.
+Browser font rasterization, `getBBox()` floats, locale-sensitive identifier collation, and pixel
+snapshots remain bounded headless residuals under the repository-wide parity policy. They are not
+normalized away by the Swimlane comparator. A coordinate-only mismatch caused by a different
+locale tie-break must be attributed as such; semantic, DOM-structure, lane-membership, or routing
+regressions still require a source-backed fix.

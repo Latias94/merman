@@ -3480,9 +3480,7 @@ mod tests {
     use merman_core::models::class_diagram::Namespace;
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
-    use crate::text::{
-        TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
-    };
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
     #[test]
     fn class_label_facts_follow_the_html_writer_inner_node_font_cascade() {
@@ -3523,7 +3521,7 @@ mod tests {
         let graph = super::debug_build_class_diagram_dagre_graph(
             model,
             &parsed.metadata().effective_config,
-            &VendoredFontMetricsTextMeasurer::default(),
+            &DeterministicTextMeasurer::default(),
         )
         .expect("build Class Dagre input");
 
@@ -3609,7 +3607,7 @@ mod tests {
             &class_graph,
             &[],
             &settings,
-            &VendoredFontMetricsTextMeasurer::default(),
+            &DeterministicTextMeasurer::default(),
         );
         graph.options.layered.random_seed = 0;
 
@@ -4024,7 +4022,7 @@ mod tests {
 
     #[test]
     fn class_raw_code_and_anchor_metrics_measure_the_rendered_dom() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let style = default_style();
         let source = "<a href='https://example.com'><code>Entity</code></a>";
         let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(source, true);

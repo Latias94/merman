@@ -154,8 +154,6 @@ spotless\t'[alpha] Spotless'
 cyberpunk\t'[alpha] Cyberpunk'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
-vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s w -l width -d 'Available container width for size-sensitive layouts' -r
@@ -261,8 +259,6 @@ spotless\t'[alpha] Spotless'
 cyberpunk\t'[alpha] Cyberpunk'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
-vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s w -l width -d 'Available container width for size-sensitive layouts' -r
@@ -360,8 +356,6 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l runtime
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
-vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -s w -l width -d 'Available container width for size-sensitive layouts' -r
@@ -416,8 +410,6 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l runtime -
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
-vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s w -l width -d 'Width of the page' -r

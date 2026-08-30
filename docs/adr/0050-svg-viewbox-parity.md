@@ -2,6 +2,8 @@
 
 Date: 2026-01-21
 
+Updated: 2026-08-28
+
 ## Context
 
 Mermaid renders SVG using a browser DOM and then derives the final SVG viewport via:
@@ -32,7 +34,9 @@ without being noticed if they are always excluded from parity checks.
 2. Retain a small exact deterministic fixture set in
    `fixtures/_verification/deterministic-root-contracts.json`. Each row is bound to the pinned
    input and upstream SVG hashes and catches a deterministic root regression without becoming a
-   production override or a family tolerance.
+   production override or a family tolerance. Admission is restricted to roots whose geometry is
+   independent of browser text measurement. Text-driven roots remain under the general viewport
+   policy and browser diagnostics instead of pinning either browser floats or fallback heuristics.
 
 3. Treat browser-owned exact bbox values as diagnostics, not routine acceptance policy. The
    schedule/release browser artifact may report exact root and painted-content rectangles together
@@ -58,9 +62,10 @@ without being noticed if they are always excluded from parity checks.
 
 ## Consequences
 
-- `parity-root` provides a blocking guardrail for SVG structure, finite positive dimensions,
-  viewport policy, deterministic examples, and descendant parity without requiring browser bbox
-  numerics to be stable across fonts and browser versions.
+- `parity-root` provides a blocking guardrail for finite positive dimensions, viewport policy, and
+  measurement-independent deterministic examples without requiring browser bbox numerics to be
+  stable across fonts and browser versions. Descendant parity remains blocking except where
+  ADR-0086 classifies browser-text-measurement layout as diagnostic evidence.
 - Some renderers must implement explicit bounding-box logic (including text ascent) to satisfy
   `viewBox` comparisons against upstream baselines.
 - Browser-only root movement remains visible in reports and does not require fixture-specific

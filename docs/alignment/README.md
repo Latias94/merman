@@ -14,6 +14,7 @@ be corrected.
 | Primary SVG matrix and compare commands | [`../../crates/xtask/src/cmd/compare/diagrams.rs`](../../crates/xtask/src/cmd/compare/diagrams.rs) |
 | Admission consistency checks | [`../../crates/xtask/src/cmd/admission.rs`](../../crates/xtask/src/cmd/admission.rs) |
 | Family fixture admission | Per-family `_baseline-manifest.json` files under [`../../fixtures/upstream-svgs/`](../../fixtures/upstream-svgs/) |
+| Theme override behavior oracle | [`../../fixtures/_verification/theme_variables_oracle_11_16_1.json`](../../fixtures/_verification/theme_variables_oracle_11_16_1.json) |
 | Deterministic root contracts | [`../../fixtures/_verification/deterministic-root-contracts.json`](../../fixtures/_verification/deterministic-root-contracts.json) |
 | Semantic label residuals | [`../../fixtures/_verification/label-geometry-residuals.json`](../../fixtures/_verification/label-geometry-residuals.json) |
 

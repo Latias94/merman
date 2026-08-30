@@ -64,7 +64,7 @@ checkpoint cancellation for in-call cooperative stopping.
 
 The public wrapper owns `renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurementSession`. Host callbacks receive one of 19 exact measurement operations (`0..18`). Dispose the owned measurement session when its browser realm or rendering workflow ends.
 
-Use browser measurement when geometry should follow the page's actual font stack. Deterministic CI, fixture, and offline workflows can retain Merman's vendored measurement profile. A host callback should decline work it cannot answer faithfully so the named deterministic fallback remains authoritative.
+Use browser measurement when geometry should follow the page's actual font stack. CI, fixture, and offline workflows use Merman's built-in deterministic, font-agnostic measurer. A host callback should decline work it cannot answer faithfully so that deterministic fallback remains authoritative for the request.
 
 ## Maintainer Build
 

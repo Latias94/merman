@@ -1,7 +1,7 @@
 # Host Text Measurement
 
-Status: Draft
-Last updated: 2026-07-16
+Status: Current
+Last updated: 2026-08-27
 
 This guide explains how native hosts should use Merman's text-measurement callback and where the
 remaining headless-rendering limits are. It complements the exact C ABI contract in
@@ -13,7 +13,7 @@ Mermaid measures many labels inside a browser after CSS, font loading, fallback,
 rounding have been resolved. Merman renders without a browser, so it must know label geometry before
 the final display surface exists.
 
-That is usually good enough with Merman's vendored Mermaid-compatible metrics, but it cannot be
+That is usually good enough with Merman's deterministic, font-agnostic fallback, but it cannot be
 perfect for every host. A browser such as Zen Browser, Chromium, WebKit, an Android `TextView`, an
 Apple Core Text view, and a Flutter SVG widget can all choose different fallback fonts or round
 glyph advances differently. The result can be small layout drift or clipped HTML labels, such as a
@@ -34,7 +34,7 @@ sequenceDiagram
     participant Host as Host UI / preview surface
     participant Adapter as Host text measurer
     participant Engine as MermanEngine
-    participant Fallback as Vendored metrics
+    participant Fallback as Deterministic fallback
 
     Host->>Engine: renderSvg(source)
     Engine->>Adapter: measure request
@@ -43,21 +43,22 @@ sequenceDiagram
     else Unsupported font or wrapping mode
         Adapter-->>Engine: not handled
         Engine->>Fallback: measure request
-        Fallback-->>Engine: compatibility metrics
+        Fallback-->>Engine: approximate metrics
     end
     Engine-->>Host: SVG using measured geometry
 ```
 
-Use the callback when exact host geometry matters. Use the default vendored metrics when you need
-small dependency footprint, deterministic headless output, or CI-friendly rendering.
+Use the callback when exact host geometry matters. Use the built-in deterministic fallback when you
+need a small dependency footprint, reproducible headless output, or CI-friendly rendering.
 
 ## What Merman Changed
 
 Merman uses a layered strategy instead of pretending there is one universal font measurement answer:
 
-1. The default renderer still uses vendored Mermaid-compatible metrics. This keeps the CLI, CI,
-   documentation builds, server-side batch rendering, and embedders such as editors dependency-light
-   and deterministic.
+1. The default renderer uses a deterministic, font-agnostic approximation based on stable
+   character classes, Unicode display width, spacing, line height, and width-based wrapping. This
+   keeps the CLI, CI, documentation builds, and server-side batch rendering dependency-light and
+   reproducible without claiming to measure a named font.
 2. Flowchart HTML labels are made non-clipping by default so small browser/font differences are less
    likely to hide trailing punctuation.
 3. Hosts that already own the final display stack can install a synchronous measurement callback on
@@ -68,10 +69,11 @@ Merman uses a layered strategy instead of pretending there is one universal font
 5. The playground exposes browser-vs-headless measurement and font-stack switches so issues like #9
    can be reproduced with an explicit environment instead of hidden global browser state.
 
-The alternative would be to ship a heavier Rust-side font discovery, fallback, shaping, and layout
-engine. That can improve some no-callback estimates, but it still cannot exactly match every
-browser, WebView, platform UI toolkit, installed font set, or user stylesheet. Merman therefore keeps
-that as a future optional feature candidate rather than a baseline dependency.
+Earlier releases embedded a Headless Chrome 131 profile for a bounded set of fonts, glyphs, DOM
+shapes, and sizes. That corpus improved its measured cases but remained an approximation for every
+unmeasured font or host and materially enlarged all SVG-capable artifacts. ADR-0086 removes those
+tables while retaining this callback seam. A heavier Rust-side discovery, shaping, and layout
+engine remains a possible future opt-in capability, not a baseline dependency.
 
 ## Quick Decision Checklist
 
@@ -97,7 +99,7 @@ For each platform, answer these questions before installing a callback:
 
 | Option | When to use | Pros | Cons |
 | --- | --- | --- | --- |
-| Vendored metrics | CLI output, docs generation, CI, simple previews | No host dependency, deterministic, works everywhere | Cannot know host-specific fallback fonts or browser rounding |
+| Deterministic fallback | CLI output, docs generation, CI, simple previews | No host dependency, small and reproducible, works everywhere | Does not measure named fonts or know host shaping, fallback, or browser rounding |
 | Host callback | Editors, design tools, WebView previews, native previews where clipping is unacceptable | Best fidelity when measurement and display share the same text stack | Requires callback lifecycle, threading, caching, and platform text APIs |
 | Browser/WebView measurement service | Hosts that display Merman SVG in a browser surface | Closest to Mermaid's DOM/canvas behavior | UI-thread and async font-loading constraints need careful orchestration |
 | Built-in platform font engine in Merman | Future optional feature for hosts without their own measuring stack | Could improve no-callback estimates | Adds dependencies and still cannot exactly match every platform fallback chain |
@@ -266,9 +268,9 @@ finally:
 
 For long-lived preview surfaces, construct the reusable engine after its host text stack is
 available and discard that engine before destroying the host-side measurement state. Returning
-`None` from `measure()` leaves that single request on Merman's vendored fallback metrics. Invalid
+`None` from `measure()` leaves that single request on Merman's deterministic fallback. Invalid
 metrics and errors or exceptions reported through UniFFI's generated callback trampoline have the
-same per-request behavior: Merman uses the vendored fallback and continues the enclosing layout or
+same per-request behavior: Merman uses the deterministic fallback and continues the enclosing layout or
 render operation.
 Use `diagram_family_capabilities()` to decide whether a diagram family can render through the
 current Python binding before installing host-specific measurement logic.
@@ -436,7 +438,7 @@ Recommended Flutter implementation choices:
 - If displaying through `webview_flutter`, measure in a WebView/JavaScript service using canvas or
   DOM APIs after fonts are loaded, then feed cached results into the synchronous measurer.
 - If displaying through a native SVG widget, use the same package's text measurement behavior if it
-  exposes one. Otherwise prefer the vendored fallback plus non-clipping output.
+  exposes one. Otherwise prefer the deterministic fallback plus non-clipping output.
 - If rendering in pure Dart UI, use Flutter paragraph/text layout APIs in the same isolate and with
   the same font registration as the preview.
 - Include the full request shape in cache keys: operation, phase, text, font family, size, weight,
@@ -487,7 +489,7 @@ Add host-level tests for the cases that motivated the integration:
 - `flowchart TD; A[Start] --> B{Condition?}` with the host's default UI font.
 - Long labels near wrapping thresholds.
 - Labels with punctuation, CJK text, emoji, and mixed LTR/RTL runs if the app supports them.
-- The same diagram rendered with the default vendored metrics and with the host callback installed.
+- The same diagram rendered with the deterministic fallback and with the host callback installed.
 - A fallback path where the measurer intentionally returns unsupported.
 
 Do not assert exact pixels across unrelated platforms. Assert that text is visible, labels are not

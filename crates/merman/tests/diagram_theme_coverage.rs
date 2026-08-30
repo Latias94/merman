@@ -85,11 +85,11 @@ impl TypedSvgRenderer {
         self
     }
 
-    fn with_vendored_text_measurer(mut self) -> Self {
+    fn with_deterministic_text_measurer(mut self) -> Self {
         self.request.environment = self
             .request
             .environment
-            .with_text_measurement_policy(TextMeasurementPolicy::parity());
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
         self
     }
 
@@ -128,7 +128,7 @@ fn themed_renderer(preset: ThemePreset, name: &str) -> TypedSvgRenderer {
     TypedSvgRenderer::new()
         .with_theme(theme)
         .with_svg_pipeline(pipeline)
-        .with_vendored_text_measurer()
+        .with_deterministic_text_measurer()
         .with_diagram_id(name)
 }
 
@@ -471,12 +471,12 @@ fn diagram_theme_series_palette_reaches_supported_ordinal_diagrams() {
         ),
         (
             "diagram-theme-journey",
-            "journey\n  title Profile Journey\n  section Checkout\n    Sign Up: 5: Alice\n    Pay: 3: Bob",
+            "journey\n  title Profile Journey\n  section Checkout\n    Sign Up: 5: Alice\n  section Payment\n    Pay: 3: Bob",
             &["#60a5fa", "#34d399"],
         ),
         (
             "diagram-theme-timeline",
-            "timeline\n  title Profile Timeline\n  section 2026\n    Alpha : Start\n    Beta : Ship",
+            "timeline\n  title Profile Timeline\n  section Build\n    Alpha : Start\n  section Ship\n    Beta : Ship",
             &["#60a5fa", "#34d399"],
         ),
     ];
@@ -515,7 +515,7 @@ fn gruvbox_diagram_theme_keeps_er_relationship_label_fallbacks_readable() {
 #[test]
 fn diagram_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
     let plain = TypedSvgRenderer::new()
-        .with_vendored_text_measurer()
+        .with_deterministic_text_measurer()
         .with_diagram_id("gitgraph-plain-baseline")
         .render_svg(USER_GITGRAPH_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("plain gitGraph render failed: {err}"))
@@ -607,7 +607,7 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
             include_str!("../../../fixtures/treeView/upstream_docs_treeview_basic.mmd"),
             &["#e5e7eb", "#94a3b8"],
             &[
-                ".treeView-node-label { font-size: 16px; fill: #e5e7eb; white-space: pre; }",
+                ".treeView-node-label { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 16px; fill: #e5e7eb; white-space: pre; }",
                 ".treeView-node-line { stroke: #94a3b8; }",
             ],
         ),

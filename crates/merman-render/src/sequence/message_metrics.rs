@@ -164,7 +164,7 @@ impl SequenceMessageMetricView<'_> {
 #[cfg(test)]
 mod tests {
     use super::{SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner};
-    use crate::environment::{RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy};
+    use crate::environment::{RenderEnvironment, TextMeasurementPhase};
     use crate::text::{DeterministicTextMeasurer, TextStyle};
     use merman_core::diagrams::sequence::{
         SequenceDiagramRenderModel, SequenceMessage, SequenceMessagePayload,
@@ -203,7 +203,7 @@ mod tests {
         let style = TextStyle::default();
         let session = RenderEnvironment::deterministic()
             .begin_session()
-            .expect("begin parity session");
+            .expect("begin deterministic session");
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         let owner = SequenceMessageOwner::from_model_index(0);
         let metrics = SequenceMessageBoundMetrics::new(42.0, 17.0);
@@ -242,19 +242,6 @@ mod tests {
                 .view(&model, &changed_style, &measurer)
                 .get(owner, &model.messages[0]),
             None
-        );
-
-        let deterministic_session = RenderEnvironment::deterministic()
-            .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-            .begin_session()
-            .expect("begin deterministic session");
-        let deterministic = deterministic_session.text_measurer(TextMeasurementPhase::Layout);
-        assert_eq!(
-            sidecar
-                .view(&model, &style, &deterministic)
-                .get(owner, &model.messages[0]),
-            None,
-            "a different built-in profile must not validate the captured carrier"
         );
     }
 

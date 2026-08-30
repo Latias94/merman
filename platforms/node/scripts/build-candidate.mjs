@@ -811,7 +811,7 @@ export function resolveCandidateRuntimeContract() {
     outputIds,
     operationIds,
     systemAdapterIds,
-    textMeasurementProviderIds: ["vendored"],
+    textMeasurementProviderIds: ["deterministic"],
   };
 }
 

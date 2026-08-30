@@ -123,6 +123,8 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         "Bash cannot display per-value maturity, so it must not advertise alpha preset ids as stable-looking candidates"
     );
 
+    assert!(!script.contains("--text-measurer"));
+
     let mmdc_themes = bash_option_values(&script, "mmdc", "--theme");
     assert_eq!(
         mmdc_themes,

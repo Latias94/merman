@@ -83,7 +83,7 @@ fn representative_dark_theme_diagrams_keep_visible_theme_signals() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
             "theme-flowchart",
-            r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "primaryTextColor": "#f8fafc", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "edgeLabelBackground": "#0f172a", "strokeWidth": 4}}}%%
+            r##"%%{init: {"theme": "base", "themeVariables": {"mainBkg": "#111827", "primaryTextColor": "#f8fafc", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "edgeLabelBackground": "#0f172a", "strokeWidth": 4}}}%%
 flowchart TD
   A[Dark Node] -->|Readable Edge| B[Other]
 "##,
@@ -140,7 +140,7 @@ stateDiagram-v2
         ),
         (
             "theme-er",
-            r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#f8fafc", "primaryTextColor": "#fde68a", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
+            r##"%%{init: {"theme": "base", "look": "neo", "themeVariables": {"textColor": "#f8fafc", "primaryTextColor": "#fde68a", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
 erDiagram
   CUSTOMER ||--o{ ORDER : places
   CUSTOMER {
@@ -229,7 +229,7 @@ architecture-beta
         ),
         (
             "theme-block",
-            r##"%%{init: {"themeVariables": {"primaryTextColor": "#f8fafc", "clusterBkg": "#172554", "clusterBorder": "#38bdf8", "lineColor": "#f59e0b", "strokeWidth": 4}}}%%
+            r##"%%{init: {"theme": "base", "themeVariables": {"primaryTextColor": "#f8fafc", "clusterBkg": "#172554", "clusterBorder": "#38bdf8", "lineColor": "#f59e0b", "strokeWidth": 4}}}%%
 block
   block:Core
     A["Alpha"]
@@ -454,7 +454,7 @@ ishikawa-beta
                 "User",
                 "Shaky hands",
             ],
-            &["#38bdf8", "#111827", "#f8fafc", "Inter, sans-serif"],
+            &["#38bdf8", "#111827", "#f8fafc", "Inter,sans-serif"],
         ),
         (
             "theme-eventmodeling",

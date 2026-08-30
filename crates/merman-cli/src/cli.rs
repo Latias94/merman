@@ -697,16 +697,6 @@ pub(crate) struct RenderCliArgs {
     pub(crate) theme_definition: Option<PathBuf>,
 
     #[cfg(feature = "svg")]
-    /// Text measurement strategy.
-    #[arg(
-        long = "text-measurer",
-        value_enum,
-        help_heading = "Merman renderer controls",
-        hide_short_help = true
-    )]
-    pub(crate) text_measurer: Option<TextMeasurerKind>,
-
-    #[cfg(feature = "svg")]
     /// Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`.
     #[arg(
         long = "math-renderer",
@@ -761,15 +751,6 @@ pub(crate) struct RenderCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct LayoutRenderCliArgs {
-    /// Text measurement strategy.
-    #[arg(
-        long = "text-measurer",
-        value_enum,
-        default_value_t = TextMeasurerKind::Vendored,
-        help_heading = "Layout controls"
-    )]
-    pub(crate) text_measurer: TextMeasurerKind,
-
     /// Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`.
     #[arg(long = "math-renderer", value_enum, help_heading = "Layout controls")]
     pub(crate) math_renderer: Option<MathRendererKind>,
@@ -800,7 +781,6 @@ impl LayoutRenderCliArgs {
             theme_preset: None,
             theme_file: None,
             theme_definition: None,
-            text_measurer: Some(self.text_measurer),
             math_renderer: self.math_renderer,
             container_width: self.container_width,
             container_height: self.container_height,
@@ -865,16 +845,6 @@ pub(crate) struct MmdcParseCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct MmdcRenderCliArgs {
-    /// Text measurement strategy.
-    #[arg(
-        long = "text-measurer",
-        value_enum,
-        default_value_t = TextMeasurerKind::Vendored,
-        help_heading = "Merman renderer controls",
-        hide_short_help = true
-    )]
-    pub(crate) text_measurer: TextMeasurerKind,
-
     /// Math renderer override. Unspecified uses the compiled default.
     #[arg(
         long = "math-renderer",
@@ -928,7 +898,6 @@ pub(crate) struct MmdcRenderCliArgs {
 impl Default for MmdcRenderCliArgs {
     fn default() -> Self {
         Self {
-            text_measurer: TextMeasurerKind::Vendored,
             math_renderer: None,
             container_width: 800.0,
             container_height: 600.0,
@@ -1604,14 +1573,6 @@ pub(crate) enum TextColorMode {
     Ansi256,
     Truecolor,
     Html,
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Clone, Copy, Default, ValueEnum)]
-pub(crate) enum TextMeasurerKind {
-    Deterministic,
-    #[default]
-    Vendored,
 }
 
 #[cfg(feature = "svg")]

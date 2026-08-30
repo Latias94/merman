@@ -107,7 +107,7 @@ Read the validated catalog with `Merman.runtimeCatalogJson()`:
     "operation_ids": ["analysis-json", "...", "svg"],
     "output_ids": ["ascii", "svg"],
     "system_adapter_ids": [],
-    "text_measurement": { "protocol_version": 1, "provider_ids": ["host-callback", "vendored"] }
+    "text_measurement": { "protocol_version": 1, "provider_ids": ["deterministic", "host-callback"] }
   },
   "output_contracts": [{ "id": "ascii", "media_type": "text/plain; charset=utf-8" }, "..."],
   "registry": { "diagram_family_count": 35 },

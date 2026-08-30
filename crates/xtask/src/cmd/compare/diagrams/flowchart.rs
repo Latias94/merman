@@ -76,7 +76,6 @@ pub(super) fn compare_flowchart_args(
     let mut label_report_limit = DEFAULT_LABEL_DELTA_REPORT_LIMIT;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode = fact.default_dom_mode.to_string();
-    let mut text_measurer: String = "vendored".to_string();
     let mut force_elk_fixture: bool = false;
 
     let mut i = 0;
@@ -133,13 +132,6 @@ pub(super) fn compare_flowchart_args(
                     .map_err(|_| XtaskError::Usage)?
                     .to_string();
             }
-            "--text-measurer" => {
-                i += 1;
-                text_measurer = args
-                    .get(i)
-                    .map(|s| s.trim().to_ascii_lowercase())
-                    .unwrap_or_else(|| "deterministic".to_string());
-            }
             "--force-elk-fixture" => force_elk_fixture = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -158,7 +150,6 @@ pub(super) fn compare_flowchart_args(
                 dom_decimals: Some(dom_decimals),
                 report_root,
                 root_report_limit: Some(root_report_limit),
-                flowchart_text_measurer: Some(text_measurer),
                 ..CompareRequest::default()
             },
             fixtures_root: fixtures_root_arg,
@@ -221,29 +212,10 @@ fn run_flowchart_compare(
     let dom_plan = super::super::DomComparisonPlan::from_request(&common, fact.default_dom_mode)
         .map_err(CompareRunFailure::without_evidence)?;
     let parity_root_requested = check_dom && dom_plan.contains(crate::svgdom::DomMode::ParityRoot);
-    let text_measurer = common
-        .flowchart_text_measurer
-        .clone()
-        .unwrap_or_else(|| "vendored".to_string());
-
     let should_report_root = report_root || parity_root_requested;
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = merman_render::LayoutOptions::default();
-    let text_measurement = match text_measurer.as_str() {
-        "vendored" | "vendored-font" | "vendored-font-metrics" => {
-            merman::svg::TextMeasurementPolicy::parity()
-        }
-        "deterministic" => merman::svg::TextMeasurementPolicy::deterministic(),
-        other => {
-            return Err(CompareRunFailure::without_evidence(
-                XtaskError::SvgCompareFailed(format!(
-                    "unsupported Flowchart text measurer: {other}"
-                )),
-            ));
-        }
-    };
-    let environment =
-        merman::SvgEnvironment::deterministic().with_text_measurement_policy(text_measurement);
+    let environment = merman::SvgEnvironment::deterministic().without_math_renderer();
     let observed_operations = ObservedRenderOperations::from_environment(&environment);
     let mut state = FlowchartCompareState {
         root_deltas: Vec::new(),
@@ -261,6 +233,7 @@ fn run_flowchart_compare(
                 check_dom,
                 dom_plan: dom_plan.clone(),
                 dom_decimals,
+                upstream_dom_drift_policy: common.upstream_dom_drift_policy,
             },
             fixtures_root: fixtures_root_arg,
             upstream_root: upstream_root_arg,
@@ -271,11 +244,10 @@ fn run_flowchart_compare(
             write_flowchart_upstream_metadata(report, &paths.upstream_dir, options.filter);
             let _ = writeln!(
                 report,
-                "- Command: `{}`\n- Modes: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- External math host parity: `disabled`\n- Forced ELK fixtures: `{}`\n",
+                "- Command: `{}`\n- Modes: `{}`\n- Decimals: `{}`\n- Text measurement: `deterministic`\n- External math host parity: `disabled`\n- Forced ELK fixtures: `{}`\n",
                 fact.command,
                 options.dom_plan.label(),
                 options.dom_decimals,
-                text_measurer,
                 if force_elk_fixture {
                     "enabled"
                 } else {
@@ -344,7 +316,6 @@ fn run_flowchart_compare(
                     reason: reason.to_string(),
                 });
             }
-
             if semantic.family_id() != Some(merman_core::DiagramFamilyId::FLOWCHART) {
                 return Err(format!(
                     "unexpected render family for {}: {}",
@@ -362,7 +333,7 @@ fn run_flowchart_compare(
             if requires_math {
                 return Err(format!(
                     "cannot compare math fixture {}: external host math backend injection is disabled; use the browser qualification lane",
-                    input.stem
+                    input.fixture_path.display()
                 ));
             }
 
@@ -441,7 +412,13 @@ fn run_flowchart_compare(
         |_, _, _| {},
         |state, report, paths, options, failures, notes| {
             state.observed_operations.write_report(report);
-            write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
+            write_compare_result_section(
+                report,
+                options.check_dom,
+                failures,
+                &paths.out_svg_dir,
+                options.upstream_dom_drift_policy,
+            );
             write_notes_section(report, notes);
             if parity_root_requested {
                 state.root_coverage.write_report(report);
@@ -1085,8 +1062,9 @@ mod tests {
             &renderer,
             source,
             svg_request(
-                merman::SvgEnvironment::deterministic()
-                    .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::parity()),
+                merman::SvgEnvironment::deterministic().with_text_measurement_policy(
+                    merman::svg::TextMeasurementPolicy::deterministic(),
+                ),
                 merman_render::LayoutOptions::default(),
                 Some(stem.to_string()),
             ),
@@ -1102,7 +1080,6 @@ mod tests {
                 out_path: Some(root.join("report.md")),
                 check_dom: true,
                 dom_mode: Some("parity".to_string()),
-                flowchart_text_measurer: Some("vendored".to_string()),
                 ..CompareRequest::default()
             },
             fixtures_root: Some(root.join("fixtures")),
@@ -1146,23 +1123,8 @@ mod tests {
         assert_eq!(evidence.selected_fixtures(), 1);
         assert_eq!(evidence.rendered_fixtures(), 0);
         assert_eq!(evidence.comparisons(), 0);
-        assert!(message.contains("cannot compare math fixture math_only"));
+        assert!(message.contains("math_only.mmd"));
         assert!(message.contains("external host math backend injection is disabled"));
-    }
-
-    #[test]
-    fn wrong_family_math_fixture_reports_the_family_error_first() {
-        let temp = tempfile::tempdir().expect("temporary compare root");
-        let fact = flowchart_fact();
-        let source = "sequenceDiagram\n  Alice->>Bob: $$x + y$$\n";
-        write_flowchart_compare_fixture(temp.path(), "wrong_family_math", source, "<svg/>");
-
-        let failure = run_flowchart_compare(fact, flowchart_compare_request(temp.path()))
-            .expect_err("a non-Flowchart fixture must fail family validation");
-        let message = failure.to_string();
-
-        assert!(message.contains("unexpected render family"));
-        assert!(!message.contains("cannot compare math fixture"));
     }
 
     #[test]
@@ -1187,11 +1149,12 @@ mod tests {
         assert_eq!(evidence.selected_fixtures(), 2);
         assert_eq!(evidence.rendered_fixtures(), 1);
         assert_eq!(evidence.comparisons(), 1);
-        assert!(message.contains("cannot compare math fixture b_math"));
+        assert!(message.contains("b_math.mmd"));
+        assert!(message.contains("external host math backend injection is disabled"));
     }
 
     #[test]
-    fn disabled_dom_check_does_not_require_a_math_exception() {
+    fn disabled_dom_check_does_not_activate_the_math_root_exception() {
         let temp = tempfile::tempdir().expect("temporary compare root");
         let fact = flowchart_fact();
         let source = "flowchart LR\n  A --> B\n";

@@ -20,7 +20,7 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
 use merman_render::text::{
-    TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 
 fn state_edge_data_points(svg: &str, edge_id: &str) -> Vec<merman_render::model::LayoutPoint> {
@@ -1484,13 +1484,23 @@ fn state_transition_marker_paints_use_transition_color_before_line_color() {
             );
             let line_document = roxmltree::Document::parse(&line_svg)
                 .expect("valid lineColor State marker SVG XML");
+            let typed_marker_id = line_document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path")
+                        && node.attribute("data-edge") == Some("true")
+                        && node
+                            .attribute("marker-end")
+                            .is_some_and(|value| value.ends_with("_stateDiagram-barbEnd-1)"))
+                })
+                .and_then(|path| path.attribute("marker-end"))
+                .and_then(|value| value.strip_prefix("url(#"))
+                .and_then(|value| value.strip_suffix(')'))
+                .expect("typed State transition marker reference");
             let typed_marker_path = line_document
                 .descendants()
                 .find(|node| {
-                    node.has_tag_name("marker")
-                        && node
-                            .attribute("id")
-                            .is_some_and(|id| id.ends_with("-stateDiagram-barbEnd-1"))
+                    node.has_tag_name("marker") && node.attribute("id") == Some(typed_marker_id)
                 })
                 .and_then(|marker| marker.children().find(|node| node.has_tag_name("path")))
                 .expect("typed State barbEnd marker path");
@@ -3766,7 +3776,7 @@ fn native_state_transition_labels_share_layout_background_and_measured_text_orig
             font_size: f64::from(font_size_px),
             ..TextStyle::default()
         };
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let measurer = DeterministicTextMeasurer::default();
         let measured_text = if expected_lines == 1 {
             "Agjp"
         } else {
@@ -3811,7 +3821,7 @@ fn native_state_transition_labels_share_layout_background_and_measured_text_orig
 fn native_state_transition_asymmetric_bbox_shares_text_background_and_layout_width() {
     #[derive(Default)]
     struct AsymmetricStateTextMeasurer {
-        fallback: VendoredFontMetricsTextMeasurer,
+        fallback: DeterministicTextMeasurer,
     }
 
     impl TextMeasurer for AsymmetricStateTextMeasurer {
@@ -3967,7 +3977,7 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
     }
 
     let long_word = "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW";
-    let spaced_words = "MMMMMMMMMM MMMMMMMMMM";
+    let spaced_words = "MMMMMMMMMMMM MMMMMMMMMMMM";
     let cases = [
         (
             "ordinary-long-word",
@@ -4002,7 +4012,7 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
             true,
         ),
     ];
-    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let measurer = DeterministicTextMeasurer::default();
     let text_style = TextStyle::default();
 
     for (case, source, label_text, contains_space) in cases {
@@ -4164,7 +4174,7 @@ note right of A : terminal note text
 
     let fallback = merman_render::svg::foreign_object_label_fallback_svg_text(
         &svg,
-        &VendoredFontMetricsTextMeasurer::default(),
+        &DeterministicTextMeasurer::default(),
     );
     let document = roxmltree::Document::parse(&fallback).expect("valid fallback State SVG XML");
     let fallback_text = document

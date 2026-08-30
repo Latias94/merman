@@ -122,6 +122,15 @@ inside `SvgRequest` or `AsciiRequest`, while runtime policy, input admission, ca
 monotonic deadline belong to the renderer/request operation. Resource exhaustion and cancellation
 remain distinct errors and neither returns partial output.
 
+The built-in deterministic measurer no longer embeds the bounded browser font tables removed from
+the production closure. It uses font-agnostic Unicode-width and wrapping rules, so geometry may
+change where the previous tables supplied browser-specific advances, kerning, baseline facts, or
+quantization. Treat this as a breaking output change: use a host callback when the final font stack
+is authoritative, and do not copy browser values back into production lookup tables. Swimlane
+identifier tie-breaks are stable UTF-16 code-unit order; locale-sensitive coordinate differences for
+mixed-case, accented, or non-Latin identifiers are a documented browser residual rather than an
+ICU runtime dependency.
+
 Development snapshots briefly exposed renderer-internal theme proof ledgers through types such as
 `RootThemeMechanismKey`, `RootThemeMechanismEvidence`, `RootThemeResidual`, `RootThemeReport`, and
 `FamilyRenderReport`, and exposed them through output accessors such as `family_report()`. Those

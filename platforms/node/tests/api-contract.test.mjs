@@ -296,7 +296,7 @@ function runtimeCatalog(overrides = {}) {
       system_adapter_ids: [],
       text_measurement: {
         protocol_version: TEXT_MEASUREMENT_PROTOCOL_VERSION,
-        provider_ids: ["vendored"],
+        provider_ids: ["deterministic"],
       },
     },
     output_contracts: [{
@@ -1112,14 +1112,14 @@ test("runtime catalog validates text measurement and resource local relations", 
   delete missingProtocol.capabilities.text_measurement.protocol_version;
   invalidCatalogs.push(missingProtocol);
 
-  const missingVendored = runtimeCatalog();
-  missingVendored.capabilities.text_measurement.provider_ids = ["host-callback"];
-  invalidCatalogs.push(missingVendored);
+  const missingDeterministic = runtimeCatalog();
+  missingDeterministic.capabilities.text_measurement.provider_ids = ["host-callback"];
+  invalidCatalogs.push(missingDeterministic);
 
   const uncallableHostCallback = runtimeCatalog();
   uncallableHostCallback.capabilities.text_measurement.provider_ids = [
+    "deterministic",
     "host-callback",
-    "vendored",
   ];
   invalidCatalogs.push(uncallableHostCallback);
 
@@ -1279,7 +1279,7 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
     }],
     future_service_metadata: true,
   }];
-  additive.capabilities.text_measurement.provider_ids = ["future-provider", "vendored"];
+  additive.capabilities.text_measurement.provider_ids = ["deterministic", "future-provider"];
   additive.future_root = { preserved: true };
   const additiveFactory = transportFactory({
     runtimeCatalogJson() {
@@ -1436,8 +1436,8 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
     resource_limits: [],
   }];
   unsupportedKnownService.capabilities.text_measurement.provider_ids = [
+    "deterministic",
     "host-callback",
-    "vendored",
   ];
   invalidCatalogs.push(unsupportedKnownService);
 
@@ -1503,8 +1503,8 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
     },
   ];
   duplicateProviderOwner.capabilities.text_measurement.provider_ids = [
+    "deterministic",
     "future-provider",
-    "vendored",
   ];
   invalidCatalogs.push(duplicateProviderOwner);
 
@@ -1512,7 +1512,7 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   pipelineProviderOwnedByService.constructor_service_ids = ["future-service"];
   pipelineProviderOwnedByService.constructor_service_contracts = [{
     id: "future-service",
-    provided_text_measurement_provider_ids: ["vendored"],
+    provided_text_measurement_provider_ids: ["deterministic"],
     resource_limits: [],
   }];
   invalidCatalogs.push(pipelineProviderOwnedByService);
@@ -1641,6 +1641,8 @@ test("public TypeScript declarations cover the generic operation API", () => {
     /export declare class MermanEngine\s*{[^}]*private constructor\(\);/s,
   );
   assert.doesNotMatch(declarations, /"deterministic"\s*\|\s*"native"/);
+  assert.match(declarations, /text_measurement\?:\s*"deterministic"/);
+  assert.doesNotMatch(declarations, /text_measurement[^;]*(?:"vendored"|"parity")/);
   assert.match(declarations, /class MermanInvalidTransportError extends MermanError/);
   assert.match(declarations, /type MermanResourceCount\s*=\s*number\s*\|\s*string/);
   assert.match(declarations, /readonly actual:\s*MermanResourceCount/);
@@ -1718,12 +1720,18 @@ test("binding options preserve the shared profile vocabulary and reject host mea
     () => normalizeBindingOptions({ runtime_policy: "native" }),
     /runtime_policy.*deterministic/i,
   );
-  for (const textMeasurement of ["vendored", "parity", "deterministic"]) {
-    assert.equal(
-      normalizeBindingOptions({
+  assert.equal(
+    normalizeBindingOptions({
+      environment: { text_measurement: "deterministic" },
+    }).environment.text_measurement,
+    "deterministic",
+  );
+  for (const textMeasurement of ["vendored", "parity"]) {
+    assert.throws(
+      () => normalizeBindingOptions({
         environment: { text_measurement: textMeasurement },
-      }).environment.text_measurement,
-      textMeasurement,
+      }),
+      /environment\.text_measurement.*deterministic/i,
     );
   }
   assert.throws(

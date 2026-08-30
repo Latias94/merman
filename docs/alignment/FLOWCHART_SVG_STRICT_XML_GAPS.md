@@ -23,8 +23,8 @@ numeric rounding.
 
 ## Debug workflow
 
-1. Ensure local `.svg` exists under `target/compare/flowchart` using the vendored text measurer:
-   - `cargo run -p xtask -- compare-flowchart-svgs --text-measurer vendored --filter <fixture> --out target/compare/flowchart_report.md`
+1. Ensure local `.svg` exists under `target/compare/flowchart` using the built-in deterministic text measurer:
+   - `cargo run -p xtask -- compare-flowchart-svgs --filter <fixture> --out target/compare/flowchart_report.md`
 2. Decode and compare `data-points` for a single edge:
    - `cargo run -p xtask -- debug-svg-data-points --svg <local.svg> --other <upstream.svg> --id <edge-id>`
 3. Compare normalized node, label, and cluster structure:

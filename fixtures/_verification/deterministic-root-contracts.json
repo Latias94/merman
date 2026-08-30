@@ -2,20 +2,8 @@
   "schema_version": 1,
   "mermaid_version": "11.16.1",
   "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-  "comparison_revision": "root-viewport-contract-v1",
+  "comparison_revision": "root-viewport-contract-v2",
   "entries": [
-    {
-      "diagram": "architecture",
-      "fixture": "probe_architecture_icontext_anchor_b_mix_992",
-      "input_sha256": "3bf1d1ac295dc82d6ce49e4db5c125697ca794791c8f82483c40eb2b73635962",
-      "upstream_svg_sha256": "8bd5607997ebbca56e4bebf6a069fc462a449c9f29a7811076e4498687397d60",
-      "root": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.1875",
-        "width": "100%",
-        "height": null
-      }
-    },
     {
       "diagram": "error",
       "fixture": "basic",
@@ -24,18 +12,6 @@
       "root": {
         "style": "max-width: 512px;",
         "view_box": "0 0 2412 512",
-        "width": "100%",
-        "height": null
-      }
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "basic",
-      "input_sha256": "cbd5654e3f6524e99184339bbdac7673110e50818e10446b7fe51e6dcfcd86b7",
-      "upstream_svg_sha256": "758cebe94a7d97eb8bc603cfa73d454e4f52f66fe12d726353d18d83c508d703",
-      "root": {
-        "style": "max-width: 232.094px; background-color: white;",
-        "view_box": "0 0 232.09375 350.109375",
         "width": "100%",
         "height": null
       }
@@ -77,18 +53,6 @@
       }
     },
     {
-      "diagram": "requirement",
-      "fixture": "upstream_cypress_requirementdiagram_unified_spec_example_006",
-      "input_sha256": "b2736f3e40cf32497c5ed1eb06263efde26f7f7b06bbc06a807d3c4a9b520917",
-      "upstream_svg_sha256": "a7d8aee8c17371cf3f5e73ffd132dd5b9335ca0983e555db32ef80c66c32b43c",
-      "root": {
-        "style": "max-width: 323.891px; background-color: white;",
-        "view_box": "0 0 323.890625 84",
-        "width": "100%",
-        "height": null
-      }
-    },
-    {
       "diagram": "sankey",
       "fixture": "upstream_cypress_sankey_spec_should_center_nodes_009",
       "input_sha256": "e1d8f82baf647d69aabda28b07633f8cca7a8c1096a98f3b12daaa357aa0767b",
@@ -98,30 +62,6 @@
         "view_box": "0 0 410 400",
         "width": "410",
         "height": "400"
-      }
-    },
-    {
-      "diagram": "sequence",
-      "fixture": "basic",
-      "input_sha256": "0d3748a616ea44aaf8319e6abf4ae4f648699a1679f2c45b9c239cb58bdeccb1",
-      "upstream_svg_sha256": "67a01b215e244c9d9635ba3e4db6639617ce892016fe30a2903f152b9e7b2c70",
-      "root": {
-        "style": "max-width: 450px; background-color: white;",
-        "view_box": "-50 -10 450 259",
-        "width": "100%",
-        "height": null
-      }
-    },
-    {
-      "diagram": "state",
-      "fixture": "basic",
-      "input_sha256": "f263bae92d7767b33fcb22f7fc5b8bda74054749c7c0eb1be46f23532700988e",
-      "upstream_svg_sha256": "de119d65bf2b8031f13fcd601e26c9207df7c0e7be0e4a58ac7eb1cf12958118",
-      "root": {
-        "style": "max-width: 100.125px; background-color: white;",
-        "view_box": "0 0 100.125 298",
-        "width": "100%",
-        "height": null
       }
     }
   ]

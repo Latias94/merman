@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": -0.5,
         "min_y": 0.0,
-        "max_x": 136.32,
+        "max_x": 142.72,
         "max_y": 138.0
       },
-      "total_width": 136.32,
+      "total_width": 142.72,
       "total_height": 138.0,
       "row_indent": 10.0,
       "padding_x": 5.0,
@@ -40,11 +40,11 @@
           "depth": 1.0,
           "x": 15.0,
           "y": 27.6,
-          "width": 94.0,
+          "width": 100.4,
           "height": 27.6,
           "label_x": 20.0,
           "label_y": 41.4,
-          "label_width": 84.0,
+          "label_width": 90.4,
           "label_height": 17.6
         },
         {
@@ -55,11 +55,11 @@
           "depth": 2.0,
           "x": 30.0,
           "y": 55.2,
-          "width": 81.84,
+          "width": 88.24,
           "height": 27.6,
           "label_x": 35.0,
           "label_y": 69.0,
-          "label_width": 71.84,
+          "label_width": 78.24,
           "label_height": 17.6
         },
         {
@@ -70,11 +70,11 @@
           "depth": 3.0,
           "x": 45.0,
           "y": 82.8,
-          "width": 36.24,
+          "width": 42.64,
           "height": 27.6,
           "label_x": 50.0,
           "label_y": 96.6,
-          "label_width": 26.24,
+          "label_width": 32.64,
           "label_height": 17.6
         },
         {
@@ -85,11 +85,11 @@
           "depth": 2.0,
           "x": 30.0,
           "y": 110.4,
-          "width": 106.32,
+          "width": 112.72,
           "height": 27.6,
           "label_x": 35.0,
           "label_y": 124.2,
-          "label_width": 96.32,
+          "label_width": 102.72,
           "label_height": 17.6
         }
       ],

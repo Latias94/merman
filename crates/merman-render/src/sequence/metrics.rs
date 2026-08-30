@@ -807,22 +807,23 @@ mod tests {
                 &config,
                 Some(&renderer),
                 super::SequenceMathHeightMode::Draw,
-            );
-            let prepared = backend
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .expect("measure diagnostic Sequence math");
+            let prepared_outcome = backend
                 .prepare(
                     PrepareMathLabelRequest::sequence(text, &config, &style, "#333333")
                         .with_text_measurer(&measurer),
                     &meter,
                 )
-                .expect("prepare diagnostic math")
-                .prepared()
-                .and_then(|prepared| {
-                    super::measure_prepared_sequence_math_label(
-                        Some(prepared),
-                        &style,
-                        super::SequenceMathHeightMode::Draw,
-                    )
-                });
+                .expect("prepare diagnostic math");
+            let prepared = super::measure_prepared_sequence_math_label(
+                prepared_outcome.prepared(),
+                &style,
+                super::SequenceMathHeightMode::Draw,
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .expect("measure prepared Sequence math");
 
             assert_eq!(
                 prepared.map(|(_, height)| height),
@@ -835,7 +836,7 @@ mod tests {
     #[cfg(feature = "math")]
     #[test]
     fn sequence_math_measurement_handles_multiple_formulas_on_one_line() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let renderer = crate::math::RatexMathRenderer;
         let config = merman_core::MermaidConfig::default();
         let style = crate::text::TextStyle::default();
@@ -860,7 +861,7 @@ mod tests {
     #[cfg(feature = "math")]
     #[test]
     fn sequence_math_measurement_ignores_unclosed_delimiters_on_plain_lines() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let renderer = crate::math::RatexMathRenderer;
         let config = merman_core::MermaidConfig::default();
         let style = crate::text::TextStyle::default();

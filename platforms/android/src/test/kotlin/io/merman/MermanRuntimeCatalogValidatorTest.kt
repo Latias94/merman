@@ -299,6 +299,11 @@ class MermanRuntimeCatalogValidatorTest {
                     .put("protocol_version", MermanTextMeasurementOperation.PROTOCOL_VERSION)
                     .put("provider_ids", "invalid"),
             ),
+            validCatalog().withTextMeasurement(
+                JSONObject()
+                    .put("protocol_version", MermanTextMeasurementOperation.PROTOCOL_VERSION)
+                    .put("provider_ids", JSONArray().put("host-callback")),
+            ),
             validCatalog().withTextMeasurement("invalid"),
             validCatalog().withTextMeasurement(JSONObject.NULL),
         )
@@ -330,7 +335,7 @@ class MermanRuntimeCatalogValidatorTest {
             .constructorServiceCandidateIds
             .sorted()
         val providerIds = buildSet {
-            add("vendored")
+            add("deterministic")
             serviceIds.forEach { id ->
                 addAll(
                     MERMAN_BINDING_CONSTRUCTOR_SERVICE_SPECS

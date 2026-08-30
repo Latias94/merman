@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use super::diagrams::compare_diagram_request;
 use super::{
     AcceptedResidualPolicy, CompareEvidence, CompareRequest, CompareRunResult,
-    RootDeltaReportLimit, diagram_supports_root_delta_report, dom_mode_label,
-    parse_root_delta_report_limit,
+    RootDeltaReportLimit, UpstreamDomDriftPolicy, diagram_has_browser_text_layout_residuals,
+    diagram_supports_root_delta_report, dom_mode_label, parse_root_delta_report_limit,
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -56,7 +56,7 @@ struct CompareAllOptions {
     dom_modes: Vec<crate::svgdom::DomMode>,
     dom_decimals: Option<u32>,
     filter: Option<String>,
-    flowchart_text_measurer: Option<String>,
+    upstream_dom_drift_policy: UpstreamDomDriftPolicy,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
     only_diagrams: Vec<String>,
@@ -95,10 +95,9 @@ impl CompareAllOptions {
                     i += 1;
                     options.filter = args.get(i).map(|s| s.to_string());
                 }
-                "--flowchart-text-measurer" => {
-                    i += 1;
-                    options.flowchart_text_measurer =
-                        args.get(i).map(|s| s.trim().to_ascii_lowercase());
+                "--diagnostic-browser-text-layout" => {
+                    options.upstream_dom_drift_policy =
+                        UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts;
                 }
                 "--report-root" => options.report_root = true,
                 "--report-root-all" => {
@@ -144,7 +143,7 @@ impl CompareAllOptions {
             dom_modes: &self.dom_modes,
             dom_decimals: self.dom_decimals,
             filter: self.filter.as_deref(),
-            flowchart_text_measurer: self.flowchart_text_measurer.as_deref(),
+            upstream_dom_drift_policy: self.upstream_dom_drift_policy,
             report_root: self.report_root,
             root_report_limit: self.root_report_limit,
         }
@@ -262,7 +261,7 @@ struct CompareAllInvocationOptions<'a> {
     dom_modes: &'a [crate::svgdom::DomMode],
     dom_decimals: Option<u32>,
     filter: Option<&'a str>,
-    flowchart_text_measurer: Option<&'a str>,
+    upstream_dom_drift_policy: UpstreamDomDriftPolicy,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
 }
@@ -285,8 +284,15 @@ impl CompareAllInvocationOptions<'_> {
         let report_path = report_mode.and_then(|mode| {
             (!mode.is_empty()).then(|| compare_dir.join(format!("{diagram}_report_{mode}.md")))
         });
-        let is_flowchart = diagram == "flowchart";
         let supports_root_report = diagram_supports_root_delta_report(diagram);
+        let upstream_dom_drift_policy = if self.upstream_dom_drift_policy
+            == UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+            && diagram_has_browser_text_layout_residuals(diagram)
+        {
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+        } else {
+            UpstreamDomDriftPolicy::Blocking
+        };
         let request = CompareRequest {
             out_path: report_path.clone(),
             filter: self.filter.map(str::to_string),
@@ -298,15 +304,12 @@ impl CompareAllInvocationOptions<'_> {
             root_report_limit: supports_root_report
                 .then_some(self.root_report_limit)
                 .flatten(),
-            flowchart_text_measurer: is_flowchart
-                .then_some(self.flowchart_text_measurer)
-                .flatten()
-                .map(str::to_string),
             accepted_residual_policy: if matches!(diagram, "c4" | "class" | "ishikawa" | "venn") {
                 AcceptedResidualPolicy::ScopedDomEvidenceCatalog
             } else {
                 AcceptedResidualPolicy::None
             },
+            upstream_dom_drift_policy,
         };
 
         DiagramCompareInvocation {
@@ -379,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_all_options_parse_common_flags_without_tightening_legacy_inputs() {
+    fn compare_all_options_parse_common_flags_with_deterministic_measurement() {
         let options = CompareAllOptions::parse(vec![
             "--check-dom".to_string(),
             "--dom-mode".to_string(),
@@ -388,8 +391,7 @@ mod tests {
             "nope".to_string(),
             "--filter".to_string(),
             "upstream_info_spec".to_string(),
-            "--flowchart-text-measurer".to_string(),
-            " BROWSER ".to_string(),
+            "--diagnostic-browser-text-layout".to_string(),
             "--report-root-limit".to_string(),
             "7".to_string(),
             "--diagram".to_string(),
@@ -403,7 +405,10 @@ mod tests {
         assert_eq!(options.dom_mode.as_deref(), Some("parity-root"));
         assert_eq!(options.dom_decimals, None);
         assert_eq!(options.filter.as_deref(), Some("upstream_info_spec"));
-        assert_eq!(options.flowchart_text_measurer.as_deref(), Some("browser"));
+        assert_eq!(
+            options.upstream_dom_drift_policy,
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+        );
         assert!(options.report_root);
         assert_eq!(
             options.root_report_limit,
@@ -467,26 +472,6 @@ mod tests {
             CompareAllOptions::parse(vec!["--dom-mode".to_string(), "unknown".to_string(),])
                 .is_err()
         );
-    }
-
-    #[test]
-    fn compare_all_invocation_passes_flowchart_text_measurement_only_to_flowchart() {
-        let options = CompareAllOptions {
-            filter: Some("elk_probe".to_string()),
-            flowchart_text_measurer: Some("vendored".to_string()),
-            ..Default::default()
-        };
-        let invocation = options.invocation_options();
-        let compare_dir = Path::new("target/compare");
-
-        let flowchart = invocation.for_diagram("flowchart", compare_dir);
-        assert_eq!(
-            flowchart.request.flowchart_text_measurer.as_deref(),
-            Some("vendored")
-        );
-
-        let info = invocation.for_diagram("info", compare_dir);
-        assert!(info.request.flowchart_text_measurer.is_none());
     }
 
     #[test]
@@ -571,6 +556,46 @@ mod tests {
                 .accepted_residual_policy,
             AcceptedResidualPolicy::ScopedDomEvidenceCatalog
         );
+    }
+
+    #[test]
+    fn browser_text_layout_drift_is_diagnostic_only_for_source_backed_families() {
+        let options = CompareAllOptions {
+            upstream_dom_drift_policy: UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+            ..Default::default()
+        };
+        let invocation = options.invocation_options();
+        let compare_dir = Path::new("target/compare");
+
+        for diagram in [
+            "architecture",
+            "class",
+            "flowchart",
+            "gantt",
+            "journey",
+            "sequence",
+            "timeline",
+            "treemap",
+        ] {
+            assert_eq!(
+                invocation
+                    .for_diagram(diagram, compare_dir)
+                    .request
+                    .upstream_dom_drift_policy,
+                UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+                "diagram={diagram}"
+            );
+        }
+        for diagram in ["info", "requirement", "state", "treeView"] {
+            assert_eq!(
+                invocation
+                    .for_diagram(diagram, compare_dir)
+                    .request
+                    .upstream_dom_drift_policy,
+                UpstreamDomDriftPolicy::Blocking,
+                "diagram={diagram}"
+            );
+        }
     }
 
     #[test]
@@ -796,31 +821,6 @@ mod tests {
         assert_eq!(
             invocation.report_path.as_deref(),
             Some(expected_report.as_path())
-        );
-    }
-
-    #[test]
-    fn compare_invocation_adds_flowchart_text_measurer_only_for_flowchart() {
-        let compare_dir = Path::new("target/compare");
-        let options = CompareAllInvocationOptions {
-            flowchart_text_measurer: Some("browser"),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            options
-                .for_diagram("flowchart", compare_dir)
-                .request
-                .flowchart_text_measurer
-                .as_deref(),
-            Some("browser")
-        );
-        assert!(
-            options
-                .for_diagram("state", compare_dir)
-                .request
-                .flowchart_text_measurer
-                .is_none()
         );
     }
 

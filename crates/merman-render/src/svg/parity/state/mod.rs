@@ -35,7 +35,7 @@ type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
 type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
 type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
 
-fn state_transition_marker_id(diagram_id: &str, ordinal: usize) -> String {
+fn state_transition_marker_id(diagram_id: impl SvgDiagramIdValue, ordinal: usize) -> String {
     format!("{diagram_id}_stateDiagram-barbEnd-{ordinal}")
 }
 

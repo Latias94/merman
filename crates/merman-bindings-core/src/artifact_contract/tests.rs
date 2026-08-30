@@ -674,7 +674,7 @@ fn unadvertised_constructor_service_is_rejected() {
 #[cfg(feature = "svg")]
 #[test]
 fn operations_and_services_derive_text_measurement_providers() {
-    const VENDORED_ONLY: ValidatedArtifactContract =
+    const DETERMINISTIC_ONLY: ValidatedArtifactContract =
         ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_operations(&[OperationKey::Svg])
             .materialize();
@@ -690,25 +690,25 @@ fn operations_and_services_derive_text_measurement_providers() {
             .materialize();
 
     assert_eq!(
-        VENDORED_ONLY
+        DETERMINISTIC_ONLY
             .text_measurement_provider_keys()
             .collect::<Vec<_>>(),
-        [TextMeasurementProviderKey::Vendored]
+        [TextMeasurementProviderKey::Deterministic]
     );
     assert_eq!(
         WITH_HOST
             .text_measurement_provider_keys()
             .collect::<Vec<_>>(),
         [
+            TextMeasurementProviderKey::Deterministic,
             TextMeasurementProviderKey::HostCallback,
-            TextMeasurementProviderKey::Vendored,
         ]
     );
     assert_eq!(
         WITH_ICONS
             .text_measurement_provider_keys()
             .collect::<Vec<_>>(),
-        [TextMeasurementProviderKey::Vendored]
+        [TextMeasurementProviderKey::Deterministic]
     );
 }
 
@@ -732,7 +732,7 @@ fn compiled_prerequisites_enable_the_pipeline_without_advertising_its_output() {
         PNG_CONTRACT
             .text_measurement_provider_keys()
             .collect::<Vec<_>>(),
-        [TextMeasurementProviderKey::Vendored]
+        [TextMeasurementProviderKey::Deterministic]
     );
 }
 

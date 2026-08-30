@@ -547,7 +547,12 @@ pub(super) fn render_state_edge_path(
             .edge(edge.id.as_str())
             .filter(|style| !style.marker_style_attr().is_empty())
             .and_then(crate::state::StateEdgeStylePlan::marker_ordinal)
-            .map(|ordinal| format!("url(#{}_stateDiagram-barbEnd-{ordinal})", ctx.diagram_id))
+            .map(|ordinal| {
+                format!(
+                    "url(#{})",
+                    super::state_transition_marker_id(ctx.diagram_id, ordinal)
+                )
+            })
             .or_else(|| Some(format!("url(#{}_stateDiagram-barbEnd)", ctx.diagram_id))),
         _ => None,
     };

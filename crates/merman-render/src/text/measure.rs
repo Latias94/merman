@@ -7,7 +7,7 @@
 //! a [`crate::environment::TextMeasurementPolicy`] on the operation-owned
 //! [`crate::environment::RenderEnvironment`]. Fallible host callbacks should implement
 //! [`crate::environment::HostTextMeasurer`] instead; the environment's phase policy owns their
-//! vendored fallback and records its provenance.
+//! deterministic fallback and records its provenance.
 
 use super::{TextMetrics, TextStyle, WrapMode};
 
@@ -24,7 +24,7 @@ pub(crate) const MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX: f64 = 200.0;
 /// layout can ask for the same label in several wrap modes while computing nodes, edges, and final
 /// SVG.
 ///
-/// The default vendored measurer optimizes for Mermaid fixture parity and a light dependency graph.
+/// The default deterministic measurer provides portable, bounded heuristics without font assets.
 /// A host-provided measurer can instead use platform text APIs, a UI toolkit text system, or an
 /// optional font engine while preserving the rest of merman's parser/layout/render pipeline.
 pub trait TextMeasurer {
@@ -168,7 +168,7 @@ pub trait TextMeasurer {
     /// negative, so browser-backed hosts should implement this operation directly.
     fn measure_svg_create_text_bbox_y_offset_px(&self, _text: &str, _style: &TextStyle) -> f64 {
         // No font-independent y offset exists. Profiles without this operation return the neutral
-        // baseline; operation-owned vendored and host profiles provide the real DOM fact.
+        // baseline; operation-owned deterministic and host profiles provide the real DOM fact.
         0.0
     }
 

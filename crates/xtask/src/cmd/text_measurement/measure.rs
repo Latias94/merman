@@ -1,4 +1,4 @@
-//! Text measurement diagnostics for the host and vendored profile implementations.
+//! Diagnostics for the built-in deterministic text measurer.
 
 use crate::XtaskError;
 
@@ -11,7 +11,6 @@ pub(crate) fn measure_text(args: Vec<String>) -> Result<(), XtaskError> {
     let mut font_weight: Option<String> = None;
     let mut wrap_mode: String = "svg".to_string();
     let mut max_width: Option<f64> = None;
-    let mut measurer: String = "vendored".to_string();
     let mut svg_bbox_x: bool = false;
     let mut svg_computed_length: bool = false;
     let mut svg_simple_bbox_width: bool = false;
@@ -50,13 +49,6 @@ pub(crate) fn measure_text(args: Vec<String>) -> Result<(), XtaskError> {
                 i += 1;
                 max_width = args.get(i).and_then(|s| s.parse::<f64>().ok());
             }
-            "--measurer" => {
-                i += 1;
-                measurer = args
-                    .get(i)
-                    .map(|s| s.trim().to_ascii_lowercase())
-                    .unwrap_or_else(|| "vendored".to_string());
-            }
             "--svg-bbox-x" => svg_bbox_x = true,
             "--svg-computed-length" => svg_computed_length = true,
             "--svg-simple-bbox-width" => svg_simple_bbox_width = true,
@@ -86,27 +78,13 @@ pub(crate) fn measure_text(args: Vec<String>) -> Result<(), XtaskError> {
         font_style: None,
     };
 
-    let metrics = if matches!(
-        measurer.as_str(),
-        "deterministic" | "deterministic-text" | "deterministic-text-measurer"
-    ) {
-        let m = merman_render::text::DeterministicTextMeasurer::default();
-        if markdown {
-            merman_render::text::measure_markdown_with_inline_styles(
-                &m, &text, &style, max_width, wrap_mode,
-            )
-        } else {
-            m.measure_wrapped(&text, &style, max_width, wrap_mode)
-        }
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let metrics = if markdown {
+        merman_render::text::measure_markdown_with_inline_styles(
+            &measurer, &text, &style, max_width, wrap_mode,
+        )
     } else {
-        let m = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-        if markdown {
-            merman_render::text::measure_markdown_with_inline_styles(
-                &m, &text, &style, max_width, wrap_mode,
-            )
-        } else {
-            m.measure_wrapped(&text, &style, max_width, wrap_mode)
-        }
+        measurer.measure_wrapped(&text, &style, max_width, wrap_mode)
     };
 
     println!("text: {:?}", text);
@@ -119,44 +97,17 @@ pub(crate) fn measure_text(args: Vec<String>) -> Result<(), XtaskError> {
     println!("height: {}", metrics.height);
     println!("line_count: {}", metrics.line_count);
     if svg_bbox_x {
-        let (left, right) = if matches!(
-            measurer.as_str(),
-            "deterministic" | "deterministic-text" | "deterministic-text-measurer"
-        ) {
-            let m = merman_render::text::DeterministicTextMeasurer::default();
-            m.measure_svg_text_bbox_x(&text, &style)
-        } else {
-            let m = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-            m.measure_svg_text_bbox_x(&text, &style)
-        };
+        let (left, right) = measurer.measure_svg_text_bbox_x(&text, &style);
         println!("svg_bbox_x_left: {}", left);
         println!("svg_bbox_x_right: {}", right);
         println!("svg_bbox_x_width: {}", left + right);
     }
     if svg_computed_length {
-        let w = if matches!(
-            measurer.as_str(),
-            "deterministic" | "deterministic-text" | "deterministic-text-measurer"
-        ) {
-            let m = merman_render::text::DeterministicTextMeasurer::default();
-            m.measure_svg_text_computed_length_px(&text, &style)
-        } else {
-            let m = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-            m.measure_svg_text_computed_length_px(&text, &style)
-        };
+        let w = measurer.measure_svg_text_computed_length_px(&text, &style);
         println!("svg_computed_length: {}", w);
     }
     if svg_simple_bbox_width {
-        let w = if matches!(
-            measurer.as_str(),
-            "deterministic" | "deterministic-text" | "deterministic-text-measurer"
-        ) {
-            let m = merman_render::text::DeterministicTextMeasurer::default();
-            m.measure_svg_simple_text_bbox_width_px(&text, &style)
-        } else {
-            let m = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-            m.measure_svg_simple_text_bbox_width_px(&text, &style)
-        };
+        let w = measurer.measure_svg_simple_text_bbox_width_px(&text, &style);
         println!("svg_simple_bbox_width: {}", w);
     }
 

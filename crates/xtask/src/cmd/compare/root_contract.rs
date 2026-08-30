@@ -7,9 +7,22 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 const SCHEMA_VERSION: u32 = 1;
-const COMPARISON_REVISION: &str = "root-viewport-contract-v1";
+const COMPARISON_REVISION: &str = "root-viewport-contract-v2";
 const CATALOG_RELATIVE_PATH: &str = "_verification/deterministic-root-contracts.json";
 const ROOT_RELATION_EPSILON_PX: f64 = 0.01;
+const MEASUREMENT_INDEPENDENT_EXACT_ROOTS: [(&str, &str); 5] = [
+    ("error", "basic"),
+    ("info", "upstream_info_show_info_spec"),
+    ("journey", "upstream_section_only"),
+    (
+        "packet",
+        "upstream_cypress_packet_spec_should_render_a_simple_packet_diagram_002",
+    ),
+    (
+        "sankey",
+        "upstream_cypress_sankey_spec_should_center_nodes_009",
+    ),
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -218,6 +231,12 @@ fn validate_deterministic_root_catalog(catalog: &DeterministicRootCatalog) -> Re
         if !primary_diagrams.contains(entry.diagram.as_str()) {
             return Err(format!(
                 "deterministic root {}/{} names a non-primary diagram",
+                entry.diagram, entry.fixture
+            ));
+        }
+        if !MEASUREMENT_INDEPENDENT_EXACT_ROOTS.contains(&key) {
+            return Err(format!(
+                "deterministic root {}/{} is not admitted as measurement-independent exact evidence",
                 entry.diagram, entry.fixture
             ));
         }
@@ -472,13 +491,31 @@ mod tests {
     #[test]
     fn deterministic_contract_catalog_is_bound_to_live_inputs_and_upstream_roots() {
         let catalog = load_deterministic_root_catalog().expect("deterministic root catalog");
-        assert_eq!(catalog.entries.len(), 10);
-        assert!(
-            catalog
-                .entries
-                .iter()
-                .any(|entry| entry.diagram == "flowchart" && entry.fixture == "basic")
-        );
+        let keys = catalog
+            .entries
+            .iter()
+            .map(|entry| (entry.diagram.as_str(), entry.fixture.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(keys, MEASUREMENT_INDEPENDENT_EXACT_ROOTS);
+
+        for removed in [
+            (
+                "architecture",
+                "probe_architecture_icontext_anchor_b_mix_992",
+            ),
+            ("flowchart", "basic"),
+            (
+                "requirement",
+                "upstream_cypress_requirementdiagram_unified_spec_example_006",
+            ),
+            ("sequence", "basic"),
+            ("state", "basic"),
+        ] {
+            assert!(
+                !keys.contains(&removed),
+                "measurement-sensitive exact root {removed:?}"
+            );
+        }
 
         let mut drifted = catalog.clone();
         drifted.entries[0].input_sha256 = "0".repeat(64);

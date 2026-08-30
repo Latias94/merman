@@ -1,5 +1,5 @@
 use super::config::SwimlaneConfig;
-use super::mermaid_identifier_locale_cmp;
+use super::deterministic_identifier_cmp;
 use super::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::model::SwimlaneDirection;
 use std::cmp::Ordering;
@@ -79,8 +79,8 @@ fn weighted_lane_edges(layout: &WorkingLayout) -> Vec<WeightedLaneEdge> {
         })
         .collect();
     output.sort_by(|a, b| {
-        mermaid_identifier_locale_cmp(&a.left, &b.left)
-            .then_with(|| mermaid_identifier_locale_cmp(&a.right, &b.right))
+        deterministic_identifier_cmp(&a.left, &b.left)
+            .then_with(|| deterministic_identifier_cmp(&a.right, &b.right))
     });
     output
 }
@@ -233,8 +233,8 @@ fn remove_cycles(layout: &WorkingLayout) -> CycleResult {
         indices.sort_by(|left, right| {
             let a = &edges[*left];
             let b = &edges[*right];
-            mermaid_identifier_locale_cmp(&a.to, &b.to)
-                .then_with(|| mermaid_identifier_locale_cmp(&a.id, &b.id))
+            deterministic_identifier_cmp(&a.to, &b.to)
+                .then_with(|| deterministic_identifier_cmp(&a.id, &b.id))
         });
     }
 
@@ -262,7 +262,7 @@ fn remove_cycles(layout: &WorkingLayout) -> CycleResult {
     }
 
     let mut node_ids: Vec<&str> = layout.nodes.keys().map(String::as_str).collect();
-    node_ids.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
+    node_ids.sort_by(|left, right| deterministic_identifier_cmp(left, right));
     let mut colors = HashMap::new();
     let mut reversed_indices = HashSet::new();
     for id in node_ids {
@@ -303,29 +303,9 @@ fn successor_map(
             .push(edge.to.clone());
     }
     for values in successors.values_mut() {
-        values.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
+        values.sort_by(|left, right| deterministic_identifier_cmp(left, right));
     }
     successors
-}
-
-/// JavaScript's relational string operators compare UTF-16 code units, rather
-/// than Unicode scalar values. Mermaid's single-node Kahn queue insertion uses
-/// that operator after the initial `localeCompare` sort, so keep this boundary
-/// explicit instead of relying on Rust's `str::cmp`.
-fn javascript_utf16_cmp(left: &str, right: &str) -> Ordering {
-    let mut left_units = left.encode_utf16();
-    let mut right_units = right.encode_utf16();
-    loop {
-        match (left_units.next(), right_units.next()) {
-            (Some(left), Some(right)) => match left.cmp(&right) {
-                Ordering::Equal => continue,
-                ordering => return ordering,
-            },
-            (None, Some(_)) => return Ordering::Less,
-            (Some(_), None) => return Ordering::Greater,
-            (None, None) => return Ordering::Equal,
-        }
-    }
 }
 
 fn indegrees(
@@ -347,7 +327,7 @@ fn topo_order(layout: &WorkingLayout, edges: &[WorkingEdge], by_generation: bool
         .filter(|(_, degree)| **degree == 0)
         .map(|(id, _)| id.clone())
         .collect();
-    frontier.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
+    frontier.sort_by(|left, right| deterministic_identifier_cmp(left, right));
     let mut output = Vec::with_capacity(layout.nodes.len());
 
     while !frontier.is_empty() {
@@ -368,13 +348,10 @@ fn topo_order(layout: &WorkingLayout, edges: &[WorkingEdge], by_generation: bool
                     if by_generation {
                         next.push(successor.clone());
                     } else {
-                        // This intentionally mirrors `queue[i] < v` in
-                        // Mermaid's topo helper, which is a UTF-16 relational
-                        // comparison rather than another localeCompare call.
                         let insertion = frontier
                             .iter()
                             .position(|candidate| {
-                                !javascript_utf16_cmp(candidate, successor).is_lt()
+                                !deterministic_identifier_cmp(candidate, successor).is_lt()
                             })
                             .unwrap_or(frontier.len());
                         frontier.insert(insertion, successor.clone());
@@ -383,7 +360,7 @@ fn topo_order(layout: &WorkingLayout, edges: &[WorkingEdge], by_generation: bool
             }
         }
         if by_generation {
-            next.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
+            next.sort_by(|left, right| deterministic_identifier_cmp(left, right));
             frontier = next;
         }
     }
@@ -392,7 +369,7 @@ fn topo_order(layout: &WorkingLayout, edges: &[WorkingEdge], by_generation: bool
         output
     } else {
         let mut fallback: Vec<String> = layout.nodes.keys().cloned().collect();
-        fallback.sort_by(|left, right| mermaid_identifier_locale_cmp(left, right));
+        fallback.sort_by(|left, right| deterministic_identifier_cmp(left, right));
         fallback
     }
 }
@@ -654,7 +631,7 @@ fn optimize_ranks_by_crossings(
                 .copied()
                 .unwrap_or(0)
                 .cmp(&rank_of.get(left).copied().unwrap_or(0))
-                .then_with(|| mermaid_identifier_locale_cmp(left, right))
+                .then_with(|| deterministic_identifier_cmp(left, right))
         });
         for id in nodes {
             let current = rank_of.get(&id).copied().unwrap_or(0);
@@ -690,9 +667,9 @@ fn make_proper_layering(
 ) -> (Layering, Vec<ProperEdge>) {
     let mut sorted = edges.to_vec();
     sorted.sort_by(|a, b| {
-        mermaid_identifier_locale_cmp(&a.id, &b.id)
-            .then_with(|| mermaid_identifier_locale_cmp(&a.from, &b.from))
-            .then_with(|| mermaid_identifier_locale_cmp(&a.to, &b.to))
+        deterministic_identifier_cmp(&a.id, &b.id)
+            .then_with(|| deterministic_identifier_cmp(&a.from, &b.from))
+            .then_with(|| deterministic_identifier_cmp(&a.to, &b.to))
     });
     let mut proper_edges = Vec::new();
     let mut dummy_sequence = 0;
@@ -871,7 +848,7 @@ fn reorder_layer(
                         .get(a.as_str())
                         .cmp(&current_index.get(b.as_str()))
                 })
-                .then_with(|| mermaid_identifier_locale_cmp(a, b))
+                .then_with(|| deterministic_identifier_cmp(a, b))
         });
     };
 
@@ -910,7 +887,7 @@ fn reorder_layer(
         a.first()
             .zip(b.first())
             .map_or(Ordering::Equal, |(left, right)| {
-                mermaid_identifier_locale_cmp(left, right)
+                deterministic_identifier_cmp(left, right)
             })
     });
     for mut bucket in remaining {

@@ -608,7 +608,6 @@ fn prepare_rustdoc_renderer(
         theme_preset: None,
         theme_file: None,
         theme_definition: None,
-        text_measurer: crate::cli::TextMeasurerKind::Vendored,
         math_renderer: Some(crate::cli::MathRendererKind::Ratex),
         container_width: None,
         container_height: None,

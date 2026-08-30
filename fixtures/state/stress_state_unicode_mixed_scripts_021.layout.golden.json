@@ -39,7 +39,7 @@
           "id": "完了",
           "x": 77.84,
           "y": 434.0,
-          "width": 35.2,
+          "width": 48.0,
           "height": 40.0,
           "is_cluster": false
         },
@@ -47,7 +47,7 @@
           "id": "开始",
           "x": 77.84,
           "y": 92.0,
-          "width": 35.2,
+          "width": 48.0,
           "height": 40.0,
           "is_cluster": false
         }
@@ -173,7 +173,7 @@
           "label": {
             "x": 77.84,
             "y": 377.0,
-            "width": 53.28,
+            "width": 72.48,
             "height": 24.0
           },
           "start_label_left": null,

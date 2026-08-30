@@ -1,4 +1,4 @@
-#import "@preview/merman:0.2.0": (
+#import "@preview/merman:0.3.0": (
   analyze-mermaid,
   describe-theme-support,
   export-theme-preset,
@@ -383,7 +383,7 @@
   width: 80%,
 )
 #assert(
-  capabilities.capabilities.text_measurement.provider_ids.contains("vendored"),
+  capabilities.capabilities.text_measurement.provider_ids.contains("deterministic"),
   message: "capabilities should keep text measurement boundary",
 )
 #assert(

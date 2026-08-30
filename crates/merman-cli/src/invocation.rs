@@ -434,7 +434,6 @@ pub(crate) struct ResolvedRenderOptions {
     pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
     pub(crate) theme_file: Option<PathBuf>,
     pub(crate) theme_definition: Option<PathBuf>,
-    pub(crate) text_measurer: crate::cli::TextMeasurerKind,
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
     pub(crate) container_width: Option<f64>,
     pub(crate) container_height: Option<f64>,
@@ -928,7 +927,6 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         theme_preset: None,
         theme_file: None,
         theme_definition: None,
-        text_measurer: Some(args.render.text_measurer),
         math_renderer: args.render.math_renderer,
         container_width: Some(args.render.container_width),
         container_height: Some(args.render.container_height),
@@ -1565,9 +1563,6 @@ fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
         theme_preset: args.theme_preset,
         theme_file: args.theme_file,
         theme_definition: args.theme_definition,
-        text_measurer: args
-            .text_measurer
-            .unwrap_or(crate::cli::TextMeasurerKind::Vendored),
         math_renderer: args.math_renderer,
         container_width: args.container_width,
         container_height: args.container_height,
@@ -1765,8 +1760,7 @@ fn validate_graphical_output_options(
             ));
         }
         #[cfg(feature = "svg")]
-        if options.render.text_measurer.is_some()
-            || options.render.theme_preset.is_some()
+        if options.render.theme_preset.is_some()
             || options.render.theme_file.is_some()
             || options.render.theme_definition.is_some()
             || options.render.math_renderer.is_some()
@@ -1814,8 +1808,7 @@ fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Res
                 .to_string(),
         ));
     }
-    if options.render.text_measurer.is_some()
-        || options.render.theme_preset.is_some()
+    if options.render.theme_preset.is_some()
         || options.render.theme_file.is_some()
         || options.render.theme_definition.is_some()
         || options.render.math_renderer.is_some()

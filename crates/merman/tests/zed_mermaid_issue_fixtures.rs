@@ -240,13 +240,33 @@ fn zed_resvg_safe_flowchart_fallback_soft_wraps_html_node_labels() {
     );
 
     assert!(!svg.contains("<foreignObject"));
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG XML");
+    let expected = "Import / WebSurface / Data Egress Gates";
+    let wrapped_security_label = document.descendants().find_map(|group| {
+        if !group.has_tag_name("g")
+            || group.attribute("data-merman-foreignobject") != Some("fallback")
+        {
+            return None;
+        }
+
+        let rows = group
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| {
+                node.descendants()
+                    .filter(|descendant| descendant.is_text())
+                    .filter_map(|descendant| descendant.text())
+                    .flat_map(str::split_whitespace)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .filter(|row| !row.is_empty())
+            .collect::<Vec<_>>();
+        (rows.len() > 1 && rows.join(" ") == expected).then_some(rows)
+    });
     assert!(
-        !svg.contains(">Import / WebSurface / Data Egress Gates</text>"),
-        "resvg-safe fallback should preserve Mermaid's soft-wrapped HTML label shape: {svg}"
-    );
-    assert!(
-        svg.contains(">Import / WebSurface /<") && svg.contains(">Data Egress Gates<"),
-        "expected the Security node fallback to render as multiple SVG text lines: {svg}"
+        wrapped_security_label.is_some(),
+        "expected the Security fallback to preserve all text across multiple SVG rows: {svg}"
     );
 }
 

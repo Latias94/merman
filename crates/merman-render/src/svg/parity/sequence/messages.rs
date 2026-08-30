@@ -819,7 +819,7 @@ mod tests {
             .map(|edge| (edge.id.as_str(), edge))
             .collect::<FxHashMap<_, _>>();
         let sanitize_config = merman_core::MermaidConfig::default();
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let message_text_style = TextStyle::default();
         let math_sidecar = crate::sequence::SequenceMathSidecar::default();
         let (typography, typography_receipt) = default_sequence_typography(&sanitize_config);
@@ -936,7 +936,7 @@ mod tests {
                 .collect::<FxHashMap<_, _>>();
             let nodes_by_id = FxHashMap::default();
             let sanitize_config = merman_core::MermaidConfig::default();
-            let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+            let measurer = crate::text::DeterministicTextMeasurer::default();
             let message_text_style = TextStyle::default();
             let math_sidecar = crate::sequence::SequenceMathSidecar::default();
             let (typography, typography_receipt) = default_sequence_typography(&sanitize_config);

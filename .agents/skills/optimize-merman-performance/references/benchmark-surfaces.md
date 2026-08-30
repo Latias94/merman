@@ -168,7 +168,7 @@ Use focused `cargo nextest` during iteration. For shared behavior, use:
 
 ```console
 cargo run -p xtask -- verify --strict
-cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout
 python3 tools/bench/test_perf_contracts.py
 ```
 
