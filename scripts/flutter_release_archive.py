@@ -26,7 +26,7 @@ COPY_BYTES = 1024 * 1024
 REQUIRED_FILES = {"LICENSE", "THIRD_PARTY_NOTICES.md", "pubspec.yaml"}
 IGNORED_DIRECTORIES = {".dart_tool", ".git", "__pycache__", "build"}
 IGNORED_FILES = IGNORED_DIRECTORIES | {".DS_Store", ".gitignore", ".pubignore"}
-IGNORED_ROOT_FILES = {"build-native.py", "ffigen.yaml"}
+IGNORED_ROOT_FILES = {"build-native.py", "ffigen.yaml", "pubspec.lock"}
 SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
 VERSION_RE = re.compile(
     r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
