@@ -132,8 +132,8 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                     text.count("uses: actions/checkout@"),
                 )
 
-    def test_publish_workflow_actions_are_immutable(self) -> None:
-        for path in PUBLISH_WORKFLOWS:
+    def test_credentialled_workflow_actions_are_immutable(self) -> None:
+        for path in [*PUBLISH_WORKFLOWS, WORKFLOW_ROOT / "pages.yml"]:
             for line_number, line in enumerate(read(path).splitlines(), start=1):
                 match = re.search(r"\buses:\s*([^\s#]+)", line)
                 if match is None:
