@@ -23,6 +23,8 @@ use super::resolved::{ResolvedProperty, ResolvedThemeStyle, ThemeTypographyPrope
 use super::semantic::{ThemeTarget, ThemeVariant};
 use super::typography::{Specified, TextStyle};
 
+#[cfg(test)]
+use super::family_mechanism_matrix::FamilyThemeMechanism;
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::family_mechanism_matrix::{
     FamilyThemePaintKind, FamilyThemeSelectorShape, classify_rule_facet,
@@ -1284,8 +1286,9 @@ impl OverlayBuilder {
 mod tests {
     use super::*;
     use crate::diagram_theme::{
-        CanvasSpec, MermaidThemeCompatibility, Specified, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-        TypographySpec,
+        CanvasSpec, FontStack, LineHeight, MermaidThemeCompatibility, Specified, TextAlign,
+        TextDecoration, TextTransform, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeWrapMode,
+        TypographySpec, WhiteSpace,
     };
     use merman_core::__private::{
         ThemeCompatibilityPlan, install_theme_compatibility, theme_parse_evidence,
@@ -2090,49 +2093,188 @@ mod tests {
     }
 
     #[test]
-    fn every_matrix_legacy_family_has_a_nonempty_bridge_for_a_legacy_route() {
-        let mut styles = ThemeRuleSet::default();
-        let mut expected_legacy_families = BTreeSet::new();
-        let paint = FamilyThemePaintKind::Solid;
+    fn every_matrix_legacy_route_emits_a_nonempty_bridge_projection() {
+        let mut matrix_legacy_families = BTreeSet::new();
+
         for &family in DiagramFamilyId::all() {
-            let Some(target) = ThemeTarget::ALL.iter().copied().find(|&target| {
-                target != ThemeTarget::Canvas
-                    && target.valid_for(family)
-                    && classify_rule_facet(
-                        family,
-                        target,
-                        FamilyThemeSelectorShape::Static { variant: None },
-                        FamilyThemeRuleFacet::Fill(paint),
-                    ) == FamilyThemeDisposition::LegacyCompatibility
-            }) else {
-                continue;
-            };
-            styles = styles.with_rule(
-                ThemeRule::new(
-                    target,
-                    ThemeStylePatch::default().with_fill(solid("#123456")),
-                )
-                .for_family(family),
-            );
-            expected_legacy_families.insert(family);
+            for property in [
+                ThemeTypographyProperty::FontStack,
+                ThemeTypographyProperty::FontSize,
+                ThemeTypographyProperty::FontWeight,
+                ThemeTypographyProperty::FontStyle,
+                ThemeTypographyProperty::LineHeight,
+                ThemeTypographyProperty::LetterSpacing,
+                ThemeTypographyProperty::WordSpacing,
+                ThemeTypographyProperty::Transform,
+                ThemeTypographyProperty::Decoration,
+                ThemeTypographyProperty::TextAlign,
+                ThemeTypographyProperty::WhiteSpace,
+                ThemeTypographyProperty::Wrap,
+            ] {
+                let spec = DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default()
+                        .with_family_style(family, typography_probe_style(property)),
+                );
+                let family_programs = FamilyThemeProgramCache::new(Arc::new(spec.clone()));
+                let program = family_programs.get_or_compile(family);
+                let route = program
+                    .mechanism_routes()
+                    .iter()
+                    .find(|route| {
+                        route.mechanism() == FamilyThemeMechanism::BaseTypography(property)
+                    })
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "typography probe did not compile family={family} property={}",
+                            property.id()
+                        )
+                    });
+                if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
+                    continue;
+                }
+                matrix_legacy_families.insert(family);
+                assert_legacy_probe_projects(
+                    family,
+                    spec,
+                    FamilyThemeMechanism::BaseTypography(property),
+                    &format!("base typography {}", property.id()),
+                );
+            }
+
+            for &target in ThemeTarget::ALL {
+                if target == ThemeTarget::Canvas || !target.valid_for(family) {
+                    continue;
+                }
+                for variant in
+                    std::iter::once(None).chain(ThemeVariant::ALL.iter().copied().map(Some))
+                {
+                    let selector = FamilyThemeSelectorShape::Static { variant };
+                    for (paint_kind, paint) in [
+                        (FamilyThemePaintKind::Transparent, CanvasPaint::Transparent),
+                        (FamilyThemePaintKind::Solid, solid("#123456")),
+                    ] {
+                        for facet in [
+                            FamilyThemeRuleFacet::Fill(paint_kind),
+                            FamilyThemeRuleFacet::Stroke(paint_kind),
+                        ] {
+                            if classify_rule_facet(family, target, selector, facet)
+                                != FamilyThemeDisposition::LegacyCompatibility
+                            {
+                                continue;
+                            }
+                            let style = match facet {
+                                FamilyThemeRuleFacet::Fill(_) => {
+                                    ThemeStylePatch::default().with_fill(paint.clone())
+                                }
+                                FamilyThemeRuleFacet::Stroke(_) => {
+                                    ThemeStylePatch::default().with_stroke(paint.clone())
+                                }
+                                _ => unreachable!("paint probe facet is fixed above"),
+                            };
+                            let mut rule = ThemeRule::new(target, style).for_family(family);
+                            if let Some(variant) = variant {
+                                rule = rule.with_variant(variant);
+                            }
+                            let spec = DiagramThemeSpec::new()
+                                .with_styles(ThemeRuleSet::default().with_rule(rule));
+                            matrix_legacy_families.insert(family);
+                            assert_legacy_probe_projects(
+                                family,
+                                spec,
+                                FamilyThemeMechanism::RuleFacet {
+                                    rule_index: 0,
+                                    target,
+                                    selector,
+                                    facet,
+                                },
+                                &format!(
+                                    "target={} variant={} facet={facet:?}",
+                                    target.id(),
+                                    variant.map_or("unqualified", ThemeVariant::id),
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
         }
 
-        let spec = DiagramThemeSpec::new().with_styles(styles);
+        let dispatched_legacy_families = DiagramFamilyId::all()
+            .iter()
+            .copied()
+            .filter(|&family| {
+                legacy_family_dispatch(family).expect("built-in family dispatch")
+                    != LegacyFamilyDispatch::NoLegacy
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(matrix_legacy_families, dispatched_legacy_families);
+    }
+
+    fn assert_legacy_probe_projects(
+        family: DiagramFamilyId,
+        spec: DiagramThemeSpec,
+        expected_mechanism: FamilyThemeMechanism,
+        route: &str,
+    ) {
+        spec.validate().expect("legacy route probe must be valid");
         let family_programs = FamilyThemeProgramCache::new(Arc::new(spec));
-        for &family in DiagramFamilyId::all() {
-            let dispatch = legacy_family_dispatch(family).expect("built-in family dispatch");
-            let program = family_programs.get_or_compile(family);
-            if expected_legacy_families.contains(&family) {
-                assert_ne!(dispatch, LegacyFamilyDispatch::NoLegacy, "family={family}");
-                assert!(program.has_legacy_compatibility(), "family={family}");
-                let artifact = compile_selected_family(&family_programs, family)
-                    .expect("legacy family bridge must compile");
-                assert!(
-                    !artifact.overlay.is_empty(),
-                    "matrix-declared legacy route was silently dropped for {family}"
-                );
-            } else {
-                assert!(!program.has_legacy_compatibility(), "family={family}");
+        let program = family_programs.get_or_compile(family);
+        let actual_mechanisms = program
+            .mechanism_routes()
+            .iter()
+            .filter(|route| route.disposition() == FamilyThemeDisposition::LegacyCompatibility)
+            .map(|route| route.mechanism())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual_mechanisms,
+            vec![expected_mechanism],
+            "legacy probe did not isolate the expected route: family={family} route={route}"
+        );
+        let artifact = compile_selected_family(&family_programs, family)
+            .expect("matrix-declared legacy route must compile through the bridge");
+        assert!(
+            !artifact.overlay.is_empty() && !artifact.accepted_projections.is_empty(),
+            "matrix-declared legacy route was silently dropped: family={family} route={route}"
+        );
+    }
+
+    fn typography_probe_style(property: ThemeTypographyProperty) -> TextStyle {
+        match property {
+            ThemeTypographyProperty::FontStack => TextStyle::default().with_font_stack(
+                FontStack::new(["Legacy Probe", "sans-serif"]).expect("valid probe font stack"),
+            ),
+            ThemeTypographyProperty::FontSize => TextStyle::default()
+                .with_font_size_px(18.0)
+                .expect("valid probe font size"),
+            ThemeTypographyProperty::FontWeight => TextStyle::default()
+                .with_font_weight(700)
+                .expect("valid probe font weight"),
+            ThemeTypographyProperty::FontStyle => {
+                TextStyle::default().with_font_style(crate::diagram_theme::FontStyle::Italic)
+            }
+            ThemeTypographyProperty::LineHeight => TextStyle::default()
+                .with_line_height(LineHeight::Multiplier(1.5))
+                .expect("valid probe line height"),
+            ThemeTypographyProperty::LetterSpacing => TextStyle::default()
+                .with_letter_spacing_px(1.0)
+                .expect("valid probe letter spacing"),
+            ThemeTypographyProperty::WordSpacing => TextStyle::default()
+                .with_word_spacing_px(2.0)
+                .expect("valid probe word spacing"),
+            ThemeTypographyProperty::Transform => {
+                TextStyle::default().with_transform(TextTransform::Uppercase)
+            }
+            ThemeTypographyProperty::Decoration => {
+                TextStyle::default().with_decoration(TextDecoration::Underline)
+            }
+            ThemeTypographyProperty::TextAlign => {
+                TextStyle::default().with_text_align(TextAlign::Center)
+            }
+            ThemeTypographyProperty::WhiteSpace => {
+                TextStyle::default().with_white_space(WhiteSpace::PreWrap)
+            }
+            ThemeTypographyProperty::Wrap => {
+                TextStyle::default().with_wrap(ThemeWrapMode::BreakWord)
             }
         }
     }

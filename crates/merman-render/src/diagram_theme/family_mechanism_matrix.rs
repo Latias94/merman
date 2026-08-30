@@ -2167,6 +2167,57 @@ mod tests {
     }
 
     #[test]
+    fn legacy_compatibility_stays_within_the_bridge_probe_domain() {
+        for &family in DiagramFamilyId::all() {
+            for &target in ThemeTarget::ALL {
+                if target == ThemeTarget::Canvas || !target.valid_for(family) {
+                    continue;
+                }
+
+                for_each_public_selector(|selector| {
+                    for &contract_facet in ThemeRuleFacetV1::ALL {
+                        for_each_public_rule_facet(contract_facet, |facet| {
+                            if classify_rule_facet(family, target, selector, facet)
+                                != FamilyThemeDisposition::LegacyCompatibility
+                            {
+                                return;
+                            }
+                            assert!(
+                                matches!(selector, FamilyThemeSelectorShape::Static { .. })
+                                    && matches!(
+                                        facet,
+                                        FamilyThemeRuleFacet::Fill(
+                                            FamilyThemePaintKind::Transparent
+                                                | FamilyThemePaintKind::Solid
+                                        ) | FamilyThemeRuleFacet::Stroke(
+                                            FamilyThemePaintKind::Transparent
+                                                | FamilyThemePaintKind::Solid
+                                        )
+                                    ),
+                                "unprobeable legacy rule route: family={family} target={} selector={selector:?} facet={facet:?}",
+                                target.id()
+                            );
+                        });
+                    }
+                });
+
+                assert_ne!(
+                    compile_ordinal_palette_route(family, target).disposition(),
+                    FamilyThemeDisposition::LegacyCompatibility,
+                    "ordinal palette cannot enter the scalar bridge probe domain: family={family} target={}",
+                    target.id()
+                );
+                assert_ne!(
+                    compile_effect_binding_route(family, 0, target).disposition(),
+                    FamilyThemeDisposition::LegacyCompatibility,
+                    "effect binding cannot enter the scalar bridge probe domain: family={family} target={}",
+                    target.id()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn pie_slice_palette_uses_the_direct_adapter() {
         assert_eq!(
             compile_ordinal_palette_route(DiagramFamilyId::PIE, ThemeTarget::PieSlice)

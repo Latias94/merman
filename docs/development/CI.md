@@ -10,8 +10,8 @@ Pull requests answer whether a change is safe to review and merge:
 
 - formatting, repository hygiene, and generated-source freshness;
 - full workspace tests on Linux, plus blocking SVG parity when its explicit inputs change;
-- workspace compilation plus an explicit host-sensitive macOS/Windows inventory, including the
-  Windows ELK small-stack regression;
+- workspace compilation plus an explicit focused macOS/Windows inventory, including KTD23 legacy
+  projection retirement and the Windows ELK small-stack regression;
 - representative Cargo feature leaves, default surfaces, owner APIs, and feature-unification
   regressions;
 - Web package build, size budgets, package smoke, and Playground browser behavior when their inputs
@@ -42,9 +42,10 @@ them after classification, so one owner executes once and its result is availabl
 `pr-gate`. Main pushes still select every owner. A weekly and manually dispatchable core safety-net
 run executes the full workspace on Linux, macOS, and Windows; routine pull requests keep the full
 Linux suite while host runners compile the workspace and run focused filesystem, process, FFI, and
-ELK stack-safety contracts. Only pull-request and merge-queue runs emit the required `pr-gate`
-status name; push, schedule, and manual lifecycles use event-specific gate names so their results
-cannot satisfy the pull-request check by identity collision.
+ELK stack-safety contracts plus the feature-neutral KTD23 legacy-projection retirement
+authorization. Only pull-request and merge-queue runs emit the required `pr-gate` status name;
+push, schedule, and manual lifecycles use event-specific gate names so their results cannot satisfy
+the pull-request check by identity collision.
 
 The planner records SVG parity as a selector inside the same owner plan rather than as a second
 owner. Pull requests select it for the SVG renderer and its shared parser/layout crates, the SVG

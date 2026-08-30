@@ -458,6 +458,14 @@ jobs:
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         run: cargo check --workspace --all-targets --locked
 
+      - name: Test KTD23 legacy projection retirement on pull-request hosts
+        if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+        shell: bash
+        run: |
+          cargo nextest run --locked -p merman-theme-acceptance \
+            --no-default-features --test legacy_projection_retirement \
+            --cargo-quiet
+
       - name: Test host-sensitive contracts on pull requests
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         shell: bash
