@@ -22,7 +22,7 @@ execution: code
 | Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Treat the three product milestones below as review and delivery themes, not three mandatory giant diffs. Keep making proof-first, independently reviewable Conventional Commits. Implement and verify the accepted but unfrozen authoring-facade design, finish core convergence and the representative native C6a checkpoint, then verify the authoring candidate before C7a rollout and freeze. Unqualified cross-target claims require a later scoped release-qualification plan rather than completion of a standing 45-cell certification program. |
 | Stop conditions | Do not expose a positive portability or capability conclusion from an unevaluated state, accept host-produced geometry without request/session evidence, let theme/config inputs widen renderer-owned policy, create preset-specific renderer branches, or add brand scanning, editorial rewriting, page-shell composition, bespoke routing, icon art direction, or motion playback to the core engine. |
 
-## Current Implementation Reconciliation (2026-08-25)
+## Current Implementation Reconciliation (2026-08-30)
 
 The implementation has advanced beyond several snapshots embedded in the historical decision
 record. The current source and generated contract are authoritative for these superseding facts:
@@ -30,13 +30,22 @@ record. The current source and generated contract are authoritative for these su
 - The Typst plugin transport is ABI 3 (`TYPST_PLUGIN_ABI_VERSION = 3`). Earlier references in
   this addendum to Typst ABI 2 describe the pre-ABI-3 decision state and must not be used to
   configure or validate the current plugin.
-- The current KTD17 manifest is version 26 with 148 route authorizations and 164 artifact
+- The current KTD17 manifest is version 27 with 150 route authorizations and 166 artifact
   witnesses. Its route authority covers the declared static scalar domain: unqualified routes
   plus explicitly enumerated static variants. Recent additions include ER `Relation` `Default`,
   Pie `PieSlice` `Default`, and Class `Node`/`NodeLabel` `Default`; Gantt also includes its
   unqualified aggregate routes plus `Default`, `Active`, `Success`, and `Error` property-local
   variants. Gantt `Warning` remains a compatibility residual and is intentionally outside the
   typed route inventory. These counts describe KTD17 authority only, not complete theme coverage.
+- The support-claim manifest is internal revision 18. KTD23 remains version 1 with 56 historical
+  retirement routes and 112 transparent/solid probes. These are separate authorities: neither
+  support discovery nor historical retirement can expand KTD17 route authorization.
+- All 33 families have at least one direct typed surface. Six families have no family-owned
+  `LegacyCompatibility` route (State, Packet, Error, EventModeling, Ishikawa, and ZenUML), while 27
+  may still enter the bridge. Base `FontStack` is Typed/Legacy/Unsupported for 27/5/1 families;
+  base `FontSize` is 10/11/12. These counts describe migration state, not feature completeness.
+- C6a remains complete at 18/18 representative native cells. C7a is still not eligible because the
+  public authoring/consumer rollout and remaining pre-freeze gates are intentionally open.
 - The acceptance manifest remains an independent, reviewed authority. It is reconciled exactly
   against the renderer inventory but is not generated from it, so a newly introduced runtime route
   cannot self-authorize.
@@ -510,7 +519,7 @@ Public presets declare per-target admission expectations and allowed residual ID
   claim, produce
   `C6aEligibilityReceipt`, or unblock C7a. Direct-only typed mechanisms that never had a bridge
   projection remain governed by family-local writer evidence and do not enter this inventory. The
-  current manifest is version 26 and contains 148 route-level authorizations producing 164 finalized
+  current manifest is version 27 and contains 150 route-level authorizations producing 166 finalized
   artifact witnesses. The Block scalar-fill batch contributes two routes and two artifact witnesses,
   binding all six canonical node shells while preserving property-local config, class, and inline
   ownership. The Pie scalar-fill batch contributes two routes and two artifact witnesses,
@@ -888,6 +897,9 @@ coarse reports, and optional future semantic annotations. They do not require th
 own those product decisions.
 
 ## Implementation Checkpoint - 2026-08-23
+
+This checkpoint is retained as a dated historical snapshot. Current KTD17 and support-claim values
+are recorded in the reconciliation section above and must not be inferred from this table.
 
 | Gate | Status | Current evidence and remaining boundary |
 | --- | --- | --- |
@@ -1352,7 +1364,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   recipe, licensing, resource-cost, maturity, and evidence rules as every other candidate.
 - **Capability-discovery candidate:** Build the versioned query/result envelope from the core family
   catalog and the landed renderer-owned, versioned support-claim manifest, whose internal revision is
-  currently 10 and whose claims reconcile against the private C5 mechanism matrix. C5 family/target
+  currently 18 and whose claims reconcile against the private C5 mechanism matrix. C5 family/target
   modules own complete value-domain arguments and runtime admission predicates. The non-published
   C6a harness validates representative end-to-end
   integration and detects manifest drift; it cannot upgrade a descriptor to `Unconditional` merely
@@ -1367,7 +1379,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   discovery does not reimplement them. Unknown string IDs and additive rows are preserved and
   normalize to `Unverified`, while execution requests still reject unknown executable IDs. A concrete
   final render or export report remains authoritative for one request. Because this candidate has
-  not been published, internal `claim_revision = 11` records pre-freeze claim-authority changes
+  not been published, internal `claim_revision = 18` records pre-freeze claim-authority changes
   without constituting a stable public compatibility promise. `claim_revision` versions only
   this capability-support claim authority. It is never reused as a preset-catalog schema, recipe
   revision, recipe/resource fingerprint, or qualification revision; those KTD21 identities advance
@@ -1458,7 +1470,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   lists only compiled-in recipes/resources while equivalent capability profiles receive identical
   public projections. Export vectors cover both `PresetExportV1` tags and reject unknown tags,
   missing or duplicate payloads, and untagged shape guessing. Revision tests keep the current
-  unpublished capability `claim_revision = 11` while independently changing catalog, recipe, and
+  unpublished capability `claim_revision = 18` while independently changing catalog, recipe, and
   qualification identities. The
   rollout gate then runs the native portions of the original U8-U11 matrices: Options/binding/Typst
   parity, native CLI scope, generated contracts, migration examples, and public API compilation.

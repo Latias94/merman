@@ -38,6 +38,10 @@ generated bindings together.
 | `DocumentWorkspace::upsert(...)` | `analyze_document_snapshot_with_shared_text(...)` and caller-owned document storage |
 | `DocumentWorkspace::build_analysis_context_with_shared_text(...)` | `analyze_document_context_with_shared_text(...)` |
 | `DocumentAnalysisOutcome` | `Result<DocumentAnalysisContext, AnalysisRejection>` |
+| `VendoredFontMetricsTextMeasurer`, `TextMeasurementPolicy::parity()`, or `RenderEnvironment::parity()` | `DeterministicTextMeasurer`, `TextMeasurementPolicy::deterministic()`, or `RenderEnvironment::deterministic()`; install a host callback when layout must use the final display stack |
+| Options JSON `environment.text_measurement` value `vendored` or `parity` | `deterministic`; the removed names are rejected rather than retained as aliases |
+| Runtime text-measurement provider ID `vendored` | `deterministic`; host-capable products also advertise `host-callback`, while Typst advertises deterministic only |
+| CLI/xtask `--text-measurer`, `--flowchart-text-measurer`, or `measure-text --measurer` | Remove the option; these command paths always use deterministic measurement |
 
 The binding-result envelope remains version `1` because its JSON shape is unchanged. Consumers
 that match `details.diagnostic.code` must update parser-code expectations from `merman.ascii.*` to
