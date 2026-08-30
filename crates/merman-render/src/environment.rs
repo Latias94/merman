@@ -21,8 +21,13 @@ use merman_core::__private::ThemeCompatibilityRecipe;
 use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
 use merman_core::time::LocalTimeZoneProvenance;
 use merman_core::{OperationControl, OperationPhase};
+#[cfg(test)]
+use std::cell::Cell;
+use std::cell::RefCell;
 use std::fmt;
 use std::num::NonZeroU64;
+#[cfg(test)]
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use unicode_segmentation::UnicodeSegmentation;
@@ -282,8 +287,17 @@ impl InlineHtmlMeasurementCarrier {
 #[derive(Debug, Clone)]
 struct BuiltinInlineRawLineWidth {
     font_size: f64,
+    state: RefCell<BuiltinInlineRawLineWidthState>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct BuiltinInlineRawLineWidthState {
     committed_em: f64,
     pending_grapheme: String,
+    pending_width_dirty: bool,
+    pending_em: f64,
+    #[cfg(test)]
+    grapheme_input_byte_charge: Rc<Cell<usize>>,
 }
 
 /// Streaming `getComputedTextLength()` state for a qualified built-in SVG text route.
@@ -331,8 +345,7 @@ impl BuiltinInlineRawLineWidth {
     fn new(style: &TextStyle) -> Self {
         Self {
             font_size: style.font_size.max(1.0),
-            committed_em: 0.0,
-            pending_grapheme: String::new(),
+            state: RefCell::new(BuiltinInlineRawLineWidthState::default()),
         }
     }
 
@@ -340,19 +353,41 @@ impl BuiltinInlineRawLineWidth {
         if text.is_empty() {
             return;
         }
-        self.pending_grapheme.push_str(text);
-        let last_grapheme_start = self
+        let state = self.state.get_mut();
+        state.pending_grapheme.push_str(text);
+        state.pending_width_dirty = true;
+    }
+
+    fn refresh_width(state: &mut BuiltinInlineRawLineWidthState) {
+        if !state.pending_width_dirty {
+            return;
+        }
+
+        #[cfg(test)]
+        {
+            // Charge the full pending input to both boundary discovery and width estimation. This
+            // is a conservative structural upper bound, not a count of CPU instructions.
+            let next_charge = state
+                .grapheme_input_byte_charge
+                .get()
+                .saturating_add(state.pending_grapheme.len().saturating_mul(2));
+            state.grapheme_input_byte_charge.set(next_charge);
+        }
+
+        let last_grapheme_start = state
             .pending_grapheme
             .grapheme_indices(true)
             .next_back()
             .map_or(0, |(index, _)| index);
         if last_grapheme_start > 0 {
             append_text_width_em(
-                &mut self.committed_em,
-                &self.pending_grapheme[..last_grapheme_start],
+                &mut state.committed_em,
+                &state.pending_grapheme[..last_grapheme_start],
             );
-            self.pending_grapheme.drain(..last_grapheme_start);
+            state.pending_grapheme.drain(..last_grapheme_start);
         }
+        state.pending_em = estimate_text_width_em(&state.pending_grapheme);
+        state.pending_width_dirty = false;
     }
 
     fn push_char(&mut self, ch: char) {
@@ -361,12 +396,31 @@ impl BuiltinInlineRawLineWidth {
     }
 
     fn width_px(&self) -> f64 {
-        (self.committed_em + estimate_text_width_em(&self.pending_grapheme)) * self.font_size
+        let mut state = self.state.borrow_mut();
+        Self::refresh_width(&mut state);
+        (state.committed_em + state.pending_em) * self.font_size
+    }
+
+    fn compact_pending_graphemes(&mut self) {
+        Self::refresh_width(self.state.get_mut());
     }
 
     fn reset(&mut self) {
-        self.committed_em = 0.0;
-        self.pending_grapheme.clear();
+        let state = self.state.get_mut();
+        state.committed_em = 0.0;
+        state.pending_grapheme.clear();
+        state.pending_width_dirty = false;
+        state.pending_em = 0.0;
+    }
+
+    #[cfg(test)]
+    fn grapheme_input_byte_charge(&self) -> usize {
+        self.state.borrow().grapheme_input_byte_charge.get()
+    }
+
+    #[cfg(test)]
+    fn retained_grapheme_bytes(&self) -> usize {
+        self.state.borrow().pending_grapheme.len()
     }
 }
 
@@ -457,6 +511,20 @@ impl BuiltinNormalizedTextWidth {
             self.max_width_px
         }
     }
+
+    #[cfg(test)]
+    fn grapheme_input_byte_charge(&self) -> usize {
+        self.line.grapheme_input_byte_charge()
+    }
+
+    fn compact_pending_graphemes(&mut self) {
+        self.line.compact_pending_graphemes();
+    }
+
+    #[cfg(test)]
+    fn retained_grapheme_bytes(&self) -> usize {
+        self.line.retained_grapheme_bytes()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -473,6 +541,16 @@ struct PendingInlineHtmlBreak {
     literal: BuiltinNormalizedTextWidth,
 }
 
+impl PendingInlineHtmlBreak {
+    fn push_candidate_char(&mut self, ch: char) {
+        self.literal.push_char(ch);
+        // Candidate characters are ASCII and the only multi-scalar ASCII grapheme is CRLF.
+        // Compact after every continuation so an incomplete `<br ...` cannot retain an
+        // unbounded whitespace buffer.
+        self.literal.compact_pending_graphemes();
+    }
+}
+
 /// Exact streaming width state for a qualified built-in HTML measurement route.
 ///
 /// Mermaid's pinned `createText.ts:addHtmlSpan` decodes HTML into a real span, so a valid `<br>`
@@ -485,6 +563,8 @@ struct PendingInlineHtmlBreak {
 pub(crate) struct BuiltinInlineHtmlWidth {
     normalized: BuiltinNormalizedTextWidth,
     pending_break: Option<PendingInlineHtmlBreak>,
+    #[cfg(test)]
+    speculative_clone_bytes: Rc<Cell<usize>>,
 }
 
 impl BuiltinInlineHtmlWidth {
@@ -492,6 +572,8 @@ impl BuiltinInlineHtmlWidth {
         Self {
             normalized: BuiltinNormalizedTextWidth::new(BuiltinInlineRawLineWidth::new(style)),
             pending_break: None,
+            #[cfg(test)]
+            speculative_clone_bytes: Rc::new(Cell::new(0)),
         }
     }
 
@@ -510,6 +592,18 @@ impl BuiltinInlineHtmlWidth {
         while let Some(ch) = current.take() {
             let Some(mut pending) = self.pending_break.take() else {
                 if ch == '<' {
+                    // Width compaction retains only the final extendable grapheme. Cloning this
+                    // bounded frontier keeps speculative `<br>` parsing linear without assuming
+                    // that ASCII `<` always starts a new Unicode grapheme.
+                    self.normalized.compact_pending_graphemes();
+                    #[cfg(test)]
+                    {
+                        let next_clone_bytes = self
+                            .speculative_clone_bytes
+                            .get()
+                            .saturating_add(self.normalized.retained_grapheme_bytes());
+                        self.speculative_clone_bytes.set(next_clone_bytes);
+                    }
                     let mut literal = self.normalized.clone();
                     literal.push_char(ch);
                     self.pending_break = Some(PendingInlineHtmlBreak {
@@ -524,21 +618,21 @@ impl BuiltinInlineHtmlWidth {
 
             match pending.state {
                 InlineHtmlBreakState::AfterLt if matches!(ch, 'b' | 'B') => {
-                    pending.literal.push_char(ch);
+                    pending.push_candidate_char(ch);
                     pending.state = InlineHtmlBreakState::AfterB;
                     self.pending_break = Some(pending);
                 }
                 InlineHtmlBreakState::AfterB if matches!(ch, 'r' | 'R') => {
-                    pending.literal.push_char(ch);
+                    pending.push_candidate_char(ch);
                     pending.state = InlineHtmlBreakState::AfterBr;
                     self.pending_break = Some(pending);
                 }
                 InlineHtmlBreakState::AfterBr if matches!(ch, ' ' | '\t' | '\r' | '\n') => {
-                    pending.literal.push_char(ch);
+                    pending.push_candidate_char(ch);
                     self.pending_break = Some(pending);
                 }
                 InlineHtmlBreakState::AfterBr if ch == '/' => {
-                    pending.literal.push_char(ch);
+                    pending.push_candidate_char(ch);
                     pending.state = InlineHtmlBreakState::AfterSlash;
                     self.pending_break = Some(pending);
                 }
@@ -557,6 +651,27 @@ impl BuiltinInlineHtmlWidth {
         self.pending_break.as_ref().map_or_else(
             || self.normalized.finished_width_px(),
             |pending| pending.literal.finished_width_px(),
+        )
+    }
+
+    #[cfg(test)]
+    fn grapheme_input_byte_charge(&self) -> usize {
+        self.pending_break.as_ref().map_or_else(
+            || self.normalized.grapheme_input_byte_charge(),
+            |pending| pending.literal.grapheme_input_byte_charge(),
+        )
+    }
+
+    #[cfg(test)]
+    fn speculative_clone_bytes(&self) -> usize {
+        self.speculative_clone_bytes.get()
+    }
+
+    #[cfg(test)]
+    fn retained_grapheme_bytes(&self) -> usize {
+        self.pending_break.as_ref().map_or_else(
+            || self.normalized.retained_grapheme_bytes(),
+            |pending| pending.literal.retained_grapheme_bytes(),
         )
     }
 }
@@ -3341,6 +3456,136 @@ mod tests {
             &style,
             &[(combining_tail.as_str(), &[combining_tail.as_str()])],
         );
+    }
+
+    #[test]
+    fn builtin_inline_literal_lt_combining_work_is_linear_and_cached() {
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let carrier =
+            InlineHtmlMeasurementCarrier::builtin(BuiltinTextMeasurementProfile::Deterministic);
+
+        for combining_scalars in [1_024, 2_048, 4_096] {
+            let text = format!("<{}", "\u{0301}".repeat(combining_scalars));
+            let expected = DeterministicTextMeasurer::default()
+                .measure_wrapped(&text, &style, None, WrapMode::HtmlLike)
+                .width;
+            let mut streamed = carrier
+                .begin_inline_html_width(&style)
+                .expect("built-in carrier starts a streaming width");
+
+            streamed.push_text(&text);
+            assert_eq!(
+                streamed.grapheme_input_byte_charge(),
+                0,
+                "appending input must not rescan a growing pending grapheme"
+            );
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            assert_eq!(
+                streamed.grapheme_input_byte_charge(),
+                text.len() * 2,
+                "the owning checkpoint admits two linear input-byte charges"
+            );
+
+            let input_byte_charge = streamed.grapheme_input_byte_charge();
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            assert_eq!(
+                streamed.grapheme_input_byte_charge(),
+                input_byte_charge,
+                "a repeated checkpoint without new input must use the cached width"
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_inline_repeated_literal_lt_speculation_is_linear() {
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let carrier =
+            InlineHtmlMeasurementCarrier::builtin(BuiltinTextMeasurementProfile::Deterministic);
+
+        for scalar_count in [1_024, 2_048, 4_096] {
+            let text = "<".repeat(scalar_count);
+            let expected = DeterministicTextMeasurer::default()
+                .measure_wrapped(&text, &style, None, WrapMode::HtmlLike)
+                .width;
+            let mut streamed = carrier
+                .begin_inline_html_width(&style)
+                .expect("built-in carrier starts a streaming width");
+
+            streamed.push_text(&text);
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            assert!(
+                streamed.speculative_clone_bytes() <= text.len(),
+                "each input byte may enter at most one retained-grapheme branch clone"
+            );
+            assert!(
+                streamed.grapheme_input_byte_charge() <= text.len() * 4,
+                "branch compaction and the final checkpoint must remain linear"
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_inline_speculative_clone_work_survives_checkpoint_rollback() {
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let carrier =
+            InlineHtmlMeasurementCarrier::builtin(BuiltinTextMeasurementProfile::Deterministic);
+        let mut streamed = carrier
+            .begin_inline_html_width(&style)
+            .expect("built-in carrier starts a streaming width");
+
+        streamed.push_text("A");
+        let checkpoint = streamed.clone();
+        let mut candidate = checkpoint.clone();
+        candidate.push_text("<not-a-break");
+
+        assert!(candidate.speculative_clone_bytes() > 0);
+        assert_eq!(
+            streamed.speculative_clone_bytes(),
+            candidate.speculative_clone_bytes(),
+            "discarded checkpoint branches still count the clone work they performed"
+        );
+
+        streamed = checkpoint;
+        assert_eq!(
+            streamed.speculative_clone_bytes(),
+            candidate.speculative_clone_bytes(),
+            "restoring a checkpoint must not roll back operation-owned work accounting"
+        );
+    }
+
+    #[test]
+    fn builtin_inline_incomplete_br_whitespace_keeps_a_bounded_frontier() {
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let carrier =
+            InlineHtmlMeasurementCarrier::builtin(BuiltinTextMeasurementProfile::Deterministic);
+
+        for whitespace_repetitions in [256, 512, 1_024] {
+            let text = format!("<br{}", " \t\r\n".repeat(whitespace_repetitions));
+            let expected = DeterministicTextMeasurer::default()
+                .measure_wrapped(&text, &style, None, WrapMode::HtmlLike)
+                .width;
+            let mut streamed = carrier
+                .begin_inline_html_width(&style)
+                .expect("built-in carrier starts a streaming width");
+
+            streamed.push_text(&text);
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            assert!(streamed.retained_grapheme_bytes() <= 1);
+            assert_eq!(streamed.speculative_clone_bytes(), 0);
+            assert!(streamed.grapheme_input_byte_charge() <= text.len() * 4);
+        }
     }
 
     #[test]
