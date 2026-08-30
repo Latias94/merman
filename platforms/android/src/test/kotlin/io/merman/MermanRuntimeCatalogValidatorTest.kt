@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
@@ -302,13 +303,64 @@ class MermanRuntimeCatalogValidatorTest {
             validCatalog().withTextMeasurement(
                 JSONObject()
                     .put("protocol_version", MermanTextMeasurementOperation.PROTOCOL_VERSION)
-                    .put("provider_ids", JSONArray().put("host-callback")),
+                    .put(
+                        "provider_ids",
+                        JSONArray().put(MERMAN_HOST_CALLBACK_TEXT_MEASUREMENT_PROVIDER_ID),
+                    ),
             ),
             validCatalog().withTextMeasurement("invalid"),
             validCatalog().withTextMeasurement(JSONObject.NULL),
         )
 
         invalidCatalogs.forEach(::assertRejected)
+    }
+
+    @Test
+    fun rejectsMissingSvgPipelineMeasurementWithoutAdditiveServiceSections() {
+        val catalog = validCatalog()
+        catalog.getJSONObject("capabilities").put("text_measurement", JSONObject.NULL)
+        catalog.remove("option_group_ids")
+        catalog.remove("constructor_service_ids")
+        catalog.remove("constructor_service_contracts")
+
+        assertRejected(catalog.toString())
+    }
+
+    @Test
+    fun derivesSvgPipelineUseFromCapabilitiesAndCompiledPrerequisites() {
+        assertTrue(
+            mermanRuntimeRequiresSvgPipeline(
+                capabilityIds = setOf("svg"),
+                operationIds = setOf("semantic-json"),
+            ),
+        )
+        assertTrue(
+            mermanRuntimeRequiresSvgPipeline(
+                capabilityIds = setOf("png"),
+                operationIds = setOf("png", "semantic-json"),
+            ),
+        )
+        assertFalse(
+            mermanRuntimeRequiresSvgPipeline(
+                capabilityIds = emptySet(),
+                operationIds = setOf("semantic-json"),
+            ),
+        )
+    }
+
+    @Test
+    fun rejectsMissingKnownTextMeasurementProviderWithoutServiceSections() {
+        val catalog = validCatalog()
+        catalog.getJSONObject("capabilities")
+            .getJSONObject("text_measurement")
+            .put(
+                "provider_ids",
+                JSONArray().put(MERMAN_DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID),
+            )
+        catalog.remove("constructor_service_ids")
+        catalog.remove("constructor_service_contracts")
+
+        assertRejected(catalog.toString())
     }
 
     private fun assertRejected(catalog: String) {
@@ -322,7 +374,10 @@ class MermanRuntimeCatalogValidatorTest {
     private fun validCatalog(): JSONObject {
         val artifact = MERMAN_ANDROID_ARTIFACT_EXPECTATION
         val capabilityIds = artifact.capabilityIds
-        val hasSvgPipeline = "svg" in capabilityIds
+        val hasSvgPipeline = mermanRuntimeRequiresSvgPipeline(
+            capabilityIds = capabilityIds.toSet(),
+            operationIds = artifact.operationIds.toSet(),
+        )
         val optionIds = MERMAN_BINDING_OPTION_GROUP_SPECS.values
             .filter { spec ->
                 spec.alwaysAvailable ||
@@ -334,16 +389,7 @@ class MermanRuntimeCatalogValidatorTest {
         val serviceIds = MERMAN_BINDING_TRANSPORT_EXPOSURE_SPECS.getValue("android-jni")
             .constructorServiceCandidateIds
             .sorted()
-        val providerIds = buildSet {
-            add("deterministic")
-            serviceIds.forEach { id ->
-                addAll(
-                    MERMAN_BINDING_CONSTRUCTOR_SERVICE_SPECS
-                        .getValue(id)
-                        .providedTextMeasurementProviderIds,
-                )
-            }
-        }.toList().sorted()
+        val providerIds = artifact.textMeasurementProviderIds
         val operationIds = artifact.operationIds
         val outputIds = artifact.outputIds
         val metadataIds = artifact.metadataIds

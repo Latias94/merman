@@ -806,6 +806,24 @@ fn render_kotlin() -> String {
         "internal const val MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: Int = {TEXT_MEASUREMENT_PROTOCOL_VERSION}\n"
     )
     .unwrap();
+    writeln!(
+        out,
+        "internal const val MERMAN_DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID: String = {:?}",
+        TextMeasurementProviderKey::Deterministic.id()
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "internal const val MERMAN_HOST_CALLBACK_TEXT_MEASUREMENT_PROVIDER_ID: String = {:?}",
+        TextMeasurementProviderKey::HostCallback.id()
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "internal val MERMAN_TEXT_MEASUREMENT_PROVIDER_IDS: Set<String> = setOf({})\n",
+        kotlin_string_arguments(&projections.provider_ids)
+    )
+    .unwrap();
 
     out.push_str(
         "internal data class MermanBindingCapabilitySpec(\n    val id: String,\n    val implicationIds: List<String>,\n)\n\n",
@@ -826,10 +844,10 @@ fn render_kotlin() -> String {
         "internal data class MermanBindingConstructorServiceSpec(\n    val id: String,\n    val requiresSvgPipeline: Boolean,\n    val providedTextMeasurementProviderIds: Set<String>,\n    val resourceLimits: List<MermanBindingConstructorResourceLimitSpec>,\n)\n\n",
     );
     out.push_str(
-        "internal data class MermanBindingOperationExpectation(\n    val operationId: String,\n    val maturity: String,\n    val outputId: String?,\n    val mediaType: String,\n    val metadataSchemaVersion: Int,\n    val requiresUri: Boolean,\n    val availabilityCapabilityId: String?,\n)\n\n",
+        "internal data class MermanBindingOperationExpectation(\n    val operationId: String,\n    val maturity: String,\n    val outputId: String?,\n    val mediaType: String,\n    val metadataSchemaVersion: Int,\n    val requiresUri: Boolean,\n    val availabilityCapabilityId: String?,\n    val compiledPrerequisiteIds: Set<String>,\n)\n\n",
     );
     out.push_str(
-        "internal data class MermanBindingArtifactExpectation(\n    val capabilityIds: List<String>,\n    val outputIds: List<String>,\n    val systemAdapterIds: List<String>,\n    val operationIds: List<String>,\n    val metadataIds: List<String>,\n)\n\n",
+        "internal data class MermanBindingArtifactExpectation(\n    val capabilityIds: List<String>,\n    val outputIds: List<String>,\n    val systemAdapterIds: List<String>,\n    val operationIds: List<String>,\n    val metadataIds: List<String>,\n    val textMeasurementProviderIds: List<String>,\n)\n\n",
     );
 
     out.push_str("internal object MermanBindingOperationId {\n");
@@ -968,7 +986,7 @@ fn render_kotlin() -> String {
             .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
         writeln!(
             out,
-            "    MermanBindingOperationExpectation({:?}, {:?}, {}, {:?}, {}, {}, {}),",
+            "    MermanBindingOperationExpectation({:?}, {:?}, {}, {:?}, {}, {}, {}, setOf({})),",
             expectation.operation_id,
             expectation.maturity,
             output,
@@ -976,6 +994,7 @@ fn render_kotlin() -> String {
             expectation.metadata_schema_version,
             expectation.requires_uri,
             availability,
+            kotlin_string_arguments(&expectation.compiled_prerequisite_ids),
         )
         .unwrap();
     }
@@ -983,12 +1002,13 @@ fn render_kotlin() -> String {
 
     writeln!(
         out,
-        "internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectation(\n    capabilityIds = listOf({}),\n    outputIds = listOf({}),\n    systemAdapterIds = listOf({}),\n    operationIds = listOf({}),\n    metadataIds = listOf({}),\n)\n",
+        "internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectation(\n    capabilityIds = listOf({}),\n    outputIds = listOf({}),\n    systemAdapterIds = listOf({}),\n    operationIds = listOf({}),\n    metadataIds = listOf({}),\n    textMeasurementProviderIds = listOf({}),\n)\n",
         kotlin_string_arguments(&android_artifact.capability_ids),
         kotlin_string_arguments(&android_artifact.output_ids),
         kotlin_string_arguments(&android_artifact.system_adapter_ids),
         kotlin_string_arguments(&android_artifact.operation_ids),
         kotlin_string_arguments(&android_artifact.metadata_ids),
+        kotlin_string_arguments(&android_artifact.text_measurement_provider_ids),
     )
     .unwrap();
     out.push_str(
@@ -1172,6 +1192,23 @@ fn render_dart() -> String {
     .unwrap();
     writeln!(
         out,
+        "const String mermanDeterministicTextMeasurementProviderId = {:?};",
+        TextMeasurementProviderKey::Deterministic.id()
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "const String mermanHostCallbackTextMeasurementProviderId = {:?};",
+        TextMeasurementProviderKey::HostCallback.id()
+    )
+    .unwrap();
+    out.push_str("const Set<String> mermanTextMeasurementProviderIds = <String>{\n");
+    for provider_id in &projections.provider_ids {
+        writeln!(out, "  {provider_id:?},").unwrap();
+    }
+    out.push_str("};\n");
+    writeln!(
+        out,
         "const String mermanHostTextMeasurementConstructorServiceId =\n    {:?};",
         ConstructorServiceKey::HostTextMeasurement.id()
     )
@@ -1285,6 +1322,7 @@ final class MermanBindingOperationExpectation {
     required this.metadataSchemaVersion,
     required this.requiresUri,
     required this.availabilityCapabilityId,
+    required this.compiledPrerequisiteIds,
   });
 
   final String operationId;
@@ -1294,6 +1332,7 @@ final class MermanBindingOperationExpectation {
   final int metadataSchemaVersion;
   final bool requiresUri;
   final String? availabilityCapabilityId;
+  final Set<String> compiledPrerequisiteIds;
 }
 
 "#,
@@ -1435,6 +1474,12 @@ final class MermanBindingOperationExpectation {
         .unwrap();
         writeln!(out, "    requiresUri: {},", expectation.requires_uri).unwrap();
         writeln!(out, "    availabilityCapabilityId: {availability},").unwrap();
+        write_dart_string_set_argument(
+            &mut out,
+            "    ",
+            "compiledPrerequisiteIds",
+            &expectation.compiled_prerequisite_ids,
+        );
         out.push_str("  ),\n");
     }
     out.push_str("];\n\n");
@@ -2029,6 +2074,20 @@ mod tests {
         assert!(kotlin.contains("MermanUnknownOutputPlan"));
         assert!(kotlin.contains("MERMAN_BINDING_OPERATION_EXPECTATIONS"));
         assert!(kotlin.contains("val maturity: String"));
+        assert!(kotlin.contains("val compiledPrerequisiteIds: Set<String>"));
+        assert!(kotlin.contains("setOf(\"svg\")"));
+        assert!(kotlin.contains(
+            "MERMAN_DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID: String = \"deterministic\""
+        ));
+        assert!(kotlin.contains(
+            "MERMAN_TEXT_MEASUREMENT_PROVIDER_IDS: Set<String> = setOf(\"deterministic\", \"host-callback\")"
+        ));
+        assert!(kotlin.contains("val textMeasurementProviderIds: List<String>"));
+        assert!(
+            kotlin.contains(
+                "textMeasurementProviderIds = listOf(\"deterministic\", \"host-callback\")"
+            )
+        );
         assert!(kotlin.contains("MermanBindingMetadataId"));
         assert!(
             kotlin
@@ -2041,6 +2100,12 @@ mod tests {
         assert!(dart.contains("MermanUnknownOutputPlan"));
         assert!(dart.contains("mermanBindingOperationExpectations"));
         assert!(dart.contains("final String maturity;"));
+        assert!(dart.contains("final Set<String> compiledPrerequisiteIds;"));
+        assert!(dart.contains("compiledPrerequisiteIds: <String>{\n      \"svg\","));
+        assert!(dart.contains(
+            "const String mermanDeterministicTextMeasurementProviderId = \"deterministic\";"
+        ));
+        assert!(dart.contains("const Set<String> mermanTextMeasurementProviderIds"));
         assert!(dart.contains("abstract final class MermanBindingMetadataId"));
         assert!(dart.contains("static const String supportedDiagrams = \"supported-diagrams\";"));
         assert!(dart.contains(

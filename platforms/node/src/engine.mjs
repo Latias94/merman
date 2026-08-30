@@ -152,10 +152,11 @@ export function normalizeBindingOptions(value = {}) {
     }
     if (
       normalized.environment.text_measurement !== undefined &&
+      normalized.environment.text_measurement !== null &&
       normalized.environment.text_measurement !== "deterministic"
     ) {
       throw new RangeError(
-        "bindingOptions.environment.text_measurement must be `deterministic`.",
+        "bindingOptions.environment.text_measurement must be `deterministic` or null.",
       );
     }
   }

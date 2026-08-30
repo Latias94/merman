@@ -2,13 +2,16 @@ import { withResourceOptions } from "../src/runtime-core.js";
 import {
   describeThemeSupport,
   exportThemePreset,
+  layoutJsonWithTextMeasurer,
   materializeTheme,
+  renderSvgWithTextMeasurer,
 } from "../src/runtime-render.js";
 import type {
   AsciiBindingOptions,
   CommonBindingOptions,
   EditorBindingOptions,
   EditorResourceOptions,
+  HostTextMeasurerSvgBindingOptions,
   ResourceOptions,
   SvgBindingOptions,
   ThemeLinearGradientRepetition,
@@ -53,6 +56,21 @@ const svgOptions: SvgBindingOptions = {
   parse: { suppress_errors: true },
   svg: { diagram_id: "example" },
 };
+const hostMeasuredSvgOptions: HostTextMeasurerSvgBindingOptions = {
+  environment: { math_renderer: "none" },
+  svg: { diagram_id: "host-measured" },
+};
+const hostTextMeasurer = () => ({ handled: false as const });
+renderSvgWithTextMeasurer("flowchart TD\nA --> B", hostTextMeasurer, hostMeasuredSvgOptions);
+layoutJsonWithTextMeasurer("flowchart TD\nA --> B", hostTextMeasurer, hostMeasuredSvgOptions);
+renderSvgWithTextMeasurer("flowchart TD\nA --> B", hostTextMeasurer, {
+  // @ts-expect-error a host callback owns text measurement, so an explicit selector would conflict.
+  environment: { text_measurement: "deterministic" },
+});
+layoutJsonWithTextMeasurer("flowchart TD\nA --> B", hostTextMeasurer, {
+  // @ts-expect-error a host callback owns text measurement, so an explicit selector would conflict.
+  environment: { text_measurement: "deterministic" },
+});
 
 const themeDefinition: ThemeDefinitionV1 = {
   authoring_schema_version: 1,
@@ -211,6 +229,7 @@ void mermanWrappedEditorOptions;
 void commonOptions;
 void asciiOptions;
 void svgOptions;
+void hostMeasuredSvgOptions;
 void themeDefinition;
 void materializedTheme;
 void supportQuery;

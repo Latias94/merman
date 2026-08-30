@@ -5,6 +5,29 @@ import org.json.JSONObject
 
 internal const val ANDROID_TRANSPORT_API_VERSION: Int = 2
 
+private val mermanBindingOperationExpectationById =
+    MERMAN_BINDING_OPERATION_EXPECTATIONS.associateBy { it.operationId }
+
+private val mermanBindingConstructorServiceProviderOwnerById = buildMap<String, String> {
+    MERMAN_BINDING_CONSTRUCTOR_SERVICE_SPECS.values.forEach { spec ->
+        spec.providedTextMeasurementProviderIds.forEach { providerId ->
+            put(providerId, spec.id)
+        }
+    }
+}
+
+internal fun mermanRuntimeRequiresSvgPipeline(
+    capabilityIds: Set<String>,
+    operationIds: Set<String>,
+): Boolean {
+    if ("svg" in capabilityIds) return true
+    return operationIds.any { operationId ->
+        mermanBindingOperationExpectationById[operationId]
+            ?.compiledPrerequisiteIds
+            ?.contains("svg") == true
+    }
+}
+
 /** Validates the generated Android artifact contract while preserving additive unknown IDs. */
 internal object MermanRuntimeCatalogValidator {
     private const val TRANSPORT_ID: String = "android-jni"
@@ -41,16 +64,24 @@ internal object MermanRuntimeCatalogValidator {
             capabilities.opt("capability_ids"),
             "capabilities.capability_ids",
         )
-        validateCapabilityRelations(catalog, capabilities, capabilityIds)
+        val requiresSvgPipeline = validateCapabilityRelations(catalog, capabilities, capabilityIds)
         val textMeasurementProviderIds = validateTextMeasurementProtocol(
             capabilities.opt("text_measurement"),
+            requiresSvgPipeline = requiresSvgPipeline,
         )
-        validateOptionalOptionGroups(catalog.opt("option_group_ids"), capabilityIds.toSet())
+        validateKnownTextMeasurementProviders(textMeasurementProviderIds)
+        val usesSvgPipeline = requiresSvgPipeline ||
+            textMeasurementProviderIds.isNotEmpty()
+        validateOptionalOptionGroups(
+            catalog.opt("option_group_ids"),
+            capabilityIds.toSet(),
+            usesSvgPipeline = usesSvgPipeline,
+        )
         validateOptionalConstructorServices(
             catalog = catalog,
-            capabilityIds = capabilityIds.toSet(),
             candidateIds = transport.constructorServiceCandidateIds,
-            availableProviderIds = textMeasurementProviderIds,
+            availableProviderIds = textMeasurementProviderIds.toSet(),
+            usesSvgPipeline = usesSvgPipeline,
         )
 
         return json
@@ -60,7 +91,7 @@ internal object MermanRuntimeCatalogValidator {
         catalog: JSONObject,
         capabilities: JSONObject,
         capabilityIds: List<String>,
-    ) {
+    ): Boolean {
         val outputIds = requiredSortedStringList(
             capabilities.opt("output_ids"),
             "capabilities.output_ids",
@@ -79,13 +110,14 @@ internal object MermanRuntimeCatalogValidator {
         }
         validateCapabilityImplications(capabilityIds, capabilitySet)
 
-        val knownOperations = MERMAN_BINDING_OPERATION_EXPECTATIONS.associateBy {
-            it.operationId
-        }
         val operationSet = operationIds.toSet()
         val outputSet = outputIds.toSet()
+        var requiresSvgPipeline = "svg" in capabilitySet
         for (operationId in operationIds) {
-            val expectation = knownOperations[operationId] ?: continue
+            val expectation = mermanBindingOperationExpectationById[operationId] ?: continue
+            if ("svg" in expectation.compiledPrerequisiteIds) {
+                requiresSvgPipeline = true
+            }
             expectation.availabilityCapabilityId?.let { capabilityId ->
                 if (capabilityId !in capabilitySet) {
                     throw MermanException(
@@ -112,6 +144,7 @@ internal object MermanRuntimeCatalogValidator {
         validateOutputContracts(catalog.opt("output_contracts"), outputIds)
         validateRegistry(catalog.opt("registry"))
         validateResources(catalog.opt("resources"), operationSet)
+        return requiresSvgPipeline
     }
 
     private fun validateCapabilityImplications(
@@ -450,9 +483,19 @@ internal object MermanRuntimeCatalogValidator {
         }
     }
 
-    private fun validateTextMeasurementProtocol(value: Any?): Set<String> {
+    private fun validateTextMeasurementProtocol(
+        value: Any?,
+        requiresSvgPipeline: Boolean,
+    ): List<String> {
         return when (value) {
-            null, JSONObject.NULL -> emptySet()
+            null, JSONObject.NULL -> {
+                if (requiresSvgPipeline) {
+                    throw MermanException(
+                        "Merman text-measurement contract is required by the SVG pipeline",
+                    )
+                }
+                emptyList()
+            }
             is JSONObject -> {
                 val protocolVersion = requiredInt(value, "protocol_version")
                 if (
@@ -464,8 +507,8 @@ internal object MermanRuntimeCatalogValidator {
                 val providers = requiredSortedStringList(
                     value.opt("provider_ids"),
                     "capabilities.text_measurement.provider_ids",
-                ).toSet()
-                if ("deterministic" !in providers) {
+                )
+                if (MERMAN_DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID !in providers) {
                     throw MermanException(
                         "Merman runtime text-measurement providers must include deterministic",
                     )
@@ -476,14 +519,26 @@ internal object MermanRuntimeCatalogValidator {
         }
     }
 
-    private fun validateOptionalOptionGroups(value: Any?, capabilityIds: Set<String>) {
+    private fun validateKnownTextMeasurementProviders(providerIds: List<String>) {
+        validateKnownIds(
+            providerIds,
+            MERMAN_ANDROID_ARTIFACT_EXPECTATION.textMeasurementProviderIds,
+            MERMAN_TEXT_MEASUREMENT_PROVIDER_IDS,
+            "text-measurement provider IDs",
+        )
+    }
+
+    private fun validateOptionalOptionGroups(
+        value: Any?,
+        capabilityIds: Set<String>,
+        usesSvgPipeline: Boolean,
+    ) {
         if (value == null || value === JSONObject.NULL) return
         val actual = requiredSortedFieldIdentifierList(value, "option_group_ids")
-        val hasSvgPipeline = "svg" in capabilityIds
         val expected = MERMAN_BINDING_OPTION_GROUP_SPECS.values
             .filter { spec ->
                 spec.alwaysAvailable ||
-                    (spec.requiresSvgPipeline && hasSvgPipeline) ||
+                    (spec.requiresSvgPipeline && usesSvgPipeline) ||
                     spec.anyCapabilityIds.any(capabilityIds::contains)
             }
             .map(MermanBindingOptionGroupSpec::id)
@@ -500,9 +555,9 @@ internal object MermanRuntimeCatalogValidator {
 
     private fun validateOptionalConstructorServices(
         catalog: JSONObject,
-        capabilityIds: Set<String>,
         candidateIds: Set<String>,
         availableProviderIds: Set<String>,
+        usesSvgPipeline: Boolean,
     ) {
         val rawIds = catalog.opt("constructor_service_ids")
         val rawContracts = catalog.opt("constructor_service_contracts")
@@ -518,11 +573,10 @@ internal object MermanRuntimeCatalogValidator {
             )
         }
         val actualIds = requiredSortedStringList(rawIds, "constructor_service_ids")
-        val hasSvgPipeline = "svg" in capabilityIds
         val expectedIds = candidateIds.filterTo(linkedSetOf()) { id ->
             val spec = MERMAN_BINDING_CONSTRUCTOR_SERVICE_SPECS[id]
                 ?: throw MermanException("Merman generated constructor service `$id` is missing")
-            !spec.requiresSvgPipeline || hasSvgPipeline
+            !spec.requiresSvgPipeline || usesSvgPipeline
         }
         val expectedKnownIds = expectedIds.filter {
             MERMAN_BINDING_CONSTRUCTOR_SERVICE_SPECS.containsKey(it)
@@ -550,13 +604,6 @@ internal object MermanRuntimeCatalogValidator {
             ?: throw MermanException("Merman runtime constructor service contracts are malformed")
         val actualIds = mutableListOf<String>()
         var previousId: String? = null
-        val generatedProviderOwners = buildMap<String, String> {
-            MERMAN_BINDING_CONSTRUCTOR_SERVICE_SPECS.values.forEach { spec ->
-                spec.providedTextMeasurementProviderIds.forEach { providerId ->
-                    put(providerId, spec.id)
-                }
-            }
-        }
         val actualProviderOwners = mutableMapOf<String, String>()
         val providersByServiceId = mutableMapOf<String, Set<String>>()
         for (index in 0 until contracts.length()) {
@@ -584,7 +631,7 @@ internal object MermanRuntimeCatalogValidator {
             providersByServiceId[id] = providerIds.toSet()
             val spec = MERMAN_BINDING_CONSTRUCTOR_SERVICE_SPECS[id]
             val actualKnownProviderIds = providerIds.filter {
-                generatedProviderOwners.containsKey(it)
+                mermanBindingConstructorServiceProviderOwnerById.containsKey(it)
             }.toSet()
             if (spec != null && actualKnownProviderIds != spec.providedTextMeasurementProviderIds.toSet()) {
                 throw MermanException(
@@ -605,7 +652,7 @@ internal object MermanRuntimeCatalogValidator {
                             "constructor service owners",
                     )
                 }
-                val generatedOwner = generatedProviderOwners[providerId]
+                val generatedOwner = mermanBindingConstructorServiceProviderOwnerById[providerId]
                 if (generatedOwner != null && generatedOwner != id) {
                     throw MermanException(
                         "Merman runtime text-measurement provider `$providerId` belongs to " +
@@ -623,7 +670,7 @@ internal object MermanRuntimeCatalogValidator {
             )
         }
         for (providerId in availableProviderIds) {
-            val ownerId = generatedProviderOwners[providerId] ?: continue
+            val ownerId = mermanBindingConstructorServiceProviderOwnerById[providerId] ?: continue
             if (providerId !in providersByServiceId[ownerId].orEmpty()) {
                 throw MermanException(
                     "Merman runtime text-measurement provider `$providerId` is missing " +

@@ -1925,7 +1925,7 @@ class MermanRuntimeCatalog {
       'operation_ids',
       'runtime operation IDs',
     );
-    _validateRuntimeOperationRelations(
+    final operationRequiresSvgPipeline = _validateRuntimeOperationRelations(
       operationIds,
       capabilitySet,
       outputIds.toSet(),
@@ -1951,16 +1951,16 @@ class MermanRuntimeCatalog {
     _validateRuntimeMetadataRelations(metadataIds, capabilitySet);
 
     final textMeasurement = runtimeCapabilities['text_measurement'];
-    final hasSvg = capabilitySet.contains(
-      native.MERMAN_NATIVE_OPERATION_CAPABILITY_SVG,
-    );
-    if (hasSvg != (textMeasurement is Map)) {
+    final requiresSvgPipeline =
+        capabilitySet.contains(native.MERMAN_NATIVE_OPERATION_CAPABILITY_SVG) ||
+        operationRequiresSvgPipeline;
+    if (requiresSvgPipeline && textMeasurement is! Map) {
       throw MermanException.contract(
-        'text measurement must be present exactly when SVG is available',
+        'text measurement must be present when the runtime uses the SVG pipeline',
       );
     }
     final providers = <String>[];
-    if (textMeasurement is Map) {
+    if (textMeasurement != null) {
       final textMeasurementMap = _asObject(textMeasurement, 'text_measurement');
       _requireRequiredKeys(textMeasurementMap, const {
         'protocol_version',
@@ -1979,12 +1979,13 @@ class MermanRuntimeCatalog {
           'runtime text measurement providers',
         ),
       );
-      if (!providers.contains('deterministic')) {
+      if (!providers.contains(mermanDeterministicTextMeasurementProviderId)) {
         throw MermanException.contract(
           'SVG runtime contract must expose the deterministic text measurement provider',
         );
       }
     }
+    final usesSvgPipeline = requiresSvgPipeline || providers.isNotEmpty;
 
     final optionGroupIds = catalog.containsKey('option_group_ids')
         ? _requiredSortedUniqueFieldIdentifiers(
@@ -1997,7 +1998,7 @@ class MermanRuntimeCatalog {
       _validateRuntimeOptionGroups(
         optionGroupIds,
         capabilitySet,
-        usesSvgPipeline: textMeasurement is Map,
+        usesSvgPipeline: usesSvgPipeline,
       );
     }
 
@@ -2029,7 +2030,7 @@ class MermanRuntimeCatalog {
     if (hasConstructorServiceIds) {
       _validateRuntimeConstructorServiceIds(
         constructorServiceIds,
-        usesSvgPipeline: textMeasurement is Map,
+        usesSvgPipeline: usesSvgPipeline,
       );
     }
 
@@ -4458,13 +4459,20 @@ void _validateRuntimeOptionGroups(
   }
 }
 
-void _validateRuntimeOperationRelations(
+bool _validateRuntimeOperationRelations(
   List<String> operationIds,
   Set<String> capabilityIds,
   Set<String> outputIds,
 ) {
+  var requiresSvgPipeline = false;
   for (final operationId in operationIds) {
     final expectation = _operationExpectationById[operationId];
+    if (expectation?.compiledPrerequisiteIds.contains(
+          native.MERMAN_NATIVE_OPERATION_CAPABILITY_SVG,
+        ) ??
+        false) {
+      requiresSvgPipeline = true;
+    }
     final requiredCapabilityId = expectation?.availabilityCapabilityId;
     if (requiredCapabilityId != null &&
         !capabilityIds.contains(requiredCapabilityId)) {
@@ -4480,6 +4488,7 @@ void _validateRuntimeOperationRelations(
       );
     }
   }
+  return requiresSvgPipeline;
 }
 
 void _validateRuntimeCapabilityRelations(

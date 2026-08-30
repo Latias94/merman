@@ -11,6 +11,12 @@ const String mermanRuntimeCatalogFieldIdentifierPattern = r'^[a-z][a-z0-9_-]*$';
 const int mermanBindingOptionsContractSchemaVersion = 3;
 const int mermanOperationMetadataSchemaVersion = 1;
 const int mermanTextMeasurementContractProtocolVersion = 1;
+const String mermanDeterministicTextMeasurementProviderId = "deterministic";
+const String mermanHostCallbackTextMeasurementProviderId = "host-callback";
+const Set<String> mermanTextMeasurementProviderIds = <String>{
+  "deterministic",
+  "host-callback",
+};
 const String mermanHostTextMeasurementConstructorServiceId =
     "host-text-measurement";
 const String mermanIconRegistryConstructorServiceId = "icon-registry";
@@ -109,6 +115,7 @@ final class MermanBindingOperationExpectation {
     required this.metadataSchemaVersion,
     required this.requiresUri,
     required this.availabilityCapabilityId,
+    required this.compiledPrerequisiteIds,
   });
 
   final String operationId;
@@ -118,6 +125,7 @@ final class MermanBindingOperationExpectation {
   final int metadataSchemaVersion;
   final bool requiresUri;
   final String? availabilityCapabilityId;
+  final Set<String> compiledPrerequisiteIds;
 }
 
 const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
@@ -625,6 +633,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "analysis-json",
@@ -634,6 +643,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "ascii",
@@ -643,6 +653,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "ascii",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "describe-theme-support-json",
@@ -652,6 +663,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "document-analysis-facts-json",
@@ -661,6 +673,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: true,
     availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "document-analysis-json",
@@ -670,6 +683,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: true,
     availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "export-theme-preset-json",
@@ -679,6 +693,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "jpeg",
@@ -688,6 +703,9 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "jpeg",
+    compiledPrerequisiteIds: <String>{
+      "svg",
+    },
   ),
   MermanBindingOperationExpectation(
     operationId: "layout-json",
@@ -697,6 +715,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "materialize-theme-json",
@@ -706,6 +725,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "pdf",
@@ -715,6 +735,9 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "pdf",
+    compiledPrerequisiteIds: <String>{
+      "svg",
+    },
   ),
   MermanBindingOperationExpectation(
     operationId: "png",
@@ -724,6 +747,9 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "png",
+    compiledPrerequisiteIds: <String>{
+      "svg",
+    },
   ),
   MermanBindingOperationExpectation(
     operationId: "semantic-json",
@@ -733,6 +759,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: null,
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "svg",
@@ -742,6 +769,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "svg-plan-json",
@@ -751,6 +779,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "validation-json",
@@ -760,6 +789,7 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
   ),
 ];
 

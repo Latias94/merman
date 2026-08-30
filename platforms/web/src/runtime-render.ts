@@ -9,6 +9,7 @@ import type {
   HostTextMeasureResult,
   HostTextMetricsResult,
   HostTextMeasurer,
+  HostTextMeasurerSvgBindingOptions,
   MaterializedThemeWireV1,
   PresetExportV1,
   SvgBindingOptions,
@@ -88,7 +89,7 @@ function encodeThemeAuthoringInput(
 export function renderSvgWithTextMeasurer(
   source: string,
   measurer: HostTextMeasurer,
-  options?: SvgBindingOptions | string
+  options?: HostTextMeasurerSvgBindingOptions | string
 ): string {
   const renderWithMeasurer = getMerman().renderSvgWithTextMeasurer;
   if (!renderWithMeasurer) {
@@ -102,7 +103,7 @@ export function renderSvgWithTextMeasurer(
 export function layoutJsonWithTextMeasurer(
   source: string,
   measurer: HostTextMeasurer,
-  options?: SvgBindingOptions | string
+  options?: HostTextMeasurerSvgBindingOptions | string
 ): string {
   const layoutWithMeasurer = getMerman().layoutJsonWithTextMeasurer;
   if (!layoutWithMeasurer) {

@@ -714,6 +714,19 @@ interface SvgBindingFields {
 
 export type SvgBindingOptions = CommonBindingOptions & SvgBindingFields;
 
+type HostTextMeasurerEnvironmentOptions = Omit<
+  RenderEnvironmentOptions,
+  "text_measurement"
+> & {
+  text_measurement?: never;
+};
+
+export type HostTextMeasurerSvgBindingOptions =
+  CommonBindingOptions &
+  Omit<SvgBindingFields, "environment"> & {
+    environment?: HostTextMeasurerEnvironmentOptions;
+  };
+
 export type BindingOptions = SvgBindingOptions;
 
 export interface HostTextMeasureRequest {

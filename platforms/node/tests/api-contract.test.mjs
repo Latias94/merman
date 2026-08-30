@@ -620,6 +620,17 @@ test("default construction is explicit deterministic interactive policy", async 
   await engine.dispose();
 });
 
+test("construction preserves an explicit null text measurement selector", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine(
+    { bindingOptions: { environment: { text_measurement: null } } },
+    { loadTransport: factory.loadTransport },
+  );
+
+  assert.deepEqual(factory.createdWith[0].environment, { text_measurement: null });
+  await engine.dispose();
+});
+
 test("generic operations preserve request-local options JSON", async () => {
   const factory = transportFactory();
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
@@ -1641,7 +1652,7 @@ test("public TypeScript declarations cover the generic operation API", () => {
     /export declare class MermanEngine\s*{[^}]*private constructor\(\);/s,
   );
   assert.doesNotMatch(declarations, /"deterministic"\s*\|\s*"native"/);
-  assert.match(declarations, /text_measurement\?:\s*"deterministic"/);
+  assert.match(declarations, /text_measurement\?:\s*"deterministic"\s*\|\s*null;/);
   assert.doesNotMatch(declarations, /text_measurement[^;]*(?:"vendored"|"parity")/);
   assert.match(declarations, /class MermanInvalidTransportError extends MermanError/);
   assert.match(declarations, /type MermanResourceCount\s*=\s*number\s*\|\s*string/);
@@ -1725,6 +1736,12 @@ test("binding options preserve the shared profile vocabulary and reject host mea
       environment: { text_measurement: "deterministic" },
     }).environment.text_measurement,
     "deterministic",
+  );
+  assert.equal(
+    normalizeBindingOptions({
+      environment: { text_measurement: null },
+    }).environment.text_measurement,
+    null,
   );
   for (const textMeasurement of ["vendored", "parity"]) {
     assert.throws(

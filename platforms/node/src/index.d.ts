@@ -8,7 +8,7 @@ export interface MermanBindingOptions {
   version?: 3;
   runtime_policy?: "deterministic";
   environment?: {
-    text_measurement?: "deterministic";
+    text_measurement?: "deterministic" | null;
     [key: string]: unknown;
   };
   resources?: {

@@ -43,6 +43,8 @@ void main() {
   rejectsInconsistentAdapters();
   rejectsCoercedRuntimeCatalogVersionFields();
   rejectsInconsistentTextMeasurement();
+  acceptsInternalSvgPipelineWithoutPublicSvgCapability();
+  rejectsMalformedTextMeasurementWithoutSvgPipeline();
   rejectsTextMeasurementWithoutDeterministicProvider();
   rejectsMalformedResourceDescriptors();
   textMeasurementFactoriesRejectMalformedValues();
@@ -1474,12 +1476,48 @@ void rejectsInconsistentTextMeasurement() {
   final catalog = _catalog();
   _runtimeCapabilities(catalog)['text_measurement'] = null;
   _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+
+  final pngOnly = _catalog(
+    capabilityIds: const ['png'],
+    outputIds: const ['png'],
+    operationIds: const ['png', 'semantic-json'],
+  );
+  _runtimeCapabilities(pngOnly)['text_measurement'] = null;
+  _expectContractFailure(() => MermanRuntimeCatalog.fromJson(pngOnly));
+}
+
+void acceptsInternalSvgPipelineWithoutPublicSvgCapability() {
+  final catalog = _catalog(
+    capabilityIds: const ['png'],
+    outputIds: const ['png'],
+    operationIds: const ['png', 'semantic-json'],
+  );
+  final validated = MermanRuntimeCatalog.fromJson(catalog);
+  _expect(
+    validated.supportsCapability('png') &&
+        !validated.supportsCapability('svg') &&
+        validated.supportsOperation('png') &&
+        validated.textMeasurementProviderIds.contains(
+          binding.mermanDeterministicTextMeasurementProviderId,
+        ),
+    'a PNG-only public surface must retain its internal SVG pipeline contract',
+  );
+}
+
+void rejectsMalformedTextMeasurementWithoutSvgPipeline() {
+  final catalog = _catalog(
+    capabilityIds: const [],
+    outputIds: const [],
+    operationIds: const ['semantic-json'],
+  );
+  _runtimeCapabilities(catalog)['text_measurement'] = 'invalid';
+  _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
 }
 
 void rejectsTextMeasurementWithoutDeterministicProvider() {
   for (final providers in <List<String>>[
     <String>[],
-    <String>['host-callback'],
+    <String>[binding.mermanHostCallbackTextMeasurementProviderId],
   ]) {
     final catalog = _catalog();
     final textMeasurement =
@@ -2171,7 +2209,15 @@ Map<String, Object?> _catalog({
   List<String> systemAdapterIds = const [],
   List<String>? metadataIds,
 }) {
-  final usesSvgPipeline = capabilityIds.contains('svg');
+  final usesSvgPipeline =
+      capabilityIds.contains('svg') ||
+      operationIds.any(
+        (operationId) => binding.mermanBindingOperationExpectations.any(
+          (expectation) =>
+              expectation.operationId == operationId &&
+              expectation.compiledPrerequisiteIds.contains('svg'),
+        ),
+      );
   final optionGroupIds =
       binding.mermanBindingOptionGroupSpecs.values
           .where(
@@ -2194,7 +2240,7 @@ Map<String, Object?> _catalog({
           .toList()
         ..sort((left, right) => left.id.compareTo(right.id));
   final providers = <String>{
-    if (usesSvgPipeline) 'deterministic',
+    if (usesSvgPipeline) binding.mermanDeterministicTextMeasurementProviderId,
     for (final spec in serviceSpecs) ...spec.providedTextMeasurementProviderIds,
   }.toList()..sort();
   final effectiveMetadataIds =

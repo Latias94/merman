@@ -75,7 +75,7 @@ let engine = BindingEngine::from_options_and_services(options_json, services)?;
 # Ok::<(), merman_bindings_core::BindingError>(())
 ```
 
-This example requires the `svg` feature. An explicit `environment.text_measurement` selector conflicts with the constructor service in both base options and request overlays. Construction only installs the callback; it never invokes it. Foreign callback lifetime, close admission, and out-of-lock destruction remain transport responsibilities.
+This example requires the `svg` feature. An explicit `environment.text_measurement` selector, including `null`, conflicts with the constructor service in both base options and request overlays. Construction only installs the callback; it never invokes it. Foreign callback lifetime, close admission, and out-of-lock destruction remain transport responsibilities.
 
 ## SVG Output Contract
 

@@ -486,7 +486,7 @@ update requests rather than relying on an alias.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `environment.text_measurement` | string | `deterministic` | The only built-in value is `deterministic`; install a host callback through the engine service API when the final display stack should own geometry. |
+| `environment.text_measurement` | string or null | `deterministic` | The only built-in value is `deterministic`. `null` selects no concrete override but remains explicit provenance. Install a host callback through the engine service API when the final display stack should own geometry; any explicit selector, including `null`, conflicts with that constructor-owned service. |
 | `environment.math_renderer` | string | `none` | `none` or `ratex`. `ratex` requires the `math` feature. |
 
 This is a breaking schema change: `layout.text_measurer` and `layout.math_renderer` are rejected.
