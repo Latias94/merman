@@ -2292,8 +2292,11 @@ fn collect_element_presentation(
                 attribute.name(),
                 "marker-start" | "marker-mid" | "marker-end" | "clip-path" | "filter"
             ) {
-                attribute_value =
-                    crate::svgdom::canonical_flowchart_reference(element, &attribute_value);
+                attribute_value = crate::svgdom::canonical_flowchart_reference(
+                    element,
+                    attribute.name(),
+                    &attribute_value,
+                );
             }
         }
         attributes.insert(format!("{scope}@{attribute_name}"), attribute_value);
