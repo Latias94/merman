@@ -58,6 +58,14 @@ path topology, task-label placement, or adaptive font size from browser
 `getBBox()`/`getComputedTextLength()` results that the font-agnostic deterministic fallback does
 not claim to reproduce.
 
+These receipts are exact snapshot authorizations with a reviewed browser-text attribution; they are
+not machine proof that browser text measurement is the only possible cause of each mismatch. The
+unfiltered `compare-all-svgs` run with explicit DOM modes also requires every catalog comparison for
+those modes to be exercised. A signature drift is still an encountered comparison and fails through
+the existing receipt validation; removing a fixture or mode without retiring its receipt instead
+fails the independent coverage gate. Filtered and family-scoped diagnostic runs may intentionally
+exercise only a subset.
+
 Render failures, malformed upstream or local DOM, semantic-label failures, operation-provenance
 failures, invalid roots, changed root sizing policy, unregistered fixtures, unlisted modes, changed
 input/upstream digests, changed local signatures, stale receipts, and every other DOM mismatch

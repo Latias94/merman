@@ -2,6 +2,7 @@
 
 use crate::XtaskError;
 use crate::svgdom;
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::ops::AddAssign;
@@ -541,7 +542,7 @@ pub(crate) struct CompareRunOptions<'a> {
     pub(crate) upstream_dom_drift_policy: UpstreamDomDriftPolicy,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct CompareEvidence {
     selected_fixtures: usize,
     rendered_fixtures: usize,
@@ -554,35 +555,56 @@ pub(crate) struct CompareEvidence {
     semantic_label_fixture_comparisons: usize,
     semantic_label_sample_comparisons: usize,
     semantic_label_accepted_residuals: usize,
+    encountered_browser_text_layout_receipt_keys: BTreeSet<super::BrowserTextLayoutReceiptKey>,
+    accepted_browser_text_layout_residual_comparisons: usize,
 }
 
 impl CompareEvidence {
     #[cfg(test)]
-    pub(crate) const fn selected_fixtures(self) -> usize {
+    pub(crate) const fn selected_fixtures(&self) -> usize {
         self.selected_fixtures
     }
 
     #[cfg(test)]
-    pub(crate) const fn rendered_fixtures(self) -> usize {
+    pub(crate) const fn rendered_fixtures(&self) -> usize {
         self.rendered_fixtures
     }
 
     #[cfg(test)]
-    pub(crate) const fn observed_operation_reports(self) -> usize {
+    pub(crate) const fn observed_operation_reports(&self) -> usize {
         self.observed_operation_reports
     }
 
     #[cfg(test)]
-    pub(crate) const fn observed_measurement_routes(self) -> usize {
+    pub(crate) const fn observed_measurement_routes(&self) -> usize {
         self.observed_measurement_routes
     }
 
-    pub(crate) const fn comparisons(self) -> usize {
+    pub(crate) const fn comparisons(&self) -> usize {
         self.raw_source_svg_dom_comparisons + self.raw_source_svg_byte_comparisons
     }
 
+    pub(crate) fn encountered_browser_text_layout_receipt_keys(
+        &self,
+    ) -> &BTreeSet<super::BrowserTextLayoutReceiptKey> {
+        &self.encountered_browser_text_layout_receipt_keys
+    }
+
     #[cfg(test)]
-    pub(crate) const fn semantic_label_comparisons(self) -> (usize, usize, usize) {
+    pub(crate) fn record_encountered_browser_text_layout_receipt_key(
+        &mut self,
+        key: super::BrowserTextLayoutReceiptKey,
+    ) {
+        self.encountered_browser_text_layout_receipt_keys
+            .insert(key);
+    }
+
+    pub(crate) const fn accepted_browser_text_layout_residual_comparisons(&self) -> usize {
+        self.accepted_browser_text_layout_residual_comparisons
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn semantic_label_comparisons(&self) -> (usize, usize, usize) {
         (
             self.semantic_label_fixture_comparisons,
             self.semantic_label_sample_comparisons,
@@ -590,7 +612,7 @@ impl CompareEvidence {
         )
     }
 
-    pub(crate) fn gate_failures(self, subject: &str, check_dom: bool) -> Vec<String> {
+    pub(crate) fn gate_failures(&self, subject: &str, check_dom: bool) -> Vec<String> {
         let mut failures = Vec::new();
         if self.rendered_fixtures == 0 {
             failures.push(format!(
@@ -644,7 +666,7 @@ impl CompareEvidence {
         failures
     }
 
-    fn write_report(self, report: &mut String) {
+    fn write_report(&self, report: &mut String) {
         let _ = writeln!(
             report,
             "- Evidence counts: selected=`{}` rendered=`{}` skipped=`{}` operation-reports=`{}` measurement-routes=`{}` raw/source-SVG-DOM=`{}` raw/source-SVG-bytes=`{}`",
@@ -667,6 +689,12 @@ impl CompareEvidence {
             self.semantic_label_fixture_comparisons,
             self.semantic_label_sample_comparisons,
             self.semantic_label_accepted_residuals,
+        );
+        let _ = writeln!(
+            report,
+            "- Browser text layout evidence: encountered receipt comparisons=`{}` accepted exact residual comparisons=`{}`",
+            self.encountered_browser_text_layout_receipt_keys.len(),
+            self.accepted_browser_text_layout_residual_comparisons,
         );
     }
 
@@ -693,6 +721,10 @@ impl CompareEvidence {
             self.semantic_label_sample_comparisons += labels.compared_samples;
             self.semantic_label_accepted_residuals += labels.accepted_residuals;
         }
+        self.encountered_browser_text_layout_receipt_keys
+            .extend(comparison.encountered_browser_text_layout_receipt_keys);
+        self.accepted_browser_text_layout_residual_comparisons +=
+            comparison.accepted_browser_text_layout_residual_comparisons;
     }
 }
 
@@ -710,6 +742,10 @@ impl AddAssign for CompareEvidence {
         self.semantic_label_fixture_comparisons += rhs.semantic_label_fixture_comparisons;
         self.semantic_label_sample_comparisons += rhs.semantic_label_sample_comparisons;
         self.semantic_label_accepted_residuals += rhs.semantic_label_accepted_residuals;
+        self.encountered_browser_text_layout_receipt_keys
+            .extend(rhs.encountered_browser_text_layout_receipt_keys);
+        self.accepted_browser_text_layout_residual_comparisons +=
+            rhs.accepted_browser_text_layout_residual_comparisons;
     }
 }
 
@@ -731,8 +767,8 @@ impl CompareRunFailure {
         Self::with_evidence(CompareEvidence::default(), error)
     }
 
-    pub(crate) const fn evidence(&self) -> CompareEvidence {
-        self.evidence
+    pub(crate) fn evidence(&self) -> CompareEvidence {
+        self.evidence.clone()
     }
 
     pub(crate) fn into_error(self) -> XtaskError {
@@ -1273,7 +1309,7 @@ where
                 &upstream_dir,
                 run.filter.is_none(),
             )
-            .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?,
+            .map_err(|error| CompareRunFailure::with_evidence(evidence.clone(), error))?,
         )
     } else {
         None
@@ -1284,7 +1320,7 @@ where
             path: out_svg_dir.display().to_string(),
             source,
         })
-        .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
+        .map_err(|error| CompareRunFailure::with_evidence(evidence.clone(), error))?;
 
     let mut report = String::new();
     write_header(state, &mut report, &compare_paths, &run);
@@ -1395,7 +1431,7 @@ where
                         inspect_dom(state, stem, upstream_document, local_document)
                     },
                 )
-                .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
+                .map_err(|error| CompareRunFailure::with_evidence(evidence.clone(), error))?;
                 evidence.record_comparison(comparison);
             }
             CompareFixtureResult::RenderedWithPolicy {
@@ -1429,7 +1465,7 @@ where
                         inspect_dom(state, stem, upstream_document, local_document)
                     },
                 )
-                .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
+                .map_err(|error| CompareRunFailure::with_evidence(evidence.clone(), error))?;
                 evidence.record_comparison(comparison);
             }
         }
@@ -1450,10 +1486,8 @@ where
     failures.extend(evidence.gate_failures(run.diagram, run.check_dom));
     evidence.write_report(&mut report);
     write_report(state, &mut report, &compare_paths, &run, &failures, &notes);
-    let accepted_browser_text_layout_residuals = notes
-        .iter()
-        .filter(|note| note.starts_with(ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX))
-        .count();
+    let accepted_browser_text_layout_residuals =
+        evidence.accepted_browser_text_layout_residual_comparisons();
     if accepted_browser_text_layout_residuals > 0 {
         println!(
             "accepted {accepted_browser_text_layout_residuals} exact browser-text-layout residual comparisons for {} (report={})",
@@ -1468,14 +1502,14 @@ where
                 path: parent.display().to_string(),
                 source,
             })
-            .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
+            .map_err(|error| CompareRunFailure::with_evidence(evidence.clone(), error))?;
     }
     fs::write(&compare_paths.out_path, report)
         .map_err(|source| XtaskError::WriteFile {
             path: compare_paths.out_path.display().to_string(),
             source,
         })
-        .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
+        .map_err(|error| CompareRunFailure::with_evidence(evidence.clone(), error))?;
     if failures.is_empty() {
         Ok(evidence)
     } else {
@@ -1497,10 +1531,12 @@ enum RawSourceComparison {
     SvgBytes,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct FixtureComparisonEvidence {
     raw_source: RawSourceComparison,
     semantic_labels: Option<super::SemanticLabelGateEvidence>,
+    encountered_browser_text_layout_receipt_keys: BTreeSet<super::BrowserTextLayoutReceiptKey>,
+    accepted_browser_text_layout_residual_comparisons: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1576,6 +1612,20 @@ where
             }
         }
 
+        let browser_text_layout_residual = match upstream_dom_drift_policy {
+            UpstreamDomDriftPolicy::Blocking => None,
+            UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts => {
+                super::browser_text_layout_residual(diagram, stem)
+                    .map_err(XtaskError::SvgCompareFailed)?
+            }
+        };
+        let encountered_browser_text_layout_receipt_keys = evaluations
+            .iter()
+            .filter_map(|(requested_mode, _, _)| {
+                browser_text_layout_residual.and_then(|residual| residual.key(*requested_mode))
+            })
+            .collect::<BTreeSet<_>>();
+
         let upstream_normalized = svgdom::normalize_xml_entities(upstream_svg);
         let local_normalized = svgdom::normalize_xml_entities(local_svg);
         let upstream_document =
@@ -1592,6 +1642,7 @@ where
                     .map(|error| format!("local dom parse failed for {stem}: {error}"))
             });
 
+        let mut accepted_browser_text_layout_residual_comparisons = 0;
         if let Some(parse_failure) = parse_failure {
             for (requested_mode, _, _) in &evaluations {
                 failures.push(format!(
@@ -1602,13 +1653,6 @@ where
         } else {
             let mut upstream_document = upstream_document.expect("checked upstream DOM parse");
             let mut local_document = local_document.expect("checked local DOM parse");
-            let browser_text_layout_residual = match upstream_dom_drift_policy {
-                UpstreamDomDriftPolicy::Blocking => None,
-                UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts => {
-                    super::browser_text_layout_residual(diagram, stem)
-                        .map_err(XtaskError::SvgCompareFailed)?
-                }
-            };
             let local_svg_signature = browser_text_layout_residual
                 .map(|_| svgdom::canonical_local_svg_signature(local_svg, dom_decimals))
                 .transpose()
@@ -1660,20 +1704,21 @@ where
                     descendant_comparisons.push((comparison_key, error.clone()));
                     error
                 };
-                record_upstream_dom_comparison(
-                    upstream_dom_drift_policy,
-                    browser_text_layout_residual,
-                    requested_mode,
-                    diagram,
-                    stem,
-                    input_text,
-                    upstream_svg,
-                    dom_decimals,
-                    local_svg_signature.as_ref(),
-                    comparison_error,
-                    failures,
-                    notes,
-                );
+                accepted_browser_text_layout_residual_comparisons +=
+                    usize::from(record_upstream_dom_comparison(
+                        upstream_dom_drift_policy,
+                        browser_text_layout_residual,
+                        requested_mode,
+                        diagram,
+                        stem,
+                        input_text,
+                        upstream_svg,
+                        dom_decimals,
+                        local_svg_signature.as_ref(),
+                        comparison_error,
+                        failures,
+                        notes,
+                    ));
             }
         }
         failures.extend(issues);
@@ -1681,6 +1726,8 @@ where
         return Ok(FixtureComparisonEvidence {
             raw_source: RawSourceComparison::SvgDom(dom_plan.modes().len()),
             semantic_labels,
+            encountered_browser_text_layout_receipt_keys,
+            accepted_browser_text_layout_residual_comparisons,
         });
     } else if !check_dom && compare_svg_when_dom_disabled && upstream_svg != local_svg {
         failures.push(format!("svg mismatch for {stem}"));
@@ -1695,6 +1742,8 @@ where
             RawSourceComparison::None
         },
         semantic_labels,
+        encountered_browser_text_layout_receipt_keys: BTreeSet::new(),
+        accepted_browser_text_layout_residual_comparisons: 0,
     })
 }
 
@@ -1712,7 +1761,7 @@ fn record_upstream_dom_comparison(
     comparison_error: Option<String>,
     failures: &mut Vec<String>,
     notes: &mut Vec<String>,
-) {
+) -> bool {
     let mode_label = dom_mode_label(mode);
     if policy == UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
         && let Some(residual) = residual
@@ -1720,7 +1769,7 @@ fn record_upstream_dom_comparison(
             residual.validate_source_artifacts(input_text.as_bytes(), upstream_svg.as_bytes())
     {
         failures.push(format!("[{mode_label}] {error}"));
-        return;
+        return false;
     }
     let admitted = policy == UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
         && residual.is_some_and(|residual| residual.admits_mode(mode));
@@ -1733,9 +1782,12 @@ fn record_upstream_dom_comparison(
                 dom_decimals,
                 local_svg_signature,
             ) {
-                Ok(()) => notes.push(format!(
-                    "{ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX} [{mode_label}] for {diagram}/{stem}: {error}"
-                )),
+                Ok(()) => {
+                    notes.push(format!(
+                        "{ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX} [{mode_label}] for {diagram}/{stem}: {error}"
+                    ));
+                    return true;
+                }
                 Err(receipt_error) => failures.push(format!(
                     "[{mode_label}] {receipt_error}; the new DOM mismatch remains blocking"
                 )),
@@ -1757,6 +1809,7 @@ fn record_upstream_dom_comparison(
         }
         (None, _, _) => {}
     }
+    false
 }
 
 fn validate_browser_text_layout_local_signature(
@@ -2318,6 +2371,8 @@ mod tests {
                 compared_samples: 5,
                 accepted_residuals: 5,
             }),
+            encountered_browser_text_layout_receipt_keys: BTreeSet::new(),
+            accepted_browser_text_layout_residual_comparisons: 0,
         });
 
         assert_eq!(evidence.comparisons(), 1);
@@ -2760,6 +2815,8 @@ mod tests {
                 semantic_label_fixture_comparisons: 0,
                 semantic_label_sample_comparisons: 0,
                 semantic_label_accepted_residuals: 0,
+                encountered_browser_text_layout_receipt_keys: BTreeSet::new(),
+                accepted_browser_text_layout_residual_comparisons: 0,
             }
         );
         let report = fs::read_to_string(&out_path).expect("report should be written");
@@ -2847,6 +2904,8 @@ mod tests {
                 semantic_label_fixture_comparisons: 0,
                 semantic_label_sample_comparisons: 0,
                 semantic_label_accepted_residuals: 0,
+                encountered_browser_text_layout_receipt_keys: BTreeSet::new(),
+                accepted_browser_text_layout_residual_comparisons: 0,
             }
         );
         assert!(matches!(failure.into_error(), XtaskError::WriteFile { .. }));
@@ -2919,6 +2978,8 @@ mod tests {
                 semantic_label_fixture_comparisons: 0,
                 semantic_label_sample_comparisons: 0,
                 semantic_label_accepted_residuals: 0,
+                encountered_browser_text_layout_receipt_keys: BTreeSet::new(),
+                accepted_browser_text_layout_residual_comparisons: 0,
             }
         );
         assert!(matches!(failure.into_error(), XtaskError::WriteFile { .. }));

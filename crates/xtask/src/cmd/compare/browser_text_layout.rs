@@ -4,8 +4,12 @@
 //! new DOM shape merely because it belongs to a measurement-sensitive diagram family. A residual
 //! is diagnostic only when the fixture input, pinned upstream SVG, comparison mode, comparison
 //! precision, and canonical local SVG signature still match an explicitly reviewed receipt.
+//! Receipts authorize exact reviewed snapshots; they do not independently prove browser-text
+//! causality.
 
 use crate::util::{is_canonical_sha256, sha256_hex};
+use std::collections::BTreeSet;
+use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -49,11 +53,45 @@ pub(crate) struct BrowserTextLayoutResidual {
     local_svg_signature_sha256: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct BrowserTextLayoutReceiptKey {
+    diagram: String,
+    fixture: String,
+    mode: crate::svgdom::DomMode,
+}
+
+impl BrowserTextLayoutReceiptKey {
+    pub(crate) fn new(diagram: &str, fixture: &str, mode: crate::svgdom::DomMode) -> Self {
+        Self {
+            diagram: diagram.to_string(),
+            fixture: fixture.to_string(),
+            mode,
+        }
+    }
+}
+
+impl fmt::Display for BrowserTextLayoutReceiptKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{}/{}#{}",
+            self.diagram,
+            self.fixture,
+            self.mode.as_str()
+        )
+    }
+}
+
 impl BrowserTextLayoutResidual {
     pub(crate) fn admits_mode(&self, mode: crate::svgdom::DomMode) -> bool {
         self.modes
             .iter()
             .any(|candidate| candidate == mode.as_str())
+    }
+
+    pub(crate) fn key(&self, mode: crate::svgdom::DomMode) -> Option<BrowserTextLayoutReceiptKey> {
+        self.admits_mode(mode)
+            .then(|| BrowserTextLayoutReceiptKey::new(&self.diagram, &self.fixture, mode))
     }
 
     pub(crate) fn validate_local_svg_signature(
@@ -141,14 +179,30 @@ pub(crate) fn browser_text_layout_residual(
     diagram: &str,
     fixture: &str,
 ) -> Result<Option<&'static BrowserTextLayoutResidual>, String> {
-    let catalog = match CATALOG.get_or_init(load_catalog) {
-        Ok(catalog) => catalog,
-        Err(error) => return Err(error.clone()),
-    };
+    let catalog = browser_text_layout_residual_catalog()?;
     Ok(catalog
         .entries
         .iter()
         .find(|entry| entry.diagram == diagram && entry.fixture == fixture))
+}
+
+pub(crate) fn expected_browser_text_layout_receipt_keys(
+    modes: &[crate::svgdom::DomMode],
+) -> Result<BTreeSet<BrowserTextLayoutReceiptKey>, String> {
+    let catalog = browser_text_layout_residual_catalog()?;
+    Ok(catalog
+        .entries
+        .iter()
+        .flat_map(|entry| modes.iter().filter_map(|mode| entry.key(*mode)))
+        .collect())
+}
+
+fn browser_text_layout_residual_catalog()
+-> Result<&'static BrowserTextLayoutResidualCatalog, String> {
+    match CATALOG.get_or_init(load_catalog) {
+        Ok(catalog) => Ok(catalog),
+        Err(error) => Err(error.clone()),
+    }
 }
 
 fn catalog_path() -> PathBuf {
@@ -308,6 +362,16 @@ mod tests {
                 "diagram={diagram}"
             );
         }
+        assert_eq!(
+            expected_browser_text_layout_receipt_keys(&[
+                crate::svgdom::DomMode::Structure,
+                crate::svgdom::DomMode::Parity,
+                crate::svgdom::DomMode::ParityRoot,
+            ])
+            .expect("committed receipt comparison keys")
+            .len(),
+            250,
+        );
     }
 
     #[test]
@@ -385,13 +449,11 @@ mod tests {
             )
             .is_err()
         );
-        assert!(
-            crate::svgdom::canonical_local_svg_signature(
-                r#"<?xml-stylesheet type="text/css" href="theme.css"?><svg><text>wrapped</text></svg>"#,
-                DOM_DECIMALS,
-            )
-            .is_err()
-        );
+        assert!(crate::svgdom::canonical_local_svg_signature(
+            r#"<?xml-stylesheet type="text/css" href="theme.css"?><svg><text>wrapped</text></svg>"#,
+            DOM_DECIMALS,
+        )
+        .is_err());
     }
 
     #[test]
