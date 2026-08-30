@@ -43,6 +43,8 @@ class PubPackageReconciliationTests(unittest.TestCase):
         root: Path,
         name: str = "merman-flutter-package.tar.gz",
         source: str = "void main() {}\n",
+        *,
+        repository_only_files: bool = False,
     ) -> Path:
         package = root / "package"
         package.mkdir()
@@ -51,6 +53,11 @@ class PubPackageReconciliationTests(unittest.TestCase):
         (package / "THIRD_PARTY_NOTICES.md").write_text("notices\n")
         (package / "lib").mkdir()
         (package / "lib/example.dart").write_text(source)
+        if repository_only_files:
+            (package / ".gitignore").write_text(".dart_tool/\n")
+            (package / ".pubignore").write_text("/build-native.py\n/ffigen.yaml\n")
+            (package / "build-native.py").write_text("raise SystemExit(0)\n")
+            (package / "ffigen.yaml").write_text("output: generated.dart\n")
         archive = root / name
         receipt = root / "merman-flutter-package.receipt.json"
         flutter_release_archive.create_archive(
@@ -62,6 +69,39 @@ class PubPackageReconciliationTests(unittest.TestCase):
             version="0.8.0-alpha.6",
         )
         return archive
+
+    @staticmethod
+    def repack_for_pub(source_archive: Path, pub_archive: Path) -> bytes:
+        excluded = {".gitignore", ".pubignore", "build-native.py", "ffigen.yaml"}
+        directories: set[str] = set()
+        with tarfile.open(source_archive, mode="r:gz") as source, tarfile.open(
+            pub_archive, mode="w:gz"
+        ) as target:
+            for member in source:
+                if member.name in excluded:
+                    continue
+                parts = member.name.split("/")
+                for index in range(1, len(parts)):
+                    directory = "/".join(parts[:index])
+                    if directory in directories:
+                        continue
+                    directories.add(directory)
+                    info = tarfile.TarInfo(directory)
+                    info.type = tarfile.DIRTYPE
+                    info.mode = 0o755
+                    info.mtime = 0
+                    info.uname = info.gname = "pub"
+                    target.addfile(info)
+                info = tarfile.TarInfo(member.name)
+                info.size = member.size
+                info.mode = member.mode
+                info.mtime = 1_786_551_402
+                info.uname = info.gname = "pub"
+                source_file = source.extractfile(member)
+                assert source_file is not None
+                with source_file:
+                    target.addfile(info, source_file)
+        return pub_archive.read_bytes()
 
     def test_missing_pub_version_is_uploadable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -83,33 +123,31 @@ class PubPackageReconciliationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             archive = self.package_archive(Path(temp_dir))
             pub_archive = Path(temp_dir) / "pub-archive.tar.gz"
-            directories: set[str] = set()
-            with tarfile.open(archive, mode="r:gz") as source, tarfile.open(
-                pub_archive, mode="w:gz"
-            ) as target:
-                for member in source:
-                    parts = member.name.split("/")
-                    for index in range(1, len(parts)):
-                        directory = "/".join(parts[:index])
-                        if directory in directories:
-                            continue
-                        directories.add(directory)
-                        info = tarfile.TarInfo(directory)
-                        info.type = tarfile.DIRTYPE
-                        info.mode = 0o755
-                        info.mtime = 0
-                        info.uname = info.gname = "pub"
-                        target.addfile(info)
-                    info = tarfile.TarInfo(member.name)
-                    info.size = member.size
-                    info.mode = member.mode
-                    info.mtime = 1_786_551_402
-                    info.uname = info.gname = "pub"
-                    source_file = source.extractfile(member)
-                    self.assertIsNotNone(source_file)
-                    with source_file:
-                        target.addfile(info, source_file)
-            data = pub_archive.read_bytes()
+            data = self.repack_for_pub(archive, pub_archive)
+            payload = {
+                "versions": [
+                    {
+                        "version": "0.8.0-alpha.6",
+                        "archive_url": "https://pub.dev/archive.tar.gz",
+                    }
+                ]
+            }
+
+            def opener(request, **_kwargs):
+                if request.full_url.endswith("archive.tar.gz"):
+                    return Response(data=data)
+                return Response(payload=payload)
+
+            self.assertEqual(
+                reconcile.reconcile(archive, "merman", "0.8.0-alpha.6", opener=opener),
+                "exact",
+            )
+
+    def test_repository_only_files_do_not_break_pub_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive = self.package_archive(root, repository_only_files=True)
+            data = self.repack_for_pub(archive, root / "pub-archive.tar.gz")
             payload = {
                 "versions": [
                     {
