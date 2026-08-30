@@ -9,12 +9,16 @@ use merman_render::diagram_theme::{
     ThemeGeometryPatch, ThemePaintPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
+    RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use std::sync::{Arc, Mutex};
 
 fn render_timeline_svg_from_text(text: &str) -> String {
     let engine = legacy_init_theme_compat_engine();
@@ -381,42 +385,125 @@ fn timeline_event_palette_reaches_section_task_and_event_terminals() {
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RecordedTimelineMeasurement {
+    text: String,
+    font_family: Option<String>,
+}
+
+#[derive(Default)]
+struct RecordingTimelineHost {
+    requests: Mutex<Vec<RecordedTimelineMeasurement>>,
+}
+
+impl RecordingTimelineHost {
+    fn snapshot(&self) -> Vec<RecordedTimelineMeasurement> {
+        self.requests
+            .lock()
+            .expect("Timeline host requests lock")
+            .clone()
+    }
+}
+
+impl HostTextMeasurer for RecordingTimelineHost {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        self.requests
+            .lock()
+            .expect("Timeline host requests lock")
+            .push(RecordedTimelineMeasurement {
+                text: request.text.to_string(),
+                font_family: request.style.font_family.clone(),
+            });
+        Ok(None)
+    }
+}
+
 #[test]
 fn timeline_typed_font_stack_reaches_layout_css_and_terminal_receipt() {
     let font_stack =
         FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");
     let expected_font = font_stack.as_css();
     let theme = timeline_typography_theme(font_stack);
-    let rendered = try_render_timeline_with_theme(
-        "timeline\n    title Typography proof\n    section Plan\n        Task : Event\n",
-        &theme,
-    )
-    .expect("render typed Timeline typography");
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Timeline SVG");
-    let stylesheet = document
-        .descendants()
-        .find(|node| node.has_tag_name("style"))
-        .and_then(|node| node.text())
-        .expect("Timeline stylesheet");
+    for (direction, profile_id, source) in [
+        (
+            "LR",
+            "test.timeline-typed-font-lr",
+            "timeline\n    title LR typography proof\n    section Plan\n        Task : Event\n",
+        ),
+        (
+            "TD",
+            "test.timeline-typed-font-td",
+            "timeline TD\n    title TD typography proof\n    section Plan\n        Task : Event\n",
+        ),
+    ] {
+        let host = Arc::new(RecordingTimelineHost::default());
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new(profile_id).expect("valid Timeline profile id"),
+            "1",
+        )
+        .expect("valid Timeline measurement profile identity");
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
+        );
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse typed {direction} Timeline: {error}"))
+            .unwrap_or_else(|| panic!("detect typed {direction} Timeline"));
+        let session = environment
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| panic!("begin typed {direction} Timeline session: {error}"));
+        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap_or_else(|error| panic!("prepare typed {direction} Timeline: {error}"));
+        let requests = host.snapshot();
+        for label in ["Plan", "Task", "Event"] {
+            let matching = requests
+                .iter()
+                .filter(|request| request.text == label)
+                .collect::<Vec<_>>();
+            assert!(
+                !matching.is_empty(),
+                "{direction} Timeline layout must measure {label:?}"
+            );
+            assert!(
+                matching.iter().all(|request| {
+                    request.font_family.as_deref() == Some(expected_font.as_str())
+                }),
+                "{direction} Timeline layout must measure {label:?} with the typed font stack: {matching:#?}"
+            );
+        }
 
-    assert!(
-        stylesheet.contains(&format!("#merman{{font-family:{expected_font};")),
-        "typed Timeline FontStack must reach the scoped root CSS"
-    );
-    assert!(
-        stylesheet.contains(&format!(
-            "#merman :root{{--mermaid-font-family:{expected_font};}}"
-        )),
-        "typed Timeline FontStack must reach the Mermaid root variable"
-    );
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render typed {direction} Timeline: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("valid {direction} Timeline SVG: {error}"));
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Timeline stylesheet");
 
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
+        assert!(
+            stylesheet.contains(&format!("#merman{{font-family:{expected_font};")),
+            "typed {direction} Timeline FontStack must reach the scoped root CSS"
+        );
+        assert!(
+            stylesheet.contains(&format!(
+                "#merman :root{{--mermaid-font-family:{expected_font};}}"
+            )),
+            "typed {direction} Timeline FontStack must reach the Mermaid root variable"
+        );
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{direction}");
+        assert_eq!(evidence.accounted_count(), 1, "{direction}");
+        assert_eq!(evidence.applied_count(), 1, "{direction}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{direction}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{direction}");
+        assert_eq!(evidence.compatibility_residual_count(), 0, "{direction}");
+    }
 }
 
 #[test]
