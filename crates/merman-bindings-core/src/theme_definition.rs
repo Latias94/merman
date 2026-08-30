@@ -75,8 +75,15 @@ pub fn describe_theme_support_json_with_resource_policy(
 
 /// Exports one built-in preset as a closed, self-contained version 1 recipe envelope.
 pub fn export_theme_preset_json(bytes: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let compiler =
-        DiagramThemeCompiler::new().with_resource_policy(general_binding_theme_resource_policy());
+    export_theme_preset_json_with_resource_policy(bytes, &general_binding_theme_resource_policy())
+}
+
+/// Exports one built-in preset under a caller-owned theme resource policy.
+pub fn export_theme_preset_json_with_resource_policy(
+    bytes: &[u8],
+    policy: &ThemeResourcePolicy,
+) -> Result<Vec<u8>, BindingError> {
+    let compiler = DiagramThemeCompiler::new().with_resource_policy(policy.clone());
     export_theme_preset_json_with(&compiler, bytes)
 }
 

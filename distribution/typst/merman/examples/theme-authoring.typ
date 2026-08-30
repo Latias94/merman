@@ -1,4 +1,4 @@
-#import "@preview/merman:0.2.0": (
+#import "@preview/merman:0.3.0": (
   describe-theme-support,
   export-theme-preset,
   materialize-theme,

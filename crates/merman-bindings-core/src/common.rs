@@ -1798,6 +1798,107 @@ pub(crate) fn validate_one_shot_resource_options(
     Ok(())
 }
 
+/// Separates theme-authoring resource controls from the general binding options document.
+///
+/// General binding resource descriptors intentionally exclude theme compiler limits: render
+/// engines cannot safely advertise controls that only apply to an independent authoring input.
+/// Theme-authoring operations still accept those controls, so this helper derives their exact
+/// compiler policy and returns an otherwise equivalent options document suitable for ordinary
+/// artifact/runtime validation.
+///
+/// A transport can provide a host ceiling to ensure that an authoring request cannot widen its
+/// theme-resource budget. The returned JSON deliberately retains the caller's selected profile,
+/// but removes the unrelated theme selection and theme-only numeric limits before it reaches the
+/// general binding schema.
+#[cfg(feature = "svg")]
+#[doc(hidden)]
+pub fn prepare_theme_authoring_options_json(
+    options_json: &[u8],
+    host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
+) -> Result<(Vec<u8>, merman::svg::ThemeResourcePolicy), BindingError> {
+    let value = options_json_value_with_theme_ceiling(options_json, host_ceiling)?;
+    reject_ambiguous_analysis_wrappers(&value)?;
+    validate_output_options_for_scope(&value, BindingResourceScope::ThemeAuthoring)?;
+
+    let mut normalized = normalize_analysis_wrapper(value);
+    let requested_resources =
+        take_request_resource_options(&mut normalized, BindingResourceScope::ThemeAuthoring)?;
+    let theme_policy = theme_authoring_resource_policy(requested_resources.as_ref(), host_ceiling)?;
+
+    normalized
+        .as_object_mut()
+        .expect("theme-authoring resource admission requires an object options root")
+        .remove("theme");
+
+    if let Some(resources) = requested_resources {
+        let resources = ResourceOptionsJson {
+            profile: resources.profile,
+            limits: BTreeMap::new(),
+        };
+        normalized
+            .as_object_mut()
+            .expect("theme-authoring resource admission requires an object options root")
+            .insert(
+                "resources".to_string(),
+                serde_json::to_value(resources).map_err(internal_json_error)?,
+            );
+    }
+
+    serde_json::to_vec(&normalized)
+        .map(|normalized| (normalized, theme_policy))
+        .map_err(internal_json_error)
+}
+
+#[cfg(feature = "svg")]
+fn theme_authoring_resource_policy(
+    requested_resources: Option<&ResourceOptionsJson>,
+    host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
+) -> Result<merman::svg::ThemeResourcePolicy, BindingError> {
+    let selected_profile = requested_resources
+        .and_then(|resources| resources.profile.as_deref())
+        .map(|profile| {
+            merman::resources::ResourceProfile::from_id(profile).ok_or_else(|| {
+                BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("unsupported resources.profile: {profile}"),
+                )
+            })
+        })
+        .transpose()?;
+
+    let mut requested = match selected_profile {
+        Some(profile) => merman::svg::ThemeResourcePolicy::for_profile(profile),
+        None => host_ceiling.cloned().unwrap_or_else(|| {
+            merman::svg::ThemeResourcePolicy::for_profile(
+                merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+            )
+        }),
+    };
+
+    if let Some(resources) = requested_resources {
+        for (id, value) in &resources.limits {
+            let limit = merman::svg::ThemeResourceLimitId::from_stable_id(id).ok_or_else(|| {
+                BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!(
+                        "resource limit id `{id}` is not available for the theme authoring operation"
+                    ),
+                )
+            })?;
+            requested.apply_limit(limit, *value).map_err(|error| {
+                BindingError::new(BindingStatus::InvalidArgument, error.to_string())
+            })?;
+        }
+    }
+
+    match host_ceiling {
+        Some(host) => host
+            .restrict_with(&requested)
+            .map_err(theme_resource_ceiling_error),
+        None => Ok(requested),
+    }
+}
+
 fn take_request_resource_options(
     value: &mut Value,
     resource_scope: BindingResourceScope,

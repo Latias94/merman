@@ -385,6 +385,7 @@
 #let opaque-render-config(binding-options, direct-options: none, profile-options: none) = {
   (
     binding_options: binding-options,
+    typography_overlay: none,
     direct_layout: none,
     direct_options: direct-options,
     direct_container_width: none,
@@ -534,6 +535,7 @@
     }
     (
       binding_options: binding-options,
+      typography_overlay: text-style,
       direct_layout: layout,
       direct_options: none,
       direct_container_width: container-width,
@@ -542,6 +544,14 @@
       profile_options: none,
     )
   }
+}
+
+#let config-with-theme-spec(config, spec) = {
+  let binding-options = (
+    ..config.binding_options,
+    theme: (spec: theme-spec-with-typography(spec, config.typography_overlay)),
+  )
+  (: ..config, binding_options: binding-options)
 }
 
 #let config-with-context-width(config, width) = {

@@ -159,11 +159,33 @@ pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u
             return typst_binding_error_payload(THEME_OPERATION, &error);
         }
     };
-    let options_json = match typst_options_json(options_json) {
-        Ok(options_json) => options_json,
-        Err(error) => return typst_binding_error_payload(operation.id(), &error),
+    #[cfg(feature = "svg")]
+    let output = {
+        let host_ceiling = merman_bindings_core::ThemeResourcePolicy::constrained();
+        let (normalized_options_json, theme_policy) =
+            match merman_bindings_core::prepare_theme_authoring_options_json(
+                options_json,
+                Some(&host_ceiling),
+            ) {
+                Ok(prepared) => prepared,
+                Err(error) => return typst_binding_error_payload(operation.id(), &error),
+            };
+        if let Err(error) = typst_options_json(&normalized_options_json) {
+            return typst_binding_error_payload(operation.id(), &error);
+        }
+        execute_typst_theme_authoring_operation(operation, input, &theme_policy)
     };
-    match execute_typst_operation(operation.id(), input, &options_json) {
+
+    #[cfg(not(feature = "svg"))]
+    let output = {
+        let options_json = match typst_options_json(options_json) {
+            Ok(options_json) => options_json,
+            Err(error) => return typst_binding_error_payload(operation.id(), &error),
+        };
+        execute_typst_operation(operation.id(), input, &options_json)
+    };
+
+    match output {
         Ok(output) => match serde_json::from_slice::<Value>(&output) {
             Ok(result) => typst_success_payload(operation.id(), json!({ "result": result })),
             Err(error) => typst_internal_error_payload(
@@ -172,6 +194,30 @@ pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u
             ),
         },
         Err(error) => typst_binding_error_payload(operation.id(), &error),
+    }
+}
+
+#[cfg(feature = "svg")]
+fn execute_typst_theme_authoring_operation(
+    operation: OperationKey,
+    input: &[u8],
+    policy: &merman_bindings_core::ThemeResourcePolicy,
+) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
+    match operation {
+        OperationKey::MaterializeThemeJson => {
+            merman_bindings_core::materialize_theme_definition_json_with_resource_policy(
+                input, policy,
+            )
+        }
+        OperationKey::DescribeThemeSupportJson => {
+            merman_bindings_core::describe_theme_support_json_with_resource_policy(input, policy)
+        }
+        OperationKey::ExportThemePresetJson => {
+            merman_bindings_core::export_theme_preset_json_with_resource_policy(input, policy)
+        }
+        _ => {
+            unreachable!("Typst theme operation admission must select a theme-authoring operation")
+        }
     }
 }
 
@@ -531,6 +577,28 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
+    fn theme_operation_json_honors_theme_authoring_resource_limits() {
+        let payload: Value = serde_json::from_slice(&theme_operation_json(
+            b"materialize-theme-json",
+            br#"{}"#,
+            br#"{"resources":{"limits":{"max_theme_encoded_bytes":1}}}"#,
+        ))
+        .expect("valid theme-operation resource error envelope");
+
+        assert_error_envelope(
+            &payload,
+            "materialize-theme-json",
+            "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+        );
+        assert_eq!(
+            payload["details"]["resource"]["limit_id"],
+            "max_theme_encoded_bytes"
+        );
+        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
     fn theme_operation_json_rejects_non_theme_operations() {
         let payload: Value =
             serde_json::from_slice(&theme_operation_json(b"svg", b"flowchart TD\nA --> B", b""))
@@ -822,10 +890,14 @@ mod tests {
         +String name
     }"#,
             br#"{
-                "presentation": {
-                    "theme": {
-                        "font_family": "Typst Explicit Sans",
-                        "font_size": "18px"
+                "theme": {
+                    "spec": {
+                        "typography": {
+                            "default": {
+                                "font_stack": ["Typst Explicit Sans"],
+                                "font_size_px": 18
+                            }
+                        }
                     }
                 },
                 "svg": { "pipeline": "resvg-safe" }

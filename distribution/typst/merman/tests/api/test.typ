@@ -137,7 +137,7 @@
 #let resource-limited-result = mermaid-result(
   source,
   options: (
-    version: 2,
+    version: 3,
     resources: (limits: (max_source_bytes: 1)),
   ),
 )
@@ -361,9 +361,11 @@
 #assert.eq(unknown-support.state, "unverified")
 #assert(unknown-support.reason_ids.contains("theme-support.unknown-family"))
 
+#set text(font: "Definition Context Sans", size: 12pt)
 #mermaid-theme-definition(
   "flowchart LR\nA[Light] --> B[Authored]",
   light-json,
+  document-context: true,
   width: 80%,
 )
 #mermaid-theme-definition(
@@ -374,11 +376,13 @@
 #mermaid-theme-definition(
   "flowchart LR\nA[Invalid] --> B[Theme]",
   (:),
+  document-context: true,
   error-mode: "text",
 )
 #mermaid-theme-definition(
   "flowchart LR\nA[Invalid] --> B[Theme]",
   (:),
+  document-context: true,
   error-mode: "placeholder",
   width: 80%,
 )

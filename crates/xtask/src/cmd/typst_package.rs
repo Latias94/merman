@@ -407,6 +407,9 @@ pub(crate) fn typst_package_smoke(args: Vec<String>) -> Result<(), XtaskError> {
     let output_dir = smoke_root.join("out");
 
     copy_dir_recursive(&package_dir, &preview_dir)?;
+    if options.compile_tests {
+        copy_dir_recursive(&package_source.join("tests"), &preview_dir.join("tests"))?;
+    }
     fs::create_dir_all(&output_dir).map_err(|source| XtaskError::WriteFile {
         path: output_dir.display().to_string(),
         source,
@@ -415,14 +418,14 @@ pub(crate) fn typst_package_smoke(args: Vec<String>) -> Result<(), XtaskError> {
     let mut fixtures = Vec::new();
     if options.compile_examples {
         collect_typst_fixtures(
-            &package_source.join("examples"),
+            &preview_dir.join("examples"),
             &output_dir.join("examples"),
             &mut fixtures,
         )?;
     }
     if options.compile_tests {
         collect_typst_fixtures(
-            &package_source.join("tests"),
+            &preview_dir.join("tests"),
             &output_dir.join("tests"),
             &mut fixtures,
         )?;

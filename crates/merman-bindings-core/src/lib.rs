@@ -47,6 +47,9 @@ pub use catalog_contract::{
     RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN, RUNTIME_CATALOG_IDENTIFIER_PATTERN,
     RUNTIME_CATALOG_MAX_SAFE_INTEGER,
 };
+#[cfg(feature = "svg")]
+#[doc(hidden)]
+pub use common::prepare_theme_authoring_options_json;
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION,
     BindingCancellationErrorDetails, BindingDiagnosticErrorDetails, BindingDiagnosticSpan,
@@ -127,6 +130,8 @@ pub use merman_analysis::{ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSI
 #[cfg(feature = "ascii")]
 pub use ascii::render_ascii;
 #[cfg(feature = "svg")]
+pub use merman::svg::ThemeResourcePolicy;
+#[cfg(feature = "svg")]
 pub use merman::svg::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, IconPack, IconRegistryResourceLimitDescriptor,
@@ -153,8 +158,8 @@ pub use theme::{compile_theme_selection_json, compile_theme_selection_json_with}
 pub use theme_definition::{
     compile_theme_definition_json, compile_theme_definition_json_with, describe_theme_support_json,
     describe_theme_support_json_with_resource_policy, export_theme_preset_json,
-    export_theme_preset_json_with, materialize_theme_definition_json,
-    materialize_theme_definition_json_with_resource_policy,
+    export_theme_preset_json_with, export_theme_preset_json_with_resource_policy,
+    materialize_theme_definition_json, materialize_theme_definition_json_with_resource_policy,
 };
 pub use transport_contract::{
     BindingTransportExposureSpec, BindingTransportKey, WEB_TRANSPORT_API_VERSION,

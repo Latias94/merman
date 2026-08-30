@@ -321,6 +321,8 @@ the shared Rust-owned theme operations. The Typst wrapper encodes inputs and unw
 results; it does not expand tokens or infer support locally.
 `mermaid-theme-definition` composes materialization and rendering in one call, so a document can
 render a shared definition without manually carrying an intermediate complete spec.
+Like `mermaid`, it accepts `document-context: true` when the rendered diagram should inherit the
+current Typst text style and available width.
 
 These functions remain Alpha while the C7a authoring qualification gate is open. Their presence in
 Typst plugin ABI 3 makes the callable transport explicit; it is not a stability commitment for the
@@ -336,6 +338,7 @@ theme authoring payloads.
 #mermaid-theme-definition(
   "flowchart LR\nA --> B",
   definition,
+  document-context: true,
   width: 80%,
 )
 #let support = describe-theme-support((

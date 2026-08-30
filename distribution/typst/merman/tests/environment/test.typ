@@ -72,7 +72,7 @@
   profile: mermaid-profile(typography: (unsupported: true)),
   typography: (also-unsupported: true),
   options: (
-    version: 2,
+    version: 3,
     svg: (pipeline: "readable"),
   ),
 )

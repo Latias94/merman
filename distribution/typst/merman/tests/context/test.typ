@@ -66,12 +66,12 @@
   typography: (font: "Direct Sans"),
 )
 #assert.eq(
-  partial-typography-config.binding_options.presentation.theme.font_family,
-  "Direct Sans",
+  partial-typography-config.binding_options.theme.spec.typography.default.font_stack,
+  ("Direct Sans",),
 )
 #assert.eq(
-  partial-typography-config.binding_options.presentation.theme.font_size,
-  "16px",
+  partial-typography-config.binding_options.theme.spec.typography.default.font_size_px,
+  16,
   message: "partial direct typography should preserve the profile size",
 )
 #let replacement-site-config = render-config(

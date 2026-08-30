@@ -337,6 +337,85 @@ impl BindingOperationExecution {
     }
 }
 
+enum PreparedOneShotExecution {
+    Engine {
+        engine: BindingEngine,
+        admitted: AdmittedArtifactOperation,
+        control: OperationControl,
+    },
+    #[cfg(feature = "svg")]
+    ThemeAuthoring {
+        operation: BindingOperationKind,
+        runtime_policy_id: &'static str,
+        compiler: merman::svg::DiagramThemeCompiler,
+        control: OperationControl,
+    },
+}
+
+impl PreparedOneShotExecution {
+    fn execute(
+        self,
+        source: &[u8],
+        uri: Option<&[u8]>,
+    ) -> Result<BindingOperationResult, BindingError> {
+        match self {
+            Self::Engine {
+                engine,
+                admitted,
+                control,
+            } => engine.execute_admitted(admitted, source, uri, control),
+            #[cfg(feature = "svg")]
+            Self::ThemeAuthoring {
+                operation,
+                runtime_policy_id,
+                compiler,
+                control,
+            } => {
+                let output = execute_one_shot_theme_authoring_output(
+                    operation, &compiler, source, &control,
+                )?;
+                BindingOperationExecution { operation, output }.into_result(runtime_policy_id)
+            }
+        }
+    }
+
+    fn execute_data(self, source: &[u8], uri: Option<&[u8]>) -> Result<Vec<u8>, BindingError> {
+        match self {
+            Self::Engine {
+                engine,
+                admitted,
+                control,
+            } => engine.execute_admitted_data(admitted, source, uri, control),
+            #[cfg(feature = "svg")]
+            Self::ThemeAuthoring {
+                operation,
+                compiler,
+                control,
+                ..
+            } => execute_one_shot_theme_authoring_output(operation, &compiler, source, &control)
+                .and_then(|output| BindingOperationExecution { operation, output }.into_data()),
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+fn execute_one_shot_theme_authoring_output(
+    operation: BindingOperationKind,
+    compiler: &merman::svg::DiagramThemeCompiler,
+    source: &[u8],
+    control: &OperationControl,
+) -> Result<BindingOperationOutput, BindingError> {
+    control
+        .checkpoint_at(OperationPhase::Parse)
+        .map_err(BindingError::cancelled)?;
+    let output =
+        crate::engine::execute_theme_authoring_with_compiler(operation.key(), compiler, source)?;
+    control
+        .checkpoint_at(OperationPhase::Postprocess)
+        .map_err(BindingError::cancelled)?;
+    Ok(BindingOperationOutput::plain(output))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum BindingOutputPlan {
@@ -1078,20 +1157,45 @@ impl ValidatedArtifactContract {
         request: BindingOperationRequest<'_>,
         services: BindingEngineServices,
     ) -> Result<BindingOperationResult, BindingError> {
-        let (engine, admitted, control) = self.prepare_one_shot_execution(&request, services)?;
-        engine.execute_admitted(admitted, request.source, request.uri, control)
+        self.prepare_one_shot_execution(&request, services)?
+            .execute(request.source, request.uri)
     }
 
     fn prepare_one_shot_execution(
         &self,
         request: &BindingOperationRequest<'_>,
         services: BindingEngineServices,
-    ) -> Result<(BindingEngine, AdmittedArtifactOperation, OperationControl), BindingError> {
+    ) -> Result<PreparedOneShotExecution, BindingError> {
         let operation = resolve_operation_request(request)?;
         let control = request.control_or_default();
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
+
+        #[cfg(feature = "svg")]
+        if matches!(
+            operation.key(),
+            OperationKey::DescribeThemeSupportJson
+                | OperationKey::ExportThemePresetJson
+                | OperationKey::MaterializeThemeJson
+        ) {
+            let (normalized_options_json, theme_resources) =
+                crate::prepare_theme_authoring_options_json(request.options_json, None)?;
+            let engine = self.create_engine_with_services(&normalized_options_json, services)?;
+            control
+                .checkpoint_at(OperationPhase::Admission)
+                .map_err(BindingError::cancelled)?;
+            self.admit_operation(operation)?;
+            let compiler =
+                merman::svg::DiagramThemeCompiler::new().with_resource_policy(theme_resources);
+            return Ok(PreparedOneShotExecution::ThemeAuthoring {
+                operation,
+                runtime_policy_id: engine.runtime_policy_id(),
+                compiler,
+                control,
+            });
+        }
+
         crate::common::validate_one_shot_resource_options(
             request.options_json,
             operation.resource_scope(),
@@ -1101,16 +1205,19 @@ impl ValidatedArtifactContract {
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
         let admitted = self.admit_operation(operation)?;
-        Ok((engine, admitted, control))
+        Ok(PreparedOneShotExecution::Engine {
+            engine,
+            admitted,
+            control,
+        })
     }
 
     pub(crate) fn execute_once_data(
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<Vec<u8>, BindingError> {
-        let (engine, admitted, control) =
-            self.prepare_one_shot_execution(&request, BindingEngineServices::new())?;
-        engine.execute_admitted_data(admitted, request.source, request.uri, control)
+        self.prepare_one_shot_execution(&request, BindingEngineServices::new())?
+            .execute_data(request.source, request.uri)
     }
 }
 
@@ -2240,6 +2347,44 @@ mod tests {
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("max_svg_bytes"));
         assert!(error.message().contains("semantic-model"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn one_shot_theme_authoring_applies_theme_owned_resource_limits() {
+        let error = execute_once(BindingOperationRequest {
+            operation_id: "materialize-theme-json",
+            source: br#"{}"#,
+            uri: None,
+            options_json: br#"{"resources":{"limits":{"max_theme_encoded_bytes":1}}}"#,
+            operation_control: None,
+        })
+        .expect_err("theme-authoring limits must apply before definition decoding");
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let resource = error
+            .resource_details()
+            .expect("theme resource exhaustion must preserve structured details");
+        assert_eq!(resource.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(resource.actual, 2);
+        assert_eq!(resource.max, 1);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn one_shot_theme_authoring_rejects_unknown_resource_limits() {
+        let error = execute_once(BindingOperationRequest {
+            operation_id: "materialize-theme-json",
+            source: br#"{}"#,
+            uri: None,
+            options_json: br#"{"resources":{"limits":{"future_theme_limit":1}}}"#,
+            operation_control: None,
+        })
+        .expect_err("unknown theme limits must not be ignored by the authoring scope");
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("future_theme_limit"));
+        assert!(error.message().contains("theme authoring"));
     }
 
     #[cfg(feature = "svg")]
