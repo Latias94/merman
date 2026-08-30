@@ -4435,7 +4435,7 @@ end"#;
             "CSSOM Message",
             [
                 TextMeasurementOperation::RawBBoxWidth,
-                TextMeasurementOperation::SimpleBBoxHeight,
+                TextMeasurementOperation::RawBBoxHeight,
             ],
         ),
         (

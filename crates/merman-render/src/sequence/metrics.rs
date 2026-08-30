@@ -100,7 +100,7 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
         checkpoints.checkpoint()?;
         let line_height = match node {
             SequenceDrawnTextNode::Direct => {
-                measurer.measure_svg_simple_text_bbox_height_px(measured_line, terminal_style)
+                measurer.measure_svg_raw_text_bbox_height_px(measured_line, terminal_style)
             }
             SequenceDrawnTextNode::Tspan => {
                 measurer.measure_svg_tspan_text_bbox_height_px(measured_line, terminal_style)
@@ -590,6 +590,11 @@ mod tests {
             101.0
         }
 
+        fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.record("raw-height", text, style);
+            31.0
+        }
+
         fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
             self.record("tspan-width", text, style);
             202.0
@@ -938,7 +943,7 @@ mod tests {
             checkpoints(&meter, OperationPhase::Layout),
         )
         .unwrap();
-        assert_eq!(direct_dimensions, (101.0, 57.0));
+        assert_eq!(direct_dimensions, (101.0, 93.0));
         let direct_calls = direct.calls.borrow();
         assert_eq!(
             direct_calls
@@ -946,6 +951,18 @@ mod tests {
                 .filter(|(operation, _, _)| operation == "raw-width")
                 .count(),
             3
+        );
+        assert_eq!(
+            direct_calls
+                .iter()
+                .filter(|(operation, _, _)| operation == "raw-height")
+                .count(),
+            3
+        );
+        assert!(
+            direct_calls
+                .iter()
+                .all(|(operation, _, _)| operation != "simple-height")
         );
         assert!(
             direct_calls
