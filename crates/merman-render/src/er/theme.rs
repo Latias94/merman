@@ -187,9 +187,11 @@ pub(crate) struct ErEntityThemePlan {
     entity_indices: BTreeMap<String, usize>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
     inherited_font_stack: InheritedFontStackPlan,
+    has_visible_typography: bool,
     font_stack_pending: bool,
     font_stack_residual: bool,
     font_stack_not_applicable: bool,
+    typography_title: Option<Box<str>>,
     expectations: Vec<EntityExpectation>,
     text_terminal_evidence_enabled: bool,
     text_terminals: BTreeMap<ErTextTerminalId, TextTerminalExpectation>,
@@ -206,6 +208,7 @@ impl ErEntityThemePlan {
         effective_config: &merman_core::MermaidConfig,
         inherited_font_stack: InheritedFontStackPlan,
         relationship_html_labels: bool,
+        diagram_title: Option<&str>,
         model: &merman_core::diagrams::er::ErDiagramRenderModel,
         layout: &crate::model::ErDiagramLayout,
         work_meter: &OperationWorkMeter,
@@ -227,9 +230,11 @@ impl ErEntityThemePlan {
                 entity_indices,
                 entity_source_styles,
                 inherited_font_stack,
+                has_visible_typography: false,
                 font_stack_pending: false,
                 font_stack_residual: false,
                 font_stack_not_applicable: false,
+                typography_title: None,
                 expectations: Vec::new(),
                 text_terminal_evidence_enabled: false,
                 text_terminals: BTreeMap::new(),
@@ -266,18 +271,26 @@ impl ErEntityThemePlan {
         let source_owns_font_family = entity_source_styles
             .iter()
             .any(|style| style.text_value("font-family").is_some());
-        let has_visible_text = !text_terminals.is_empty();
+        let diagram_title = diagram_title
+            .map(str::trim)
+            .filter(|title| !title.is_empty());
+        let has_visible_typography = !text_terminals.is_empty() || diagram_title.is_some();
         let font_stack_requested = inherited_font_stack.typed_font_stack_requested();
-        let font_stack_pending = has_visible_text
+        let font_stack_pending = has_visible_typography
             && font_stack_requested
             && inherited_font_stack.typed_font_stack_active()
             && !source_owns_font_family;
         let font_stack_not_applicable = font_stack_requested
-            && (!has_visible_text || !inherited_font_stack.typed_font_stack_active());
+            && (!has_visible_typography || !inherited_font_stack.typed_font_stack_active());
         let font_stack_residual = font_stack_requested
-            && has_visible_text
+            && has_visible_typography
             && !font_stack_pending
             && !font_stack_not_applicable;
+        let typography_title = if font_stack_pending {
+            diagram_title.map(Into::into)
+        } else {
+            None
+        };
         let mut expectations = expectations;
         let mut winner_properties = BTreeSet::<(usize, ThemeTarget, ResolvedStyleProperty)>::new();
         let mut expected_capabilities =
@@ -547,9 +560,11 @@ impl ErEntityThemePlan {
             entity_indices,
             entity_source_styles,
             inherited_font_stack,
+            has_visible_typography,
             font_stack_pending,
             font_stack_residual,
             font_stack_not_applicable,
+            typography_title,
             expectations,
             text_terminal_evidence_enabled: needs_text_terminal_evidence,
             text_terminals,
@@ -649,7 +664,8 @@ impl ErEntityThemePlan {
             self.table_rows.clone(),
             self.font_stack_pending
                 .then(|| self.font_family_css().into()),
-        );
+        )
+        .with_typography_title(self.typography_title.clone());
         let receipt = if self.text_terminal_evidence_enabled {
             receipt
         } else {
@@ -672,7 +688,7 @@ impl ErEntityThemePlan {
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         self.inherited_font_stack
-            .mark_unsupported_typography_evidence(&mut evidence, !self.text_terminals.is_empty());
+            .mark_unsupported_typography_evidence(&mut evidence, self.has_visible_typography);
         let font_stack_key =
             FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if self.font_stack_pending {

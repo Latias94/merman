@@ -664,6 +664,95 @@ fn er_font_stack_is_measured_and_emitted_by_the_typed_family_plan() {
 }
 
 #[test]
+fn er_title_only_keeps_typed_font_stack_applicable() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::ER,
+                ThemeTextStyle::default().with_font_stack(
+                    FontStack::single("ErTitleFont").expect("valid ER title font stack"),
+                ),
+            ),
+        ))
+        .expect("compile ER title-only FontStack theme");
+    let source = r#"---
+title: Title-only ER
+---
+erDiagram
+"#;
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("prepare title-only ER with strict typed FontStack");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render title-only ER with strict typed FontStack");
+
+    assert!(
+        rendered.svg().contains("font-family:ErTitleFont"),
+        "typed ER FontStack must reach the title stylesheet: {}",
+        rendered.svg()
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid title-only ER SVG");
+    let title = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|token| token == "erDiagramTitleText")
+                })
+        })
+        .unwrap_or_else(|| panic!("missing ER title terminal: {}", rendered.svg()));
+    assert_eq!(title.text(), Some("Title-only ER"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn er_without_visible_text_keeps_typed_font_stack_not_applicable() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::ER,
+                ThemeTextStyle::default().with_font_stack(
+                    FontStack::single("UnusedErFont").expect("valid ER font stack"),
+                ),
+            ),
+        ))
+        .expect("compile empty ER FontStack theme");
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+        "erDiagram\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("prepare empty ER with strict typed FontStack");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render empty ER with strict typed FontStack");
+
+    assert!(
+        rendered.svg().contains("font-family:UnusedErFont"),
+        "the root stylesheet may carry the resolved font even when no visible terminal exists"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn er_font_stack_remains_typed_when_font_size_stays_legacy() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(FontStack::single("ErTypedFont").expect("valid ER font stack"))

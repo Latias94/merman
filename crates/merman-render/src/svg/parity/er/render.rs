@@ -467,6 +467,8 @@ pub(crate) fn render_er_diagram_svg_model(
             font_style: None,
         };
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
+        entity_theme_receipt
+            .record_diagram_title_measurement(title, title_style.font_family.as_deref());
         let (title_ascent, title_descent) =
             crate::text::svg_title_bbox_vertical_extents_px(&title_style);
         let w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
@@ -1828,6 +1830,7 @@ pub(crate) fn render_er_diagram_svg_model(
         );
         out.push_str("</text>\n");
         out.checkpoint()?;
+        entity_theme_receipt.record_diagram_title_emission("erDiagramTitleText", title);
     }
 
     push_er_shadow_defs(&mut out, diagram_id.semantic_str(), effective_config)?;
@@ -2200,6 +2203,7 @@ mod tests {
                 ),
                 crate::er::ErConfigView::new(effective_config.as_value())
                     .relationship_html_labels(),
+                None,
                 &model,
                 &layout,
                 options.work_meter(),

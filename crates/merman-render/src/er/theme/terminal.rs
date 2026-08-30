@@ -144,6 +144,13 @@ struct TextTerminalCheckpoint {
 }
 
 #[derive(Debug, Clone)]
+struct DiagramTitleCheckpoint {
+    expected_text: Box<str>,
+    measurement_checkpointed: bool,
+    emission_checkpointed: bool,
+}
+
+#[derive(Debug, Clone)]
 struct PaintTerminalCheckpoint {
     expectation: Option<ExpectedPaint>,
     checkpointed: bool,
@@ -161,6 +168,7 @@ pub(crate) struct ErEntityThemeReceipt {
     relation_paths: BTreeMap<String, RelationTerminalCheckpoint>,
     relation_markers: BTreeMap<String, PaintTerminalCheckpoint>,
     records_text_terminals: bool,
+    typography_title: Option<DiagramTitleCheckpoint>,
     attributes_match: bool,
     typography_expected_font_family: Option<Box<str>>,
     typography_emitted_font_family: Option<Box<str>>,
@@ -206,6 +214,7 @@ impl ErEntityThemeReceipt {
             relation_paths: BTreeMap::new(),
             relation_markers: BTreeMap::new(),
             records_text_terminals: true,
+            typography_title: None,
             attributes_match: true,
             typography_expected_font_family,
             typography_emitted_font_family: None,
@@ -218,6 +227,15 @@ impl ErEntityThemeReceipt {
     pub(super) fn without_text_terminals(mut self) -> Self {
         self.records_text_terminals = false;
         self.text_terminals.clear();
+        self
+    }
+
+    pub(super) fn with_typography_title(mut self, title: Option<Box<str>>) -> Self {
+        self.typography_title = title.map(|expected_text| DiagramTitleCheckpoint {
+            expected_text,
+            measurement_checkpointed: false,
+            emission_checkpointed: false,
+        });
         self
     }
 
@@ -235,6 +253,41 @@ impl ErEntityThemeReceipt {
         }
         self.typography_emitted_font_family = Some(font_family.into());
         self.attributes_match &= expected == font_family;
+    }
+
+    pub(crate) fn record_diagram_title_measurement(
+        &mut self,
+        measured_text: &str,
+        measured_font_family: Option<&str>,
+    ) {
+        let Some(checkpoint) = self.typography_title.as_mut() else {
+            return;
+        };
+        if checkpoint.measurement_checkpointed {
+            self.attributes_match = false;
+            return;
+        }
+        checkpoint.measurement_checkpointed = true;
+        self.attributes_match &= checkpoint.expected_text.as_ref() == measured_text;
+        self.attributes_match &=
+            self.typography_expected_font_family.as_deref() == measured_font_family;
+    }
+
+    pub(crate) fn record_diagram_title_emission(
+        &mut self,
+        emitted_class: &str,
+        emitted_text: &str,
+    ) {
+        let Some(checkpoint) = self.typography_title.as_mut() else {
+            return;
+        };
+        if checkpoint.emission_checkpointed {
+            self.attributes_match = false;
+            return;
+        }
+        checkpoint.emission_checkpointed = true;
+        self.attributes_match &= emitted_class == "erDiagramTitleText";
+        self.attributes_match &= checkpoint.expected_text.as_ref() == emitted_text;
     }
 
     pub(super) fn with_relation_terminals(
@@ -501,6 +554,10 @@ impl ErEntityThemeReceipt {
                 .relation_markers
                 .values()
                 .all(|entry| entry.checkpointed)
+            && self
+                .typography_title
+                .as_ref()
+                .is_none_or(|entry| entry.measurement_checkpointed && entry.emission_checkpointed)
     }
 
     pub(super) fn has_effective_rule(&self, rule_index: usize) -> bool {
@@ -523,17 +580,18 @@ impl ErEntityThemeReceipt {
         };
         self.proves_complete()
             && self.typography_emitted_font_family.as_deref() == Some(expected)
-            && self.text_terminals.values().any(|entry| {
-                entry.expectation.visible_run_count > 0
-                    && entry.expectation.inherited_font_family_run_count
-                        == entry.expectation.visible_run_count
-                    && entry.expectation.unverified_font_family_run_count == 0
-            })
             && self.text_terminals.values().all(|entry| {
                 entry.expectation.inherited_font_family_run_count
                     == entry.expectation.visible_run_count
                     && entry.expectation.unverified_font_family_run_count == 0
             })
+            && (self.typography_title.is_some()
+                || self.text_terminals.values().any(|entry| {
+                    entry.expectation.visible_run_count > 0
+                        && entry.expectation.inherited_font_family_run_count
+                            == entry.expectation.visible_run_count
+                        && entry.expectation.unverified_font_family_run_count == 0
+                }))
     }
 }
 
@@ -780,6 +838,70 @@ mod tests {
         unverified.record_typography_css_emission("Inter, sans-serif");
         unverified.record_entity_name_text("entity-A-0", "", 1, 1, 0, 1);
         assert!(!unverified.proves_typography());
+    }
+
+    #[test]
+    fn typography_receipt_accepts_only_the_expected_diagram_title_terminal() {
+        fn receipt() -> ErEntityThemeReceipt {
+            ErEntityThemeReceipt::new(
+                Vec::new(),
+                BTreeMap::new(),
+                BTreeMap::new(),
+                Some("Inter, sans-serif".into()),
+            )
+            .with_typography_title(Some("ER overview".into()))
+        }
+
+        let mut complete = receipt();
+        complete.record_typography_css_emission("Inter, sans-serif");
+        complete.record_diagram_title_measurement("ER overview", Some("Inter, sans-serif"));
+        complete.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(complete.proves_typography());
+
+        let mut missing_measurement = receipt();
+        missing_measurement.record_typography_css_emission("Inter, sans-serif");
+        missing_measurement.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(!missing_measurement.proves_typography());
+
+        let mut missing_emission = receipt();
+        missing_emission.record_typography_css_emission("Inter, sans-serif");
+        missing_emission.record_diagram_title_measurement("ER overview", Some("Inter, sans-serif"));
+        assert!(!missing_emission.proves_typography());
+
+        let mut wrong_measured_text = receipt();
+        wrong_measured_text.record_typography_css_emission("Inter, sans-serif");
+        wrong_measured_text
+            .record_diagram_title_measurement("Wrong title", Some("Inter, sans-serif"));
+        wrong_measured_text.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(!wrong_measured_text.proves_typography());
+
+        let mut wrong_emitted_text = receipt();
+        wrong_emitted_text.record_typography_css_emission("Inter, sans-serif");
+        wrong_emitted_text
+            .record_diagram_title_measurement("ER overview", Some("Inter, sans-serif"));
+        wrong_emitted_text.record_diagram_title_emission("erDiagramTitleText", "Wrong title");
+        assert!(!wrong_emitted_text.proves_typography());
+
+        let mut wrong_class = receipt();
+        wrong_class.record_typography_css_emission("Inter, sans-serif");
+        wrong_class.record_diagram_title_measurement("ER overview", Some("Inter, sans-serif"));
+        wrong_class.record_diagram_title_emission("wrongTitleClass", "ER overview");
+        assert!(!wrong_class.proves_typography());
+
+        let mut wrong_measurement_font = receipt();
+        wrong_measurement_font.record_typography_css_emission("Inter, sans-serif");
+        wrong_measurement_font.record_diagram_title_measurement("ER overview", Some("serif"));
+        wrong_measurement_font.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(!wrong_measurement_font.proves_typography());
+
+        let mut duplicate_measurement = complete.clone();
+        duplicate_measurement
+            .record_diagram_title_measurement("ER overview", Some("Inter, sans-serif"));
+        assert!(!duplicate_measurement.proves_typography());
+
+        let mut duplicate_emission = complete;
+        duplicate_emission.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(!duplicate_emission.proves_typography());
     }
 
     #[test]

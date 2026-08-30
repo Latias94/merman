@@ -654,6 +654,7 @@ fn prepare_er_family(
         &meta.effective_config,
         inherited_font_stack,
         crate::er::ErConfigView::new(meta.effective_config.as_value()).relationship_html_labels(),
+        meta.title.as_deref(),
         &model,
         &layout,
         execution.work_meter_ref(),
