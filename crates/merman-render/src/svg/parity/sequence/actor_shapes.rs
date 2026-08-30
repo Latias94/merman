@@ -74,6 +74,8 @@ pub(super) enum ActorStrokeCoverage {
     Unhandled,
 }
 
+pub(super) const LIFELINE_STROKE_WIDTH_PX: f64 = 0.5;
+
 /// Classifies which actor shapes are actually covered by the `.actor` CSS consumer.
 ///
 /// The static Actor theme route may only claim evidence for shapes that receive the generated
@@ -121,14 +123,14 @@ pub(super) fn write_actor_man_lifeline(
 ) {
     let _ = write!(
         out,
-        r##"<g id="actor{idx}{semantic_suffix}"><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/></g>"##,
+        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/></g>"##,
         idx = idx,
         cx = fmt(cx),
         y1 = fmt(y1),
         y2 = fmt(y2),
+        stroke_width = fmt(LIFELINE_STROKE_WIDTH_PX),
         name = escape_xml(actor_id),
         data_id = escape_attr(actor_id),
-        semantic_suffix = crate::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX,
     );
 }
 
@@ -149,7 +151,7 @@ pub(super) fn write_lifeline_root_open(
     };
     let _ = write!(
         out,
-        r##"<g id="actor{idx}{semantic_suffix}"><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/></g><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}">"##,
+        r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}">"##,
         idx = idx,
         cx = fmt(cx),
         y1 = fmt(y1),
@@ -158,7 +160,7 @@ pub(super) fn write_lifeline_root_open(
         data_id = escape_attr(actor_id),
         root_class = root_class,
         actor_type = escape_attr(actor_type),
-        semantic_suffix = crate::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX,
+        stroke_width = fmt(LIFELINE_STROKE_WIDTH_PX),
     );
 }
 

@@ -217,7 +217,7 @@ section Phase
 }
 
 #[test]
-fn sequence_marker_ids_are_prefixed_with_diagram_svg_id_and_css_uses_suffix_selectors() {
+fn sequence_marker_ids_are_prefixed_without_exposing_raster_proof_markers() {
     let svg = render_svg_from_text(
         r#"sequenceDiagram
 autonumber
@@ -236,8 +236,8 @@ Bob-->>Alice: Back"#,
     assert_scoped_definition_id(&svg, "m15-sequence", "stickTopArrowHead");
     assert_scoped_definition_id(&svg, "m15-sequence", "stickBottomArrowHead");
     assert!(
-        svg.contains(r#"id="actor0-merman-fill-stroke-paint""#),
-        "expected renderer-owned semantic lifeline marker:\n{svg}"
+        !svg.contains("-merman-fill-stroke-paint"),
+        "renderer-owned raster proof metadata must not leak into the public SVG:\n{svg}"
     );
     assert!(
         svg.contains(r#"data-et="life-line" data-id="Alice""#),

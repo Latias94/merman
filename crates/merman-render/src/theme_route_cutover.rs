@@ -686,6 +686,15 @@ impl ThemeRouteCutoverDescriptor {
         self.projections
     }
 
+    /// Returns whether this route relies on renderer-owned terminal bindings for raster proof.
+    ///
+    /// Sequence emits Lifeline fill and stroke through the same native stroke channel. Once that
+    /// mapping leaves the public SVG, the raster witness must not infer it from the final artifact.
+    pub const fn requires_renderer_raster_binding_receipt(self) -> bool {
+        self.projections
+            .contains(ThemeRouteCutoverProjection::LifelineStroke)
+    }
+
     /// Returns the route-local solid paint used by the private raster cutover witness.
     ///
     /// The value is renderer-owned so the acceptance harness cannot silently choose a different
@@ -997,6 +1006,18 @@ mod tests {
             ThemeRouteCutoverProjectionAction::Replace
         );
         assert_eq!(projections, vec![projection]);
+
+        let descriptor = ThemeRouteCutoverDescriptor::new(
+            ThemeRouteCutoverId::new(
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Message,
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverValue::Solid,
+            ),
+            ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_STROKE,
+        );
+        assert!(!descriptor.requires_renderer_raster_binding_receipt());
     }
 
     #[test]
@@ -1012,6 +1033,18 @@ mod tests {
             ThemeRouteCutoverProjectionAction::Replace
         );
         assert_eq!(projections, vec![projection]);
+
+        let descriptor = ThemeRouteCutoverDescriptor::new(
+            ThemeRouteCutoverId::new(
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Lifeline,
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverValue::Solid,
+            ),
+            ThemeRouteCutoverProjectionSet::REPLACE_LIFELINE_STROKE,
+        );
+        assert!(descriptor.requires_renderer_raster_binding_receipt());
     }
 
     #[test]

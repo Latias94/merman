@@ -1,7 +1,7 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::actor_shapes::{
-    ActorLabelContext, is_actor_man_variant, write_actor_man_lifeline,
+    ActorLabelContext, LIFELINE_STROKE_WIDTH_PX, is_actor_man_variant, write_actor_man_lifeline,
     write_collection_actor_shape, write_database_bottom_actor_shape,
     write_database_top_actor_shape, write_lifeline_root_open, write_queue_actor_shape,
     write_rect_actor_shape,
@@ -132,33 +132,68 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
             actor_type if is_actor_man_variant(actor_type) => {
                 write_actor_man_lifeline(out, idx, top.x, y1, y2, actor_id);
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
+                theme_receipt.record_line_emission(
+                    idx,
+                    top.x,
+                    y1,
+                    top.x,
+                    y2,
+                    LIFELINE_STROKE_WIDTH_PX,
+                );
             }
             "collections" => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
+                theme_receipt.record_line_emission(
+                    idx,
+                    top.x,
+                    y1,
+                    top.x,
+                    y2,
+                    LIFELINE_STROKE_WIDTH_PX,
+                );
                 write_collection_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx)?;
                 out.push_str("</g></g>");
             }
             "queue" => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
+                theme_receipt.record_line_emission(
+                    idx,
+                    top.x,
+                    y1,
+                    top.x,
+                    y2,
+                    LIFELINE_STROKE_WIDTH_PX,
+                );
                 write_queue_actor_shape(out, top, actor, "actor-top", &label_ctx)?;
                 out.push_str("</g></g>");
             }
             "database" => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
+                theme_receipt.record_line_emission(
+                    idx,
+                    top.x,
+                    y1,
+                    top.x,
+                    y2,
+                    LIFELINE_STROKE_WIDTH_PX,
+                );
                 write_database_top_actor_shape(out, top, actor, ctx.actor_height, &label_ctx)?;
                 out.push_str("</g></g>");
             }
             _ => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 out.checkpoint()?;
-                theme_receipt.record_line_emission();
+                theme_receipt.record_line_emission(
+                    idx,
+                    top.x,
+                    y1,
+                    top.x,
+                    y2,
+                    LIFELINE_STROKE_WIDTH_PX,
+                );
                 write_rect_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx)?;
                 out.push_str("</g></g>");
             }

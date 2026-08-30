@@ -1,4 +1,5 @@
 use sha2::{Digest as _, Sha256};
+use std::collections::BTreeMap;
 
 use super::*;
 
@@ -28,6 +29,126 @@ impl RasterPaintCutoverFacet {
     }
 }
 
+/// Renderer-owned mapping from a semantic theme facet to its emitted SVG paint channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RasterPaintSemanticBinding {
+    Native,
+    FillFromStroke,
+    FillAndStrokeFromStroke,
+}
+
+impl RasterPaintSemanticBinding {
+    const fn id(self) -> &'static [u8] {
+        match self {
+            Self::Native => b"native",
+            Self::FillFromStroke => b"fill-from-stroke",
+            Self::FillAndStrokeFromStroke => b"fill-and-stroke-from-stroke",
+        }
+    }
+}
+
+/// Exact SVG terminal selected by the renderer for one raster paint proof.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RasterPaintTerminalBinding {
+    terminal_id: String,
+    binding: RasterPaintSemanticBinding,
+    lifeline_geometry: RasterPaintLifelineGeometry,
+}
+
+impl RasterPaintTerminalBinding {
+    /// Binds one renderer-owned Sequence lifeline to its finalized SVG `line` terminal.
+    ///
+    /// Geometry is normalized with the same small-number and near-integer rules used by the SVG
+    /// writer. The exporter later reparses the finalized SVG and requires an exact normalized
+    /// match for `x1`, `y1`, `x2`, `y2`, and `stroke-width`, together with
+    /// `data-et="life-line"` and the absence of transforms.
+    pub fn line_lifeline(
+        terminal_id: impl Into<String>,
+        binding: RasterPaintSemanticBinding,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        stroke_width: f64,
+    ) -> Option<Self> {
+        let terminal_id = terminal_id.into();
+        let lifeline_geometry = RasterPaintLifelineGeometry::new(x1, y1, x2, y2, stroke_width)?;
+        (!terminal_id.is_empty()).then_some(Self {
+            terminal_id,
+            binding,
+            lifeline_geometry,
+        })
+    }
+
+    pub fn terminal_id(&self) -> &str {
+        &self.terminal_id
+    }
+
+    pub const fn binding(&self) -> RasterPaintSemanticBinding {
+        self.binding
+    }
+
+    fn update_digest(&self, hasher: &mut Sha256) {
+        update_len_prefixed(hasher, self.terminal_id.as_bytes());
+        update_len_prefixed(hasher, self.binding.id());
+        update_len_prefixed(hasher, b"line");
+        update_len_prefixed(hasher, b"life-line");
+        self.lifeline_geometry.update_digest(hasher);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct RasterPaintLifelineGeometry {
+    x1_bits: u64,
+    y1_bits: u64,
+    x2_bits: u64,
+    y2_bits: u64,
+    stroke_width_bits: u64,
+}
+
+impl RasterPaintLifelineGeometry {
+    fn new(x1: f64, y1: f64, x2: f64, y2: f64, stroke_width: f64) -> Option<Self> {
+        let x1 = normalize_terminal_coordinate(x1)?;
+        let y1 = normalize_terminal_coordinate(y1)?;
+        let x2 = normalize_terminal_coordinate(x2)?;
+        let y2 = normalize_terminal_coordinate(y2)?;
+        let stroke_width = normalize_terminal_coordinate(stroke_width)?;
+        if x1 != x2 || y2 <= y1 || stroke_width <= 0.0 {
+            return None;
+        }
+        Some(Self {
+            x1_bits: x1.to_bits(),
+            y1_bits: y1.to_bits(),
+            x2_bits: x2.to_bits(),
+            y2_bits: y2.to_bits(),
+            stroke_width_bits: stroke_width.to_bits(),
+        })
+    }
+
+    fn update_digest(self, hasher: &mut Sha256) {
+        hasher.update(self.x1_bits.to_be_bytes());
+        hasher.update(self.y1_bits.to_be_bytes());
+        hasher.update(self.x2_bits.to_be_bytes());
+        hasher.update(self.y2_bits.to_be_bytes());
+        hasher.update(self.stroke_width_bits.to_be_bytes());
+    }
+}
+
+fn normalize_terminal_coordinate(value: f64) -> Option<f64> {
+    if !value.is_finite() {
+        return None;
+    }
+    let mut value = if value.abs() < 1e-9 { 0.0 } else { value };
+    let nearest = value.round();
+    if (value - nearest).abs() < 1e-6 {
+        value = nearest;
+    }
+    if value == -0.0 {
+        value = 0.0;
+    }
+    Some(value)
+}
+
 /// Opaque exporter-owned evidence for one solid/transparent paint pair.
 ///
 /// The exporter resolves the final SVG through `usvg`, identifies the unique control paint on
@@ -46,6 +167,7 @@ pub struct RasterPaintCutoverReceipt {
     solid_effect_tree_digest: [u8; 32],
     underlay_effect_tree_digest: [u8; 32],
     transparent_effect_tree_digest: [u8; 32],
+    terminal_bindings_digest: [u8; 32],
     transparent_geometry_compatible: bool,
     target_geometry_digest: [u8; 32],
     target_path_count: usize,
@@ -73,6 +195,7 @@ impl RasterPaintCutoverReceipt {
             solid_effect_tree_digest: facts.solid_effect_tree_digest,
             underlay_effect_tree_digest: facts.underlay_effect_tree_digest,
             transparent_effect_tree_digest: facts.transparent_effect_tree_digest,
+            terminal_bindings_digest: facts.terminal_bindings_digest,
             transparent_geometry_compatible: facts.transparent_geometry_compatible,
             target_geometry_digest: facts.target_geometry_digest,
             target_path_count: facts.target_path_count,
@@ -105,6 +228,7 @@ impl RasterPaintCutoverReceipt {
             && self.underlay_effect_tree_digest != [0; 32]
             && self.underlay_effect_tree_digest == self.solid_effect_tree_digest
             && self.transparent_effect_tree_digest == self.underlay_effect_tree_digest
+            && self.terminal_bindings_digest != [0; 32]
             && self.transparent_geometry_compatible
             && self.target_geometry_digest != [0; 32]
             && self.target_path_count > 0
@@ -120,7 +244,7 @@ impl RasterPaintCutoverReceipt {
 
     fn canonical_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v6");
+        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v7");
         update_len_prefixed(&mut hasher, self.facet.id());
         hasher.update(self.control_rgb);
         hasher.update(self.solid_source_digest);
@@ -131,6 +255,7 @@ impl RasterPaintCutoverReceipt {
         hasher.update(self.solid_effect_tree_digest);
         hasher.update(self.underlay_effect_tree_digest);
         hasher.update(self.transparent_effect_tree_digest);
+        hasher.update(self.terminal_bindings_digest);
         hasher.update([u8::from(self.transparent_geometry_compatible)]);
         hasher.update(self.target_geometry_digest);
         update_usize(&mut hasher, self.target_path_count);
@@ -184,6 +309,7 @@ pub fn encode_png_paint_cutover_pair_controlled(
     control: OperationControl,
     facet: RasterPaintCutoverFacet,
     control_css: &str,
+    terminal_bindings: &[RasterPaintTerminalBinding],
 ) -> Result<EncodedRasterPaintCutoverPair> {
     export_checkpoint(&control)?;
     let control_color = parse_export_color(control_css)
@@ -198,6 +324,7 @@ pub fn encode_png_paint_cutover_pair_controlled(
     let transparent_svg = transparent_svg.clone();
     let options = options.clone();
     let control_css = control_css.to_owned();
+    let terminal_bindings = terminal_bindings.to_vec();
     run_recursive_svg_backend(&control, move |backend_control| {
         encode_pair_on_backend_stack(
             &solid_svg,
@@ -206,6 +333,7 @@ pub fn encode_png_paint_cutover_pair_controlled(
             backend_control,
             facet,
             &control_css,
+            &terminal_bindings,
             [
                 control_color.red(),
                 control_color.green(),
@@ -222,15 +350,23 @@ fn encode_pair_on_backend_stack(
     control: &OperationControl,
     facet: RasterPaintCutoverFacet,
     control_css: &str,
+    terminal_bindings: &[RasterPaintTerminalBinding],
     control_rgb: [u8; 3],
 ) -> Result<EncodedRasterPaintCutoverPair> {
     let solid_source = native_export_svg(solid_svg);
     let transparent_source = native_export_svg(transparent_svg);
-    let underlay_source = replace_control_paint(solid_source, control_css, control_rgb)?;
+    let underlay_source = if terminal_bindings.is_empty() {
+        replace_control_paint(solid_source, control_css, control_rgb)?
+    } else {
+        suppress_renderer_terminals(solid_source, facet, terminal_bindings)?
+    };
+    if !terminal_bindings.is_empty() {
+        validate_renderer_terminals(transparent_source, facet, terminal_bindings)?;
+    }
 
     let solid = prepare_raster_source_on_backend_stack(solid_svg, solid_source, options, control)?;
     let solid_placement = RasterPlacement::from_prepared(&solid);
-    let solid_tree = observe_paint_tree(&solid.tree, control_rgb, facet)?;
+    let solid_tree = observe_paint_tree(&solid.tree, control_rgb, facet, terminal_bindings)?;
     if solid_tree.targets.is_empty() {
         return Err(ExportError::RasterPaintCutover(
             "solid SVG contains no renderable control-painted path",
@@ -251,7 +387,7 @@ fn encode_pair_on_backend_stack(
     let underlay =
         prepare_raster_source_on_backend_stack(solid_svg, &underlay_source, options, control)?;
     require_same_placement(solid_placement, RasterPlacement::from_prepared(&underlay))?;
-    let underlay_tree = observe_paint_tree(&underlay.tree, control_rgb, facet)?;
+    let underlay_tree = observe_paint_tree(&underlay.tree, control_rgb, facet, terminal_bindings)?;
     require_no_opaque_control_targets(&underlay_tree)?;
     require_solid_underlay_path_compatibility(&solid_tree, &underlay_tree)?;
     let underlay_pixmap = underlay.render_pixmap(underlay.matte, control)?;
@@ -261,6 +397,7 @@ fn encode_pair_on_backend_stack(
         &underlay_pixmap,
         &solid_tree.targets,
         &solid_tree.requested_targets,
+        terminal_bindings,
         solid_placement,
         control_rgb,
     )?;
@@ -276,7 +413,8 @@ fn encode_pair_on_backend_stack(
         solid_placement,
         RasterPlacement::from_prepared(&transparent),
     )?;
-    let transparent_tree = observe_paint_tree(&transparent.tree, control_rgb, facet)?;
+    let transparent_tree =
+        observe_paint_tree(&transparent.tree, control_rgb, facet, terminal_bindings)?;
     require_no_opaque_control_targets(&transparent_tree)?;
     if transparent_tree.effect_tree_digest != underlay_tree.effect_tree_digest {
         return Err(ExportError::RasterPaintCutover(
@@ -324,6 +462,7 @@ fn encode_pair_on_backend_stack(
         solid_effect_tree_digest: solid_tree.effect_tree_digest,
         underlay_effect_tree_digest: underlay_tree.effect_tree_digest,
         transparent_effect_tree_digest: transparent_tree.effect_tree_digest,
+        terminal_bindings_digest: solid_tree.terminal_bindings_digest,
         transparent_geometry_compatible: true,
         target_geometry_digest: solid_tree.target_geometry_digest,
         target_path_count: solid_tree.targets.len(),
@@ -371,6 +510,318 @@ fn replace_control_paint(source: &str, control_css: &str, control_rgb: [u8; 3]) 
         underlay = underlay.replace(&variant, "transparent");
     }
     Ok(underlay)
+}
+
+fn suppress_renderer_terminals(
+    source: &str,
+    facet: RasterPaintCutoverFacet,
+    terminal_bindings: &[RasterPaintTerminalBinding],
+) -> Result<String> {
+    process_renderer_terminals(source, facet, terminal_bindings, true)?.ok_or(
+        ExportError::RasterPaintCutover("failed to materialize raster proof underlay"),
+    )
+}
+
+fn validate_renderer_terminals(
+    source: &str,
+    facet: RasterPaintCutoverFacet,
+    terminal_bindings: &[RasterPaintTerminalBinding],
+) -> Result<()> {
+    process_renderer_terminals(source, facet, terminal_bindings, false).map(|_| ())
+}
+
+struct RendererTerminalXmlState {
+    terminal: RasterPaintTerminalBinding,
+    property: &'static str,
+    match_count: usize,
+}
+
+fn process_renderer_terminals(
+    source: &str,
+    facet: RasterPaintCutoverFacet,
+    terminal_bindings: &[RasterPaintTerminalBinding],
+    write_underlay: bool,
+) -> Result<Option<String>> {
+    use quick_xml::events::Event;
+    use quick_xml::{Reader, Writer};
+
+    let mut terminals = BTreeMap::<String, RendererTerminalXmlState>::new();
+    for terminal in terminal_bindings {
+        let property = match (terminal.binding, facet) {
+            (RasterPaintSemanticBinding::Native, RasterPaintCutoverFacet::Fill) => "fill",
+            (RasterPaintSemanticBinding::Native, RasterPaintCutoverFacet::Stroke)
+            | (RasterPaintSemanticBinding::FillFromStroke, RasterPaintCutoverFacet::Fill)
+            | (RasterPaintSemanticBinding::FillAndStrokeFromStroke, _) => "stroke",
+            (RasterPaintSemanticBinding::FillFromStroke, RasterPaintCutoverFacet::Stroke) => {
+                return Err(ExportError::RasterPaintCutover(
+                    "renderer terminal binding does not admit the requested stroke facet",
+                ));
+            }
+        };
+        if terminals
+            .insert(
+                terminal.terminal_id.clone(),
+                RendererTerminalXmlState {
+                    terminal: terminal.clone(),
+                    property,
+                    match_count: 0,
+                },
+            )
+            .is_some()
+        {
+            return Err(ExportError::RasterPaintCutover(
+                "renderer terminal bindings contain a duplicate id",
+            ));
+        }
+    }
+
+    let mut reader = Reader::from_str(source);
+    reader.config_mut().check_end_names = true;
+    let mut writer = write_underlay.then(|| Writer::new(Vec::with_capacity(source.len())));
+    let mut transform_stack = Vec::<bool>::new();
+    loop {
+        let event = reader
+            .read_event()
+            .map_err(|_| ExportError::RasterPaintCutover("finalized SVG is not well-formed XML"))?;
+        let ancestor_has_transform = transform_stack.last().copied().unwrap_or(false);
+        let event = match event {
+            Event::Start(element) => {
+                let (element, has_transform) = inspect_terminal_element(
+                    element,
+                    &reader,
+                    &mut terminals,
+                    ancestor_has_transform,
+                    write_underlay,
+                )?;
+                transform_stack.push(ancestor_has_transform || has_transform);
+                Event::Start(element)
+            }
+            Event::Empty(element) => {
+                let (element, _) = inspect_terminal_element(
+                    element,
+                    &reader,
+                    &mut terminals,
+                    ancestor_has_transform,
+                    write_underlay,
+                )?;
+                Event::Empty(element)
+            }
+            Event::End(element) => {
+                transform_stack
+                    .pop()
+                    .ok_or(ExportError::RasterPaintCutover(
+                        "finalized SVG contains an unmatched closing element",
+                    ))?;
+                Event::End(element)
+            }
+            Event::Eof => break,
+            other => other,
+        };
+        if let Some(writer) = writer.as_mut() {
+            writer.write_event(event).map_err(|_| {
+                ExportError::RasterPaintCutover("failed to materialize raster proof underlay")
+            })?;
+        }
+    }
+
+    if !transform_stack.is_empty() {
+        return Err(ExportError::RasterPaintCutover(
+            "finalized SVG contains an unclosed element",
+        ));
+    }
+    if terminals.values().any(|state| state.match_count != 1) {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer terminal id is missing or duplicated in finalized SVG",
+        ));
+    }
+    writer
+        .map(|writer| {
+            String::from_utf8(writer.into_inner()).map_err(|_| {
+                ExportError::RasterPaintCutover("raster proof underlay is not valid UTF-8")
+            })
+        })
+        .transpose()
+}
+
+fn inspect_terminal_element(
+    element: quick_xml::events::BytesStart<'_>,
+    reader: &quick_xml::Reader<&[u8]>,
+    terminals: &mut BTreeMap<String, RendererTerminalXmlState>,
+    ancestor_has_transform: bool,
+    rewrite_style: bool,
+) -> Result<(quick_xml::events::BytesStart<'static>, bool)> {
+    use quick_xml::XmlVersion;
+
+    let name = reader
+        .decoder()
+        .decode(element.name().as_ref())
+        .map_err(|_| ExportError::RasterPaintCutover("SVG element name is not valid UTF-8"))?
+        .into_owned();
+    let mut attributes = Vec::<(String, String)>::new();
+    let mut terminal_id = None::<String>;
+    let mut has_transform = false;
+    for attribute in element.attributes().with_checks(true) {
+        let attribute = attribute.map_err(|_| {
+            ExportError::RasterPaintCutover("finalized SVG contains an invalid attribute")
+        })?;
+        let key = reader
+            .decoder()
+            .decode(attribute.key.as_ref())
+            .map_err(|_| ExportError::RasterPaintCutover("SVG attribute name is not valid UTF-8"))?
+            .into_owned();
+        let value = attribute
+            .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+            .map_err(|_| ExportError::RasterPaintCutover("SVG attribute value is not valid XML"))?
+            .into_owned();
+        if key == "id" && terminals.contains_key(&value) {
+            terminal_id = Some(value.clone());
+        }
+        has_transform |= key == "transform";
+        attributes.push((key, value));
+    }
+
+    if let Some(terminal_id) = terminal_id {
+        let state = terminals
+            .get_mut(&terminal_id)
+            .expect("terminal identity was checked above");
+        state.match_count = state.match_count.saturating_add(1);
+        if state.match_count != 1 {
+            return Err(ExportError::RasterPaintCutover(
+                "renderer terminal id is duplicated in finalized SVG",
+            ));
+        }
+        validate_lifeline_terminal(
+            &name,
+            &attributes,
+            ancestor_has_transform || has_transform,
+            state.terminal.lifeline_geometry,
+        )?;
+        if rewrite_style {
+            let override_declaration = format!("{}:transparent !important;", state.property);
+            if let Some((_, style)) = attributes.iter_mut().find(|(key, _)| key == "style") {
+                if !style.trim().is_empty() && !style.trim_end().ends_with(';') {
+                    style.push(';');
+                }
+                style.push_str(&override_declaration);
+            } else {
+                attributes.push(("style".to_string(), override_declaration));
+            }
+        }
+    }
+
+    let mut rewritten = quick_xml::events::BytesStart::new(name);
+    for (key, value) in &attributes {
+        rewritten.push_attribute((key.as_str(), value.as_str()));
+    }
+    Ok((rewritten, has_transform))
+}
+
+fn validate_lifeline_terminal(
+    element_name: &str,
+    attributes: &[(String, String)],
+    has_transform: bool,
+    expected_geometry: RasterPaintLifelineGeometry,
+) -> Result<()> {
+    if element_name != "line" {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline terminal is not an SVG line",
+        ));
+    }
+    if has_transform {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline terminal is transformed",
+        ));
+    }
+    if terminal_attribute(attributes, "data-et") != Some("life-line") {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline terminal has the wrong semantic role",
+        ));
+    }
+    if let Some(style) = terminal_attribute(attributes, "style") {
+        if style_overrides_lifeline_geometry(style)? {
+            return Err(ExportError::RasterPaintCutover(
+                "renderer lifeline terminal has an inline style that can override geometry",
+            ));
+        }
+    }
+    let observed_geometry = RasterPaintLifelineGeometry::new(
+        parse_terminal_length(attributes, "x1", false)?,
+        parse_terminal_length(attributes, "y1", false)?,
+        parse_terminal_length(attributes, "x2", false)?,
+        parse_terminal_length(attributes, "y2", false)?,
+        parse_terminal_length(attributes, "stroke-width", true)?,
+    )
+    .ok_or(ExportError::RasterPaintCutover(
+        "renderer lifeline terminal has invalid geometry",
+    ))?;
+    if observed_geometry != expected_geometry {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline terminal geometry differs from its sealed writer fact",
+        ));
+    }
+    Ok(())
+}
+
+fn terminal_attribute<'a>(attributes: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    attributes
+        .iter()
+        .find_map(|(candidate, value)| (candidate == key).then_some(value.as_str()))
+}
+
+fn style_overrides_lifeline_geometry(style: &str) -> Result<bool> {
+    use cssparser::{Delimiter, Parser, ParserInput};
+
+    let mut input = ParserInput::new(style);
+    let mut parser = Parser::new(&mut input);
+    while !parser.is_exhausted() {
+        let declaration = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
+            let property = declaration.expect_ident_cloned()?;
+            declaration.expect_colon()?;
+            while declaration.next_including_whitespace().is_ok() {}
+            Ok::<_, cssparser::ParseError<'_, ()>>(
+                property.eq_ignore_ascii_case("transform")
+                    || property.eq_ignore_ascii_case("x1")
+                    || property.eq_ignore_ascii_case("y1")
+                    || property.eq_ignore_ascii_case("x2")
+                    || property.eq_ignore_ascii_case("y2")
+                    || property.eq_ignore_ascii_case("stroke-width"),
+            )
+        });
+        match declaration {
+            Ok(true) => return Ok(true),
+            Ok(false) => {}
+            Err(_) => {
+                return Err(ExportError::RasterPaintCutover(
+                    "renderer lifeline terminal has an invalid inline style",
+                ));
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn parse_terminal_length(
+    attributes: &[(String, String)],
+    key: &str,
+    allow_px_suffix: bool,
+) -> Result<f64> {
+    let raw = terminal_attribute(attributes, key).ok_or(ExportError::RasterPaintCutover(
+        "renderer lifeline terminal is missing a required geometry attribute",
+    ))?;
+    let raw = raw.trim();
+    let raw = if allow_px_suffix {
+        raw.strip_suffix("px").unwrap_or(raw).trim()
+    } else {
+        raw
+    };
+    let value = raw.parse::<f64>().map_err(|_| {
+        ExportError::RasterPaintCutover(
+            "renderer lifeline terminal has a non-numeric geometry attribute",
+        )
+    })?;
+    normalize_terminal_coordinate(value).ok_or(ExportError::RasterPaintCutover(
+        "renderer lifeline terminal has a non-finite geometry attribute",
+    ))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -421,6 +872,7 @@ struct PaintTreeObservation {
     path_tree_digest: [u8; 32],
     shape_tree_digest: [u8; 32],
     effect_tree_digest: [u8; 32],
+    terminal_bindings_digest: [u8; 32],
     paths: Vec<PathObservation>,
     target_facets_by_path: Vec<[bool; 2]>,
     target_geometry_digest: [u8; 32],
@@ -439,14 +891,9 @@ struct PathObservation {
     visible: bool,
     fill: Option<PaintObservation>,
     stroke: Option<PaintObservation>,
-    semantic_paint_binding: SemanticPaintBinding,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SemanticPaintBinding {
-    Native,
-    FillFromStroke,
-    FillAndStrokeFromStroke,
+    semantic_paint_binding: RasterPaintSemanticBinding,
+    terminal_id: Option<String>,
+    selected_by_renderer: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -463,6 +910,7 @@ impl PaintObservation {
 
 #[derive(Debug, Clone)]
 struct TargetPath {
+    terminal_id: Option<String>,
     region_bits: [u32; 4],
 }
 
@@ -476,15 +924,14 @@ impl PathObservation {
     fn paint(&self, facet: RasterPaintCutoverFacet) -> Option<PaintObservation> {
         match facet {
             RasterPaintCutoverFacet::Fill => match self.semantic_paint_binding {
-                SemanticPaintBinding::Native => self.fill,
-                SemanticPaintBinding::FillFromStroke
-                | SemanticPaintBinding::FillAndStrokeFromStroke => self.stroke,
+                RasterPaintSemanticBinding::Native => self.fill,
+                RasterPaintSemanticBinding::FillFromStroke
+                | RasterPaintSemanticBinding::FillAndStrokeFromStroke => self.stroke,
             },
             RasterPaintCutoverFacet::Stroke => match self.semantic_paint_binding {
-                SemanticPaintBinding::FillFromStroke => None,
-                SemanticPaintBinding::Native | SemanticPaintBinding::FillAndStrokeFromStroke => {
-                    self.stroke
-                }
+                RasterPaintSemanticBinding::FillFromStroke => None,
+                RasterPaintSemanticBinding::Native
+                | RasterPaintSemanticBinding::FillAndStrokeFromStroke => self.stroke,
             },
         }
     }
@@ -492,13 +939,16 @@ impl PathObservation {
     fn geometry(&self, facet: RasterPaintCutoverFacet) -> Option<[u8; 32]> {
         match facet {
             RasterPaintCutoverFacet::Fill => match self.semantic_paint_binding {
-                SemanticPaintBinding::Native => Some(self.fill_geometry_digest),
-                SemanticPaintBinding::FillFromStroke
-                | SemanticPaintBinding::FillAndStrokeFromStroke => self.stroke_geometry_digest,
+                RasterPaintSemanticBinding::Native => Some(self.fill_geometry_digest),
+                RasterPaintSemanticBinding::FillFromStroke
+                | RasterPaintSemanticBinding::FillAndStrokeFromStroke => {
+                    self.stroke_geometry_digest
+                }
             },
             RasterPaintCutoverFacet::Stroke => match self.semantic_paint_binding {
-                SemanticPaintBinding::FillFromStroke => None,
-                SemanticPaintBinding::Native | SemanticPaintBinding::FillAndStrokeFromStroke => {
+                RasterPaintSemanticBinding::FillFromStroke => None,
+                RasterPaintSemanticBinding::Native
+                | RasterPaintSemanticBinding::FillAndStrokeFromStroke => {
                     self.stroke_geometry_digest
                 }
             },
@@ -508,9 +958,9 @@ impl PathObservation {
     fn region(&self, facet: RasterPaintCutoverFacet) -> [u32; 4] {
         match facet {
             RasterPaintCutoverFacet::Fill => match self.semantic_paint_binding {
-                SemanticPaintBinding::Native => self.fill_region_bits,
-                SemanticPaintBinding::FillFromStroke
-                | SemanticPaintBinding::FillAndStrokeFromStroke => self.stroke_region_bits,
+                RasterPaintSemanticBinding::Native => self.fill_region_bits,
+                RasterPaintSemanticBinding::FillFromStroke
+                | RasterPaintSemanticBinding::FillAndStrokeFromStroke => self.stroke_region_bits,
             },
             RasterPaintCutoverFacet::Stroke => self.stroke_region_bits,
         }
@@ -521,12 +971,20 @@ fn observe_paint_tree(
     tree: &usvg::Tree,
     control_rgb: [u8; 3],
     requested_facet: RasterPaintCutoverFacet,
+    terminal_bindings: &[RasterPaintTerminalBinding],
 ) -> Result<PaintTreeObservation> {
     let mut paths = Vec::new();
+    let mut terminal_resolver = TerminalBindingResolver::new(terminal_bindings)?;
     let mut effect_hasher = Sha256::new();
     update_len_prefixed(&mut effect_hasher, b"merman.raster-paint-effect-tree.v1");
     hash_tree_clip_paths(tree, &mut effect_hasher)?;
-    collect_group_paths(tree.root(), &mut paths, &mut effect_hasher)?;
+    collect_group_paths(
+        tree.root(),
+        &mut paths,
+        &mut terminal_resolver,
+        &mut effect_hasher,
+    )?;
+    let terminal_bindings_digest = terminal_resolver.finish()?;
     let effect_tree_digest = effect_hasher.finalize().into();
     let mut path_tree_hasher = Sha256::new();
     update_len_prefixed(&mut path_tree_hasher, b"merman.raster-paint-path-tree.v1");
@@ -552,6 +1010,9 @@ fn observe_paint_tree(
     );
     let mut requested_targets = Vec::new();
     for (path_index, path) in paths.iter().enumerate() {
+        if !path.selected_by_renderer {
+            continue;
+        }
         let fill_control =
             paint_is_opaque_control(path.paint(RasterPaintCutoverFacet::Fill), control_rgb);
         let stroke_control =
@@ -567,11 +1028,18 @@ fn observe_paint_tree(
         );
         update_usize(&mut target_hasher, path_index);
         target_hasher.update(path.path_digest);
+        if let Some(terminal_id) = &path.terminal_id {
+            update_len_prefixed(&mut target_hasher, b"terminal-owner");
+            update_len_prefixed(&mut target_hasher, terminal_id.as_bytes());
+        }
         target_hasher.update([u8::from(fill_control), u8::from(stroke_control)]);
         for coordinate in region_bits {
             target_hasher.update(coordinate.to_be_bytes());
         }
-        targets.push(TargetPath { region_bits });
+        targets.push(TargetPath {
+            terminal_id: path.terminal_id.clone(),
+            region_bits,
+        });
         target_facets_by_path[path_index] = [fill_control, stroke_control];
 
         let requested_region_bits = match requested_facet {
@@ -585,6 +1053,7 @@ fn observe_paint_tree(
         };
         if let Some(requested_region_bits) = requested_region_bits {
             requested_targets.push(TargetPath {
+                terminal_id: path.terminal_id.clone(),
                 region_bits: requested_region_bits,
             });
         }
@@ -595,6 +1064,7 @@ fn observe_paint_tree(
         path_tree_digest,
         shape_tree_digest,
         effect_tree_digest,
+        terminal_bindings_digest,
         paths,
         target_facets_by_path,
         target_geometry_digest: target_hasher.finalize().into(),
@@ -618,6 +1088,11 @@ fn require_solid_underlay_path_compatibility(
     underlay: &PaintTreeObservation,
 ) -> Result<()> {
     require_same_path_shapes(solid, underlay)?;
+    if solid.terminal_bindings_digest != underlay.terminal_bindings_digest {
+        return Err(ExportError::RasterPaintCutover(
+            "solid and underlay renderer terminal bindings differ",
+        ));
+    }
     if solid.effect_tree_digest != underlay.effect_tree_digest {
         return Err(ExportError::RasterPaintCutover(
             "solid and underlay SVG effect contexts differ",
@@ -668,6 +1143,13 @@ fn require_transparent_path_compatibility(
     solid: &PaintTreeObservation,
 ) -> Result<()> {
     require_same_path_shapes(underlay, transparent)?;
+    if underlay.terminal_bindings_digest != transparent.terminal_bindings_digest
+        || underlay.terminal_bindings_digest != solid.terminal_bindings_digest
+    {
+        return Err(ExportError::RasterPaintCutover(
+            "solid and transparent renderer terminal bindings differ",
+        ));
+    }
     for (path_index, (underlay_path, transparent_path)) in
         underlay.paths.iter().zip(&transparent.paths).enumerate()
     {
@@ -796,16 +1278,97 @@ fn union_control_regions(
     [left, top, right - left, bottom - top].map(f32::to_bits)
 }
 
+struct TerminalBindingState {
+    terminal: RasterPaintTerminalBinding,
+    matches: usize,
+}
+
+#[derive(Clone)]
+struct ResolvedTerminalBinding {
+    terminal_id: String,
+    binding: RasterPaintSemanticBinding,
+}
+
+struct TerminalBindingResolver {
+    bindings: BTreeMap<String, TerminalBindingState>,
+}
+
+impl TerminalBindingResolver {
+    fn new(bindings: &[RasterPaintTerminalBinding]) -> Result<Self> {
+        let mut canonical = BTreeMap::new();
+        for binding in bindings {
+            if binding.terminal_id.is_empty()
+                || canonical
+                    .insert(
+                        binding.terminal_id.clone(),
+                        TerminalBindingState {
+                            terminal: binding.clone(),
+                            matches: 0,
+                        },
+                    )
+                    .is_some()
+            {
+                return Err(ExportError::RasterPaintCutover(
+                    "renderer terminal bindings contain an empty or duplicate id",
+                ));
+            }
+        }
+        Ok(Self {
+            bindings: canonical,
+        })
+    }
+
+    fn has_explicit_bindings(&self) -> bool {
+        !self.bindings.is_empty()
+    }
+
+    fn resolve(&mut self, id: &str) -> Result<Option<ResolvedTerminalBinding>> {
+        let Some(state) = self.bindings.get_mut(id) else {
+            return Ok(None);
+        };
+        state.matches = state.matches.saturating_add(1);
+        if state.matches != 1 {
+            return Err(ExportError::RasterPaintCutover(
+                "renderer terminal id is not unique in finalized SVG",
+            ));
+        }
+        Ok(Some(ResolvedTerminalBinding {
+            terminal_id: id.to_owned(),
+            binding: state.terminal.binding,
+        }))
+    }
+
+    fn finish(self) -> Result<[u8; 32]> {
+        if self.bindings.values().any(|state| state.matches != 1) {
+            return Err(ExportError::RasterPaintCutover(
+                "renderer terminal id is missing from finalized SVG",
+            ));
+        }
+        let mut hasher = Sha256::new();
+        update_len_prefixed(&mut hasher, b"merman.raster-paint-terminal-bindings.v2");
+        update_usize(&mut hasher, self.bindings.len());
+        for state in self.bindings.into_values() {
+            state.terminal.update_digest(&mut hasher);
+        }
+        Ok(hasher.finalize().into())
+    }
+}
+
 fn collect_group_paths(
     group: &usvg::Group,
     paths: &mut Vec<PathObservation>,
+    terminal_resolver: &mut TerminalBindingResolver,
     effect_hasher: &mut Sha256,
 ) -> Result<()> {
+    let select_all = !terminal_resolver.has_explicit_bindings();
     collect_group_paths_with_transform(
         group,
         paths,
         None,
-        SemanticPaintBinding::Native,
+        RasterPaintSemanticBinding::Native,
+        None,
+        select_all,
+        terminal_resolver,
         effect_hasher,
     )
 }
@@ -814,11 +1377,35 @@ fn collect_group_paths_with_transform(
     group: &usvg::Group,
     paths: &mut Vec<PathObservation>,
     extra_transform: Option<tiny_skia::Transform>,
-    inherited_binding: SemanticPaintBinding,
+    inherited_binding: RasterPaintSemanticBinding,
+    inherited_terminal_id: Option<String>,
+    inherited_selection: bool,
+    terminal_resolver: &mut TerminalBindingResolver,
     effect_hasher: &mut Sha256,
 ) -> Result<()> {
     hash_group_effects(group, effect_hasher)?;
-    let group_binding = semantic_paint_binding_from_id(group.id()).unwrap_or(inherited_binding);
+    let explicit_terminal = terminal_resolver.resolve(group.id())?;
+    if inherited_selection
+        && explicit_terminal.is_some()
+        && terminal_resolver.has_explicit_bindings()
+    {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer terminal bindings overlap",
+        ));
+    }
+    let marker_binding = (!terminal_resolver.has_explicit_bindings())
+        .then(|| semantic_paint_binding_from_id(group.id()))
+        .flatten();
+    let group_binding = explicit_terminal
+        .as_ref()
+        .map(|terminal| terminal.binding)
+        .or(marker_binding)
+        .unwrap_or(inherited_binding);
+    let group_terminal_id = explicit_terminal
+        .as_ref()
+        .map(|terminal| terminal.terminal_id.clone())
+        .or(inherited_terminal_id);
+    let group_selected = inherited_selection || explicit_terminal.is_some();
     for node in group.children() {
         match node {
             usvg::Node::Group(child) => collect_group_paths_with_transform(
@@ -826,13 +1413,39 @@ fn collect_group_paths_with_transform(
                 paths,
                 extra_transform,
                 group_binding,
+                group_terminal_id.clone(),
+                group_selected,
+                terminal_resolver,
                 effect_hasher,
             )?,
             usvg::Node::Path(path) => {
+                let explicit_terminal = terminal_resolver.resolve(path.id())?;
+                if group_selected
+                    && explicit_terminal.is_some()
+                    && terminal_resolver.has_explicit_bindings()
+                {
+                    return Err(ExportError::RasterPaintCutover(
+                        "renderer terminal bindings overlap",
+                    ));
+                }
+                let marker_binding = (!terminal_resolver.has_explicit_bindings())
+                    .then(|| semantic_paint_binding_from_id(path.id()))
+                    .flatten();
+                let path_binding = explicit_terminal
+                    .as_ref()
+                    .map(|terminal| terminal.binding)
+                    .or(marker_binding)
+                    .unwrap_or(group_binding);
+                let path_terminal_id = explicit_terminal
+                    .as_ref()
+                    .map(|terminal| terminal.terminal_id.clone())
+                    .or_else(|| group_terminal_id.clone());
                 paths.push(observe_path_with_binding(
                     path,
                     extra_transform,
-                    group_binding,
+                    path_binding,
+                    path_terminal_id,
+                    group_selected || explicit_terminal.is_some(),
                 )?);
             }
             // `usvg` keeps the glyph paths in a text node's flattened group in local
@@ -843,6 +1456,9 @@ fn collect_group_paths_with_transform(
                 paths,
                 Some(text.abs_transform()),
                 group_binding,
+                group_terminal_id.clone(),
+                group_selected,
+                terminal_resolver,
                 effect_hasher,
             )?,
             usvg::Node::Image(_) => {
@@ -941,13 +1557,21 @@ fn observe_path(
     path: &usvg::Path,
     extra_transform: Option<tiny_skia::Transform>,
 ) -> Result<PathObservation> {
-    observe_path_with_binding(path, extra_transform, SemanticPaintBinding::Native)
+    observe_path_with_binding(
+        path,
+        extra_transform,
+        RasterPaintSemanticBinding::Native,
+        None,
+        true,
+    )
 }
 
 fn observe_path_with_binding(
     path: &usvg::Path,
     extra_transform: Option<tiny_skia::Transform>,
-    inherited_binding: SemanticPaintBinding,
+    semantic_paint_binding: RasterPaintSemanticBinding,
+    terminal_id: Option<String>,
+    selected_by_renderer: bool,
 ) -> Result<PathObservation> {
     let transform = path.abs_transform();
     let fill_bbox = map_rect(path.abs_bounding_box(), extra_transform)?;
@@ -987,9 +1611,12 @@ fn observe_path_with_binding(
         None => path_hasher.update([0]),
     }
     path_hasher.update([u8::from(path.is_visible())]);
-
-    let semantic_paint_binding =
-        semantic_paint_binding_from_id(path.id()).unwrap_or(inherited_binding);
+    update_len_prefixed(&mut path_hasher, semantic_paint_binding.id());
+    if let Some(terminal_id) = &terminal_id {
+        update_len_prefixed(&mut path_hasher, b"terminal-owner");
+        update_len_prefixed(&mut path_hasher, terminal_id.as_bytes());
+    }
+    path_hasher.update([u8::from(selected_by_renderer)]);
 
     Ok(PathObservation {
         path_digest: path_hasher.finalize().into(),
@@ -1002,14 +1629,16 @@ fn observe_path_with_binding(
         fill: path.fill().map(observe_fill),
         stroke: path.stroke().map(observe_stroke),
         semantic_paint_binding,
+        terminal_id,
+        selected_by_renderer,
     })
 }
 
-fn semantic_paint_binding_from_id(id: &str) -> Option<SemanticPaintBinding> {
+fn semantic_paint_binding_from_id(id: &str) -> Option<RasterPaintSemanticBinding> {
     if id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX) {
-        Some(SemanticPaintBinding::FillAndStrokeFromStroke)
+        Some(RasterPaintSemanticBinding::FillAndStrokeFromStroke)
     } else if id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_PATH_SUFFIX) {
-        Some(SemanticPaintBinding::FillFromStroke)
+        Some(RasterPaintSemanticBinding::FillFromStroke)
     } else {
         None
     }
@@ -1203,6 +1832,7 @@ fn observe_solid_delta(
     underlay: &tiny_skia::Pixmap,
     targets: &[TargetPath],
     requested_targets: &[TargetPath],
+    terminal_bindings: &[RasterPaintTerminalBinding],
     placement: RasterPlacement,
     control_rgb: [u8; 3],
 ) -> Result<SolidDeltaObservation> {
@@ -1213,6 +1843,8 @@ fn observe_solid_delta(
     }
     let regions = pixel_regions(targets, placement)?;
     let requested_regions = pixel_regions(requested_targets, placement)?;
+    let mut terminal_proofs =
+        terminal_pixel_proofs(requested_targets, terminal_bindings, placement)?;
     let mut control_pixels = 0usize;
     let mut changed_control_pixels = 0usize;
     let mut requested_changed_control_pixels = 0usize;
@@ -1236,6 +1868,19 @@ fn observe_solid_delta(
                     requested_changed_control_pixels =
                         requested_changed_control_pixels.saturating_add(1);
                 }
+                let mut matching_terminal = None;
+                let mut ambiguous = false;
+                for (index, proof) in terminal_proofs.iter().enumerate() {
+                    if proof.regions.iter().any(|region| region.contains(x, y)) {
+                        if matching_terminal.replace(index).is_some() {
+                            ambiguous = true;
+                            break;
+                        }
+                    }
+                }
+                if !ambiguous && let Some(index) = matching_terminal {
+                    terminal_proofs[index].removed_control_pixel = true;
+                }
             } else {
                 unchanged_control_pixels = unchanged_control_pixels.saturating_add(1);
             }
@@ -1256,6 +1901,14 @@ fn observe_solid_delta(
             "solid route produced no removed visible control-painted pixels for the requested facet",
         ));
     }
+    if terminal_proofs
+        .iter()
+        .any(|proof| !proof.removed_control_pixel)
+    {
+        return Err(ExportError::RasterPaintCutover(
+            "a renderer terminal produced no independently attributable removed control pixel",
+        ));
+    }
     if changed_outside_target_pixels != 0 {
         return Err(ExportError::RasterPaintCutover(
             "solid route changed pixels outside its resolved target geometry",
@@ -1269,6 +1922,59 @@ fn observe_solid_delta(
         changed_outside_target_pixels,
         unchanged_control_pixels,
     })
+}
+
+struct TerminalPixelProof {
+    regions: Vec<PixelRegion>,
+    removed_control_pixel: bool,
+}
+
+fn terminal_pixel_proofs(
+    requested_targets: &[TargetPath],
+    terminal_bindings: &[RasterPaintTerminalBinding],
+    placement: RasterPlacement,
+) -> Result<Vec<TerminalPixelProof>> {
+    if terminal_bindings.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut regions_by_terminal = BTreeMap::<String, Vec<PixelRegion>>::new();
+    for terminal in terminal_bindings {
+        if regions_by_terminal
+            .insert(terminal.terminal_id.clone(), Vec::new())
+            .is_some()
+        {
+            return Err(ExportError::RasterPaintCutover(
+                "renderer terminal bindings contain a duplicate id",
+            ));
+        }
+    }
+    for target in requested_targets {
+        let terminal_id = target
+            .terminal_id
+            .as_ref()
+            .ok_or(ExportError::RasterPaintCutover(
+                "renderer-selected target is missing its terminal owner",
+            ))?;
+        let regions =
+            regions_by_terminal
+                .get_mut(terminal_id)
+                .ok_or(ExportError::RasterPaintCutover(
+                    "renderer-selected target has an unknown terminal owner",
+                ))?;
+        regions.push(pixel_region(target.region(), placement)?);
+    }
+    if regions_by_terminal.values().any(Vec::is_empty) {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer terminal has no control-painted target for the requested facet",
+        ));
+    }
+    Ok(regions_by_terminal
+        .into_values()
+        .map(|regions| TerminalPixelProof {
+            regions,
+            removed_control_pixel: false,
+        })
+        .collect())
 }
 
 fn count_control_pixels_in_regions(
@@ -1385,6 +2091,7 @@ struct RasterPaintCutoverFacts {
     solid_effect_tree_digest: [u8; 32],
     underlay_effect_tree_digest: [u8; 32],
     transparent_effect_tree_digest: [u8; 32],
+    terminal_bindings_digest: [u8; 32],
     transparent_geometry_compatible: bool,
     target_geometry_digest: [u8; 32],
     target_path_count: usize,
@@ -1439,6 +2146,16 @@ mod tests {
         facet: RasterPaintCutoverFacet,
         control_css: &str,
     ) -> Result<EncodedRasterPaintCutoverPair> {
+        encode_pair_with_bindings(solid, transparent, facet, control_css, &[])
+    }
+
+    fn encode_pair_with_bindings(
+        solid: &str,
+        transparent: &str,
+        facet: RasterPaintCutoverFacet,
+        control_css: &str,
+        terminal_bindings: &[RasterPaintTerminalBinding],
+    ) -> Result<EncodedRasterPaintCutoverPair> {
         encode_png_paint_cutover_pair_controlled(
             &compatible_svg(solid),
             &compatible_svg(transparent),
@@ -1446,11 +2163,49 @@ mod tests {
             OperationControl::new(),
             facet,
             control_css,
+            terminal_bindings,
         )
     }
 
     fn assert_cutover_error(result: Result<EncodedRasterPaintCutoverPair>) {
-        assert!(matches!(result, Err(ExportError::RasterPaintCutover(_))));
+        match result {
+            Err(ExportError::RasterPaintCutover(_)) => {}
+            Err(other) => panic!("expected raster cutover error, got {other:?}"),
+            Ok(_) => panic!("expected raster cutover error, got success"),
+        }
+    }
+
+    fn lifeline_binding(id: &str, x: f64) -> RasterPaintTerminalBinding {
+        RasterPaintTerminalBinding::line_lifeline(
+            id,
+            RasterPaintSemanticBinding::FillAndStrokeFromStroke,
+            x,
+            2.0,
+            x,
+            18.0,
+            3.0,
+        )
+        .expect("valid lifeline binding")
+    }
+
+    #[test]
+    fn renderer_sidecar_constructor_rejects_non_lifeline_geometry() {
+        let binding = |x1, y1, x2, y2, stroke_width| {
+            RasterPaintTerminalBinding::line_lifeline(
+                "actor0",
+                RasterPaintSemanticBinding::FillAndStrokeFromStroke,
+                x1,
+                y1,
+                x2,
+                y2,
+                stroke_width,
+            )
+        };
+
+        assert!(binding(10.0, 2.0, 11.0, 18.0, 3.0).is_none());
+        assert!(binding(10.0, 18.0, 10.0, 2.0, 3.0).is_none());
+        assert!(binding(10.0, 2.0, 10.0, 2.0, 3.0).is_none());
+        assert!(binding(10.0, 2.0, 10.0, 18.0, 0.0).is_none());
     }
 
     #[test]
@@ -1554,6 +2309,176 @@ mod tests {
             let (_, _, receipt) = pair.into_parts();
             assert!(receipt.proves_semantics());
         }
+    }
+
+    #[test]
+    fn renderer_sidecar_binds_an_exact_terminal_without_changing_public_svg() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="transparent" stroke-width="3"/></svg>"##;
+        let bindings = [lifeline_binding("actor0", 10.0)];
+
+        for facet in [
+            RasterPaintCutoverFacet::Fill,
+            RasterPaintCutoverFacet::Stroke,
+        ] {
+            let pair = encode_pair_with_bindings(solid, transparent, facet, "#dc2626", &bindings)
+                .expect("exact renderer sidecar should select the lifeline");
+            let (_, _, receipt) = pair.into_parts();
+            assert!(receipt.proves_semantics());
+        }
+    }
+
+    #[test]
+    fn renderer_sidecar_parses_inline_style_declaration_boundaries() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3" style="font-family:&quot;a;stroke-width:99&quot;"/></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let bindings = [lifeline_binding("actor0", 10.0)];
+
+        let pair = encode_pair_with_bindings(
+            solid,
+            &transparent,
+            RasterPaintCutoverFacet::Stroke,
+            "#dc2626",
+            &bindings,
+        )
+        .expect("a semicolon inside a CSS string is not a declaration boundary");
+        assert!(pair.into_parts().2.proves_semantics());
+
+        let geometry_override = solid.replace(
+            "font-family:&quot;a;stroke-width:99&quot;",
+            "stroke-width:4",
+        );
+        assert_cutover_error(encode_pair_with_bindings(
+            &geometry_override,
+            &transparent,
+            RasterPaintCutoverFacet::Stroke,
+            "#dc2626",
+            &bindings,
+        ));
+
+        assert!(style_overrides_lifeline_geometry("stroke-width").is_err());
+    }
+
+    #[test]
+    fn renderer_sidecar_rejects_missing_or_duplicate_terminals() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="6" y1="2" x2="6" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/><line id="actor0" x1="14" y1="2" x2="14" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let duplicate = [lifeline_binding("actor0", 6.0)];
+        assert_cutover_error(encode_pair_with_bindings(
+            solid,
+            &transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &duplicate,
+        ));
+
+        let missing = [lifeline_binding("actor1", 10.0)];
+        assert_cutover_error(encode_pair_with_bindings(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/></svg>"##,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="transparent" stroke-width="3"/></svg>"##,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &missing,
+        ));
+    }
+
+    #[test]
+    fn renderer_sidecar_rejects_same_color_outside_the_selected_terminal() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="6" y1="2" x2="6" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/><line id="other" x1="14" y1="2" x2="14" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let bindings = [lifeline_binding("actor0", 6.0)];
+
+        assert_cutover_error(encode_pair_with_bindings(
+            solid,
+            &transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &bindings,
+        ));
+    }
+
+    #[test]
+    fn renderer_sidecar_rejects_wrong_lifeline_role_tag_or_geometry() {
+        let transparent_line = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="transparent" stroke-width="3"/></svg>"##;
+        let bindings = [lifeline_binding("actor0", 10.0)];
+
+        let wrong_role = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="participant" stroke="#dc2626" stroke-width="3"/></svg>"##;
+        assert_cutover_error(encode_pair_with_bindings(
+            wrong_role,
+            transparent_line,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &bindings,
+        ));
+
+        let wrong_tag = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect id="actor0" x="10" y="2" width="1" height="16" data-et="life-line" stroke="#dc2626" stroke-width="3"/></svg>"##;
+        assert_cutover_error(encode_pair_with_bindings(
+            wrong_tag,
+            transparent_line,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &bindings,
+        ));
+
+        let wrong_geometry = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="11" y1="2" x2="11" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/></svg>"##;
+        assert_cutover_error(encode_pair_with_bindings(
+            wrong_geometry,
+            transparent_line,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &bindings,
+        ));
+    }
+
+    #[test]
+    fn renderer_sidecar_rejects_transformed_lifeline_terminals() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g transform="translate(1 0)"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/></g></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let bindings = [lifeline_binding("actor0", 10.0)];
+
+        assert_cutover_error(encode_pair_with_bindings(
+            solid,
+            &transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &bindings,
+        ));
+    }
+
+    #[test]
+    fn renderer_sidecar_rejects_an_invisible_terminal_hidden_by_another() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="6" y1="2" x2="6" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/><g opacity="0"><line id="actor1" x1="14" y1="2" x2="14" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/></g></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let bindings = [
+            lifeline_binding("actor0", 6.0),
+            lifeline_binding("actor1", 14.0),
+        ];
+
+        assert_cutover_error(encode_pair_with_bindings(
+            solid,
+            &transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &bindings,
+        ));
+    }
+
+    #[test]
+    fn renderer_sidecar_rejects_a_completely_clipped_terminal() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><clipPath id="hidden"><rect x="0" y="0" width="1" height="1"/></clipPath></defs><line id="actor0" x1="6" y1="2" x2="6" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/><g clip-path="url(#hidden)"><line id="actor1" x1="14" y1="2" x2="14" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/></g></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let bindings = [
+            lifeline_binding("actor0", 6.0),
+            lifeline_binding("actor1", 14.0),
+        ];
+
+        assert_cutover_error(encode_pair_with_bindings(
+            solid,
+            &transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &bindings,
+        ));
     }
 
     #[test]

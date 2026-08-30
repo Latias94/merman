@@ -54,6 +54,8 @@ mod svg_artifact_receipts;
 pub mod swimlane;
 pub mod text;
 mod theme;
+#[cfg(feature = "internal-theme-acceptance")]
+mod theme_raster_paint;
 mod theme_route_cutover;
 pub mod timeline;
 pub mod tree_view;
@@ -101,6 +103,12 @@ pub mod __private {
         ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjection,
         ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
         ThemeRouteCutoverReceipt, ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
+    };
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub use crate::theme_raster_paint::{
+        ThemeRasterPaintBinding, ThemeRasterPaintBindingReceipt, ThemeRasterPaintLineGeometry,
+        ThemeRasterPaintTerminal, ThemeRasterPaintTerminalSemantic,
     };
 
     #[cfg(feature = "internal-theme-acceptance")]
@@ -157,6 +165,21 @@ pub mod __private {
         crate::theme_route_cutover::seal_theme_route_cutover_receipts(
             report.theme_route_cutover_facts(),
             artifact_digest,
+            native_artifact_digest,
+        )
+    }
+
+    /// Seals renderer-owned raster paint terminal bindings against the finalized native SVG.
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub fn seal_theme_raster_paint_binding_receipts(
+        report: &FamilyRenderReport,
+        native_artifact_digest: [u8; 32],
+    ) -> Vec<ThemeRasterPaintBindingReceipt> {
+        if !report.style_report().is_verified() {
+            return Vec::new();
+        }
+        crate::theme_raster_paint::seal_theme_raster_paint_binding_receipts(
+            report.theme_raster_paint_binding_facts(),
             native_artifact_digest,
         )
     }

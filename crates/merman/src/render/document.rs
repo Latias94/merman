@@ -128,6 +128,9 @@ pub struct RenderedDocument {
     standalone_svg_admission: TargetAdmissionReceipt,
     #[cfg(feature = "internal-theme-acceptance")]
     theme_route_cutover_receipts: Box<[merman_render::__private::ThemeRouteCutoverReceipt]>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    theme_raster_paint_binding_receipts:
+        Box<[merman_render::__private::ThemeRasterPaintBindingReceipt]>,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -245,6 +248,13 @@ impl RenderedDocument {
                 native_svg_digest,
             )
             .into_boxed_slice();
+        #[cfg(feature = "internal-theme-acceptance")]
+        let theme_raster_paint_binding_receipts =
+            merman_render::__private::seal_theme_raster_paint_binding_receipts(
+                &family,
+                native_svg_digest,
+            )
+            .into_boxed_slice();
         let evidence = Arc::new(RenderEvidence::from_family(family, required_capabilities));
         let portability = document_portability_report(&svg, &evidence);
         let document_digest = document_digest(
@@ -268,6 +278,8 @@ impl RenderedDocument {
             standalone_svg_admission,
             #[cfg(feature = "internal-theme-acceptance")]
             theme_route_cutover_receipts,
+            #[cfg(feature = "internal-theme-acceptance")]
+            theme_raster_paint_binding_receipts,
         }
     }
 
@@ -317,6 +329,13 @@ impl RenderedDocument {
         &self,
     ) -> &[merman_render::__private::ThemeRouteCutoverReceipt] {
         &self.theme_route_cutover_receipts
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fn theme_raster_paint_binding_receipts(
+        &self,
+    ) -> &[merman_render::__private::ThemeRasterPaintBindingReceipt] {
+        &self.theme_raster_paint_binding_receipts
     }
 
     #[cfg(feature = "internal-theme-acceptance")]
@@ -479,6 +498,96 @@ impl RenderedDocument {
             ));
         }
 
+        let renderer_bindings = |document: &RenderedDocument,
+                                 route: merman_render::__private::ThemeRouteCutoverDescriptor,
+                                 native_digest: [u8; 32]| {
+            let matching = document
+                .theme_raster_paint_binding_receipts()
+                .iter()
+                .filter(|receipt| receipt.matches_route_identity(route))
+                .collect::<Vec<_>>();
+            if matching.len() > 1 {
+                return Err(map_export_error(
+                    merman_export::ExportError::RasterPaintCutover(
+                        "renderer sealed duplicate raster terminal routes",
+                    ),
+                ));
+            }
+            let Some(receipt) = matching.into_iter().next() else {
+                if route.requires_renderer_raster_binding_receipt() {
+                    return Err(map_export_error(
+                        merman_export::ExportError::RasterPaintCutover(
+                            "renderer did not seal the required raster terminal route",
+                        ),
+                    ));
+                }
+                return Ok(Vec::new());
+            };
+            if !receipt.proves_route(route, native_digest) {
+                return Err(map_export_error(
+                    merman_export::ExportError::RasterPaintCutover(
+                        "renderer raster terminal receipt is not bound to its finalized SVG",
+                    ),
+                ));
+            }
+            receipt
+                .terminals()
+                .iter()
+                .map(|terminal| {
+                    let binding = match terminal.binding() {
+                        merman_render::__private::ThemeRasterPaintBinding::Native => {
+                            merman_export::RasterPaintSemanticBinding::Native
+                        }
+                        merman_render::__private::ThemeRasterPaintBinding::FillFromStroke => {
+                            merman_export::RasterPaintSemanticBinding::FillFromStroke
+                        }
+                        merman_render::__private::ThemeRasterPaintBinding::FillAndStrokeFromStroke => {
+                            merman_export::RasterPaintSemanticBinding::FillAndStrokeFromStroke
+                        }
+                    };
+                    let (x1, y1, x2, y2, stroke_width) = match terminal.semantic() {
+                        merman_render::__private::ThemeRasterPaintTerminalSemantic::SequenceLifeline {
+                            geometry,
+                        } => (
+                            geometry.x1(),
+                            geometry.y1(),
+                            geometry.x2(),
+                            geometry.y2(),
+                            geometry.stroke_width(),
+                        ),
+                    };
+                    merman_export::RasterPaintTerminalBinding::line_lifeline(
+                        terminal.terminal_id(),
+                        binding,
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        stroke_width,
+                    )
+                    .ok_or_else(|| {
+                        map_export_error(merman_export::ExportError::RasterPaintCutover(
+                            "renderer emitted an empty raster terminal id",
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>, RenderError>>()
+        };
+        let solid_bindings =
+            renderer_bindings(solid_document, solid_route, solid_native_svg_digest)?;
+        let transparent_bindings = renderer_bindings(
+            transparent_document,
+            transparent_route,
+            transparent_native_svg_digest,
+        )?;
+        if solid_bindings != transparent_bindings {
+            return Err(map_export_error(
+                merman_export::ExportError::RasterPaintCutover(
+                    "solid and transparent renderer terminal bindings differ",
+                ),
+            ));
+        }
+
         let facet = match solid_route.facet() {
             ThemeRouteCutoverFacet::Fill => merman_export::RasterPaintCutoverFacet::Fill,
             ThemeRouteCutoverFacet::Stroke => merman_export::RasterPaintCutoverFacet::Stroke,
@@ -491,6 +600,7 @@ impl RenderedDocument {
             control,
             facet,
             &control_css,
+            &solid_bindings,
         )
         .map_err(map_export_error)?;
         let ((solid_bytes, solid_report), (transparent_bytes, transparent_report), raster_receipt) =

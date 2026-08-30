@@ -19,6 +19,7 @@ pub use font_environment::{ExportFontMode, ExportFontPlan};
 #[doc(hidden)]
 pub use raster_paint_cutover::{
     EncodedRasterPaintCutoverPair, RasterPaintCutoverFacet, RasterPaintCutoverReceipt,
+    RasterPaintSemanticBinding, RasterPaintTerminalBinding,
     encode_png_paint_cutover_pair_controlled,
 };
 

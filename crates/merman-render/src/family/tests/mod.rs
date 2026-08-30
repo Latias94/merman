@@ -437,6 +437,8 @@ fn family_report(
         theme_applied: applied,
         #[cfg(feature = "internal-theme-acceptance")]
         theme_route_cutover_facts: Vec::new(),
+        #[cfg(feature = "internal-theme-acceptance")]
+        theme_raster_paint_binding_facts: Vec::new(),
         native_filter_receipt: None,
         #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
         architecture_text_cutover_receipt: None,
@@ -854,6 +856,8 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
             theme_applied: Vec::new(),
             #[cfg(feature = "internal-theme-acceptance")]
             theme_route_cutover_facts: Vec::new(),
+            #[cfg(feature = "internal-theme-acceptance")]
+            theme_raster_paint_binding_facts: Vec::new(),
             native_filter_receipt: None,
             #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt: None,

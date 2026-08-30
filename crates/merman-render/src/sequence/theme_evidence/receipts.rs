@@ -1,4 +1,6 @@
 use std::cell::{Cell, RefCell};
+#[cfg(feature = "internal-theme-acceptance")]
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::diagram_theme::{
@@ -122,6 +124,10 @@ impl SequenceLineThemeReceipt {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SequenceLifelineThemeReceipt {
     line: SequenceLineThemeReceipt,
+    #[cfg(feature = "internal-theme-acceptance")]
+    raster_terminals: BTreeMap<String, crate::theme_raster_paint::ThemeRasterPaintTerminal>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    raster_terminals_invalid: bool,
 }
 
 impl SequenceLifelineThemeReceipt {
@@ -133,12 +139,56 @@ impl SequenceLifelineThemeReceipt {
         self.line.record_line_candidate();
     }
 
-    pub(crate) fn record_line_emission(&mut self) {
+    pub(crate) fn record_line_emission(
+        &mut self,
+        actor_index: usize,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        stroke_width: f64,
+    ) {
         self.line.record_line_emission();
+        #[cfg(not(feature = "internal-theme-acceptance"))]
+        let _ = (actor_index, x1, y1, x2, y2, stroke_width);
+        #[cfg(feature = "internal-theme-acceptance")]
+        {
+            let terminal_id = format!("actor{actor_index}");
+            let Some(terminal) =
+                crate::theme_raster_paint::ThemeRasterPaintTerminal::sequence_lifeline(
+                    terminal_id.clone(),
+                    crate::theme_raster_paint::ThemeRasterPaintBinding::FillAndStrokeFromStroke,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    stroke_width,
+                )
+            else {
+                self.raster_terminals_invalid = true;
+                return;
+            };
+            if self
+                .raster_terminals
+                .insert(terminal_id, terminal)
+                .is_some()
+            {
+                self.raster_terminals_invalid = true;
+            }
+        }
     }
 
     pub(super) fn merge(&mut self, other: Self) {
         self.line.merge(other.line);
+        #[cfg(feature = "internal-theme-acceptance")]
+        {
+            self.raster_terminals_invalid |= other.raster_terminals_invalid
+                || other
+                    .raster_terminals
+                    .keys()
+                    .any(|terminal_id| self.raster_terminals.contains_key(terminal_id));
+            self.raster_terminals.extend(other.raster_terminals);
+        }
     }
 
     pub(super) fn route_won(
@@ -156,6 +206,16 @@ impl SequenceLifelineThemeReceipt {
 
     fn has_complete_emission(&self) -> bool {
         self.line.has_complete_emission()
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(super) fn raster_paint_terminals(
+        &self,
+    ) -> Option<Vec<crate::theme_raster_paint::ThemeRasterPaintTerminal>> {
+        (self.has_complete_emission()
+            && !self.raster_terminals_invalid
+            && self.raster_terminals.len() == self.line.emitted_lines)
+            .then(|| self.raster_terminals.values().cloned().collect())
     }
 }
 

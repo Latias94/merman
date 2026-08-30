@@ -496,8 +496,8 @@ mod tests {
             for _ in 0..line_candidates {
                 receipt.record_line_candidate();
             }
-            for _ in 0..emitted_lines {
-                receipt.record_line_emission();
+            for actor_index in 0..emitted_lines {
+                receipt.record_line_emission(actor_index, 10.0, 2.0, 10.0, 18.0, 0.5);
             }
             let recorder = SequenceThemeEvidenceRecorder::default();
             recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
@@ -549,8 +549,8 @@ mod tests {
             for _ in 0..line_candidates {
                 receipt.record_line_candidate();
             }
-            for _ in 0..emitted_lines {
-                receipt.record_line_emission();
+            for actor_index in 0..emitted_lines {
+                receipt.record_line_emission(actor_index, 10.0, 2.0, 10.0, 18.0, 0.5);
             }
             let recorder = SequenceThemeEvidenceRecorder::default();
             recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
@@ -602,7 +602,7 @@ mod tests {
             None,
         ));
         receipt.record_line_candidate();
-        receipt.record_line_emission();
+        receipt.record_line_emission(0, 10.0, 2.0, 10.0, 18.0, 0.5);
         let recorder = SequenceThemeEvidenceRecorder::default();
         recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
             Some("#2563eb"),

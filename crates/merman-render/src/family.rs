@@ -323,6 +323,8 @@ pub(crate) struct FamilyStyleReport {
     theme_applied: Vec<FamilyThemeMechanismKey>,
     #[cfg(feature = "internal-theme-acceptance")]
     theme_route_cutover_facts: Vec<crate::theme_route_cutover::ThemeRouteCutoverFact>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    theme_raster_paint_binding_facts: Vec<crate::theme_raster_paint::ThemeRasterPaintBindingFact>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
     #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
     architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
@@ -364,6 +366,8 @@ impl FamilyStyleReport {
             theme_applied: plan.theme_evidence.applied.clone(),
             #[cfg(feature = "internal-theme-acceptance")]
             theme_route_cutover_facts: plan.theme_route_cutover_facts(),
+            #[cfg(feature = "internal-theme-acceptance")]
+            theme_raster_paint_binding_facts: plan.theme_raster_paint_binding_facts.clone(),
             native_filter_receipt: plan.native_filter_receipt,
             #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt: plan.architecture_text_cutover_receipt.clone(),
@@ -392,6 +396,8 @@ impl FamilyStyleReport {
         self.native_filter_receipt = None;
         #[cfg(feature = "internal-theme-acceptance")]
         self.theme_route_cutover_facts.clear();
+        #[cfg(feature = "internal-theme-acceptance")]
+        self.theme_raster_paint_binding_facts.clear();
         #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
         {
             self.architecture_text_cutover_receipt = None;
@@ -632,6 +638,13 @@ impl FamilyRenderReport {
         &self,
     ) -> &[crate::theme_route_cutover::ThemeRouteCutoverFact] {
         &self.style.theme_route_cutover_facts
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fn theme_raster_paint_binding_facts(
+        &self,
+    ) -> &[crate::theme_raster_paint::ThemeRasterPaintBindingFact] {
+        &self.style.theme_raster_paint_binding_facts
     }
 
     pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
@@ -880,6 +893,8 @@ pub(crate) struct ResolvedFamilyStylePlan {
     theme_evidence: FamilyThemeEvidence,
     source_style_residuals: Vec<SourceStyleResidual>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    theme_raster_paint_binding_facts: Vec<crate::theme_raster_paint::ThemeRasterPaintBindingFact>,
     #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
     architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
     output_mutated: bool,
@@ -905,6 +920,8 @@ impl ResolvedFamilyStylePlan {
             theme_evidence,
             source_style_residuals: Vec::new(),
             native_filter_receipt: None,
+            #[cfg(feature = "internal-theme-acceptance")]
+            theme_raster_paint_binding_facts: Vec::new(),
             #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt: None,
             output_mutated: false,
@@ -1015,6 +1032,15 @@ impl ResolvedFamilyStylePlan {
         };
     }
 
+    #[cfg(feature = "internal-theme-acceptance")]
+    fn record_theme_raster_paint_binding_fact(
+        &mut self,
+        fact: crate::theme_raster_paint::ThemeRasterPaintBindingFact,
+    ) {
+        debug_assert_eq!(fact.family_id(), self.family_id);
+        self.theme_raster_paint_binding_facts.push(fact);
+    }
+
     fn merge_accounted_terminal_evidence(
         &mut self,
         expected_family: DiagramFamilyId,
@@ -1094,6 +1120,8 @@ impl ResolvedFamilyStylePlan {
     fn invalidate_for_output_mutation(&mut self) {
         self.output_mutated = true;
         self.native_filter_receipt = None;
+        #[cfg(feature = "internal-theme-acceptance")]
+        self.theme_raster_paint_binding_facts.clear();
         #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
         {
             self.architecture_text_cutover_receipt = None;
@@ -1327,6 +1355,14 @@ impl FamilyRenderContext {
 
     fn merge_sequence_evidence(&mut self, evidence: FamilyThemeEvidence) {
         self.style_plan.merge_sequence_evidence(evidence);
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    fn record_theme_raster_paint_binding_fact(
+        &mut self,
+        fact: crate::theme_raster_paint::ThemeRasterPaintBindingFact,
+    ) {
+        self.style_plan.record_theme_raster_paint_binding_fact(fact);
     }
 
     fn merge_accounted_terminal_evidence(
@@ -2324,6 +2360,16 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    #[cfg(feature = "internal-theme-acceptance")]
+    fn sequence_theme_raster_paint_binding_fact(
+        &self,
+    ) -> Option<crate::theme_raster_paint::ThemeRasterPaintBindingFact> {
+        match self {
+            Self::Sequence(pair) => pair.layout().theme_evidence().raster_paint_binding_fact(),
+            _ => None,
+        }
+    }
+
     fn class_theme_evidence(
         &self,
         theme: Option<&ResolvedDiagramTheme>,
@@ -3267,6 +3313,9 @@ impl FamilyRenderArtifact {
         let sequence_theme_evidence = self
             .family
             .sequence_theme_evidence(self.context.resolved_theme());
+        #[cfg(feature = "internal-theme-acceptance")]
+        let sequence_theme_raster_paint_binding_fact =
+            self.family.sequence_theme_raster_paint_binding_fact();
         let class_theme_evidence = self.family.class_theme_evidence(
             self.context.resolved_theme(),
             self.context.session().work_meter().as_ref(),
@@ -3335,6 +3384,10 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = sequence_theme_evidence {
             context.merge_sequence_evidence(evidence);
+        }
+        #[cfg(feature = "internal-theme-acceptance")]
+        if let Some(fact) = sequence_theme_raster_paint_binding_fact {
+            context.record_theme_raster_paint_binding_fact(fact);
         }
         if let Some(evidence) = class_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::CLASS, evidence);
