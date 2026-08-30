@@ -267,27 +267,16 @@ void projectsCurrentAbi3TableBoundaries() {
         native.MERMAN_NATIVE_STATUS_CANCELLED == 17,
     'cancelled must append after every pre-existing ABI 3 status',
   );
+  final currentTableSize = ffi.sizeOf<native.MermanNativeApi>();
   _expect(
-    !ffi_transport.nativeApiHasCurrentTableForTesting(
-          native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE - 1,
-        ) &&
-        ffi_transport.nativeApiHasCurrentTableForTesting(
-          native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
-        ),
-    'consumers must require the complete controlled-execution table prefix',
+    !ffi_transport.nativeApiHasCurrentTableForTesting(currentTableSize - 1) &&
+        ffi_transport.nativeApiHasCurrentTableForTesting(currentTableSize),
+    'consumers must require the complete target-architecture table',
   );
   _expect(
-    native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE <
-            native.MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE &&
-        native.MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE <
-            native.MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE &&
-        native.MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE <
-            native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE &&
-        native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE <
-            native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE &&
-        native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE ==
-            ffi.sizeOf<native.MermanNativeApi>(),
-    'each appended control or execution slot must end at one complete table prefix',
+    ffi_transport.nativeApiHasCurrentTableForTesting(100, 100) &&
+        !ffi_transport.nativeApiHasCurrentTableForTesting(99, 100),
+    '32-bit consumers must validate the producer against their own table size',
   );
 
   final request = calloc<native.MermanNativeApiRequest>();

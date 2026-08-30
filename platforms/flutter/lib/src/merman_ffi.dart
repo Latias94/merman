@@ -2698,12 +2698,6 @@ class _NativeApi {
       request.ref.struct_size = ffi.sizeOf<native.MermanNativeApiRequest>();
       request.ref.expected_abi_version = native.MERMAN_NATIVE_ABI_VERSION;
       final consumerTableSize = ffi.sizeOf<native.MermanNativeApi>();
-      if (consumerTableSize <
-          native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE) {
-        throw MermanException.contract(
-          'generated native API table is smaller than the current ABI 3 table',
-        );
-      }
       api.ref.struct_size = consumerTableSize;
 
       final status = getNativeApi(request, api);
@@ -3189,12 +3183,17 @@ void validateNativeResultForTesting(
 
 /// Reports whether a producer-written ABI table includes the complete current
 /// table without reading beyond that prefix.
-bool nativeApiHasCurrentTableForTesting(int producerTableSize) =>
-    _nativeApiHasCurrentTable(producerTableSize);
+bool nativeApiHasCurrentTableForTesting(
+  int producerTableSize, [
+  int? consumerTableSize,
+]) => _nativeApiHasCurrentTable(producerTableSize, consumerTableSize);
 
-bool _nativeApiHasCurrentTable(int producerTableSize) =>
+bool _nativeApiHasCurrentTable(
+  int producerTableSize, [
+  int? consumerTableSize,
+]) =>
     producerTableSize >=
-    native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE;
+    (consumerTableSize ?? ffi.sizeOf<native.MermanNativeApi>());
 
 void _requireNativeResultWritten(
   native.MermanNativeResult result,
