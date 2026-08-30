@@ -236,6 +236,32 @@ fn support_v2_unknown_subject_rejects_unbounded_opaque_fields() {
 }
 
 #[test]
+fn support_v2_subjects_reject_duplicate_fields_before_projection() {
+    let duplicate_subjects = [
+        r#"{"kind":"rule","kind":"rule","target":"node","facet":"fill"}"#,
+        r#"{"kind":"rule","target":"node","target":"edge","facet":"fill"}"#,
+        r#"{"kind":"rule","target":"node","facet":"fill","facet":"stroke"}"#,
+        r#"{"kind":"base-typography","property":"font-size","property":"font-stack"}"#,
+        r#"{"kind":"rule","target":"node","targ\u0065t":"edge","facet":"fill"}"#,
+        r#"{"kind":"future-subject","future-field":1,"future-field":2}"#,
+    ];
+
+    for subject in duplicate_subjects {
+        let json = format!(
+            r#"{{"schema_version":2,"family":"flowchart","output":"standalone-svg","subject":{subject}}}"#
+        );
+        let error = serde_json::from_str::<ThemeSupportQueryV2>(&json)
+            .expect_err("duplicate subject fields must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("theme support subject contains duplicate field"),
+            "unexpected error for {subject}: {error}"
+        );
+    }
+}
+
+#[test]
 fn support_v2_base_typography_property_catalog_round_trips() {
     for property in ThemeSupportBaseTypographyPropertyV2::ALL {
         assert_eq!(

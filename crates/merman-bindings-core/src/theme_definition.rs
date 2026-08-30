@@ -568,6 +568,22 @@ mod tests {
     }
 
     #[test]
+    fn support_query_rejects_duplicate_v2_subject_fields_as_options_json() {
+        let error = crate::describe_theme_support_json(
+            br#"{"schema_version":2,"family":"flowchart","output":"standalone-svg","subject":{"kind":"rule","target":"node","target":"edge","facet":"fill"}}"#,
+        )
+        .expect_err("duplicate V2 subject fields must fail before support projection");
+
+        assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("theme support subject contains duplicate field `target`")
+        );
+        assert!(error.theme_authoring_details().is_none());
+    }
+
+    #[test]
     fn support_query_rejects_unknown_schema_versions_instead_of_decoding_as_v1() {
         let error = crate::describe_theme_support_json(
             br#"{"schema_version":99,"family":"flowchart","output":"standalone-svg","target":"node","facet":"fill"}"#,

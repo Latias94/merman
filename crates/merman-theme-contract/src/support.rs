@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
+use std::fmt;
 
-use serde::de::Error as _;
+use serde::de::{Error as _, MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
@@ -275,7 +276,7 @@ impl<'de> Deserialize<'de> for ThemeSupportSubjectV2 {
     where
         D: Deserializer<'de>,
     {
-        let mut fields = BTreeMap::<String, Value>::deserialize(deserializer)?;
+        let mut fields = deserializer.deserialize_map(UniqueSubjectFieldsVisitor)?;
         let kind = fields
             .remove("kind")
             .and_then(|value| value.as_str().map(str::to_owned))
@@ -302,6 +303,32 @@ impl<'de> Deserialize<'de> for ThemeSupportSubjectV2 {
                 Ok(Self::Unknown(ThemeSupportUnknownSubjectV2 { kind, fields }))
             }
         }
+    }
+}
+
+struct UniqueSubjectFieldsVisitor;
+
+impl<'de> Visitor<'de> for UniqueSubjectFieldsVisitor {
+    type Value = BTreeMap<String, Value>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a theme support subject object with unique field names")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut fields = BTreeMap::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if fields.contains_key(&key) {
+                return Err(A::Error::custom(format!(
+                    "theme support subject contains duplicate field `{key}`"
+                )));
+            }
+            fields.insert(key, map.next_value::<Value>()?);
+        }
+        Ok(fields)
     }
 }
 
