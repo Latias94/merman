@@ -2093,7 +2093,7 @@ mod tests {
     }
 
     #[test]
-    fn every_matrix_legacy_route_emits_a_nonempty_bridge_projection() {
+    fn every_matrix_legacy_route_reaches_the_bridge_with_its_probe_value() {
         let mut matrix_legacy_families = BTreeSet::new();
 
         for &family in DiagramFamilyId::all() {
@@ -2111,9 +2111,9 @@ mod tests {
                 ThemeTypographyProperty::WhiteSpace,
                 ThemeTypographyProperty::Wrap,
             ] {
+                let typography = typography_probe_style(property);
                 let spec = DiagramThemeSpec::new().with_typography(
-                    TypographySpec::default()
-                        .with_family_style(family, typography_probe_style(property)),
+                    TypographySpec::default().with_family_style(family, typography.clone()),
                 );
                 let family_programs = FamilyThemeProgramCache::new(Arc::new(spec.clone()));
                 let program = family_programs.get_or_compile(family);
@@ -2137,6 +2137,7 @@ mod tests {
                     family,
                     spec,
                     FamilyThemeMechanism::BaseTypography(property),
+                    value_digest(&legacy_typography_probe_value(property, &typography)),
                     &format!("base typography {}", property.id()),
                 );
             }
@@ -2187,6 +2188,10 @@ mod tests {
                                     selector,
                                     facet,
                                 },
+                                value_digest(&Value::String(
+                                    solid_paint(&paint)
+                                        .expect("legacy scalar probe paint must serialize"),
+                                )),
                                 &format!(
                                     "target={} variant={} facet={facet:?}",
                                     target.id(),
@@ -2214,6 +2219,7 @@ mod tests {
         family: DiagramFamilyId,
         spec: DiagramThemeSpec,
         expected_mechanism: FamilyThemeMechanism,
+        expected_value_digest: [u8; 32],
         route: &str,
     ) {
         spec.validate().expect("legacy route probe must be valid");
@@ -2236,6 +2242,42 @@ mod tests {
             !artifact.overlay.is_empty() && !artifact.accepted_projections.is_empty(),
             "matrix-declared legacy route was silently dropped: family={family} route={route}"
         );
+        // Exact assignment paths remain owned by family-specific mapping tests. Repeating them
+        // here would turn this matrix-derived liveness guard into a second bridge manifest.
+        assert!(
+            artifact
+                .accepted_projections
+                .iter()
+                .all(|projection| projection.value_digest() == expected_value_digest),
+            "legacy route did not preserve its probe value: family={family} route={route}"
+        );
+    }
+
+    fn legacy_typography_probe_value(
+        property: ThemeTypographyProperty,
+        typography: &TextStyle,
+    ) -> Value {
+        match property {
+            ThemeTypographyProperty::FontStack => Value::String(typography.font_stack().as_css()),
+            ThemeTypographyProperty::FontSize => {
+                Value::String(format!("{}px", typography.font_size_px()))
+            }
+            ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => {
+                panic!(
+                    "base typography property {} entered the legacy bridge without a probe value",
+                    property.id()
+                )
+            }
+        }
     }
 
     fn typography_probe_style(property: ThemeTypographyProperty) -> TextStyle {

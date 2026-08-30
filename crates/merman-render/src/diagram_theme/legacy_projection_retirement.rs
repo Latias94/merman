@@ -123,6 +123,11 @@ impl ThemeLegacyProjectionObservation {
     pub fn assignment_path(&self) -> &str {
         &self.assignment_path
     }
+
+    #[cfg(test)]
+    pub(super) const fn value_digest(&self) -> [u8; 32] {
+        self.value_digest
+    }
 }
 
 /// Production observation of one current matrix-and-bridge route.
