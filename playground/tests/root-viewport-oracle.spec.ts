@@ -4,46 +4,324 @@ import {
   auditMountedSvg,
   classifyRootViewportContainment,
   exactRootViewportResidualEvidenceIsEligible,
+  rootViewportAuditFingerprintFacts,
   type PaintAuditIndeterminateReason,
   type RootViewportAudit,
 } from "./root-viewport-oracle.ts";
 import {
   matchingRootViewportResidual,
   parseRootViewportResidualCatalog,
+  rootViewportResidualAuditEvidenceSha256,
+  unusedRootViewportResidualFixtures,
 } from "./root-viewport-residuals.ts";
 
-test("exact root viewport residuals bind both SVG artifacts", () => {
+test("exact root viewport residuals bind SVGs and live audit evidence", () => {
   const local = "a".repeat(64);
   const upstream = "b".repeat(64);
+  const localAudit = fixtureAudit({
+    structuralOverflows: [{ edge: "right", depth: 3 }],
+  });
+  const upstreamAudit = fixtureAudit({
+    structuralOverflows: [{ edge: "right", depth: 2 }],
+  });
+  const auditEvidenceSha256 = rootViewportResidualAuditEvidenceSha256(
+    localAudit,
+    upstreamAudit,
+    "blocking",
+  );
   const catalog = parseRootViewportResidualCatalog(
     JSON.stringify({
-      schemaVersion: 1,
-      comparisonRevision: "browser-root-paint-containment-v10",
+      schemaVersion: 2,
+      comparisonRevision: "browser-root-paint-containment-v11",
+      auditFingerprintVersion: 1,
       entries: [
         {
           fixture: "xychart/probe",
           localSvgSha256: local,
           upstreamSvgSha256: upstream,
+          auditEvidenceSha256,
           reason: "deterministic-text-measurement-out-of-domain-extrapolation",
         },
       ],
     }),
   );
 
-  expect(matchingRootViewportResidual(catalog, "xychart/probe", local, upstream)).not.toBeNull();
   expect(
-    matchingRootViewportResidual(catalog, "xychart/probe", "c".repeat(64), upstream),
+    matchingRootViewportResidual(
+      catalog,
+      "xychart/probe",
+      local,
+      upstream,
+      auditEvidenceSha256,
+    ),
+  ).not.toBeNull();
+  expect(
+    matchingRootViewportResidual(
+      catalog,
+      "xychart/probe",
+      "c".repeat(64),
+      upstream,
+      auditEvidenceSha256,
+    ),
+  ).toBeNull();
+  expect(
+    matchingRootViewportResidual(
+      catalog,
+      "xychart/probe",
+      local,
+      upstream,
+      "c".repeat(64),
+    ),
+  ).toBeNull();
+  expect(
+    matchingRootViewportResidual(
+      catalog,
+      "xychart/probe",
+      local,
+      "c".repeat(64),
+      auditEvidenceSha256,
+    ),
+  ).toBeNull();
+  expect(
+    matchingRootViewportResidual(
+      catalog,
+      "xychart/probe",
+      local,
+      null,
+      auditEvidenceSha256,
+    ),
   ).toBeNull();
   expect(() =>
     parseRootViewportResidualCatalog(
       JSON.stringify({
         schemaVersion: 1,
+        comparisonRevision: "browser-root-paint-containment-v11",
+        auditFingerprintVersion: 1,
+        entries: [],
+      }),
+    ),
+  ).toThrow(/Unsupported root viewport residual schema/u);
+  expect(() =>
+    parseRootViewportResidualCatalog(
+      JSON.stringify({
+        schemaVersion: 2,
         comparisonRevision: "stale",
+        auditFingerprintVersion: 1,
         entries: [],
       }),
     ),
   ).toThrow(/revision drifted/u);
+  expect(() =>
+    parseRootViewportResidualCatalog(
+      JSON.stringify({
+        schemaVersion: 2,
+        comparisonRevision: "browser-root-paint-containment-v11",
+        auditFingerprintVersion: 0,
+        entries: [],
+      }),
+    ),
+  ).toThrow(/fingerprint version drifted/u);
+  expect(() =>
+    parseRootViewportResidualCatalog(
+      JSON.stringify({
+        schemaVersion: 2,
+        comparisonRevision: "browser-root-paint-containment-v11",
+        auditFingerprintVersion: 1,
+        entries: [
+          {
+            fixture: "xychart/probe",
+            localSvgSha256: local,
+            upstreamSvgSha256: upstream,
+            auditEvidenceSha256: "0".repeat(64),
+            reason: "deterministic-text-measurement-out-of-domain-extrapolation",
+          },
+        ],
+      }),
+    ),
+  ).toThrow(/invalid evidence SHA-256/u);
+  expect(() =>
+    parseRootViewportResidualCatalog(
+      JSON.stringify({
+        schemaVersion: 2,
+        comparisonRevision: "browser-root-paint-containment-v11",
+        auditFingerprintVersion: 1,
+        entries: [
+          {
+            fixture: "xychart/probe",
+            localSvgSha256: "0".repeat(64),
+            upstreamSvgSha256: upstream,
+            auditEvidenceSha256,
+            reason: "deterministic-text-measurement-out-of-domain-extrapolation",
+          },
+        ],
+      }),
+    ),
+  ).toThrow(/invalid evidence SHA-256/u);
 
+  expect(unusedRootViewportResidualFixtures(catalog, new Set())).toEqual([
+    "xychart/probe",
+  ]);
+  expect(
+    unusedRootViewportResidualFixtures(catalog, new Set(["xychart/probe"])),
+  ).toEqual([]);
+});
+
+test("root viewport audit fingerprints are canonical and decision-scoped", () => {
+  const orderedOverflows: FixtureOverflow[] = [
+    { edge: "right", depth: 3 },
+    { edge: "top", depth: 1 },
+    { edge: "right", depth: 1 },
+  ];
+  const upstream = fixtureAudit({
+    structuralOverflows: [{ edge: "right", depth: 2 }],
+  });
+  const ordered = fixtureAudit({
+    structuralOverflows: orderedOverflows,
+  });
+  const reordered = fixtureAudit({
+    structuralOverflows: [
+      { edge: "right", depth: 1 },
+      { edge: "right", depth: 3 },
+      { edge: "top", depth: 1 },
+    ],
+  });
+
+  const fingerprint = rootViewportResidualAuditEvidenceSha256(
+    ordered,
+    upstream,
+    "blocking",
+  );
+  expect(rootViewportAuditFingerprintFacts(ordered)).toEqual({
+    rootStatus: "present",
+    paintStatus: "collected",
+    rootWidthCssPx: 100,
+    rootHeightCssPx: 100,
+    guardCssPx: 16,
+    captureWidthCssPx: 132,
+    captureHeightCssPx: 132,
+    indeterminateReasons: [],
+    structuralOverflowDepths: [
+      { edge: "top", maxDepthCssPx: 1 },
+      { edge: "right", maxDepthCssPx: 3 },
+      { edge: "bottom", maxDepthCssPx: 0 },
+      { edge: "left", maxDepthCssPx: 0 },
+    ],
+  });
+  expect(
+    rootViewportResidualAuditEvidenceSha256(reordered, upstream, "blocking"),
+  ).toBe(fingerprint);
+  expect(fingerprint).toBe(
+    "7b95d441d27129ac4087f1fa46cb194de1ddc519bb56c2c79f08d74c9c0950b4",
+  );
+
+  const digest = (
+    local: RootViewportAudit = ordered,
+    upstreamAudit: RootViewportAudit | null = upstream,
+    classification: Parameters<typeof rootViewportResidualAuditEvidenceSha256>[2] =
+      "blocking",
+  ) =>
+    rootViewportResidualAuditEvidenceSha256(
+      local,
+      upstreamAudit,
+      classification,
+    );
+  const mutationDigests: Array<[string, string]> = [
+    [
+      "local structural depth",
+      digest(
+        fixtureAudit({
+          structuralOverflows: [
+            { edge: "right", depth: 4 },
+            { edge: "top", depth: 1 },
+          ],
+        }),
+      ),
+    ],
+    [
+      "upstream structural depth",
+      digest(
+        ordered,
+        fixtureAudit({ structuralOverflows: [{ edge: "right", depth: 1 }] }),
+      ),
+    ],
+    [
+      "upstream root size",
+      digest(
+        ordered,
+        fixtureAudit({
+          rootWidth: 101,
+          structuralOverflows: [{ edge: "right", depth: 2 }],
+        }),
+      ),
+    ],
+    ["missing upstream audit", digest(ordered, null)],
+    [
+      "local capture width",
+      digest(
+        fixtureAudit({
+          captureWidthCssPx: 133,
+          structuralOverflows: orderedOverflows,
+        }),
+      ),
+    ],
+    [
+      "upstream capture height",
+      digest(
+        ordered,
+        fixtureAudit({
+          captureHeightCssPx: 133,
+          structuralOverflows: [{ edge: "right", depth: 2 }],
+        }),
+      ),
+    ],
+    [
+      "local paint guard",
+      digest(
+        fixtureAudit({ guardCssPx: 17, structuralOverflows: orderedOverflows }),
+      ),
+    ],
+    [
+      "local paint status",
+      digest(
+        fixtureAudit({
+          status: "indeterminate",
+          indeterminateReasons: ["active-filter"],
+          structuralOverflows: orderedOverflows,
+        }),
+      ),
+    ],
+    ["base classification", digest(ordered, upstream, "upstream-inherited")],
+  ];
+  for (const [name, mutationDigest] of mutationDigests) {
+    expect(mutationDigest, name).not.toBe(fingerprint);
+  }
+
+  const reasonsForward = fixtureAudit({
+    status: "indeterminate",
+    indeterminateReasons: ["active-filter", "active-text-shadow"],
+    paintedPixelCount: 0,
+  });
+  const reasonsReverse = fixtureAudit({
+    status: "indeterminate",
+    indeterminateReasons: ["active-text-shadow", "active-filter"],
+    paintedPixelCount: 0,
+  });
+  expect(
+    rootViewportResidualAuditEvidenceSha256(
+      reasonsForward,
+      upstream,
+      "blocking",
+    ),
+  ).toBe(
+    rootViewportResidualAuditEvidenceSha256(
+      reasonsReverse,
+      upstream,
+      "blocking",
+    ),
+  );
+});
+
+test("exact residual eligibility remains fail closed", () => {
   const collected = fixtureAudit({ paintedPixelCount: 0 });
   expect(exactRootViewportResidualEvidenceIsEligible(collected, collected)).toBe(true);
   expect(exactRootViewportResidualEvidenceIsEligible(collected, null)).toBe(false);
@@ -547,6 +825,7 @@ function fixtureAudit({
   indeterminateReasons = [],
   captureWidthCssPx = 132,
   captureHeightCssPx = 132,
+  guardCssPx = 16,
   paintedPixelCount = 10,
   structuralPaintedPixelCount = paintedPixelCount,
   paintedOverflows,
@@ -559,6 +838,7 @@ function fixtureAudit({
   indeterminateReasons?: PaintAuditIndeterminateReason[];
   captureWidthCssPx?: number;
   captureHeightCssPx?: number;
+  guardCssPx?: number;
   paintedPixelCount?: number;
   structuralPaintedPixelCount?: number;
   paintedOverflows?: FixtureOverflow[];
@@ -605,7 +885,7 @@ function fixtureAudit({
     paintedElementCount: 1,
     paintAudit: {
       status,
-      guardCssPx: 16,
+      guardCssPx,
       captureWidthCssPx,
       captureHeightCssPx,
       indeterminateReasons,

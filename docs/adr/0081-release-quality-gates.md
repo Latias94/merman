@@ -84,9 +84,11 @@ capture envelope, and no deeper geometry extent on any edge.
 
 The sole exceptional root-paint residual is stored in
 `fixtures/_verification/root-viewport-residuals.json`. It binds exact local and pinned-upstream SVG
-hashes and a closed reason for XYChart's text-measurement-sensitive, out-of-domain linear
-extrapolation. Receipt drift and unused receipts fail the gate; the catalog cannot express a numeric
-or family tolerance.
+hashes, a closed reason, and a versioned fingerprint of the live Chromium facts that determine the
+containment verdict for XYChart's text-measurement-sensitive, out-of-domain linear extrapolation.
+The fingerprint is semantic rather than pixel-perfect: it covers root size, audit/capture state,
+sorted indeterminate reasons, and per-edge structural overflow depth. Receipt drift and unused
+receipts fail the gate; the catalog cannot express a numeric or family tolerance.
 
 ### Strict mode is not a release gate
 

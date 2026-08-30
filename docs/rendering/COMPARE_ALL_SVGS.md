@@ -80,7 +80,10 @@ SVGs in Chromium, captures transparent alpha outside each root, and compares str
 with the pinned upstream artifact. Browser-owned SVG text, HTML label paint, and RoughJS output are
 diagnostic. A new structural overflow edge or a deeper edge is blocking. The only exact root-paint
 receipt catalog is `fixtures/_verification/root-viewport-residuals.json`; each entry binds both SVG
-hashes, and stale or unused entries fail rather than widening a tolerance.
+hashes and the versioned decision fingerprint produced by the same live Chromium audit used for
+the verdict. The fingerprint covers root size, audit/capture state, sorted indeterminate reasons,
+and per-edge structural overflow depth without freezing antialiasing pixels or a Chromium patch
+number. Stale or unused entries fail rather than widening a tolerance.
 
 ## Notes
 

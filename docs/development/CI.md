@@ -94,8 +94,11 @@ screenshot memory.
 
 One reviewed out-of-domain XYChart extrapolation is admitted through
 `fixtures/_verification/root-viewport-residuals.json`. This is not a numeric tolerance: the receipt
-binds the exact local and upstream SVG SHA-256 values plus a closed reason. A changed or unused
-receipt blocks. Every other local-only, new, or worse structural result remains blocking.
+binds the exact local and upstream SVG SHA-256 values plus a versioned fingerprint of the live
+Chromium decision facts: root dimensions, paint status, capture policy, indeterminate reasons, and
+the maximum structural overflow depth on each edge. The fingerprint deliberately excludes raw
+screenshot pixels and browser patch identity. A changed, malformed, or unused receipt blocks.
+Every other local-only, new, or worse structural result remains blocking.
 The JSON report at `target/root-viewport-diagnostic.json` is uploaded as a diagnostic artifact even
 when the oracle fails; upstream browser measurements in that report remain diagnostic rather than
 an acceptance policy. The oracle expands its transparent screenshot capture from browser geometry
