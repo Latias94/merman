@@ -122,6 +122,14 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("id-token: write", deployment)
         self.assertIn("environment:\n      name: github-pages", deployment)
         self.assertIn("uses: ./.github/workflows/pages.yml", deployment)
+        self.assertIn(
+            '"distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm"',
+            deployment,
+        )
+        self.assertIn(
+            '"distribution/tree-sitter-mermaid/queries/portable/highlights.scm"',
+            deployment,
+        )
 
     def test_publish_workflows_do_not_persist_checkout_tokens(self) -> None:
         for path in PUBLISH_WORKFLOWS:
@@ -359,7 +367,7 @@ jobs:
 
     def test_pubdev_skip_existing_is_guarded_by_archive_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-flutter.yml")
-        self.assertIn("scripts/reconcile_pub_package.py", text)
+        self.assertIn("python3 -m scripts.reconcile_pub_package", text)
         self.assertIn("exact)", text)
         self.assertIn("exists=true", text)
 

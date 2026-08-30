@@ -251,7 +251,7 @@ jobs:
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/merman-flutter-package/merman-flutter-package.tar.gz"
-          state="$(python3 scripts/reconcile_pub_package.py \
+          state="$(python3 -m scripts.reconcile_pub_package \
             --archive "$archive" \
             --package merman \
             --version "$VERSION")"

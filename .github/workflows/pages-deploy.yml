@@ -18,6 +18,8 @@ on:
       - "docs/release/WASM_SIZE_BUDGETS.json"
       - "platforms/web/**"
       - "playground/**"
+      - "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm"
+      - "distribution/tree-sitter-mermaid/queries/portable/highlights.scm"
       - "scripts/check-svg-safety-policy.mjs"
       - "scripts/generate-svg-safety-policy.mjs"
       - "scripts/svg-safety-policy.mjs"

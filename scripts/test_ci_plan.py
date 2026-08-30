@@ -87,14 +87,18 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["owners"]["web"])
         self.assertFalse(plan["svg_parity"])
 
-    def test_package_readmes_and_changelogs_select_only_hygiene(self) -> None:
-        for path in (
-            "crates/merman-analysis/README.md",
-            "distribution/typst/merman/README.md",
-            "platforms/flutter/README.md",
-            "platforms/node/CHANGELOG.md",
-            "platforms/python/merman/CHANGELOG.md",
-        ):
+    def test_package_readmes_and_changelogs_select_their_surface_owners(self) -> None:
+        expected = {
+            "crates/merman-analysis/README.md": {"hygiene"},
+            "distribution/typst/merman/README.md": {"hygiene", "typst"},
+            "platforms/flutter/README.md": {"hygiene", "platform"},
+            "platforms/node/CHANGELOG.md": {"hygiene", "node"},
+            "platforms/python/merman/CHANGELOG.md": {"hygiene", "python"},
+            "platforms/web/packages/full/README.md": {"hygiene", "web"},
+            "distribution/tree-sitter-mermaid/README.md": {"grammar", "hygiene"},
+            "tools/vscode-extension/CHANGELOG.md": {"hygiene", "vscode"},
+        }
+        for path, expected_owners in expected.items():
             with self.subTest(path=path):
                 plan = plan_changes(
                     parse_name_status_z(f"M\0{path}\0".encode()),
@@ -105,11 +109,11 @@ class PlannerTests(unittest.TestCase):
                 self.assertFalse(plan["fallback"])
                 self.assertEqual(
                     {name for name, enabled in plan["owners"].items() if enabled},
-                    {"hygiene"},
+                    expected_owners,
                 )
                 self.assertFalse(plan["svg_parity"])
 
-    def test_renderer_change_selects_core_without_unrelated_lifecycle_owners(self) -> None:
+    def test_renderer_change_selects_core_and_fuzz_without_unrelated_owners(self) -> None:
         plan = plan_changes(
             parse_name_status_z(b"M\0crates/merman-render/src/lib.rs\0"),
             base="a" * 40,
@@ -119,7 +123,7 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["fallback"])
         self.assertEqual(
             {name for name, enabled in plan["owners"].items() if enabled},
-            {"core", "hygiene"},
+            {"core", "fuzz", "hygiene"},
         )
         self.assertTrue(plan["svg_parity"])
 
@@ -182,12 +186,16 @@ class PlannerTests(unittest.TestCase):
                 "python",
             },
             "crates/merman-core/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-ffi/src/lib.rs": {"core", "fuzz", "hygiene", "platform"},
+            "crates/merman-render/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman/benches/ascii_pipeline.rs": {
                 "core",
+                "fuzz",
                 "hygiene",
                 "performance",
             },
-            "crates/merman/Cargo.toml": {"core", "hygiene", "performance"},
+            "crates/merman/Cargo.toml": {"core", "fuzz", "hygiene", "performance"},
         }
 
         for path, expected in fixtures.items():
@@ -214,7 +222,16 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["fallback"])
         self.assertEqual(
             selected,
-            {"cli", "core", "hygiene", "platform", "python"},
+            {
+                "cli",
+                "core",
+                "hygiene",
+                "platform",
+                "python",
+                "security",
+                "typst",
+                "vscode",
+            },
         )
 
     def test_xtask_changes_select_their_artifact_consumers(self) -> None:
@@ -271,7 +288,13 @@ class PlannerTests(unittest.TestCase):
             },
             "scripts/build-python-uniffi-wheel.py": {"hygiene", "python"},
             "scripts/audit_plan.py": {"hygiene", "npm", "security"},
-            "scripts/strict_json.py": {"hygiene"},
+            "scripts/generate-rust-license-report.py": {"hygiene", "security"},
+            "scripts/strict_json.py": {"hygiene", "security"},
+            "scripts/verify_artifact_dependency_closures.py": {
+                "hygiene",
+                "security",
+                "typst",
+            },
             "scripts/release_projection.py": {"hygiene"},
         }
 
@@ -353,7 +376,7 @@ class PlannerTests(unittest.TestCase):
                 selected = {
                     name for name, enabled in plan["owners"].items() if enabled
                 }
-                self.assertEqual(selected, {"grammar", "hygiene"})
+                self.assertEqual(selected, {"fuzz", "grammar", "hygiene"})
 
     def test_browser_tree_sitter_assets_select_the_web_owner(self) -> None:
         for path in (
@@ -374,6 +397,7 @@ class PlannerTests(unittest.TestCase):
     def test_tree_sitter_manifests_select_dependency_owners(self) -> None:
         fixtures = {
             "distribution/tree-sitter-mermaid/Cargo.toml": {
+                "fuzz",
                 "grammar",
                 "hygiene",
                 "security",
