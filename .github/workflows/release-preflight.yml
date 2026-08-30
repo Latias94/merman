@@ -136,7 +136,7 @@ jobs:
       - name: Verify release changelog projections
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
-        run: python3 scripts/verify_release_changelog.py --version "$VERSION"
+        run: python3 scripts/verify_release_changelog.py --version "$VERSION" --require-date
 
       - name: Verify independent crate versions changed with their source
         run: |

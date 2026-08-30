@@ -52,7 +52,12 @@ def first_release_heading(text: str, path: Path) -> tuple[str, str]:
     raise ReleaseChangelogError(f"{path} has no release heading")
 
 
-def verify_repository(root: Path, version: str) -> None:
+def verify_repository(
+    root: Path,
+    version: str,
+    *,
+    require_date: bool = False,
+) -> None:
     for relative_path in CHANGELOG_PATHS:
         path = root / relative_path
         try:
@@ -65,15 +70,20 @@ def verify_repository(root: Path, version: str) -> None:
             raise ReleaseChangelogError(
                 f"{relative_path} starts with {actual_version!r}, expected {expected_version!r}"
             )
-        if release_date != "Unreleased":
-            try:
-                if re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date) is None:
-                    raise ValueError("release date must use YYYY-MM-DD")
-                date.fromisoformat(release_date)
-            except ValueError as exc:
+        if release_date == "Unreleased":
+            if require_date:
                 raise ReleaseChangelogError(
-                    f"{relative_path} has invalid release date/status {release_date!r}"
-                ) from exc
+                    f"{relative_path} must be dated before immutable release preflight"
+                )
+            continue
+        try:
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date) is None:
+                raise ValueError("release date must use YYYY-MM-DD")
+            date.fromisoformat(release_date)
+        except ValueError as exc:
+            raise ReleaseChangelogError(
+                f"{relative_path} has invalid release date/status {release_date!r}"
+            ) from exc
 
 
 def main() -> int:
@@ -82,10 +92,19 @@ def main() -> int:
     )
     parser.add_argument("--version", required=True)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument(
+        "--require-date",
+        action="store_true",
+        help="reject Unreleased projections before immutable preflight",
+    )
     args = parser.parse_args()
     try:
         canonical = parse_release_version(args.version, allow_v_prefix=False).canonical
-        verify_repository(args.root.resolve(), canonical)
+        verify_repository(
+            args.root.resolve(),
+            canonical,
+            require_date=args.require_date,
+        )
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

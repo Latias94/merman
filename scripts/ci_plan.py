@@ -548,6 +548,12 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path in {"Cargo.lock", "Cargo.toml", "rust-toolchain.toml", "dist-workspace.toml"}:
         return _ALL_OWNERS, f"shared Rust authority changed: {path}", True
+    if posixpath.basename(path) in {"README.md", "CHANGELOG.md"}:
+        return (
+            frozenset({"hygiene"}),
+            f"package documentation changed: {path}",
+            False,
+        )
     if path in {
         "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm",
         "distribution/tree-sitter-mermaid/queries/portable/highlights.scm",
@@ -724,7 +730,7 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
     if path.startswith(("tools/mermaid-cli/", "tools/debug/", "tools/preview/")):
         return _ALL_OWNERS, f"shared tool changed: {path}", True
 
-    if path in {"README.md", "CHANGELOG.md", "CONTEXT.md", "AGENTS.md", ".agents"}:
+    if path in {"CONTEXT.md", "AGENTS.md", ".agents"}:
         return frozenset({"hygiene"}), f"repository documentation changed: {path}", False
     if path.startswith(".agents/"):
         return frozenset({"hygiene"}), f"agent documentation changed: {path}", False

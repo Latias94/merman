@@ -27,6 +27,20 @@ class ReleaseChangelogTests(unittest.TestCase):
             self.write_projection(root)
             verify.verify_repository(root, "0.8.0-alpha.6")
 
+    def test_release_preflight_requires_dated_projections(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_projection(root)
+            with self.assertRaisesRegex(
+                verify.ReleaseChangelogError,
+                "must be dated",
+            ):
+                verify.verify_repository(
+                    root,
+                    "0.8.0-alpha.6",
+                    require_date=True,
+                )
+
     def test_unversioned_first_heading_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

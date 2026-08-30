@@ -87,6 +87,28 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["owners"]["web"])
         self.assertFalse(plan["svg_parity"])
 
+    def test_package_readmes_and_changelogs_select_only_hygiene(self) -> None:
+        for path in (
+            "crates/merman-analysis/README.md",
+            "distribution/typst/merman/README.md",
+            "platforms/flutter/README.md",
+            "platforms/node/CHANGELOG.md",
+            "platforms/python/merman/CHANGELOG.md",
+        ):
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+
+                self.assertFalse(plan["fallback"])
+                self.assertEqual(
+                    {name for name, enabled in plan["owners"].items() if enabled},
+                    {"hygiene"},
+                )
+                self.assertFalse(plan["svg_parity"])
+
     def test_renderer_change_selects_core_without_unrelated_lifecycle_owners(self) -> None:
         plan = plan_changes(
             parse_name_status_z(b"M\0crates/merman-render/src/lib.rs\0"),

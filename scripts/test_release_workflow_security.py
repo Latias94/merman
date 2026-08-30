@@ -299,6 +299,13 @@ jobs:
                     text.index(publication_command),
                 )
 
+    def test_release_preflight_requires_dated_changelog_projections(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-preflight.yml")
+        self.assertIn(
+            'scripts/verify_release_changelog.py --version "$VERSION" --require-date',
+            text,
+        )
+
     def test_npm_publish_provenance_cannot_be_disabled_by_repository_config(self) -> None:
         paths = [
             ROOT / ".npmrc",
