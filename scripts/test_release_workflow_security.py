@@ -280,10 +280,6 @@ jobs:
                 "cargo semver-checks check-release -p roughr-merman --color always",
                 "python3 scripts/crates_io_release.py preflight-initial",
             ),
-            WORKFLOW_ROOT / "release-crates.yml": (
-                "cargo semver-checks check-release -p roughr-merman --color always",
-                "trusted/scripts/crates_io_release.py publish-receipted",
-            ),
             WORKFLOW_ROOT / "release-independent-crate.yml": (
                 'cargo semver-checks check-release -p "$PACKAGE" --color always',
                 'cargo publish -p "$PACKAGE" --locked --no-verify --registry crates-io --token "$CARGO_REGISTRY_TOKEN"',
@@ -298,6 +294,9 @@ jobs:
                     text.index("cargo semver-checks check-release"),
                     text.index(publication_command),
                 )
+        crates_release = read(WORKFLOW_ROOT / "release-crates.yml")
+        self.assertNotIn("cargo semver-checks check-release", crates_release)
+        self.assertNotIn("scripts/release_registry_dependents.py", crates_release)
 
     def test_release_preflight_requires_dated_changelog_projections(self) -> None:
         text = read(WORKFLOW_ROOT / "release-preflight.yml")
@@ -366,16 +365,11 @@ jobs:
 
     def test_independent_crate_has_fresh_registry_dependent_compile_gate(self) -> None:
         independent = read(WORKFLOW_ROOT / "release-independent-crate.yml")
-        for path in (
-            WORKFLOW_ROOT / "release-preflight.yml",
-            WORKFLOW_ROOT / "release-crates.yml",
-        ):
-            text = read(path)
-            with self.subTest(workflow=path.name):
-                self.assertIn("scripts/release_registry_dependents.py", text)
-                self.assertIn("--candidate-path crates/roughr", text)
-                self.assertIn("--dependent merman-render=0.7.0", text)
-                self.assertIn("--dependent merman-render=0.8.0-alpha.5", text)
+        preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
+        self.assertIn("scripts/release_registry_dependents.py", preflight)
+        self.assertIn("--candidate-path crates/roughr", preflight)
+        self.assertIn("--dependent merman-render=0.7.0", preflight)
+        self.assertIn("--dependent merman-render=0.8.0-alpha.5", preflight)
         self.assertIn("preflight-independent", independent)
         self.assertIn("Verify published dependent lanes", independent)
 
