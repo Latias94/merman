@@ -195,6 +195,13 @@ impl FlowchartSvgLabelSource {
         max_width_px: Option<f64>,
         width_mode: FlowchartSvgWidthMode,
     ) -> crate::text::TextMetrics {
+        if measurer.cancellation_requested() {
+            return crate::text::TextMetrics {
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
+            };
+        }
         let wrapped = self.wrapped_lines(measurer, style, max_width_px, true);
         self.metrics_from_wrapped(measurer, style, &wrapped, width_mode)
     }
@@ -206,6 +213,13 @@ impl FlowchartSvgLabelSource {
         wrapped: &[Vec<String>],
         width_mode: FlowchartSvgWidthMode,
     ) -> crate::text::TextMetrics {
+        if measurer.cancellation_requested() {
+            return crate::text::TextMetrics {
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
+            };
+        }
         if flowchart_label_text_is_empty_for_mode(&self.plain_text, false) {
             return crate::text::TextMetrics {
                 width: 0.0,
@@ -334,10 +348,16 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
             let mut chunks = Vec::new();
             let mut start_index = 0usize;
             while start_index + 1 < boundaries.len() {
+                if probe.measurer.cancellation_requested() {
+                    return Vec::new();
+                }
                 probe.reset();
                 let mut split_index = start_index + 1;
                 let mut previous_end = boundaries[start_index];
                 for (end_index, &end) in boundaries.iter().enumerate().skip(start_index + 1) {
+                    if probe.measurer.cancellation_requested() {
+                        return Vec::new();
+                    }
                     probe.push_visible(&word[previous_end..end]);
                     if probe.width_px() <= max_width_px {
                         split_index = end_index;
@@ -359,6 +379,9 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
         let mut start_index = 0usize;
         let mut first_tail_already_measured = true;
         while start_index + 1 < boundaries.len() {
+            if probe.measurer.cancellation_requested() {
+                return Vec::new();
+            }
             let start = boundaries[start_index];
             if !first_tail_already_measured && probe.measure_source(&word[start..]) <= max_width_px
             {
@@ -369,6 +392,9 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
 
             let mut split_index = start_index + 1;
             for (end_index, &end) in boundaries.iter().enumerate().skip(start_index + 1) {
+                if probe.measurer.cancellation_requested() {
+                    return Vec::new();
+                }
                 if probe.measure_source(&word[start..end]) <= max_width_px {
                     split_index = end_index;
                 } else {
@@ -382,21 +408,33 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
     }
 
     let Some(max_width_px) = max_width_px.filter(|width| width.is_finite() && *width > 0.0) else {
+        if measurer.cancellation_requested() {
+            return Vec::new();
+        }
         return lines.to_vec();
     };
 
     let mut wrapped = Vec::new();
     let mut probe = ComputedLengthProbe::new(measurer, style);
     for source_line in lines {
+        if measurer.cancellation_requested() {
+            return Vec::new();
+        }
         if source_line.is_empty() {
             wrapped.push(Vec::new());
             continue;
         }
         probe.reset();
         for (word_index, word) in source_line.iter().enumerate() {
+            if measurer.cancellation_requested() {
+                return Vec::new();
+            }
             probe.push_source_word(word, word_index > 0);
         }
         if probe.width_px() <= max_width_px {
+            if measurer.cancellation_requested() {
+                return Vec::new();
+            }
             wrapped.push(source_line.clone());
             continue;
         }
@@ -405,9 +443,15 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
         let mut current = Vec::new();
         let mut word_index = 0usize;
         while let Some(word) = source_line.get(word_index) {
+            if measurer.cancellation_requested() {
+                return Vec::new();
+            }
             let checkpoint = probe.checkpoint();
             probe.push_source_word(word, !current.is_empty());
             if probe.width_px() <= max_width_px {
+                if measurer.cancellation_requested() {
+                    return Vec::new();
+                }
                 current.push(word.clone());
                 word_index += 1;
                 continue;
@@ -424,7 +468,11 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
                 continue;
             }
 
-            for chunk in split_source_word_to_fit(&mut probe, word, max_width_px) {
+            let chunks = split_source_word_to_fit(&mut probe, word, max_width_px);
+            if measurer.cancellation_requested() {
+                return Vec::new();
+            }
+            for chunk in chunks {
                 wrapped.push(vec![chunk]);
             }
             probe.reset();
@@ -1548,6 +1596,50 @@ mod tests {
 
         assert_eq!(wrapped.len(), 4_096);
         assert!(wrapped.iter().all(|line| line == &["a".to_string()]));
+    }
+
+    #[test]
+    fn svg_word_wrapping_stops_when_the_measurement_operation_is_cancelled() {
+        struct CancellingMeasurer {
+            calls: std::cell::Cell<usize>,
+            cancelled: std::cell::Cell<bool>,
+        }
+
+        impl TextMeasurer for CancellingMeasurer {
+            fn cancellation_requested(&self) -> bool {
+                self.cancelled.get()
+            }
+
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                TextMetrics {
+                    width: 1.0,
+                    height: 10.0,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_svg_text_computed_length_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                let calls = self.calls.get().saturating_add(1);
+                self.calls.set(calls);
+                self.cancelled.set(true);
+                text.chars().count() as f64
+            }
+        }
+
+        let measurer = CancellingMeasurer {
+            calls: std::cell::Cell::new(0),
+            cancelled: std::cell::Cell::new(false),
+        };
+        let wrapped = flowchart_wrap_svg_source_word_lines(
+            &measurer,
+            &[vec!["a".repeat(100_000)]],
+            &TextStyle::default(),
+            Some(1.0),
+            true,
+        );
+
+        assert!(wrapped.is_empty());
+        assert_eq!(measurer.calls.get(), 1);
     }
 
     #[test]

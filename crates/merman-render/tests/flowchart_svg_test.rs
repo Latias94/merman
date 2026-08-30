@@ -1115,7 +1115,7 @@ fn flowchart_svg_handles_deep_subgraph_chain() {
 }
 
 #[test]
-fn flowchart_diagram_padding_zero_keeps_zero_user_padding_and_paint_guard() {
+fn flowchart_diagram_padding_zero_keeps_zero_user_padding() {
     let default = render_flowchart_svg_from_text(
         r#"flowchart TB
 A
@@ -1131,24 +1131,23 @@ A
     let default_viewbox = flowchart_svg_viewbox_values(&default);
     let zero_viewbox = flowchart_svg_viewbox_values(&zero);
 
-    // Zero remains distinct from the default 8px user padding. The zero-padding viewport adds
-    // only the family-local 1px paint guard on each side, so the net size delta is 2 * (8 - 1).
+    // Mermaid applies the configured padding directly to the measured bounds.
     for axis in [2, 3] {
         assert!(
-            (default_viewbox[axis] - zero_viewbox[axis] - 14.0).abs() < 1e-6,
-            "default diagramPadding=8 should add 14px over the zero-padding paint guard; default={default_viewbox:?}, zero={zero_viewbox:?}"
+            (default_viewbox[axis] - zero_viewbox[axis] - 16.0).abs() < 1e-6,
+            "default diagramPadding=8 should add 16px over zero padding; default={default_viewbox:?}, zero={zero_viewbox:?}"
         );
     }
     for axis in [0, 1] {
         assert!(
-            (zero_viewbox[axis] - default_viewbox[axis] - 7.0).abs() < 1e-6,
-            "diagramPadding=0 should retain only the 1px paint guard rather than the default 8px padding; default={default_viewbox:?}, zero={zero_viewbox:?}"
+            (zero_viewbox[axis] - default_viewbox[axis] - 8.0).abs() < 1e-6,
+            "diagramPadding=0 should remove the full default 8px inset; default={default_viewbox:?}, zero={zero_viewbox:?}"
         );
     }
 }
 
 #[test]
-fn swimlane_small_diagram_padding_keeps_the_minimum_paint_inset() {
+fn swimlane_small_diagram_padding_tracks_configured_inset() {
     let render = |padding: &str| {
         render_flowchart_svg_from_text(&format!(
             r#"%%{{init: {{"flowchart": {{"diagramPadding": {padding}}}}}}}%%
@@ -1161,12 +1160,14 @@ A --> B
     let fractional = flowchart_svg_viewbox_values(&render("0.5"));
     let one = flowchart_svg_viewbox_values(&render("1"));
 
-    for axis in 0..4 {
-        assert!(
-            (zero[axis] - fractional[axis]).abs() < 1e-9 && (zero[axis] - one[axis]).abs() < 1e-9,
-            "diagramPadding 0, 0.5, and 1 should provide the same minimum paint inset: zero={zero:?}, fractional={fractional:?}, one={one:?}"
-        );
-    }
+    assert!((fractional[0] - zero[0] + 0.5).abs() < 1e-9);
+    assert!((fractional[1] - zero[1] + 0.5).abs() < 1e-9);
+    assert!((fractional[2] - zero[2] - 1.0).abs() < 1e-9);
+    assert!((fractional[3] - zero[3] - 1.0).abs() < 1e-9);
+    assert!((one[0] - zero[0] + 1.0).abs() < 1e-9);
+    assert!((one[1] - zero[1] + 1.0).abs() < 1e-9);
+    assert!((one[2] - zero[2] - 2.0).abs() < 1e-9);
+    assert!((one[3] - zero[3] - 2.0).abs() < 1e-9);
 }
 
 #[test]

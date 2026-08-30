@@ -1096,6 +1096,11 @@ impl RoutedTextMeasurer<'_> {
 }
 
 impl TextMeasurer for RoutedTextMeasurer<'_> {
+    fn cancellation_requested(&self) -> bool {
+        self.controlled_operation_phase
+            .is_some_and(|phase| self.work_meter.checkpoint(phase).is_err())
+    }
+
     #[allow(private_interfaces)]
     fn builtin_operation_carrier(
         &self,

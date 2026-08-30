@@ -178,6 +178,34 @@ pub(crate) fn render_graph_with_resolved_policy_and_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        let result = transaction.transaction_preserving_layout_work(|_| {
+            render_graph_with_resolved_policy_and_execution_inner(
+                graph,
+                options,
+                layout_policy,
+                resources,
+                execution,
+            )
+        });
+        match result {
+            // A viewport fallback reuses the render-wide ledger. Keep the work spent proving
+            // that the primary graph is too wide, but discard its speculative document cells.
+            Err(error @ crate::error::AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Ok(rendered) => Ok(Ok(rendered)),
+            Err(error) => Err(error),
+        }
+    })?
+}
+
+fn render_graph_with_resolved_policy_and_execution_inner(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    layout_policy: GraphLayoutPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
     debug_assert_eq!(resources.policy(), *execution.resources());
     options.validate()?;
     if graph.nodes.is_empty() && graph.groups.is_empty() {
