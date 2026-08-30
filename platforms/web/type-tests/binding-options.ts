@@ -56,6 +56,9 @@ const svgOptions: SvgBindingOptions = {
   parse: { suppress_errors: true },
   svg: { diagram_id: "example" },
 };
+const explicitNullTextMeasurementOptions: SvgBindingOptions = {
+  environment: { text_measurement: null },
+};
 const hostMeasuredSvgOptions: HostTextMeasurerSvgBindingOptions = {
   environment: { math_renderer: "none" },
   svg: { diagram_id: "host-measured" },
@@ -70,6 +73,10 @@ renderSvgWithTextMeasurer("flowchart TD\nA --> B", hostTextMeasurer, {
 layoutJsonWithTextMeasurer("flowchart TD\nA --> B", hostTextMeasurer, {
   // @ts-expect-error a host callback owns text measurement, so an explicit selector would conflict.
   environment: { text_measurement: "deterministic" },
+});
+renderSvgWithTextMeasurer("flowchart TD\nA --> B", hostTextMeasurer, {
+  // @ts-expect-error a host callback also conflicts with an explicit null selector.
+  environment: { text_measurement: null },
 });
 
 const themeDefinition: ThemeDefinitionV1 = {
@@ -229,6 +236,7 @@ void mermanWrappedEditorOptions;
 void commonOptions;
 void asciiOptions;
 void svgOptions;
+void explicitNullTextMeasurementOptions;
 void hostMeasuredSvgOptions;
 void themeDefinition;
 void materializedTheme;

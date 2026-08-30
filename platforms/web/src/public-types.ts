@@ -49,7 +49,7 @@ export interface LayoutOptions {
 }
 
 export interface RenderEnvironmentOptions {
-  text_measurement?: "deterministic";
+  text_measurement?: "deterministic" | null;
   math_renderer?: "none" | "ratex";
 }
 
