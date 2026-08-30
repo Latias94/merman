@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.publish import (
     PackageInfo,
     PublishPlan,
+    _workspace_packages_by_name,
     cargo_metadata,
     crates_io_publish_plan,
     print_error,

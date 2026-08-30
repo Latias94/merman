@@ -269,6 +269,29 @@ class CratesIoReceiptTests(unittest.TestCase):
                     expected_version="1.0.0",
                 )
 
+    def test_independent_preflight_resolves_package_outside_coupled_graph(self) -> None:
+        prepared = self.prepared(Path(tempfile.mkdtemp()), "roughr-merman")
+        metadata = package_metadata("alpha", "roughr-merman")
+        metadata["metadata"] = {
+            "merman-release": {"independent-packages": ["roughr-merman"]}
+        }
+        with (
+            mock.patch.object(release, "_prepare_crate", return_value=prepared),
+            mock.patch.object(
+                release,
+                "fetch_crates_io_checksum",
+                return_value=self.DIGEST,
+            ),
+        ):
+            self.assertTrue(
+                release.preflight_independent_crate(
+                    ROOT,
+                    metadata,
+                    package_name="roughr-merman",
+                    expected_version="1.0.0",
+                )
+            )
+
     def test_independent_preflight_dry_runs_missing_version(self) -> None:
         prepared = self.prepared(Path(tempfile.mkdtemp()), "roughr-merman")
         metadata = package_metadata("roughr-merman")
