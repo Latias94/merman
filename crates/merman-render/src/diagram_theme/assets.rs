@@ -11,9 +11,7 @@ use brotli_decompressor::{
 use sha2::{Digest, Sha256};
 use ttf_parser::{Face, Permissions, PlatformId, Style, name_id};
 
-use super::admission::{
-    FontCatalogKind, FontEmbeddingRequirement, FontSource, ThemeAdmissionError,
-};
+use super::admission::{FontEmbeddingRequirement, FontSource, ThemeAdmissionError};
 use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
 use super::typography::FontStack;
 
@@ -431,7 +429,6 @@ impl FontFamilyAlias {
 
 #[derive(Debug)]
 struct FontCatalogInner {
-    kind: FontCatalogKind,
     assets: Vec<FontAsset>,
     faces: Vec<FontFaceMetadata>,
     aliases: Vec<FontFamilyAlias>,
@@ -448,12 +445,17 @@ struct FontCatalogInner {
 pub struct FontCatalog(Arc<FontCatalogInner>);
 
 impl FontCatalog {
-    pub fn default_parity() -> Self {
+    /// Creates the asset-free catalog used when text may resolve through host system fonts.
+    ///
+    /// This does not enumerate or freeze fonts installed on the host. Its fingerprint identifies
+    /// the system-font catalog mode, not the host's installed font set or output portability.
+    pub fn system_fonts() -> Self {
         let mut hasher = Sha256::new();
         update_len_prefixed(&mut hasher, FONT_CATALOG_FINGERPRINT_DOMAIN);
+        // Preserve the canonical identity of the unchanged asset-free catalog. The former public
+        // constructor name described an assurance claim, not different catalog content.
         update_len_prefixed(&mut hasher, b"default-parity");
         Self(Arc::new(FontCatalogInner {
-            kind: FontCatalogKind::DefaultParity,
             assets: Vec::new(),
             faces: Vec::new(),
             aliases: Vec::new(),
@@ -495,8 +497,8 @@ impl FontCatalog {
         self.0.fingerprint
     }
 
-    pub(crate) fn kind(&self) -> FontCatalogKind {
-        self.0.kind
+    pub(crate) fn requires_prepared_text_layout(&self) -> bool {
+        !self.0.assets.is_empty()
     }
 
     pub(crate) fn validate_retained_resources(
@@ -676,7 +678,6 @@ fn compile_font_catalog(
         spec.embedding,
     );
     Ok(FontCatalog(Arc::new(FontCatalogInner {
-        kind: FontCatalogKind::Custom,
         assets,
         faces,
         aliases,
@@ -2066,7 +2067,7 @@ mod tests {
         let catalog =
             compile_font_catalog(excalifont_spec(), &ThemeResourcePolicy::interactive()).unwrap();
 
-        assert_eq!(catalog.kind(), FontCatalogKind::Custom);
+        assert!(catalog.requires_prepared_text_layout());
         assert_eq!(catalog.assets().len(), 1);
         assert_eq!(catalog.faces().len(), 1);
         assert_eq!(catalog.assets()[0].input_container(), FontContainer::Woff2);
@@ -2397,12 +2398,16 @@ mod tests {
     }
 
     #[test]
-    fn default_parity_catalog_retains_no_custom_bytes() {
-        let catalog = FontCatalog::default_parity();
+    fn system_font_catalog_retains_no_custom_bytes() {
+        let catalog = FontCatalog::system_fonts();
 
-        assert_eq!(catalog.kind(), FontCatalogKind::DefaultParity);
+        assert!(!catalog.requires_prepared_text_layout());
         assert!(catalog.assets().is_empty());
         assert!(catalog.faces().is_empty());
+        assert_eq!(
+            catalog.fingerprint().to_hex(),
+            "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa"
+        );
         assert_eq!(
             catalog.available_sources().collect::<Vec<_>>(),
             vec![FontSource::System]

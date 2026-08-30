@@ -282,21 +282,15 @@ impl Default for FontSourcePolicy {
 pub enum HostMeasurementFallback {
     AcceptHostDependent,
     NativeCatalog,
-    VendoredDefault,
 }
 
 impl HostMeasurementFallback {
-    pub const ALL: &'static [Self] = &[
-        Self::AcceptHostDependent,
-        Self::NativeCatalog,
-        Self::VendoredDefault,
-    ];
+    pub const ALL: &'static [Self] = &[Self::AcceptHostDependent, Self::NativeCatalog];
 
     pub const fn id(self) -> &'static str {
         match self {
             Self::AcceptHostDependent => "accept-host-dependent",
             Self::NativeCatalog => "native-catalog",
-            Self::VendoredDefault => "vendored-default",
         }
     }
 }
@@ -305,17 +299,6 @@ impl std::fmt::Display for HostMeasurementFallback {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.id())
     }
-}
-
-/// Whether an operation uses the unchanged Mermaid-parity path or a custom retained catalog.
-///
-/// This fact is derived from the compiled catalog. It is deliberately crate-private so callers
-/// cannot misclassify custom bytes as the default parity path and make `VendoredDefault` eligible.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub(crate) enum FontCatalogKind {
-    DefaultParity,
-    Custom,
 }
 
 /// Ordered host-owned measurement fallback policy.
@@ -336,12 +319,6 @@ impl HostMeasurementFallbackPolicy {
     pub fn portable_catalog_only() -> Self {
         Self {
             priority: vec![HostMeasurementFallback::NativeCatalog],
-        }
-    }
-
-    pub fn default_parity() -> Self {
-        Self {
-            priority: vec![HostMeasurementFallback::VendoredDefault],
         }
     }
 
@@ -368,20 +345,6 @@ impl HostMeasurementFallbackPolicy {
             .iter()
             .copied()
             .filter(|fallback| allowed.contains(fallback))
-            .collect();
-        Self { priority }
-    }
-
-    pub(crate) fn eligible_for(&self, catalog: FontCatalogKind) -> Self {
-        let priority = self
-            .priority
-            .iter()
-            .copied()
-            .filter(|fallback| match (catalog, fallback) {
-                (FontCatalogKind::Custom, HostMeasurementFallback::VendoredDefault) => false,
-                (FontCatalogKind::DefaultParity, HostMeasurementFallback::NativeCatalog) => false,
-                _ => true,
-            })
             .collect();
         Self { priority }
     }
@@ -644,7 +607,11 @@ pub(crate) fn resolve_theme_admission(
         host_allowed_capabilities: requirements.required_capabilities.clone(),
         host_allowed_text_capabilities: requirements.required_text_capabilities.clone(),
         font_sources: font_sources.restrict_to(catalog.available_sources())?,
-        measurement_fallbacks: measurement_fallbacks.eligible_for(catalog.kind()),
+        measurement_fallbacks: if catalog.requires_prepared_text_layout() {
+            measurement_fallbacks.clone()
+        } else {
+            HostMeasurementFallbackPolicy::default()
+        },
         portability,
         trusted_lanes: admission.trusted_lanes.clone(),
     })
@@ -776,36 +743,30 @@ mod tests {
         HostMeasurementFallbackPolicy::new(values.iter().copied()).unwrap()
     }
 
-    fn catalog_for_kind(kind: FontCatalogKind) -> FontCatalog {
-        match kind {
-            FontCatalogKind::DefaultParity => FontCatalog::default_parity(),
-            FontCatalogKind::Custom => {
-                let bytes = include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-                ));
-                super::super::assets::FontCatalogSpec::new([
-                    super::super::assets::FontAssetSpec::new("excalifont", bytes),
-                ])
-                .compile(&super::super::ThemeResourcePolicy::interactive())
-                .unwrap()
-            }
-        }
+    fn custom_catalog() -> FontCatalog {
+        let bytes = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ));
+        super::super::assets::FontCatalogSpec::new([super::super::assets::FontAssetSpec::new(
+            "excalifont",
+            bytes,
+        )])
+        .compile(&super::super::ThemeResourcePolicy::interactive())
+        .unwrap()
     }
 
     fn resolve(
         admission: &ThemeAdmissionPolicy,
         requirements: &ThemeRequirements,
-        catalog: FontCatalogKind,
     ) -> Result<ResolvedThemeAdmission, ThemeAdmissionError> {
-        let catalog = catalog_for_kind(catalog);
+        let catalog = custom_catalog();
         resolve_theme_admission(
             admission,
             &FontSourcePolicy::default(),
             &fallback_policy(&[
                 HostMeasurementFallback::NativeCatalog,
                 HostMeasurementFallback::AcceptHostDependent,
-                HostMeasurementFallback::VendoredDefault,
             ]),
             ThemePortabilityRequirement::BestEffort,
             requirements,
@@ -875,8 +836,9 @@ mod tests {
     #[test]
     fn fallback_intersection_is_complete_and_preserves_host_priority() {
         let all = HostMeasurementFallback::ALL;
-        for host_mask in 0_u8..8 {
-            for restriction_mask in 0_u8..8 {
+        let mask_count = 1_usize << all.len();
+        for host_mask in 0..mask_count {
+            for restriction_mask in 0..mask_count {
                 let host_values = all
                     .iter()
                     .enumerate()
@@ -918,7 +880,7 @@ mod tests {
             ]),
             ThemePortabilityRequirement::BestEffort,
             &ThemeRequirements::default(),
-            &catalog_for_kind(FontCatalogKind::Custom),
+            &custom_catalog(),
         )
         .unwrap();
 
@@ -927,37 +889,43 @@ mod tests {
             Some(HostMeasurementFallback::AcceptHostDependent)
         );
         assert_eq!(
+            resolved
+                .measurement_fallback_policy()
+                .priority()
+                .collect::<Vec<_>>(),
+            vec![
+                HostMeasurementFallback::AcceptHostDependent,
+                HostMeasurementFallback::NativeCatalog,
+            ]
+        );
+        assert_eq!(
             resolved.portability_requirement(),
             ThemePortabilityRequirement::BestEffort
         );
     }
 
     #[test]
-    fn catalog_kind_filters_ineligible_fallbacks_without_inventing_one() {
-        let fallbacks = fallback_policy(&[
-            HostMeasurementFallback::VendoredDefault,
-            HostMeasurementFallback::NativeCatalog,
-        ]);
+    fn system_font_catalog_has_no_prepared_layout_fallbacks() {
+        let resolved = resolve_theme_admission(
+            &ThemeAdmissionPolicy::permissive(),
+            &FontSourcePolicy::default(),
+            &fallback_policy(HostMeasurementFallback::ALL),
+            ThemePortabilityRequirement::BestEffort,
+            &ThemeRequirements::default(),
+            &FontCatalog::system_fonts(),
+        )
+        .unwrap();
 
         assert_eq!(
-            fallbacks
-                .eligible_for(FontCatalogKind::Custom)
-                .priority()
-                .collect::<Vec<_>>(),
-            vec![HostMeasurementFallback::NativeCatalog]
+            resolved.font_source_policy(),
+            &FontSourcePolicy::system_only()
         );
-        assert_eq!(
-            fallbacks
-                .eligible_for(FontCatalogKind::DefaultParity)
+        assert!(
+            resolved
+                .measurement_fallback_policy()
                 .priority()
-                .collect::<Vec<_>>(),
-            vec![HostMeasurementFallback::VendoredDefault]
-        );
-        assert_eq!(
-            HostMeasurementFallbackPolicy::default_parity()
-                .eligible_for(FontCatalogKind::Custom)
-                .first(),
-            None
+                .next()
+                .is_none()
         );
     }
 
@@ -1007,18 +975,11 @@ mod tests {
             fallback_policy(&[
                 HostMeasurementFallback::AcceptHostDependent,
                 HostMeasurementFallback::NativeCatalog,
-                HostMeasurementFallback::VendoredDefault,
             ])
-            .restrict_with(&fallback_policy(&[
-                HostMeasurementFallback::NativeCatalog,
-                HostMeasurementFallback::VendoredDefault,
-            ]))
+            .restrict_with(&fallback_policy(&[HostMeasurementFallback::NativeCatalog]))
             .priority()
             .collect::<Vec<_>>(),
-            vec![
-                HostMeasurementFallback::NativeCatalog,
-                HostMeasurementFallback::VendoredDefault,
-            ]
+            vec![HostMeasurementFallback::NativeCatalog]
         );
         assert_eq!(
             ThemePortabilityRequirement::BestEffort
@@ -1036,7 +997,7 @@ mod tests {
         let denied_theme =
             ThemeRequirements::new().with_required_capabilities([ThemeCapability::SvgFilter]);
         assert_eq!(
-            resolve(&policy, &denied_theme, FontCatalogKind::Custom),
+            resolve(&policy, &denied_theme),
             Err(ThemeAdmissionError::ThemeCapabilityDenied(
                 ThemeCapability::SvgFilter
             ))
@@ -1045,14 +1006,14 @@ mod tests {
         let denied_text = ThemeRequirements::new()
             .with_required_text_capabilities([TextLayoutCapability::OpenTypeShaping]);
         assert_eq!(
-            resolve(&policy, &denied_text, FontCatalogKind::Custom),
+            resolve(&policy, &denied_text),
             Err(ThemeAdmissionError::TextLayoutCapabilityDenied(
                 TextLayoutCapability::OpenTypeShaping
             ))
         );
 
         let denied_source = ThemeRequirements::new();
-        let parity_catalog = catalog_for_kind(FontCatalogKind::DefaultParity);
+        let system_catalog = FontCatalog::system_fonts();
         assert_eq!(
             resolve_theme_admission(
                 &policy,
@@ -1060,7 +1021,7 @@ mod tests {
                 &HostMeasurementFallbackPolicy::portable_catalog_only(),
                 ThemePortabilityRequirement::RequirePortable,
                 &denied_source,
-                &parity_catalog,
+                &system_catalog,
             ),
             Err(ThemeAdmissionError::EmptyFontSourceIntersection)
         );
@@ -1073,13 +1034,13 @@ mod tests {
                 ThemeRequirements::default().with_required_capabilities([capability]);
             let denied = ThemeAdmissionPolicy::permissive().with_allowed_capabilities([]);
             assert_eq!(
-                resolve(&denied, &requirements, FontCatalogKind::Custom),
+                resolve(&denied, &requirements),
                 Err(ThemeAdmissionError::ThemeCapabilityDenied(capability))
             );
 
             let admitted =
                 ThemeAdmissionPolicy::permissive().with_allowed_capabilities([capability]);
-            assert!(resolve(&admitted, &requirements, FontCatalogKind::Custom).is_ok());
+            assert!(resolve(&admitted, &requirements).is_ok());
         }
     }
 
@@ -1090,13 +1051,13 @@ mod tests {
                 ThemeRequirements::default().with_required_text_capabilities([capability]);
             let denied = ThemeAdmissionPolicy::permissive().with_allowed_text_capabilities([]);
             assert_eq!(
-                resolve(&denied, &requirements, FontCatalogKind::Custom),
+                resolve(&denied, &requirements),
                 Err(ThemeAdmissionError::TextLayoutCapabilityDenied(capability))
             );
 
             let admitted =
                 ThemeAdmissionPolicy::permissive().with_allowed_text_capabilities([capability]);
-            assert!(resolve(&admitted, &requirements, FontCatalogKind::Custom).is_ok());
+            assert!(resolve(&admitted, &requirements).is_ok());
         }
     }
 

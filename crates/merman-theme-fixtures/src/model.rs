@@ -293,7 +293,8 @@ pub enum MermaidStyleAdmission {
 #[serde(rename_all = "kebab-case")]
 pub enum ReferenceFontBinding {
     FixtureAssets,
-    VendoredDefault,
+    #[serde(rename = "vendored-default")]
+    SystemFonts,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]

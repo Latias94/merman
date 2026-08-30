@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use super::admission::{FontCatalogKind, TextLayoutCapability, ThemeCapability};
+use super::admission::{TextLayoutCapability, ThemeCapability};
 use super::application::root_theme_requirements;
 use super::assets::{FontCatalog, FontCatalogError};
 use super::mechanisms::{
@@ -57,7 +57,7 @@ impl DiagramThemeCompiler {
         spec.effects().check_resources(&self.resources)?;
         let catalog = match spec.assets().font_catalog() {
             Some(catalog) => catalog.clone().compile(&self.resources)?,
-            None => FontCatalog::default_parity(),
+            None => FontCatalog::system_fonts(),
         };
         let inferred_capabilities = infer_required_capabilities(&spec);
         let inferred_text_capabilities = infer_required_text_capabilities(&spec, &catalog);
@@ -181,7 +181,7 @@ fn infer_required_text_capabilities(
     catalog: &FontCatalog,
 ) -> BTreeSet<TextLayoutCapability> {
     let mut required = BTreeSet::new();
-    if catalog.kind() == FontCatalogKind::Custom {
+    if catalog.requires_prepared_text_layout() {
         // A custom catalog is an explicit geometry input. It cannot be consumed by the legacy
         // system-font measurer, so the prepared lane must attest its catalog and shaping support.
         required.extend([

@@ -1569,7 +1569,7 @@ mod tests {
                 source: FontSource::System,
             })]);
         let mut catalog_mismatch = prepared_expectation(&fixture, id);
-        catalog_mismatch.catalog_fingerprint = FontCatalog::default_parity().fingerprint();
+        catalog_mismatch.catalog_fingerprint = FontCatalog::system_fonts().fingerprint();
 
         let source_verification = verify_prepared_label_expectations(
             fixture.catalog_fingerprint,
@@ -1649,9 +1649,9 @@ mod tests {
     }
 
     #[test]
-    fn default_parity_reuses_the_shared_system_database() {
+    fn system_font_catalog_reuses_the_shared_system_database() {
         let svg = sealed_svg(
-            FontCatalog::default_parity(),
+            FontCatalog::system_fonts(),
             FontSourcePolicy::embedded_then_system(),
         );
         let environment = ExportFontEnvironment::from_svg(&svg).unwrap();

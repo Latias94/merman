@@ -1039,7 +1039,7 @@ fn validate_theme_input(
             let unique_families = stack.families.iter().collect::<BTreeSet<_>>();
             let invalid_binding = match stack.binding {
                 ReferenceFontBinding::FixtureAssets => stack.asset_ids.is_empty(),
-                ReferenceFontBinding::VendoredDefault => !stack.asset_ids.is_empty(),
+                ReferenceFontBinding::SystemFonts => !stack.asset_ids.is_empty(),
             };
             if stack.families.is_empty()
                 || unique_families.len() != stack.families.len()

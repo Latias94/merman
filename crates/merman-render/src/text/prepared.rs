@@ -7259,7 +7259,7 @@ mod tests {
 
     #[test]
     fn retained_byte_model_is_logical_and_target_stable() {
-        let fingerprint = FontCatalog::default_parity().fingerprint();
+        let fingerprint = FontCatalog::system_fonts().fingerprint();
         let first = CatalogAdmittedTextStyle {
             typography: ThemeTextStyle::default().with_font_stack(
                 FontStack::new(["Excalifont", "sans-serif"]).expect("valid font stack"),

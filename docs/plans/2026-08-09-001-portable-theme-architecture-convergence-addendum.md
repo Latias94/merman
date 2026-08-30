@@ -2,7 +2,7 @@
 title: "Portable Theme Architecture Convergence - Plan Addendum"
 type: refactor
 date: 2026-08-09
-updated: 2026-08-25
+updated: 2026-08-30
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 product_contract_source: docs/plans/2026-08-06-001-refactor-portable-diagram-theme-architecture-plan.md
@@ -144,6 +144,7 @@ release when a statement below differs.
 | Topic | Current-release decision | Later decision point |
 | --- | --- | --- |
 | Runtime policy ownership | `RenderEnvironment` and `RenderSession` own effective admission, source policy, measurement fallback, and runtime ceilings. The compiler may validate and record an earlier restriction, but it does not own the effective runtime policy. | Revisit only if a future host-policy architecture changes this ownership explicitly. |
+| Prepared-text fallback inventory | The current release exposes only the two implemented fallback actions: `NativeCatalog` and `AcceptHostDependent`. The former `VendoredDefault` variant and `HostMeasurementFallbackPolicy::default_parity()` are removed because they had no font assets, metrics, or runtime action. The unchanged asset-free catalog is named `FontCatalog::system_fonts()` and remains system-font dependent. | Add another fallback only with a concrete production backend, bounded failure semantics, and evidence owned by that backend. |
 | Compiler resource ownership | Every host derives one `ThemeResourcePolicy` ceiling from its selected resource profile before theme JSON, base64 assets, font catalogs, or effect graphs are decoded. A request may only intersect that host ceiling with stricter limits. | Revisit only if resource profiles and theme compilation are replaced by a different host-owned policy mechanism. |
 | External prepared text | External results are crate-private and `HostDependent` by default. The current release does not expose an external DTO/trait through JSON, FFI, or stable bindings, and does not promote self-attested results to `Portable`. | A separate external-assurance plan may define an independent trust root and a new contract; it is not part of C7a. |
 | Product identity | Merman is a headless Mermaid engine for parsing, analysis, layout, rendering, and editor-facing semantics, implemented with Mermaid parity as an explicit quality goal. Within that product, the visual customization layer owns typed theme authoring, capability discovery, and honest target admission. It may provide a bounded built-in visual preset catalog, but it does not scan brands, rewrite diagram content, choose a visual story, compose page chrome, or own animation and other application presentation policy. | A separate downstream application or adapter may compose those product decisions around Merman output without changing the core contract. |
@@ -783,8 +784,9 @@ without penalizing the unchanged default path.
 - Runtime fallback is session-owned and ordered for the two real implementations that exist today:
   the configured host adapter and the built-in native catalog adapter. Host rejection, timeout,
   invalidation, and missing glyph may advance to the next allowed candidate. A custom catalog can
-  never fall back to vendored default metrics. Do not expose a general multi-backend graph until a
-  second non-native production adapter exists.
+  never fall back to unimplemented vendored metrics. The asset-free system-font catalog does not
+  enter prepared-layout fallback. Do not expose a general multi-backend graph until a second
+  non-native production adapter exists.
 - The C4b external seam includes the safety needed by any renderable host result: a Merman-issued
   per-session generation binding, request/effective-policy binding, operation-level call/work and
   retained-response budgets, bounded candidate attempts, and session-local invalidation after

@@ -1655,7 +1655,6 @@ fn default_theme_measurement_fallbacks() -> HostMeasurementFallbackPolicy {
     HostMeasurementFallbackPolicy::new([
         HostMeasurementFallback::NativeCatalog,
         HostMeasurementFallback::AcceptHostDependent,
-        HostMeasurementFallback::VendoredDefault,
     ])
     .expect("static theme measurement fallback policy")
 }
@@ -1768,7 +1767,7 @@ impl RenderEnvironment {
             icon_registry: None,
             runtime_policy: RuntimePolicy::deterministic(),
             resource_policy: RenderResourcePolicy::interactive(),
-            font_catalog: FontCatalog::default_parity(),
+            font_catalog: FontCatalog::system_fonts(),
             font_source_policy: FontSourcePolicy::default(),
             theme_admission_policy: ThemeAdmissionPolicy::default(),
             theme_resource_ceiling: Arc::new(ThemeResourcePolicy::interactive()),
@@ -1848,10 +1847,10 @@ impl RenderEnvironment {
         self
     }
 
-    /// Retains the exact font catalog authorized for layout evidence and native export.
+    /// Retains the font catalog mode authorized for layout evidence and native export.
     ///
-    /// Theme compilation is expected to supply custom catalogs. The unchanged default path uses
-    /// [`FontCatalog::default_parity`].
+    /// Theme compilation supplies exact retained assets for custom catalogs. The unchanged default
+    /// path uses [`FontCatalog::system_fonts`], which does not enumerate or freeze host fonts.
     pub fn with_font_catalog(mut self, catalog: FontCatalog) -> Self {
         self.font_catalog = catalog;
         self
@@ -2083,7 +2082,7 @@ impl RenderEnvironment {
         portability: ThemePortabilityRequirement,
     ) -> (Option<PreparedTextLayout>, Option<TextLayoutError>) {
         let catalog = resolved_resources.font_catalog();
-        if catalog.assets().is_empty() {
+        if !catalog.requires_prepared_text_layout() {
             return (None, None);
         }
 
@@ -2093,8 +2092,7 @@ impl RenderEnvironment {
         );
         let fallback_policy = resolved_resources
             .measurement_fallback_policy()
-            .unwrap_or(&self.theme_measurement_fallbacks)
-            .eligible_for(catalog.kind());
+            .unwrap_or(&self.theme_measurement_fallbacks);
         let mut builder = PreparedTextLayoutBuilder::new(request.clone());
         let mut deferred_host_response = None;
         let mut terminal_error = None;
@@ -2175,10 +2173,6 @@ impl RenderEnvironment {
                         builder.record_catalog_failure();
                         terminal_error = Some(error);
                     }
-                }
-                HostMeasurementFallback::VendoredDefault => {
-                    // `eligible_for` removes this fallback for custom catalogs. The default
-                    // parity catalog never enters this prepared-layout path.
                 }
             }
         }

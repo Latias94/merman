@@ -95,6 +95,15 @@ The replacement functions preserve one shared typed/JSON admission authority bef
 pure lowering step. Do not recreate a public materializer wrapper, because that would reopen a path
 around host resource admission.
 
+Development snapshots also exposed a `VendoredDefault` measurement fallback even though no
+vendored font or metrics implementation existed. Remove that variant and
+`HostMeasurementFallbackPolicy::default_parity()` from host policy construction. Use
+`HostMeasurementFallback::NativeCatalog` for retained custom-font catalogs and
+`HostMeasurementFallback::AcceptHostDependent` when an admitted external result may be retained.
+The asset-free catalog constructor is now `FontCatalog::system_fonts()` instead of
+`FontCatalog::default_parity()`; the rename does not add bundled fonts or make system-font output
+portable.
+
 The unreleased `ThemeDefinitionV1` contract is still pre-freeze. Development snapshots that used
 `family = "er", target = "requirement"` must use `family = "er", target = "entity"`; the
 `requirement` target is now reserved for Requirement diagrams. There is no compatibility alias,
