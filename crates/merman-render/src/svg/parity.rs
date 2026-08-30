@@ -76,8 +76,8 @@ use css::requirement_css;
 use css::{
     MermaidBaseCss, gantt_css, info_css_parts_with_config, info_css_parts_with_font_family,
     info_css_parts_with_resolved_typography, push_xychart_css, requirement_css_with_font_family,
-    write_info_css_with_font_family, write_mermaid_base_css_prefix,
-    write_mermaid_base_css_root_rule, write_mermaid_default_base_css_prefix,
+    write_info_css_with_font_family, write_mermaid_base_css_prefix_with_font_emission,
+    write_mermaid_base_css_root_rule_with_font_emission, write_mermaid_default_base_css_prefix,
     write_pie_css_with_theme_overrides_and_font_family, write_sankey_css_with_font_family,
 };
 use output::{BoundedSvgOutput, SvgOutput};

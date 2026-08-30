@@ -95,17 +95,12 @@ impl RadarTypographyThemePlan {
         &self,
         axis_count: usize,
         legend_count: usize,
-    ) -> Option<RadarTypographyThemeReceipt> {
-        self.typography_requested().then(|| {
-            RadarTypographyThemeReceipt::new(
-                axis_count,
-                legend_count,
-                self.observes_inherited_text(),
-            )
-        })
+    ) -> Option<RadarTypographyThemeReceipt<'_>> {
+        self.typography_requested()
+            .then(|| RadarTypographyThemeReceipt::new(self, axis_count, legend_count))
     }
 
-    pub(crate) fn record_terminal(&self, receipt: RadarTypographyThemeReceipt) -> bool {
+    pub(crate) fn record_terminal(&self, receipt: RadarTypographyThemeReceipt<'_>) -> bool {
         receipt
             .seal()
             .is_some_and(|seal| self.terminal_receipt.set(seal).is_ok())
@@ -202,21 +197,44 @@ impl RadarTypographyThemePlan {
 }
 
 /// Milestone issued only after the final Radar stylesheet writer completes successfully.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct RadarTypographyCssEmission(());
+#[derive(Debug)]
+pub(crate) struct RadarTypographyCssEmission<'a> {
+    diagram_root_font_family_css: &'a str,
+    nested_svg_font_family_css: &'a str,
+    root_variable_font_family_css: &'a str,
+    diagram_root_font_size_css: &'a str,
+    nested_svg_font_size_css: &'a str,
+    title_font_size_css: &'a str,
+}
 
-impl RadarTypographyCssEmission {
-    pub(crate) const fn written() -> Self {
-        Self(())
+impl<'a> RadarTypographyCssEmission<'a> {
+    pub(crate) const fn from_successful_writes(
+        diagram_root_font_family_css: &'a str,
+        nested_svg_font_family_css: &'a str,
+        root_variable_font_family_css: &'a str,
+        diagram_root_font_size_css: &'a str,
+        nested_svg_font_size_css: &'a str,
+        title_font_size_css: &'a str,
+    ) -> Self {
+        Self {
+            diagram_root_font_family_css,
+            nested_svg_font_family_css,
+            root_variable_font_family_css,
+            diagram_root_font_size_css,
+            nested_svg_font_size_css,
+            title_font_size_css,
+        }
     }
 }
 
 /// Writer-owned proof that the stylesheet and visible Radar text passes reached the SVG sink.
 #[derive(Debug)]
-pub(crate) struct RadarTypographyThemeReceipt {
+pub(crate) struct RadarTypographyThemeReceipt<'a> {
     expected_axis_count: usize,
     expected_legend_count: usize,
     observe_inherited_text: bool,
+    expected_font_family_css: &'a str,
+    expected_font_size_css: &'a str,
     css_emitted: bool,
     next_axis_index: usize,
     next_legend_index: usize,
@@ -234,12 +252,13 @@ struct RadarTypographyTerminalSeal {
     has_visible_legend_label: bool,
 }
 
-impl RadarTypographyThemeReceipt {
+impl<'a> RadarTypographyThemeReceipt<'a> {
     fn new(
+        plan: &'a RadarTypographyThemePlan,
         expected_axis_count: usize,
         expected_legend_count: usize,
-        observe_inherited_text: bool,
     ) -> Self {
+        let observe_inherited_text = plan.observes_inherited_text();
         Self {
             expected_axis_count: if observe_inherited_text {
                 expected_axis_count
@@ -252,6 +271,8 @@ impl RadarTypographyThemeReceipt {
                 0
             },
             observe_inherited_text,
+            expected_font_family_css: plan.font_family_css(),
+            expected_font_size_css: plan.font_size_css(),
             css_emitted: false,
             next_axis_index: 0,
             next_legend_index: 0,
@@ -263,11 +284,17 @@ impl RadarTypographyThemeReceipt {
         }
     }
 
-    pub(crate) fn record_css_emission(&mut self, _emission: RadarTypographyCssEmission) {
+    pub(crate) fn record_css_emission(&mut self, emission: RadarTypographyCssEmission<'_>) {
         self.valid &= !self.css_emitted
             && self.next_axis_index == 0
             && self.next_legend_index == 0
-            && !self.title_emitted;
+            && !self.title_emitted
+            && emission.diagram_root_font_family_css == self.expected_font_family_css
+            && emission.nested_svg_font_family_css == self.expected_font_family_css
+            && emission.root_variable_font_family_css == self.expected_font_family_css
+            && emission.diagram_root_font_size_css == self.expected_font_size_css
+            && emission.nested_svg_font_size_css == self.expected_font_size_css
+            && emission.title_font_size_css == self.expected_font_size_css;
         self.css_emitted = true;
     }
 
@@ -595,13 +622,33 @@ mod tests {
 
     fn assert_rejected_typography_receipt(
         plan: &RadarTypographyThemePlan,
-        record: impl FnOnce(&mut RadarTypographyThemeReceipt),
+        record: impl FnOnce(&mut RadarTypographyThemeReceipt<'_>),
     ) {
         let mut receipt = plan
             .begin_terminal_receipt(1, 1)
             .expect("typed Radar typography receipt");
         record(&mut receipt);
         assert!(!plan.record_terminal(receipt));
+    }
+
+    fn typography_css_emission<'a>(
+        font_family_css: &'a str,
+        font_size_css: &'a str,
+    ) -> RadarTypographyCssEmission<'a> {
+        RadarTypographyCssEmission::from_successful_writes(
+            font_family_css,
+            font_family_css,
+            font_family_css,
+            font_size_css,
+            font_size_css,
+            font_size_css,
+        )
+    }
+
+    fn expected_typography_css_emission(
+        plan: &RadarTypographyThemePlan,
+    ) -> RadarTypographyCssEmission<'_> {
+        typography_css_emission(plan.font_family_css(), plan.font_size_css())
     }
 
     #[test]
@@ -633,7 +680,7 @@ mod tests {
         let mut receipt = complete
             .begin_terminal_receipt(1, 1)
             .expect("typed Radar typography receipt");
-        receipt.record_css_emission(RadarTypographyCssEmission::written());
+        receipt.record_css_emission(expected_typography_css_emission(&complete));
         receipt.record_axis_label(0, "Axis");
         receipt.record_legend_label(0, "Legend");
         receipt.record_title(true);
@@ -651,7 +698,7 @@ mod tests {
         let mut receipt = missing_title
             .begin_terminal_receipt(1, 1)
             .expect("typed Radar typography receipt");
-        receipt.record_css_emission(RadarTypographyCssEmission::written());
+        receipt.record_css_emission(expected_typography_css_emission(&missing_title));
         receipt.record_axis_label(0, "Axis");
         receipt.record_legend_label(0, "Legend");
         assert!(!missing_title.record_terminal(receipt));
@@ -680,27 +727,27 @@ mod tests {
             receipt.record_title(true);
         });
         assert_rejected_typography_receipt(&plan, |receipt| {
-            receipt.record_css_emission(RadarTypographyCssEmission::written());
-            receipt.record_css_emission(RadarTypographyCssEmission::written());
+            receipt.record_css_emission(expected_typography_css_emission(&plan));
+            receipt.record_css_emission(expected_typography_css_emission(&plan));
             receipt.record_axis_label(0, "Axis");
             receipt.record_legend_label(0, "Legend");
             receipt.record_title(true);
         });
         assert_rejected_typography_receipt(&plan, |receipt| {
-            receipt.record_css_emission(RadarTypographyCssEmission::written());
+            receipt.record_css_emission(expected_typography_css_emission(&plan));
             receipt.record_legend_label(0, "Legend");
             receipt.record_axis_label(0, "Axis");
             receipt.record_title(true);
         });
         assert_rejected_typography_receipt(&plan, |receipt| {
-            receipt.record_css_emission(RadarTypographyCssEmission::written());
+            receipt.record_css_emission(expected_typography_css_emission(&plan));
             receipt.record_axis_label(0, "Axis");
             receipt.record_axis_label(1, "Overflow");
             receipt.record_legend_label(0, "Legend");
             receipt.record_title(true);
         });
         assert_rejected_typography_receipt(&plan, |receipt| {
-            receipt.record_css_emission(RadarTypographyCssEmission::written());
+            receipt.record_css_emission(expected_typography_css_emission(&plan));
             receipt.record_axis_label(0, "Axis");
             receipt.record_title(true);
         });
@@ -716,5 +763,28 @@ mod tests {
                 )
             )
         }));
+    }
+
+    #[test]
+    fn typography_receipt_rejects_mismatched_css_values() {
+        let config = MermaidConfig::empty_object();
+        let theme = resolved_typography();
+
+        for emission in [
+            typography_css_emission("WrongRadarFamily", "24px"),
+            typography_css_emission("RadarReceipt", "99px"),
+        ] {
+            let plan = RadarTypographyThemePlan::resolve(Some(&theme), &config);
+            let mut receipt = plan
+                .begin_terminal_receipt(1, 1)
+                .expect("typed Radar typography receipt");
+            receipt.record_css_emission(emission);
+            receipt.record_axis_label(0, "Axis");
+            receipt.record_legend_label(0, "Legend");
+            receipt.record_title(true);
+
+            assert!(!plan.record_terminal(receipt));
+            assert_eq!(plan.finish_evidence().residuals().len(), 2);
+        }
     }
 }

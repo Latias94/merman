@@ -4,25 +4,27 @@ use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
-fn write_radar_css<I>(
+fn write_radar_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    theme: &RadarTheme,
-    typography: &crate::radar::RadarTypographyThemePlan,
+    theme: &'a RadarTheme,
+    typography: &'a crate::radar::RadarTypographyThemePlan,
     series_colors: &[String],
     mut record_series_rule: impl FnMut(usize, &str),
-) -> Result<crate::radar::RadarTypographyCssEmission>
+) -> Result<crate::radar::RadarTypographyCssEmission<'a>>
 where
     I: SvgDiagramIdValue,
 {
     // Keep `:root` last (matches upstream Mermaid radar SVG baselines).
     let diagram_id = super::super::util::css_selector_diagram_id(diagram_id);
-    write_mermaid_base_css_prefix(
+    let font_family_css = typography.font_family_css();
+    let font_size_css = typography.font_size_css();
+    let base_font_emission = write_mermaid_base_css_prefix_with_font_emission(
         out,
         diagram_id,
         MermaidBaseCss {
-            font_family: typography.font_family_css(),
-            font_size_css: typography.font_size_css(),
+            font_family: font_family_css,
+            font_size_css,
             normal_edge_stroke_width_css: "1px",
             text_color: &theme.text_color,
             line_color: &theme.line_color,
@@ -34,9 +36,7 @@ where
     let _ = write!(
         out,
         r#"#{} .radarTitle{{font-size:{};color:{};dominant-baseline:hanging;text-anchor:middle;}}"#,
-        diagram_id,
-        typography.font_size_css(),
-        theme.title_color
+        diagram_id, font_size_css, theme.title_color
     );
     out.checkpoint()?;
     let _ = write!(
@@ -94,9 +94,19 @@ where
         record_series_rule(i, c);
     }
 
-    write_mermaid_base_css_root_rule(out, diagram_id, typography.font_family_css())?;
+    let root_font_emission =
+        write_mermaid_base_css_root_rule_with_font_emission(out, diagram_id, font_family_css)?;
 
-    Ok(crate::radar::RadarTypographyCssEmission::written())
+    Ok(
+        crate::radar::RadarTypographyCssEmission::from_successful_writes(
+            base_font_emission.diagram_root_font_family_css(),
+            base_font_emission.nested_svg_font_family_css(),
+            root_font_emission.font_family_css(),
+            base_font_emission.diagram_root_font_size_css(),
+            base_font_emission.nested_svg_font_size_css(),
+            font_size_css,
+        ),
+    )
 }
 
 fn write_radar_axes(

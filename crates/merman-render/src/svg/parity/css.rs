@@ -103,7 +103,7 @@ where
     write_mermaid_base_css_prefix_with_font_emission(out, id, css).map(drop)
 }
 
-fn write_mermaid_base_css_prefix_with_font_emission<'a, I>(
+pub(super) fn write_mermaid_base_css_prefix_with_font_emission<'a, I>(
     out: &mut impl SvgOutput,
     id: I,
     css: MermaidBaseCss<'a>,
@@ -323,7 +323,7 @@ where
     write_mermaid_base_css_root_rule_with_font_emission(out, id, font_family).map(drop)
 }
 
-fn write_mermaid_base_css_root_rule_with_font_emission<'a, I>(
+pub(super) fn write_mermaid_base_css_root_rule_with_font_emission<'a, I>(
     out: &mut impl SvgOutput,
     id: I,
     font_family: &'a str,
@@ -1399,17 +1399,19 @@ where
         InfoCssFontSizeSource::ThemeThenTopLevel,
         font_family_css,
     );
-    values.write_prefix(out, diagram_id)?;
+    let base_font_emission = values.write_prefix_with_font_emission(out, diagram_id)?;
     let label_background = config_string(effective_config, &["themeVariables", "mainBkg"])
         .or_else(|| config_string(effective_config, &["themeVariables", "background"]))
         .unwrap_or_else(|| "#fff".to_string());
+    let label_font_family_css = values.font_family.as_str();
+    let node_labels_font_family_css = values.font_family.as_str();
     let _ = write!(
         out,
         r#"#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:{};stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:{};}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:multiply;}}"#,
         id,
-        values.font_family,
+        label_font_family_css,
         id,
-        values.font_family,
+        node_labels_font_family_css,
         id,
         label_background,
         id,
@@ -1418,8 +1420,22 @@ where
         id
     );
     out.checkpoint()?;
-    values.write_root(out, diagram_id, diagram_id)?;
-    Ok(crate::sankey::SankeyTypographyCssEmission::written())
+    let root_font_emission = values.write_root_with_font_emission(out, diagram_id, diagram_id)?;
+    let all_font_surfaces_match = [
+        base_font_emission.diagram_root_font_family_css(),
+        base_font_emission.nested_svg_font_family_css(),
+        label_font_family_css,
+        node_labels_font_family_css,
+        root_font_emission.font_family_css(),
+    ]
+    .into_iter()
+    .all(|font_family_css| font_family_css == values.font_family);
+    Ok(
+        crate::sankey::SankeyTypographyCssEmission::from_successful_writes(
+            values.font_family,
+            all_font_surfaces_match,
+        ),
+    )
 }
 
 #[cfg(test)]

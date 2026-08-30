@@ -69,13 +69,13 @@ impl SankeyTypographyThemePlan {
         &self,
         label_count: usize,
         outlined_labels: bool,
-    ) -> Option<SankeyTypographyThemeReceipt> {
+    ) -> Option<SankeyTypographyThemeReceipt<'_>> {
         self.inherited_font_stack
             .typography_requested()
-            .then(|| SankeyTypographyThemeReceipt::new(label_count, outlined_labels))
+            .then(|| SankeyTypographyThemeReceipt::new(self, label_count, outlined_labels))
     }
 
-    pub(crate) fn record_terminal(&self, receipt: SankeyTypographyThemeReceipt) -> bool {
+    pub(crate) fn record_terminal(&self, receipt: SankeyTypographyThemeReceipt<'_>) -> bool {
         receipt
             .seal()
             .is_some_and(|seal| self.terminal_receipt.set(seal).is_ok())
@@ -120,20 +120,30 @@ impl SankeyTypographyThemePlan {
 }
 
 /// Milestone issued only after the final Sankey stylesheet writer completes successfully.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct SankeyTypographyCssEmission(());
+#[derive(Debug)]
+pub(crate) struct SankeyTypographyCssEmission {
+    font_family_css: String,
+    all_font_surfaces_match: bool,
+}
 
 impl SankeyTypographyCssEmission {
-    pub(crate) const fn written() -> Self {
-        Self(())
+    pub(crate) fn from_successful_writes(
+        font_family_css: String,
+        all_font_surfaces_match: bool,
+    ) -> Self {
+        Self {
+            font_family_css,
+            all_font_surfaces_match,
+        }
     }
 }
 
 /// Writer-owned proof that the stylesheet and expected label passes reached the final SVG sink.
 #[derive(Debug)]
-pub(crate) struct SankeyTypographyThemeReceipt {
+pub(crate) struct SankeyTypographyThemeReceipt<'a> {
     expected_labels_per_pass: usize,
     outlined_labels: bool,
+    expected_font_family_css: &'a str,
     css_emitted: bool,
     next_pass: usize,
     labels_in_pass: usize,
@@ -146,12 +156,17 @@ struct SankeyTypographyTerminalSeal {
     has_visible_label: bool,
 }
 
-impl SankeyTypographyThemeReceipt {
-    fn new(expected_labels_per_pass: usize, outlined_labels: bool) -> Self {
+impl<'a> SankeyTypographyThemeReceipt<'a> {
+    fn new(
+        plan: &'a SankeyTypographyThemePlan,
+        expected_labels_per_pass: usize,
+        outlined_labels: bool,
+    ) -> Self {
         let expected_pass_count = if outlined_labels { 2 } else { 1 };
         Self {
             expected_labels_per_pass,
             outlined_labels,
+            expected_font_family_css: plan.font_family_css(),
             css_emitted: false,
             next_pass: if expected_labels_per_pass == 0 {
                 expected_pass_count
@@ -164,8 +179,10 @@ impl SankeyTypographyThemeReceipt {
         }
     }
 
-    pub(crate) fn record_css_emission(&mut self, _emission: SankeyTypographyCssEmission) {
-        self.valid &= !self.css_emitted;
+    pub(crate) fn record_css_emission(&mut self, emission: SankeyTypographyCssEmission) {
+        self.valid &= !self.css_emitted
+            && emission.all_font_surfaces_match
+            && emission.font_family_css == self.expected_font_family_css;
         self.css_emitted = true;
     }
 
@@ -488,11 +505,11 @@ mod tests {
         plan: &SankeyTypographyThemePlan,
         label_count: usize,
         outlined_labels: bool,
-    ) -> SankeyTypographyThemeReceipt {
+    ) -> SankeyTypographyThemeReceipt<'_> {
         let mut receipt = plan
             .begin_terminal_receipt(label_count, outlined_labels)
             .expect("typed Sankey typography receipt");
-        receipt.record_css_emission(SankeyTypographyCssEmission::written());
+        receipt.record_css_emission(expected_typography_css_emission(plan));
         let surfaces = if outlined_labels {
             &[
                 SankeyLabelSurface::OutlineBackground,
@@ -507,6 +524,22 @@ mod tests {
             }
         }
         receipt
+    }
+
+    fn typography_css_emission(
+        font_family_css: &str,
+        all_font_surfaces_match: bool,
+    ) -> SankeyTypographyCssEmission {
+        SankeyTypographyCssEmission::from_successful_writes(
+            font_family_css.to_owned(),
+            all_font_surfaces_match,
+        )
+    }
+
+    fn expected_typography_css_emission(
+        plan: &SankeyTypographyThemePlan,
+    ) -> SankeyTypographyCssEmission {
+        typography_css_emission(plan.font_family_css(), true)
     }
 
     fn palette_plan(config: serde_json::Value) -> SankeyNodePalettePlan {
@@ -610,8 +643,8 @@ mod tests {
         let mut receipt = duplicate_css
             .begin_terminal_receipt(1, false)
             .expect("typed Sankey typography receipt");
-        receipt.record_css_emission(SankeyTypographyCssEmission::written());
-        receipt.record_css_emission(SankeyTypographyCssEmission::written());
+        receipt.record_css_emission(expected_typography_css_emission(&duplicate_css));
+        receipt.record_css_emission(expected_typography_css_emission(&duplicate_css));
         receipt.record_label(SankeyLabelSurface::Plain, true);
         assert!(!duplicate_css.record_terminal(receipt));
         assert_eq!(duplicate_css.finish_evidence().residuals().len(), 1);
@@ -621,11 +654,40 @@ mod tests {
         let mut receipt = reordered
             .begin_terminal_receipt(1, true)
             .expect("typed Sankey typography receipt");
-        receipt.record_css_emission(SankeyTypographyCssEmission::written());
+        receipt.record_css_emission(expected_typography_css_emission(&reordered));
         receipt.record_label(SankeyLabelSurface::OutlineForeground, true);
         receipt.record_label(SankeyLabelSurface::OutlineBackground, true);
         assert!(!reordered.record_terminal(receipt));
         assert_eq!(reordered.finish_evidence().residuals().len(), 1);
+    }
+
+    #[test]
+    fn typography_receipt_rejects_mismatched_css_values() {
+        let theme = resolved_typography(ThemeTextStyle::default().with_font_stack(
+            FontStack::single("SankeySans").expect("valid Sankey test font stack"),
+        ));
+        let wrong_font =
+            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let mut receipt = wrong_font
+            .begin_terminal_receipt(1, false)
+            .expect("typed Sankey typography receipt");
+        receipt.record_css_emission(typography_css_emission("WrongSankeyFamily", true));
+        receipt.record_label(SankeyLabelSurface::Plain, true);
+        assert!(!wrong_font.record_terminal(receipt));
+        assert_eq!(wrong_font.finish_evidence().residuals().len(), 1);
+
+        let inconsistent_surfaces =
+            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let mut receipt = inconsistent_surfaces
+            .begin_terminal_receipt(1, false)
+            .expect("typed Sankey typography receipt");
+        receipt.record_css_emission(typography_css_emission(
+            inconsistent_surfaces.font_family_css(),
+            false,
+        ));
+        receipt.record_label(SankeyLabelSurface::Plain, true);
+        assert!(!inconsistent_surfaces.record_terminal(receipt));
+        assert_eq!(inconsistent_surfaces.finish_evidence().residuals().len(), 1);
     }
 
     #[test]
