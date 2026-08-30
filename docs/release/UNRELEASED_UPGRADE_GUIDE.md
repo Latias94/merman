@@ -1,14 +1,14 @@
-# Unreleased Upgrade Guide
+# Alpha.6 Detailed Migration Reference (Source Candidate)
 
-> This guide applies only to source revisions after `v0.8.0-alpha.5`. It does not describe the
-> published alpha.5 artifacts. The next release version has not been selected.
+> This guide applies to the prepared `0.8.0-alpha.6` source candidate after `v0.8.0-alpha.5`. It does not describe the published alpha.5 artifacts. No registry package, tag, or platform artifact is implied until the exact release source passes preflight.
+
+Start with the concise [alpha.5 to alpha.6 upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md). This document retains the exhaustive symbol mapping and worked Rust examples for integrations that need a deeper migration reference.
 
 ## Rust analysis and editor migration
 
-The unreleased branch deliberately removes prerelease compatibility shims. Migrate source and
-generated bindings together.
+The alpha.6 candidate deliberately removes prerelease compatibility shims. Migrate source and generated bindings together.
 
-| Alpha.5 or development-snapshot API | Unreleased replacement |
+| Alpha.5 or development-snapshot API | Alpha.6 replacement |
 | --- | --- |
 | CLI capability contract `4` and human-only failures from `--ascii-report` requests | CLI contract `5`; read the schema-1 `ascii` subcontract before rendering, and parse schema-1 Plain error JSON from stderr when report-mode invocation or rendering fails |
 | `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` functions, or CPU-bound render `async fn` wrappers | `Renderer` with one typed `RenderRequest` / `RenderTarget`; retain an `OperationControl` clone when the host must cancel stale synchronous work |
@@ -21,7 +21,7 @@ generated bindings together.
 | `PreparedSemantic`, public SVG `PreparedRender`, or SVG-owned `HeadlessOperation` | Format-neutral `SemanticArtifact`, consumed once by a typed SVG, ASCII, layout, or export target |
 | `ParseControl`, `ParseCancelled`, or `ParseControlResult` | `OperationControl`, `OperationCancelled`, and `OperationControlResult`; analysis may keep its domain token but it shares the same operation state |
 | Direct UniFFI binding API `3`, `4`, or `5` generated Swift/Python plus the matching native library | Regenerate against UniFFI binding API `6`, replace the old version probe with `binding_api_version_v6` / `bindingApiVersionV6`, keep generic requests on `MermanOperationRequestV4`, and deploy the generated projection and native library together. API 6 capability records add layout/width/encoding/fallback admission arrays, and ASCII output plans use schema `2` with explicit encoding. Earlier prerelease changes also include lint tags, structured diagnostics, and optional operation controls. |
-| Web transport API `3` one-shot options | Web transport API `4`; use top-level `timeout_ms` for a cooperative monotonic deadline, ignore stale results after return, and use a Worker or process boundary when hard termination is required |
+| Web transport API `3` or `4` one-shot options | Web transport API `5`; use top-level `timeout_ms` for a cooperative monotonic deadline, ignore stale results after return, and use a Worker or process boundary when hard termination is required |
 | Analysis facts schema `1` with Flowchart-only graph facts and the former semantic-role set | Analysis facts schema `2` with generic parser/editor facts and the explicit `entity`, `class_definition`, `reference`, `outline`, and `payload` roles; update exhaustive role handling, while diagnostics remain schema `1` |
 | `FenceCursorCompletionKind`, `FenceCursorContext`, or `CompletionContext` | `completion_for_snapshot` over parser-backed typed facts |
 | Adapter-owned completion trigger lists | `COMPLETION_TRIGGER_CHARACTERS` |

@@ -1,26 +1,19 @@
 # Changelog
 
-## [Unreleased]
+## [0.8.0-alpha.6] - Unreleased
+
+This section describes the prepared alpha.6 source candidate. The pub.dev channel remains independently published and may still resolve alpha.5 until the alpha.6 package and native asset matrix are authorized.
 
 ### Added
 
-- Added `MermanOperationControl` for reusable cooperative deadlines and cancellation, including
-  structured `MermanCancelledException` details. Controls are isolate-local; same-isolate timers
-  cannot interrupt a synchronous execution call.
-- Added `MermanExactResourceErrorDetails` so unsigned 64-bit resource counts remain available as
-  canonical decimal strings. The existing signed-`int` projection remains available when both
-  counts fit its compatibility range.
-- Added `MermanDiagnosticErrorDetails` and `MermanDiagnosticSpan` so parser and ASCII renderer
-  failures preserve native diagnostic codes, byte spans, fields, and diagram types without
-  parsing human-facing messages.
+- Added `MermanOperationControl` for reusable cooperative deadlines and cancellation, including structured `MermanCancelledException` details. Controls are isolate-local; same-isolate timers cannot interrupt a synchronous execution call.
+- Added `MermanExactResourceErrorDetails` so unsigned 64-bit resource counts remain available as canonical decimal strings. The existing signed-`int` projection remains available when both counts fit its compatibility range.
+- Added `MermanDiagnosticErrorDetails` and `MermanDiagnosticSpan` so parser and ASCII renderer failures preserve native diagnostic codes, byte spans, fields, and diagram types without parsing human-facing messages.
 
 ### Breaking changes
 
-- The next workspace release will publish analysis facts schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
-- ASCII capability records now expose independent semantic coverage and primary projection fields,
-  and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and
-  diagnostic payloads follow the expanded six-phase renderer contract; upgrade Dart and bundled
-  native artifacts together.
+- Analysis facts now use schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
+- ASCII capability records now expose independent semantic coverage and primary projection fields, and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and diagnostic payloads follow the expanded six-phase renderer contract; upgrade Dart and bundled native artifacts together.
 
 ## 0.8.0-alpha.5 - 2026-08-12
 

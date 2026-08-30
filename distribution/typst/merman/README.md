@@ -2,11 +2,19 @@
 
 Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
-`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents the `0.3.0` package and requires Typst `0.15.0` or newer.
+`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents the prepared `0.3.0` alpha.6 candidate and requires Typst `0.15.0` or newer. The candidate is not a claim that `0.3.0` has been published to Typst Universe.
 
 ## Quick Start
 
-Import `mermaid` and pass a Mermaid source string:
+For the published Typst Universe channel, keep using the verified `0.2.0` package:
+
+```typst
+#import "@preview/merman:0.2.0": mermaid
+```
+
+To test the alpha.6 `0.3.0` candidate, build or obtain the package from this repository and pass
+its parent package root with `typst compile --package-path <package-root> document.typ`; then import
+the candidate version:
 
 ```typst
 #import "@preview/merman:0.3.0": mermaid
@@ -23,7 +31,7 @@ flowchart TD
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
 | `0.3.0` | `0.8.0-alpha.6` | `2` | Size-optimized WASM package; requires Typst `0.15.0` or newer. |
-| `0.2.0` | `0.8.0-alpha.6` | `2` | Requires Typst `0.15.0` or newer. |
+| `0.2.0` | Previously published source revision | `2` | Published registry channel; do not infer alpha.6 source provenance from this version. |
 | `0.1.0` | `0.8.0-alpha.1` | `1` | Previous package API. |
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including `presentation` for first-party profiles and host themes, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.

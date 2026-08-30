@@ -17,8 +17,7 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All public browser packages use one lockstep version. The current prerelease is published on npm's
-`alpha` dist-tag; pin an exact version when reproducible installs matter.
+All public browser packages use one lockstep version. The published npm `alpha` channel currently trails the prepared alpha.6 source candidate; pin the published alpha.5 version for registry installs, or use the exact commit accepted by release preflight when testing alpha.6.
 
 Prefer one Merman package per browser realm. Combining the complete package with a focused package
 creates another WASM runtime unless that duplication has been measured and is intentional.
@@ -28,6 +27,8 @@ creates another WASM runtime unless that duplication has been measured and is in
 ```sh
 npm install @mermanjs/web@alpha
 ```
+
+For source validation, use the repository's package workspace and lockfile at the accepted preflight commit. Registry dist-tags are not source-provenance guarantees.
 
 ```ts
 import { initMerman, renderSvgToElement } from "@mermanjs/web";

@@ -4,28 +4,21 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [Unreleased]
+## [0.8.0-alpha.6] - Unreleased
+
+This section describes the prepared alpha.6 source candidate. The Android artifact channel remains independently published and requires the matching Kotlin sources and native library before adoption.
 
 ### Added
 
-- Added `MermanOperationControl` with cross-thread cooperative cancellation, optional relative
-  timeouts, cancellation state inspection, and idempotent release. Both `Merman.execute` and
-  `MermanEngine.execute` retain their existing overloads and add controlled dispatch overloads.
-- Added structured `MermanCancelledDetails` projection for requested cancellation and deadline
-  expiry. Android JNI transport API 2 owns the opaque control-token registry and controlled native
-  method set.
-- Added lossless `MermanExactResourceErrorDetails` for the complete native unsigned 64-bit count
-  range. Existing `resourceDetails` remains available as a signed-`Long` compatibility projection;
-  migrate overflow-sensitive consumers to `exactResourceDetails`.
+- Added `MermanOperationControl` with cross-thread cooperative cancellation, optional relative timeouts, cancellation state inspection, and idempotent release. Both `Merman.execute` and `MermanEngine.execute` retain their existing overloads and add controlled dispatch overloads.
+- Added structured `MermanCancelledDetails` projection for requested cancellation and deadline expiry. Android JNI transport API 2 owns the opaque control-token registry and controlled native method set.
+- Added lossless `MermanExactResourceErrorDetails` for the complete native unsigned 64-bit count range. Existing `resourceDetails` remains available as a signed-`Long` compatibility projection; migrate overflow-sensitive consumers to `exactResourceDetails`.
 
 ### Breaking changes
 
 - The default AAR now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated helper methods remain stable; unavailable operations return typed missing-capability or unsupported-operation errors. Custom source builds may enable the omitted capabilities.
-- The next workspace release will publish analysis facts schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
-- ASCII capability records now expose independent semantic coverage and primary projection fields,
-  and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and
-  diagnostic payloads also follow the expanded six-phase renderer contract; upgrade Kotlin and
-  native slices together.
+- Analysis facts now use schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
+- ASCII capability records now expose independent semantic coverage and primary projection fields, and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and diagnostic payloads also follow the expanded six-phase renderer contract; upgrade Kotlin and native slices together.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 

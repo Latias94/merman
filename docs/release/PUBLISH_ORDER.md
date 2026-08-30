@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-08-25
+Last updated: 2026-08-30
 
 ## Version Decision
 
@@ -51,12 +51,14 @@ Cargo metadata is the publish-order authority. Inspect the current dependency-sa
 python3 tools/publish.py --list-crates-io-packages
 ```
 
-The helper selects crates.io-publishable `workspace_members`, follows every non-dev workspace path
+The helper selects crates.io-publishable `workspace_members`, excludes names listed in
+`workspace.metadata.merman-release.independent-packages`, follows every non-dev workspace path
 dependency (including optional, target-specific, renamed, and build dependencies), rejects a
 publishable crate that depends on a private workspace member, and topologically sorts the graph.
-Only crates within the same independent batch use lexical ordering. The local publish flow,
-release preflight, and release workflow consume this same projection; Markdown is not parsed as a
-release-order database.
+Independent package dependencies are treated as external registry inputs and are verified by their
+dedicated workflows. Only crates within the same coupled batch use lexical ordering. The local
+publish flow, release preflight, and release workflow consume this same projection; Markdown is
+not parsed as a release-order database.
 
 `roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.

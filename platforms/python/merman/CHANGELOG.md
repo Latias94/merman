@@ -4,26 +4,17 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [Unreleased]
+## [0.8.0a6] - Unreleased
+
+This section describes the prepared alpha.6 source candidate. The PyPI prerelease channel remains independently published and may still resolve alpha.5 until the matching wheel and native artifact are authorized.
 
 ### Breaking changes
 
-- Advanced the direct UniFFI binding API to `6` because `MermanAsciiCapability` gained
-  layout/width/encoding/fallback admission arrays and `MermanAsciiOutputPlan` gained schema-2
-  encoding. API 6 replaces `binding_api_version_v5()` with `binding_api_version_v6()` so stale
-  generated packages fail before decoding either changed record. Regenerate and deploy the Python
-  package and native library together.
+- Advanced the direct UniFFI binding API to `6` because `MermanAsciiCapability` gained layout/width/encoding/fallback admission arrays and `MermanAsciiOutputPlan` gained schema-2 encoding. API 6 replaces `binding_api_version_v5()` with `binding_api_version_v6()` so stale generated packages fail before decoding either changed record. Regenerate and deploy the Python package and native library together.
 - Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. `MermanError.Binding.cancellation` reports the observed reason and phase independently from resource-limit details.
-- Advanced the direct UniFFI binding API to `5` because `MermanAsciiCapability` and
-  `MermanError.Binding` changed wire layouts that UniFFI method checksums do not cover. API 5
-  replaces `transport_api_version()` with `binding_api_version_v5()` and removes the API 4 probe
-  symbol, so stale generated packages reject the new library before decoding either record.
-  Regenerate and deploy the Python package and native library together.
 - Default wheels now bundle SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated API remains stable; unavailable operations return typed missing-capability or unsupported-operation errors, and custom source builds may enable the omitted capabilities.
-- The next workspace release will publish analysis facts schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
-- ASCII capability records now expose `semantic_coverage` and `primary_projection`, and rename
-  `summary_fallback` to `structured_text_fallback`. Structured ASCII resource and diagnostic
-  payloads follow the expanded six-phase renderer contract.
+- Analysis facts now use schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
+- ASCII capability records now expose `semantic_coverage` and `primary_projection`, and rename `summary_fallback` to `structured_text_fallback`. Structured ASCII resource and diagnostic payloads follow the expanded six-phase renderer contract.
 
 ## [0.8.0a5] - 2026-08-09
 

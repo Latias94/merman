@@ -249,6 +249,14 @@ builds, Apple XCFramework builds, the web npm package dry-run, Node native packa
 build/install smokes, platform VSIX packaging, and Flutter `dart pub publish --dry-run`. It does
 not publish to any registry.
 
+Release CI keeps integrity checks at boundaries where bytes or trust cross jobs or registries. GitHub
+Actions are pinned to immutable commit references; source identity uses the commit and tree; SHA-256
+is used for downloaded release tools, staged release artifacts, and immutable registry reconciliation
+(crates.io, npm, and PyPI). Ordinary unit tests and in-workspace builds do not calculate or compare
+extra hashes. pub.dev uses a member-level content comparison because Dart rewrites tar metadata.
+Platform GitHub Release asset uploads fail closed on an existing name, and Tree-sitter native
+prebuild recovery stays within the same workflow run.
+
 Release-archive smoke tests should verify user-observable contracts rather than incidental representation choices. Accept legal binary token and whitespace forms, and allow valid asynchronous notification ordering while still requiring bounded output, the expected protocol responses, successful exit, and exact archive contents. Reproduce failures against the final archive before changing product code.
 
 Record `VERSION` and `SOURCE_SHA` with the preflight run. The run must be green for that exact immutable commit, not merely for a branch name that can move while preflight is running. Create the tag only through the `Tag And Push` step after that run succeeds.
@@ -422,6 +430,9 @@ anchor for crates, CLI/LSP artifacts, and platform assets.
 Platform workflows
 upload additional assets to that existing release when it is present; otherwise they leave GitHub
 Actions artifacts for manual attachment.
+Asset uploads are intentionally non-destructive: an existing asset name is not overwritten. A rerun
+that encounters an existing platform asset fails closed and should be resolved by inspecting the
+release, rather than downloading and comparing every asset in CI.
 
 After the primary release exists, run platform publish workflows manually:
 
