@@ -1525,9 +1525,10 @@ fn strip_html(text: &str) -> String {
 pub(crate) fn capability_for(
     model: &merman_core::diagram::RenderSemanticModel,
 ) -> Option<crate::AsciiCapability> {
+    let diagram_type = merman_core::diagram_type_metadata_id(model.kind())?;
     crate::ascii_capabilities()
         .iter()
-        .find(|capability| capability.diagram_type == model.kind())
+        .find(|capability| capability.diagram_type == diagram_type)
         .copied()
 }
 
@@ -1699,6 +1700,22 @@ mod tests {
             projection_for(capability_for(&timeline)),
             AsciiProjection::StructuredText
         );
+
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "gitGraph\ncommit id:\"root\"",
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("GitGraph should parse")
+            .expect("GitGraph should be detected");
+        let (_, git_graph) = parsed.into_parts();
+        let capability = capability_for(&git_graph).expect("GitGraph capability should resolve");
+        assert_eq!(capability.diagram_type, "gitgraph");
+        assert_eq!(
+            projection_for(Some(capability)),
+            AsciiProjection::StructuredText
+        );
+        assert!(capability.structured_text_fallback);
     }
 
     #[test]
