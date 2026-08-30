@@ -30,7 +30,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
     steps:
       - name: Check out trusted release tooling
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -76,7 +76,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Resolve immutable release source
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.release.outputs.source_ref }}
           persist-credentials: false
@@ -99,27 +99,27 @@ jobs:
     name: versions-and-packages
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: aarch64-linux-android,wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
           tool: cargo-about@0.9.1
 
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
           tool: cargo-semver-checks@0.50.0
 
@@ -133,6 +133,11 @@ jobs:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: python3 scripts/release-version.py check --version "$VERSION"
 
+      - name: Verify release changelog projections
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/verify_release_changelog.py --version "$VERSION"
+
       - name: Verify independent crate versions changed with their source
         run: |
           set -euo pipefail
@@ -141,6 +146,16 @@ jobs:
 
       - name: Verify roughr-merman public Rust API compatibility
         run: cargo semver-checks check-release -p roughr-merman --color always
+
+      - name: Compile published roughr dependents from fresh registry projects
+        run: |
+          set -euo pipefail
+          roughr_version="$(cargo pkgid -p roughr-merman | sed -E 's/.*[#@]//')"
+          python3 scripts/release_registry_dependents.py \
+            --dependency "roughr-merman=$roughr_version" \
+            --candidate-path crates/roughr \
+            --dependent merman-render=0.7.0 \
+            --dependent merman-render=0.8.0-alpha.5
 
       - name: Verify artifact dependency boundaries
         run: python3 scripts/verify_artifact_dependency_closures.py
@@ -224,7 +239,7 @@ jobs:
         run: python3 scripts/crates_io_release.py preflight-initial
 
       - name: Upload package lists
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: crate-package-lists
           path: target/package-lists/*.txt
@@ -244,13 +259,13 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -260,10 +275,10 @@ jobs:
         run: python scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Build and smoke wheel
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
@@ -286,7 +301,7 @@ jobs:
           python -m twine check target/python-wheels/merman-*.whl
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: preflight-python-wheel-${{ runner.os }}-${{ runner.arch }}
           path: target/python-wheels/merman-*.whl
@@ -296,7 +311,7 @@ jobs:
     name: android-aar
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -313,24 +328,24 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Setup JDK
-        uses: actions/setup-java@v5.7.0
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4.0.1
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Install Android NDK
         shell: bash
@@ -358,7 +373,7 @@ jobs:
     name: apple-xcframework
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -369,12 +384,12 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Build Apple XCFramework
         env:
@@ -393,7 +408,7 @@ jobs:
     name: web-npm-dry-run
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -404,22 +419,22 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Setup Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: platforms/web/package-lock.json
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
           tool: wasm-tools
 
@@ -478,7 +493,7 @@ jobs:
     name: node-loader-package
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -489,7 +504,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Setup Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           cache: npm
@@ -511,7 +526,7 @@ jobs:
           npm pack "$package_root/node" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-loader-pack.json"
 
       - name: Upload Node loader package
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: preflight-node-npm-loader
           path: ${{ runner.temp }}/node-loader-artifact/*.tgz
@@ -525,7 +540,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -536,17 +551,17 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/merman-node
 
       - name: Setup Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           cache: npm
@@ -580,7 +595,7 @@ jobs:
           node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" --project "$smoke_root" --version "$VERSION" --target node-wasm
 
       - name: Upload Node WASM package
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: preflight-node-npm-wasm
           path: ${{ runner.temp }}/node-wasm-artifact/*.tgz
@@ -613,7 +628,7 @@ jobs:
             runner: windows-2025-vs2026
             rust_target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -625,13 +640,13 @@ jobs:
 
       - name: Install Rust toolchain
         if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/merman-node
 
@@ -727,7 +742,7 @@ jobs:
 
       - name: Setup Node
         if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           cache: npm
@@ -766,7 +781,7 @@ jobs:
           node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" --project "$smoke_root" --version "$VERSION" --target "$TARGET"
 
       - name: Upload Node target package
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: preflight-node-npm-${{ matrix.target }}
           path: ${{ runner.temp }}/node-platform-artifact/*.tgz
@@ -781,13 +796,13 @@ jobs:
     name: node-npm-dry-run
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Download Node package group
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: preflight-node-npm-*
           path: target/node-npm-package-group
@@ -843,13 +858,13 @@ jobs:
           - os: windows-2025-vs2026
             target: win32-x64
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -859,15 +874,15 @@ jobs:
         run: python scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           cache-targets: false
 
       - name: Setup Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           cache: npm
@@ -940,7 +955,7 @@ jobs:
         run: npm run smoke:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix"
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: preflight-vscode-extension-${{ matrix.target }}
           path: tools/vscode-extension/merman-vscode-${{ matrix.target }}.vsix
@@ -951,7 +966,7 @@ jobs:
     name: flutter-dry-run
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -966,12 +981,12 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Install desktop cross tools
         run: |
@@ -981,7 +996,7 @@ jobs:
           cargo install cargo-zigbuild --version 0.21.8 --locked
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4.0.1
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
 
       - name: Install Android NDK
         shell: bash
@@ -1013,7 +1028,7 @@ jobs:
           test -f platforms/flutter/native/windows/x86_64/merman_ffi.dll
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2.23.0
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: "3.44.9"
           channel: stable

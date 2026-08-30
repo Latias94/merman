@@ -97,7 +97,7 @@ jobs:
       source_sha: ${{ steps.source.outputs.source_sha }}
       source_tree: ${{ steps.source.outputs.source_tree }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           fetch-depth: 0
@@ -135,12 +135,12 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: aarch64-linux-android,wasm32-unknown-unknown
 
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
           tool: cargo-semver-checks@0.50.0
 
@@ -152,6 +152,16 @@ jobs:
 
       - name: Verify roughr-merman public Rust API compatibility
         run: cargo semver-checks check-release -p roughr-merman --color always
+
+      - name: Compile published roughr dependents from fresh registry projects
+        run: |
+          set -euo pipefail
+          roughr_version="$(cargo pkgid -p roughr-merman | sed -E 's/.*[#@]//')"
+          python3 scripts/release_registry_dependents.py \
+            --dependency "roughr-merman=$roughr_version" \
+            --candidate-path crates/roughr \
+            --dependent merman-render=0.7.0 \
+            --dependent merman-render=0.8.0-alpha.5
 
       - name: Verify exhaustive Cargo feature and artifact recipes
         run: cargo run --locked -p xtask -- verify-feature-matrix --strict
@@ -173,7 +183,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           persist-credentials: false
@@ -186,12 +196,12 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Setup Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           package-manager-cache: false
@@ -223,7 +233,7 @@ jobs:
     env:
       TYPST_CLI_VERSION: "0.15.0"
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           persist-credentials: false
@@ -236,17 +246,17 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
           tool: wasm-tools
 
       - name: Install wasm-opt
-        uses: sigoden/install-binary@v1.2.0
+        uses: sigoden/install-binary@7eb4b088aedf19fe9b2bc6c6bbdc12379ffb355c # v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
@@ -291,14 +301,14 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           path: source
           persist-credentials: false
 
       - name: Checkout trusted release operator
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: trusted
@@ -331,11 +341,11 @@ jobs:
           echo "Publishing verified source commit and tree: $current_sha $current_tree"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Download prior crates.io receipts for recovery
         if: ${{ github.run_attempt > 1 || needs.validate-inputs.outputs.recovery_run_id != '' }}
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: crates-io-receipts-${{ needs.preflight.outputs.source_sha }}-attempt-*
           path: recovery-receipts
@@ -362,7 +372,7 @@ jobs:
 
       - name: Upload crates.io receipts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: crates-io-receipts-${{ needs.preflight.outputs.source_sha }}-attempt-${{ github.run_attempt }}
           path: source/target/crates-io-receipts/*.json

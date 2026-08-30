@@ -45,6 +45,29 @@ fn c_consumer_smoke() {
     }
 }
 
+#[test]
+fn alpha5_consumer_smoke() {
+    let library_path = compile_c_library(
+        "tests/alpha5_consumer_smoke.c",
+        "merman_alpha5_consumer_smoke",
+        "include",
+    );
+
+    unsafe {
+        let library = Library::new(&library_path).unwrap_or_else(|error| {
+            panic!(
+                "failed to load alpha.5 C consumer smoke library {}: {error}",
+                library_path.display()
+            )
+        });
+        let smoke: libloading::Symbol<unsafe extern "C" fn(NativeGetApi) -> i32> = library
+            .get(b"merman_alpha5_consumer_smoke")
+            .expect("load merman_alpha5_consumer_smoke symbol");
+        let result = smoke(merman_ffi::merman_get_native_api);
+        assert_eq!(result, 0, "alpha.5 C consumer smoke returned {result}");
+    }
+}
+
 fn has_native_sdk_operation_features() -> bool {
     cfg!(all(
         feature = "svg",

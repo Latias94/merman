@@ -10,7 +10,7 @@ on:
         options:
           - roughr-merman
       version:
-        description: "Exact crate version to publish, for example 0.12.2"
+        description: "Exact crate version to publish, for example 0.12.3"
         required: true
         type: string
 
@@ -27,7 +27,7 @@ jobs:
       package: ${{ steps.release.outputs.package }}
       version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -65,7 +65,7 @@ jobs:
     outputs:
       source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           fetch-depth: 0
@@ -79,9 +79,9 @@ jobs:
           printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
           echo "Verified source commit: $source_sha"
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
           tool: cargo-semver-checks@0.50.0
       - name: Verify independent crate release metadata
@@ -117,19 +117,30 @@ jobs:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
         run: cargo semver-checks check-release -p "$PACKAGE" --color always
 
-      - name: Dry-run independent crate publication
+      - name: Compile published dependents against the candidate
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
-          env -u CARGO_REGISTRY_TOKEN cargo publish -p "$PACKAGE" --locked --dry-run --registry crates-io
+          python3 scripts/release_registry_dependents.py \
+            --dependency "$PACKAGE=$VERSION" \
+            --candidate-path crates/roughr \
+            --dependent merman-render=0.7.0 \
+            --dependent merman-render=0.8.0-alpha.5
+
+      - name: Verify registry bytes or dry-run independent crate publication
+        env:
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/crates_io_release.py preflight-independent --package "$PACKAGE" --version "$VERSION"
 
   publish:
     needs: [validate-inputs, preflight]
     runs-on: ubuntu-24.04
     environment: crates.io
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           persist-credentials: false
@@ -145,7 +156,7 @@ jobs:
             exit 1
           }
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
       - name: Upload independent crate to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -165,6 +176,10 @@ jobs:
             echo "::error::$PACKAGE version $actual_version does not match preflight version $VERSION." >&2
             exit 1
           fi
+
+          python3 scripts/crates_io_release.py preflight-independent \
+            --package "$PACKAGE" \
+            --version "$VERSION"
 
           crate_version_available() {
             local crate="$1"
@@ -194,3 +209,14 @@ jobs:
             fi
             sleep 15
           done
+
+      - name: Verify published dependent lanes
+        env:
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release_registry_dependents.py \
+            --dependency "$PACKAGE=$VERSION" \
+            --dependent merman-render=0.7.0 \
+            --dependent merman-render=0.8.0-alpha.5

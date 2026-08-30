@@ -180,6 +180,18 @@ class CratesIoReceiptTests(unittest.TestCase):
 
     def test_initial_preflight_dry_runs_only_missing_versions(self) -> None:
         commands: list[list[str]] = []
+        prepared = release.PreparedCrate(
+            publish.PackageInfo(
+                "alpha",
+                "1.0.0",
+                ROOT / "crates" / "alpha" / "Cargo.toml",
+                (),
+            ),
+            ROOT / "target" / "package" / "alpha-1.0.0.crate",
+            self.DIGEST,
+            1,
+            "4" * 64,
+        )
 
         def run(command, **_kwargs):
             commands.append(list(command))
@@ -191,6 +203,11 @@ class CratesIoReceiptTests(unittest.TestCase):
                 "fetch_crates_io_checksum",
                 side_effect=[self.DIGEST, None],
             ),
+            mock.patch.object(
+                release,
+                "_prepare_crate",
+                return_value=prepared,
+            ),
             mock.patch.object(release, "run_command", side_effect=run),
         ):
             release.preflight_initial_batch(
@@ -198,6 +215,83 @@ class CratesIoReceiptTests(unittest.TestCase):
                 package_metadata("alpha", "beta"),
             )
         self.assertEqual([command[3] for command in commands], ["beta"])
+
+    def test_initial_preflight_rejects_existing_version_with_different_bytes(self) -> None:
+        prepared = release.PreparedCrate(
+            publish.PackageInfo(
+                "alpha",
+                "1.0.0",
+                ROOT / "crates" / "alpha" / "Cargo.toml",
+                (),
+            ),
+            ROOT / "target" / "package" / "alpha-1.0.0.crate",
+            self.DIGEST,
+            1,
+            "4" * 64,
+        )
+        with (
+            mock.patch.object(
+                release,
+                "fetch_crates_io_checksum",
+                return_value="5" * 64,
+            ),
+            mock.patch.object(
+                release,
+                "_prepare_crate",
+                return_value=prepared,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                release.CratesIoPublishError,
+                "registry checksum mismatch for alpha 1.0.0",
+            ):
+                release.preflight_initial_batch(ROOT, package_metadata("alpha"))
+
+    def test_independent_preflight_rejects_existing_version_with_different_bytes(self) -> None:
+        prepared = self.prepared(Path(tempfile.mkdtemp()), "roughr-merman")
+        metadata = package_metadata("roughr-merman")
+        with (
+            mock.patch.object(release, "_prepare_crate", return_value=prepared),
+            mock.patch.object(
+                release,
+                "fetch_crates_io_checksum",
+                return_value="5" * 64,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                release.CratesIoPublishError,
+                "registry checksum mismatch for roughr-merman 1.0.0",
+            ):
+                release.preflight_independent_crate(
+                    ROOT,
+                    metadata,
+                    package_name="roughr-merman",
+                    expected_version="1.0.0",
+                )
+
+    def test_independent_preflight_dry_runs_missing_version(self) -> None:
+        prepared = self.prepared(Path(tempfile.mkdtemp()), "roughr-merman")
+        metadata = package_metadata("roughr-merman")
+        commands: list[list[str]] = []
+
+        def run(command, **_kwargs):
+            commands.append(list(command))
+            return publish.subprocess.CompletedProcess(command, 0)
+
+        with (
+            mock.patch.object(release, "_prepare_crate", return_value=prepared),
+            mock.patch.object(release, "fetch_crates_io_checksum", return_value=None),
+            mock.patch.object(release, "run_command", side_effect=run),
+        ):
+            self.assertFalse(
+                release.preflight_independent_crate(
+                    ROOT,
+                    metadata,
+                    package_name="roughr-merman",
+                    expected_version="1.0.0",
+                )
+            )
+        self.assertEqual(commands[0][0:4], ["cargo", "publish", "-p", "roughr-merman"])
 
     def test_receipt_validation_rejects_bad_artifact_identity(self) -> None:
         receipt = {

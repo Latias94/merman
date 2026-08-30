@@ -132,6 +132,27 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                     text.count("uses: actions/checkout@"),
                 )
 
+    def test_publish_workflow_actions_are_immutable(self) -> None:
+        for path in PUBLISH_WORKFLOWS:
+            for line_number, line in enumerate(read(path).splitlines(), start=1):
+                match = re.search(r"\buses:\s*([^\s#]+)", line)
+                if match is None:
+                    continue
+                reference = match.group(1)
+                if reference.startswith("./"):
+                    continue
+                self.assertIn(
+                    "@",
+                    reference,
+                    f"{path.name}:{line_number} must identify an action ref",
+                )
+                ref = reference.rsplit("@", 1)[1]
+                self.assertRegex(
+                    ref,
+                    r"^[0-9a-f]{40}$",
+                    f"{path.name}:{line_number} uses a mutable or malformed action ref",
+                )
+
     def test_tree_sitter_mermaid_release_is_protected_and_subdirectory_aware(self) -> None:
         independent = read(WORKFLOW_ROOT / "release-independent-crate.yml")
         workflow = read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml")
@@ -181,11 +202,15 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn('--user-agent "$registry_user_agent"', publish_crates)
         self.assertIn("npm publish", publish_npm)
         self.assertIn("--provenance", publish_npm)
+        self.assertIn("--ignore-scripts", publish_npm)
         self.assertIn(
             'npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball',
             publish_npm,
         )
-        self.assertIn("uses: actions/attest@v4.2.2", attest)
+        self.assertIn(
+            "uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
+            attest,
+        )
         self.assertIn("attestations: write", attest)
         self.assertIn("gh release create", publish_github)
         self.assertIn("verify_existing_release", publish_github)
@@ -201,6 +226,9 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             publish_github,
         )
         self.assertIn("timeout-minutes: 60", verify)
+        self.assertNotIn("recovery_run_id:", workflow)
+        self.assertNotIn("Verify recovery run identity", workflow)
+        self.assertIn("Download native prebuilds from this run", assemble)
 
     def test_workflow_job_does_not_accept_a_protection_from_another_job(self) -> None:
         workflow = """
@@ -226,9 +254,11 @@ jobs:
         self.assertIn("npm run test:wasm --prefix distribution/tree-sitter-mermaid", workflow)
         self.assertIn("npm run test:package-smoke --prefix distribution/tree-sitter-mermaid", workflow)
 
-    def test_workspace_release_ignores_flutter_package_tags(self) -> None:
+    def test_workspace_release_accepts_only_canonical_workspace_tags(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")
-        self.assertIn("      - '!flutter-v*'\n", text)
+        self.assertIn("      - 'v*'\n", text)
+        self.assertNotIn("flutter-v", text.split("  workflow_dispatch:", 1)[0])
+        self.assertNotIn("tree-sitter-mermaid-v", text.split("  workflow_dispatch:", 1)[0])
 
     def test_crates_publish_uses_trusted_receipt_operator_and_immutable_source(self) -> None:
         text = read(WORKFLOW_ROOT / "release-crates.yml")
@@ -256,7 +286,7 @@ jobs:
             ),
             WORKFLOW_ROOT / "release-independent-crate.yml": (
                 'cargo semver-checks check-release -p "$PACKAGE" --color always',
-                'env -u CARGO_REGISTRY_TOKEN cargo publish -p "$PACKAGE"',
+                'cargo publish -p "$PACKAGE" --locked --no-verify --registry crates-io --token "$CARGO_REGISTRY_TOKEN"',
             ),
         }
         for path, (semver_command, publication_command) in workflows.items():
@@ -299,6 +329,48 @@ jobs:
                 self.assertIn("DISPATCH_PUBLISH_TO_NPM", text)
                 self.assertIn("main is allowed only for a non-publishing build", text)
                 self.assertRegex(text, r"\[\[ \"\$SOURCE_REF\" =~ \^\[0-9a-f\]\{40\}\$ \]\]")
+
+    def test_release_assets_fail_closed_without_clobber(self) -> None:
+        for path in (
+            WORKFLOW_ROOT / "release-android.yml",
+            WORKFLOW_ROOT / "release-apple.yml",
+            WORKFLOW_ROOT / "release-python.yml",
+        ):
+            text = read(path)
+            with self.subTest(workflow=path.name):
+                self.assertNotIn("--clobber", text)
+                self.assertIn("gh release upload", text)
+                self.assertNotIn("gh release download", text)
+                self.assertNotIn("cmp ", text)
+
+    def test_pypi_skip_existing_is_guarded_by_checksum_reconciliation(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-python.yml")
+        publish = workflow_job(text, "publish")
+        self.assertIn("Checkout trusted release verifier", publish)
+        self.assertIn("path: trusted", publish)
+        self.assertIn("scripts/reconcile_pypi_wheels.py", text)
+        self.assertIn("skip-existing: true", text)
+
+    def test_pubdev_skip_existing_is_guarded_by_archive_reconciliation(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-flutter.yml")
+        self.assertIn("scripts/reconcile_pub_package.py", text)
+        self.assertIn("exact)", text)
+        self.assertIn("exists=true", text)
+
+    def test_independent_crate_has_fresh_registry_dependent_compile_gate(self) -> None:
+        independent = read(WORKFLOW_ROOT / "release-independent-crate.yml")
+        for path in (
+            WORKFLOW_ROOT / "release-preflight.yml",
+            WORKFLOW_ROOT / "release-crates.yml",
+        ):
+            text = read(path)
+            with self.subTest(workflow=path.name):
+                self.assertIn("scripts/release_registry_dependents.py", text)
+                self.assertIn("--candidate-path crates/roughr", text)
+                self.assertIn("--dependent merman-render=0.7.0", text)
+                self.assertIn("--dependent merman-render=0.8.0-alpha.5", text)
+        self.assertIn("preflight-independent", independent)
+        self.assertIn("Verify published dependent lanes", independent)
 
     def test_node_publish_supports_verified_cross_run_recovery(self) -> None:
         text = read(WORKFLOW_ROOT / "release-node.yml")
