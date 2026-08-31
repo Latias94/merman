@@ -6,7 +6,29 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [0.8.0-alpha.6] - Unreleased
 
-Alpha.6 is the selected workspace candidate after alpha.5. It combines a new operation-scoped Rust API, parser-backed editor contracts, substantially broader terminal rendering, slimmer distribution profiles, and new Tree-sitter, Node, Rustdoc, Playground, and Typst surfaces. It is not published until the exact source commit passes release preflight and each independently owned package channel is authorized. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md).
+Alpha.6 is a deliberately breaking prerelease that makes long-running work easier to control, terminal output substantially more capable, and first-party integrations more consistent. This entry still describes a source candidate: no alpha.6 channel is considered published until the exact tagged commit passes release preflight and its independently owned publication is authorized. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md).
+
+### Highlights
+
+- Rust and the first-party bindings now share one operation-scoped execution model, with explicit cancellation, deadlines, resource policy, and structured failure details carried through each supported transport.
+- Terminal rendering now has grapheme-aware plans, terminal-width profiles, styled encodings, broader diagram-family coverage, structured-text fallbacks, and configurable Flowchart label wrapping.
+- Editor integrations now combine parser-backed semantic snapshots with Tree-sitter-owned syntax highlighting, including incremental native LSP and browser-worker paths that no longer require full analysis on every keystroke.
+- New first-party delivery surfaces include experimental Node.js 22+ native and WASM packages, checked rustdoc SVG fragments, richer Playground exports and sharing, and an independently versioned Typst 0.3.0 candidate.
+- Wrapper-specific native profiles and explicit ELK opt-in make default artifacts smaller and their licensing boundary clearer without reducing the documented wrapper capability set.
+- Release reruns now reconcile exact registry state, package sets, checksums, tags, and immutable artifacts before publishing only what is still missing.
+
+### Looking ahead
+
+Barring unexpected release-critical findings, `0.8.0-alpha.7` is planned as the final alpha before `0.8.0`. It will focus on making theme-driven Mermaid styling easier to define, reuse, and apply consistently across first-party surfaces; the goal is to keep that pass focused and move promptly to the stable release after the extended 0.8 prerelease cycle.
+
+### Upgrade first
+
+The detailed contracts remain in **Breaking changes** below. Start with these migration groups before mixing alpha.5 code, generated bindings, or package artifacts with alpha.6:
+
+- Rust callers must move rendering to `Renderer`, typed requests and targets, `SemanticArtifact`, and caller-owned `OperationControl`, then update exhaustive matches and struct literals for the revised typed models.
+- Editor and automation consumers must adopt analysis facts schema `2`, config schema `2`, CLI contract `5`, parser-backed editor semantics, and Tree-sitter syntax ownership instead of the removed lexeme and semantic-token APIs.
+- Native and Web consumers must regenerate each language projection and deploy it with the matching artifact: Apple/Python binding API `6`, Android transport API `2`, and Web/WASM transport API `5` are not interchangeable with alpha.5 outputs.
+- Consumers of ELK, Flutter, or Typst must review their product-specific entries: ELK is now opt-in for complete SVG builds, Flutter requires Dart 3.10 / Flutter 3.38 with Native Assets, and Typst id and option precedence changed.
 
 ### Breaking changes
 
