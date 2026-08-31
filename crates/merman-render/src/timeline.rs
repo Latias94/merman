@@ -10,8 +10,11 @@ use merman_core::diagrams::timeline::{
 use std::borrow::Cow;
 
 mod config;
+mod task_index;
 mod theme;
 mod typography;
+
+use task_index::TimelineTaskIndex;
 
 pub(crate) use config::{TimelineConfigView, timeline_theme_color_limit};
 pub(crate) use theme::{TimelineEventTheme, TimelineEventThemeReceipt};
@@ -359,9 +362,11 @@ pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
     resolved_font_size_px: Option<f64>,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
+    let task_index = TimelineTaskIndex::new(model)?;
     match model.direction {
         TimelineDirection::LeftToRight => layout_timeline_horizontal(
             model,
+            &task_index,
             effective_config,
             resolved_font_family_css,
             resolved_font_size_px,
@@ -369,6 +374,7 @@ pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
         ),
         TimelineDirection::TopDown => layout_timeline_vertical(
             model,
+            &task_index,
             effective_config,
             resolved_font_family_css,
             resolved_font_size_px,
@@ -379,6 +385,7 @@ pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
 
 fn layout_timeline_horizontal(
     model: &TimelineDiagramRenderModel,
+    task_index: &TimelineTaskIndex<'_>,
     effective_config: &serde_json::Value,
     resolved_font_family_css: Option<&str>,
     resolved_font_size_px: Option<f64>,
@@ -466,12 +473,8 @@ fn layout_timeline_horizontal(
         let section_y = base_y;
 
         for (section_number, section_label) in model.sections.iter().enumerate() {
+            let tasks_for_section = task_index.tasks_for_section(section_number);
             let section_number = section_number as i64;
-            let tasks_for_section: Vec<&TimelineRenderTask> = model
-                .tasks
-                .iter()
-                .filter(|t| t.section == *section_label)
-                .collect();
             let tasks_for_section_count = tasks_for_section.len().max(1);
 
             let content_width = TASK_STEP_X * (tasks_for_section_count as f64) - 50.0;
@@ -497,7 +500,7 @@ fn layout_timeline_horizontal(
             let mut task_x = master_x;
             let task_y = section_y + max_section_height + 50.0;
 
-            for task in &tasks_for_section {
+            for &task in tasks_for_section {
                 let full_section = section_number;
                 let task_node = compute_node(
                     TimelineNodeRequest {
@@ -567,19 +570,18 @@ fn layout_timeline_horizontal(
             master_x += TASK_STEP_X * (tasks_for_section_count as f64);
         }
     } else {
-        let mut master_x = base_x;
-        let master_y = base_y;
-        let mut section_color: i64 = 0;
+        let mut orphan_x = base_x;
+        let mut orphan_section_color = 0;
 
-        for task in &model.tasks {
+        for &task in task_index.orphan_tasks() {
             let task_node = compute_node(
                 TimelineNodeRequest {
                     kind: "task",
                     label: &task.task,
-                    full_section: section_color,
+                    full_section: orphan_section_color,
                     theme_color_limit,
-                    x: master_x,
-                    y: master_y,
+                    x: orphan_x,
+                    y: base_y,
                     content_width: task_content_width,
                     padding: NODE_PADDING,
                     max_height: max_task_height,
@@ -592,23 +594,23 @@ fn layout_timeline_horizontal(
 
             let connector = TimelineLineLayout {
                 kind: "task-events".to_string(),
-                x1: master_x + (task_node.width / 2.0),
-                y1: master_y + max_task_height,
-                x2: master_x + (task_node.width / 2.0),
-                y2: master_y + max_task_height + 100.0 + max_event_line_length + 100.0,
+                x1: orphan_x + (task_node.width / 2.0),
+                y1: base_y + max_task_height,
+                x2: orphan_x + (task_node.width / 2.0),
+                y2: base_y + max_task_height + 100.0 + max_event_line_length + 100.0,
             };
             all_lines_pre_title.push(connector.clone());
 
             let mut events: Vec<TimelineNodeLayout> = Vec::new();
-            let mut event_y = master_y + EVENT_VERTICAL_OFFSET_FROM_TASK_Y;
+            let mut event_y = base_y + EVENT_VERTICAL_OFFSET_FROM_TASK_Y;
             for ev in &task.events {
                 let event_node = compute_node(
                     TimelineNodeRequest {
                         kind: "event",
                         label: ev,
-                        full_section: section_color,
+                        full_section: orphan_section_color,
                         theme_color_limit,
-                        x: master_x,
+                        x: orphan_x,
                         y: event_y,
                         content_width: task_content_width,
                         padding: NODE_PADDING,
@@ -629,9 +631,9 @@ fn layout_timeline_horizontal(
                 events,
             });
 
-            master_x += TASK_STEP_X;
+            orphan_x += TASK_STEP_X;
             if !disable_multicolor {
-                section_color += 1;
+                orphan_section_color += 1;
             }
         }
     }
@@ -842,6 +844,7 @@ fn layout_vertical_tasks<'a>(
 
 fn layout_timeline_vertical(
     model: &TimelineDiagramRenderModel,
+    task_index: &TimelineTaskIndex<'_>,
     effective_config: &serde_json::Value,
     resolved_font_family_css: Option<&str>,
     resolved_font_size_px: Option<f64>,
@@ -915,19 +918,14 @@ fn layout_timeline_vertical(
     let timeline_x = base_x + left_width;
 
     let mut sections = Vec::new();
-    let mut orphan_tasks = Vec::new();
     let mut all_nodes_pre_title = Vec::new();
     let mut all_lines_pre_title = Vec::new();
 
-    if has_sections {
+    let orphan_tasks = if has_sections {
         let mut master_y = base_y;
         for (section_number, section_label) in model.sections.iter().enumerate() {
+            let tasks_for_section = task_index.tasks_for_section(section_number);
             let section_number = section_number as i64;
-            let tasks_for_section = model
-                .tasks
-                .iter()
-                .filter(|task| task.section == *section_label)
-                .collect::<Vec<_>>();
             let section_node = compute_node(
                 TimelineNodeRequest {
                     kind: "section",
@@ -976,9 +974,10 @@ fn layout_timeline_vertical(
                 tasks,
             });
         }
+        Vec::new()
     } else {
-        orphan_tasks = layout_vertical_tasks(
-            model.tasks.iter(),
+        layout_vertical_tasks(
+            task_index.orphan_tasks().iter().copied(),
             timeline_x,
             base_y,
             task_spacing,
@@ -991,8 +990,8 @@ fn layout_timeline_vertical(
             measurer,
             &mut all_nodes_pre_title,
             &mut all_lines_pre_title,
-        );
-    }
+        )
+    };
 
     let pre_title_bounds = bounds_from_nodes_and_lines(&all_nodes_pre_title, &all_lines_pre_title);
     let has_pre_title_content = pre_title_bounds.is_some();
@@ -1127,6 +1126,103 @@ mod tests {
             &measurer,
         )
         .expect("layout ok")
+    }
+
+    fn layout_timeline_model(model: &TimelineDiagramRenderModel) -> TimelineDiagramLayout {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        layout_timeline_diagram_typed_with_resolved_typography(
+            model,
+            &serde_json::json!({}),
+            None,
+            None,
+            &measurer,
+        )
+        .expect("layout ok")
+    }
+
+    fn timeline_task(
+        id: i64,
+        section: &str,
+        section_index: Option<usize>,
+        task: &str,
+    ) -> TimelineRenderTask {
+        TimelineRenderTask {
+            id,
+            section: section.to_string(),
+            section_index,
+            task_type: section.to_string(),
+            task: task.to_string(),
+            score: 0,
+            events: Vec::new(),
+        }
+    }
+
+    fn section_task_labels(layout: &TimelineDiagramLayout) -> Vec<Vec<&str>> {
+        layout
+            .sections
+            .iter()
+            .map(|section| {
+                section
+                    .tasks
+                    .iter()
+                    .map(|task| task.node.label.as_str())
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn duplicate_section_labels_keep_authored_task_occurrences() {
+        for source in [
+            concat!(
+                "timeline\n",
+                "section Repeated\n",
+                "First\n",
+                "section Repeated\n",
+                "Second\n",
+                "Third\n",
+            ),
+            concat!(
+                "timeline TD\n",
+                "section Repeated\n",
+                "First\n",
+                "section Repeated\n",
+                "Second\n",
+                "Third\n",
+            ),
+        ] {
+            let layout = layout_timeline(source);
+
+            assert_eq!(
+                section_task_labels(&layout),
+                vec![vec!["First"], vec!["Second", "Third"]]
+            );
+        }
+    }
+
+    #[test]
+    fn sectionless_orphan_tasks_keep_model_order() {
+        for direction in [TimelineDirection::LeftToRight, TimelineDirection::TopDown] {
+            let mut model = TimelineDiagramRenderModel::default();
+            model.direction = direction;
+            model.tasks = vec![
+                timeline_task(0, "", None, "First"),
+                timeline_task(1, "Legacy", None, "Second"),
+                timeline_task(2, "", None, "Third"),
+            ];
+
+            let layout = layout_timeline_model(&model);
+
+            assert_eq!(
+                layout
+                    .orphan_tasks
+                    .iter()
+                    .map(|task| task.node.label.as_str())
+                    .collect::<Vec<_>>(),
+                ["First", "Second", "Third"]
+            );
+        }
     }
 
     #[test]
