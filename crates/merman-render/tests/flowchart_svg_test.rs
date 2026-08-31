@@ -1395,7 +1395,7 @@ flowchart TB
         "expected numeric themeVariables.strokeWidth to drive Flowchart node stroke width CSS: {svg}"
     );
     assert!(
-        svg.contains(r#"#merman .edgePath .path{stroke:#112233;stroke-width:4px;}"#),
+        svg.contains(r#"#merman .edgePaths .path{stroke:#112233;stroke-width:4px;}"#),
         "expected numeric themeVariables.strokeWidth to drive Flowchart edge path stroke width CSS: {svg}"
     );
     assert!(

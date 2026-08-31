@@ -139,7 +139,7 @@ fn flowchart_css_for_id(
     checkpoint()?;
     let _ = write!(
         &mut out,
-        r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePath .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
+        r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePaths .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
         id, stroke, stroke, id, arrowhead_color, id, stroke, stroke_width, id, stroke
     );
     checkpoint()?;
