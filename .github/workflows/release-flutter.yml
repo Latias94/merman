@@ -301,7 +301,7 @@ jobs:
             --version "$VERSION"
 
       - name: Setup Dart with pub.dev OIDC credentials
-        uses: dart-lang/setup-dart@v1.8.0
+        uses: dart-lang/setup-dart@v1.8.1
 
       - name: Publish to pub.dev
         working-directory: target/flutter-publish
