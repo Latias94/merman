@@ -101,14 +101,24 @@ fn timeline_event_palette_theme(colors: &[&str]) -> DiagramTheme {
         .expect("compile Timeline event palette theme")
 }
 
-fn timeline_typography_theme(font_stack: FontStack) -> DiagramTheme {
+fn timeline_typography_theme_with_font_size(
+    font_stack: FontStack,
+    font_size_px: Option<f32>,
+) -> DiagramTheme {
+    let typography = ThemeTextStyle::default().with_font_stack(font_stack);
+    let typography = match font_size_px {
+        Some(font_size_px) => typography
+            .with_font_size_px(font_size_px)
+            .expect("valid Timeline font size"),
+        None => typography,
+    };
     DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_typography(
-            TypographySpec::default().with_family_style(
-                merman_render::DiagramFamilyId::TIMELINE,
-                ThemeTextStyle::default().with_font_stack(font_stack),
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default()
+                    .with_family_style(merman_render::DiagramFamilyId::TIMELINE, typography),
             ),
-        ))
+        )
         .expect("compile Timeline typography theme")
 }
 
@@ -389,6 +399,7 @@ fn timeline_event_palette_reaches_section_task_and_event_terminals() {
 struct RecordedTimelineMeasurement {
     text: String,
     font_family: Option<String>,
+    font_size_bits: u64,
 }
 
 #[derive(Default)]
@@ -413,17 +424,19 @@ impl HostTextMeasurer for RecordingTimelineHost {
             .push(RecordedTimelineMeasurement {
                 text: request.text.to_string(),
                 font_family: request.style.font_family.clone(),
+                font_size_bits: request.style.font_size.to_bits(),
             });
         Ok(None)
     }
 }
 
 #[test]
-fn timeline_typed_font_stack_reaches_layout_css_and_terminal_receipt() {
+fn timeline_typed_typography_reaches_layout_css_and_terminal_receipt() {
     let font_stack =
         FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");
     let expected_font = font_stack.as_css();
-    let theme = timeline_typography_theme(font_stack);
+    let theme = timeline_typography_theme_with_font_size(font_stack, Some(24.0));
+    let expected_font_size = 24.0_f64.to_bits();
     for (direction, profile_id, source) in [
         (
             "LR",
@@ -468,8 +481,9 @@ fn timeline_typed_font_stack_reaches_layout_css_and_terminal_receipt() {
             assert!(
                 matching.iter().all(|request| {
                     request.font_family.as_deref() == Some(expected_font.as_str())
+                        && request.font_size_bits == expected_font_size
                 }),
-                "{direction} Timeline layout must measure {label:?} with the typed font stack: {matching:#?}"
+                "{direction} Timeline layout must measure {label:?} with the typed typography: {matching:#?}"
             );
         }
 
@@ -490,6 +504,18 @@ fn timeline_typed_font_stack_reaches_layout_css_and_terminal_receipt() {
         );
         assert!(
             stylesheet.contains(&format!(
+                "#merman{{font-family:{expected_font};font-size:24px;"
+            )),
+            "typed {direction} Timeline FontSize must reach the scoped root CSS"
+        );
+        assert!(
+            stylesheet.contains(&format!(
+                "#merman svg{{font-family:{expected_font};font-size:24px;}}"
+            )),
+            "typed {direction} Timeline FontSize must reach nested SVG CSS"
+        );
+        assert!(
+            stylesheet.contains(&format!(
                 "#merman :root{{--mermaid-font-family:{expected_font};}}"
             )),
             "typed {direction} Timeline FontStack must reach the Mermaid root variable"
@@ -497,13 +523,164 @@ fn timeline_typed_font_stack_reaches_layout_css_and_terminal_receipt() {
 
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1, "{direction}");
-        assert_eq!(evidence.accounted_count(), 1, "{direction}");
-        assert_eq!(evidence.applied_count(), 1, "{direction}");
+        assert_eq!(evidence.required_count(), 2, "{direction}");
+        assert_eq!(evidence.accounted_count(), 2, "{direction}");
+        assert_eq!(evidence.applied_count(), 2, "{direction}");
         assert_eq!(evidence.not_applicable_count(), 0, "{direction}");
         assert_eq!(evidence.theme_residual_count(), 0, "{direction}");
         assert_eq!(evidence.compatibility_residual_count(), 0, "{direction}");
     }
+}
+
+#[test]
+fn timeline_typed_font_size_keeps_root_font_size_as_layout_owner() {
+    let font_stack =
+        FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");
+    let expected_font = font_stack.as_css();
+    let theme = timeline_typography_theme_with_font_size(font_stack, Some(24.0));
+
+    let render = |root_font_size: &str| {
+        let source = format!(
+            r##"%%{{init: {{"fontSize": "{root_font_size}"}}}}%%
+timeline TD
+    title Root font size ownership
+    section Plan
+        Task : Event
+"##
+        );
+        try_render_timeline_svg_with_theme(&source, &theme)
+            .expect("render Timeline root-size proof")
+    };
+
+    let default_root = render("16px");
+    let enlarged_root = render("40px");
+    let line_y1 = |svg: &str| {
+        roxmltree::Document::parse(svg)
+            .expect("valid Timeline root-size SVG")
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("stroke-width") == Some("4"))
+            .and_then(|node| node.attribute("y1"))
+            .and_then(|value| value.parse::<f64>().ok())
+            .expect("TopDown activity line y1")
+    };
+    assert_eq!(line_y1(&default_root) - line_y1(&enlarged_root), 48.0);
+    for (label, svg) in [("default", default_root), ("enlarged", enlarged_root)] {
+        let document = roxmltree::Document::parse(&svg).expect("valid Timeline stylesheet SVG");
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Timeline stylesheet");
+        assert!(
+            stylesheet.contains("font-size:24px;"),
+            "typed FontSize must remain 24px with {label} root fontSize"
+        );
+        assert!(
+            !stylesheet.contains(&format!(
+                "#merman{{font-family:{expected_font};font-size:40px;"
+            )),
+            "root fontSize must not overwrite typed Timeline FontSize with {label} root fontSize"
+        );
+        assert!(
+            !stylesheet.contains(&format!(
+                "#merman svg{{font-family:{expected_font};font-size:40px;}}"
+            )),
+            "nested SVG fontSize must not use the root layout owner with {label} root fontSize"
+        );
+    }
+}
+
+#[test]
+fn timeline_source_owned_theme_font_size_is_not_claimed_as_typed() {
+    let font_stack =
+        FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");
+    let theme = timeline_typography_theme_with_font_size(font_stack, Some(24.0));
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "secure": []
+    })));
+    let rendered = try_render_timeline_with_theme_and_engine(
+        r##"%%{init: {"themeVariables": {"fontSize": "30px"}}}%%
+timeline
+    section Plan
+        Task : Event
+"##,
+        &theme,
+        engine,
+    )
+    .expect("render source-owned Timeline font size");
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid source-owned Timeline SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Timeline stylesheet");
+    assert!(stylesheet.contains("font-size:30px;"));
+    assert!(!stylesheet.contains("font-size:24px;"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn timeline_title_only_does_not_prove_typed_base_typography() {
+    let font_stack =
+        FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");
+    let theme = timeline_typography_theme_with_font_size(font_stack, Some(24.0));
+    let rendered = try_render_timeline_with_theme(
+        "timeline\n    title Typography proof without base text\n",
+        &theme,
+    )
+    .expect("render title-only Timeline typography");
+
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid title-only Timeline SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Timeline stylesheet");
+    assert!(stylesheet.contains("font-size:24px;"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn timeline_typed_font_size_uses_canonical_f32_css_spelling() {
+    let font_stack =
+        FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");
+    let theme = timeline_typography_theme_with_font_size(font_stack, Some(14.4));
+    let rendered = try_render_timeline_with_theme(
+        "timeline\n    section Plan\n        Task : Event\n",
+        &theme,
+    )
+    .expect("render non-integer Timeline font size");
+
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Timeline SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Timeline stylesheet");
+    assert!(stylesheet.contains("font-size:14.4px;"));
+    assert!(!stylesheet.contains("14.399999618530273px"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 0);
 }
 
 #[test]

@@ -1510,7 +1510,7 @@ const BASE_CLAIMS: &[BaseClaim] = &[
     },
     BaseClaim {
         family: "timeline",
-        kind: SupportClaimKind::LegacySurface,
+        kind: SupportClaimKind::TypedSurface,
         properties: &["font-size"],
     },
     BaseClaim {

@@ -2947,7 +2947,7 @@ mod tests {
     }
 
     #[test]
-    fn timeline_font_stack_is_property_local_while_font_size_uses_legacy_bridge() {
+    fn timeline_font_stack_and_font_size_are_property_local() {
         const SOURCE: &str = "timeline\n    title Typography\n    section Plan\n    Task : Event\n";
 
         let font_stack = super::super::FontStack::new(["Timeline Typed", "sans-serif"])
@@ -2971,17 +2971,17 @@ mod tests {
         );
         let mixed_bridge = bridge(&mixed_spec).compile_for_family(DiagramFamilyId::TIMELINE);
         assert!(
-            mixed_bridge
+            !mixed_bridge
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.timeline.typography")
         );
 
         let baseline = parse(&DiagramThemeSpec::default(), SOURCE);
         let mixed = parse(&mixed_spec, SOURCE);
-        assert_eq!(fallback_contribution_count(&mixed), 1);
+        assert_eq!(fallback_contribution_count(&mixed), 0);
         assert_eq!(
             mixed.effective_config.get_str("themeVariables.fontSize"),
-            Some("24px")
+            Some("16px")
         );
         for path in ["fontFamily", "themeVariables.fontFamily"] {
             assert_eq!(

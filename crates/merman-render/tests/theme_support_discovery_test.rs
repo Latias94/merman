@@ -977,7 +977,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
             ThemeSupportBaseTypographyPropertyV2::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
-                "theme-support.legacy-compatibility-only",
+                "theme-support.family-owned-consumer-present",
                 "theme-support.document-surface-dependent",
             ][..],
         ),

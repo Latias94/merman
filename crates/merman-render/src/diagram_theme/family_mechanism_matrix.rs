@@ -1072,6 +1072,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::EVENT_MODELING
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::RADAR
+            | DiagramFamilyId::TIMELINE
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1085,7 +1086,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::QUADRANT_CHART
             | DiagramFamilyId::REQUIREMENT
-            | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::TREEMAP
             | DiagramFamilyId::XY_CHART
     ) {

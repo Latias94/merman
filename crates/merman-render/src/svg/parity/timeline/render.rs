@@ -8,10 +8,15 @@ fn timeline_css(
     effective_config: &serde_json::Value,
     theme: &TimelineTheme,
     resolved_font_family_css: &str,
+    resolved_font_size_css: &str,
 ) -> TimelineCss {
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
-    let parts =
-        info_css_parts_with_font_family(diagram_id, effective_config, resolved_font_family_css);
+    let parts = info_css_parts_with_resolved_typography(
+        diagram_id,
+        effective_config,
+        resolved_font_family_css,
+        resolved_font_size_css,
+    );
     let root_rule = parts.root_rule;
     let root_typography_emitted = !root_rule.is_empty();
     let mut out = parts.css_prefix;
@@ -134,6 +139,7 @@ fn timeline_css(
     TimelineCss {
         css: out,
         font_family_css: parts.font_family,
+        font_size_css: parts.font_size_css,
         base_typography_emitted: parts.base_typography_emitted,
         root_typography_emitted,
     }
@@ -142,6 +148,7 @@ fn timeline_css(
 struct TimelineCss {
     css: String,
     font_family_css: String,
+    font_size_css: String,
     base_typography_emitted: bool,
     root_typography_emitted: bool,
 }
@@ -340,6 +347,7 @@ impl<'a> TimelineTypographyEmissionState<'a> {
         if let Some(receipt) = self.receipt.as_mut() {
             receipt.record_css_emission(
                 &css.font_family_css,
+                &css.font_size_css,
                 css.base_typography_emitted,
                 css.root_typography_emitted,
             );
@@ -349,6 +357,12 @@ impl<'a> TimelineTypographyEmissionState<'a> {
     fn record_text_run(&mut self, text: &str) {
         if let Some(receipt) = self.receipt.as_mut() {
             receipt.record_text_run(text);
+        }
+    }
+
+    fn record_base_text_run(&mut self, text: &str) {
+        if let Some(receipt) = self.receipt.as_mut() {
+            receipt.record_base_text_run(text);
         }
     }
 
@@ -616,7 +630,7 @@ fn render_timeline_diagram_svg_inner(
                 text = escape_xml(line)
             );
             out.checkpoint()?;
-            typography_emission.record_text_run(line);
+            typography_emission.record_base_text_run(line);
         }
         out.push_str("</text></g></g>");
         out.checkpoint()?;
@@ -831,6 +845,7 @@ fn render_timeline_diagram_svg_inner(
         effective_config,
         &theme,
         typography_theme.font_family_css(),
+        typography_theme.font_size_css(),
     );
     options.checkpoint_emit()?;
     let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);

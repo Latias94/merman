@@ -519,10 +519,11 @@ fn prepare_timeline_family(
         execution.resolved_theme(),
         &meta.effective_config,
     );
-    let layout = crate::timeline::layout_timeline_diagram_typed_with_font_family(
+    let layout = crate::timeline::layout_timeline_diagram_typed_with_resolved_typography(
         &model,
         meta.effective_config.as_value(),
         Some(typography_theme.font_family_css()),
+        Some(typography_theme.font_size_px()),
         execution.text_measurer(),
     )?;
     let event_theme = crate::timeline::TimelineEventTheme::resolve(

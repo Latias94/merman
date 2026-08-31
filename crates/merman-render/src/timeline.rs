@@ -352,27 +352,28 @@ fn expand_bounds_for_node_text(
     }
 }
 
-pub(crate) fn layout_timeline_diagram_typed(
-    model: &TimelineDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<TimelineDiagramLayout> {
-    layout_timeline_diagram_typed_with_font_family(model, effective_config, None, measurer)
-}
-
-pub(crate) fn layout_timeline_diagram_typed_with_font_family(
+pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
     model: &TimelineDiagramRenderModel,
     effective_config: &serde_json::Value,
     resolved_font_family_css: Option<&str>,
+    resolved_font_size_px: Option<f64>,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
     match model.direction {
-        TimelineDirection::LeftToRight => {
-            layout_timeline_horizontal(model, effective_config, resolved_font_family_css, measurer)
-        }
-        TimelineDirection::TopDown => {
-            layout_timeline_vertical(model, effective_config, resolved_font_family_css, measurer)
-        }
+        TimelineDirection::LeftToRight => layout_timeline_horizontal(
+            model,
+            effective_config,
+            resolved_font_family_css,
+            resolved_font_size_px,
+            measurer,
+        ),
+        TimelineDirection::TopDown => layout_timeline_vertical(
+            model,
+            effective_config,
+            resolved_font_family_css,
+            resolved_font_size_px,
+            measurer,
+        ),
     }
 }
 
@@ -380,12 +381,13 @@ fn layout_timeline_horizontal(
     model: &TimelineDiagramRenderModel,
     effective_config: &serde_json::Value,
     resolved_font_family_css: Option<&str>,
+    resolved_font_size_px: Option<f64>,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
     let cfg = TimelineConfigView::new(effective_config)
-        .layout_settings_with_font_family(resolved_font_family_css);
+        .layout_settings_with_resolved_typography(resolved_font_family_css, resolved_font_size_px);
     let text_style = cfg.text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
@@ -842,12 +844,13 @@ fn layout_timeline_vertical(
     model: &TimelineDiagramRenderModel,
     effective_config: &serde_json::Value,
     resolved_font_family_css: Option<&str>,
+    resolved_font_size_px: Option<f64>,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
     let cfg = TimelineConfigView::new(effective_config)
-        .layout_settings_with_font_family(resolved_font_family_css);
+        .layout_settings_with_resolved_typography(resolved_font_family_css, resolved_font_size_px);
     let text_style = cfg.text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
@@ -1049,9 +1052,9 @@ fn layout_timeline_vertical(
     let activity_line = TimelineLineLayout {
         kind: "activity".to_string(),
         x1: timeline_x,
-        y1: base_y - render_font_size * 2.0,
+        y1: base_y - layout_font_size * 2.0,
         x2: timeline_x,
-        y2: content_max_y + render_font_size * 0.5 + 20.0,
+        y2: content_max_y + layout_font_size * 0.5 + 20.0,
     };
     let mut all_lines_full = all_lines_pre_title;
     all_lines_full.push(activity_line.clone());
@@ -1116,9 +1119,11 @@ mod tests {
         };
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        layout_timeline_diagram_typed(
+        layout_timeline_diagram_typed_with_resolved_typography(
             model,
             parsed.metadata().effective_config.as_value(),
+            None,
+            None,
             &measurer,
         )
         .expect("layout ok")

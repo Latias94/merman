@@ -60,13 +60,17 @@ impl<'a> TimelineConfigView<'a> {
         }
     }
 
-    pub(crate) fn layout_settings_with_font_family(
+    pub(crate) fn layout_settings_with_resolved_typography(
         &self,
         resolved_font_family_css: Option<&str>,
+        resolved_font_size_px: Option<f64>,
     ) -> TimelineLayoutSettings {
         let mut settings = self.layout_settings();
         if let Some(font_family_css) = resolved_font_family_css {
             settings.text_style.font_family = Some(font_family_css.to_owned());
+        }
+        if let Some(font_size_px) = resolved_font_size_px {
+            settings.text_style.font_size = font_size_px.max(1.0);
         }
         settings
     }
