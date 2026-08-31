@@ -19,6 +19,10 @@ impl<'a> PresentationTheme<'a> {
                 .raw
                 .optional_nested_color("xyChart", "titleColor")
                 .unwrap_or_else(|| primary_text.clone()),
+            legend_text_color: self
+                .raw
+                .optional_nested_color("xyChart", "legendTextColor")
+                .unwrap_or_else(|| primary_text.clone()),
             x_axis_title_color: self
                 .raw
                 .optional_nested_color("xyChart", "xAxisTitleColor")
