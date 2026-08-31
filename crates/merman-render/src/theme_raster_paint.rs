@@ -53,8 +53,37 @@ impl ThemeRasterPaintTerminal {
         y2: f64,
         stroke_width: f64,
     ) -> Option<Self> {
+        Self::sequence_lifeline_with_effective_width(
+            terminal_id,
+            binding,
+            x1,
+            y1,
+            x2,
+            y2,
+            stroke_width,
+            stroke_width,
+        )
+    }
+
+    pub(crate) fn sequence_lifeline_with_effective_width(
+        terminal_id: impl Into<String>,
+        binding: ThemeRasterPaintBinding,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        authored_stroke_width: f64,
+        effective_stroke_width: f64,
+    ) -> Option<Self> {
         let terminal_id = terminal_id.into();
-        let geometry = ThemeRasterPaintLineGeometry::new(x1, y1, x2, y2, stroke_width)?;
+        let geometry = ThemeRasterPaintLineGeometry::new(
+            x1,
+            y1,
+            x2,
+            y2,
+            authored_stroke_width,
+            effective_stroke_width,
+        )?;
         (!terminal_id.is_empty()).then_some(Self {
             terminal_id,
             binding,
@@ -92,25 +121,36 @@ pub struct ThemeRasterPaintLineGeometry {
     y1_bits: u64,
     x2_bits: u64,
     y2_bits: u64,
-    stroke_width_bits: u64,
+    authored_stroke_width_bits: u64,
+    effective_stroke_width_bits: u64,
 }
 
 impl ThemeRasterPaintLineGeometry {
-    fn new(x1: f64, y1: f64, x2: f64, y2: f64, stroke_width: f64) -> Option<Self> {
+    fn new(
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        authored_stroke_width: f64,
+        effective_stroke_width: f64,
+    ) -> Option<Self> {
         (x1.is_finite()
             && y1.is_finite()
             && x2.is_finite()
             && y2.is_finite()
-            && stroke_width.is_finite()
+            && authored_stroke_width.is_finite()
+            && effective_stroke_width.is_finite()
             && x1 == x2
             && y2 > y1
-            && stroke_width > 0.0)
+            && authored_stroke_width > 0.0
+            && effective_stroke_width > 0.0)
             .then_some(Self {
                 x1_bits: x1.to_bits(),
                 y1_bits: y1.to_bits(),
                 x2_bits: x2.to_bits(),
                 y2_bits: y2.to_bits(),
-                stroke_width_bits: stroke_width.to_bits(),
+                authored_stroke_width_bits: authored_stroke_width.to_bits(),
+                effective_stroke_width_bits: effective_stroke_width.to_bits(),
             })
     }
 
@@ -130,8 +170,12 @@ impl ThemeRasterPaintLineGeometry {
         f64::from_bits(self.y2_bits)
     }
 
-    pub const fn stroke_width(self) -> f64 {
-        f64::from_bits(self.stroke_width_bits)
+    pub const fn authored_stroke_width(self) -> f64 {
+        f64::from_bits(self.authored_stroke_width_bits)
+    }
+
+    pub const fn effective_stroke_width(self) -> f64 {
+        f64::from_bits(self.effective_stroke_width_bits)
     }
 }
 
@@ -267,7 +311,7 @@ fn binding_receipt_digest(
     native_artifact_digest: [u8; 32],
 ) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    update_len_prefixed(&mut hasher, b"merman.theme-raster-paint-binding-receipt.v2");
+    update_len_prefixed(&mut hasher, b"merman.theme-raster-paint-binding-receipt.v3");
     update_len_prefixed(&mut hasher, family_id.as_str().as_bytes());
     update_len_prefixed(&mut hasher, target.id().as_bytes());
     update_len_prefixed(&mut hasher, selector.id().as_bytes());
@@ -282,7 +326,8 @@ fn binding_receipt_digest(
                 hasher.update(geometry.y1_bits.to_be_bytes());
                 hasher.update(geometry.x2_bits.to_be_bytes());
                 hasher.update(geometry.y2_bits.to_be_bytes());
-                hasher.update(geometry.stroke_width_bits.to_be_bytes());
+                hasher.update(geometry.authored_stroke_width_bits.to_be_bytes());
+                hasher.update(geometry.effective_stroke_width_bits.to_be_bytes());
             }
         }
     }

@@ -545,7 +545,8 @@ impl RenderedDocument {
                             merman_export::RasterPaintSemanticBinding::FillAndStrokeFromStroke
                         }
                     };
-                    let (x1, y1, x2, y2, stroke_width) = match terminal.semantic() {
+                    let (x1, y1, x2, y2, authored_stroke_width, effective_stroke_width) =
+                        match terminal.semantic() {
                         merman_render::__private::ThemeRasterPaintTerminalSemantic::SequenceLifeline {
                             geometry,
                         } => (
@@ -553,17 +554,19 @@ impl RenderedDocument {
                             geometry.y1(),
                             geometry.x2(),
                             geometry.y2(),
-                            geometry.stroke_width(),
+                            geometry.authored_stroke_width(),
+                            geometry.effective_stroke_width(),
                         ),
                     };
-                    merman_export::RasterPaintTerminalBinding::line_lifeline(
+                    merman_export::RasterPaintTerminalBinding::line_lifeline_with_effective_width(
                         terminal.terminal_id(),
                         binding,
                         x1,
                         y1,
                         x2,
                         y2,
-                        stroke_width,
+                        authored_stroke_width,
+                        effective_stroke_width,
                     )
                     .ok_or_else(|| {
                         map_export_error(merman_export::ExportError::RasterPaintCutover(

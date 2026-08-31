@@ -4,7 +4,8 @@ use super::activation::build_sequence_activation_plan;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
 use super::actor_popup::{SequenceActorPopupOptions, render_sequence_actor_popup_menus};
 use super::actor_shapes::{
-    ActorFillCoverage, ActorStrokeCoverage, actor_fill_coverage, actor_stroke_coverage,
+    ActorFillCoverage, ActorStrokeCoverage, LIFELINE_STROKE_WIDTH_PX, actor_fill_coverage,
+    actor_stroke_coverage,
 };
 use super::actors::{
     SequenceActorRenderContext, render_sequence_bottom_actors,
@@ -255,6 +256,10 @@ fn render_sequence_diagram_svg_inner(
         actor_text_style: &settings.actor_text_style,
         actor_typography: prepared.typography().actor(),
         typography_receipt: &typography_receipt,
+        lifeline_effective_stroke_width: lifeline_theme
+            .typed_stroke_width
+            .map(f64::from)
+            .unwrap_or(LIFELINE_STROKE_WIDTH_PX),
         checkpoints,
     };
 

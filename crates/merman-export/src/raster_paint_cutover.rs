@@ -59,9 +59,9 @@ impl RasterPaintTerminalBinding {
     /// Binds one renderer-owned Sequence lifeline to its finalized SVG `line` terminal.
     ///
     /// Geometry is normalized with the same small-number and near-integer rules used by the SVG
-    /// writer. The exporter later reparses the finalized SVG and requires an exact normalized
-    /// match for `x1`, `y1`, `x2`, `y2`, and `stroke-width`, together with
-    /// `data-et="life-line"` and the absence of transforms.
+    /// writer. The exporter later reparses the finalized SVG and checks authored coordinates and
+    /// final cascade-resolved stroke width, together with `data-et="life-line"` and the absence
+    /// of terminal transforms.
     pub fn line_lifeline(
         terminal_id: impl Into<String>,
         binding: RasterPaintSemanticBinding,
@@ -71,8 +71,37 @@ impl RasterPaintTerminalBinding {
         y2: f64,
         stroke_width: f64,
     ) -> Option<Self> {
+        Self::line_lifeline_with_effective_width(
+            terminal_id,
+            binding,
+            x1,
+            y1,
+            x2,
+            y2,
+            stroke_width,
+            stroke_width,
+        )
+    }
+
+    pub fn line_lifeline_with_effective_width(
+        terminal_id: impl Into<String>,
+        binding: RasterPaintSemanticBinding,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        authored_stroke_width: f64,
+        effective_stroke_width: f64,
+    ) -> Option<Self> {
         let terminal_id = terminal_id.into();
-        let lifeline_geometry = RasterPaintLifelineGeometry::new(x1, y1, x2, y2, stroke_width)?;
+        let lifeline_geometry = RasterPaintLifelineGeometry::new(
+            x1,
+            y1,
+            x2,
+            y2,
+            authored_stroke_width,
+            effective_stroke_width,
+        )?;
         (!terminal_id.is_empty()).then_some(Self {
             terminal_id,
             binding,
@@ -103,17 +132,26 @@ struct RasterPaintLifelineGeometry {
     y1_bits: u64,
     x2_bits: u64,
     y2_bits: u64,
-    stroke_width_bits: u64,
+    authored_stroke_width_bits: u64,
+    effective_stroke_width_bits: u64,
 }
 
 impl RasterPaintLifelineGeometry {
-    fn new(x1: f64, y1: f64, x2: f64, y2: f64, stroke_width: f64) -> Option<Self> {
+    fn new(
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        authored_stroke_width: f64,
+        effective_stroke_width: f64,
+    ) -> Option<Self> {
         let x1 = normalize_terminal_coordinate(x1)?;
         let y1 = normalize_terminal_coordinate(y1)?;
         let x2 = normalize_terminal_coordinate(x2)?;
         let y2 = normalize_terminal_coordinate(y2)?;
-        let stroke_width = normalize_terminal_coordinate(stroke_width)?;
-        if x1 != x2 || y2 <= y1 || stroke_width <= 0.0 {
+        let authored_stroke_width = normalize_terminal_coordinate(authored_stroke_width)?;
+        let effective_stroke_width = normalize_terminal_coordinate(effective_stroke_width)?;
+        if x1 != x2 || y2 <= y1 || authored_stroke_width <= 0.0 || effective_stroke_width <= 0.0 {
             return None;
         }
         Some(Self {
@@ -121,7 +159,8 @@ impl RasterPaintLifelineGeometry {
             y1_bits: y1.to_bits(),
             x2_bits: x2.to_bits(),
             y2_bits: y2.to_bits(),
-            stroke_width_bits: stroke_width.to_bits(),
+            authored_stroke_width_bits: authored_stroke_width.to_bits(),
+            effective_stroke_width_bits: effective_stroke_width.to_bits(),
         })
     }
 
@@ -130,7 +169,32 @@ impl RasterPaintLifelineGeometry {
         hasher.update(self.y1_bits.to_be_bytes());
         hasher.update(self.x2_bits.to_be_bytes());
         hasher.update(self.y2_bits.to_be_bytes());
-        hasher.update(self.stroke_width_bits.to_be_bytes());
+        hasher.update(self.authored_stroke_width_bits.to_be_bytes());
+        hasher.update(self.effective_stroke_width_bits.to_be_bytes());
+    }
+
+    fn x1(self) -> f64 {
+        f64::from_bits(self.x1_bits)
+    }
+
+    fn y1(self) -> f64 {
+        f64::from_bits(self.y1_bits)
+    }
+
+    fn x2(self) -> f64 {
+        f64::from_bits(self.x2_bits)
+    }
+
+    fn y2(self) -> f64 {
+        f64::from_bits(self.y2_bits)
+    }
+
+    fn authored_stroke_width(self) -> f64 {
+        f64::from_bits(self.authored_stroke_width_bits)
+    }
+
+    fn effective_stroke_width(self) -> f64 {
+        f64::from_bits(self.effective_stroke_width_bits)
     }
 }
 
@@ -750,11 +814,17 @@ fn validate_lifeline_terminal(
         parse_terminal_length(attributes, "x2", false)?,
         parse_terminal_length(attributes, "y2", false)?,
         parse_terminal_length(attributes, "stroke-width", true)?,
+        expected_geometry.effective_stroke_width(),
     )
     .ok_or(ExportError::RasterPaintCutover(
         "renderer lifeline terminal has invalid geometry",
     ))?;
-    if observed_geometry != expected_geometry {
+    if observed_geometry.authored_stroke_width() != expected_geometry.authored_stroke_width()
+        || observed_geometry.x1() != expected_geometry.x1()
+        || observed_geometry.y1() != expected_geometry.y1()
+        || observed_geometry.x2() != expected_geometry.x2()
+        || observed_geometry.y2() != expected_geometry.y2()
+    {
         return Err(ExportError::RasterPaintCutover(
             "renderer lifeline terminal geometry differs from its sealed writer fact",
         ));
@@ -1287,6 +1357,7 @@ struct TerminalBindingState {
 struct ResolvedTerminalBinding {
     terminal_id: String,
     binding: RasterPaintSemanticBinding,
+    lifeline_geometry: RasterPaintLifelineGeometry,
 }
 
 struct TerminalBindingResolver {
@@ -1335,6 +1406,7 @@ impl TerminalBindingResolver {
         Ok(Some(ResolvedTerminalBinding {
             terminal_id: id.to_owned(),
             binding: state.terminal.binding,
+            lifeline_geometry: state.terminal.lifeline_geometry,
         }))
     }
 
@@ -1378,7 +1450,7 @@ fn collect_group_paths_with_transform(
     paths: &mut Vec<PathObservation>,
     extra_transform: Option<tiny_skia::Transform>,
     inherited_binding: RasterPaintSemanticBinding,
-    inherited_terminal_id: Option<String>,
+    inherited_terminal: Option<ResolvedTerminalBinding>,
     inherited_selection: bool,
     terminal_resolver: &mut TerminalBindingResolver,
     effect_hasher: &mut Sha256,
@@ -1401,10 +1473,7 @@ fn collect_group_paths_with_transform(
         .map(|terminal| terminal.binding)
         .or(marker_binding)
         .unwrap_or(inherited_binding);
-    let group_terminal_id = explicit_terminal
-        .as_ref()
-        .map(|terminal| terminal.terminal_id.clone())
-        .or(inherited_terminal_id);
+    let group_terminal = explicit_terminal.clone().or(inherited_terminal);
     let group_selected = inherited_selection || explicit_terminal.is_some();
     for node in group.children() {
         match node {
@@ -1413,7 +1482,7 @@ fn collect_group_paths_with_transform(
                 paths,
                 extra_transform,
                 group_binding,
-                group_terminal_id.clone(),
+                group_terminal.clone(),
                 group_selected,
                 terminal_resolver,
                 effect_hasher,
@@ -1436,16 +1505,16 @@ fn collect_group_paths_with_transform(
                     .map(|terminal| terminal.binding)
                     .or(marker_binding)
                     .unwrap_or(group_binding);
-                let path_terminal_id = explicit_terminal
-                    .as_ref()
-                    .map(|terminal| terminal.terminal_id.clone())
-                    .or_else(|| group_terminal_id.clone());
+                let path_terminal = explicit_terminal.clone().or(group_terminal.clone());
                 paths.push(observe_path_with_binding(
                     path,
                     extra_transform,
                     path_binding,
-                    path_terminal_id,
+                    path_terminal
+                        .as_ref()
+                        .map(|terminal| terminal.terminal_id.clone()),
                     group_selected || explicit_terminal.is_some(),
+                    path_terminal.map(|terminal| terminal.lifeline_geometry),
                 )?);
             }
             // `usvg` keeps the glyph paths in a text node's flattened group in local
@@ -1456,7 +1525,7 @@ fn collect_group_paths_with_transform(
                 paths,
                 Some(text.abs_transform()),
                 group_binding,
-                group_terminal_id.clone(),
+                group_terminal.clone(),
                 group_selected,
                 terminal_resolver,
                 effect_hasher,
@@ -1563,6 +1632,7 @@ fn observe_path(
         RasterPaintSemanticBinding::Native,
         None,
         true,
+        None,
     )
 }
 
@@ -1572,7 +1642,11 @@ fn observe_path_with_binding(
     semantic_paint_binding: RasterPaintSemanticBinding,
     terminal_id: Option<String>,
     selected_by_renderer: bool,
+    expected_lifeline_geometry: Option<RasterPaintLifelineGeometry>,
 ) -> Result<PathObservation> {
+    if let Some(expected_geometry) = expected_lifeline_geometry {
+        validate_resolved_lifeline_path(path, extra_transform, expected_geometry)?;
+    }
     let transform = path.abs_transform();
     let fill_bbox = map_rect(path.abs_bounding_box(), extra_transform)?;
     let stroke_bbox = map_rect(path.abs_stroke_bounding_box(), extra_transform)?;
@@ -1632,6 +1706,72 @@ fn observe_path_with_binding(
         terminal_id,
         selected_by_renderer,
     })
+}
+
+fn validate_resolved_lifeline_path(
+    path: &usvg::Path,
+    extra_transform: Option<tiny_skia::Transform>,
+    expected_geometry: RasterPaintLifelineGeometry,
+) -> Result<()> {
+    if extra_transform.is_some() {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline path has an unexpected text transform",
+        ));
+    }
+    let stroke = path.stroke().ok_or(ExportError::RasterPaintCutover(
+        "renderer lifeline path has no resolved stroke",
+    ))?;
+    let observed_width = f64::from(stroke.width().get());
+    if !approximately_equal(observed_width, expected_geometry.effective_stroke_width()) {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline path has a different cascade-resolved stroke width",
+        ));
+    }
+
+    let mut segments = path.data().segments();
+    let Some(tiny_skia::PathSegment::MoveTo(mut start)) = segments.next() else {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline path has no move-to segment",
+        ));
+    };
+    let Some(tiny_skia::PathSegment::LineTo(mut end)) = segments.next() else {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline path is not a single line",
+        ));
+    };
+    if segments.next().is_some() {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline path contains extra geometry",
+        ));
+    }
+
+    let transform = path.abs_transform();
+    transform.map_point(&mut start);
+    transform.map_point(&mut end);
+    let expected = [
+        (expected_geometry.x1(), expected_geometry.y1()),
+        (expected_geometry.x2(), expected_geometry.y2()),
+    ];
+    let observed = [
+        (f64::from(start.x), f64::from(start.y)),
+        (f64::from(end.x), f64::from(end.y)),
+    ];
+    if observed.into_iter().zip(expected).any(
+        |((observed_x, observed_y), (expected_x, expected_y))| {
+            !approximately_equal(observed_x, expected_x)
+                || !approximately_equal(observed_y, expected_y)
+        },
+    ) {
+        return Err(ExportError::RasterPaintCutover(
+            "renderer lifeline path endpoints differ from its sealed writer fact",
+        ));
+    }
+    Ok(())
+}
+
+fn approximately_equal(left: f64, right: f64) -> bool {
+    let scale = left.abs().max(right.abs()).max(1.0);
+    (left - right).abs() <= 1e-4 * scale
 }
 
 fn semantic_paint_binding_from_id(id: &str) -> Option<RasterPaintSemanticBinding> {
@@ -2188,6 +2328,25 @@ mod tests {
         .expect("valid lifeline binding")
     }
 
+    fn lifeline_binding_with_widths(
+        id: &str,
+        x: f64,
+        authored_stroke_width: f64,
+        effective_stroke_width: f64,
+    ) -> RasterPaintTerminalBinding {
+        RasterPaintTerminalBinding::line_lifeline_with_effective_width(
+            id,
+            RasterPaintSemanticBinding::FillAndStrokeFromStroke,
+            x,
+            2.0,
+            x,
+            18.0,
+            authored_stroke_width,
+            effective_stroke_width,
+        )
+        .expect("valid lifeline binding")
+    }
+
     #[test]
     fn renderer_sidecar_constructor_rejects_non_lifeline_geometry() {
         let binding = |x1, y1, x2, y2, stroke_width| {
@@ -2326,6 +2485,37 @@ mod tests {
             let (_, _, receipt) = pair.into_parts();
             assert!(receipt.proves_semantics());
         }
+    }
+
+    #[test]
+    fn renderer_sidecar_binds_the_cascade_resolved_lifeline_width() {
+        let solid = r##"<svg id="sequence" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><style>#sequence .actor-line{stroke-width:2px;}</style><line id="actor0" class="actor-line" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="0.5"/></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let bindings = [lifeline_binding_with_widths("actor0", 10.0, 0.5, 2.0)];
+
+        for facet in [
+            RasterPaintCutoverFacet::Fill,
+            RasterPaintCutoverFacet::Stroke,
+        ] {
+            let pair = encode_pair_with_bindings(solid, &transparent, facet, "#dc2626", &bindings)
+                .expect("stylesheet width should be validated through the resolved path");
+            assert!(pair.into_parts().2.proves_semantics());
+        }
+    }
+
+    #[test]
+    fn renderer_sidecar_rejects_a_mismatched_cascade_resolved_lifeline_width() {
+        let solid = r##"<svg id="sequence" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><style>#sequence .actor-line{stroke-width:2px;}</style><line id="actor0" class="actor-line" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="0.5"/></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let bindings = [lifeline_binding_with_widths("actor0", 10.0, 0.5, 3.0)];
+
+        assert_cutover_error(encode_pair_with_bindings(
+            solid,
+            &transparent,
+            RasterPaintCutoverFacet::Stroke,
+            "#dc2626",
+            &bindings,
+        ));
     }
 
     #[test]

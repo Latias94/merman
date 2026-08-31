@@ -148,21 +148,51 @@ impl SequenceLifelineThemeReceipt {
         y2: f64,
         stroke_width: f64,
     ) {
+        self.record_line_emission_with_effective_width(
+            actor_index,
+            x1,
+            y1,
+            x2,
+            y2,
+            stroke_width,
+            stroke_width,
+        );
+    }
+
+    pub(crate) fn record_line_emission_with_effective_width(
+        &mut self,
+        actor_index: usize,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        authored_stroke_width: f64,
+        effective_stroke_width: f64,
+    ) {
         self.line.record_line_emission();
         #[cfg(not(feature = "internal-theme-acceptance"))]
-        let _ = (actor_index, x1, y1, x2, y2, stroke_width);
+        let _ = (
+            actor_index,
+            x1,
+            y1,
+            x2,
+            y2,
+            authored_stroke_width,
+            effective_stroke_width,
+        );
         #[cfg(feature = "internal-theme-acceptance")]
         {
             let terminal_id = format!("actor{actor_index}");
             let Some(terminal) =
-                crate::theme_raster_paint::ThemeRasterPaintTerminal::sequence_lifeline(
+                crate::theme_raster_paint::ThemeRasterPaintTerminal::sequence_lifeline_with_effective_width(
                     terminal_id.clone(),
                     crate::theme_raster_paint::ThemeRasterPaintBinding::FillAndStrokeFromStroke,
                     x1,
                     y1,
                     x2,
                     y2,
-                    stroke_width,
+                    authored_stroke_width,
+                    effective_stroke_width,
                 )
             else {
                 self.raster_terminals_invalid = true;
