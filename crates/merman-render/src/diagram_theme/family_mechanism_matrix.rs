@@ -1072,6 +1072,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::EVENT_MODELING
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::RADAR
+            | DiagramFamilyId::ER
             | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::REQUIREMENT
     ) {
@@ -1082,7 +1083,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
         DiagramFamilyId::CLASS
             | DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::C4
-            | DiagramFamilyId::ER
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::QUADRANT_CHART
@@ -5628,6 +5628,34 @@ mod tests {
             .with_font_size_px(18.0)
             .expect("valid Requirement font size");
         let routes = compile_base_typography_routes(DiagramFamilyId::REQUIREMENT, &typography);
+
+        assert_eq!(routes.len(), 2);
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(
+            routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        );
+    }
+
+    #[test]
+    fn er_directly_owns_base_font_stack_and_size() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("monospace").expect("valid ER base font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid ER font size");
+        let routes = compile_base_typography_routes(DiagramFamilyId::ER, &typography);
 
         assert_eq!(routes.len(), 2);
         assert!(routes.iter().any(|route| {

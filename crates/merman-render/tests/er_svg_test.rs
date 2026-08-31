@@ -1,3 +1,6 @@
+mod common;
+
+use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -6,16 +9,22 @@ use merman_render::diagram_theme::{
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
     ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec, materialize_theme,
 };
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 use merman_theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
 use regex::Regex;
 use serde_json::json;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -108,6 +117,21 @@ fn er_visible_text_theme() -> DiagramTheme {
         .expect("compile ER visible text theme")
 }
 
+fn er_font_size_theme(font_size_px: f32) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    merman_render::DiagramFamilyId::ER,
+                    ThemeTextStyle::default()
+                        .with_font_size_px(font_size_px)
+                        .expect("valid ER typed font size"),
+                ),
+            ),
+        )
+        .expect("compile ER FontSize theme")
+}
+
 fn er_table_row_theme() -> DiagramTheme {
     let odd_row = ThemeRule::new(
         ThemeTarget::Table,
@@ -189,11 +213,27 @@ fn try_prepare_er_family_with_theme_and_engine_requirement(
     engine: Engine,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::FamilyRenderArtifact> {
+    try_prepare_er_family_with_theme_and_engine_requirement_and_environment(
+        text,
+        theme,
+        engine,
+        requirement,
+        RenderEnvironment::deterministic(),
+    )
+}
+
+fn try_prepare_er_family_with_theme_and_engine_requirement_and_environment(
+    text: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    requirement: ThemePortabilityRequirement,
+    environment: RenderEnvironment,
+) -> merman_render::Result<family::FamilyRenderArtifact> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse themed ER diagram")
         .expect("detect themed ER diagram");
-    let session = RenderEnvironment::deterministic()
+    let session = environment
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
         .expect("begin ER session");
@@ -281,6 +321,197 @@ fn root_view_box(svg: &str) -> [f64; 4] {
         .map(|value| value.parse::<f64>().expect("viewBox number"))
         .collect::<Vec<_>>();
     values.try_into().expect("four viewBox numbers")
+}
+
+#[derive(Debug)]
+struct ErTypedFontSizeProbeMeasurer {
+    typed_size_px: f64,
+    typed_size_calls: Arc<AtomicUsize>,
+    entity_size_calls: Arc<AtomicUsize>,
+    attribute_size_calls: Arc<AtomicUsize>,
+    relationship_text_size_calls: Arc<AtomicUsize>,
+    relationship_size_calls: Arc<AtomicUsize>,
+    root_size_calls: Arc<AtomicUsize>,
+    unexpected_size_calls: Arc<AtomicUsize>,
+}
+
+impl TextMeasurer for ErTypedFontSizeProbeMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        let uses_typed_size = (style.font_size - self.typed_size_px).abs() < f64::EPSILON;
+        let uses_relationship_size = (style.font_size - 14.0).abs() < f64::EPSILON;
+        if uses_typed_size {
+            self.typed_size_calls.fetch_add(1, Ordering::Relaxed);
+        } else if uses_relationship_size {
+            self.relationship_size_calls.fetch_add(1, Ordering::Relaxed);
+        } else if (style.font_size - 10.0).abs() < f64::EPSILON {
+            self.root_size_calls.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.unexpected_size_calls.fetch_add(1, Ordering::Relaxed);
+        }
+        match text {
+            "CUSTOMER" | "ORDER" if uses_typed_size => {
+                self.entity_size_calls.fetch_add(1, Ordering::Relaxed);
+            }
+            "string" | "id" | "PK" if uses_typed_size => {
+                self.attribute_size_calls.fetch_add(1, Ordering::Relaxed);
+            }
+            "owns" if uses_relationship_size => {
+                self.relationship_text_size_calls
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            "CUSTOMER" | "ORDER" | "string" | "id" | "PK" | "owns" => {
+                self.unexpected_size_calls.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+        TextMetrics {
+            width: (text.chars().count() as f64 * style.font_size * 0.55).max(1.0),
+            height: style.font_size,
+            line_count: 1,
+        }
+    }
+}
+
+fn render_er_typed_font_size_probe(
+    engine: Engine,
+    profile_id: &'static str,
+) -> family::RenderedFamilySvg {
+    render_er_typed_font_size_probe_with_size(engine, profile_id, 24.0)
+}
+
+fn render_er_typed_font_size_probe_with_size(
+    engine: Engine,
+    profile_id: &'static str,
+    typed_size_px: f32,
+) -> family::RenderedFamilySvg {
+    let typed_size_calls = Arc::new(AtomicUsize::new(0));
+    let entity_size_calls = Arc::new(AtomicUsize::new(0));
+    let attribute_size_calls = Arc::new(AtomicUsize::new(0));
+    let relationship_text_size_calls = Arc::new(AtomicUsize::new(0));
+    let relationship_size_calls = Arc::new(AtomicUsize::new(0));
+    let root_size_calls = Arc::new(AtomicUsize::new(0));
+    let unexpected_size_calls = Arc::new(AtomicUsize::new(0));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new(profile_id).expect("valid ER probe profile id"),
+        "test",
+    )
+    .expect("valid ER probe profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(ErTypedFontSizeProbeMeasurer {
+                typed_size_px: f64::from(typed_size_px),
+                typed_size_calls: Arc::clone(&typed_size_calls),
+                entity_size_calls: Arc::clone(&entity_size_calls),
+                attribute_size_calls: Arc::clone(&attribute_size_calls),
+                relationship_text_size_calls: Arc::clone(&relationship_text_size_calls),
+                relationship_size_calls: Arc::clone(&relationship_size_calls),
+                root_size_calls: Arc::clone(&root_size_calls),
+                unexpected_size_calls: Arc::clone(&unexpected_size_calls),
+            }),
+        )),
+    );
+    let theme = er_font_size_theme(typed_size_px);
+    let source = r#"erDiagram
+  CUSTOMER {
+    string id PK
+  }
+  CUSTOMER ||--o{ ORDER : owns
+"#;
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement_and_environment(
+        source,
+        &theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+        environment,
+    )
+    .expect("prepare ER typed FontSize probe");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render ER typed FontSize probe");
+
+    assert!(
+        typed_size_calls.load(Ordering::Relaxed) > 0,
+        "entity and attribute measurement must consume the typed size"
+    );
+    assert!(
+        entity_size_calls.load(Ordering::Relaxed) > 0,
+        "entity-name measurement must consume the typed size"
+    );
+    assert!(
+        attribute_size_calls.load(Ordering::Relaxed) > 0,
+        "attribute-cell measurement must consume the typed size"
+    );
+    assert!(
+        relationship_size_calls.load(Ordering::Relaxed) > 0,
+        "relationship-label measurement must retain Mermaid's role-local 14px size"
+    );
+    assert!(
+        relationship_text_size_calls.load(Ordering::Relaxed) > 0,
+        "the relationship label must retain the role-local 14px size"
+    );
+    assert_eq!(
+        root_size_calls.load(Ordering::Relaxed),
+        0,
+        "root fontSize is ER's fallback and must not overwrite an active typed size"
+    );
+    assert_eq!(unexpected_size_calls.load(Ordering::Relaxed), 0);
+    rendered
+}
+
+fn assert_er_typed_font_size_output(rendered: family::RenderedFamilySvg) {
+    let css = rendered.svg();
+    assert!(
+        Regex::new(r#"#merman\{[^}]*font-size:24px;"#)
+            .expect("ER root font-size regex")
+            .is_match(css),
+        "typed ER FontSize must reach root CSS: {css}"
+    );
+    assert!(
+        Regex::new(r#"#merman svg\{[^}]*font-size:24px;"#)
+            .expect("ER nested SVG font-size regex")
+            .is_match(css),
+        "typed ER FontSize must reach nested-SVG CSS: {css}"
+    );
+    assert!(
+        Regex::new(r#"#merman \.edgeLabel \.label\{[^}]*font-size:14px;"#)
+            .expect("ER relationship-label font-size regex")
+            .is_match(css),
+        "typed ER FontSize must not replace the relationship-label 14px owner: {css}"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+fn first_er_entity_rect_size(svg: &str) -> (f64, f64) {
+    let document = roxmltree::Document::parse(svg).expect("valid ER SVG");
+    let rect = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|token| token == "label-container")
+                })
+        })
+        .expect("ER entity shell rectangle");
+    (
+        rect.attribute("width")
+            .expect("ER entity width")
+            .parse()
+            .expect("ER entity width number"),
+        rect.attribute("height")
+            .expect("ER entity height")
+            .parse()
+            .expect("ER entity height number"),
+    )
 }
 
 #[test]
@@ -753,11 +984,371 @@ fn er_without_visible_text_keeps_typed_font_stack_not_applicable() {
 }
 
 #[test]
-fn er_font_stack_remains_typed_when_font_size_stays_legacy() {
+fn er_typed_font_size_reaches_dagre_measurement_layout_css_and_evidence() {
+    let rendered = render_er_typed_font_size_probe(
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "fontSize": 10
+        }))),
+        "test.er-typed-font-size-dagre",
+    );
+    assert_er_typed_font_size_output(rendered);
+}
+
+#[test]
+fn er_typed_font_size_changes_dagre_entity_geometry() {
+    let small = render_er_typed_font_size_probe_with_size(
+        Engine::new(),
+        "test.er-typed-font-size-dagre-small",
+        12.0,
+    );
+    let large = render_er_typed_font_size_probe_with_size(
+        Engine::new(),
+        "test.er-typed-font-size-dagre-large",
+        24.0,
+    );
+    let (small_width, small_height) = first_er_entity_rect_size(small.svg());
+    let (large_width, large_height) = first_er_entity_rect_size(large.svg());
+
+    assert!(
+        large_width > small_width,
+        "larger typed text must widen the measured ER entity: {small_width} -> {large_width}"
+    );
+    assert!(
+        large_height > small_height,
+        "larger typed text must increase the measured ER entity height: {small_height} -> {large_height}"
+    );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn er_typed_font_size_reaches_elk_measurement_layout_css_and_evidence() {
+    let rendered = render_er_typed_font_size_probe(
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "fontSize": 10,
+            "layout": "elk"
+        }))),
+        "test.er-typed-font-size-elk",
+    );
+    assert_er_typed_font_size_output(rendered);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn er_typed_font_size_changes_elk_entity_geometry() {
+    let elk_engine = || {
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "layout": "elk"
+        })))
+    };
+    let small = render_er_typed_font_size_probe_with_size(
+        elk_engine(),
+        "test.er-typed-font-size-elk-small",
+        12.0,
+    );
+    let large = render_er_typed_font_size_probe_with_size(
+        elk_engine(),
+        "test.er-typed-font-size-elk-large",
+        24.0,
+    );
+    let (small_width, small_height) = first_er_entity_rect_size(small.svg());
+    let (large_width, large_height) = first_er_entity_rect_size(large.svg());
+
+    assert!(
+        large_width > small_width,
+        "larger typed text must widen the ELK ER entity: {small_width} -> {large_width}"
+    );
+    assert!(
+        large_height > small_height,
+        "larger typed text must increase the ELK ER entity height: {small_height} -> {large_height}"
+    );
+}
+
+#[test]
+fn er_source_owned_theme_font_size_is_not_claimed_as_typed() {
+    let theme = er_font_size_theme(24.0);
+    let source = r##"%%{init: {"themeVariables": {"fontSize": "30px"}}}%%
+erDiagram
+  CUSTOMER ||--o{ ORDER : owns
+"##;
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+        source,
+        &theme,
+        legacy_init_theme_compat_engine(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("prepare source-owned ER font size");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render source-owned ER font size");
+
+    assert!(
+        Regex::new(r#"#merman\{[^}]*font-size:30px;"#)
+            .expect("source-owned ER root font-size regex")
+            .is_match(rendered.svg()),
+        "source-owned font size must reach ER CSS: {}",
+        rendered.svg()
+    );
+    assert!(
+        !Regex::new(r#"#merman\{[^}]*font-size:24px;"#)
+            .expect("typed ER root font-size regex")
+            .is_match(rendered.svg()),
+        "typed font size must yield to source themeVariables.fontSize: {}",
+        rendered.svg()
+    );
+    assert!(
+        Regex::new(r#"#merman \.edgeLabel \.label\{[^}]*font-size:14px;"#)
+            .expect("source-owned ER relationship-label font-size regex")
+            .is_match(rendered.svg())
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn er_title_only_keeps_typed_font_size_applicable() {
+    let theme = er_font_size_theme(24.0);
+    let source = r#"---
+title: Title-only ER
+---
+erDiagram
+"#;
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("prepare title-only ER with strict typed FontSize");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render title-only ER with strict typed FontSize");
+
+    assert!(rendered.svg().contains("font-size:24px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn er_without_visible_base_text_keeps_typed_font_size_not_applicable() {
+    let theme = er_font_size_theme(24.0);
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+        "erDiagram\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("prepare empty ER with strict typed FontSize");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render empty ER with strict typed FontSize");
+
+    assert!(rendered.svg().contains("font-size:24px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn er_entity_source_font_size_remains_a_fail_closed_layout_residual() {
+    let theme = er_font_size_theme(24.0);
+    let source = r#"erDiagram
+  CUSTOMER:::sized
+  classDef sized font-size:30px
+"#;
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("prepare ER entity-local font size");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render ER entity-local font size in best-effort mode");
+
+    assert!(rendered.svg().contains("font-size:24px"));
+    assert!(
+        rendered.svg().contains("font-size:30px !important"),
+        "ER source class font size must remain the terminal winner: {}",
+        rendered.svg()
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let strict = try_prepare_er_family_with_theme_and_engine_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("prepare strict ER entity-local font size");
+    let error = match strict.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+        Ok(_) => panic!("entity-local ER font size must fail closed in portable mode"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(
+            error,
+            merman_render::Error::UnverifiedFamilyTheme {
+                family_id: merman_render::DiagramFamilyId::ER,
+                residual_count: 1,
+            }
+        ),
+        "unexpected ER source font-size portability error: {error:?}"
+    );
+}
+
+#[test]
+fn er_inherited_entity_font_size_keeps_the_typed_owner() {
+    let theme = er_font_size_theme(24.0);
+    for inherited_value in ["inherit", "unset"] {
+        let source = format!(
+            "erDiagram\n  CUSTOMER:::sized\n  classDef sized font-size:{inherited_value}\n"
+        );
+        let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("prepare inherited ER entity font size");
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render inherited ER entity font size");
+
+        assert!(rendered.svg().contains("font-size:24px"));
+        assert!(
+            rendered
+                .svg()
+                .contains(&format!("font-size:{inherited_value} !important"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1, "value={inherited_value}");
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "value={inherited_value}"
+        );
+    }
+}
+
+#[test]
+fn er_descendant_font_size_is_an_unverified_layout_owner() {
+    let theme = er_font_size_theme(24.0);
+    for alias in [
+        "Before <span style='font-size:40px'>Big</span>",
+        "Before <span style='font-size:/* host */40px'>Big</span>",
+        "Before <span style='font:40px serif'>Big</span>",
+        "Before <span style='all:initial'>Big</span>",
+        "Before <span class='host'>Big</span>",
+        "Before <font size='7'>Big</font>",
+    ] {
+        let source = format!("erDiagram\n  CUSTOMER[\"{alias}\"]\n");
+        let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .expect("prepare ER descendant font-size override");
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render ER descendant font-size override in best-effort mode");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0, "alias={alias}");
+        assert_eq!(evidence.theme_residual_count(), 1, "alias={alias}");
+
+        let strict = try_prepare_er_family_with_theme_and_engine_requirement(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("prepare strict ER descendant font-size override");
+        let error =
+            match strict.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("descendant ER font size must fail closed: {alias}"),
+                Err(error) => error,
+            };
+        assert!(
+            matches!(
+                error,
+                merman_render::Error::UnverifiedFamilyTheme {
+                    family_id: merman_render::DiagramFamilyId::ER,
+                    residual_count: 1,
+                }
+            ),
+            "unexpected ER descendant font-size portability error for {alias}: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn er_descendant_inheritance_and_invalid_css_keep_the_typed_font_size_owner() {
+    let theme = er_font_size_theme(24.0);
+    for alias in [
+        "Before <span style='font-size:inherit'>Inherited</span>",
+        "Before <span style='font-size:unset'>Unset</span>",
+        "Before <span style='all:red'>Invalid</span>",
+    ] {
+        let source = format!("erDiagram\n  CUSTOMER[\"{alias}\"]\n");
+        let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("prepare inherited ER descendant font size");
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render inherited ER descendant font size");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1, "alias={alias}");
+        assert_eq!(evidence.theme_residual_count(), 0, "alias={alias}");
+    }
+}
+
+#[test]
+fn er_typed_font_size_uses_canonical_f32_css_spelling() {
+    let theme = er_font_size_theme(14.4);
+    let rendered =
+        prepare_er_family_with_theme_and_engine("erDiagram\n  CUSTOMER\n", &theme, Engine::new())
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render non-integer ER font size");
+
+    assert!(rendered.svg().contains("font-size:14.4px"));
+    assert!(!rendered.svg().contains("14.399999618530273px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn er_base_typography_is_typed_for_font_stack_and_font_size() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(FontStack::single("ErTypedFont").expect("valid ER font stack"))
         .with_font_size_px(23.0)
-        .expect("valid ER legacy sibling font size");
+        .expect("valid ER typed font size");
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_typography(
@@ -781,11 +1372,12 @@ fn er_font_stack_remains_typed_when_font_size_stays_legacy() {
     let evidence = merman_render::__private::family_evidence(completion.report());
 
     assert!(completion.output().contains("font-family:ErTypedFont"));
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
+    assert!(completion.output().contains("font-size:23px"));
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -825,11 +1417,11 @@ fn er_configured_font_family_owns_the_font_stack_route() {
 }
 
 #[test]
-fn er_configured_font_family_remains_not_applicable_with_a_legacy_font_size_sibling() {
+fn er_configured_font_family_is_not_applicable_with_a_typed_font_size_sibling() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(FontStack::single("ErTypedFont").expect("valid ER font stack"))
         .with_font_size_px(23.0)
-        .expect("valid ER legacy sibling font size");
+        .expect("valid ER typed font size");
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_typography(
@@ -861,12 +1453,13 @@ fn er_configured_font_family_remains_not_applicable_with_a_legacy_font_size_sibl
             .contains("font-family:ConfigFont,sans-serif")
     );
     assert!(!completion.output().contains("font-family:ErTypedFont"));
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
+    assert!(completion.output().contains("font-size:23px"));
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

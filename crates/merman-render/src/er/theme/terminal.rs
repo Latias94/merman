@@ -94,6 +94,8 @@ pub(super) struct TextTerminalExpectation {
     pub(super) inherited_color_run_count: usize,
     pub(super) inherited_font_family_run_count: usize,
     pub(super) unverified_font_family_run_count: usize,
+    pub(super) inherited_font_size_run_count: usize,
+    pub(super) unverified_font_size_run_count: usize,
 }
 
 impl TextTerminalExpectation {
@@ -172,6 +174,12 @@ pub(crate) struct ErEntityThemeReceipt {
     attributes_match: bool,
     typography_expected_font_family: Option<Box<str>>,
     typography_emitted_font_family: Option<Box<str>>,
+    typography_expected_font_size: Option<Box<str>>,
+    typography_expected_font_size_px: Option<f64>,
+    typography_emitted_font_size: Option<Box<str>>,
+    typography_font_size_layout_verified: bool,
+    typography_font_size_measurement_count: usize,
+    typography_font_size_measurements_match: bool,
     effective_by_rule: BTreeMap<usize, usize>,
     emitted_by_rule: BTreeMap<usize, usize>,
     unverified_rules: BTreeSet<usize>,
@@ -218,6 +226,12 @@ impl ErEntityThemeReceipt {
             attributes_match: true,
             typography_expected_font_family,
             typography_emitted_font_family: None,
+            typography_expected_font_size: None,
+            typography_expected_font_size_px: None,
+            typography_emitted_font_size: None,
+            typography_font_size_layout_verified: false,
+            typography_font_size_measurement_count: 0,
+            typography_font_size_measurements_match: true,
             effective_by_rule: BTreeMap::new(),
             emitted_by_rule: BTreeMap::new(),
             unverified_rules: BTreeSet::new(),
@@ -239,6 +253,19 @@ impl ErEntityThemeReceipt {
         self
     }
 
+    pub(super) fn with_typography_font_size(
+        mut self,
+        font_size: Option<(Box<str>, f64, bool)>,
+    ) -> Self {
+        if let Some((css, px, layout_verified)) = font_size {
+            self.typography_expected_font_size = Some(css);
+            self.typography_expected_font_size_px = Some(px);
+            self.typography_font_size_layout_verified = layout_verified;
+            self.typography_font_size_measurements_match &= px.is_finite() && px > 0.0;
+        }
+        self
+    }
+
     pub(crate) const fn records_text_terminals(&self) -> bool {
         self.records_text_terminals
     }
@@ -255,6 +282,23 @@ impl ErEntityThemeReceipt {
         self.attributes_match &= expected == font_family;
     }
 
+    pub(crate) fn record_typography_css_emission_with_font_size(
+        &mut self,
+        font_family: &str,
+        font_size: &str,
+    ) {
+        self.record_typography_css_emission(font_family);
+        let Some(expected) = self.typography_expected_font_size.as_deref() else {
+            return;
+        };
+        if self.typography_emitted_font_size.is_some() {
+            self.attributes_match = false;
+            return;
+        }
+        self.typography_emitted_font_size = Some(font_size.into());
+        self.attributes_match &= expected == font_size;
+    }
+
     pub(crate) fn record_diagram_title_measurement(
         &mut self,
         measured_text: &str,
@@ -269,8 +313,19 @@ impl ErEntityThemeReceipt {
         }
         checkpoint.measurement_checkpointed = true;
         self.attributes_match &= checkpoint.expected_text.as_ref() == measured_text;
-        self.attributes_match &=
-            self.typography_expected_font_family.as_deref() == measured_font_family;
+        if let Some(expected) = self.typography_expected_font_family.as_deref() {
+            self.attributes_match &= Some(expected) == measured_font_family;
+        }
+    }
+
+    pub(crate) fn record_diagram_title_measurement_with_typography(
+        &mut self,
+        measured_text: &str,
+        measured_font_family: Option<&str>,
+        measured_font_size: f64,
+    ) {
+        self.record_diagram_title_measurement(measured_text, measured_font_family);
+        self.record_base_font_size_measurement(measured_font_size);
     }
 
     pub(crate) fn record_diagram_title_emission(
@@ -366,6 +421,9 @@ impl ErEntityThemeReceipt {
         inherited_color_run_count: usize,
         inherited_font_family_run_count: usize,
         unverified_font_family_run_count: usize,
+        inherited_font_size_run_count: usize,
+        unverified_font_size_run_count: usize,
+        measured_font_size: f64,
     ) {
         self.record_text_terminal(
             ErTextTerminalId::entity_name(entity_id),
@@ -374,7 +432,12 @@ impl ErEntityThemeReceipt {
             inherited_color_run_count,
             inherited_font_family_run_count,
             unverified_font_family_run_count,
+            inherited_font_size_run_count,
+            unverified_font_size_run_count,
         );
+        if visible_run_count != 0 {
+            self.record_base_font_size_measurement(measured_font_size);
+        }
     }
 
     pub(crate) fn record_attribute_text(
@@ -387,6 +450,9 @@ impl ErEntityThemeReceipt {
         inherited_color_run_count: usize,
         inherited_font_family_run_count: usize,
         unverified_font_family_run_count: usize,
+        inherited_font_size_run_count: usize,
+        unverified_font_size_run_count: usize,
+        measured_font_size: f64,
     ) {
         self.record_text_terminal(
             ErTextTerminalId::attribute(entity_id, row_index, role),
@@ -395,7 +461,12 @@ impl ErEntityThemeReceipt {
             inherited_color_run_count,
             inherited_font_family_run_count,
             unverified_font_family_run_count,
+            inherited_font_size_run_count,
+            unverified_font_size_run_count,
         );
+        if visible_run_count != 0 {
+            self.record_base_font_size_measurement(measured_font_size);
+        }
     }
 
     pub(crate) fn record_relation_label_text(
@@ -406,6 +477,8 @@ impl ErEntityThemeReceipt {
         inherited_color_run_count: usize,
         inherited_font_family_run_count: usize,
         unverified_font_family_run_count: usize,
+        inherited_font_size_run_count: usize,
+        unverified_font_size_run_count: usize,
     ) {
         self.record_text_terminal(
             ErTextTerminalId::relation_label(relationship_index),
@@ -414,6 +487,8 @@ impl ErEntityThemeReceipt {
             inherited_color_run_count,
             inherited_font_family_run_count,
             unverified_font_family_run_count,
+            inherited_font_size_run_count,
+            unverified_font_size_run_count,
         );
     }
 
@@ -425,6 +500,8 @@ impl ErEntityThemeReceipt {
         inherited_color_run_count: usize,
         inherited_font_family_run_count: usize,
         unverified_font_family_run_count: usize,
+        inherited_font_size_run_count: usize,
+        unverified_font_size_run_count: usize,
     ) {
         if !self.records_text_terminals {
             return;
@@ -445,6 +522,10 @@ impl ErEntityThemeReceipt {
             == inherited_font_family_run_count;
         self.attributes_match &= checkpoint.expectation.unverified_font_family_run_count
             == unverified_font_family_run_count;
+        self.attributes_match &=
+            checkpoint.expectation.inherited_font_size_run_count == inherited_font_size_run_count;
+        self.attributes_match &=
+            checkpoint.expectation.unverified_font_size_run_count == unverified_font_size_run_count;
         // The generic native fallback emits one fill per label, so mixed inherited and inline
         // colors cannot attest a portable typed foreground even when the browser terminal is exact.
         if let Some(expected) = checkpoint.expectation.paint.as_ref()
@@ -458,6 +539,17 @@ impl ErEntityThemeReceipt {
             &mut self.effective_by_rule,
             &mut self.emitted_by_rule,
         );
+    }
+
+    fn record_base_font_size_measurement(&mut self, measured_font_size: f64) {
+        let Some(expected) = self.typography_expected_font_size_px else {
+            return;
+        };
+        self.typography_font_size_measurement_count = self
+            .typography_font_size_measurement_count
+            .saturating_add(1);
+        self.typography_font_size_measurements_match &=
+            measured_font_size.is_finite() && (measured_font_size - expected).abs() < 1e-6;
     }
 
     pub(crate) fn record_table_row(
@@ -591,6 +683,34 @@ impl ErEntityThemeReceipt {
                         && entry.expectation.inherited_font_family_run_count
                             == entry.expectation.visible_run_count
                         && entry.expectation.unverified_font_family_run_count == 0
+                }))
+    }
+
+    pub(super) fn proves_font_size(&self) -> bool {
+        let Some(expected) = self.typography_expected_font_size.as_deref() else {
+            return false;
+        };
+        self.proves_complete()
+            && self.typography_emitted_font_size.as_deref() == Some(expected)
+            && self.typography_font_size_layout_verified
+            && self.typography_font_size_measurement_count != 0
+            && self.typography_font_size_measurements_match
+            && self
+                .text_terminals
+                .iter()
+                .filter(|(id, _)| !id.is_relation_label())
+                .all(|(_, entry)| {
+                    entry.expectation.inherited_font_size_run_count
+                        == entry.expectation.visible_run_count
+                        && entry.expectation.unverified_font_size_run_count == 0
+                })
+            && (self.typography_title.is_some()
+                || self.text_terminals.iter().any(|(id, entry)| {
+                    !id.is_relation_label()
+                        && entry.expectation.visible_run_count > 0
+                        && entry.expectation.inherited_font_size_run_count
+                            == entry.expectation.visible_run_count
+                        && entry.expectation.unverified_font_size_run_count == 0
                 }))
     }
 }
@@ -749,6 +869,8 @@ mod tests {
                     inherited_color_run_count: 2,
                     inherited_font_family_run_count: 2,
                     unverified_font_family_run_count: 0,
+                    inherited_font_size_run_count: 2,
+                    unverified_font_size_run_count: 0,
                 },
             )]),
             BTreeMap::new(),
@@ -763,6 +885,9 @@ mod tests {
             2,
             2,
             0,
+            2,
+            0,
+            16.0,
         );
 
         assert!(receipt.proves_complete());
@@ -785,12 +910,14 @@ mod tests {
                     inherited_color_run_count: 2,
                     inherited_font_family_run_count: 3,
                     unverified_font_family_run_count: 0,
+                    inherited_font_size_run_count: 3,
+                    unverified_font_size_run_count: 0,
                 },
             )]),
             BTreeMap::new(),
             None,
         );
-        receipt.record_relation_label_text(0, "color:#123456;fill:#123456", 3, 2, 3, 0);
+        receipt.record_relation_label_text(0, "color:#123456;fill:#123456", 3, 2, 3, 0, 3, 0);
 
         assert!(receipt.proves_complete());
         assert!(receipt.has_effective_rule(7));
@@ -810,6 +937,8 @@ mod tests {
                     inherited_color_run_count: 1,
                     inherited_font_family_run_count: 1,
                     unverified_font_family_run_count: 0,
+                    inherited_font_size_run_count: 1,
+                    unverified_font_size_run_count: 0,
                 },
             )]),
             BTreeMap::new(),
@@ -817,7 +946,7 @@ mod tests {
         );
 
         receipt.record_typography_css_emission("Inter, sans-serif");
-        receipt.record_entity_name_text("entity-A-0", "", 1, 1, 1, 0);
+        receipt.record_entity_name_text("entity-A-0", "", 1, 1, 1, 0, 1, 0, 16.0);
         assert!(receipt.proves_typography());
 
         let mut unverified = ErEntityThemeReceipt::new(
@@ -830,13 +959,15 @@ mod tests {
                     inherited_color_run_count: 1,
                     inherited_font_family_run_count: 0,
                     unverified_font_family_run_count: 1,
+                    inherited_font_size_run_count: 1,
+                    unverified_font_size_run_count: 0,
                 },
             )]),
             BTreeMap::new(),
             Some("Inter, sans-serif".into()),
         );
         unverified.record_typography_css_emission("Inter, sans-serif");
-        unverified.record_entity_name_text("entity-A-0", "", 1, 1, 0, 1);
+        unverified.record_entity_name_text("entity-A-0", "", 1, 1, 0, 1, 1, 0, 16.0);
         assert!(!unverified.proves_typography());
     }
 
@@ -902,6 +1033,93 @@ mod tests {
         let mut duplicate_emission = complete;
         duplicate_emission.record_diagram_title_emission("erDiagramTitleText", "ER overview");
         assert!(!duplicate_emission.proves_typography());
+    }
+
+    #[test]
+    fn font_size_receipt_requires_exact_css_and_title_measurement() {
+        fn receipt() -> ErEntityThemeReceipt {
+            ErEntityThemeReceipt::new(Vec::new(), BTreeMap::new(), BTreeMap::new(), None)
+                .with_typography_font_size(Some(("24px".into(), 24.0, true)))
+                .with_typography_title(Some("ER overview".into()))
+        }
+
+        let mut complete = receipt();
+        complete.record_typography_css_emission_with_font_size("sans-serif", "24px");
+        complete.record_diagram_title_measurement_with_typography("ER overview", None, 24.0);
+        complete.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(complete.proves_font_size());
+
+        let mut wrong_css = receipt();
+        wrong_css.record_typography_css_emission_with_font_size("sans-serif", "25px");
+        wrong_css.record_diagram_title_measurement_with_typography("ER overview", None, 24.0);
+        wrong_css.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(!wrong_css.proves_font_size());
+
+        let mut wrong_measurement = receipt();
+        wrong_measurement.record_typography_css_emission_with_font_size("sans-serif", "24px");
+        wrong_measurement.record_diagram_title_measurement_with_typography(
+            "ER overview",
+            None,
+            23.0,
+        );
+        wrong_measurement.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(!wrong_measurement.proves_font_size());
+
+        let mut missing_css = receipt();
+        missing_css.record_diagram_title_measurement_with_typography("ER overview", None, 24.0);
+        missing_css.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(!missing_css.proves_font_size());
+
+        let mut duplicate_css = complete;
+        duplicate_css.record_typography_css_emission_with_font_size("sans-serif", "24px");
+        assert!(!duplicate_css.proves_font_size());
+
+        let mut layout_unverified =
+            ErEntityThemeReceipt::new(Vec::new(), BTreeMap::new(), BTreeMap::new(), None)
+                .with_typography_font_size(Some(("24px".into(), 24.0, false)))
+                .with_typography_title(Some("ER overview".into()));
+        layout_unverified.record_typography_css_emission_with_font_size("sans-serif", "24px");
+        layout_unverified.record_diagram_title_measurement_with_typography(
+            "ER overview",
+            None,
+            24.0,
+        );
+        layout_unverified.record_diagram_title_emission("erDiagramTitleText", "ER overview");
+        assert!(!layout_unverified.proves_font_size());
+    }
+
+    #[test]
+    fn font_size_receipt_rejects_unmeasured_descendant_runs() {
+        fn receipt(inherited_runs: usize, unverified_runs: usize) -> ErEntityThemeReceipt {
+            ErEntityThemeReceipt::new(
+                Vec::new(),
+                BTreeMap::from([(
+                    ErTextTerminalId::entity_name("entity-A-0"),
+                    TextTerminalExpectation {
+                        paint: None,
+                        visible_run_count: 1,
+                        inherited_color_run_count: 1,
+                        inherited_font_family_run_count: 1,
+                        unverified_font_family_run_count: 0,
+                        inherited_font_size_run_count: inherited_runs,
+                        unverified_font_size_run_count: unverified_runs,
+                    },
+                )]),
+                BTreeMap::new(),
+                None,
+            )
+            .with_typography_font_size(Some(("24px".into(), 24.0, true)))
+        }
+
+        let mut inherited = receipt(1, 0);
+        inherited.record_typography_css_emission_with_font_size("sans-serif", "24px");
+        inherited.record_entity_name_text("entity-A-0", "", 1, 1, 1, 0, 1, 0, 24.0);
+        assert!(inherited.proves_font_size());
+
+        let mut unverified = receipt(0, 1);
+        unverified.record_typography_css_emission_with_font_size("sans-serif", "24px");
+        unverified.record_entity_name_text("entity-A-0", "", 1, 1, 1, 0, 0, 1, 24.0);
+        assert!(!unverified.proves_font_size());
     }
 
     #[test]

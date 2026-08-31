@@ -48,7 +48,7 @@ impl<'a> ParsedStyleDeclaration<'a> {
     }
 
     pub(crate) fn inherits_property_value(&self) -> bool {
-        matches!(self.analysis.single_ident(), Some("inherit" | "unset"))
+        self.analysis.inherits_property_value()
     }
 
     pub(crate) const fn is_single_component_value(&self) -> bool {
@@ -129,6 +129,29 @@ pub(crate) struct CssFontFamilyOverride {
     ownership: CssFontFamilyOwnership,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CssFontSizeOwnership {
+    Inherited,
+    SourceOwned,
+    Unverified,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CssFontSizeOverride {
+    important: bool,
+    ownership: CssFontSizeOwnership,
+}
+
+impl CssFontSizeOverride {
+    pub(crate) const fn important(self) -> bool {
+        self.important
+    }
+
+    pub(crate) const fn ownership(self) -> CssFontSizeOwnership {
+        self.ownership
+    }
+}
+
 impl CssFontFamilyOverride {
     pub(crate) const fn important(self) -> bool {
         self.important
@@ -171,13 +194,12 @@ fn css_font_family_winner<'a>(
             match parse_style_declaration(boundary.raw()) {
                 Some(declaration) => observe_css_font_family_ownership(&mut winner, &declaration),
                 None => {
-                    let (affects_font_family, important) =
-                        declaration_metadata_for_fallback(boundary.raw());
-                    if affects_font_family
-                        && winner.is_none_or(|current| important || !current.important)
+                    let metadata = declaration_metadata_for_fallback(boundary.raw());
+                    if metadata.affects_font_family
+                        && winner.is_none_or(|current| metadata.important || !current.important)
                     {
                         winner = Some(CssFontFamilyOverride {
-                            important,
+                            important: metadata.important,
                             ownership: CssFontFamilyOwnership::Unverified,
                         });
                     }
@@ -185,6 +207,27 @@ fn css_font_family_winner<'a>(
             }
         });
     }
+    winner
+}
+
+pub(crate) fn css_font_size_override(declaration_list: &str) -> Option<CssFontSizeOverride> {
+    let mut winner = None;
+    visit_style_declaration_boundaries(declaration_list, |boundary| match parse_style_declaration(
+        boundary.raw(),
+    ) {
+        Some(declaration) => observe_css_font_size_ownership(&mut winner, &declaration),
+        None => {
+            let metadata = declaration_metadata_for_fallback(boundary.raw());
+            if metadata.affects_font_size
+                && winner.is_none_or(|current| metadata.important || !current.important)
+            {
+                winner = Some(CssFontSizeOverride {
+                    important: metadata.important,
+                    ownership: CssFontSizeOwnership::Unverified,
+                });
+            }
+        }
+    });
     winner
 }
 
@@ -325,6 +368,112 @@ fn observe_css_font_family_ownership(
     });
 }
 
+fn observe_css_font_size_ownership(
+    winner: &mut Option<CssFontSizeOverride>,
+    declaration: &ParsedStyleDeclaration<'_>,
+) {
+    let ownership = match declaration.property() {
+        "font-size" => font_size_value_ownership(declaration),
+        "font" => {
+            if declaration.inherits_property_value() {
+                Some(CssFontSizeOwnership::Inherited)
+            } else if declaration.analysis().has_dynamic_reference_function()
+                || matches!(
+                    declaration.analysis().single_ident(),
+                    Some(
+                        "initial"
+                            | "revert"
+                            | "revert-layer"
+                            | "caption"
+                            | "icon"
+                            | "menu"
+                            | "message-box"
+                            | "small-caption"
+                            | "status-bar"
+                    )
+                )
+                || !declaration.is_single_component_value()
+            {
+                Some(CssFontSizeOwnership::Unverified)
+            } else {
+                None
+            }
+        }
+        "all" if declaration.inherits_property_value() => Some(CssFontSizeOwnership::Inherited),
+        "all"
+            if matches!(
+                declaration.analysis().single_ident(),
+                Some("initial" | "revert" | "revert-layer")
+            ) =>
+        {
+            Some(CssFontSizeOwnership::Unverified)
+        }
+        "all" => None,
+        _ => return,
+    };
+    let Some(ownership) = ownership else {
+        return;
+    };
+    if !declaration.important() && winner.is_some_and(|current| current.important) {
+        return;
+    }
+    *winner = Some(CssFontSizeOverride {
+        important: declaration.important(),
+        ownership,
+    });
+}
+
+fn font_size_value_ownership(
+    declaration: &ParsedStyleDeclaration<'_>,
+) -> Option<CssFontSizeOwnership> {
+    if declaration.inherits_property_value() {
+        return Some(CssFontSizeOwnership::Inherited);
+    }
+    if declaration.analysis().has_dynamic_reference_function()
+        || matches!(
+            declaration.analysis().single_ident(),
+            Some("initial" | "revert" | "revert-layer")
+        )
+    {
+        return Some(CssFontSizeOwnership::Unverified);
+    }
+    if !declaration.is_single_component_value() {
+        return None;
+    }
+    match declaration.analysis().scalar.as_ref() {
+        Some(CssScalar::Number(value)) if *value == 0.0 => Some(CssFontSizeOwnership::SourceOwned),
+        Some(
+            CssScalar::Percentage(value)
+            | CssScalar::Px(value)
+            | CssScalar::Em(value)
+            | CssScalar::Rem(value),
+        ) if value.is_finite() && *value >= 0.0 => Some(CssFontSizeOwnership::SourceOwned),
+        Some(CssScalar::Ident(keyword))
+            if matches!(
+                keyword.as_str(),
+                "xx-small"
+                    | "x-small"
+                    | "small"
+                    | "medium"
+                    | "large"
+                    | "x-large"
+                    | "xx-large"
+                    | "xxx-large"
+                    | "smaller"
+                    | "larger"
+                    | "math"
+            ) =>
+        {
+            Some(CssFontSizeOwnership::SourceOwned)
+        }
+        None => Some(CssFontSizeOwnership::Unverified),
+        Some(CssScalar::Number(_) | CssScalar::Ident(_)) => None,
+        Some(
+            CssScalar::Percentage(_) | CssScalar::Px(_) | CssScalar::Em(_) | CssScalar::Rem(_),
+        ) => None,
+    }
+}
+
 pub(crate) fn is_static_css_font_family_list(value: &str) -> bool {
     let mut input = ParserInput::new(value);
     let mut parser = Parser::new(&mut input);
@@ -386,24 +535,33 @@ fn declaration_has_trailing_important(parser: &mut Parser<'_, '_>) -> bool {
     false
 }
 
-fn declaration_metadata_for_fallback(raw: &str) -> (bool, bool) {
+#[derive(Debug, Clone, Copy, Default)]
+struct FontDeclarationFallbackMetadata {
+    affects_font_family: bool,
+    affects_font_size: bool,
+    important: bool,
+}
+
+fn declaration_metadata_for_fallback(raw: &str) -> FontDeclarationFallbackMetadata {
     let raw = raw.strip_suffix(';').unwrap_or(raw).trim();
     let mut input = ParserInput::new(raw);
     let mut parser = Parser::new(&mut input);
     let Ok(property) = parser.expect_ident_cloned() else {
-        return (false, false);
+        return FontDeclarationFallbackMetadata::default();
     };
     if parser.expect_colon().is_err() {
-        return (false, false);
+        return FontDeclarationFallbackMetadata::default();
     }
     let property = property.as_ref();
-    let affects_font_family = property.eq_ignore_ascii_case("font-family")
-        || property.eq_ignore_ascii_case("font")
-        || property.eq_ignore_ascii_case("all");
-    (
-        affects_font_family,
-        declaration_has_trailing_important(&mut parser),
-    )
+    FontDeclarationFallbackMetadata {
+        affects_font_family: property.eq_ignore_ascii_case("font-family")
+            || property.eq_ignore_ascii_case("font")
+            || property.eq_ignore_ascii_case("all"),
+        affects_font_size: property.eq_ignore_ascii_case("font-size")
+            || property.eq_ignore_ascii_case("font")
+            || property.eq_ignore_ascii_case("all"),
+        important: declaration_has_trailing_important(&mut parser),
+    }
 }
 
 pub(crate) fn is_resource_free_css_value(value: &str) -> bool {
@@ -608,6 +766,10 @@ pub(crate) struct CssValueAnalysis {
 }
 
 impl CssValueAnalysis {
+    pub(crate) fn inherits_property_value(&self) -> bool {
+        matches!(self.single_ident(), Some("inherit" | "unset"))
+    }
+
     pub(crate) const fn is_single_component(&self) -> bool {
         self.component_count == 1
     }
@@ -1284,6 +1446,71 @@ mod tests {
         assert_eq!(
             css_font_family_ownership(["color:url(https://example.test/paint.svg)"]),
             CssFontFamilyOwnership::Inherited
+        );
+    }
+
+    #[test]
+    fn font_size_ownership_tracks_valid_values_without_claiming_invalid_css() {
+        use CssFontSizeOwnership::{Inherited, SourceOwned, Unverified};
+
+        let ownership =
+            |declarations| css_font_size_override(declarations).map(CssFontSizeOverride::ownership);
+        for declarations in [
+            "font-size:40px",
+            "font-size:0",
+            "font-size:125%",
+            "font-size:larger",
+        ] {
+            assert_eq!(ownership(declarations), Some(SourceOwned), "{declarations}");
+        }
+        for declarations in [
+            "font-size:var(--descendant-size)",
+            "font-size:calc(20px + 1vw)",
+            "font-size:initial",
+            "font:16px DescendantOwned",
+            "font:caption",
+            "all:initial",
+            "font-size:/* host comment */40px",
+        ] {
+            assert_eq!(ownership(declarations), Some(Unverified), "{declarations}");
+        }
+        for declarations in ["font-size:inherit", "font:unset", "all:inherit"] {
+            assert_eq!(ownership(declarations), Some(Inherited), "{declarations}");
+        }
+        for declarations in [
+            "font-size:red",
+            "font-size:24",
+            "font:red",
+            "font:16px",
+            "all:red",
+        ] {
+            assert_eq!(ownership(declarations), None, "{declarations}");
+        }
+    }
+
+    #[test]
+    fn font_size_ownership_follows_source_order_and_important() {
+        use CssFontSizeOwnership::{Inherited, SourceOwned};
+
+        assert_eq!(
+            css_font_size_override("font-size:40px;font-size:inherit")
+                .map(CssFontSizeOverride::ownership),
+            Some(Inherited)
+        );
+        assert_eq!(
+            css_font_size_override("font-size:40px !important;font-size:inherit")
+                .map(CssFontSizeOverride::ownership),
+            Some(SourceOwned)
+        );
+        assert_eq!(
+            css_font_size_override("font-size:40px !important;font-size:inherit !important")
+                .map(CssFontSizeOverride::ownership),
+            Some(Inherited)
+        );
+        assert_eq!(
+            css_font_size_override("font-size:/* host comment */40px !important;font-size:inherit")
+                .map(CssFontSizeOverride::ownership),
+            Some(CssFontSizeOwnership::Unverified)
         );
     }
 

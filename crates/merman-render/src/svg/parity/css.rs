@@ -998,19 +998,21 @@ where
 pub(super) struct ErCssEmission {
     pub(super) css: String,
     pub(super) font_family: Box<str>,
+    pub(super) font_size: Box<str>,
 }
 
 pub(super) fn er_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> Result<String>
 where
     I: SvgDiagramIdValue,
 {
-    Ok(er_css_with_font_family(diagram_id, effective_config, None)?.css)
+    Ok(er_css_with_resolved_typography(diagram_id, effective_config, None, None)?.css)
 }
 
-pub(super) fn er_css_with_font_family<I>(
+pub(super) fn er_css_with_resolved_typography<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
     resolved_font_family: Option<&str>,
+    resolved_font_size: Option<&str>,
 ) -> Result<ErCssEmission>
 where
     I: SvgDiagramIdValue,
@@ -1054,7 +1056,9 @@ where
     } else {
         "1px".to_string()
     };
-    let font_size_css = format!("{}px", fmt(font_size));
+    let font_size_css = resolved_font_size
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("{}px", fmt(font_size)));
     let normal_edge_stroke_width_css = mermaid_stroke_width_px(effective_config);
     let mut out = String::new();
     write_mermaid_base_css_prefix(
@@ -1135,6 +1139,7 @@ where
     Ok(ErCssEmission {
         css: out,
         font_family: font.into_boxed_str(),
+        font_size: font_size_css.into_boxed_str(),
     })
 }
 

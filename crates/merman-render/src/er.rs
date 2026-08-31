@@ -19,7 +19,9 @@ pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 use config::{ErLayoutAlgorithm, ErLayoutSettings};
 #[cfg(test)]
 pub(crate) use theme::compile_er_entity_source_style;
-pub(crate) use theme::{ErAttributeTextRole, ErEntityThemePlan, ErRelationTerminalExpectation};
+pub(crate) use theme::{
+    ErAttributeTextRole, ErBaseFontSizePlan, ErEntityThemePlan, ErRelationTerminalExpectation,
+};
 
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
@@ -160,6 +162,9 @@ impl ErPreparedRelationshipLabel {
 pub(crate) struct ErPreparedLabels {
     entity_measures: BTreeMap<String, ErEntityMeasure>,
     relationship_labels: Vec<ErPreparedRelationshipLabel>,
+    entity_font_size_px: f64,
+    attribute_font_size_px: f64,
+    relationship_font_size_px: f64,
 }
 
 impl ErPreparedLabels {
@@ -199,6 +204,9 @@ impl ErPreparedLabels {
         Self {
             entity_measures,
             relationship_labels,
+            entity_font_size_px: settings.label_style.font_size,
+            attribute_font_size_px: settings.attr_style.font_size,
+            relationship_font_size_px: settings.relationship_label_style.font_size,
         }
     }
 
@@ -208,6 +216,18 @@ impl ErPreparedLabels {
 
     pub(crate) fn relationship(&self, index: usize) -> Option<&ErPreparedRelationshipLabel> {
         self.relationship_labels.get(index)
+    }
+
+    pub(crate) const fn entity_font_size_px(&self) -> f64 {
+        self.entity_font_size_px
+    }
+
+    pub(crate) const fn attribute_font_size_px(&self) -> f64 {
+        self.attribute_font_size_px
+    }
+
+    pub(crate) const fn relationship_font_size_px(&self) -> f64 {
+        self.relationship_font_size_px
     }
 }
 
@@ -631,11 +651,13 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
 }
 
 #[cfg(not(feature = "layout-elk"))]
-pub(crate) fn layout_er_diagram_typed_with_font_family(
+/// Lays out an ER model with an optional renderer-owned inherited typography override.
+pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     font_family_css: Option<&str>,
+    font_size_px: Option<f64>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErDiagramLayout> {
     let mut work_control = OperationLayoutWorkControl::new(work_meter);
@@ -645,21 +667,20 @@ pub(crate) fn layout_er_diagram_typed_with_font_family(
         measurer,
         ErElkAuthority::Raw,
         font_family_css,
+        font_size_px,
         &mut work_control,
     )
 }
 
 #[cfg(feature = "layout-elk")]
-/// Lays out an ER diagram through ELK using the render operation's captured seed.
-///
-/// This remains crate-private so the public typed API stays fail-closed for ELK's unseeded
-/// `randomSeed = 0` source sentinel.
-pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed_and_font_family(
+/// Lays out an ER model through ELK with renderer-owned inherited typography.
+pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed_and_resolved_typography(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     operation_seed: elk::ElkOperationSeed,
     font_family_css: Option<&str>,
+    font_size_px: Option<f64>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErDiagramLayout> {
     let mut work_control = OperationLayoutWorkControl::new(work_meter);
@@ -669,6 +690,7 @@ pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed_and_font_family(
         measurer,
         ErElkAuthority::Operation(operation_seed),
         font_family_css,
+        font_size_px,
         &mut work_control,
     )
 }
@@ -687,10 +709,14 @@ fn layout_er_diagram_typed_with_elk_authority(
     measurer: &dyn TextMeasurer,
     elk_authority: ErElkAuthority,
     font_family_css: Option<&str>,
+    font_size_px: Option<f64>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
-    let settings = ErConfigView::new(effective_config)
-        .layout_settings_with_font_family(&model.direction, font_family_css);
+    let settings = ErConfigView::new(effective_config).layout_settings_with_resolved_typography(
+        &model.direction,
+        font_family_css,
+        font_size_px,
+    );
     let adapter_work = er_layout_adapter_work(model, work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;

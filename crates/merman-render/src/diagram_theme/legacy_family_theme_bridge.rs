@@ -764,7 +764,6 @@ fn compile_requirement_family(
 fn compile_er_family(builder: &mut OverlayBuilder, reader: &FamilyStyleReader) -> BridgeResult<()> {
     let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(reader);
     let text_fill = reader.text_fill(ThemeTarget::Text);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::TextFill.contribution_id(),
@@ -2061,6 +2060,47 @@ mod tests {
         assert!(artifact.overlay.is_empty());
         assert!(artifact.contribution_ids.is_empty());
         assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.er.edge.stroke"));
+    }
+
+    #[test]
+    fn er_base_typography_is_property_local() {
+        const SOURCE: &str = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
+
+        let font_stack =
+            super::super::FontStack::new(["ER Typed", "sans-serif"]).expect("valid ER font stack");
+        let direct_spec =
+            DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
+                DiagramFamilyId::ER,
+                TextStyle::default().with_font_stack(font_stack.clone()),
+            ));
+        let direct_bridge = bridge(&direct_spec).compile_for_family(DiagramFamilyId::ER);
+        assert!(direct_bridge.overlay.is_empty());
+        assert!(direct_bridge.contribution_ids.is_empty());
+
+        let mixed_typography = TextStyle::default()
+            .with_font_stack(font_stack)
+            .with_font_size_px(24.0)
+            .expect("valid mixed ER typography");
+        let mixed_spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::ER, mixed_typography),
+        );
+        let mixed_bridge = bridge(&mixed_spec).compile_for_family(DiagramFamilyId::ER);
+        assert!(mixed_bridge.contribution_ids.is_empty());
+
+        let baseline = parse(&DiagramThemeSpec::default(), SOURCE);
+        let mixed = parse(&mixed_spec, SOURCE);
+        assert_eq!(fallback_contribution_count(&mixed), 0);
+        for path in [
+            "fontFamily",
+            "themeVariables.fontFamily",
+            "themeVariables.fontSize",
+        ] {
+            assert_eq!(
+                mixed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed ER typography must not write legacy `{path}`"
+            );
+        }
     }
 
     fn fallback_contribution_count(metadata: &merman_core::ParseMetadata) -> usize {

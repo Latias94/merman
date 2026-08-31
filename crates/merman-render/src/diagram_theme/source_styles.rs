@@ -209,6 +209,10 @@ impl PreparedSourceStyleDeclaration {
         self.important
     }
 
+    pub(crate) fn inherits_property_value(&self) -> bool {
+        self.analysis.inherits_property_value()
+    }
+
     pub(crate) const fn is_single_component_value(&self) -> bool {
         self.analysis.is_single_component()
     }

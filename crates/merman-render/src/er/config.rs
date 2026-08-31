@@ -28,12 +28,23 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn layout_settings_with_font_family(
         &self,
         direction: &str,
         font_family_override: Option<&str>,
     ) -> ErLayoutSettings {
-        let label_style = self.text_style_with_font_family(font_family_override);
+        self.layout_settings_with_resolved_typography(direction, font_family_override, None)
+    }
+
+    pub(super) fn layout_settings_with_resolved_typography(
+        &self,
+        direction: &str,
+        font_family_override: Option<&str>,
+        font_size_override: Option<f64>,
+    ) -> ErLayoutSettings {
+        let label_style =
+            self.text_style_with_resolved_typography(font_family_override, font_size_override);
         let attr_style = TextStyle {
             font_family: label_style.font_family.clone(),
             font_size: label_style.font_size.max(1.0),
@@ -72,14 +83,25 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn render_settings_with_font_family(
         &self,
         font_family_override: Option<&str>,
     ) -> ErRenderSettings {
+        self.render_settings_with_resolved_typography(font_family_override, None)
+    }
+
+    pub(crate) fn render_settings_with_resolved_typography(
+        &self,
+        font_family_override: Option<&str>,
+        font_size_override: Option<f64>,
+    ) -> ErRenderSettings {
         let font_family = font_family_override
             .map(str::to_owned)
             .unwrap_or_else(|| self.font_family_css());
-        let font_size = self.font_size().max(1.0);
+        let font_size = font_size_override
+            .unwrap_or_else(|| self.font_size())
+            .max(1.0);
         ErRenderSettings {
             is_elk_layout: self.is_elk_layout(),
             diagram_look: config_diagram_look(self.effective_config)
@@ -133,9 +155,18 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn text_style_with_font_family(
         &self,
         font_family_override: Option<&str>,
+    ) -> TextStyle {
+        self.text_style_with_resolved_typography(font_family_override, None)
+    }
+
+    pub(crate) fn text_style_with_resolved_typography(
+        &self,
+        font_family_override: Option<&str>,
+        font_size_override: Option<f64>,
     ) -> TextStyle {
         TextStyle {
             font_family: Some(
@@ -143,7 +174,9 @@ impl<'a> ErConfigView<'a> {
                     .map(str::to_owned)
                     .unwrap_or_else(|| self.font_family_css()),
             ),
-            font_size: self.font_size(),
+            font_size: font_size_override
+                .unwrap_or_else(|| self.font_size())
+                .max(1.0),
             font_weight: None,
             font_style: None,
         }
@@ -328,6 +361,37 @@ mod tests {
         assert_eq!(settings.attr_style.font_size, 22.0);
         assert_eq!(settings.relationship_label_style.font_size, 14.0);
         assert!(!settings.relationship_html_labels);
+    }
+
+    #[test]
+    fn er_resolved_font_size_preserves_root_fallback_and_relationship_role_owner() {
+        let config = json!({
+            "fontSize": 10,
+            "er": {
+                "fontSize": 30
+            }
+        });
+        let view = ErConfigView::new(&config);
+
+        let configured = view.layout_settings_with_resolved_typography("TB", None, None);
+        assert_eq!(configured.label_style.font_size, 10.0);
+        assert_eq!(configured.attr_style.font_size, 10.0);
+        assert_eq!(configured.relationship_label_style.font_size, 14.0);
+
+        let typed = view.layout_settings_with_resolved_typography("TB", None, Some(24.0));
+        assert_eq!(typed.label_style.font_size, 24.0);
+        assert_eq!(typed.attr_style.font_size, 24.0);
+        assert_eq!(typed.relationship_label_style.font_size, 14.0);
+
+        let er_fallback = ErConfigView::new(&json!({
+            "er": {
+                "fontSize": 30
+            }
+        }))
+        .layout_settings_with_resolved_typography("TB", None, None);
+        assert_eq!(er_fallback.label_style.font_size, 30.0);
+        assert_eq!(er_fallback.attr_style.font_size, 30.0);
+        assert_eq!(er_fallback.relationship_label_style.font_size, 14.0);
     }
 
     #[test]

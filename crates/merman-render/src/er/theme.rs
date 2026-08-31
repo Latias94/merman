@@ -25,6 +25,85 @@ pub(crate) use terminal::{
 
 type ErStyleDeclaration = crate::diagram_theme::PreparedSourceStyleDeclaration;
 
+/// ER's resolved base-size owner, shared unchanged by preparation, layout, SVG, and evidence.
+#[derive(Debug)]
+pub(crate) struct ErBaseFontSizePlan {
+    font_size_css: Box<str>,
+    font_size_px: f64,
+    typed_requested: bool,
+    typed_active: bool,
+}
+
+impl ErBaseFontSizePlan {
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &merman_core::MermaidConfig,
+    ) -> Self {
+        let configured_font_size_px =
+            crate::config::config_theme_or_root_font_size_px_opt(effective_config.as_value())
+                .or_else(|| {
+                    crate::config::config_f64_css_px(
+                        effective_config.as_value(),
+                        &["er", "fontSize"],
+                    )
+                })
+                .unwrap_or(16.0)
+                .max(1.0);
+        let typed_requested = theme.is_some_and(|theme| {
+            theme.family_mechanism_routes().iter().any(|route| {
+                route.mechanism()
+                    == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            })
+        });
+        let config_owns = typed_requested
+            && merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.fontSize",
+            );
+        let typed_active = typed_requested && !config_owns;
+        let (font_size_px, font_size_css) = match theme {
+            Some(theme) if typed_active => {
+                let typed_font_size = theme.typography().font_size_px().max(1.0);
+                (
+                    f64::from(typed_font_size),
+                    format!("{typed_font_size}px").into_boxed_str(),
+                )
+            }
+            _ => (
+                configured_font_size_px,
+                format!("{configured_font_size_px}px").into_boxed_str(),
+            ),
+        };
+        Self {
+            font_size_css,
+            font_size_px,
+            typed_requested,
+            typed_active,
+        }
+    }
+
+    pub(crate) fn layout_override_px(&self) -> Option<f64> {
+        self.typed_active.then_some(self.font_size_px)
+    }
+
+    fn font_size_css(&self) -> &str {
+        &self.font_size_css
+    }
+
+    const fn font_size_px(&self) -> f64 {
+        self.font_size_px
+    }
+
+    const fn typed_requested(&self) -> bool {
+        self.typed_requested
+    }
+
+    const fn typed_active(&self) -> bool {
+        self.typed_active
+    }
+}
+
 /// Mermaid source styles resolved once for an ER entity. The theme plan and SVG writer consume the
 /// same declaration set so source ownership cannot drift between admission and emission.
 #[derive(Debug, Clone, Default)]
@@ -60,6 +139,14 @@ impl ErEntitySourceStyle {
 
     fn owns_text_color(&self) -> bool {
         self.text_value("color").is_some()
+    }
+
+    fn owns_text_font_size(&self) -> bool {
+        self.text_declarations
+            .iter()
+            .rev()
+            .find(|declaration| declaration.property_matches("font-size"))
+            .is_some_and(|declaration| !declaration.inherits_property_value())
     }
 }
 
@@ -144,7 +231,7 @@ fn insert_er_box_declaration(
     ) {
         rect_map.insert(property.to_owned(), declaration.clone());
     }
-    if property == "color" {
+    if crate::mermaid_style::is_label_style_key(property) {
         text_map.insert(property.to_owned(), declaration);
     }
 }
@@ -187,10 +274,15 @@ pub(crate) struct ErEntityThemePlan {
     entity_indices: BTreeMap<String, usize>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
     inherited_font_stack: InheritedFontStackPlan,
+    base_font_size: ErBaseFontSizePlan,
     has_visible_typography: bool,
     font_stack_pending: bool,
     font_stack_residual: bool,
     font_stack_not_applicable: bool,
+    font_size_pending: bool,
+    font_size_residual: bool,
+    font_size_not_applicable: bool,
+    font_size_layout_verified: bool,
     typography_title: Option<Box<str>>,
     expectations: Vec<EntityExpectation>,
     text_terminal_evidence_enabled: bool,
@@ -207,6 +299,7 @@ impl ErEntityThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
         inherited_font_stack: InheritedFontStackPlan,
+        base_font_size: ErBaseFontSizePlan,
         relationship_html_labels: bool,
         diagram_title: Option<&str>,
         model: &merman_core::diagrams::er::ErDiagramRenderModel,
@@ -230,10 +323,15 @@ impl ErEntityThemePlan {
                 entity_indices,
                 entity_source_styles,
                 inherited_font_stack,
+                base_font_size,
                 has_visible_typography: false,
                 font_stack_pending: false,
                 font_stack_residual: false,
                 font_stack_not_applicable: false,
+                font_size_pending: false,
+                font_size_residual: false,
+                font_size_not_applicable: false,
+                font_size_layout_verified: false,
                 typography_title: None,
                 expectations: Vec::new(),
                 text_terminal_evidence_enabled: false,
@@ -271,10 +369,21 @@ impl ErEntityThemePlan {
         let source_owns_font_family = entity_source_styles
             .iter()
             .any(|style| style.text_value("font-family").is_some());
+        let source_owns_font_size = text_terminals.keys().any(|terminal_id| {
+            !terminal_id.is_relation_label()
+                && text_terminal_font_size_source_owned(
+                    terminal_id,
+                    &entity_indices,
+                    &entity_source_styles,
+                )
+        });
         let diagram_title = diagram_title
             .map(str::trim)
             .filter(|title| !title.is_empty());
         let has_visible_typography = !text_terminals.is_empty() || diagram_title.is_some();
+        let has_visible_base_typography = text_terminals.iter().any(|(terminal_id, terminal)| {
+            !terminal_id.is_relation_label() && terminal.visible_run_count > 0
+        }) || diagram_title.is_some();
         let font_stack_requested = inherited_font_stack.typed_font_stack_requested();
         let font_stack_pending = has_visible_typography
             && font_stack_requested
@@ -286,7 +395,26 @@ impl ErEntityThemePlan {
             && has_visible_typography
             && !font_stack_pending
             && !font_stack_not_applicable;
-        let typography_title = if font_stack_pending {
+        let font_size_pending = has_visible_base_typography
+            && base_font_size.typed_requested()
+            && base_font_size.typed_active()
+            && !source_owns_font_size;
+        let font_size_not_applicable = base_font_size.typed_requested()
+            && (!has_visible_base_typography || !base_font_size.typed_active());
+        let font_size_residual = base_font_size.typed_requested()
+            && has_visible_base_typography
+            && !font_size_pending
+            && !font_size_not_applicable;
+        let font_size_layout_verified = !font_size_pending
+            || ((layout.prepared_labels.entity_font_size_px() - base_font_size.font_size_px())
+                .abs()
+                < 1e-6
+                && (layout.prepared_labels.attribute_font_size_px()
+                    - base_font_size.font_size_px())
+                .abs()
+                    < 1e-6
+                && (layout.prepared_labels.relationship_font_size_px() - 14.0).abs() < 1e-6);
+        let typography_title = if font_stack_pending || font_size_pending {
             diagram_title.map(Into::into)
         } else {
             None
@@ -560,10 +688,15 @@ impl ErEntityThemePlan {
             entity_indices,
             entity_source_styles,
             inherited_font_stack,
+            base_font_size,
             has_visible_typography,
             font_stack_pending,
             font_stack_residual,
             font_stack_not_applicable,
+            font_size_pending,
+            font_size_residual,
+            font_size_not_applicable,
+            font_size_layout_verified,
             typography_title,
             expectations,
             text_terminal_evidence_enabled: needs_text_terminal_evidence,
@@ -582,6 +715,20 @@ impl ErEntityThemePlan {
 
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn font_size_css(&self) -> &str {
+        self.base_font_size.font_size_css()
+    }
+
+    pub(crate) fn font_size_override(&self) -> Option<f64> {
+        self.base_font_size.layout_override_px()
+    }
+
+    pub(crate) fn font_size_override_css(&self) -> Option<&str> {
+        self.base_font_size
+            .typed_active()
+            .then_some(self.font_size_css())
     }
 
     pub(crate) fn source_style(&self, entity_index: usize) -> Option<&ErEntitySourceStyle> {
@@ -665,6 +812,13 @@ impl ErEntityThemePlan {
             self.font_stack_pending
                 .then(|| self.font_family_css().into()),
         )
+        .with_typography_font_size(self.font_size_pending.then(|| {
+            (
+                self.font_size_css().into(),
+                self.base_font_size.font_size_px(),
+                self.font_size_layout_verified,
+            )
+        }))
         .with_typography_title(self.typography_title.clone());
         let receipt = if self.text_terminal_evidence_enabled {
             receipt
@@ -679,7 +833,7 @@ impl ErEntityThemePlan {
         // ownership is deliberately evaluated later: an unmeasured source font is a legitimate
         // BestEffort residual and must not abort SVG emission. RequirePortable rejects that
         // residual through the frozen family report instead.
-        if self.pending.is_empty() && !self.font_stack_pending {
+        if self.pending.is_empty() && !self.font_stack_pending && !self.font_size_pending {
             return true;
         }
         receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
@@ -708,6 +862,27 @@ impl ErEntityThemePlan {
         } else if self.font_stack_residual {
             evidence.mark_residual(
                 font_stack_key,
+                FamilyThemeResidualReason::UnsupportedTypography,
+            );
+        }
+        let font_size_key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
+        if self.font_size_pending {
+            if let Some(receipt) = self.terminal_receipt.get()
+                && receipt.proves_font_size()
+            {
+                evidence
+                    .mark_applied_with_capabilities(font_size_key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_residual(
+                    font_size_key,
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                );
+            }
+        } else if self.font_size_not_applicable {
+            evidence.mark_not_applicable(font_size_key);
+        } else if self.font_size_residual {
+            evidence.mark_residual(
+                font_size_key,
                 FamilyThemeResidualReason::UnsupportedTypography,
             );
         }
@@ -883,6 +1058,8 @@ fn insert_text_terminal(
                 inherited_color_run_count: facts.inherited_color_run_count(),
                 inherited_font_family_run_count: facts.inherited_font_family_run_count(),
                 unverified_font_family_run_count: facts.unverified_font_family_run_count(),
+                inherited_font_size_run_count: facts.inherited_font_size_run_count(),
+                unverified_font_size_run_count: facts.unverified_font_size_run_count(),
             },
         );
     }
@@ -911,6 +1088,18 @@ fn text_terminal_source_owned(
         .and_then(|entity_id| entity_indices.get(entity_id))
         .and_then(|index| entity_source_styles.get(*index))
         .is_some_and(ErEntitySourceStyle::owns_text_color)
+}
+
+fn text_terminal_font_size_source_owned(
+    terminal_id: &ErTextTerminalId,
+    entity_indices: &BTreeMap<String, usize>,
+    entity_source_styles: &[ErEntitySourceStyle],
+) -> bool {
+    terminal_id
+        .entity_id()
+        .and_then(|entity_id| entity_indices.get(entity_id))
+        .and_then(|index| entity_source_styles.get(*index))
+        .is_some_and(ErEntitySourceStyle::owns_text_font_size)
 }
 
 fn table_terminal_source_owned(

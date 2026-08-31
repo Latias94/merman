@@ -11,7 +11,8 @@ struct VisibleTextRunStyleFact {
     content: Box<str>,
     kind: VisibleTextRunKind,
     color_owner: VisibleTextColorOwner,
-    font_family_owner: VisibleTextFontFamilyOwner,
+    font_family_owner: VisibleTextTypographyOwner,
+    font_size_owner: VisibleTextTypographyOwner,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +29,7 @@ enum VisibleTextColorOwner {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum VisibleTextFontFamilyOwner {
+enum VisibleTextTypographyOwner {
     Inherited,
     UnmeasuredSource,
 }
@@ -46,7 +47,8 @@ impl VisibleTextStyleFacts {
         collect_visible_runs(
             document.root_element(),
             &VisibleTextColorOwner::Inherited,
-            &VisibleTextFontFamilyOwner::Inherited,
+            &VisibleTextTypographyOwner::Inherited,
+            &VisibleTextTypographyOwner::Inherited,
             &mut runs,
         );
         Self {
@@ -61,7 +63,8 @@ impl VisibleTextStyleFacts {
                 content: text.into(),
                 kind: VisibleTextRunKind::Text,
                 color_owner: VisibleTextColorOwner::Inherited,
-                font_family_owner: VisibleTextFontFamilyOwner::Inherited,
+                font_family_owner: VisibleTextTypographyOwner::Inherited,
+                font_size_owner: VisibleTextTypographyOwner::Inherited,
             })
             .into_iter()
             .collect::<Vec<_>>()
@@ -106,12 +109,23 @@ impl VisibleTextStyleFacts {
     pub(crate) fn inherited_font_family_run_count(&self) -> usize {
         self.runs
             .iter()
-            .filter(|run| matches!(run.font_family_owner, VisibleTextFontFamilyOwner::Inherited))
+            .filter(|run| matches!(run.font_family_owner, VisibleTextTypographyOwner::Inherited))
             .count()
     }
 
     pub(crate) fn unverified_font_family_run_count(&self) -> usize {
         self.runs.len() - self.inherited_font_family_run_count()
+    }
+
+    pub(crate) fn inherited_font_size_run_count(&self) -> usize {
+        self.runs
+            .iter()
+            .filter(|run| matches!(run.font_size_owner, VisibleTextTypographyOwner::Inherited))
+            .count()
+    }
+
+    pub(crate) fn unverified_font_size_run_count(&self) -> usize {
+        self.runs.len() - self.inherited_font_size_run_count()
     }
 
     #[cfg(test)]
@@ -123,10 +137,11 @@ impl VisibleTextStyleFacts {
 fn collect_visible_runs(
     node: roxmltree::Node<'_, '_>,
     inherited_color_owner: &VisibleTextColorOwner,
-    inherited_font_family_owner: &VisibleTextFontFamilyOwner,
+    inherited_font_family_owner: &VisibleTextTypographyOwner,
+    inherited_font_size_owner: &VisibleTextTypographyOwner,
     runs: &mut Vec<VisibleTextRunStyleFact>,
 ) {
-    let (color_owner, font_family_owner) = if node.is_element() {
+    let (color_owner, font_family_owner, font_size_owner) = if node.is_element() {
         let has_css_class = node
             .attribute("class")
             .is_some_and(|class| !class.trim().is_empty());
@@ -134,15 +149,24 @@ fn collect_visible_runs(
             && node
                 .attribute("face")
                 .is_some_and(|face| !face.trim().is_empty());
+        let has_font_size = node.tag_name().name().eq_ignore_ascii_case("font")
+            && node
+                .attribute("size")
+                .is_some_and(|size| !size.trim().is_empty());
         let local_color_owner = if has_css_class {
             &VisibleTextColorOwner::CssClass
         } else {
             inherited_color_owner
         };
         let local_font_family_owner = if has_css_class || has_font_face {
-            &VisibleTextFontFamilyOwner::UnmeasuredSource
+            &VisibleTextTypographyOwner::UnmeasuredSource
         } else {
             inherited_font_family_owner
+        };
+        let local_font_size_owner = if has_css_class || has_font_size {
+            &VisibleTextTypographyOwner::UnmeasuredSource
+        } else {
+            inherited_font_size_owner
         };
         (
             inline_color_owner(node.attribute("style"), local_color_owner),
@@ -152,11 +176,18 @@ fn collect_visible_runs(
                 local_font_family_owner,
                 has_css_class,
             ),
+            inline_font_size_owner(
+                node.attribute("style"),
+                inherited_font_size_owner,
+                local_font_size_owner,
+                has_css_class,
+            ),
         )
     } else {
         (
             inherited_color_owner.clone(),
             inherited_font_family_owner.clone(),
+            inherited_font_size_owner.clone(),
         )
     };
 
@@ -166,6 +197,7 @@ fn collect_visible_runs(
             kind: VisibleTextRunKind::FontAwesomeIcon,
             color_owner: color_owner.clone(),
             font_family_owner: font_family_owner.clone(),
+            font_size_owner: font_size_owner.clone(),
         });
     }
 
@@ -177,11 +209,18 @@ fn collect_visible_runs(
             kind: VisibleTextRunKind::Text,
             color_owner: color_owner.clone(),
             font_family_owner: font_family_owner.clone(),
+            font_size_owner: font_size_owner.clone(),
         });
     }
 
     for child in node.children() {
-        collect_visible_runs(child, &color_owner, &font_family_owner, runs);
+        collect_visible_runs(
+            child,
+            &color_owner,
+            &font_family_owner,
+            &font_size_owner,
+            runs,
+        );
     }
 }
 
@@ -218,10 +257,10 @@ fn inline_color_owner(
 
 fn inline_font_family_owner(
     style: Option<&str>,
-    parent: &VisibleTextFontFamilyOwner,
-    local: &VisibleTextFontFamilyOwner,
+    parent: &VisibleTextTypographyOwner,
+    local: &VisibleTextTypographyOwner,
     has_css_class: bool,
-) -> VisibleTextFontFamilyOwner {
+) -> VisibleTextTypographyOwner {
     match style.and_then(crate::mermaid_style::css_font_family_override) {
         None => local.clone(),
         Some(override_)
@@ -230,7 +269,25 @@ fn inline_font_family_owner(
         {
             parent.clone()
         }
-        Some(_) => VisibleTextFontFamilyOwner::UnmeasuredSource,
+        Some(_) => VisibleTextTypographyOwner::UnmeasuredSource,
+    }
+}
+
+fn inline_font_size_owner(
+    style: Option<&str>,
+    parent: &VisibleTextTypographyOwner,
+    local: &VisibleTextTypographyOwner,
+    has_css_class: bool,
+) -> VisibleTextTypographyOwner {
+    match style.and_then(crate::mermaid_style::css_font_size_override) {
+        None => local.clone(),
+        Some(override_)
+            if override_.ownership() == crate::mermaid_style::CssFontSizeOwnership::Inherited
+                && (!has_css_class || override_.important()) =>
+        {
+            parent.clone()
+        }
+        Some(_) => VisibleTextTypographyOwner::UnmeasuredSource,
     }
 }
 
@@ -364,6 +421,51 @@ mod tests {
     }
 
     #[test]
+    fn visible_text_facts_track_font_size_ownership() {
+        for fragment in [
+            "<span style='font-size:40px'>Sized</span>",
+            "<span style='font:40px Source Sans'>Shorthand</span>",
+            "<span style='all:initial'>Reset</span>",
+            "<span style='font-size:/* host comment */40px'>Comment</span>",
+            "<span class='host'>Class</span>",
+            "<span class='host' style='font-size:inherit'>Class</span>",
+            "<font size='7'>Legacy</font>",
+        ] {
+            let facts = VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+            assert_eq!(facts.inherited_font_size_run_count(), 0, "{fragment}");
+            assert_eq!(facts.unverified_font_size_run_count(), 1, "{fragment}");
+        }
+
+        for fragment in [
+            "<span style='font-size:inherit'>Inherited</span>",
+            "<span style='font-size:unset'>Unset</span>",
+            "<span class='host' style='font-size:inherit !important'>Class</span>",
+            "<font size='7' style='font-size:inherit'>Legacy</font>",
+        ] {
+            let facts = VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+            assert_eq!(facts.inherited_font_size_run_count(), 1, "{fragment}");
+            assert_eq!(facts.unverified_font_size_run_count(), 0, "{fragment}");
+        }
+
+        let nested = VisibleTextStyleFacts::from_xhtml_fragment(
+            "<span style='font-size:40px'><b style='font-size:inherit'>Owned</b></span>",
+        );
+        assert_eq!(nested.inherited_font_size_run_count(), 0);
+        assert_eq!(nested.unverified_font_size_run_count(), 1);
+
+        for fragment in [
+            "<span style='font-size:red'>Invalid</span>",
+            "<span style='font:red'>Invalid</span>",
+            "<span style='font:16px'>Invalid</span>",
+            "<span style='all:red'>Invalid</span>",
+        ] {
+            let facts = VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+            assert_eq!(facts.inherited_font_size_run_count(), 1, "{fragment}");
+            assert_eq!(facts.unverified_font_size_run_count(), 0, "{fragment}");
+        }
+    }
+
+    #[test]
     fn svg_markdown_projection_treats_inline_html_as_inherited_visible_text() {
         let facts = VisibleTextStyleFacts::from_svg_markdown_projection(
             r#"<span style="font-family:Owned;color:red">Visible</span>"#,
@@ -373,5 +475,7 @@ mod tests {
         assert_eq!(facts.inherited_color_run_count(), 1);
         assert_eq!(facts.inherited_font_family_run_count(), 1);
         assert_eq!(facts.unverified_font_family_run_count(), 0);
+        assert_eq!(facts.inherited_font_size_run_count(), 1);
+        assert_eq!(facts.unverified_font_size_run_count(), 0);
     }
 }

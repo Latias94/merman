@@ -1,4 +1,4 @@
-use super::super::css::er_css_with_font_family;
+use super::super::css::er_css_with_resolved_typography;
 use super::super::*;
 
 // ER diagram SVG renderer implementation (split from parity.rs).
@@ -94,8 +94,14 @@ fn write_er_style_with_font_family(
     background_colors: &[String],
     theme_color_limit: usize,
     resolved_font_family: Option<&str>,
-) -> Result<String> {
-    let emission = er_css_with_font_family(diagram_id, effective_config, resolved_font_family)?;
+    resolved_font_size: Option<&str>,
+) -> Result<(String, String)> {
+    let emission = er_css_with_resolved_typography(
+        diagram_id,
+        effective_config,
+        resolved_font_family,
+        resolved_font_size,
+    )?;
     let css = emission.css;
     let insertion_point = er_redux_color_css_insertion_point(&css, diagram_id);
 
@@ -113,7 +119,7 @@ fn write_er_style_with_font_family(
     out.push_str(&css[insertion_point..]);
     out.push_str("</style>");
     out.checkpoint()?;
-    Ok(emission.font_family.into())
+    Ok((emission.font_family.into(), emission.font_size.into()))
 }
 
 type ErStyleDeclaration = crate::diagram_theme::PreparedSourceStyleDeclaration;
@@ -319,7 +325,10 @@ pub(crate) fn render_er_diagram_svg_model(
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
     let er_render_settings = crate::er::ErConfigView::new(effective_config)
-        .render_settings_with_font_family(Some(entity_theme.font_family_css()));
+        .render_settings_with_resolved_typography(
+            Some(entity_theme.font_family_css()),
+            entity_theme.font_size_override(),
+        );
     let is_elk_layout = er_render_settings.is_elk_layout;
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_color_theme = is_er_redux_color_theme(effective_config);
@@ -467,8 +476,11 @@ pub(crate) fn render_er_diagram_svg_model(
             font_style: None,
         };
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
-        entity_theme_receipt
-            .record_diagram_title_measurement(title, title_style.font_family.as_deref());
+        entity_theme_receipt.record_diagram_title_measurement_with_typography(
+            title,
+            title_style.font_family.as_deref(),
+            title_style.font_size,
+        );
         let (title_ascent, title_descent) =
             crate::text::svg_title_bbox_vertical_extents_px(&title_style);
         let w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
@@ -549,7 +561,7 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    let emitted_font_family = write_er_style_with_font_family(
+    let (emitted_font_family, emitted_font_size) = write_er_style_with_font_family(
         &mut out,
         diagram_id.semantic_str(),
         data_look,
@@ -558,8 +570,10 @@ pub(crate) fn render_er_diagram_svg_model(
         &redux_background_colors,
         theme_color_limit,
         Some(entity_theme.font_family_css()),
+        entity_theme.font_size_override_css(),
     )?;
-    entity_theme_receipt.record_typography_css_emission(&emitted_font_family);
+    entity_theme_receipt
+        .record_typography_css_emission_with_font_size(&emitted_font_family, &emitted_font_size);
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -971,6 +985,8 @@ pub(crate) fn render_er_diagram_svg_model(
                         facts.inherited_color_run_count(),
                         facts.inherited_font_family_run_count(),
                         facts.unverified_font_family_run_count(),
+                        facts.inherited_font_size_run_count(),
+                        facts.unverified_font_size_run_count(),
                     );
                 }
             } else {
@@ -1180,6 +1196,15 @@ pub(crate) fn render_er_diagram_svg_model(
                         .label
                         .visible_style_facts()
                         .unverified_font_family_run_count(),
+                    measure
+                        .label
+                        .visible_style_facts()
+                        .inherited_font_size_run_count(),
+                    measure
+                        .label
+                        .visible_style_facts()
+                        .unverified_font_size_run_count(),
+                    label_style.font_size,
                 );
             }
             continue;
@@ -1530,6 +1555,15 @@ pub(crate) fn render_er_diagram_svg_model(
                     .label
                     .visible_style_facts()
                     .unverified_font_family_run_count(),
+                measure
+                    .label
+                    .visible_style_facts()
+                    .inherited_font_size_run_count(),
+                measure
+                    .label
+                    .visible_style_facts()
+                    .unverified_font_size_run_count(),
+                label_style.font_size,
             );
         }
 
@@ -1709,6 +1743,9 @@ pub(crate) fn render_er_diagram_svg_model(
                             facts.inherited_color_run_count(),
                             facts.inherited_font_family_run_count(),
                             facts.unverified_font_family_run_count(),
+                            facts.inherited_font_size_run_count(),
+                            facts.unverified_font_size_run_count(),
+                            attr_style.font_size,
                         );
                     }
                 }
@@ -2098,6 +2135,7 @@ mod tests {
             &backgrounds,
             2,
             None,
+            None,
         )
         .unwrap();
         let colors = merged.find("[data-color-id=").unwrap();
@@ -2201,6 +2239,7 @@ mod tests {
                     None,
                     &effective_config,
                 ),
+                crate::er::ErBaseFontSizePlan::resolve(None, &effective_config),
                 crate::er::ErConfigView::new(effective_config.as_value())
                     .relationship_html_labels(),
                 None,

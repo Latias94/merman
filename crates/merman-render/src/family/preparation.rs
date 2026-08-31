@@ -633,27 +633,34 @@ fn prepare_er_family(
         execution.resolved_theme(),
         &meta.effective_config,
     );
+    let base_font_size =
+        crate::er::ErBaseFontSizePlan::resolve(execution.resolved_theme(), &meta.effective_config);
+    let font_size_override = base_font_size.layout_override_px();
     #[cfg(feature = "layout-elk")]
-    let layout = crate::er::layout_er_diagram_typed_with_elk_operation_seed_and_font_family(
-        &model,
-        meta.effective_config.as_value(),
-        execution.text_measurer(),
-        execution.elk_operation_seed(),
-        Some(inherited_font_stack.font_family_css()),
-        execution.work_meter(),
-    )?;
+    let layout =
+        crate::er::layout_er_diagram_typed_with_elk_operation_seed_and_resolved_typography(
+            &model,
+            meta.effective_config.as_value(),
+            execution.text_measurer(),
+            execution.elk_operation_seed(),
+            Some(inherited_font_stack.font_family_css()),
+            font_size_override,
+            execution.work_meter(),
+        )?;
     #[cfg(not(feature = "layout-elk"))]
-    let layout = crate::er::layout_er_diagram_typed_with_font_family(
+    let layout = crate::er::layout_er_diagram_typed_with_resolved_typography(
         &model,
         meta.effective_config.as_value(),
         execution.text_measurer(),
         Some(inherited_font_stack.font_family_css()),
+        font_size_override,
         execution.work_meter(),
     )?;
     let entity_theme = crate::er::ErEntityThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         inherited_font_stack,
+        base_font_size,
         crate::er::ErConfigView::new(meta.effective_config.as_value()).relationship_html_labels(),
         meta.title.as_deref(),
         &model,
