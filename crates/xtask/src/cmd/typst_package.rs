@@ -17,9 +17,6 @@ use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-const PACKAGE_ARTIFACT_MANIFEST_FILE_NAME: &str = "merman_typst_plugin.manifest.json";
-const PACKAGE_MANIFEST_FILE_NAME: &str = "merman_package.manifest.json";
-const PACKAGE_MANIFEST_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_TYPST_PACKAGE_NAME: &str = "merman";
 const COMPILE_FAIL_FIXTURE_DIRECTORY: &str = "compile-fail";
 const RUNTIME_PACKAGE_EXCLUDES: [&str; 1] = ["examples/**"];
@@ -58,57 +55,10 @@ struct SnapshotFile {
     sha256: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-struct PackageManifest {
-    schema_version: u32,
-    package_name: String,
-    package_version: String,
-    profile: String,
-    wrapper: PackageFileFingerprint,
-    source: PackageSourceFingerprint,
-    plugin: PackagePluginFingerprint,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-struct PackageSourceFingerprint {
-    sha256: String,
-    files: Vec<PackageFileFingerprint>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-struct PackagePluginFingerprint {
-    wasm: PackageFileFingerprint,
-    artifact_manifest: PackageArtifactManifestFingerprint,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-struct PackageArtifactManifestFingerprint {
-    file: String,
-    sha256: String,
-    bytes: u64,
-    profile: String,
-    cargo_package_version: String,
-    typst_package_version: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-struct PackageFileFingerprint {
-    path: String,
-    sha256: String,
-    bytes: u64,
-}
-
 #[derive(Debug)]
 struct PluginArtifactSnapshot {
     wasm_file_name: String,
     wasm_bytes: Vec<u8>,
-    artifact_manifest_bytes: Vec<u8>,
-    package_manifest: PackagePluginFingerprint,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -167,11 +117,7 @@ impl Default for Options {
 impl RuntimePackageSourceSnapshot {
     fn capture(package_source: &Path, artifact_name: &str) -> Result<Self, XtaskError> {
         validate_package_directory(package_source, "Typst package source root")?;
-        let reserved = BTreeSet::from([
-            artifact_name.to_string(),
-            PACKAGE_ARTIFACT_MANIFEST_FILE_NAME.to_string(),
-            PACKAGE_MANIFEST_FILE_NAME.to_string(),
-        ]);
+        let reserved = BTreeSet::from([artifact_name.to_string()]);
         let mut files = Vec::new();
         collect_runtime_source_snapshot(package_source, package_source, &reserved, &mut files)?;
         files.sort_by(|left, right| left.path.cmp(&right.path));
@@ -210,17 +156,6 @@ impl RuntimePackageSourceSnapshot {
         })
     }
 
-    fn required_file(&self, path: &str) -> Result<&SnapshotFile, XtaskError> {
-        self.files
-            .iter()
-            .find(|file| file.path == path)
-            .ok_or_else(|| {
-                package_transaction_error(format!(
-                    "runtime package source snapshot is missing `{path}`"
-                ))
-            })
-    }
-
     fn verify_live_identity(&self) -> Result<(), XtaskError> {
         let current = Self::capture(&self.package_source, &self.artifact_name)?;
         if current.sha256 != self.sha256 || current.files != self.files {
@@ -230,23 +165,6 @@ impl RuntimePackageSourceSnapshot {
             )));
         }
         Ok(())
-    }
-
-    fn fingerprints(&self) -> Result<Vec<PackageFileFingerprint>, XtaskError> {
-        self.files
-            .iter()
-            .map(|file| file.fingerprint(&file.path))
-            .collect()
-    }
-}
-
-impl SnapshotFile {
-    fn fingerprint(&self, path: &str) -> Result<PackageFileFingerprint, XtaskError> {
-        Ok(PackageFileFingerprint {
-            path: path.to_string(),
-            sha256: self.sha256.clone(),
-            bytes: byte_length(&self.bytes, path)?,
-        })
     }
 }
 
@@ -1012,59 +930,11 @@ impl PluginArtifactSnapshot {
                 "Typst plugin artifact manifest does not bind profile `{expected_profile}`, Typst package `{expected_typst_version}`, and WASM `{wasm_file_name}`"
             )));
         }
-        let package_manifest = PackagePluginFingerprint {
-            wasm: PackageFileFingerprint {
-                path: wasm_file_name.clone(),
-                sha256: wasm_sha256,
-                bytes: wasm_bytes_length,
-            },
-            artifact_manifest: PackageArtifactManifestFingerprint {
-                file: PACKAGE_ARTIFACT_MANIFEST_FILE_NAME.to_string(),
-                sha256: sha256_hex(&artifact_manifest_bytes),
-                bytes: byte_length(
-                    &artifact_manifest_bytes,
-                    PACKAGE_ARTIFACT_MANIFEST_FILE_NAME,
-                )?,
-                profile: binding.profile,
-                cargo_package_version: binding.cargo_package_version,
-                typst_package_version: binding.typst_package_version,
-            },
-        };
         Ok(Self {
             wasm_file_name,
             wasm_bytes,
-            artifact_manifest_bytes,
-            package_manifest,
         })
     }
-}
-
-fn package_manifest(
-    source: &RuntimePackageSourceSnapshot,
-    profile: &str,
-    plugin: &PluginArtifactSnapshot,
-) -> Result<PackageManifest, XtaskError> {
-    let wrapper = source.required_file("lib.typ")?.fingerprint("lib.typ")?;
-    Ok(PackageManifest {
-        schema_version: PACKAGE_MANIFEST_SCHEMA_VERSION,
-        package_name: EXPECTED_TYPST_PACKAGE_NAME.to_string(),
-        package_version: source.package_version.clone(),
-        profile: profile.to_string(),
-        wrapper,
-        source: PackageSourceFingerprint {
-            sha256: source.sha256.clone(),
-            files: source.fingerprints()?,
-        },
-        plugin: plugin.package_manifest.clone(),
-    })
-}
-
-fn serialize_package_manifest(manifest: &PackageManifest) -> Result<Vec<u8>, XtaskError> {
-    let mut bytes = serde_json::to_vec_pretty(manifest).map_err(|error| {
-        package_transaction_error(format!("serialize package manifest: {error}"))
-    })?;
-    bytes.push(b'\n');
-    Ok(bytes)
 }
 
 fn write_staged_file(staged: &Path, relative: &str, bytes: &[u8]) -> Result<(), XtaskError> {
@@ -1207,8 +1077,6 @@ where
             source.artifact_name, plugin.wasm_file_name
         )));
     }
-    let package_manifest = package_manifest(source, profile, &plugin)?;
-    let package_manifest_bytes = serialize_package_manifest(&package_manifest)?;
     let package_version = &source.package_version;
     let package_parent = out_dir.join("merman");
     fs::create_dir_all(&package_parent).map_err(|source| XtaskError::WriteFile {
@@ -1229,28 +1097,10 @@ where
         write_staged_file(staged, &file.path, &file.bytes)?;
     }
     write_staged_file(staged, &plugin.wasm_file_name, &plugin.wasm_bytes)?;
-    write_staged_file(
-        staged,
-        PACKAGE_ARTIFACT_MANIFEST_FILE_NAME,
-        &plugin.artifact_manifest_bytes,
-    )?;
-    write_staged_file(staged, PACKAGE_MANIFEST_FILE_NAME, &package_manifest_bytes)?;
-    validate_staged_package(
-        staged,
-        source,
-        &plugin,
-        &package_manifest,
-        &package_manifest_bytes,
-    )?;
+    validate_staged_package(staged, source, &plugin)?;
     before_source_revalidation();
     source.verify_live_identity()?;
-    validate_staged_package(
-        staged,
-        source,
-        &plugin,
-        &package_manifest,
-        &package_manifest_bytes,
-    )?;
+    validate_staged_package(staged, source, &plugin)?;
 
     let package_dir = package_parent.join(package_version);
     install_staged_package(&package_dir, staging, |from, to| fs::rename(from, to))?;
@@ -1261,19 +1111,13 @@ fn validate_staged_package(
     staged: &Path,
     source: &RuntimePackageSourceSnapshot,
     plugin: &PluginArtifactSnapshot,
-    package_manifest: &PackageManifest,
-    package_manifest_bytes: &[u8],
 ) -> Result<(), XtaskError> {
     let mut expected_files = source
         .files
         .iter()
         .map(|file| file.path.clone())
         .collect::<BTreeSet<_>>();
-    expected_files.extend([
-        plugin.wasm_file_name.clone(),
-        PACKAGE_ARTIFACT_MANIFEST_FILE_NAME.to_string(),
-        PACKAGE_MANIFEST_FILE_NAME.to_string(),
-    ]);
+    expected_files.insert(plugin.wasm_file_name.clone());
     let expected_directories = expected_package_directories(&expected_files);
     let (actual_files, actual_directories) = staged_package_shape(staged)?;
     if actual_files != expected_files || actual_directories != expected_directories {
@@ -1301,23 +1145,6 @@ fn validate_staged_package(
         ensure_staged_bytes(staged, &file.path, &file.bytes)?;
     }
     ensure_staged_bytes(staged, &plugin.wasm_file_name, &plugin.wasm_bytes)?;
-    ensure_staged_bytes(
-        staged,
-        PACKAGE_ARTIFACT_MANIFEST_FILE_NAME,
-        &plugin.artifact_manifest_bytes,
-    )?;
-    ensure_staged_bytes(staged, PACKAGE_MANIFEST_FILE_NAME, package_manifest_bytes)?;
-    let parsed: PackageManifest =
-        serde_json::from_slice(package_manifest_bytes).map_err(|error| {
-            package_transaction_error(format!(
-                "package manifest is not valid schema-1 JSON: {error}"
-            ))
-        })?;
-    if &parsed != package_manifest {
-        return Err(package_transaction_error(
-            "staged package manifest does not match the frozen package inputs",
-        ));
-    }
     Ok(())
 }
 
@@ -1545,12 +1372,11 @@ mod tests {
     #[cfg(unix)]
     use super::copy_file;
     use super::{
-        PACKAGE_ARTIFACT_MANIFEST_FILE_NAME, PACKAGE_MANIFEST_FILE_NAME, PackageManifest,
         PluginArtifactSnapshot, RuntimePackageSourceSnapshot, collect_typst_files,
         collect_typst_fixtures, copy_dir_recursive, create_smoke_run_root, install_staged_package,
-        is_typst_package_version, package_manifest, parse_smoke_options,
-        serialize_package_manifest, stage_and_install_package, stage_and_install_package_with_hook,
-        typst_fixture_output_path, validate_staged_package, write_staged_file,
+        is_typst_package_version, parse_smoke_options, stage_and_install_package,
+        stage_and_install_package_with_hook, typst_fixture_output_path, validate_staged_package,
+        write_staged_file,
     };
     use crate::util::sha256_hex;
     use std::collections::BTreeSet;
@@ -1796,29 +1622,13 @@ mod tests {
 
         assert!(package.join("src/plugin.typ").exists());
         assert!(package.join("merman_typst_plugin.wasm").exists());
-        assert!(package.join("merman_typst_plugin.manifest.json").exists());
-        assert!(package.join(PACKAGE_MANIFEST_FILE_NAME).exists());
+        assert!(!package.join("merman_typst_plugin.manifest.json").exists());
+        assert!(!package.join("merman_package.manifest.json").exists());
         assert!(package.join("examples/basic.typ").exists());
         assert!(!package.join("tests").exists());
         assert!(package.join("LICENSE").exists());
         assert!(package.join("THIRD_PARTY_NOTICES.md").exists());
         assert!(package.join("THIRD_PARTY_LICENSES").is_dir());
-        let manifest: PackageManifest =
-            serde_json::from_slice(&fs::read(package.join(PACKAGE_MANIFEST_FILE_NAME)).unwrap())
-                .unwrap();
-        assert_eq!(manifest.schema_version, 1);
-        assert_eq!(manifest.package_name, "merman");
-        assert_eq!(manifest.package_version, "0.3.0");
-        assert_eq!(manifest.profile, "publish");
-        assert_eq!(manifest.wrapper.path, "lib.typ");
-        assert_eq!(manifest.plugin.wasm.sha256, sha256_hex(b"wasm"));
-        assert!(
-            manifest
-                .source
-                .files
-                .iter()
-                .any(|file| file.path == "THIRD_PARTY_LICENSES/dependency.txt")
-        );
         let bundle_entries = fs::read_dir(&package)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
@@ -1832,8 +1642,6 @@ mod tests {
                 "THIRD_PARTY_NOTICES.md".to_string(),
                 "examples".to_string(),
                 "lib.typ".to_string(),
-                PACKAGE_MANIFEST_FILE_NAME.to_string(),
-                "merman_typst_plugin.manifest.json".to_string(),
                 "merman_typst_plugin.wasm".to_string(),
                 "src".to_string(),
                 "typst.toml".to_string(),
@@ -1868,7 +1676,7 @@ mod tests {
 
         assert!(error.to_string().contains("changed after snapshot"));
         assert_eq!(fs::read(package.join("previous.txt")).unwrap(), b"previous");
-        assert!(!package.join(PACKAGE_MANIFEST_FILE_NAME).exists());
+        assert!(!package.join("merman_typst_plugin.wasm").exists());
     }
 
     #[test]
@@ -1882,71 +1690,39 @@ mod tests {
             "0.3.0",
         )
         .unwrap();
-        let manifest = package_manifest(&fixture.source_snapshot, "publish", &plugin).unwrap();
-        let manifest_bytes = serialize_package_manifest(&manifest).unwrap();
         let staged = temporary.path().join("staged");
         fs::create_dir_all(&staged).unwrap();
         for file in &fixture.source_snapshot.files {
             write_staged_file(&staged, &file.path, &file.bytes).unwrap();
         }
         write_staged_file(&staged, &plugin.wasm_file_name, &plugin.wasm_bytes).unwrap();
-        write_staged_file(
-            &staged,
-            PACKAGE_ARTIFACT_MANIFEST_FILE_NAME,
-            &plugin.artifact_manifest_bytes,
-        )
-        .unwrap();
-        write_staged_file(&staged, PACKAGE_MANIFEST_FILE_NAME, &manifest_bytes).unwrap();
-        validate_staged_package(
-            &staged,
-            &fixture.source_snapshot,
-            &plugin,
-            &manifest,
-            &manifest_bytes,
-        )
-        .unwrap();
+        validate_staged_package(&staged, &fixture.source_snapshot, &plugin).unwrap();
 
         fs::write(staged.join("extra.txt"), "extra").unwrap();
-        let extra = validate_staged_package(
-            &staged,
-            &fixture.source_snapshot,
-            &plugin,
-            &manifest,
-            &manifest_bytes,
-        )
-        .unwrap_err();
+        let extra =
+            validate_staged_package(&staged, &fixture.source_snapshot, &plugin).unwrap_err();
         assert!(extra.to_string().contains("shape does not match"));
         fs::remove_file(staged.join("extra.txt")).unwrap();
 
         fs::write(staged.join("lib.typ"), "tampered").unwrap();
-        let tampered = validate_staged_package(
-            &staged,
-            &fixture.source_snapshot,
-            &plugin,
-            &manifest,
-            &manifest_bytes,
-        )
-        .unwrap_err();
+        let tampered =
+            validate_staged_package(&staged, &fixture.source_snapshot, &plugin).unwrap_err();
         assert!(tampered.to_string().contains("frozen input"));
         fs::write(
             staged.join("lib.typ"),
             &fixture
                 .source_snapshot
-                .required_file("lib.typ")
+                .files
+                .iter()
+                .find(|file| file.path == "lib.typ")
                 .unwrap()
                 .bytes,
         )
         .unwrap();
 
         fs::remove_file(staged.join("README.md")).unwrap();
-        let missing = validate_staged_package(
-            &staged,
-            &fixture.source_snapshot,
-            &plugin,
-            &manifest,
-            &manifest_bytes,
-        )
-        .unwrap_err();
+        let missing =
+            validate_staged_package(&staged, &fixture.source_snapshot, &plugin).unwrap_err();
         assert!(missing.to_string().contains("shape does not match"));
     }
 
