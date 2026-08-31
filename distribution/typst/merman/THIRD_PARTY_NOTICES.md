@@ -8,7 +8,7 @@ The wrapper and Merman-authored code remain under the project license; each comp
 
 - ID: `typst-publish`
 - Description: The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
-- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `rough-rs`, `roughjs`, `sanitize-url`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
+- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `sanitize-url`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
 
 ## Components
 
@@ -160,13 +160,25 @@ Manatee also follows the newer layout-base behavior selected by the FCoSE depend
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `11.16.1`
-- Source: https://github.com/mermaid-js/mermaid.git @ `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`
+- Version: `11.17.2`
+- Source: https://github.com/mermaid-js/mermaid.git @ `dcb694ddb58dc5ad3502e7e903cac05fd812eac3`
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
 - Local evidence: `crates/merman-core/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
+
+### non-layered-tidy-tree-layout
+
+Merman's Mindmap tidy-tree layout is a modified Rust translation of the non-layered tidy-tree contour and threading algorithm bundled by Mermaid's tidy-tree adapter.
+
+- Version: `2.0.2`
+- Source: https://github.com/stetrevor/non-layered-tidy-tree-layout.git @ `63852fb7646eb079ce0e1976044d54545de273e8`
+- Source path: `src`
+- Relationship: `modified`, `translated`
+- License: `MIT`
+- Local evidence: `crates/merman-render/src/mindmap/tidy_tree.rs`
+- Legal file: `THIRD_PARTY_LICENSES/non-layered-tidy-tree-layout/LICENSE`
 
 ### rough-rs roughr
 
