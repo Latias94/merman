@@ -87,4 +87,9 @@ Compile the wrapper examples and tests against the exact staged bundle with:
 cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
 ```
 
-The installed bundle carries a schema-2 `merman_typst_plugin.manifest.json`, which proves the canonical artifact recipe, `default_features` policy, exact Cargo feature set, exact `typst-wasm` artifact profile, production input closure, toolchain, flags, versions, and artifact digest. The schema-1 `merman_package.manifest.json` additionally binds the frozen Typst wrapper tree and licenses to that artifact. The package transaction rejects source drift and any extra, missing, or changed staged file before replacing an existing version.
+The build consumes a private artifact provenance manifest to prove the canonical artifact recipe,
+`default_features` policy, exact Cargo feature set, exact `typst-wasm` artifact profile, production
+input closure, toolchain, flags, versions, and artifact digest. It also freezes the Typst wrapper
+tree and licenses in memory while staging, then rejects source drift and any extra, missing, or
+changed staged file before replacing an existing version. Neither build receipt is copied into the
+installed Typst package.
