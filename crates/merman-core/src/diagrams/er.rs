@@ -49,12 +49,17 @@ pub struct ErDiagramRenderModel {
     pub entities: IndexMap<String, ErEntityRenderModel>,
     #[serde(default)]
     pub relationships: Vec<ErRelationshipRenderModel>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subgraphs: Vec<ErSubgraphRenderModel>,
 }
 
 impl ErDiagramRenderModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+        for subgraph in &mut self.subgraphs {
+            subgraph.title = crate::sanitize::sanitize_text(&subgraph.title, config);
+        }
     }
 }
 
@@ -98,6 +103,22 @@ pub struct ErClassDefRenderModel {
     pub styles: Vec<String>,
     #[serde(default, rename = "textStyles")]
     pub text_styles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ErSubgraphRenderModel {
+    #[serde(default)]
+    pub classes: Vec<String>,
+    #[serde(default, rename = "cssStyles")]
+    pub css_styles: Vec<String>,
+    #[serde(default)]
+    pub dir: Option<String>,
+    pub id: String,
+    #[serde(default, rename = "labelType")]
+    pub label_type: String,
+    #[serde(default)]
+    pub nodes: Vec<String>,
+    pub title: String,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -150,6 +171,12 @@ enum Action {
         entities: Vec<String>,
         raw: String,
     },
+    AddSubgraph {
+        id: String,
+        title: String,
+        label_type: String,
+        body: Vec<Action>,
+    },
     SetDirection(String),
     SetAccTitle(String),
     SetAccDescr(String),
@@ -187,6 +214,9 @@ struct ErDb {
     entity_counter: usize,
     acc_title: Option<String>,
     acc_descr: Option<String>,
+    subgraphs: Vec<ErSubgraphRenderModel>,
+    subgraph_lookup: IndexMap<String, usize>,
+    subgraph_counter: usize,
 }
 
 impl ErDb {
@@ -235,25 +265,44 @@ impl ErDb {
     }
 
     fn add_relationship(&mut self, a: &str, role: &str, b: &str, spec: RelSpec) {
-        let (Some(entity_a), Some(entity_b)) = (self.entities.get(a), self.entities.get(b)) else {
-            return;
+        let entity_a = if self.subgraph_lookup.contains_key(a) {
+            a.to_string()
+        } else {
+            self.add_entity(a, None);
+            let Some(entity) = self.entities.get(a) else {
+                return;
+            };
+            entity.id.clone()
+        };
+        let entity_b = if self.subgraph_lookup.contains_key(b) {
+            b.to_string()
+        } else {
+            self.add_entity(b, None);
+            let Some(entity) = self.entities.get(b) else {
+                return;
+            };
+            entity.id.clone()
         };
         self.relationships.push(Relationship {
-            entity_a: entity_a.id.clone(),
+            entity_a,
             role_a: role.to_string(),
-            entity_b: entity_b.id.clone(),
+            entity_b,
             rel_spec: spec,
         });
     }
 
     fn set_class(&mut self, entities: &[String], classes: &[String]) {
         for e in entities {
-            let Some(node) = self.entities.get_mut(e) else {
-                continue;
-            };
-            for cls in classes {
-                node.css_classes.push(' ');
-                node.css_classes.push_str(cls);
+            if let Some(node) = self.entities.get_mut(e) {
+                for cls in classes {
+                    node.css_classes.push(' ');
+                    node.css_classes.push_str(cls);
+                }
+            }
+            if let Some(index) = self.subgraph_lookup.get(e).copied()
+                && let Some(subgraph) = self.subgraphs.get_mut(index)
+            {
+                subgraph.classes.extend(classes.iter().cloned());
             }
         }
     }
@@ -279,23 +328,104 @@ impl ErDb {
 
     fn add_css_styles(&mut self, entities: &[String], styles: &[String]) {
         for id in entities {
-            let Some(entity) = self.entities.get_mut(id) else {
-                continue;
-            };
-            for style in styles {
-                entity.css_styles.push(style.to_string());
+            if let Some(entity) = self.entities.get_mut(id) {
+                for style in styles {
+                    entity.css_styles.push(style.to_string());
+                }
+            }
+            if let Some(index) = self.subgraph_lookup.get(id).copied()
+                && let Some(subgraph) = self.subgraphs.get_mut(index)
+            {
+                subgraph.css_styles.extend(styles.iter().cloned());
             }
         }
     }
 
-    fn apply(&mut self, a: Action) {
-        match a {
-            Action::AddEntity { name, alias } => self.add_entity(&name, alias.as_deref()),
+    fn add_subgraph(
+        &mut self,
+        raw_id: String,
+        title: String,
+        label_type: String,
+        body: Vec<Action>,
+    ) -> String {
+        let mut members = Vec::new();
+        let mut direction = None;
+
+        for action in body {
+            match action {
+                Action::AddEntity { name, alias } => {
+                    members.push(name.clone());
+                    self.apply_action(Action::AddEntity { name, alias });
+                }
+                Action::AddAttributes { entity, attributes } => {
+                    members.push(entity.clone());
+                    self.apply_action(Action::AddAttributes { entity, attributes });
+                }
+                Action::AddRelationship { a, role, b, spec } => {
+                    members.push(a.clone());
+                    members.push(b.clone());
+                    self.apply_action(Action::AddRelationship { a, role, b, spec });
+                }
+                Action::AddSubgraph {
+                    id,
+                    title,
+                    label_type,
+                    body,
+                } => {
+                    let child_id = self.add_subgraph(id, title, label_type, body);
+                    members.push(child_id);
+                }
+                Action::SetDirection(dir) => direction = Some(dir),
+                other => {
+                    self.apply_action(other);
+                }
+            }
+        }
+
+        let mut seen = HashSet::new();
+        members.retain(|member| !member.trim().is_empty() && seen.insert(member.clone()));
+
+        let existing_members: HashSet<&str> = self
+            .subgraphs
+            .iter()
+            .flat_map(|subgraph| subgraph.nodes.iter().map(String::as_str))
+            .collect();
+        members.retain(|member| !existing_members.contains(member.as_str()));
+
+        let id = if raw_id.trim().is_empty() {
+            format!("subGraph{}", self.subgraph_counter)
+        } else {
+            raw_id.trim().to_string()
+        };
+        self.subgraph_counter = self.subgraph_counter.saturating_add(1);
+        let subgraph = ErSubgraphRenderModel {
+            classes: Vec::new(),
+            css_styles: Vec::new(),
+            dir: direction,
+            id: id.clone(),
+            label_type: match label_type.as_str() {
+                "markdown" | "string" | "text" => label_type,
+                _ => "markdown".to_string(),
+            },
+            nodes: members,
+            title: title.trim().to_string(),
+        };
+        let index = self.subgraphs.len();
+        self.subgraphs.push(subgraph);
+        self.subgraph_lookup.insert(id.clone(), index);
+        id
+    }
+
+    fn apply_action(&mut self, action: Action) -> Option<String> {
+        match action {
+            Action::AddEntity { name, alias } => {
+                self.add_entity(&name, alias.as_deref());
+            }
             Action::AddAttributes { entity, attributes } => {
-                self.add_attributes(&entity, attributes)
+                self.add_attributes(&entity, attributes);
             }
             Action::AddRelationship { a, role, b, spec } => {
-                self.add_relationship(&a, &role, &b, spec)
+                self.add_relationship(&a, &role, &b, spec);
             }
             Action::SetClass { entities, classes } => self.set_class(&entities, &classes),
             Action::AddClassDef { classes, raw } => {
@@ -306,6 +436,12 @@ impl ErDb {
                 let styles = split_styles(&raw);
                 self.add_css_styles(&entities, &styles);
             }
+            Action::AddSubgraph {
+                id,
+                title,
+                label_type,
+                body,
+            } => return Some(self.add_subgraph(id, title, label_type, body)),
             Action::SetDirection(dir) => self.direction = dir,
             Action::SetAccTitle(t) => {
                 self.acc_title = Some(t.trim().trim_start().to_string());
@@ -326,6 +462,11 @@ impl ErDb {
                 self.acc_descr = Some(out);
             }
         }
+        None
+    }
+
+    fn apply(&mut self, a: Action) {
+        let _ = self.apply_action(a);
     }
 
     fn into_render_model(self) -> ErDiagramRenderModel {
@@ -336,6 +477,7 @@ impl ErDb {
             classes: self.classes,
             entities: self.entities,
             relationships: self.relationships,
+            subgraphs: self.subgraphs,
         }
     }
 
@@ -712,6 +854,13 @@ impl ErEditorFactCollector {
                 facts.push_directive_prefix("class");
                 self.directive_start = Some(start);
                 self.expect_id_list(ExpectedErIdList::ClassEntities);
+            }
+            Tok::SubgraphKw => {
+                facts.push_directive_prefix("subgraph");
+                self.directive_start = Some(start);
+            }
+            Tok::EndKw => {
+                self.directive_start = None;
             }
             Tok::StyleSeparator => {
                 if self.relationship_started {
@@ -1193,6 +1342,8 @@ enum Tok {
     StyleKw,
     ClassDefKw,
     ClassKw,
+    SubgraphKw,
+    EndKw,
     Direction(String),
 
     ZeroOrOne,
@@ -1470,6 +1621,14 @@ impl<'input> Lexer<'input> {
             self.pos += "class".len();
             self.mode = Mode::NeedClassFirstIdList;
             return Some((start, Tok::ClassKw, self.pos));
+        }
+        if self.starts_with_word_ci("subgraph") {
+            self.pos += "subgraph".len();
+            return Some((start, Tok::SubgraphKw, self.pos));
+        }
+        if self.starts_with_word_ci("end") {
+            self.pos += "end".len();
+            return Some((start, Tok::EndKw, self.pos));
         }
         None
     }
@@ -2103,5 +2262,81 @@ mod tests {
 
         assert_eq!(facts.symbols[0].role, EditorSemanticRole::Entity);
         assert_eq!(facts.symbols[1].role, EditorSemanticRole::Reference);
+    }
+
+    #[test]
+    fn er_subgraphs_preserve_membership_and_local_direction() {
+        let text = concat!(
+            "erDiagram\n",
+            "direction LR\n",
+            "subgraph Orders [Order Domain]\n",
+            "  direction TB\n",
+            "  CUSTOMER ||--o{ ORDER : places\n",
+            "end\n",
+            "WAREHOUSE ||--o{ Orders : ships\n",
+        );
+        let model = parse_er_model_for_render(text, &meta()).expect("ER subgraphs should parse");
+
+        assert_eq!(model.direction, "LR");
+        assert_eq!(model.subgraphs.len(), 1);
+        let subgraph = &model.subgraphs[0];
+        assert_eq!(subgraph.id, "Orders");
+        assert_eq!(subgraph.title, "Order Domain");
+        assert_eq!(subgraph.dir.as_deref(), Some("TB"));
+        assert_eq!(subgraph.nodes, ["CUSTOMER", "ORDER"]);
+        assert_eq!(model.entities.len(), 3);
+        assert_eq!(model.relationships.len(), 2);
+        assert_eq!(model.relationships[1].entity_b, "Orders");
+    }
+
+    #[test]
+    fn er_subgraphs_support_nested_and_quoted_headers() {
+        let text = concat!(
+            "erDiagram\n",
+            "subgraph \"Customer Domain\" [\"Customer %% Domain\"]\n",
+            "  subgraph Billing [Billing Area]\n",
+            "    INVOICE\n",
+            "  end\n",
+            "  CUSTOMER\n",
+            "end\n",
+        );
+        let model = parse_er_model_for_render(text, &meta()).expect("nested ER subgraphs parse");
+
+        assert_eq!(model.subgraphs.len(), 2);
+        assert_eq!(model.subgraphs[0].id, "Billing");
+        assert_eq!(model.subgraphs[0].title, "Billing Area");
+        assert_eq!(model.subgraphs[1].id, "Customer Domain");
+        assert_eq!(model.subgraphs[1].title, "Customer %% Domain");
+        assert_eq!(model.subgraphs[1].nodes, ["Billing", "CUSTOMER"]);
+        assert_eq!(model.subgraphs[0].nodes, ["INVOICE"]);
+    }
+
+    #[test]
+    fn er_subgraph_styles_apply_after_the_subgraph_is_registered() {
+        let text = concat!(
+            "erDiagram\n",
+            "subgraph Orders\n",
+            "  ORDER\n",
+            "end\n",
+            "class Orders important\n",
+            "style Orders fill:#eee,stroke:#333\n",
+        );
+        let model = parse_er_model_for_render(text, &meta()).expect("styled ER subgraph parses");
+        let subgraph = &model.subgraphs[0];
+        assert_eq!(subgraph.classes, ["important"]);
+        assert_eq!(subgraph.css_styles, ["fill:#eee", "stroke:#333"]);
+    }
+
+    #[test]
+    fn er_subgraph_header_may_follow_er_diagram_on_same_line() {
+        let model = parse_er_model_for_render(
+            "erDiagram subgraph WithRL\ndirection RL\nA\nB\nend\n",
+            &meta(),
+        )
+        .expect("same-line ER subgraph parses");
+        assert_eq!(model.subgraphs.len(), 1);
+        assert_eq!(model.subgraphs[0].id, "WithRL");
+        assert_eq!(model.subgraphs[0].dir.as_deref(), Some("RL"));
+        assert_eq!(model.subgraphs[0].nodes, ["A", "B"]);
     }
 }

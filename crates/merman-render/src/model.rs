@@ -743,6 +743,8 @@ pub enum ClassRenderItem {
 pub struct ErDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
 }
 

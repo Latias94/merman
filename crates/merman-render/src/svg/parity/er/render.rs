@@ -189,6 +189,154 @@ fn compile_er_entity_styles(
     (rect_decls, text_decls)
 }
 
+fn compile_er_subgraph_styles(
+    subgraph: &crate::er::ErSubgraph,
+    classes: &indexmap::IndexMap<String, crate::er::ErClassDef>,
+) -> (Vec<String>, Vec<String>) {
+    let mut compiled_box = Vec::new();
+    let mut compiled_text = Vec::new();
+    let mut seen_classes = std::collections::HashSet::new();
+    for class_name in &subgraph.classes {
+        if !seen_classes.insert(class_name.as_str()) {
+            continue;
+        }
+        let Some(def) = classes.get(class_name) else {
+            continue;
+        };
+        compiled_box.extend(def.styles.iter().map(|style| style.trim().to_string()));
+        compiled_text.extend(def.text_styles.iter().map(|style| style.trim().to_string()));
+    }
+
+    let mut rect_map = std::collections::BTreeMap::new();
+    let mut text_map = std::collections::BTreeMap::new();
+    for style in compiled_box.iter().chain(subgraph.css_styles.iter()) {
+        let Some((key, value)) = parse_style_decl(style) else {
+            continue;
+        };
+        if is_rect_style_key(key) {
+            rect_map.insert(key.to_string(), value.to_string());
+        }
+        if key == "color" {
+            text_map.insert("color".to_string(), value.to_string());
+        }
+    }
+    for style in compiled_text.iter().chain(subgraph.css_styles.iter()) {
+        let Some((key, value)) = parse_style_decl(style) else {
+            continue;
+        };
+        if is_text_style_key(key) {
+            text_map.insert(key.to_string(), value.to_string());
+        }
+    }
+
+    let rect_decls = [
+        "fill",
+        "stroke",
+        "stroke-width",
+        "stroke-dasharray",
+        "opacity",
+        "fill-opacity",
+        "stroke-opacity",
+    ]
+    .into_iter()
+    .filter_map(|key| rect_map.get(key).map(|value| format!("{key}:{value}")))
+    .collect();
+    let text_decls = [
+        "color",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "opacity",
+    ]
+    .into_iter()
+    .filter_map(|key| text_map.get(key).map(|value| format!("{key}:{value}")))
+    .collect();
+    (rect_decls, text_decls)
+}
+
+fn er_subgraph_label_fragment(subgraph: &crate::er::ErSubgraph) -> String {
+    if subgraph.label_type == "string" || subgraph.label_type == "text" {
+        escape_xml(&subgraph.title)
+    } else {
+        crate::text::mermaid_markdown_to_xhtml_label_fragment(&subgraph.title, true)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ErSubgraphRenderContext<'a> {
+    diagram_id: SvgDiagramId<'a>,
+    data_look: &'a str,
+    classes: &'a indexmap::IndexMap<String, crate::er::ErClassDef>,
+    use_html_labels: bool,
+    translate_x: f64,
+    translate_y: f64,
+}
+
+fn render_er_subgraph_cluster(
+    out: &mut String,
+    cluster: &crate::model::LayoutCluster,
+    subgraph: &crate::er::ErSubgraph,
+    context: ErSubgraphRenderContext<'_>,
+) {
+    let (rect_styles, text_styles) = compile_er_subgraph_styles(subgraph, context.classes);
+    let rect_style_attr = if rect_styles.is_empty() {
+        "style=\"\"".to_string()
+    } else {
+        format!(
+            r#"style="{}""#,
+            escape_xml(&style_decls_with_important(&rect_styles))
+        )
+    };
+    let text_style_attr = if text_styles.is_empty() {
+        "style=\"\"".to_string()
+    } else {
+        format!(
+            r#"style="{}""#,
+            escape_xml(&style_decls_with_important(&text_styles))
+        )
+    };
+    let class_attr = if subgraph.classes.is_empty() {
+        "cluster".to_string()
+    } else {
+        format!("cluster {}", subgraph.classes.join(" "))
+    };
+    let width = cluster.width.max(1.0);
+    let height = cluster.height.max(1.0);
+    let left = cluster.x - width / 2.0 + context.translate_x;
+    let top = cluster.y - height / 2.0 + context.translate_y;
+    let title_width = cluster.title_label.width.max(0.0);
+    let title_height = cluster.title_label.height.max(0.0);
+    let title_x = cluster.title_label.x + context.translate_x;
+    let title_y = cluster.title_label.y + context.translate_y;
+    let title_fragment = er_subgraph_label_fragment(subgraph);
+    let _ = write!(
+        out,
+        r#"<g id="{}-{}" class="{}" data-look="{}"><rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject></g></g>"#,
+        escape_xml(&format!("{}", context.diagram_id)),
+        escape_xml(&subgraph.id),
+        escape_xml(&class_attr),
+        escape_xml(context.data_look),
+        rect_style_attr,
+        fmt(left),
+        fmt(top),
+        fmt(width),
+        fmt(height),
+        fmt(title_x),
+        fmt(title_y),
+        fmt(-title_width / 2.0),
+        fmt(-title_height / 2.0),
+        fmt(title_width),
+        fmt(title_height),
+        text_style_attr,
+        if context.use_html_labels {
+            title_fragment
+        } else {
+            escape_xml(&subgraph.title)
+        }
+    );
+    out.push('\n');
+}
+
 fn style_decls_with_important_join(decls: &[String], join: &str) -> String {
     let mut out: Vec<String> = Vec::new();
     for d in decls {
@@ -198,6 +346,20 @@ fn style_decls_with_important_join(decls: &[String], join: &str) -> String {
         out.push(format!("{k}:{v} !important"));
     }
     out.join(join)
+}
+
+fn render_er_subgraph_clusters(
+    out: &mut String,
+    clusters: &[crate::model::LayoutCluster],
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    context: ErSubgraphRenderContext<'_>,
+) {
+    for cluster in clusters {
+        let Some(subgraph) = model.subgraphs.iter().find(|item| item.id == cluster.id) else {
+            continue;
+        };
+        render_er_subgraph_cluster(out, cluster, subgraph, context);
+    }
 }
 
 fn style_decls_with_important(decls: &[String]) -> String {
@@ -347,7 +509,7 @@ pub(crate) fn render_er_diagram_svg_model(
     let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
     let is_empty_diagram = nodes.is_empty() && edges.is_empty() && diagram_title.is_none();
 
-    let bounds = compute_layout_bounds(&[], &nodes, &edges).unwrap_or({
+    let bounds = compute_layout_bounds(&layout.clusters, &nodes, &edges).unwrap_or({
         if is_empty_diagram {
             Bounds {
                 min_x: 0.0,
@@ -539,15 +701,36 @@ pub(crate) fn render_er_diagram_svg_model(
         }
     }
 
+    let subgraph_context = ErSubgraphRenderContext {
+        diagram_id,
+        data_look,
+        classes: &model.classes,
+        use_html_labels: matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike),
+        translate_x,
+        translate_y,
+    };
+
     if is_elk_layout {
         // Mermaid's ER diagram output changes shape when `layout=elk` is enabled: markers are
         // emitted in their own wrapper `<g>`, and the rest of the content is written as sibling
         // top-level groups (`edges/edgePaths`, `subgraphs`, `nodes`, `edgeLabels`).
         out.push_str("</g>\n");
-        out.push_str(r#"<g class="subgraphs"/>"#);
+        if layout.clusters.is_empty() {
+            out.push_str(r#"<g class="subgraphs"/>"#);
+        } else {
+            out.push_str(r#"<g class="subgraphs">"#);
+            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
+            out.push_str("</g>");
+        }
     } else {
         let _ = writeln!(&mut out, r#"<g class="root">"#);
-        out.push_str(r#"<g class="clusters"/>"#);
+        if layout.clusters.is_empty() {
+            out.push_str(r#"<g class="clusters"/>"#);
+        } else {
+            out.push_str(r#"<g class="clusters">"#);
+            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
+            out.push_str("</g>");
+        }
     }
 
     if is_elk_layout {
@@ -772,6 +955,9 @@ pub(crate) fn render_er_diagram_svg_model(
     // Entities drawn after relationships so they cover markers when overlapping.
     out.push_str(r#"<g class="nodes">"#);
     for n in &nodes {
+        if n.is_cluster {
+            continue;
+        }
         let Some(entity) = entity_by_id.get(n.id.as_str()).copied() else {
             if n.id.contains("---") {
                 let cx = n.x + translate_x;
@@ -1641,6 +1827,7 @@ mod tests {
                 },
             ],
             edges: Vec::new(),
+            clusters: Vec::new(),
             bounds: Some(Bounds {
                 min_x: 0.0,
                 min_y: 0.0,

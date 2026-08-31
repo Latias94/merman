@@ -636,6 +636,11 @@ where
     let error_text = theme.color("errorTextColor", "#552222");
     let main_bkg = theme.color("mainBkg", "#ECECFF");
     let node_border = theme.color("nodeBorder", "#9370DB");
+    let cluster_bkg = theme.color("clusterBkg", &main_bkg);
+    let cluster_border = theme.color("clusterBorder", &node_border);
+    let title_color = theme
+        .optional_color("titleColor")
+        .unwrap_or_else(|| text_color.clone());
     let node_text_color = theme
         .optional_color("nodeTextColor")
         .unwrap_or_else(|| text_color.clone());
@@ -676,6 +681,11 @@ where
         &mut out,
         r#"#{} .entityBox{{fill:{};stroke:{};}}"#,
         id, main_bkg, node_border
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster-label text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}"#,
+        id, cluster_bkg, cluster_border, id, title_color, id, title_color, id, id, title_color
     );
     let _ = write!(
         &mut out,

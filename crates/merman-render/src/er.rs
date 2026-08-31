@@ -20,6 +20,7 @@ use config::{ErLayoutAlgorithm, ErLayoutSettings};
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
+pub(crate) type ErSubgraph = merman_core::diagrams::er::ErSubgraphRenderModel;
 
 pub(crate) fn uses_elk_layout(effective_config: &Value) -> bool {
     ErConfigView::new(effective_config).is_elk_layout()
@@ -624,22 +625,23 @@ fn layout_er_diagram_typed_with_elk_authority(
 fn validate_er_relationship_endpoints(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
 ) -> Result<()> {
-    let entity_ids: HashSet<&str> = model
+    let mut node_ids: HashSet<&str> = model
         .entities
         .values()
         .map(|entity| entity.id.as_str())
         .collect();
+    node_ids.extend(model.subgraphs.iter().map(|subgraph| subgraph.id.as_str()));
     for relationship in &model.relationships {
         // The render model indexes entities by source name, while relationships store the
         // renderer-facing generated `entity-*` ids.  Validate against the entity values rather
         // than the map keys; checking the keys would reject every ordinary parsed relationship
         // before Dagre/ELK gets a chance to lay it out.
-        if !entity_ids.contains(relationship.entity_a.as_str())
-            || !entity_ids.contains(relationship.entity_b.as_str())
+        if !node_ids.contains(relationship.entity_a.as_str())
+            || !node_ids.contains(relationship.entity_b.as_str())
         {
             return Err(Error::InvalidModel {
                 message: format!(
-                    "relationship references missing entities: {} -> {}",
+                    "relationship references missing ER nodes: {} -> {}",
                     relationship.entity_a, relationship.entity_b
                 ),
             });
@@ -659,9 +661,19 @@ fn er_layout_adapter_work(
     let attribute_work = work_control.checked_mul(attribute_count, 6)?;
     let relationship_work = work_control.checked_mul(model.relationships.len(), 10)?;
     let class_work = work_control.checked_mul(model.classes.len(), 3)?;
+    let subgraph_membership = model.subgraphs.iter().try_fold(0usize, |total, subgraph| {
+        work_control.checked_add(total, subgraph.nodes.len())
+    })?;
+    let subgraph_work = work_control.checked_add(
+        work_control.checked_mul(model.subgraphs.len(), 12)?,
+        subgraph_membership,
+    )?;
     work_control.checked_add(
         work_control.checked_add(entity_work, attribute_work)?,
-        work_control.checked_add(relationship_work, class_work)?,
+        work_control.checked_add(
+            work_control.checked_add(relationship_work, class_work)?,
+            subgraph_work,
+        )?,
     )
 }
 
@@ -694,6 +706,51 @@ fn layout_er_diagram_dagre_typed(
         tail.parse::<usize>().ok()
     }
 
+    // Groups are first-class compound nodes in Mermaid's ER graph. Keep the source names in the
+    // semantic model and translate entity members to their renderer-facing `entity-*` ids only
+    // at this boundary.
+    let subgraph_ids: HashSet<&str> = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| subgraph.id.as_str())
+        .collect();
+    let entity_id_by_name: HashMap<&str, &str> = model
+        .entities
+        .iter()
+        .map(|(name, entity)| (name.as_str(), entity.id.as_str()))
+        .collect();
+    let entity_name_by_id: HashMap<&str, &str> = model
+        .entities
+        .iter()
+        .map(|(name, entity)| (entity.id.as_str(), name.as_str()))
+        .collect();
+    let mut subgraph_title_metrics: HashMap<String, (f64, f64)> = HashMap::new();
+
+    // Insert groups in reverse declaration order, matching Mermaid's `getData()` projection and
+    // keeping nested group order deterministic for Dagre's compound ranking.
+    for subgraph in model.subgraphs.iter().rev() {
+        let title = ErBoxLabel::from_source(&subgraph.title);
+        let metrics = er_box_label_metrics(&title, measurer, &label_style);
+        let has_children = subgraph.nodes.iter().any(|member| {
+            subgraph_ids.contains(member.as_str())
+                || entity_id_by_name.contains_key(member.as_str())
+        });
+        let node_label = if has_children {
+            NodeLabel::default()
+        } else {
+            NodeLabel {
+                width: (metrics.width + 16.0).max(16.0),
+                height: (metrics.height + 16.0).max(16.0),
+                ..Default::default()
+            }
+        };
+        subgraph_title_metrics.insert(
+            subgraph.id.clone(),
+            (metrics.width.max(0.0), metrics.height.max(0.0)),
+        );
+        g.set_node(subgraph.id.clone(), node_label);
+    }
+
     // Nodes.
     let mut entities_in_layout_order: Vec<&ErEntity> = model.entities.values().collect();
     entities_in_layout_order.sort_by(|a, b| {
@@ -703,6 +760,13 @@ fn layout_er_diagram_dagre_typed(
     });
 
     for e in entities_in_layout_order {
+        // Mermaid's `getData()` omits an entity whose source name collides with a subgraph id.
+        if entity_name_by_id
+            .get(e.id.as_str())
+            .is_some_and(|name| subgraph_ids.contains(*name))
+        {
+            continue;
+        }
         let (w, h) =
             entity_box_dimensions(e, measurer, &label_style, &attr_style, entity_measurement);
         g.set_node(
@@ -715,6 +779,23 @@ fn layout_er_diagram_dagre_typed(
         );
     }
 
+    // Apply compound membership after every node has been inserted so nested groups and group
+    // endpoints are available to Dagre's parent index.
+    for subgraph in &model.subgraphs {
+        for member in &subgraph.nodes {
+            let child_id = if subgraph_ids.contains(member.as_str()) {
+                member.clone()
+            } else if let Some(entity_id) = entity_id_by_name.get(member.as_str()) {
+                (*entity_id).to_string()
+            } else {
+                continue;
+            };
+            if child_id != subgraph.id && g.has_node(&child_id) && g.has_node(&subgraph.id) {
+                g.set_parent_ref(&child_id, &subgraph.id);
+            }
+        }
+    }
+
     // Edges. Mermaid ER uses edge labels ("roleA") and the unified renderer routes through the
     // generic dagre pipeline, which accounts for label bbox in spacing. Mirror that by giving
     // dagre real label sizes here.
@@ -722,7 +803,7 @@ fn layout_er_diagram_dagre_typed(
         if g.node(&r.entity_a).is_none() || g.node(&r.entity_b).is_none() {
             return Err(Error::InvalidModel {
                 message: format!(
-                    "relationship references missing entities: {} -> {}",
+                    "relationship references missing ER nodes: {} -> {}",
                     r.entity_a, r.entity_b
                 ),
             });
@@ -851,22 +932,69 @@ fn layout_er_diagram_dagre_typed(
         .map_err(|error| work_control.map_dugong_error(error))?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
+    let mut clusters = Vec::new();
     for id in g.node_ids() {
         let Some(n) = g.node(&id) else {
             continue;
         };
+        let is_cluster = subgraph_ids.contains(id.as_str());
+        let x = n.x.unwrap_or(0.0);
+        let y = n.y.unwrap_or(0.0);
+        let mut width = n.width.max(1.0);
+        let mut height = n.height.max(1.0);
+        if is_cluster {
+            let (title_width, title_height) = subgraph_title_metrics
+                .get(&id)
+                .copied()
+                .unwrap_or((0.0, 0.0));
+            // Mermaid's ER group renderer keeps an 8px title inset and widens empty groups to
+            // contain their title. Compound Dagre groups already include their children; only
+            // the title-driven minimum is added here.
+            width = width.max(title_width + 16.0);
+            height = height.max(title_height + 16.0);
+            if let Some(subgraph) = model.subgraphs.iter().find(|subgraph| subgraph.id == id) {
+                let padding = 8.0;
+                let title_label = LayoutLabel {
+                    x,
+                    y: y - height / 2.0 + padding + title_height / 2.0,
+                    width: title_width,
+                    height: title_height,
+                };
+                let effective_dir = subgraph
+                    .dir
+                    .clone()
+                    .unwrap_or_else(|| model.direction.clone());
+                clusters.push(crate::model::LayoutCluster {
+                    id: id.clone(),
+                    x,
+                    y,
+                    width,
+                    height,
+                    diff: (title_width - width) / 2.0 - padding / 2.0,
+                    offset_y: title_height - padding / 2.0,
+                    title: subgraph.title.clone(),
+                    title_label,
+                    requested_dir: subgraph.dir.clone(),
+                    effective_dir,
+                    padding,
+                    title_margin_top: 0.0,
+                    title_margin_bottom: 0.0,
+                });
+            }
+        }
         nodes.push(LayoutNode {
             id: id.clone(),
-            x: n.x.unwrap_or(0.0),
-            y: n.y.unwrap_or(0.0),
-            width: n.width,
-            height: n.height,
-            is_cluster: false,
+            x,
+            y,
+            width,
+            height,
+            is_cluster,
             label_width: None,
             label_height: None,
         });
     }
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    clusters.sort_by(|a, b| a.id.cmp(&b.id));
 
     let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
     for n in &nodes {
@@ -997,6 +1125,7 @@ fn layout_er_diagram_dagre_typed(
     Ok(ErDiagramLayout {
         nodes,
         edges: out_edges,
+        clusters,
         bounds,
     })
 }
@@ -1031,6 +1160,21 @@ fn layout_er_diagram_elk_typed(
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let elk_graph = er_elk_graph(model, effective_config, measurer, &settings)?;
+    let subgraph_by_id: HashMap<&str, &ErSubgraph> = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| (subgraph.id.as_str(), subgraph))
+        .collect();
+    let subgraph_ids: HashSet<&str> = subgraph_by_id.keys().copied().collect();
+    let mut subgraph_title_metrics = HashMap::with_capacity(subgraph_by_id.len());
+    for subgraph in model.subgraphs.iter() {
+        let title = ErBoxLabel::from_source(&subgraph.title);
+        let metrics = er_box_label_metrics(&title, measurer, &settings.label_style);
+        subgraph_title_metrics.insert(
+            subgraph.id.as_str(),
+            (metrics.width.max(0.0), metrics.height.max(0.0)),
+        );
+    }
     let source_edge_by_id = elk_graph
         .edges
         .iter()
@@ -1049,17 +1193,59 @@ fn layout_er_diagram_elk_typed(
     let mut out_nodes = elk_layout
         .nodes
         .into_iter()
-        .map(|node| LayoutNode {
-            id: node.id,
+        .map(|node| {
+            let is_cluster = subgraph_ids.contains(node.id.as_str());
+            LayoutNode {
+                id: node.id,
+                x: node.x,
+                y: node.y,
+                width: node.width,
+                height: node.height,
+                is_cluster,
+                label_width: None,
+                label_height: None,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut clusters = Vec::with_capacity(subgraph_by_id.len());
+    for node in out_nodes.iter_mut().filter(|node| node.is_cluster) {
+        let Some(subgraph) = subgraph_by_id.get(node.id.as_str()).copied() else {
+            continue;
+        };
+        let (title_width, title_height) = subgraph_title_metrics
+            .get(node.id.as_str())
+            .copied()
+            .unwrap_or((0.0, 0.0));
+        let padding = 8.0;
+        node.width = node.width.max(title_width + padding * 2.0);
+        node.height = node.height.max(title_height + padding * 2.0);
+        let title_label = LayoutLabel {
+            x: node.x,
+            y: node.y - node.height / 2.0 + padding + title_height / 2.0,
+            width: title_width,
+            height: title_height,
+        };
+        clusters.push(crate::model::LayoutCluster {
+            id: node.id.clone(),
             x: node.x,
             y: node.y,
             width: node.width,
             height: node.height,
-            is_cluster: false,
-            label_width: None,
-            label_height: None,
-        })
-        .collect::<Vec<_>>();
+            diff: (title_width - node.width) / 2.0 - padding / 2.0,
+            offset_y: title_height - padding / 2.0,
+            title: subgraph.title.clone(),
+            title_label,
+            requested_dir: subgraph.dir.clone(),
+            effective_dir: subgraph
+                .dir
+                .clone()
+                .unwrap_or_else(|| model.direction.clone()),
+            padding,
+            title_margin_top: 0.0,
+            title_margin_bottom: 0.0,
+        });
+    }
 
     let mut out_edges = Vec::with_capacity(elk_layout.edges.len());
     for edge in elk_layout.edges {
@@ -1125,10 +1311,12 @@ fn layout_er_diagram_elk_typed(
 
     out_nodes.sort_by(|left, right| left.id.cmp(&right.id));
     out_edges.sort_by(|left, right| left.id.cmp(&right.id));
+    clusters.sort_by(|left, right| left.id.cmp(&right.id));
     let bounds = er_layout_bounds(&out_nodes, &out_edges);
     Ok(ErDiagramLayout {
         nodes: out_nodes,
         edges: out_edges,
+        clusters,
         bounds,
     })
 }
@@ -1150,7 +1338,61 @@ fn er_elk_graph(
         entity_measurement,
     } = settings;
 
-    let mut entities: Vec<&ErEntity> = model.entities.values().collect();
+    let subgraph_ids: HashSet<&str> = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| subgraph.id.as_str())
+        .collect();
+    let entity_id_by_name: HashMap<&str, &str> = model
+        .entities
+        .iter()
+        .map(|(name, entity)| (name.as_str(), entity.id.as_str()))
+        .collect();
+    let mut parent_by_member: HashMap<&str, &str> = HashMap::new();
+    for subgraph in &model.subgraphs {
+        for member in &subgraph.nodes {
+            let member_id = if subgraph_ids.contains(member.as_str()) {
+                member.as_str()
+            } else if let Some(entity_id) = entity_id_by_name.get(member.as_str()) {
+                entity_id
+            } else {
+                continue;
+            };
+            parent_by_member.insert(member_id, subgraph.id.as_str());
+        }
+    }
+
+    let mut nodes = Vec::with_capacity(model.subgraphs.len() + model.entities.len());
+    for subgraph in model.subgraphs.iter().rev() {
+        let title = ErBoxLabel::from_source(&subgraph.title);
+        let metrics = er_box_label_metrics(&title, measurer, label_style);
+        let has_children = subgraph.nodes.iter().any(|member| {
+            subgraph_ids.contains(member.as_str())
+                || entity_id_by_name.contains_key(member.as_str())
+        });
+        nodes.push(elk::Node {
+            id: subgraph.id.clone(),
+            kind: elk::NodeKind::Group,
+            width: 0.0,
+            height: 0.0,
+            parent: parent_by_member
+                .get(subgraph.id.as_str())
+                .map(|parent| (*parent).to_string()),
+            direction: subgraph.dir.as_deref().and_then(er_elk_direction),
+            hierarchy_handling: Some(elk::HierarchyHandling::IncludeChildren),
+            layer_constraint: None,
+            label: has_children.then_some(elk::Label {
+                width: metrics.width.max(0.0),
+                height: metrics.height.max(0.0),
+            }),
+        });
+    }
+
+    let mut entities: Vec<&ErEntity> = model
+        .entities
+        .iter()
+        .filter_map(|(name, entity)| (!subgraph_ids.contains(name.as_str())).then_some(entity))
+        .collect();
     entities.sort_by(|left, right| {
         fn counter(id: &str) -> Option<usize> {
             id.rsplit_once('-')?.1.parse().ok()
@@ -1158,42 +1400,43 @@ fn er_elk_graph(
         (counter(&left.id), left.id.as_str()).cmp(&(counter(&right.id), right.id.as_str()))
     });
 
-    let nodes = entities
-        .into_iter()
-        .map(|entity| {
-            let (width, height) = entity_box_dimensions(
-                entity,
-                measurer,
-                label_style,
-                attr_style,
-                *entity_measurement,
-            );
-            elk::Node {
-                id: entity.id.clone(),
-                kind: elk::NodeKind::Leaf,
-                width,
-                height,
-                parent: None,
-                direction: None,
-                hierarchy_handling: None,
-                layer_constraint: None,
-                label: None,
-            }
-        })
-        .collect::<Vec<_>>();
+    nodes.extend(entities.into_iter().map(|entity| {
+        let (width, height) = entity_box_dimensions(
+            entity,
+            measurer,
+            label_style,
+            attr_style,
+            *entity_measurement,
+        );
+        elk::Node {
+            id: entity.id.clone(),
+            kind: elk::NodeKind::Leaf,
+            width,
+            height,
+            parent: parent_by_member
+                .get(entity.id.as_str())
+                .map(|parent| (*parent).to_string()),
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            label: None,
+        }
+    }));
 
-    let entity_ids = nodes
+    apply_er_cyclic_entry_constraints(model, effective_config, &mut nodes);
+
+    let node_ids = nodes
         .iter()
         .map(|node| node.id.as_str())
         .collect::<std::collections::HashSet<_>>();
     let mut edges = Vec::with_capacity(model.relationships.len());
     for (index, relationship) in model.relationships.iter().enumerate() {
-        if !entity_ids.contains(relationship.entity_a.as_str())
-            || !entity_ids.contains(relationship.entity_b.as_str())
+        if !node_ids.contains(relationship.entity_a.as_str())
+            || !node_ids.contains(relationship.entity_b.as_str())
         {
             return Err(Error::InvalidModel {
                 message: format!(
-                    "relationship references missing entities: {} -> {}",
+                    "relationship references missing ER nodes: {} -> {}",
                     relationship.entity_a, relationship.entity_b
                 ),
             });
@@ -1232,6 +1475,127 @@ fn er_elk_graph(
         spacing: elk::Spacing::default(),
         options: er_elk_layout_options(effective_config),
     })
+}
+
+#[cfg(feature = "layout-elk")]
+fn er_elk_direction(direction: &str) -> Option<elk::Direction> {
+    match direction.trim().to_ascii_uppercase().as_str() {
+        "LR" => Some(elk::Direction::Right),
+        "RL" => Some(elk::Direction::Left),
+        "BT" => Some(elk::Direction::Up),
+        "TB" => Some(elk::Direction::Down),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+fn apply_er_cyclic_entry_constraints(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    nodes: &mut [elk::Node],
+) {
+    use crate::config::config_bool;
+
+    if !config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
+        return;
+    }
+
+    let mut by_parent: HashMap<Option<&str>, Vec<&str>> = HashMap::new();
+    for node in nodes.iter() {
+        by_parent
+            .entry(node.parent.as_deref())
+            .or_default()
+            .push(node.id.as_str());
+    }
+
+    let node_ids: HashSet<&str> = nodes.iter().map(|node| node.id.as_str()).collect();
+    let mut edges_by_parent: HashMap<Option<&str>, Vec<(&str, &str)>> = HashMap::new();
+    for relationship in &model.relationships {
+        let source = relationship.entity_a.as_str();
+        let target = relationship.entity_b.as_str();
+        if source == target || !node_ids.contains(source) || !node_ids.contains(target) {
+            continue;
+        }
+        let source_parent = nodes
+            .iter()
+            .find(|node| node.id == source)
+            .and_then(|node| node.parent.as_deref());
+        let target_parent = nodes
+            .iter()
+            .find(|node| node.id == target)
+            .and_then(|node| node.parent.as_deref());
+        if source_parent == target_parent {
+            edges_by_parent
+                .entry(source_parent)
+                .or_default()
+                .push((source, target));
+        }
+    }
+
+    let mut entries = HashSet::new();
+    for (parent, ids) in by_parent {
+        let id_set: HashSet<&str> = ids.iter().copied().collect();
+        let mut incoming = ids
+            .iter()
+            .map(|id| (*id, 0usize))
+            .collect::<HashMap<_, _>>();
+        let mut neighbors = ids
+            .iter()
+            .map(|id| (*id, Vec::<&str>::new()))
+            .collect::<HashMap<_, _>>();
+        for &(source, target) in edges_by_parent
+            .get(&parent)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+        {
+            if !id_set.contains(source) || !id_set.contains(target) {
+                continue;
+            }
+            *incoming.entry(target).or_default() += 1;
+            neighbors.entry(source).or_default().push(target);
+            neighbors.entry(target).or_default().push(source);
+        }
+
+        let mut components: HashMap<&str, usize> = HashMap::new();
+        let mut component_count = 0usize;
+        for id in &ids {
+            if components.contains_key(id) {
+                continue;
+            }
+            let mut stack = vec![*id];
+            while let Some(current) = stack.pop() {
+                if components.insert(current, component_count).is_some() {
+                    continue;
+                }
+                for next in neighbors.get(current).into_iter().flatten() {
+                    if !components.contains_key(next) {
+                        stack.push(*next);
+                    }
+                }
+            }
+            component_count += 1;
+        }
+        let mut has_source = vec![false; component_count];
+        for id in &ids {
+            if incoming.get(id).copied().unwrap_or_default() == 0 {
+                has_source[components[id]] = true;
+            }
+        }
+        let mut nominated = vec![false; component_count];
+        for id in ids {
+            let component = components[&id];
+            if !has_source[component] && !nominated[component] {
+                entries.insert(id.to_string());
+                nominated[component] = true;
+            }
+        }
+    }
+
+    for node in nodes {
+        if entries.contains(node.id.as_str()) {
+            node.layer_constraint = Some(elk::LayerConstraint::First);
+        }
+    }
 }
 
 #[cfg(feature = "layout-elk")]
@@ -1282,6 +1646,18 @@ fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
                 },
             )
             .unwrap_or_default();
+    let self_loop_ordering = config_string(
+        effective_config,
+        &["elk", "layered", "edgeRouting", "selfLoopOrdering"],
+    )
+    .map(
+        |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+            "REVERSE_STACKED" => elk::SelfLoopOrderingStrategy::ReverseStacked,
+            "SEQUENCED" => elk::SelfLoopOrderingStrategy::Sequenced,
+            _ => elk::SelfLoopOrderingStrategy::Stacked,
+        },
+    )
+    .unwrap_or_default();
 
     elk::LayoutOptions {
         layered: elk::LayeredOptions {
@@ -1294,6 +1670,7 @@ fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
             )
             .unwrap_or(false),
             self_loop_distribution: elk::SelfLoopDistributionStrategy::Equally,
+            self_loop_ordering,
             force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
                 .unwrap_or(false),
             consider_model_order: model_order != elk::ModelOrderStrategy::None,

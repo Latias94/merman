@@ -110,6 +110,32 @@ fn er_dagre_recursive_relationship_keeps_original_node_before_helper_ranks() {
     assert!((helper_2.y - line_item.y).abs() < 1e-9);
 }
 
+#[test]
+fn er_layout_materializes_compound_subgraphs() {
+    let text = concat!(
+        "erDiagram\n",
+        "subgraph Orders [Order Domain]\n",
+        "  CUSTOMER ||--o{ ORDER : places\n",
+        "end\n",
+        "WAREHOUSE ||--o{ Orders : ships\n",
+    );
+
+    let layout = layout_er(text);
+    println!("{layout:#?}");
+    assert_eq!(layout.clusters.len(), 1);
+    let cluster = &layout.clusters[0];
+    assert_eq!(cluster.id, "Orders");
+    assert!(cluster.width.is_finite() && cluster.width > 0.0);
+    assert!(cluster.height.is_finite() && cluster.height > 0.0);
+    assert!(
+        layout
+            .nodes
+            .iter()
+            .any(|node| node.id == "Orders" && node.is_cluster)
+    );
+    assert!(layout.edges.iter().any(|edge| edge.to == "Orders"));
+}
+
 #[cfg(feature = "layout-elk")]
 #[test]
 fn er_layout_config_selects_source_ported_elk_geometry() {
@@ -147,4 +173,49 @@ erDiagram
             (segment[0].x - segment[1].x).abs() < 1e-9 || (segment[0].y - segment[1].y).abs() < 1e-9
         })
     }));
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn er_elk_layout_materializes_compound_subgraphs_and_svg_groups() {
+    let text = concat!(
+        "---\nconfig:\n  layout: elk\n---\n",
+        "erDiagram\n",
+        "subgraph Orders [Order Domain]\n",
+        "  CUSTOMER ||--o{ ORDER : places\n",
+        "end\n",
+        "WAREHOUSE ||--o{ Orders : ships\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("ER layout");
+    let projection = artifact.layout_json().expect("serialize ER layout");
+    let layout: ErDiagramLayout =
+        serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("layout");
+    assert_eq!(layout.clusters.len(), 1);
+    assert!(
+        layout
+            .nodes
+            .iter()
+            .any(|node| node.id == "Orders" && node.is_cluster)
+    );
+    assert!(layout.edges.iter().any(|edge| edge.to == "Orders"));
+
+    let svg = artifact
+        .render_svg(
+            &merman_render::svg::SvgRenderOptions {
+                diagram_id: Some("er-elk-subgraph".to_string()),
+                ..Default::default()
+            },
+            &merman_render::svg::SvgDebugOptions::default(),
+        )
+        .expect("render ER SVG")
+        .svg()
+        .to_owned();
+    assert!(svg.contains("subgraphs"), "{svg}");
+    assert!(svg.contains("er-elk-subgraph-Orders"), "{svg}");
+    assert!(svg.contains("Order Domain"), "{svg}");
 }
