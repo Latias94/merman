@@ -101,10 +101,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let (layout, prepared_nodes, prepared_edges) = prepared.render_parts();
     let effective_config = sanitize_config.as_value();
     let font_family_override = paint_theme.font_family_override();
-    let label_measurements = prepared.label_measurements_for_render_with_font_family(
+    let font_size_override = paint_theme.font_size_override();
+    let label_measurements = prepared.label_measurements_for_render_with_typography(
         effective_config,
         measurer,
         font_family_override,
+        font_size_override,
     );
 
     fn mermaid_markdown_to_html(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
@@ -316,8 +318,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
     }
 
     let diagram_id = options.diagram_id_or("requirement");
-    let render_settings =
-        crate::requirement::RequirementConfigView::new(effective_config).render_settings();
+    let render_settings = crate::requirement::RequirementConfigView::new(effective_config)
+        .render_settings_with_resolved_typography(font_family_override, font_size_override);
     let look = render_settings.look;
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
@@ -530,8 +532,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str(&a11y_nodes);
 
-    let mut css_emission =
-        requirement_css_with_font_family(diagram_id, effective_config, font_family_override);
+    let mut css_emission = requirement_css_with_typography(
+        diagram_id,
+        effective_config,
+        font_family_override,
+        paint_theme.font_size_override_css(),
+    );
     let color_css = requirement_color_css(
         diagram_id,
         look,
@@ -543,7 +549,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let _ = write!(&mut out, r#"<style>{}</style>"#, css_emission.css);
 
     let mut paint_theme_receipt = paint_theme.begin_terminal_receipt();
-    paint_theme_receipt.record_typography_font_family(css_emission.font_family());
+    paint_theme_receipt.record_typography(css_emission.font_family(), css_emission.font_size());
 
     out.push_str("<g>");
 
@@ -988,6 +994,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
         paint_theme_receipt.record_checkpointed_node(
             paint_theme_index,
+            rendered_node
+                .lines
+                .iter()
+                .any(|line| !line.display_text.trim().is_empty()),
             fill_override.is_some(),
             typed_fill,
             fill_color,

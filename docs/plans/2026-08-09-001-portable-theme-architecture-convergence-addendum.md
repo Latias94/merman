@@ -43,7 +43,7 @@ record. The current source and generated contract are authoritative for these su
 - All 33 families have at least one direct typed surface. Six families have no family-owned
   `LegacyCompatibility` route (State, Packet, Error, EventModeling, Ishikawa, and ZenUML), while 27
   may still enter the bridge. Base `FontStack` is Typed/Legacy/Unsupported for 27/5/1 families;
-  base `FontSize` is 11/10/12. These counts describe migration state, not feature completeness.
+  base `FontSize` is 12/9/12. These counts describe migration state, not feature completeness.
 - C6a remains complete at 18/18 representative native cells. C7a is still not eligible because the
   public authoring/consumer rollout and remaining pre-freeze gates are intentionally open.
 - The acceptance manifest remains an independent, reviewed authority. It is reconciled exactly
@@ -969,6 +969,14 @@ activity-line offsets. The title's local `4ex` size and role-local event paint d
 base-typography route. The migration adds no KTD17 scalar route; remaining Timeline event/text/title
 and line surfaces stay compatibility-only or Unsupported.
 
+The C5 Requirement slice now retires the family base `FontStack`/`FontSize` contribution property
+by property. `RequirementPaintThemePlan` resolves the final family size once and shares it with
+label measurement, layout, root/nested-SVG/label CSS, and the writer-owned typography receipt.
+Explicit `themeVariables.fontSize` ownership reports `NotApplicable`; root `fontSize` remains the
+independent calculation/layout owner and does not suppress the typed CSS size. Requirement relation,
+text, table, and remaining paint surfaces continue through their existing compatibility or
+Unsupported paths, so the family bridge remains required for those mechanisms.
+
 The C5 Venn slice moves only the family `FontStack` route to a typed terminal. The
 `VennTypographyThemePlan` resolves `themeVariables.fontFamily` first and keeps root
 `fontFamily` as the Mermaid-compatible fallback; one renderer-owned receipt binds the same value
@@ -1589,6 +1597,8 @@ It records only properties whose actual family writer owns the terminal inherita
 | Radar / `FontSize` | `merman.legacy-family-theme.v1.radar.typography`; `themeVariables.fontSize`, formerly emitted by the same bundled typography contribution | The same `RadarTypographyThemePlan` writes the typed base size to the diagram root, nested SVG, and `.radarTitle` rule, but counts it as Applied only for a non-empty visual title. Axis and legend labels keep their independent `radar.axisLabelFontSize` and `radar.legendFontSize` owners, so axis/legend-only and accessibility-title-only documents are NotApplicable for this property. Explicit site/source `themeVariables.fontSize` wins; root `fontSize` does not suppress the typed title size. Unsupported sibling typography suppresses the direct pair, and the route changes no layout, geometry, or viewBox. | Migrated (atomic pair) |
 | Timeline / `FontStack` | `merman.legacy-family-theme.v1.timeline.typography`; root `fontFamily` plus `themeVariables.fontFamily`, formerly emitted by the bundled typography contribution | `TimelineTypographyThemePlan` shares the resolved stack with horizontal and TopDown text measurement, layout, scoped/root-variable CSS, and ordered non-empty section/task/event text receipt. Explicit site/source font ownership reports `NotApplicable`; unsupported sibling typography remains fail-closed. A title-only document is `NotApplicable`: the title's local `4ex` size is not a base-typography terminal. | Migrated (property-local pair) |
 | Timeline / `FontSize` | `merman.legacy-family-theme.v1.timeline.typography`; `themeVariables.fontSize`, formerly emitted by the bundled typography contribution | The same `TimelineTypographyThemePlan` shares the resolved base size with horizontal and TopDown text measurement, layout text style, scoped/root-variable CSS, and ordered non-empty section/task/event text receipt. Explicit `themeVariables.fontSize` ownership reports `NotApplicable`; root `fontSize` remains the independent layout-size owner for vertical compensation and TopDown activity-line offsets and does not suppress the typed CSS route. A title-only document is `NotApplicable`: its local `4ex` size, event-specific paint, and other role-local sizes do not prove either base property. Unsupported sibling typography remains fail-closed. | Migrated (property-local pair) |
+| Requirement / `FontStack` | `merman.legacy-family-theme.v1.requirement.typography`; root `fontFamily` plus `themeVariables.fontFamily`, formerly emitted by the bundled typography contribution | `RequirementPaintThemePlan` shares the resolved family with label measurement, layout, root/nested-SVG/label CSS, and the writer-owned typography receipt. Explicit source/site font ownership reports `NotApplicable`; unsupported sibling typography remains fail-closed. Requirement paint, relation, text, and table compatibility routes remain outside this row. | Migrated (property-local pair) |
+| Requirement / `FontSize` | `merman.legacy-family-theme.v1.requirement.typography`; `themeVariables.fontSize`, formerly emitted by the bundled typography contribution | The same plan shares the resolved size with label measurement, layout, root/nested-SVG/label CSS, and the writer-owned typography receipt. Explicit `themeVariables.fontSize` ownership reports `NotApplicable`; root `fontSize` remains the independent calculation/layout owner and does not suppress the typed CSS route. Unsupported sibling typography remains fail-closed. Requirement paint, relation, text, and table compatibility routes remain outside this row. | Migrated (property-local pair) |
 
 Adding another row requires a deliberate plan edit and the same atomic implementation boundary.
 The Packet row ratifies the already-landed migration; each later row lands atomically with its

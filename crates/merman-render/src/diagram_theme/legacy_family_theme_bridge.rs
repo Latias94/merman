@@ -726,7 +726,6 @@ fn compile_requirement_family(
 ) -> BridgeResult<()> {
     let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(reader);
     contributions.add_theme_variables(
         "requirement.text",
         [
@@ -2856,7 +2855,7 @@ mod tests {
     }
 
     #[test]
-    fn requirement_font_stack_is_property_local_while_font_size_uses_legacy_bridge() {
+    fn requirement_base_typography_is_property_local() {
         let font_stack = super::super::FontStack::new(["Requirement Typed", "sans-serif"])
             .expect("valid Requirement font stack");
         let direct_spec =
@@ -2877,19 +2876,11 @@ mod tests {
                 .with_family_style(DiagramFamilyId::REQUIREMENT, mixed_typography),
         );
         let mixed_bridge = bridge(&mixed_spec).compile_for_family(DiagramFamilyId::REQUIREMENT);
-        assert!(
-            mixed_bridge
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.requirement.typography")
-        );
+        assert!(mixed_bridge.contribution_ids.is_empty());
 
         let baseline = parse(&DiagramThemeSpec::default(), REQUIREMENT_FIXTURE);
         let mixed = parse(&mixed_spec, REQUIREMENT_FIXTURE);
-        assert_eq!(fallback_contribution_count(&mixed), 1);
-        assert_eq!(
-            mixed.effective_config.get_str("themeVariables.fontSize"),
-            Some("24px")
-        );
+        assert_eq!(fallback_contribution_count(&mixed), 0);
         for path in ["fontFamily", "themeVariables.fontFamily"] {
             assert_eq!(
                 mixed.effective_config.get_str(path),
@@ -2897,6 +2888,10 @@ mod tests {
                 "typed Requirement FontStack must not write legacy `{path}`"
             );
         }
+        assert_eq!(
+            mixed.effective_config.get_str("themeVariables.fontSize"),
+            baseline.effective_config.get_str("themeVariables.fontSize")
+        );
     }
 
     #[test]

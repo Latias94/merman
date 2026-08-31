@@ -42,6 +42,22 @@ impl<'a> RequirementConfigView<'a> {
         }
     }
 
+    pub(crate) fn layout_settings_with_resolved_typography(
+        &self,
+        resolved_font_family: Option<&str>,
+        resolved_font_size_px: Option<f64>,
+    ) -> RequirementLayoutSettings {
+        let mut settings = self.layout_settings();
+        if let Some(font_family) = resolved_font_family {
+            settings.font_family = font_family.to_owned();
+            settings.calculation_font_family = font_family.to_owned();
+        }
+        if let Some(font_size_px) = resolved_font_size_px {
+            settings.font_size = font_size_px.max(1.0);
+        }
+        settings
+    }
+
     pub(crate) fn render_settings(&self) -> RequirementRenderSettings<'a> {
         RequirementRenderSettings {
             look: config_diagram_look(self.effective_config),
@@ -60,6 +76,21 @@ impl<'a> RequirementConfigView<'a> {
             font_family: self.font_family(),
             font_size: self.font_size(),
         }
+    }
+
+    pub(crate) fn render_settings_with_resolved_typography(
+        &self,
+        resolved_font_family: Option<&str>,
+        resolved_font_size_px: Option<f64>,
+    ) -> RequirementRenderSettings<'a> {
+        let mut settings = self.render_settings();
+        if let Some(font_family) = resolved_font_family {
+            settings.font_family = font_family.to_owned();
+        }
+        if let Some(font_size_px) = resolved_font_size_px {
+            settings.font_size = font_size_px.max(1.0);
+        }
+        settings
     }
 
     fn config_f64(&self, path: &[&str]) -> Option<f64> {

@@ -841,7 +841,7 @@ pub(super) fn requirement_css<I>(diagram_id: I, effective_config: &serde_json::V
 where
     I: SvgDiagramIdValue,
 {
-    requirement_css_with_font_family(diagram_id, effective_config, None).css
+    requirement_css_with_typography(diagram_id, effective_config, None, None).css
 }
 
 /// Values emitted by the Requirement stylesheet writer for terminal evidence.
@@ -849,18 +849,24 @@ where
 pub(super) struct RequirementCssEmission {
     pub(super) css: String,
     font_family: Box<str>,
+    font_size: Box<str>,
 }
 
 impl RequirementCssEmission {
     pub(super) fn font_family(&self) -> &str {
         &self.font_family
     }
+
+    pub(super) fn font_size(&self) -> &str {
+        &self.font_size
+    }
 }
 
-pub(super) fn requirement_css_with_font_family<I>(
+pub(super) fn requirement_css_with_typography<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
     resolved_font_family: Option<&str>,
+    resolved_font_size: Option<&str>,
 ) -> RequirementCssEmission
 where
     I: SvgDiagramIdValue,
@@ -868,14 +874,32 @@ where
     // Mirrors Mermaid 11.15 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last to match upstream fixtures.
     let id = CssSelectorDiagramId(diagram_id);
-    let parts = resolved_font_family.map_or_else(
-        || info_css_parts_with_config(diagram_id, effective_config),
-        |font_family| info_css_parts_with_font_family(diagram_id, effective_config, font_family),
-    );
+    let parts = match (resolved_font_family, resolved_font_size) {
+        (Some(font_family), Some(font_size)) => info_css_parts_with_resolved_typography(
+            diagram_id,
+            effective_config,
+            font_family,
+            font_size,
+        ),
+        (Some(font_family), None) => {
+            info_css_parts_with_font_family(diagram_id, effective_config, font_family)
+        }
+        (None, Some(font_size)) => {
+            let font_family = crate::config::config_font_family_css(effective_config);
+            info_css_parts_with_resolved_typography(
+                diagram_id,
+                effective_config,
+                &font_family,
+                font_size,
+            )
+        }
+        (None, None) => info_css_parts_with_config(diagram_id, effective_config),
+    };
     let InfoCssParts {
         css_prefix,
         root_rule,
         font_family,
+        font_size_css: emitted_font_size,
         text_color,
         ..
     } = parts;
@@ -893,12 +917,9 @@ where
 
     let relation_color = option("relationColor", "#333333");
     let line_color = option("lineColor", "#333333");
-    let font_size = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "fontSize"],
-    )
-    .or_else(|| crate::config::config_css_number_or_string(effective_config, &["fontSize"]))
-    .unwrap_or_else(|| "16px".to_string());
+    let font_size = resolved_font_size
+        .map(str::to_owned)
+        .unwrap_or(emitted_font_size);
     let requirement_background = option("requirementBackground", "#ECECFF");
     let requirement_border_color =
         option("requirementBorderColor", "hsl(240, 60%, 86.2745098039%)");
@@ -969,6 +990,7 @@ where
     RequirementCssEmission {
         css: out,
         font_family,
+        font_size: font_size.into_boxed_str(),
     }
 }
 

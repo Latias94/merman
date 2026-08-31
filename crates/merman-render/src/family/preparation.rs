@@ -821,11 +821,12 @@ fn prepare_requirement_family(
         execution.work_meter_ref(),
     )?;
     let layout =
-        crate::requirement::layout_requirement_diagram_typed_with_work_meter_and_font_family(
+        crate::requirement::layout_requirement_diagram_typed_with_work_meter_and_typography(
             &model,
             meta.effective_config.as_value(),
             execution.text_measurer(),
             paint_theme.font_family_override(),
+            paint_theme.font_size_override(),
             execution.work_meter_ref(),
         )?;
     Ok(BuiltinFamilyArtifact::Requirement(Box::new(

@@ -149,17 +149,15 @@ impl RequirementPreparedArtifact {
         (&self.layout, &self.nodes, &self.edges)
     }
 
-    pub(crate) fn label_measurements_for_render_with_font_family<'a>(
+    pub(crate) fn label_measurements_for_render_with_typography<'a>(
         &self,
         effective_config: &Value,
         measurer: &'a dyn TextMeasurer,
         font_family_override: Option<&str>,
+        font_size_override: Option<f64>,
     ) -> RequirementRenderLabelMeasurements<'a> {
-        let mut settings = RequirementConfigView::new(effective_config).layout_settings();
-        if let Some(font_family) = font_family_override {
-            settings.font_family = font_family.to_owned();
-            settings.calculation_font_family = font_family.to_owned();
-        }
+        let settings = RequirementConfigView::new(effective_config)
+            .layout_settings_with_resolved_typography(font_family_override, font_size_override);
         let reuse_prepared = self
             .measurement_binding
             .as_ref()
@@ -650,21 +648,23 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     resource_limits: RenderResourcePolicy,
 ) -> Result<RequirementPreparedArtifact> {
     let work_meter = OperationWorkMeter::new(resource_limits);
-    layout_requirement_diagram_typed_with_work_meter_and_font_family(
+    layout_requirement_diagram_typed_with_work_meter_and_typography(
         model,
         effective_config,
         text_measurer,
+        None,
         None,
         &work_meter,
     )
 }
 
-/// Lays out a Requirement model with an optional renderer-owned inherited font stack.
-pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_font_family(
+/// Lays out a Requirement model with renderer-owned inherited typography.
+pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     model: &RequirementDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     font_family_override: Option<&str>,
+    font_size_override: Option<f64>,
     work_meter: &OperationWorkMeter,
 ) -> Result<RequirementPreparedArtifact> {
     work_meter
@@ -677,11 +677,8 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_font_family(
         normalize_dir(&model.direction)
     };
 
-    let mut cfg = RequirementConfigView::new(effective_config).layout_settings();
-    if let Some(font_family) = font_family_override {
-        cfg.font_family = font_family.to_owned();
-        cfg.calculation_font_family = font_family.to_owned();
-    }
+    let cfg = RequirementConfigView::new(effective_config)
+        .layout_settings_with_resolved_typography(font_family_override, font_size_override);
     let measurement_binding = RequirementLabelMeasurementBinding::for_measurer(&cfg, text_measurer);
     let styles = requirement_measurement_styles(&cfg);
 

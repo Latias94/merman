@@ -312,6 +312,31 @@ struct RequirementTypedFontProbeMeasurer {
     sans_serif_fallback_calls: Arc<AtomicUsize>,
 }
 
+#[derive(Debug)]
+struct RequirementTypedFontSizeProbeMeasurer {
+    expected_font_size: f64,
+    typed_size_calls: Arc<AtomicUsize>,
+    calculation_size_calls: Arc<AtomicUsize>,
+    unexpected_size_calls: Arc<AtomicUsize>,
+}
+
+impl TextMeasurer for RequirementTypedFontSizeProbeMeasurer {
+    fn measure(&self, _text: &str, style: &TextStyle) -> TextMetrics {
+        if (style.font_size - self.expected_font_size).abs() < f64::EPSILON {
+            self.typed_size_calls.fetch_add(1, Ordering::Relaxed);
+        } else if (style.font_size - 10.0).abs() < f64::EPSILON {
+            self.calculation_size_calls.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.unexpected_size_calls.fetch_add(1, Ordering::Relaxed);
+        }
+        TextMetrics {
+            width: 100.0,
+            height: style.font_size,
+            line_count: 1,
+        }
+    }
+}
+
 impl TextMeasurer for RequirementTypedFontProbeMeasurer {
     fn measure(&self, _text: &str, style: &TextStyle) -> TextMetrics {
         match style.font_family.as_deref() {
@@ -360,7 +385,7 @@ fn requirement_typed_font_stack_reaches_measurement_stylesheet_and_evidence() {
     let rendered = render_requirement_with_theme_requirement_and_environment(
         requirement_source(),
         &theme,
-        Engine::new(),
+        legacy_init_theme_compat_engine(),
         ThemePortabilityRequirement::RequirePortable,
         environment,
     );
@@ -428,45 +453,145 @@ requirementDiagram
 }
 
 #[test]
-fn requirement_font_size_only_remains_a_legacy_compatibility_route() {
+fn requirement_typed_font_size_reaches_measurement_stylesheet_and_evidence() {
     let theme = requirement_typography_theme(
         ThemeTextStyle::default()
             .with_font_size_px(24.0)
-            .expect("valid Requirement legacy font size"),
+            .expect("valid Requirement typed font size"),
     );
-    let rendered = render_requirement_with_theme_requirement(
+    let typed_size_calls = Arc::new(AtomicUsize::new(0));
+    let calculation_size_calls = Arc::new(AtomicUsize::new(0));
+    let unexpected_size_calls = Arc::new(AtomicUsize::new(0));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.requirement-typed-font-size-probe").unwrap(),
+        "test",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(RequirementTypedFontSizeProbeMeasurer {
+                expected_font_size: 24.0,
+                typed_size_calls: Arc::clone(&typed_size_calls),
+                calculation_size_calls: Arc::clone(&calculation_size_calls),
+                unexpected_size_calls: Arc::clone(&unexpected_size_calls),
+            }),
+        )),
+    );
+    let rendered = render_requirement_with_theme_requirement_and_environment(
         requirement_source(),
         &theme,
-        Engine::new(),
-        ThemePortabilityRequirement::BestEffort,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "fontSize": 10
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+        environment,
     );
+    assert!(typed_size_calls.load(Ordering::Relaxed) > 0);
+    assert!(calculation_size_calls.load(Ordering::Relaxed) > 0);
+    assert_eq!(unexpected_size_calls.load(Ordering::Relaxed), 0);
     let css = requirement_stylesheet(rendered.svg());
     assert!(css.contains("#requirement-theme svg{font-family:"));
+    assert!(
+        css.contains("font-size:24px"),
+        "typed Requirement size must reach CSS: {css}"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn requirement_mixed_base_typography_settles_each_property_independently() {
+    let font_stack = FontStack::new(["Requirement Mixed", "sans-serif"])
+        .expect("valid Requirement mixed font stack");
+    let expected_font = font_stack.as_css();
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(font_stack)
+            .with_font_size_px(24.0)
+            .expect("valid Requirement mixed typography"),
+    );
+    let typed_size_calls = Arc::new(AtomicUsize::new(0));
+    let calculation_size_calls = Arc::new(AtomicUsize::new(0));
+    let unexpected_size_calls = Arc::new(AtomicUsize::new(0));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.requirement-mixed-typography-probe").unwrap(),
+        "test",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(RequirementTypedFontSizeProbeMeasurer {
+                expected_font_size: 24.0,
+                typed_size_calls: Arc::clone(&typed_size_calls),
+                calculation_size_calls: Arc::clone(&calculation_size_calls),
+                unexpected_size_calls: Arc::clone(&unexpected_size_calls),
+            }),
+        )),
+    );
+    let rendered = render_requirement_with_theme_requirement_and_environment(
+        requirement_source(),
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "fontSize": 10
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+        environment,
+    );
+
+    assert!(typed_size_calls.load(Ordering::Relaxed) > 0);
+    assert!(calculation_size_calls.load(Ordering::Relaxed) > 0);
+    assert_eq!(unexpected_size_calls.load(Ordering::Relaxed), 0);
+    let css = requirement_stylesheet(rendered.svg());
+    assert!(
+        css.contains(&format!("font-family:{expected_font}")),
+        "{css}"
+    );
     assert!(css.contains("font-size:24px"), "{css}");
 
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 0);
-    assert_eq!(evidence.accounted_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
 
-    let error = match try_render_requirement_with_theme_requirement_and_environment(
-        requirement_source(),
+#[test]
+fn requirement_typed_font_size_respects_explicit_theme_variable_ownership() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Requirement typed font size"),
+    );
+    let rendered = render_requirement_with_theme_requirement(
+        r##"%%{init: {"themeVariables": {"fontSize": "30px"}}}%%
+requirementDiagram
+  requirement req1 {
+    id: 1
+    text: Source-owned size
+    risk: low
+    verifymethod: analysis
+  }
+"##,
         &theme,
-        Engine::new(),
+        legacy_init_theme_compat_engine(),
         ThemePortabilityRequirement::RequirePortable,
-        RenderEnvironment::deterministic(),
-    ) {
-        Ok(_) => panic!("strict Requirement FontSize must retain compatibility residual"),
-        Err(error) => error,
-    };
-    assert!(matches!(
-        error,
-        merman_render::Error::LegacyFamilyThemeCompatibility {
-            family_id: DiagramFamilyId::REQUIREMENT,
-            residual_count: 1,
-        }
-    ));
+    );
+    let css = requirement_stylesheet(rendered.svg());
+    assert!(css.contains("font-size:30px"), "{css}");
+    assert!(!css.contains("font-size:24px"), "{css}");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

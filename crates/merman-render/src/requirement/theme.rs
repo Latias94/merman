@@ -11,13 +11,24 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
+
+fn configured_font_size_css(effective_config: &MermaidConfig) -> Box<str> {
+    crate::config::config_css_number_or_string(
+        effective_config.as_value(),
+        &["themeVariables", "fontSize"],
+    )
+    .or_else(|| {
+        crate::config::config_css_number_or_string(effective_config.as_value(), &["fontSize"])
+    })
+    .unwrap_or_else(|| "16px".to_string())
+    .into_boxed_str()
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct NodeExpectation {
@@ -53,6 +64,10 @@ pub(crate) struct RequirementPaintThemePlan {
     node_indices: BTreeMap<String, usize>,
     expectations: Arc<[NodeExpectation]>,
     inherited_font_stack: InheritedFontStackPlan,
+    font_size_css: Box<str>,
+    font_size_px: f64,
+    typed_font_size_requested: bool,
+    typed_font_size_active: bool,
     title_present: bool,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
@@ -84,17 +99,51 @@ impl RequirementPaintThemePlan {
         let expectations = vec![NodeExpectation::default(); node_count];
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let configured_font_size_css = configured_font_size_css(effective_config);
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let Some(theme) = theme else {
             return Ok(Self {
                 node_indices,
                 expectations: expectations.into(),
                 inherited_font_stack,
+                font_size_css: configured_font_size_css,
+                font_size_px: crate::config::config_theme_or_root_font_size_px(
+                    effective_config.as_value(),
+                    16.0,
+                )
+                .max(1.0),
+                typed_font_size_requested: false,
+                typed_font_size_active: false,
                 title_present,
                 evidence: FamilyThemeEvidence::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
             });
+        };
+
+        let typed_font_size_requested = theme.family_mechanism_routes().iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        });
+        let config_owns_font_size = typed_font_size_requested
+            && merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.fontSize",
+            );
+        let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
+        let (font_size_px, font_size_css) = if typed_font_size_active {
+            let font_size_px = f64::from(theme.typography().font_size_px()).max(1.0);
+            (
+                font_size_px,
+                format!("{}px", theme.typography().font_size_px()).into_boxed_str(),
+            )
+        } else {
+            (
+                crate::config::config_theme_or_root_font_size_px(effective_config.as_value(), 16.0)
+                    .max(1.0),
+                configured_font_size_css,
+            )
         };
 
         let mermaid_owns_fill = mermaid_owns_requirement_fill(effective_config);
@@ -230,6 +279,10 @@ impl RequirementPaintThemePlan {
             node_indices,
             expectations: expectations.into(),
             inherited_font_stack,
+            font_size_css,
+            font_size_px,
+            typed_font_size_requested,
+            typed_font_size_active,
             title_present,
             evidence,
             pending,
@@ -273,16 +326,30 @@ impl RequirementPaintThemePlan {
             .then_some(self.font_family_css())
     }
 
+    pub(crate) fn font_size_override(&self) -> Option<f64> {
+        self.typed_font_size_active.then_some(self.font_size_px)
+    }
+
+    pub(crate) fn font_size_css(&self) -> &str {
+        &self.font_size_css
+    }
+
+    pub(crate) fn font_size_override_css(&self) -> Option<&str> {
+        self.typed_font_size_active.then_some(self.font_size_css())
+    }
+
     pub(crate) fn typography_requested(&self) -> bool {
-        self.inherited_font_stack.typography_requested()
+        self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> RequirementPaintThemeReceipt {
         RequirementPaintThemeReceipt::with_typography(
             Arc::clone(&self.expectations),
             self.title_present,
-            self.typography_requested(),
+            self.inherited_font_stack.typed_font_stack_requested(),
+            self.typed_font_size_requested,
             self.font_family_css(),
+            self.font_size_css(),
         )
     }
 
@@ -292,17 +359,33 @@ impl RequirementPaintThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        self.inherited_font_stack
-            .mark_unsupported_typography_evidence(
-                &mut evidence,
-                self.title_present || !self.expectations.is_empty(),
-            );
         let Some(receipt) = self.terminal_receipt.get() else {
-            if self.typography_requested() {
-                evidence.mark_residual(
-                    FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
-                    FamilyThemeResidualReason::UnsupportedTypography,
+            self.inherited_font_stack
+                .mark_unsupported_typography_evidence(
+                    &mut evidence,
+                    self.title_present || !self.expectations.is_empty(),
                 );
+            for (property, requested, active) in [
+                (
+                    ThemeTypographyProperty::FontStack,
+                    self.inherited_font_stack.typed_font_stack_requested(),
+                    self.inherited_font_stack.typed_font_stack_active(),
+                ),
+                (
+                    ThemeTypographyProperty::FontSize,
+                    self.typed_font_size_requested,
+                    self.typed_font_size_active,
+                ),
+            ] {
+                if !requested {
+                    continue;
+                }
+                let key = FamilyThemeMechanismKey::Typography(property);
+                if active {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                } else {
+                    evidence.mark_not_applicable(key);
+                }
             }
             return evidence;
         };
@@ -325,25 +408,35 @@ impl RequirementPaintThemePlan {
             }
         }
         if self.typography_requested() {
-            match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::Typed if receipt.proves_typography() => {
-                    evidence.mark_applied_with_capabilities(
-                        FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
-                        [ThemeCapability::Typography],
-                    );
-                }
-                InheritedFontStackOutcome::ConfigOwned if receipt.proves_typography() => {
-                    evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(
-                        ThemeTypographyProperty::FontStack,
-                    ));
-                }
-                InheritedFontStackOutcome::Typed
-                | InheritedFontStackOutcome::ConfigOwned
-                | InheritedFontStackOutcome::Unsupported => evidence.mark_residual(
-                    FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
-                    FamilyThemeResidualReason::UnsupportedTypography,
+            self.inherited_font_stack
+                .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_text());
+            for (property, requested, active) in [
+                (
+                    ThemeTypographyProperty::FontStack,
+                    self.inherited_font_stack.typed_font_stack_requested(),
+                    self.inherited_font_stack.typed_font_stack_active(),
                 ),
-                InheritedFontStackOutcome::Inactive => {}
+                (
+                    ThemeTypographyProperty::FontSize,
+                    self.typed_font_size_requested,
+                    self.typed_font_size_active,
+                ),
+            ] {
+                if !requested {
+                    continue;
+                }
+                let key = FamilyThemeMechanismKey::Typography(property);
+                if !receipt.has_visible_text() || !active {
+                    evidence.mark_not_applicable(key);
+                } else if match property {
+                    ThemeTypographyProperty::FontStack => receipt.proves_font_family(),
+                    ThemeTypographyProperty::FontSize => receipt.proves_font_size(),
+                    _ => false,
+                } {
+                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                } else {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                }
             }
         }
         evidence
@@ -460,22 +553,25 @@ pub(crate) struct RequirementPaintThemeReceipt {
     title_matches: bool,
     attributes_match: bool,
     paint_ledger: DirectPaintTerminalLedger,
-    typography_requested: bool,
+    font_family_requested: bool,
+    font_size_requested: bool,
     expected_font_family: Box<str>,
+    expected_font_size: Box<str>,
     typography_font_family_recorded: bool,
     typography_font_family_verified: bool,
+    typography_font_size_recorded: bool,
+    typography_font_size_verified: bool,
+    visible_node_count: usize,
 }
 
 impl RequirementPaintThemeReceipt {
-    fn new(expectations: Arc<[NodeExpectation]>) -> Self {
-        Self::with_typography(expectations, false, false, "")
-    }
-
     fn with_typography(
         expectations: Arc<[NodeExpectation]>,
         title_present: bool,
-        typography_requested: bool,
+        font_family_requested: bool,
+        font_size_requested: bool,
         expected_font_family: &str,
+        expected_font_size: &str,
     ) -> Self {
         Self {
             checkpointed_nodes: vec![false; expectations.len()],
@@ -485,21 +581,46 @@ impl RequirementPaintThemeReceipt {
             title_matches: true,
             attributes_match: true,
             paint_ledger: DirectPaintTerminalLedger::default(),
-            typography_requested,
+            font_family_requested,
+            font_size_requested,
             expected_font_family: expected_font_family.into(),
+            expected_font_size: expected_font_size.into(),
             typography_font_family_recorded: false,
             typography_font_family_verified: false,
+            typography_font_size_recorded: false,
+            typography_font_size_verified: false,
+            visible_node_count: 0,
         }
     }
 
-    pub(crate) fn record_typography_font_family(&mut self, emitted_font_family: &str) {
-        if !self.typography_requested || self.typography_font_family_recorded {
+    pub(crate) fn record_typography(&mut self, emitted_font_family: &str, emitted_font_size: &str) {
+        self.record_font_family(emitted_font_family);
+        self.record_font_size(emitted_font_size);
+    }
+
+    fn record_font_family(&mut self, emitted_font_family: &str) {
+        if !self.font_family_requested {
+            return;
+        }
+        if self.typography_font_family_recorded {
             self.typography_font_family_verified = false;
             return;
         }
         self.typography_font_family_recorded = true;
         self.typography_font_family_verified =
             emitted_font_family == self.expected_font_family.as_ref();
+    }
+
+    fn record_font_size(&mut self, emitted_font_size: &str) {
+        if !self.font_size_requested {
+            return;
+        }
+        if self.typography_font_size_recorded {
+            self.typography_font_size_verified = false;
+            return;
+        }
+        self.typography_font_size_recorded = true;
+        self.typography_font_size_verified = emitted_font_size == self.expected_font_size.as_ref();
     }
 
     pub(crate) fn record_title_text(&mut self, emitted_class: &str, text: &str) {
@@ -513,6 +634,7 @@ impl RequirementPaintThemeReceipt {
     pub(crate) fn record_checkpointed_node(
         &mut self,
         node_index: usize,
+        has_visible_text: bool,
         source_owns_fill: bool,
         emitted_fill: Option<(usize, &str)>,
         terminal_fill: &str,
@@ -532,6 +654,9 @@ impl RequirementPaintThemeReceipt {
             return;
         }
         *checkpointed = true;
+        if has_visible_text {
+            self.visible_node_count = self.visible_node_count.saturating_add(1);
+        }
 
         let Some(expectation) = self.expectations.get(node_index) else {
             self.attributes_match = false;
@@ -584,15 +709,22 @@ impl RequirementPaintThemeReceipt {
             && self.checkpointed_nodes.iter().all(|entry| *entry)
             && self.emitted_title_count == self.expected_title_count
             && self.title_matches
-            && (!self.typography_requested || self.proves_typography())
+            && self.proves_font_family()
+            && self.proves_font_size()
     }
 
-    fn proves_typography(&self) -> bool {
-        !self.typography_requested
-            || (self.typography_font_family_recorded
-                && self.typography_font_family_verified
-                && self.emitted_title_count == self.expected_title_count
-                && self.title_matches)
+    fn proves_font_family(&self) -> bool {
+        !self.font_family_requested
+            || (self.typography_font_family_recorded && self.typography_font_family_verified)
+    }
+
+    fn proves_font_size(&self) -> bool {
+        !self.font_size_requested
+            || (self.typography_font_size_recorded && self.typography_font_size_verified)
+    }
+
+    fn has_visible_text(&self) -> bool {
+        self.visible_node_count != 0 || self.emitted_title_count != 0
     }
 
     fn has_effective_rule(&self, rule_index: usize) -> bool {
@@ -625,7 +757,7 @@ mod tests {
     use crate::diagram_theme::ThemeCapability;
 
     fn stroke_receipt() -> RequirementPaintThemeReceipt {
-        RequirementPaintThemeReceipt::new(
+        RequirementPaintThemeReceipt::with_typography(
             vec![NodeExpectation {
                 stroke: Some(DirectPaintExpectation::new(
                     7,
@@ -635,6 +767,11 @@ mod tests {
                 ..NodeExpectation::default()
             }]
             .into(),
+            false,
+            false,
+            false,
+            "",
+            "16px",
         )
     }
 
@@ -643,6 +780,7 @@ mod tests {
         let mut receipt = stroke_receipt();
         receipt.record_checkpointed_node(
             0,
+            true,
             false,
             None,
             "#ececff",
@@ -658,6 +796,62 @@ mod tests {
             !receipt.proves_complete(),
             "a stylesheet-only stroke must not be treated as the final typed winner"
         );
+    }
+
+    #[test]
+    fn typography_receipt_proves_requested_properties_independently() {
+        let empty_expectations: Arc<[NodeExpectation]> = Vec::new().into();
+
+        let mut size_only = RequirementPaintThemeReceipt::with_typography(
+            Arc::clone(&empty_expectations),
+            false,
+            false,
+            true,
+            "unused-family",
+            "24px",
+        );
+        size_only.record_typography("wrong-family", "24px");
+        assert!(size_only.proves_complete());
+
+        let mut family_only = RequirementPaintThemeReceipt::with_typography(
+            empty_expectations,
+            false,
+            true,
+            false,
+            "Requirement Typed",
+            "unused-size",
+        );
+        family_only.record_typography("Requirement Typed", "wrong-size");
+        assert!(family_only.proves_complete());
+    }
+
+    #[test]
+    fn typography_receipt_does_not_treat_empty_node_labels_as_visible_text() {
+        let mut receipt = RequirementPaintThemeReceipt::with_typography(
+            vec![NodeExpectation::default()].into(),
+            false,
+            false,
+            true,
+            "unused-family",
+            "24px",
+        );
+        receipt.record_checkpointed_node(
+            0,
+            false,
+            false,
+            None,
+            "#ececff",
+            false,
+            None,
+            "#9370db",
+            "",
+            false,
+            &[],
+        );
+        receipt.record_typography("unused-family", "24px");
+
+        assert!(!receipt.has_visible_text());
+        assert!(receipt.proves_complete());
     }
 
     #[test]
@@ -680,6 +874,7 @@ mod tests {
             let mut receipt = stroke_receipt();
             receipt.record_checkpointed_node(
                 0,
+                true,
                 false,
                 None,
                 "#ececff",
@@ -706,6 +901,7 @@ mod tests {
         )];
         receipt.record_checkpointed_node(
             0,
+            true,
             false,
             None,
             "#ececff",

@@ -1495,7 +1495,7 @@ const BASE_CLAIMS: &[BaseClaim] = &[
     },
     BaseClaim {
         family: "requirement",
-        kind: SupportClaimKind::LegacySurface,
+        kind: SupportClaimKind::TypedSurface,
         properties: &["font-size"],
     },
     BaseClaim {
