@@ -475,6 +475,21 @@ classDiagram
         .attribute("aria-roledescription")
         .expect("Class diagram role");
     assert_eq!(diagram_role, "class");
+    for marker_id in marker_ids.iter().filter(|id| !id.ends_with("-margin")) {
+        let marker = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("marker")
+                    && node.attribute("id")
+                        == Some(format!("merman_{diagram_role}-{marker_id}").as_str())
+            })
+            .unwrap_or_else(|| panic!("missing marker element {marker_id}: {svg}"));
+        assert_eq!(
+            marker.attribute("markerUnits"),
+            Some("userSpaceOnUse"),
+            "plain Class marker {marker_id} must not scale with relation stroke width"
+        );
+    }
     let marker_positions = marker_ids.map(|marker_id| {
         let marker_attr = format!(r#"id="merman_{diagram_role}-{marker_id}""#);
         svg.find(&marker_attr)
