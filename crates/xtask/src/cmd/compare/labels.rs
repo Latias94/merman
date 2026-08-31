@@ -271,14 +271,14 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "c4",
         fixture: C4_DYNAMIC_LABEL_FIXTURE,
         input_sha256: "78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284",
-        upstream_svg_sha256: "1589e262048f1a463c42f1a98e84325b9eb311c1a50665334dd03f98f51cbc01",
+        upstream_svg_sha256: "0c98d72ed85a700e1b30641ae343f1fcd451fc64ec88ff66873ac6a0881d43af",
         adapter: SemanticLabelAdapter::C4,
     },
     SemanticLabelFixtureContract {
         diagram: "flowchart",
         fixture: FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE,
         input_sha256: "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0",
-        upstream_svg_sha256: "7db68748e7ce841e29246c546a01e77a92db2bf7e6c43ac65757b8e2304c90e2",
+        upstream_svg_sha256: "709ab9cab13c2c176765d5eb6d793402b1c91b7272e3681ed61510e8445dc9e6",
         adapter: SemanticLabelAdapter::FlowchartElk,
     },
     SemanticLabelFixtureContract {
@@ -292,7 +292,7 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "requirement",
         fixture: REQUIREMENT_TRACES_LABEL_FIXTURE,
         input_sha256: "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-        upstream_svg_sha256: "0060266072dcb2f816892411d510e44d31e5c64ab41da0d82a4185ed69433501",
+        upstream_svg_sha256: "83fe92b2f61c0154762ce82cea1ba55a3f6731f83f09516e3b1e8c371eca1d46",
         adapter: SemanticLabelAdapter::DagreDataId,
     },
     SemanticLabelFixtureContract {
@@ -306,14 +306,14 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "class",
         fixture: CLASS_MANY_RELATION_LABEL_FIXTURE,
         input_sha256: "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-        upstream_svg_sha256: "a234af4726d6e0c9ae3162e9161ed93098143364314219638c1e73682c99a3e9",
+        upstream_svg_sha256: "d7eaa60ac49771be5e424d765bf215274d8201e7a77d52e0350a6ac2da32383d",
         adapter: SemanticLabelAdapter::DagreDataId,
     },
     SemanticLabelFixtureContract {
         diagram: "er",
         fixture: ER_PARALLEL_RELATION_LABEL_FIXTURE,
         input_sha256: "02bdf0d49b4f771161740ca46046e142f041dbc39d72fdc4209bb1f9f75e51d0",
-        upstream_svg_sha256: "a4f684e992a882a0870145aac338a5e12153762e4ed687db3f8ea40c5f41edf9",
+        upstream_svg_sha256: "fdde9c56a56eb4530e3c7372e243ee35651a8c7c62e895ae5bc7793732b6c6c4",
         adapter: SemanticLabelAdapter::DagreDataId,
     },
 ];
@@ -1542,7 +1542,10 @@ fn extract_flowchart_elk_edge_labels(
         node.is_element()
             && node.has_tag_name("path")
             && has_class_token(*node, "flowchart-link")
-            && self_or_ancestor_has_class(*node, "edgePaths")
+            // Mermaid 11.17's ELK renderer emits the singular `edgePath` group;
+            // older baselines used `edgePaths`. Both are the same edge layer.
+            && (self_or_ancestor_has_class(*node, "edgePaths")
+                || self_or_ancestor_has_class(*node, "edgePath"))
     }) {
         let identity = required_edge_identity(path, DIAGRAM, "data-id")?;
         let edge = semantic_world_relation_edge_evidence(path)?;
@@ -3479,8 +3482,8 @@ mod tests {
 
         assert_eq!(labels.len(), 5);
         assert_eq!(message.text, "2: Calls isAuthenticated() on");
-        assert_eq!(message.geometry.anchor_x, 493.6410154384848);
-        assert_eq!(message.geometry.anchor_y, 897.0);
+        assert_eq!(message.geometry.anchor_x, 501.0);
+        assert_eq!(message.geometry.anchor_y, 650.9805393218994);
     }
 
     #[test]
@@ -3807,8 +3810,8 @@ mod tests {
             "translate(137.3515625, 68.5)",
         );
         let transformed_edge_root = upstream.replacen(
-            r#"class="edges edgePaths""#,
-            r#"class="edges edgePaths" transform="translate(10 0)""#,
+            r#"class="edges edgePath""#,
+            r#"class="edges edgePath" transform="translate(10 0)""#,
             1,
         );
         let swapped_identities = swap_all(&upstream, "L_a1_a2_0", "L_a1_a2_2");

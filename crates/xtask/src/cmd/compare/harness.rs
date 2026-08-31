@@ -2858,7 +2858,7 @@ mod tests {
             .join(format!("{FIXTURE}.svg"));
         let upstream = fs::read_to_string(&upstream_path).expect("signed C4 SVG should exist");
         let local = upstream.replacen(
-            r#"x="493.6410154384848" y="897""#,
+            r#"x="501" y="650.9805393218994""#,
             r#"x="593.9486587427764" y="842""#,
             1,
         );

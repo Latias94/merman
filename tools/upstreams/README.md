@@ -5,7 +5,7 @@ are not submodules, and must resolve to the selected revisions in `REPOS.lock.js
 
 Typical selected checkouts include:
 
-- `repo-ref/mermaid` for Mermaid `11.16.1`;
+- `repo-ref/mermaid` for Mermaid `11.17.2`;
 - `repo-ref/dompurify` for the selected sanitizer source;
 - `repo-ref/zenuml-core` for the selected ZenUML Core `3.50.1` source;
 - the selected Dagre, Graphlib, Cytoscape, and layout sources listed in the lock.
@@ -28,6 +28,14 @@ Packages loaded by reference execution, including the Puppeteer browser-driver c
 selected packages rather than ambient tooling. They carry registry integrity, source identity,
 installed-content digests, lock verification, and selection-receipt coverage alongside Mermaid and
 its runtime companions.
+
+The executable behavior oracle is the selected npm graph, not an assumption that every companion
+was rebuilt from the Mermaid host tag. In the `11.17.2` graph, `@mermaid-js/layout-elk@0.2.3` is the
+latest published ELK adapter and was built from its own package tag at commit
+`293b1c153a6f94c3a4a1d9cd5eae4dde609f1ec4` (the Mermaid `11.17.0` release line). Its installed
+artifact therefore remains authoritative for ELK DOM details, including `edges edgePath`, where it
+differs from later `11.17.2` host source. The bundle records that package tag and the exact installed
+content digest rather than relabeling the artifact as a `11.17.2` build.
 
 Run the offline-capable standing gate with:
 
@@ -83,16 +91,19 @@ standing verifier with `--base` before refreshing upstream SVG provenance.
 
 ## Executable Cypress evidence
 
-The retained new-family and Flowchart ELK Cypress scopes are collected by
-`tools/upstreams/cypress-collector/`. This upgrade-only tool executes the selected Mermaid specs
-through the Node, pnpm, and esbuild versions pinned by the selected checkout. It rejects unknown
-imports, helpers, runtime effects, skips, call-count drift, and toolchain drift.
+The retained new-family and Flowchart ELK Cypress scopes are historical Mermaid `11.16.1`
+evidence. Mermaid `11.17.2` moved these tests from the old `cypress/` tree to the Playwright-based
+`e2e/` tree, so the committed manifests intentionally keep their original source identity and
+digests instead of being relabeled as `11.17.2`.
 
+`tools/upstreams/cypress-collector/` remains an upgrade-only collector for those historical scopes.
+It executes the selected historical checkout through its pinned Node, pnpm, and esbuild versions and
+rejects unknown imports, helpers, runtime effects, skips, call-count drift, and toolchain drift.
 Generated collection files belong under `target/` and are review inputs, not committed evidence.
 After reviewing them, use `project-upstream-cypress-collection` to update the scope manifests under
-`fixtures/_upstream/`. Ordinary alignment checks validate those manifests and local digests without
-requiring `repo-ref/mermaid` or executing upstream JavaScript. See the collector README for exact
-commands.
+`fixtures/_upstream/`. Ordinary alignment checks validate the historical manifests, their local
+collector digests, and fixture routing without requiring the current `repo-ref/mermaid` checkout or
+executing upstream JavaScript. See the collector README for exact commands.
 
 ## Baseline generation
 
