@@ -109,7 +109,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 continue;
             }
 
-            if ctx.subgraphs_by_id.contains_key(id) && ctx.subgraph_has_children(id) {
+            if ctx.subgraphs_by_id.contains_key(id)
+                && ctx.subgraph_has_children(id)
+                && !ctx.is_subgraph_collapsed(id)
+            {
                 // Non-recursive clusters render as cluster boxes (in `.clusters`) and do not emit a
                 // node DOM element. Recursive clusters render as nested `.root` groups.
                 if ctx.recursive_clusters.contains(id) {
@@ -220,7 +223,7 @@ fn render_flowchart_elk_subgraphs(
         .flat_map(|ids| ids.iter().map(String::as_str))
         .filter_map(|id| {
             ctx.subgraphs_by_id.get(id)?;
-            if !ctx.subgraph_has_children(id)
+            if (!ctx.subgraph_has_children(id) || ctx.is_subgraph_collapsed(id))
                 && !flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
             {
                 return None;
@@ -235,7 +238,7 @@ fn render_flowchart_elk_subgraphs(
             .iter()
             .filter_map(|id| {
                 ctx.subgraphs_by_id.get(*id)?;
-                if !ctx.subgraph_has_children(id)
+                if (!ctx.subgraph_has_children(id) || ctx.is_subgraph_collapsed(id))
                     && !flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
                 {
                     return None;
@@ -299,6 +302,7 @@ fn render_flowchart_elk_nodes(
     for id in dom_order {
         ctx.checkpoint_emit()?;
         if ctx.subgraphs_by_id.contains_key(id)
+            && !ctx.is_subgraph_collapsed(id)
             && (ctx.subgraph_has_children(id)
                 || flowchart_elk_renders_empty_subgraph_as_cluster(ctx))
         {
@@ -430,7 +434,10 @@ fn initialize_flowchart_root_frame<'a>(
     let _g_clusters = detail_guard(session.timing, &mut session.details.clusters);
     let mut clusters_to_draw: Vec<&LayoutCluster> = Vec::new();
     if let Some(cid) = frame.cluster_id {
-        if ctx.subgraphs_by_id.contains_key(cid) && !ctx.subgraph_has_children(cid) {
+        if ctx.subgraphs_by_id.contains_key(cid)
+            && !ctx.subgraph_has_children(cid)
+            && !ctx.is_subgraph_collapsed(cid)
+        {
             // Empty subgraphs are rendered as plain nodes in Mermaid (see flowchart-v2.spec.js
             // outgoing-links-4 baseline), so they should not emit cluster boxes.
         } else if let Some(cluster) = ctx.layout_clusters_by_id.get(cid) {
@@ -441,7 +448,9 @@ fn initialize_flowchart_root_frame<'a>(
         if frame.cluster_id.is_some_and(|cid| cid == *id) {
             continue;
         }
-        if ctx.subgraphs_by_id.contains_key(id) && !ctx.subgraph_has_children(id) {
+        if ctx.subgraphs_by_id.contains_key(id)
+            && (!ctx.subgraph_has_children(id) || ctx.is_subgraph_collapsed(id))
+        {
             continue;
         }
         if ctx.recursive_clusters.contains(id) {
@@ -624,7 +633,10 @@ fn initialize_flowchart_root_frame<'a>(
         // `.nodes` group. Fall back to our effective-parent ordering in that case.
         let mut emits_anything = false;
         for id in &dom_order {
-            if ctx.subgraphs_by_id.contains_key(id) && ctx.subgraph_has_children(id) {
+            if ctx.subgraphs_by_id.contains_key(id)
+                && ctx.subgraph_has_children(id)
+                && !ctx.is_subgraph_collapsed(id)
+            {
                 if ctx.recursive_clusters.contains(id) {
                     emits_anything = true;
                     break;

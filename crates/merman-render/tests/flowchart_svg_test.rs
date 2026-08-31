@@ -1968,6 +1968,143 @@ C --> D@{ shape: browser, label: "browser" }
 }
 
 #[test]
+fn flowchart_collapsed_subgraph_renders_as_one_leaf_and_redirects_boundary_edges() {
+    let svg = render_flowchart_svg_from_text(
+        r#"flowchart TD
+subgraph one[My Group]
+  A --> B
+end
+C --> A
+one@{ view: collapsed }
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid collapsed Flowchart SVG");
+
+    let collapsed = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some("merman-one"))
+        .expect("collapsed subgraph node");
+    assert_eq!(collapsed.attribute("class"), Some("node"));
+    assert!(collapsed.children().any(|child| {
+        child.has_tag_name("rect")
+            && child.attribute("class") == Some("basic label-container collapsed-group")
+    }));
+    assert_eq!(
+        collapsed
+            .children()
+            .filter(|child| child.has_tag_name("circle"))
+            .count(),
+        3,
+        "collapsed node must expose the ellipsis indicators"
+    );
+    assert!(collapsed.children().any(|child| {
+        child.has_tag_name("line") && child.attribute("class") == Some("collapsed-separator")
+    }));
+
+    for hidden_id in ["A", "B"] {
+        assert!(
+            !document.descendants().any(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.contains(&format!("-flowchart-{hidden_id}-")))
+            }),
+            "hidden member {hidden_id} must not be emitted: {svg}"
+        );
+    }
+
+    let edge = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .expect("redirected boundary edge");
+    assert_eq!(edge.attribute("data-id"), Some("L_C_A_0"));
+    assert!(
+        edge.attribute("d").is_some_and(|path| !path.is_empty()),
+        "redirected boundary edge must retain a route: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_collapsed_nested_subgraphs_keep_only_the_outermost_node() {
+    let svg = render_flowchart_svg_from_text(
+        r#"flowchart TD
+subgraph inner[Inner]
+  A --> B
+end
+subgraph outer[Outer]
+  inner
+  C
+end
+D --> A
+inner@{ view: collapsed }
+outer@{ view: collapsed }
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid nested collapsed SVG");
+    let node_ids = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class").is_some())
+        .filter_map(|node| node.attribute("id"))
+        .filter(|id| id.starts_with("merman-") && !id.contains("flowchart-v2"))
+        .collect::<Vec<_>>();
+    assert!(node_ids.contains(&"merman-outer"), "{svg}");
+    assert!(!node_ids.contains(&"merman-inner"), "{svg}");
+    for hidden_id in ["A", "B", "C"] {
+        assert!(
+            !node_ids
+                .iter()
+                .any(|id| id.contains(&format!("-flowchart-{hidden_id}-"))),
+            "hidden member {hidden_id} must not be emitted: {svg}"
+        );
+    }
+    let edge = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .expect("outer boundary edge");
+    assert_eq!(edge.attribute("data-id"), Some("L_D_A_0"));
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_collapsed_subgraph_hides_members_before_layout() {
+    let svg = render_flowchart_svg_from_text(
+        r#"---
+config:
+  layout: elk
+---
+flowchart TD
+subgraph one[My Group]
+  A --> B
+end
+C --> A
+one@{ view: collapsed }
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid ELK collapsed SVG");
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("g") && node.attribute("id") == Some("merman-one") })
+    );
+    for hidden_id in ["A", "B"] {
+        assert!(
+            !document.descendants().any(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.contains(&format!("-flowchart-{hidden_id}-")))
+            }),
+            "ELK hidden member {hidden_id} must not be emitted: {svg}"
+        );
+    }
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node.attribute("data-edge") == Some("true")
+            && node.attribute("data-id") == Some("L_C_A_0")
+    }));
+}
+
+#[test]
 fn flowchart_no_label_special_shapes_render_outer_path_group() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()

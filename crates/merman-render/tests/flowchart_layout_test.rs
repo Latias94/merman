@@ -172,6 +172,47 @@ A --> C
 }
 
 #[test]
+fn flowchart_collapsed_subgraph_layout_projects_hidden_members_and_boundary_edges() {
+    let layout = layout_flowchart(
+        r#"flowchart TD
+subgraph one[My Group]
+  A --> B
+end
+C --> A
+one@{ view: collapsed }
+"#,
+    );
+
+    let collapsed = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "one")
+        .expect("collapsed subgraph layout node");
+    assert!(!collapsed.is_cluster);
+    assert!(collapsed.width >= 80.0);
+    assert!(collapsed.height >= 44.0);
+    assert!(
+        layout
+            .nodes
+            .iter()
+            .all(|node| node.id != "A" && node.id != "B")
+    );
+
+    assert!(
+        layout
+            .edges
+            .iter()
+            .any(|edge| { edge.from == "C" && edge.to == "one" && edge.id == "L_C_A_0" })
+    );
+    assert!(
+        layout
+            .edges
+            .iter()
+            .all(|edge| !(edge.from == "one" && edge.to == "one"))
+    );
+}
+
+#[test]
 fn flowchart_rank_spacing_zero_falls_back_to_mermaid_default() {
     let default = layout_flowchart(
         r#"flowchart TB

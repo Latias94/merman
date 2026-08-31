@@ -90,7 +90,7 @@ pub(super) fn render_flowchart_svg_model(
     let FlowchartRenderInputs {
         mut render_edges,
         extra_nodes,
-    } = prepare_flowchart_render_inputs(model, layout.uses_elk_adapter_dom);
+    } = prepare_flowchart_render_inputs(model, render_context, layout.uses_elk_adapter_dom);
     if let Some(swimlane_layout) = swimlane_layout {
         super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
     }
@@ -179,7 +179,10 @@ pub(super) fn render_flowchart_svg_model(
             subgraph_indices_by_id.insert(id, subgraph_index);
             subgraph_order.push(id);
         }
-        if !sg.nodes.is_empty() {
+        if !sg.nodes.is_empty()
+            && !render_context.is_subgraph_collapsed(id)
+            && render_context.collapsed_replacement(id).is_none()
+        {
             subgraph_ids_with_children.insert(id);
         }
     }
@@ -341,7 +344,10 @@ pub(super) fn render_flowchart_svg_model(
             cur = ctx.parent.get(base).copied();
         }
         while let Some(p) = cur {
-            if ctx.subgraphs_by_id.contains_key(p) && !ctx.recursive_clusters.contains(p) {
+            if ctx.subgraphs_by_id.contains_key(p)
+                && !ctx.recursive_clusters.contains(p)
+                && !ctx.is_subgraph_collapsed(p)
+            {
                 cur = ctx.parent.get(p).copied();
                 continue;
             }

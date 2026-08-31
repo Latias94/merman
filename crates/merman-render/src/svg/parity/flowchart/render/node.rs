@@ -225,6 +225,27 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         return Ok(());
     }
 
+    // Mermaid's collapsedGroup appends its separator and ellipsis after the labelHelper output.
+    // Keep that child order stable (body → label → indicators) instead of routing it through the
+    // ordinary shape-first path used by the other Flowchart shapes.
+    if shape == "collapsedGroup" {
+        let geometry = shapes::render_collapsed_group_body(out, ctx, &common, &mut label, details);
+        label::render_flowchart_node_label_before_tail(
+            out,
+            ctx,
+            &common,
+            &label,
+            &compiled_styles,
+            details,
+        );
+        shapes::render_collapsed_group_indicators(out, geometry);
+        out.push_str("</g>");
+        if common.wrapped_in_a {
+            out.push_str("</a>");
+        }
+        return Ok(());
+    }
+
     if shapes::render_flowchart_shape(out, ctx, &common, &mut label, details)? {
         return Ok(());
     }

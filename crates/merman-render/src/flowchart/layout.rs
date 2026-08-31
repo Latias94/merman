@@ -1465,13 +1465,26 @@ fn layout_flowchart_with_model(
     super::validate_flowchart_model_shapes(model)?;
     let effective_config_value = effective_config.as_value();
 
+    // Project the lossless semantic edges through the collapsed-subgraph view before expanding
+    // self-loops. Boundary edges use the visible collapsed node as their endpoint, while edges
+    // wholly hidden by a collapsed subgraph are omitted.
+    work_control.charge_adapter(model.edges.len())?;
+    let mut projected_edges: Vec<FlowEdge> = Vec::with_capacity(model.edges.len());
+    let mut projected_edge_owner_indices: Vec<usize> = Vec::with_capacity(model.edges.len());
+    for (edge_index, edge) in model.edges.iter().enumerate() {
+        if let Some(projected) = super::project_flowchart_edge(edge, render_label_sources) {
+            projected_edges.push(projected);
+            projected_edge_owner_indices.push(edge_index);
+        }
+    }
+    work_control.charge_adapter(projected_edges.len())?;
+
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid
     // uses `*-cyclic-special-*` ids when rendering self-loops).
-    work_control.charge_adapter(model.edges.len())?;
-    let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
+    let self_loop_count = projected_edges.iter().filter(|e| e.from == e.to).count();
     let derived_render_edges = work_control.checked_add(
-        model.edges.len(),
+        projected_edges.len(),
         work_control.checked_mul(self_loop_count, 2)?,
     )?;
     work_control.charge_adapter(derived_render_edges)?;
@@ -1483,7 +1496,8 @@ fn layout_flowchart_with_model(
     let mut self_loop_label_node_ids: Vec<String> = Vec::new();
     let mut self_loop_label_node_id_set: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    for (edge_index, e) in model.edges.iter().enumerate() {
+    for (projected_index, e) in projected_edges.iter().enumerate() {
+        let edge_index = projected_edge_owner_indices[projected_index];
         if e.from != e.to {
             render_edges.push(std::borrow::Cow::Borrowed(e));
             render_edge_self_loop_meta.push(None);
@@ -1591,6 +1605,24 @@ fn layout_flowchart_with_model(
     work_control.charge_adapter(model.subgraphs.len())?;
     let subgraph_ids: std::collections::HashSet<&str> =
         model.subgraphs.iter().map(|sg| sg.id.as_str()).collect();
+    let collapsed_subgraph_ids: HashSet<&str> = model
+        .subgraphs
+        .iter()
+        .filter(|sg| model.is_subgraph_collapsed(sg.id.as_str()))
+        .filter(|sg| model.collapsed_replacement(sg.id.as_str()).is_none())
+        .map(|sg| sg.id.as_str())
+        .collect();
+    // Only expanded, non-empty subgraphs participate in Dagre's compound-cluster pipeline.
+    // Collapsed subgraphs are ordinary leaf nodes; nested collapsed/expanded descendants replaced
+    // by an outer collapsed ancestor are omitted from the graph entirely.
+    let cluster_subgraph_ids: HashSet<&str> = model
+        .subgraphs
+        .iter()
+        .filter(|sg| !collapsed_subgraph_ids.contains(sg.id.as_str()))
+        .filter(|sg| model.collapsed_replacement(sg.id.as_str()).is_none())
+        .filter(|sg| !sg.nodes.is_empty())
+        .map(|sg| sg.id.as_str())
+        .collect();
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         // Mermaid's Dagre adapter always enables `compound: true`, even if there are no explicit
@@ -1613,6 +1645,12 @@ fn layout_flowchart_with_model(
         std::collections::HashMap::new();
     work_control.charge_adapter(canonical_subgraphs_in_order.len())?;
     for (_, sg) in &canonical_subgraphs_in_order {
+        if model.collapsed_replacement(sg.id.as_str()).is_some() {
+            continue;
+        }
+        if collapsed_subgraph_ids.contains(sg.id.as_str()) {
+            continue;
+        }
         if !nonempty_subgraph_ids.contains(sg.id.as_str()) {
             // Mermaid renders empty subgraphs as regular nodes. Keep the semantic `subgraph`
             // definition around for styling/title, but size + lay it out as a leaf node.
@@ -1628,8 +1666,11 @@ fn layout_flowchart_with_model(
     let mut leaf_node_labels: std::collections::HashMap<String, NodeLabel> =
         std::collections::HashMap::new();
     let mut leaf_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
-    let leaf_label_capacity =
-        work_control.checked_add(model.nodes.len(), empty_subgraph_ids.len())?;
+    let collapsed_leaf_count = collapsed_subgraph_ids.len();
+    let leaf_label_capacity = work_control.checked_add(
+        model.nodes.len(),
+        work_control.checked_add(empty_subgraph_ids.len(), collapsed_leaf_count)?,
+    )?;
     work_control.charge_adapter(leaf_label_capacity)?;
     leaf_label_metrics_by_id.reserve(leaf_label_capacity);
     work_control.charge_adapter(model.nodes.len())?;
@@ -1637,7 +1678,9 @@ fn layout_flowchart_with_model(
         // Mermaid treats the subgraph id as the "group node" id (a cluster can be referenced in
         // edges). Avoid introducing a separate leaf node that would collide with the cluster node
         // of the same id.
-        if subgraph_ids.contains(n.id.as_str()) {
+        if subgraph_ids.contains(n.id.as_str())
+            || model.collapsed_replacement(n.id.as_str()).is_some()
+        {
             continue;
         }
         let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
@@ -1705,7 +1748,10 @@ fn layout_flowchart_with_model(
     }
     work_control.charge_adapter(canonical_subgraphs_in_order.len())?;
     for &(subgraph_index, sg) in &canonical_subgraphs_in_order {
-        if nonempty_subgraph_ids.contains(sg.id.as_str()) {
+        if nonempty_subgraph_ids.contains(sg.id.as_str())
+            || collapsed_subgraph_ids.contains(sg.id.as_str())
+            || model.collapsed_replacement(sg.id.as_str()).is_some()
+        {
             continue;
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
@@ -1766,6 +1812,65 @@ fn layout_flowchart_with_model(
             NodeLabel {
                 width,
                 height,
+                ..Default::default()
+            },
+        );
+    }
+
+    // A collapsed subgraph is laid out as a regular leaf node. Its title uses the same label
+    // preparation path as a subgraph title, but its outer dimensions reserve the separator and
+    // indicator rows rendered by `collapsedGroup`.
+    work_control.charge_adapter(collapsed_leaf_count)?;
+    for &(subgraph_index, sg) in &canonical_subgraphs_in_order {
+        if !collapsed_subgraph_ids.contains(sg.id.as_str()) {
+            continue;
+        }
+        let label_type = sg.label_type.as_deref().unwrap_or("text");
+        let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
+        let base_style = if node_wrap_mode == WrapMode::HtmlLike {
+            &html_label_text_style
+        } else {
+            &text_style
+        };
+        let text_style_for_label = flowchart_effective_text_style_for_classes(
+            base_style,
+            &model.class_defs,
+            classes,
+            styles,
+        );
+        let title = model.subgraph_title_for_render(subgraph_index, sg);
+        let mut metrics = measure_flowchart_svg_label_for_layout(
+            svg_label_sidecar,
+            Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index)),
+            Some(sg.id.as_str()),
+            FlowchartLabelMetricsRequest {
+                measurer,
+                raw_label: title,
+                label_type,
+                style: text_style_for_label.as_ref(),
+                max_width_px: Some(wrapping_width),
+                wrap_mode: node_wrap_mode,
+                config: effective_config,
+                math_renderer,
+            },
+            FlowchartSvgWidthMode::Bbox,
+        );
+        if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
+            flowchart_apply_html_node_class_box_metrics(
+                &mut metrics,
+                title,
+                label_type,
+                text_style_for_label.as_ref(),
+                &model.class_defs,
+                classes,
+            );
+        }
+        leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
+        leaf_node_labels.insert(
+            sg.id.clone(),
+            NodeLabel {
+                width: (metrics.width + 16.0).max(80.0),
+                height: metrics.height + 44.0,
                 ..Default::default()
             },
         );
@@ -1853,6 +1958,9 @@ fn layout_flowchart_with_model(
         let mut parent_assignments = Vec::with_capacity(parent_by_id.len());
         let mut numeric_parent_assignments = 0usize;
         for sg in model.subgraphs.iter().rev() {
+            if model.collapsed_replacement(sg.id.as_str()).is_some() {
+                continue;
+            }
             insert_with_parent(
                 sg.id.as_str(),
                 &mut g,
@@ -1864,6 +1972,9 @@ fn layout_flowchart_with_model(
             )?;
         }
         for n in &model.nodes {
+            if model.collapsed_replacement(n.id.as_str()).is_some() {
+                continue;
+            }
             insert_with_parent(
                 n.id.as_str(),
                 &mut g,
@@ -1875,6 +1986,9 @@ fn layout_flowchart_with_model(
             )?;
         }
         for id in &model.vertex_calls {
+            if model.collapsed_replacement(id.as_str()).is_some() {
+                continue;
+            }
             insert_with_parent(
                 id.as_str(),
                 &mut g,
@@ -2627,7 +2741,7 @@ fn layout_flowchart_with_model(
         };
         let mut recursive_layout_ctx = RecursiveLayoutContext {
             extracted: &mut extracted_graphs,
-            subgraph_id_set: &subgraph_ids,
+            subgraph_id_set: &cluster_subgraph_ids,
             y_shift,
             cluster_node_labels: &cluster_node_labels,
             title_total_margin,
@@ -2671,6 +2785,9 @@ fn layout_flowchart_with_model(
     }
     for id in &empty_subgraph_ids {
         leaf_node_ids.insert(id.clone());
+    }
+    for id in &collapsed_subgraph_ids {
+        leaf_node_ids.insert((*id).to_string());
     }
 
     struct PlaceGraphInputs<'a> {
@@ -2943,7 +3060,7 @@ fn layout_flowchart_with_model(
         let place_graph_inputs = PlaceGraphInputs {
             edge_id_by_key: &edge_id_by_key,
             extracted_graphs: &extracted_graphs,
-            subgraph_ids: &subgraph_ids,
+            subgraph_ids: &cluster_subgraph_ids,
             leaf_node_ids: &leaf_node_ids,
         };
         let mut place_graph_outputs = PlaceGraphOutputs {
@@ -3055,7 +3172,9 @@ fn layout_flowchart_with_model(
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     work_control.charge_adapter(model.nodes.len())?;
     for n in &model.nodes {
-        if subgraph_ids.contains(n.id.as_str()) {
+        if subgraph_ids.contains(n.id.as_str())
+            || model.collapsed_replacement(n.id.as_str()).is_some()
+        {
             continue;
         }
         let (x, y) = base_pos
@@ -3104,6 +3223,31 @@ fn layout_flowchart_with_model(
             is_cluster: false,
             label_width: leaf_label_metrics_by_id.get(id).map(|v| v.0),
             label_height: leaf_label_metrics_by_id.get(id).map(|v| v.1),
+        });
+    }
+    work_control.charge_adapter(collapsed_subgraph_ids.len())?;
+    for id in &collapsed_subgraph_ids {
+        let (x, y) = base_pos
+            .get(*id)
+            .copied()
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing positioned collapsed subgraph {id}"),
+            })?;
+        let (width, height) = leaf_rects
+            .get(*id)
+            .map(|r| (r.width(), r.height()))
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing sized collapsed subgraph {id}"),
+            })?;
+        out_nodes.push(LayoutNode {
+            id: (*id).to_string(),
+            x,
+            y,
+            width,
+            height,
+            is_cluster: false,
+            label_width: leaf_label_metrics_by_id.get(*id).map(|v| v.0),
+            label_height: leaf_label_metrics_by_id.get(*id).map(|v| v.1),
         });
     }
     work_control.charge_adapter(self_loop_label_node_ids.len())?;
@@ -3522,7 +3666,7 @@ fn layout_flowchart_with_model(
     };
 
     for &(subgraph_index, sg) in &canonical_subgraphs_in_order {
-        if !nonempty_subgraph_ids.contains(sg.id.as_str()) {
+        if !cluster_subgraph_ids.contains(sg.id.as_str()) {
             continue;
         }
         let title = model.subgraph_title_for_render(subgraph_index, sg);
@@ -3776,14 +3920,14 @@ fn layout_flowchart_with_model(
         // Match Mermaid's dagre adapter: self-loop special edges on group nodes are annotated with
         // `fromCluster` / `toCluster` so downstream renderers can clip routes to the cluster
         // boundary.
-        if subgraph_ids.contains(e.from.as_str())
+        if cluster_subgraph_ids.contains(e.from.as_str())
             && actual_self_loop_meta
                 .as_ref()
                 .is_some_and(|meta| meta.order == 0)
         {
             from_cluster = Some(e.from.clone());
         }
-        if subgraph_ids.contains(e.to.as_str())
+        if cluster_subgraph_ids.contains(e.to.as_str())
             && actual_self_loop_meta
                 .as_ref()
                 .is_some_and(|meta| meta.order == 2)
@@ -3818,7 +3962,7 @@ fn layout_flowchart_with_model(
     )?;
     work_control.charge_adapter(merge_work)?;
     let mut out_edges = merge_flowchart_self_loop_segments(
-        &model.edges,
+        &projected_edges,
         &out_nodes,
         &diagram_direction,
         out_edge_candidates,

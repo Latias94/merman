@@ -54,6 +54,11 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::Cloud => {
             super::render_cloud(out, ctx, common, label, details);
         }
+        FlowchartShape::CollapsedGroup => {
+            return Err(Error::InvalidModel {
+                message: "collapsedGroup must use the ordered node renderer".to_string(),
+            });
+        }
         FlowchartShape::Console => {
             super::render_console(out, ctx, common, label, details);
         }

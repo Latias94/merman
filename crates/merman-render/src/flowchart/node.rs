@@ -300,6 +300,12 @@ fn node_render_dimensions(
             (geometry.width(), geometry.height())
         }
 
+        // Collapsed subgraphs are compact two-row nodes with fixed 8px padding, an 8px
+        // separator gap, and a 20px ellipsis row. Mermaid enforces an 80px minimum width.
+        "collapsedGroup" | "collapsed-group" => {
+            ((text_w + 16.0).max(80.0), text_h + 8.0 + 20.0 + 16.0)
+        }
+
         // Double circle.
         "doublecircle" | "dbl-circ" | "double-circle" => {
             // Mermaid `doubleCircle.ts`: outer radius is `bbox.width / 2 + padding`;

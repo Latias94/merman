@@ -4,6 +4,7 @@ mod basic_geoms;
 mod bow_tie_rect;
 mod browser;
 mod bucket;
+mod collapsed_group;
 mod console;
 mod curly_braces;
 mod curved_trapezoid;
@@ -47,6 +48,7 @@ pub(super) use basic_geoms::{render_circle, render_diamond, render_double_circle
 pub(super) use bow_tie_rect::render_bow_tie_rect;
 pub(super) use browser::render_browser;
 pub(super) use bucket::render_bucket;
+pub(super) use collapsed_group::{render_collapsed_group_body, render_collapsed_group_indicators};
 pub(super) use console::render_console;
 pub(in crate::svg::parity::flowchart) use curly_braces::curly_brace_comment_geometry;
 pub(super) use curly_braces::render_curly_brace_comment;

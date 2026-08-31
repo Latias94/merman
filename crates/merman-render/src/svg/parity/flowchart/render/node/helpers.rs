@@ -267,6 +267,34 @@ pub(super) fn resolve_node_render_info<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     node_id: &str,
 ) -> Option<ResolvedNodeRenderInfo<'a>> {
+    if ctx.is_subgraph_collapsed(node_id)
+        && let Some(sg) = ctx.subgraphs_by_id.get(node_id)
+    {
+        let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied()?;
+        let (node_classes, node_styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
+        return Some(ResolvedNodeRenderInfo {
+            // Mermaid's collapsed subgraph is emitted as a synthetic leaf node and therefore has
+            // the plain diagram-id suffix rather than a FlowDB vertex-counter suffix.
+            dom_idx: None,
+            class_attr_base: "node",
+            wrapped_in_a: false,
+            href: None,
+            target: None,
+            label_text: ctx.model.subgraph_title_for_render(subgraph_index, sg),
+            label_text_is_node_id: false,
+            label_type: sg.label_type.as_deref().unwrap_or("text"),
+            shape: "collapsedGroup",
+            node_icon: None,
+            node_img: None,
+            node_pos: None,
+            node_constraint: None,
+            node_asset_width: None,
+            node_asset_height: None,
+            node_styles,
+            node_classes,
+        });
+    }
+
     if let Some(sg) = ctx.subgraphs_by_id.get(node_id)
         && !ctx.subgraph_has_children(node_id)
     {

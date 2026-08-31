@@ -159,7 +159,7 @@ fn flowchart_css_for_id(
     checkpoint()?;
     let _ = write!(
         &mut out,
-        r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}"#,
+        r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} .node .collapsed-indicator{{fill:{};stroke:none;opacity:0.6;}}#{} .node .collapsed-separator{{stroke:{};stroke-width:0.75px;}}#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}"#,
         diagram_id,
         cluster_bkg,
         cluster_border,
@@ -167,6 +167,10 @@ fn flowchart_css_for_id(
         title_color,
         diagram_id,
         title_color,
+        diagram_id,
+        cluster_border,
+        diagram_id,
+        cluster_border,
         diagram_id,
         font_family,
         tertiary,

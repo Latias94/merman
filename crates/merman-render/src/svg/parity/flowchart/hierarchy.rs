@@ -26,7 +26,10 @@ pub(in crate::svg::parity) fn flowchart_effective_parent<'a>(
 ) -> Option<&'a str> {
     let mut cur = ctx.parent.get(id).copied();
     while let Some(p) = cur {
-        if ctx.subgraphs_by_id.contains_key(p) && !ctx.recursive_clusters.contains(p) {
+        if ctx.subgraphs_by_id.contains_key(p)
+            && !ctx.recursive_clusters.contains(p)
+            && !ctx.is_subgraph_collapsed(p)
+        {
             cur = ctx.parent.get(p).copied();
             continue;
         }
@@ -164,7 +167,7 @@ pub(in crate::svg::parity) fn flowchart_root_children_nodes<'a>(
     let cluster_ids: std::collections::HashSet<&str> = ctx
         .subgraphs_by_id
         .iter()
-        .filter(|(id, _)| ctx.subgraph_has_children(id))
+        .filter(|(id, _)| ctx.subgraph_has_children(id) && !ctx.is_subgraph_collapsed(id))
         .map(|(k, _)| *k)
         .collect();
     let mut out = Vec::new();
@@ -178,7 +181,7 @@ pub(in crate::svg::parity) fn flowchart_root_children_nodes<'a>(
         }
     }
     for id in ctx.subgraphs_by_id.keys() {
-        if ctx.subgraph_has_children(id) {
+        if ctx.subgraph_has_children(id) && !ctx.is_subgraph_collapsed(id) {
             continue;
         }
         let parent = flowchart_effective_parent(ctx, id);

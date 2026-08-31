@@ -98,6 +98,10 @@ impl FlowchartRenderCtx<'_> {
         self.subgraph_ids_with_children.contains(id)
     }
 
+    pub(in crate::svg::parity::flowchart) fn is_subgraph_collapsed(&self, id: &str) -> bool {
+        self.model.is_subgraph_collapsed(id)
+    }
+
     pub(in crate::svg::parity::flowchart) fn checkpoint_emit(&self) -> crate::Result<()> {
         self.emit.checkpoint()
     }
