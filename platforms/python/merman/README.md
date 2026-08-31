@@ -4,17 +4,17 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-> **Alpha:** Python and native APIs may break before the stable release. The package currently targets direct UniFFI binding API `6`, which is independent from the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases. The repository documents the prepared `0.8.0a6` source candidate, while the published PyPI prerelease channel may still resolve alpha.5 until the matching wheel is authorized.
+> **Alpha:** Python and native APIs may break before the stable release. The package currently targets direct UniFFI binding API `6`, which is independent from the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases. This repository documents the prepared `0.8.0a6` source candidate; the PyPI prerelease channel is an independent publication and may resolve an older package until the matching wheel is authorized.
 
 ## Install
 
-Install the published prerelease channel from PyPI (currently alpha.5):
+Install the published prerelease channel from PyPI only after checking that its version matches the API you intend to use:
 
 ```sh
 python -m pip install --pre merman
 ```
 
-For alpha.6 candidate work, build the wheel and native library from the exact commit accepted by release preflight and keep those artifacts paired.
+For alpha.6 candidate work, build the wheel and native library from the exact commit accepted by release preflight and keep those artifacts paired; do not assume that the registry command above installs the source candidate.
 
 Published wheels currently target CPython-compatible Python `3.9+` on macOS arm64, manylinux x86_64, and Windows x86_64. A platform without a listed wheel is not an officially packaged target; supporting another target requires a native-port contribution rather than only a local `pip` build.
 
@@ -101,8 +101,9 @@ The generated callback is `measure(self, request)`, not `measure_text`. One-shot
 Query `diagram_family_capabilities()` and `ascii_capabilities()` at runtime instead of assuming that every build profile or output format supports every family.
 
 Custom artifacts with binary exports expose `MermanOutputPlan` as an open record. Switch on `kind`,
-inspect `raster` or `pdf_filter_images` for known plans, and retain `raw_json` so a newer native
-library can report a future plan without forcing Python into a closed enum.
+inspect `raster`, `pdf_filter_images`, or `ascii` for known plans, and retain `raw_json` so a newer
+native library can report a future plan without forcing Python into a closed enum. The ASCII plan
+records the selected projection, encoding, emitted dimensions, and viewport fallback outcome.
 
 ## Local Development
 

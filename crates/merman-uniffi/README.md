@@ -78,10 +78,11 @@ the runtime catalog still exposes their concrete `system-clock`, `system-timezon
 `system-random` IDs. An artifact without `native-runtime` returns a typed unsupported-operation
 error. `MermanOperationResult.metadata` records the selected policy, byte length, raw schema-1 JSON,
 and an optional open `MermanOutputPlan` record when the operation has an output plan. Switch on its
-string `kind`; `raster` and `pdf_filter_images` provide typed payloads for known plans, while
-`raw_json` preserves every current or future plan without a closed foreign-language enum.
+string `kind`; `raster`, `pdf_filter_images`, and `ascii` provide typed payloads for known plans,
+while `raw_json` preserves every current or future plan without a closed foreign-language enum.
+The ASCII payload records projection, encoding, emitted dimensions, and viewport fallback outcome.
 
-Generated `MermanError.Binding` values expose `MermanErrorKind`, an optional `capability_id`, optional `MermanResourceErrorDetails`, optional `MermanDiagnosticErrorDetails`, and optional `MermanCancelledDetails`. Unknown operations have no capability ID; known requests missing a backend preserve the exact descriptor capability ID. Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile. Parser and ASCII failures may preserve a stable diagnostic code, optional source span, and bounded field or diagram context without retaining complete source text. Cancellation remains a separate terminal class with `reason` (`requested` or `deadline_exceeded`) and the observed `phase`; none of these cases should be inferred from display text.
+Generated `MermanError.Binding` values expose `MermanErrorKind`, an optional `capability_id`, optional `MermanResourceErrorDetails`, optional `MermanDiagnosticErrorDetails`, and optional `MermanCancelledDetails`. Unknown operations have no capability ID; known requests missing a backend preserve the exact descriptor capability ID. Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile. Parser and ASCII failures may preserve a stable diagnostic code, optional source span, and bounded field or diagram context without retaining complete source text; ASCII width failures also expose requested/actual widths, width profile, and fallback reason when available. Cancellation remains a separate terminal class with `reason` (`requested` or `deadline_exceeded`) and the observed `phase`; none of these cases should be inferred from display text.
 
 ## Text Measurement Ownership
 

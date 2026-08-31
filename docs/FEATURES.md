@@ -213,9 +213,11 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 ## CLI
 
 `merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes SVG,
-analysis, ASCII, PNG, JPEG, PDF, both optional layout engines, math, local Iconify loading,
+analysis, ASCII, PNG, JPEG, PDF, Cytoscape layout, math, local Iconify loading,
 Markdown conversion, checked Rustdoc fragment generation, native adapters, network icons, parallel
 Markdown, and shell completions.
+The separately assembled `cli-release` artifact additionally includes the ELK layout engine and
+its EPL-2.0 notices; a source install with ordinary defaults does not imply ELK availability.
 Compiled native adapters never change the default runtime policy:
 
 ```sh
@@ -336,10 +338,11 @@ artifact profile. The [Flutter](../platforms/flutter/README.md),
 [C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
 and lifecycle rules; there is no interchangeable generic native binary SDK.
 
-Typst Universe currently publishes `0.1.0`:
+Typst is an independently released package. Verify the registry version before installing; the
+source tree currently prepares the `0.3.0` wrapper:
 
 ```typst
-#import "@preview/merman:0.1.0": mermaid
+#import "@preview/merman:0.3.0": mermaid
 
 #mermaid(```mermaid
 flowchart TD
@@ -347,7 +350,7 @@ flowchart TD
 ```)
 ```
 
-The current source tree prepares the `0.3.0` Typst wrapper from Merman `0.8.0-alpha.6`, requiring Typst `0.15.0`, with SVG, analysis, Cytoscape, and ELK. This package rebuild removes ICU4X collation data and generated font-metric tables from the production WASM closure while retaining the deterministic Unicode-aware measurement fallback. Build it locally and use Typst's `--package-path` until registry publication is verified. The package includes the ELK dependency closure and its accompanying EPL-2.0 notices; Math is not advertised until its pure-WASM font, license, import, and parity admission is complete. The source package always enforces its constrained resource policy; caller options may tighten it but cannot replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md) for the published/source version boundary.
+The source tree prepares the `0.3.0` Typst wrapper from Merman `0.8.0-alpha.6`, requiring Typst `0.15.0`, with SVG, analysis, Cytoscape, and ELK. This package rebuild removes ICU4X collation data and generated font-metric tables from the production WASM closure while retaining the deterministic Unicode-aware measurement fallback. Build it locally and use Typst's `--package-path` until registry publication is verified. The package includes the ELK dependency closure and its accompanying EPL-2.0 notices; Math is not advertised until its pure-WASM font, license, import, and parity admission is complete. The source package always enforces its constrained resource policy; caller options may tighten it but cannot replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md) for the published/source version boundary.
 
 Native bindings expose the same flat runtime catalog. The catalog contains stable
 `capability_ids`, `operation_ids`, and `output_ids`. Do not infer capabilities from exported

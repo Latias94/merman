@@ -65,8 +65,8 @@ Publish jobs use GitHub Environments (`crates.io`, `pypi`, `pub.dev`, `npm`, and
 Configure required reviewers on those environments if publication should require explicit approval.
 
 If a crates.io run stops after publishing only part of a release, keep the tag immutable and retain
-the uploaded `crates-io-receipts-*` artifact. Rerun the workflow only from the same tag or reviewed
-full commit. A GitHub rerun downloads the prior attempt's receipts; a new manual recovery must pass
+the uploaded `crates-io-receipts-*` artifact. Rerun the workflow only from that same immutable tag.
+A GitHub rerun downloads the prior attempt's receipts; a new manual recovery must pass
 the prior workflow id as `recovery_run_id`. The publisher recreates every `.crate` and requires the
 prior prepared/result receipts to match the source, tree, toolchain, graph, manifests, and artifacts
 before it observes or mutates the registry. Matching versions are skipped, missing versions continue
@@ -124,9 +124,12 @@ loader, and uses the same direct-publish plus integrity-preflight boundary as th
 npm only allows a trusted publisher to be configured for an existing package, so the first release
 of each new Node package requires the documented one-time, 2FA-protected bootstrap from the
 verified `release-node.yml` workflow artifact; configure OIDC for all seven names immediately
-afterward. Dispatch the publishing run with that bootstrap run's `recovery_run_id` so the publisher
-reuses the exact verified tarballs instead of rebuilding them. Do not add a persistent npm token to
-the repository workflow.
+afterward. The bootstrap artifact is for that one manual publication only, and its registry version
+remains without npm provenance; a later OIDC run cannot add provenance to an existing tarball. From
+the next version onward, start a publishing workflow run against the reviewed source so it builds,
+verifies, and publishes its own same-run package group. If publication fails, rerun the failed job
+in that workflow run rather than asking a later run to trust an older artifact. Do not add a
+persistent npm token to the repository workflow.
 
 For an npm-only alpha test, `release-node.yml` treats `release_tag` as the package version label and
 `source_ref` as the build source. The source may be a reviewed full commit SHA newer than the
@@ -134,11 +137,11 @@ same-named workspace tag; the workflow records the resolved commit in the packag
 and release notes must not claim that separately published channels are byte-identical.
 
 The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24, enters
-the `npm` environment, requests `id-token: write`, checks out only `github.workflow_sha` without
-credentials, downloads the verified package-group data artifact, verifies its hashes against the
-trusted descriptor, then publishes missing packages directly under the final tag. It must not
-checkout the dispatch `source_ref`,
-build, test, or execute a script contained in the downloaded artifact. Do not add `NPM_TOKEN`,
+the `npm` environment, requests `id-token: write`, and checks out the trusted workflow revision plus
+the immutable source commit without credentials. The source checkout supplies only the package
+surface descriptor; the trusted revision verifies the downloaded package-group hashes before
+publishing missing packages directly under the final tag. The job must not build, test, or execute
+source scripts or scripts contained in the downloaded artifact. Do not add `NPM_TOKEN`,
 `NODE_AUTH_TOKEN`, `--provenance`, `provenance=false`, or `NPM_CONFIG_PROVENANCE=false`.
 
 The Apple workflow currently publishes a zipped `Merman.xcframework` and checksum as GitHub Release

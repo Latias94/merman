@@ -6,7 +6,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.8.0a6] - Unreleased
 
-This section describes the prepared alpha.6 source candidate. The PyPI prerelease channel remains independently published and may still resolve alpha.5 until the matching wheel and native artifact are authorized.
+This section describes the prepared alpha.6 source candidate. The PyPI prerelease channel remains independently published and may still resolve an earlier package until the matching wheel and native artifact are authorized.
 
 ### Breaking changes
 
@@ -14,7 +14,8 @@ This section describes the prepared alpha.6 source candidate. The PyPI prereleas
 - Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. `MermanError.Binding.cancellation` reports the observed reason and phase independently from resource-limit details.
 - Default wheels now bundle SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated API remains stable; unavailable operations return typed missing-capability or unsupported-operation errors, and custom source builds may enable the omitted capabilities.
 - Analysis facts now use schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
-- ASCII capability records now expose `semantic_coverage` and `primary_projection`, and rename `summary_fallback` to `structured_text_fallback`. Structured ASCII resource and diagnostic payloads follow the expanded six-phase renderer contract.
+- ASCII capability records now expose `semantic_coverage` and `primary_projection`, and rename `summary_fallback` to `structured_text_fallback`. `MermanOutputPlan.ascii` exposes the schema-2 terminal projection and viewport outcome, while structured ASCII diagnostics include the requested and actual width context.
+- Wheel builds derive archive timestamps from the accepted source commit, and publication completes only after PyPI exposes the exact expected wheel SHA-256 values.
 
 ## [0.8.0a5] - 2026-08-09
 

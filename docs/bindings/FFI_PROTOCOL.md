@@ -358,9 +358,11 @@ metadata calls instead place their JSON document in `metadata_or_error_json`. On
 static slice valid until the library unloads.
 
 PNG and JPEG operation metadata includes the requested and effective raster plan. PDF operation
-metadata includes the requested and effective filter-image plan. Resource ceilings may reduce the
-effective scale without changing the operation status, so hosts that expose export sizing should
-read `output_plan` instead of echoing request options.
+metadata includes the requested and effective filter-image plan. ASCII operation metadata includes
+the selected projection and encoding, primary and emitted dimensions, width/layout profiles, and
+viewport fallback outcome. Resource ceilings may reduce an effective scale without changing the
+operation status, so hosts that expose export sizing should read `output_plan` instead of echoing
+request options.
 
 Failure payload schema `MERMAN_NATIVE_RESULT_SCHEMA_VERSION == 1` always carries `kind` and a
 nullable `capability_id`:
@@ -385,9 +387,10 @@ numbers; wider unsigned 64-bit values are canonical decimal strings without lead
 JSON consumers must accept both forms and must not coerce the string form through a floating-point
 number. Parser and ASCII renderer failures may add `details.diagnostic` with a
 stable code, an optional `{start,end,kind}` byte span, and bounded `field`/`diagram_type` strings.
-Cancelled operations add `details.cancellation` with `reason` and `phase`. These are additive fields
-under the frozen five-kind error envelope; consumers should use them instead of parsing `message`,
-and complete source text is not retained by default.
+ASCII width diagnostics may also carry `requested_max_width`, `actual_width`, `width_profile`, and
+`fallback_reason`. Cancelled operations add `details.cancellation` with `reason` and `phase`. These
+are additive fields under the frozen five-kind error envelope; consumers should use them instead
+of parsing `message`, and complete source text is not retained by default.
 
 The ABI 3 error-kind vocabulary is frozen and closed: `generic`, `unknown-operation`,
 `missing-capability`, `reentrant-call`, and `busy`. Consumers should still treat an unknown kind as

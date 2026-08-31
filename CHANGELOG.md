@@ -37,10 +37,11 @@ Alpha.6 is the selected workspace candidate after alpha.5. It combines a new ope
 - Decoupled Playground Tree-sitter syntax state from strict Merman semantic analysis so highlighting no longer triggers or waits for full analysis on every keystroke.
 - Replaced one universal native release closure with wrapper-specific Android, Apple, Python, and Flutter profiles. Their default artifacts include SVG, Cytoscape/ELK layouts, ASCII, analysis, validation, and document analysis while omitting math, raster/PDF export, and native clock/time-zone/random adapters.
 - Kept the native C ABI `3` prefix compatible with the alpha.5 header and added an alpha.5 consumer compile/run gate, while higher-level generated bindings continue to reject mismatched transport versions.
-- Made Flutter publication use package-specific `flutter-v<version>` tags, and made Web/Node npm retries verify existing exact-version manifests before publishing only missing members under the requested final tag.
+- Made Flutter publication use package-specific `flutter-v<version>` tags, and made Web/Node npm retries verify existing exact-version manifests before publishing only missing members under the requested final tag. Node publication now consumes only the verified package group from the same workflow run, while PyPI retries reconcile the exact wheel SHA-256 values after upload.
 - Excluded independently versioned `roughr-merman` and `tree-sitter-mermaid` from the lockstep crates.io graph and added fresh downstream compilation plus exact registry-byte checks to their dedicated release paths.
 - Narrowed release integrity hashing to immutable trust boundaries: pinned GitHub Actions, source commit/tree identity, staged release artifacts, downloaded tools, and registry reconciliation. Ordinary unit tests and workspace builds do not add content hashes; pub.dev uses validated member-level comparison because Dart rewrites tar metadata.
 - Made platform GitHub Release uploads non-destructive and bounded Tree-sitter prebuild retries to the original workflow run, so an ambiguous rerun fails for operator inspection instead of overwriting accepted assets.
+- Revalidated tag identity at credentialed tag-bound publication boundaries, required Tree-sitter's complete four-target native set and requested npm dist-tag, and rechecked independent-crate checksums after registry visibility.
 
 ### Fixed
 
@@ -53,6 +54,9 @@ Alpha.6 is the selected workspace candidate after alpha.5. It combines a new ope
 - Fixed long Flowchart label wrapping so cancellation is checked between measurement probes and no partial output is returned.
 - Isolated Playground comparison styling so page CSS no longer overrides Mermaid label colors and ZenUML's injected font does not leak into other examples.
 - Aligned executable capability catalogs, Playground discovery, Web metadata, and support documentation on which ASCII families are diagrammatic, structured text, partial, or unsupported.
+- Corrected GitGraph ASCII capability identity resolution, rejected non-portable ASCII width values at the shared binding boundary, and preserved structured ASCII diagnostics/output plans across the Android, Flutter, Node, Web, and Python projections.
+- Routed caller operation control through every typed render-family parser, made request-overlay execution observe cancellation after final serialization, and made Flutter ABI table discovery target-width aware for the packaged ARMv7 library.
+- Tightened release owner selection for package assets and profile consumers, added Playground Tree-sitter deployment triggers, and made Python wheel timestamps reproducible from the immutable source commit.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 

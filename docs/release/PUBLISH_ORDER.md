@@ -145,10 +145,11 @@ immutable source and record its workflow run id. Download the verified
 `merman-node-npm-package-group` artifact from that exact run, publish the five platform tarballs, the
 WASM tarball, and then the loader directly under the requested final tag with a maintainer's
 2FA-protected npm credential, and configure Trusted Publishing for all seven package names. Then
-dispatch `release-node.yml` with the same `release_tag` and `source_ref`,
-`publish_to_npm=true`, and `recovery_run_id=<bootstrap-run-id>`. The recovery run reuses and verifies
-the original tarballs; it must not accept a separately rebuilt candidate. Thereafter the workflow
-owns idempotent publishing and provenance; do not keep an npm token in GitHub Actions.
+record that the bootstrap version remains without npm provenance; Trusted Publishing cannot add an
+attestation to an existing tarball. From the next version onward, dispatch `release-node.yml` with
+`publish_to_npm=true`; that run builds, verifies, and publishes its own same-run package group. If
+its publish job fails, rerun that job within the same workflow run; a later run must build and verify
+a new package group from the reviewed source. Do not keep an npm token in GitHub Actions.
 
 The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
 changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a
@@ -193,7 +194,8 @@ The credentialed workflow writes `batch-NNN-prepared.json` before each batch and
 toolchains, publish graph, manifest bytes, `.crate` bytes, and observed registry checksum. A batch
 result of `pending_recovery` or `mismatch` blocks every dependent batch. Recovery re-packages the
 same source and skips only exact checksum matches. A rerun consumes the prior attempt artifact; a
-new manual recovery supplies its prior workflow id through `recovery_run_id`. Source, tree,
+new manual recovery uses the same immutable release tag and supplies its prior workflow id through
+`recovery_run_id`. Source, tree,
 toolchain, publish plan, manifest, and `.crate` identity must all agree before recovery continues,
 and the publisher never yanks automatically.
 
