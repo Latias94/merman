@@ -1,91 +1,91 @@
 {
   "diagramType": "c4",
   "model": {
-    "accDescr": null,
+    "type": "c4",
+    "c4Type": "C4Dynamic",
+    "title": "Dynamic diagram",
     "accTitle": null,
-    "boundaries": [
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
       {
-        "alias": "global",
-        "label": {
-          "text": "global"
+        "alias": "a",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
         },
-        "link": null,
-        "parentBoundary": "",
-        "tags": null,
-        "type": {
-          "text": "global"
+        "label": {
+          "text": "A"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
+      },
+      {
+        "alias": "b",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "label": {
+          "text": "B"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
         }
       }
     ],
-    "c4Type": "C4Dynamic",
-    "layout": {
-      "c4BoundaryInRow": 2,
-      "c4ShapeInRow": 4
-    },
+    "boundaries": [
+      {
+        "alias": "global",
+        "parentBoundary": "",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null
+      }
+    ],
     "rels": [
       {
-        "descr": {
-          "text": ""
-        },
         "from": "a",
+        "to": "b",
+        "type": "rel",
         "label": {
           "text": "calls"
         },
         "techn": {
           "text": ""
         },
-        "to": "b",
-        "type": "rel",
-        "wrap": false
-      },
-      {
         "descr": {
           "text": ""
         },
+        "wrap": false
+      },
+      {
         "from": "b",
+        "to": "a",
+        "type": "birel",
         "label": {
           "text": "returns"
         },
         "techn": {
           "text": ""
         },
-        "to": "a",
-        "type": "birel",
-        "wrap": false
-      }
-    ],
-    "shapes": [
-      {
-        "alias": "a",
         "descr": {
           "text": ""
         },
-        "label": {
-          "text": "A"
-        },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "wrap": false
-      },
-      {
-        "alias": "b",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "B"
-        },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "system"
-        },
         "wrap": false
       }
-    ],
-    "title": "Dynamic diagram",
-    "type": "c4",
-    "wrap": false
+    ]
   }
 }

@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 1858.0,
-        "max_y": 1635.0
+        "max_x": 1232.0,
+        "max_y": 1683.009
       },
-      "width": 1908.0,
-      "height": 1645.0,
+      "width": 1282.0,
+      "height": 1693.009,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 1708.0,
-          "height": 1519.0,
+          "width": 1082.0,
+          "height": 1567.009,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -49,8 +49,8 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 122.0,
-          "width": 700.0,
-          "height": 254.0,
+          "width": 316.0,
+          "height": 260.834,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -75,10 +75,10 @@
         {
           "alias": "comp",
           "parent_boundary": "global",
-          "x": 900.0,
+          "x": 516.0,
           "y": 122.0,
-          "width": 721.0,
-          "height": 375.0,
+          "width": 416.0,
+          "height": 381.834,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -103,10 +103,10 @@
         {
           "alias": "browser",
           "parent_boundary": "comp",
-          "x": 950.0,
+          "x": 566.0,
           "y": 193.0,
-          "width": 621.0,
-          "height": 254.0,
+          "width": 316.0,
+          "height": 260.834,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -132,9 +132,9 @@
           "alias": "plc",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 603.0,
-          "width": 1608.0,
-          "height": 932.0,
+          "y": 609.834,
+          "width": 982.0,
+          "height": 973.175,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -160,9 +160,9 @@
           "alias": "dn",
           "parent_boundary": "plc",
           "x": 200.0,
-          "y": 659.0,
-          "width": 592.0,
-          "height": 360.0,
+          "y": 665.834,
+          "width": 416.0,
+          "height": 366.834,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -188,9 +188,9 @@
           "alias": "apache",
           "parent_boundary": "dn",
           "x": 250.0,
-          "y": 715.0,
-          "width": 492.0,
-          "height": 254.0,
+          "y": 721.834,
+          "width": 316.0,
+          "height": 260.834,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -215,10 +215,10 @@
         {
           "alias": "bb2",
           "parent_boundary": "plc",
-          "x": 842.0,
-          "y": 659.0,
-          "width": 653.0,
-          "height": 360.0,
+          "x": 666.0,
+          "y": 665.834,
+          "width": 416.0,
+          "height": 366.834,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -243,10 +243,10 @@
         {
           "alias": "apache2",
           "parent_boundary": "bb2",
-          "x": 892.0,
-          "y": 715.0,
-          "width": 553.0,
-          "height": 254.0,
+          "x": 716.0,
+          "y": 721.834,
+          "width": 316.0,
+          "height": 260.834,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -272,9 +272,9 @@
           "alias": "bigbankdb01",
           "parent_boundary": "plc",
           "x": 200.0,
-          "y": 1125.0,
-          "width": 729.0,
-          "height": 360.0,
+          "y": 1138.668,
+          "width": 416.0,
+          "height": 394.341,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -300,9 +300,9 @@
           "alias": "oracle",
           "parent_boundary": "bigbankdb01",
           "x": 250.0,
-          "y": 1181.0,
-          "width": 629.0,
-          "height": 254.0,
+          "y": 1194.668,
+          "width": 316.0,
+          "height": 288.341,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -327,10 +327,10 @@
         {
           "alias": "bigbankdb02",
           "parent_boundary": "plc",
-          "x": 979.0,
-          "y": 1125.0,
-          "width": 729.0,
-          "height": 360.0,
+          "x": 666.0,
+          "y": 1138.668,
+          "width": 416.0,
+          "height": 394.341,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -355,10 +355,10 @@
         {
           "alias": "oracle2",
           "parent_boundary": "bigbankdb02",
-          "x": 1029.0,
-          "y": 1181.0,
-          "width": 629.0,
-          "height": 254.0,
+          "x": 716.0,
+          "y": 1194.668,
+          "width": 316.0,
+          "height": 288.341,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -388,8 +388,8 @@
           "type_c4_shape": "container",
           "x": 200.0,
           "y": 222.0,
-          "width": 600.0,
-          "height": 104.0,
+          "width": 216.0,
+          "height": 110.834,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -397,43 +397,37 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
+            "text": "[Container: Xamarin]",
+            "y": 44.175,
+            "width": 89.67,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Mobile App",
-            "y": 38.0,
-            "width": 68.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 59.36,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Xamarin]",
-            "y": 61.0,
-            "width": 48.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides a limited subset of the Internet Banking functionality to customers via their mobile device.",
-            "y": 94.0,
-            "width": 580.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 160.95,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
           "alias": "spa",
           "parent_boundary": "browser",
           "type_c4_shape": "container",
-          "x": 1000.0,
+          "x": 616.0,
           "y": 293.0,
-          "width": 521.0,
-          "height": 104.0,
+          "width": 216.0,
+          "height": 110.834,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -441,33 +435,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
+            "text": "[Container: JavaScript and Angular]",
+            "y": 44.175,
+            "width": 153.615,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Single Page Application",
-            "y": 38.0,
-            "width": 151.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 132.3,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[JavaScript and Angular]",
-            "y": 61.0,
-            "width": 122.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides all of the Internet Banking functionality to customers via their web browser.",
-            "y": 94.0,
-            "width": 501.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 169.904,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
@@ -475,9 +463,9 @@
           "parent_boundary": "apache",
           "type_c4_shape": "container",
           "x": 300.0,
-          "y": 815.0,
-          "width": 392.0,
-          "height": 104.0,
+          "y": 821.834,
+          "width": 216.0,
+          "height": 110.834,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -485,43 +473,37 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
+            "text": "[Container: Java and Spring MVC]",
+            "y": 44.175,
+            "width": 144.165,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "API Application",
-            "y": 38.0,
-            "width": 100.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 87.92,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Java and Spring MVC]",
-            "y": 61.0,
-            "width": 111.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides Internet Banking functionality via a JSON/HTTPS API.",
-            "y": 94.0,
-            "width": 372.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 155.554,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
           "alias": "web",
           "parent_boundary": "apache2",
           "type_c4_shape": "container",
-          "x": 942.0,
-          "y": 815.0,
-          "width": 453.0,
-          "height": 104.0,
+          "x": 766.0,
+          "y": 821.834,
+          "width": 216.0,
+          "height": 110.834,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -529,33 +511,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
+            "text": "[Container: Java and Spring MVC]",
+            "y": 44.175,
+            "width": 144.165,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Web Application",
-            "y": 38.0,
-            "width": 104.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 90.86,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Java and Spring MVC]",
-            "y": 61.0,
-            "width": 111.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Delivers the static content and the Internet Banking single page application.",
-            "y": 94.0,
-            "width": 433.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 163.82,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
@@ -563,9 +539,9 @@
           "parent_boundary": "oracle",
           "type_c4_shape": "container_db",
           "x": 300.0,
-          "y": 1281.0,
-          "width": 529.0,
-          "height": 104.0,
+          "y": 1294.668,
+          "width": 216.0,
+          "height": 138.341,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -573,43 +549,37 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container_db»",
-            "y": 20.0,
-            "width": 73.32,
-            "height": 14.0,
+            "text": "[Container: Relational Database Schema]",
+            "y": 44.175,
+            "width": 173.775,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Database",
-            "y": 38.0,
-            "width": 58.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 50.54,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Relational Database Schema]",
-            "y": 61.0,
-            "width": 145.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
-            "y": 94.0,
-            "width": 509.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 160.95,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
           "alias": "db2",
           "parent_boundary": "oracle2",
           "type_c4_shape": "container_db",
-          "x": 1079.0,
-          "y": 1281.0,
-          "width": 529.0,
-          "height": 104.0,
+          "x": 766.0,
+          "y": 1294.668,
+          "width": 216.0,
+          "height": 138.341,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -617,33 +587,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container_db»",
-            "y": 20.0,
-            "width": 73.32,
-            "height": 14.0,
+            "text": "[Container: Relational Database Schema]",
+            "y": 44.175,
+            "width": 173.775,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Database",
-            "y": 38.0,
-            "width": 58.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 50.54,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Relational Database Schema]",
-            "y": 61.0,
-            "width": 145.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
-            "y": 94.0,
-            "width": 509.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 160.95,
+            "height": 37.884,
+            "line_count": 3.0
           }
         }
       ],
@@ -653,12 +617,12 @@
           "to": "api",
           "rel_type": "rel",
           "start_point": {
-            "x": 523.864,
-            "y": 326.0
+            "x": 325.591,
+            "y": 332.834
           },
           "end_point": {
-            "x": 515.224,
-            "y": 815.0
+            "x": 408.814,
+            "y": 821.834
           },
           "offset_x": null,
           "offset_y": null,
@@ -683,12 +647,12 @@
           "to": "api",
           "rel_type": "rel",
           "start_point": {
-            "x": 1214.841,
-            "y": 397.0
+            "x": 704.271,
+            "y": 403.834
           },
           "end_point": {
-            "x": 602.268,
-            "y": 815.0
+            "x": 457.632,
+            "y": 821.834
           },
           "offset_x": null,
           "offset_y": -40.0,
@@ -713,12 +677,12 @@
           "to": "spa",
           "rel_type": "rel_u",
           "start_point": {
-            "x": 1203.738,
-            "y": 815.0
+            "x": 869.084,
+            "y": 821.834
           },
           "end_point": {
-            "x": 1275.765,
-            "y": 397.0
+            "x": 748.472,
+            "y": 403.834
           },
           "offset_x": null,
           "offset_y": -40.0,
@@ -737,12 +701,12 @@
           "to": "db",
           "rel_type": "rel",
           "start_point": {
-            "x": 522.552,
-            "y": 919.0
+            "x": 419.042,
+            "y": 932.668
           },
           "end_point": {
-            "x": 589.118,
-            "y": 1281.0
+            "x": 425.897,
+            "y": 1294.887
           },
           "offset_x": 5.0,
           "offset_y": -20.0,
@@ -767,12 +731,12 @@
           "to": "db2",
           "rel_type": "rel",
           "start_point": {
-            "x": 600.753,
-            "y": 919.0
+            "x": 466.688,
+            "y": 932.668
           },
           "end_point": {
-            "x": 1270.273,
-            "y": 1281.0
+            "x": 814.675,
+            "y": 1297.271
           },
           "offset_x": -40.0,
           "offset_y": -20.0,
@@ -797,12 +761,12 @@
           "to": "db2",
           "rel_type": "rel_r",
           "start_point": {
-            "x": 829.0,
-            "y": 1346.181
+            "x": 516.0,
+            "y": 1376.853
           },
           "end_point": {
-            "x": 1079.0,
-            "y": 1359.733
+            "x": 766.0,
+            "y": 1384.706
           },
           "offset_x": null,
           "offset_y": -10.0,

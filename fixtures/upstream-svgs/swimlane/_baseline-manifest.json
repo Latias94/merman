@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.1",
+    "mermaid_version": "11.17.2",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.1",
-    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "9298a915a40b6057827e8add6044309143f836b8dbca73c34ffba5b21a762ac5",
-    "package_lock_sha256": "0ee640d994c7986b67919b663a0fec2fc6baa51becf106d5e0161678294e9b7b",
+    "mermaid_source_tag": "mermaid@11.17.2",
+    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
+    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
+    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -26,12 +26,12 @@
       "operating_system": {
         "platform": "darwin",
         "arch": "arm64",
-        "release": "25.5.0"
+        "release": "25.6.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.1",
-        "iife_version": "11.16.1",
-        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
+        "esm_version": "11.17.2",
+        "iife_version": "11.17.2",
+        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {
@@ -44,17 +44,17 @@
   "fixtures": {
     "basic_flowchart_reuse": {
       "input_sha256": "b9f708d3aeb53bd8da6de63e4583d4c9b746b8e4b4efcfba5c3e78d2293e600e",
-      "svg_sha256": "4f973ff0f182bd1e9f321c83b7352e146219bfa2de84837b84ddd01884a50ca3",
+      "svg_sha256": "2b520f53a370e6af942858889aea5059fefef9158369bb1fc20a8b706f00eb87",
       "renderer_profile": "mmdc-default"
     },
     "upstream_7_car_sales_constr": {
       "input_sha256": "e09627ba3cdfba2ec7bfabf47128876d29a62f5cf0a9dad02052efd3854d6336",
-      "svg_sha256": "7dc0f678348d24bc0cf218273fc0541338d4a407cdfa56af96f343fb6ad4b495",
+      "svg_sha256": "06f0a12f16354c2b3768080ab0bfe693fe570d7b940f61330421b0a04f3f5735",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_basic": {
       "input_sha256": "867cca281590bce55e2203afaa79899f556b2af97075e5b4da927b463ceaa584",
-      "svg_sha256": "9f765515033268b2d0c80fe5ae335d6fdf867338c5807c5508be37706b051073",
+      "svg_sha256": "bb4622ef9c11f5edae043c70e945c48f798650f21607de2c1bf5e44ebd39d19f",
       "renderer_profile": "mmdc-default"
     }
   },

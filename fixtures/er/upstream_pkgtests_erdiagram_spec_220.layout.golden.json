@@ -15,16 +15,16 @@
           "id": "entity-NODE-0---entity-NODE-0---1",
           "x": 30.33,
           "y": 172.05,
-          "width": 0.1,
-          "height": 0.1,
+          "width": 1.0,
+          "height": 1.0,
           "is_cluster": false
         },
         {
           "id": "entity-NODE-0---entity-NODE-0---2",
           "x": 70.355,
           "y": 273.15,
-          "width": 0.1,
-          "height": 0.1,
+          "width": 1.0,
+          "height": 1.0,
           "is_cluster": false
         }
       ],
@@ -134,7 +134,7 @@
         "min_x": 8.0,
         "min_y": 8.0,
         "max_x": 120.355,
-        "max_y": 273.2
+        "max_y": 273.65
       }
     }
   }

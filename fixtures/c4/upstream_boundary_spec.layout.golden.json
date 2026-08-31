@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 932.0,
-        "max_y": 730.0
+        "max_y": 749.9
       },
       "width": 982.0,
-      "height": 740.0,
+      "height": 759.9,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 782.0,
-          "height": 614.0,
+          "height": 633.9,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -50,7 +50,7 @@
           "x": 150.0,
           "y": 122.0,
           "width": 316.0,
-          "height": 210.0,
+          "height": 219.95,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -78,7 +78,7 @@
           "x": 516.0,
           "y": 122.0,
           "width": 316.0,
-          "height": 210.0,
+          "height": 219.95,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -104,9 +104,9 @@
           "alias": "bLink",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 420.0,
+          "y": 429.95,
           "width": 316.0,
-          "height": 210.0,
+          "height": 219.95,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -132,9 +132,9 @@
           "alias": "bTags",
           "parent_boundary": "global",
           "x": 516.0,
-          "y": 420.0,
+          "y": 429.95,
           "width": 316.0,
-          "height": 210.0,
+          "height": 219.95,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -165,7 +165,7 @@
           "x": 200.0,
           "y": 222.0,
           "width": 216.0,
-          "height": 60.0,
+          "height": 69.95,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -173,17 +173,17 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Internet Banking System",
-            "y": 38.0,
-            "width": 165.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 144.76,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -197,7 +197,7 @@
           "x": 566.0,
           "y": 222.0,
           "width": 216.0,
-          "height": 60.0,
+          "height": 69.95,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -205,17 +205,17 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "S1",
-            "y": 38.0,
-            "width": 19.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 16.24,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -227,9 +227,9 @@
           "parent_boundary": "bLink",
           "type_c4_shape": "system",
           "x": 200.0,
-          "y": 520.0,
+          "y": 529.95,
           "width": 216.0,
-          "height": 60.0,
+          "height": 69.95,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -237,17 +237,17 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "S2",
-            "y": 38.0,
-            "width": 19.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 16.24,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -259,9 +259,9 @@
           "parent_boundary": "bTags",
           "type_c4_shape": "system",
           "x": 566.0,
-          "y": 520.0,
+          "y": 529.95,
           "width": 216.0,
-          "height": 60.0,
+          "height": 69.95,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -269,17 +269,17 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "S3",
-            "y": 38.0,
-            "width": 19.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 16.24,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,

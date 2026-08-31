@@ -20,6 +20,7 @@
     "plots": [
       {
         "type": "line",
+        "title": "",
         "values": [
           5000.0,
           9000.0,

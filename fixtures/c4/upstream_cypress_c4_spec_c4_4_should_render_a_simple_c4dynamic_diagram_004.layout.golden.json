@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 779.0,
-        "max_y": 1138.0
+        "max_x": 882.0,
+        "max_y": 770.097
       },
-      "width": 829.0,
-      "height": 1148.0,
+      "width": 932.0,
+      "height": 780.097,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 629.0,
-          "height": 1022.0,
+          "width": 732.0,
+          "height": 654.097,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -48,9 +48,9 @@
           "alias": "b",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 580.0,
-          "width": 516.0,
-          "height": 458.0,
+          "y": 410.341,
+          "width": 632.0,
+          "height": 259.756,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -80,8 +80,8 @@
           "type_c4_shape": "container_db",
           "x": 150.0,
           "y": 166.0,
-          "width": 529.0,
-          "height": 104.0,
+          "width": 216.0,
+          "height": 138.341,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -89,43 +89,37 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container_db»",
-            "y": 20.0,
-            "width": 73.32,
-            "height": 14.0,
+            "text": "[Container: Relational Database Schema]",
+            "y": 44.175,
+            "width": 173.775,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Database",
-            "y": 38.0,
-            "width": 58.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 50.54,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Relational Database Schema]",
-            "y": 61.0,
-            "width": 145.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
-            "y": 94.0,
-            "width": 509.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 160.95,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
           "alias": "c1",
           "parent_boundary": "global",
           "type_c4_shape": "container",
-          "x": 150.0,
-          "y": 370.0,
-          "width": 519.0,
-          "height": 104.0,
+          "x": 466.0,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 110.834,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -133,33 +127,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
+            "text": "[Container: JavaScript and Angular]",
+            "y": 44.175,
+            "width": 153.615,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Single-Page Application",
-            "y": 38.0,
-            "width": 151.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 132.3,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[JavaScript and Angular]",
-            "y": 61.0,
-            "width": 122.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides all of the Internet banking functionality to customers via their web browser.",
-            "y": 94.0,
-            "width": 499.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 169.904,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
@@ -167,9 +155,9 @@
           "parent_boundary": "b",
           "type_c4_shape": "component",
           "x": 200.0,
-          "y": 680.0,
-          "width": 416.0,
-          "height": 104.0,
+          "y": 510.341,
+          "width": 216.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -177,43 +165,37 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«component»",
-            "y": 20.0,
-            "width": 65.04,
-            "height": 14.0,
+            "text": "[Component: Spring Bean]",
+            "y": 44.175,
+            "width": 110.04,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Security Component",
-            "y": 38.0,
-            "width": 133.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 116.2,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Spring Bean]",
-            "y": 61.0,
-            "width": 66.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides functionality Related to signing in, changing passwords, etc.",
-            "y": 94.0,
-            "width": 396.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 165.082,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
           "alias": "c2",
           "parent_boundary": "b",
           "type_c4_shape": "component",
-          "x": 200.0,
-          "y": 884.0,
-          "width": 344.0,
-          "height": 104.0,
+          "x": 516.0,
+          "y": 510.341,
+          "width": 216.0,
+          "height": 109.756,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -221,33 +203,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«component»",
-            "y": 20.0,
-            "width": 65.04,
-            "height": 14.0,
-            "line_count": 1.0
+            "text": "[Component: Spring MVC Rest Controller]",
+            "y": 49.95,
+            "width": 128.94,
+            "height": 23.1,
+            "line_count": 2.0
           },
           "label": {
             "text": "Sign In Controller",
-            "y": 38.0,
-            "width": 117.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 102.2,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Spring MVC Rest Controller]",
-            "y": 61.0,
-            "width": 145.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Allows users to sign in to the Internet Banking System.",
-            "y": 94.0,
-            "width": 324.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 77.128,
+            "width": 140.286,
+            "height": 25.256,
+            "line_count": 2.0
           }
         }
       ],
@@ -257,12 +233,12 @@
           "to": "c2",
           "rel_type": "rel",
           "start_point": {
-            "x": 429.896,
-            "y": 474.0
+            "x": 595.933,
+            "y": 276.834
           },
           "end_point": {
-            "x": 395.58,
-            "y": 884.0
+            "x": 635.016,
+            "y": 510.341
           },
           "offset_x": null,
           "offset_y": -40.0,
@@ -287,12 +263,12 @@
           "to": "c3",
           "rel_type": "rel",
           "start_point": {
-            "x": 443.158,
-            "y": 884.0
+            "x": 516.0,
+            "y": 590.715
           },
           "end_point": {
-            "x": 442.938,
-            "y": 784.0
+            "x": 416.0,
+            "y": 573.423
           },
           "offset_x": -40.0,
           "offset_y": 60.0,
@@ -311,12 +287,12 @@
           "to": "c4",
           "rel_type": "rel",
           "start_point": {
-            "x": 432.143,
-            "y": 680.0
+            "x": 318.35,
+            "y": 510.341
           },
           "end_point": {
-            "x": 438.203,
-            "y": 270.0
+            "x": 285.778,
+            "y": 303.809
           },
           "offset_x": 10.0,
           "offset_y": -40.0,

@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 814.0,
-        "max_y": 652.0
+        "max_x": 782.0,
+        "max_y": 635.73
       },
-      "width": 864.0,
-      "height": 662.0,
+      "width": 832.0,
+      "height": 645.73,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 664.0,
-          "height": 536.0,
+          "width": 632.0,
+          "height": 519.73,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -53,34 +53,34 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 134.0,
+          "height": 171.524,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Customer",
-            "y": 86.0,
-            "width": 63.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 55.44,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank.",
-            "y": 124.0,
-            "width": 140.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 114.57,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -90,8 +90,8 @@
           "type_c4_shape": "container",
           "x": 466.0,
           "y": 166.0,
-          "width": 248.0,
-          "height": 104.0,
+          "width": 216.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -99,33 +99,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
+            "text": "[Container: React]",
+            "y": 44.175,
+            "width": 78.54,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Web App",
-            "y": 38.0,
-            "width": 56.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 49.0,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[React]",
-            "y": 61.0,
-            "width": 36.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides Internet banking functionality.",
-            "y": 94.0,
-            "width": 228.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 119.507,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
@@ -133,43 +127,37 @@
           "parent_boundary": "global",
           "type_c4_shape": "external_container",
           "x": 150.0,
-          "y": 400.0,
-          "width": 287.0,
-          "height": 152.0,
+          "y": 437.524,
+          "width": 216.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«external_container»",
-            "y": 20.0,
-            "width": 102.48,
-            "height": 14.0,
+            "text": "[Container: C#, Xamarin]",
+            "y": 44.175,
+            "width": 108.675,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Mobile App",
-            "y": 86.0,
-            "width": 68.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 59.36,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[C#, Xamarin]",
-            "y": 109.0,
-            "width": 70.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides a limited subset of the functionality.",
-            "y": 142.0,
-            "width": 267.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 151.306,
+            "height": 25.256,
+            "line_count": 2.0
           }
         }
       ],
@@ -179,12 +167,12 @@
           "to": "web",
           "rel_type": "rel",
           "start_point": {
-            "x": 366.0,
-            "y": 245.764
+            "x": 295.969,
+            "y": 247.357
           },
           "end_point": {
             "x": 466.0,
-            "y": 257.942
+            "y": 259.633
           },
           "offset_x": null,
           "offset_y": null,
@@ -209,12 +197,12 @@
           "to": "mobile",
           "rel_type": "rel",
           "start_point": {
-            "x": 289.015,
-            "y": 300.0
+            "x": 258.0,
+            "y": 337.524
           },
           "end_point": {
-            "x": 342.65,
-            "y": 400.0
+            "x": 286.548,
+            "y": 437.524
           },
           "offset_x": null,
           "offset_y": null,

@@ -14,39 +14,40 @@
     "shapes": [
       {
         "alias": "s1",
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "descr": {
-          "text": "Allows customers to view account data."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "system"
         },
-        "parentBoundary": "global",
-        "wrap": false
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Allows customers to view account data."
+        }
       },
       {
         "alias": "q",
-        "label": {
-          "text": "External System Queue"
-        },
-        "descr": {
-          "text": "External queue system."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "external_system_queue"
         },
-        "parentBoundary": "global",
+        "label": {
+          "text": "External System Queue"
+        },
         "wrap": false,
         "sprite": "users",
         "tags": "external",
-        "link": "https://example.com/external-system-queue"
+        "link": "https://example.com/external-system-queue",
+        "descr": {
+          "text": "External queue system."
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -54,15 +55,14 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "s1",
         "to": "q",
+        "type": "rel",
         "label": {
           "text": "Publishes"
         },

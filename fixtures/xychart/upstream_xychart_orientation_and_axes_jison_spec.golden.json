@@ -23,6 +23,7 @@
     "plots": [
       {
         "type": "bar",
+        "title": "barTitle1",
         "values": [
           23.0,
           45.0,
@@ -45,6 +46,7 @@
       },
       {
         "type": "line",
+        "title": "lineTitle1",
         "values": [
           11.0,
           45.5,
@@ -67,6 +69,7 @@
       },
       {
         "type": "bar",
+        "title": "barTitle2",
         "values": [
           13.0,
           42.0,
@@ -89,6 +92,7 @@
       },
       {
         "type": "line",
+        "title": "lineTitle2",
         "values": [
           45.0,
           99.0,

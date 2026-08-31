@@ -1,119 +1,119 @@
 {
   "diagramType": "c4",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "boundaries": [
-      {
-        "alias": "global",
-        "label": {
-          "text": "global"
-        },
-        "link": null,
-        "parentBoundary": "",
-        "tags": null,
-        "type": {
-          "text": "global"
-        }
-      },
-      {
-        "alias": "nl",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "NL"
-        },
-        "nodeType": "nodeL",
-        "parentBoundary": "global",
-        "type": {
-          "text": "node"
-        },
-        "wrap": false
-      },
-      {
-        "alias": "nr",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "NR"
-        },
-        "nodeType": "nodeR",
-        "parentBoundary": "global",
-        "type": {
-          "text": "node"
-        },
-        "wrap": false
-      },
-      {
-        "alias": "nd",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "ND"
-        },
-        "nodeType": "node",
-        "parentBoundary": "global",
-        "type": {
-          "text": "node"
-        },
-        "wrap": false
-      }
-    ],
+    "type": "c4",
     "c4Type": "C4Deployment",
+    "title": "Deployment nodes",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
     "layout": {
-      "c4BoundaryInRow": 2,
-      "c4ShapeInRow": 4
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
     },
-    "rels": [],
     "shapes": [
       {
         "alias": "p1",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "P1"
-        },
         "parentBoundary": "nl",
         "typeC4Shape": {
           "text": "person"
         },
-        "wrap": false
+        "label": {
+          "text": "P1"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       },
       {
         "alias": "p2",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "P2"
-        },
         "parentBoundary": "nr",
         "typeC4Shape": {
           "text": "person"
         },
-        "wrap": false
+        "label": {
+          "text": "P2"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       },
       {
         "alias": "p3",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "P3"
-        },
         "parentBoundary": "nd",
         "typeC4Shape": {
           "text": "person"
         },
-        "wrap": false
+        "label": {
+          "text": "P3"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       }
     ],
-    "title": "Deployment nodes",
-    "type": "c4",
-    "wrap": false
+    "boundaries": [
+      {
+        "alias": "global",
+        "parentBoundary": "",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null
+      },
+      {
+        "alias": "nl",
+        "parentBoundary": "global",
+        "label": {
+          "text": "NL"
+        },
+        "type": {
+          "text": "node"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false,
+        "nodeType": "nodeL"
+      },
+      {
+        "alias": "nr",
+        "parentBoundary": "global",
+        "label": {
+          "text": "NR"
+        },
+        "type": {
+          "text": "node"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false,
+        "nodeType": "nodeR"
+      },
+      {
+        "alias": "nd",
+        "parentBoundary": "global",
+        "label": {
+          "text": "ND"
+        },
+        "type": {
+          "text": "node"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false,
+        "nodeType": "node"
+      }
+    ],
+    "rels": []
   }
 }

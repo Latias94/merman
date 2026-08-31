@@ -1,7 +1,7 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "model": {
-    "type": "class",
+    "type": "classDiagram",
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -86,17 +86,6 @@
     "notes": [],
     "interfaces": [],
     "namespaces": {},
-    "styleClasses": {
-      "pink": {
-        "id": "pink",
-        "styles": [
-          "fill:#f9f",
-          "stroke:#333",
-          "stroke-width:6px"
-        ],
-        "textStyles": []
-      }
-    },
     "constants": {
       "lineType": {
         "line": 0,
@@ -109,6 +98,17 @@
         "composition": 2,
         "dependency": 3,
         "lollipop": 4
+      }
+    },
+    "styleClasses": {
+      "pink": {
+        "id": "pink",
+        "styles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:6px"
+        ],
+        "textStyles": []
       }
     }
   }

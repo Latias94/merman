@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 1238.0,
-        "max_y": 2276.0
+        "max_x": 1040.826,
+        "max_y": 2134.412
       },
-      "width": 1288.0,
-      "height": 2286.0,
+      "width": 1090.826,
+      "height": 2144.412,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 1088.0,
-          "height": 2160.0,
+          "width": 890.826,
+          "height": 2018.412,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -48,9 +48,9 @@
           "alias": "b1",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 1040.0,
-          "width": 988.0,
-          "height": 1136.0,
+          "y": 996.201,
+          "width": 790.826,
+          "height": 1038.211,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -76,9 +76,9 @@
           "alias": "b2",
           "parent_boundary": "b1",
           "x": 200.0,
-          "y": 1704.0,
-          "width": 419.0,
-          "height": 396.0,
+          "y": 1566.256,
+          "width": 316.0,
+          "height": 418.156,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -103,10 +103,10 @@
         {
           "alias": "b3",
           "parent_boundary": "b1",
-          "x": 669.0,
-          "y": 1704.0,
-          "width": 419.0,
-          "height": 422.0,
+          "x": 566.0,
+          "y": 1566.256,
+          "width": 324.826,
+          "height": 386.412,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -136,64 +136,64 @@
           "type_c4_shape": "person",
           "x": 150.0,
           "y": 166.0,
-          "width": 329.0,
-          "height": 134.0,
+          "width": 216.0,
+          "height": 184.152,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking Customer A",
-            "y": 86.0,
-            "width": 134.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 117.18,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank, with personal bank accounts.",
-            "y": 124.0,
-            "width": 309.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 140.4,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
           "alias": "customerB",
           "parent_boundary": "global",
           "type_c4_shape": "person",
-          "x": 579.0,
+          "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 104.0,
+          "height": 155.896,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking Customer B",
-            "y": 86.0,
-            "width": 134.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 117.18,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -205,27 +205,27 @@
           "parent_boundary": "global",
           "type_c4_shape": "external_person",
           "x": 150.0,
-          "y": 400.0,
+          "y": 450.152,
           "width": 216.0,
-          "height": 104.0,
+          "height": 155.896,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«external_person»",
-            "y": 20.0,
-            "width": 88.8,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking Customer C",
-            "y": 86.0,
-            "width": 134.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 117.18,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -236,10 +236,10 @@
           "alias": "SystemAA",
           "parent_boundary": "global",
           "type_c4_shape": "system",
-          "x": 150.0,
-          "y": 604.0,
-          "width": 518.0,
-          "height": 86.0,
+          "x": 466.0,
+          "y": 450.152,
+          "width": 216.0,
+          "height": 110.834,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -247,27 +247,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Internet Banking System",
-            "y": 38.0,
-            "width": 165.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 144.76,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Allows customers to view information about their bank accounts, and make payments.",
-            "y": 76.0,
-            "width": 498.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 142.122,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
@@ -275,36 +275,36 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 150.0,
-          "y": 790.0,
+          "y": 706.049,
           "width": 216.0,
-          "height": 144.0,
+          "height": 184.152,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking Customer D",
-            "y": 86.0,
-            "width": 134.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 117.18,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank, <br/> with personal bank accounts.",
-            "y": 124.0,
-            "width": 165.0,
-            "height": 30.0,
+            "y": 65.578,
+            "width": 135.005,
+            "height": 25.256,
             "line_count": 2.0
           }
         },
@@ -313,9 +313,9 @@
           "parent_boundary": "b1",
           "type_c4_shape": "external_system_db",
           "x": 200.0,
-          "y": 1140.0,
-          "width": 527.0,
-          "height": 86.0,
+          "y": 1096.201,
+          "width": 216.0,
+          "height": 138.341,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -323,27 +323,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«external_system_db»",
-            "y": 20.0,
-            "width": 108.72,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Mainframe Banking System",
-            "y": 38.0,
-            "width": 180.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 157.78,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Stores all of the core banking information about customers, accounts, transactions, etc.",
-            "y": 76.0,
-            "width": 507.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 140.515,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
@@ -351,9 +351,9 @@
           "parent_boundary": "b2",
           "type_c4_shape": "system",
           "x": 250.0,
-          "y": 1804.0,
+          "y": 1666.256,
           "width": 216.0,
-          "height": 60.0,
+          "height": 69.95,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -361,17 +361,17 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking System A",
-            "y": 38.0,
-            "width": 122.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 106.82,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -383,9 +383,9 @@
           "parent_boundary": "b2",
           "type_c4_shape": "system",
           "x": 250.0,
-          "y": 1964.0,
-          "width": 319.0,
-          "height": 86.0,
+          "y": 1836.206,
+          "width": 216.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -393,37 +393,37 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking System B",
-            "y": 38.0,
-            "width": 122.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 106.82,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A system of the bank, with personal bank accounts.",
-            "y": 76.0,
-            "width": 299.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 173.463,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
           "alias": "SystemC",
           "parent_boundary": "b1",
           "type_c4_shape": "external_system",
-          "x": 200.0,
-          "y": 1326.0,
-          "width": 295.0,
-          "height": 86.0,
+          "x": 516.0,
+          "y": 1096.201,
+          "width": 216.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -431,27 +431,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«external_system»",
-            "y": 20.0,
-            "width": 94.44,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "E-mail system",
-            "y": 38.0,
-            "width": 97.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 85.12,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "The internal Microsoft Exchange e-mail system.",
-            "y": 76.0,
-            "width": 275.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 150.273,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
@@ -459,9 +459,9 @@
           "parent_boundary": "b1",
           "type_c4_shape": "system_db",
           "x": 200.0,
-          "y": 1512.0,
-          "width": 319.0,
-          "height": 86.0,
+          "y": 1334.543,
+          "width": 216.0,
+          "height": 125.713,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -469,37 +469,37 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system_db»",
-            "y": 20.0,
-            "width": 65.28,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking System D Database",
-            "y": 38.0,
-            "width": 185.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 161.98,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A system of the bank, with personal bank accounts.",
-            "y": 76.0,
-            "width": 299.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 173.463,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
           "alias": "SystemF",
           "parent_boundary": "b3",
           "type_c4_shape": "system_queue",
-          "x": 719.0,
-          "y": 1804.0,
-          "width": 319.0,
-          "height": 86.0,
+          "x": 616.0,
+          "y": 1666.256,
+          "width": 224.826,
+          "height": 68.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -507,37 +507,37 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system_queue»",
-            "y": 20.0,
-            "width": 80.76,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking System F Queue",
-            "y": 38.0,
-            "width": 164.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 143.92,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A system of the bank, with personal bank accounts.",
-            "y": 76.0,
-            "width": 299.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 173.463,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
           "alias": "SystemG",
           "parent_boundary": "b3",
           "type_c4_shape": "external_system_queue",
-          "x": 719.0,
-          "y": 1990.0,
-          "width": 319.0,
-          "height": 86.0,
+          "x": 616.0,
+          "y": 1834.462,
+          "width": 224.826,
+          "height": 68.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -545,27 +545,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«external_system_queue»",
-            "y": 20.0,
-            "width": 124.2,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking System G Queue",
-            "y": 38.0,
-            "width": 164.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 143.92,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A system of the bank, with personal bank accounts.",
-            "y": 76.0,
-            "width": 299.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 173.463,
+            "height": 25.256,
+            "line_count": 2.0
           }
         }
       ],
@@ -575,12 +575,12 @@
           "to": "SystemAA",
           "rel_type": "birel",
           "start_point": {
-            "x": 350.577,
-            "y": 300.0
+            "x": 357.228,
+            "y": 335.793
           },
           "end_point": {
-            "x": 428.066,
-            "y": 604.0
+            "x": 513.989,
+            "y": 450.152
           },
           "offset_x": null,
           "offset_y": null,
@@ -599,12 +599,12 @@
           "to": "SystemE",
           "rel_type": "birel",
           "start_point": {
-            "x": 432.282,
-            "y": 690.0
+            "x": 561.758,
+            "y": 560.986
           },
           "end_point": {
-            "x": 481.729,
-            "y": 1140.0
+            "x": 351.8,
+            "y": 1097.562
           },
           "offset_x": null,
           "offset_y": null,
@@ -623,12 +623,12 @@
           "to": "SystemC",
           "rel_type": "rel",
           "start_point": {
-            "x": 420.101,
-            "y": 690.0
+            "x": 586.596,
+            "y": 560.986
           },
           "end_point": {
-            "x": 360.736,
-            "y": 1326.0
+            "x": 628.822,
+            "y": 1096.201
           },
           "offset_x": null,
           "offset_y": null,
@@ -653,12 +653,12 @@
           "to": "customerA",
           "rel_type": "rel",
           "start_point": {
-            "x": 352.005,
-            "y": 1326.0
+            "x": 608.885,
+            "y": 1096.201
           },
           "end_point": {
-            "x": 325.5,
-            "y": 300.0
+            "x": 295.983,
+            "y": 350.152
           },
           "offset_x": null,
           "offset_y": null,

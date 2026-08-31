@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 895.0,
-        "max_y": 868.0
+        "max_x": 782.0,
+        "max_y": 959.173
       },
-      "width": 945.0,
-      "height": 878.0,
+      "width": 832.0,
+      "height": 969.173,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 745.0,
-          "height": 752.0,
+          "width": 632.0,
+          "height": 843.173,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -52,65 +52,65 @@
           "type_c4_shape": "person",
           "x": 150.0,
           "y": 166.0,
-          "width": 329.0,
-          "height": 134.0,
+          "width": 216.0,
+          "height": 184.152,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Banking Customer A",
-            "y": 86.0,
-            "width": 134.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 117.18,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank, with personal bank accounts.",
-            "y": 124.0,
-            "width": 309.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 140.4,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
           "alias": "customerSprite",
           "parent_boundary": "global",
           "type_c4_shape": "person",
-          "x": 579.0,
+          "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 86.0,
+          "height": 137.496,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 30.0,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 86.0,
+            "y": 0.0,
             "width": 0.0,
             "height": 0.0,
-            "line_count": 1.0
+            "line_count": 0.0
           },
           "ty": null,
           "techn": null,
@@ -121,28 +121,28 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 150.0,
-          "y": 400.0,
+          "y": 450.152,
           "width": 216.0,
-          "height": 86.0,
+          "height": 137.496,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 30.0,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 86.0,
+            "y": 0.0,
             "width": 0.0,
             "height": 0.0,
-            "line_count": 1.0
+            "line_count": 0.0
           },
           "ty": null,
           "techn": null,
@@ -153,28 +153,28 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 466.0,
-          "y": 400.0,
+          "y": 450.152,
           "width": 216.0,
-          "height": 86.0,
+          "height": 137.496,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 30.0,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 86.0,
+            "y": 0.0,
             "width": 0.0,
             "height": 0.0,
-            "line_count": 1.0
+            "line_count": 0.0
           },
           "ty": null,
           "techn": null,
@@ -185,36 +185,36 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 150.0,
-          "y": 586.0,
+          "y": 687.649,
           "width": 216.0,
-          "height": 182.0,
+          "height": 171.524,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 78.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Customer All",
-            "y": 134.0,
-            "width": 87.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 76.3,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Desc",
-            "y": 172.0,
-            "width": 26.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 21.697,
+            "height": 12.628,
             "line_count": 1.0
           }
         }

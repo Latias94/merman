@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "mermaid_version": "11.16.1",
-  "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+  "mermaid_version": "11.17.2",
+  "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
   "comparison_revision": "root-viewport-contract-v2",
   "entries": [
     {
       "diagram": "error",
       "fixture": "basic",
       "input_sha256": "f097b5f4f46cda2da21b954c9ff4097e1e14ae7064ecdee2c2cec2d3c1f08e6b",
-      "upstream_svg_sha256": "83abfe2668b21c28fb5a9d3e2597de2dfaa907fb3fab1f6be3520a0132acdcb8",
+      "upstream_svg_sha256": "40305633ea8147ace8ddba54c33e6da1a2a56d0b4bd3b2762410a23ac1757804",
       "root": {
         "style": "max-width: 512px;",
         "view_box": "0 0 2412 512",
@@ -20,7 +20,7 @@
       "diagram": "info",
       "fixture": "upstream_info_show_info_spec",
       "input_sha256": "dbe1669f106bc61a4fac393605fe5198db59a66e5f6aa223022efc0b57c6dc4d",
-      "upstream_svg_sha256": "99a28c8fd32b7fcc64f40a3c9c2ca58ebf513094da5aedbe7304157f75133fd7",
+      "upstream_svg_sha256": "32180103ffee97eab434c737294630f6e4544c0451cae9cddb65b0aaf06e7f30",
       "root": {
         "style": "max-width: 400px; background-color: white;",
         "view_box": null,
@@ -32,7 +32,7 @@
       "diagram": "journey",
       "fixture": "upstream_section_only",
       "input_sha256": "08bb863be6071697fbb725b913459a5d6867634d9b10ccc24d3915859f7ebb38",
-      "upstream_svg_sha256": "cee4619820e48facb3186f706022d3aa29cd96390000716ce9838b2bd3f3105a",
+      "upstream_svg_sha256": "cff5981a182dc1f81da5fdaf526cf44b1a3d813793bab935ea43755e2d60a811",
       "root": {
         "style": "max-width: 400px; background-color: white;",
         "view_box": "0 -25 400 90",

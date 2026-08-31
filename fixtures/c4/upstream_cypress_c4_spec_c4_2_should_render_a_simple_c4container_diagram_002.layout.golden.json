@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 848.0,
-        "max_y": 946.0
+        "max_x": 782.0,
+        "max_y": 816.986
       },
-      "width": 898.0,
-      "height": 956.0,
+      "width": 832.0,
+      "height": 826.986,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 698.0,
-          "height": 830.0,
+          "width": 632.0,
+          "height": 700.986,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -48,9 +48,9 @@
           "alias": "c1",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 592.0,
-          "width": 598.0,
-          "height": 254.0,
+          "y": 456.152,
+          "width": 316.0,
+          "height": 260.834,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -80,8 +80,8 @@
           "type_c4_shape": "external_system",
           "x": 150.0,
           "y": 166.0,
-          "width": 251.0,
-          "height": 86.0,
+          "width": 216.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -89,65 +89,65 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«external_system»",
-            "y": 20.0,
-            "width": 94.44,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "E-Mail System",
-            "y": 38.0,
-            "width": 97.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 84.98,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "The internal Microsoft Exchange system",
-            "y": 76.0,
-            "width": 231.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 150.273,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
           "alias": "customer",
           "parent_boundary": "global",
           "type_c4_shape": "person",
-          "x": 150.0,
-          "y": 352.0,
-          "width": 325.0,
-          "height": 134.0,
+          "x": 466.0,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 184.152,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Customer",
-            "y": 86.0,
-            "width": 63.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 55.44,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank, with personal bank accounts",
-            "y": 124.0,
-            "width": 305.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 140.4,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
@@ -155,9 +155,9 @@
           "parent_boundary": "c1",
           "type_c4_shape": "container",
           "x": 200.0,
-          "y": 692.0,
-          "width": 498.0,
-          "height": 104.0,
+          "y": 556.152,
+          "width": 216.0,
+          "height": 110.834,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -165,33 +165,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
+            "text": "[Container: JavaScript, Angular]",
+            "y": 44.175,
+            "width": 139.545,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Single-Page App",
-            "y": 38.0,
-            "width": 103.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 90.44,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[JavaScript, Angular]",
-            "y": 61.0,
-            "width": 105.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides all the Internet banking functionality to customers via their web browser",
-            "y": 94.0,
-            "width": 478.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 169.904,
+            "height": 37.884,
+            "line_count": 3.0
           }
         }
       ],
@@ -201,12 +195,12 @@
           "to": "spa",
           "rel_type": "rel",
           "start_point": {
-            "x": 363.605,
-            "y": 486.0
+            "x": 504.714,
+            "y": 350.152
           },
           "end_point": {
-            "x": 470.429,
-            "y": 692.0
+            "x": 377.532,
+            "y": 556.152
           },
           "offset_x": null,
           "offset_y": null,
@@ -231,12 +225,12 @@
           "to": "customer",
           "rel_type": "rel",
           "start_point": {
-            "x": 303.119,
-            "y": 252.0
+            "x": 366.0,
+            "y": 238.556
           },
           "end_point": {
-            "x": 371.301,
-            "y": 352.0
+            "x": 528.925,
+            "y": 251.946
           },
           "offset_x": null,
           "offset_y": null,
