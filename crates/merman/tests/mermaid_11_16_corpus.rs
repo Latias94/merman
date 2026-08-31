@@ -417,7 +417,7 @@ fn all_mermaid_11_16_added_mmds_reach_local_svg_with_explicit_evidence_boundarie
     assert_eq!(
         detected_counts,
         BTreeMap::from([
-            ("class".to_string(), 4),
+            ("classDiagram".to_string(), 4),
             ("flowchart-elk".to_string(), 3),
             ("flowchart-v2".to_string(), 76),
             ("kanban".to_string(), 3),
