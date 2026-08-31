@@ -588,7 +588,7 @@ if (hasCapability("analysis")) {
       status: "available",
       validity: "valid",
       diagramType: "class",
-      syntaxId: "class",
+      syntaxId: "classDiagram",
       effectiveLayoutId: "elk",
     }
   );

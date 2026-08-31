@@ -138,8 +138,8 @@ fn measure_c4_unified_text(
         let metrics =
             measurer.measure_wrapped(text, style, Some(text_limit_width), WrapMode::SvgLike);
         return TextMeasure {
-            width: metrics.width.max(0.0) as f64,
-            height: metrics.height.max(0.0) as f64,
+            width: metrics.width.max(0.0),
+            height: metrics.height.max(0.0),
             line_count: metrics.line_count.max(1),
         };
     }

@@ -511,10 +511,10 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
 
     assert!(
         svg.contains(r#"#c4-visible-audit .person{stroke:#ec4899;fill:#0ea5e9;}"#),
-        "Mermaid 11.15 still emits C4 .person provider CSS: {svg}"
+        "Mermaid 11.17 still emits C4 .person provider CSS: {svg}"
     );
     assert!(
-        svg.contains(r#"class="person-man""#),
+        svg.contains(r#"class="c4-shape c4-person""#),
         "C4 current output should expose the current shape group DOM: {svg}"
     );
     assert!(
@@ -522,7 +522,7 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
         "C4 should not count .person provider CSS as visible while current DOM has no .person element: {svg}"
     );
     assert!(
-        svg.contains(r##"fill="#334155" stroke="#f97316""##),
+        svg.contains(r##"style="fill:#334155;stroke:#f97316;color:#fde68a""##),
         "UpdateElementStyle colors should reach the visible C4 person shape: {svg}"
     );
     assert!(
@@ -530,7 +530,7 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
         "UpdateElementStyle fontColor should reach visible C4 person labels: {svg}"
     );
     assert!(
-        svg.contains(r##"fill="#111827" stroke="#facc15""##),
+        svg.contains(r##"style="fill:#111827;stroke:#facc15;color:#FFFFFF""##),
         "C4 config colors should reach the visible system shape: {svg}"
     );
     assert!(

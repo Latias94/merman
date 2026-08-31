@@ -243,6 +243,7 @@ fn c4_shape_classes(shape: &C4SvgModelShape) -> String {
     classes
 }
 
+#[allow(clippy::too_many_arguments)]
 fn c4_write_unified_section(
     out: &mut String,
     class: &str,
