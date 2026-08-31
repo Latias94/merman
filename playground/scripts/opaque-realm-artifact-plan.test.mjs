@@ -149,7 +149,7 @@ test("each engine owns a positive artifact byte budget", () => {
   assert.deepEqual(
     OPAQUE_REALM_ARTIFACT_PLAN.engines.map(({ id, maxBytes }) => [id, maxBytes]),
     [
-      ["mermaid", 12 * 1024 * 1024],
+      ["mermaid", 16 * 1024 * 1024],
       ["benchmark-merman", 256 * 1024],
     ],
   );
