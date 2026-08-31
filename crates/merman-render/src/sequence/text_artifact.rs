@@ -189,18 +189,34 @@ fn terminal_text_typography(
     if let Some(value) = text.attribute("font-style") {
         typography = apply_font_style(typography, value)?;
     }
-    for declaration in text.attribute("style").unwrap_or_default().split(';') {
-        let Some(parsed) = crate::mermaid_style::parse_style_declaration(declaration) else {
-            continue;
-        };
-        match parsed.property().to_ascii_lowercase().as_str() {
-            "font-family" => font_stack = parse_css_font_stack(parsed.value()),
-            "font-size" => typography = apply_font_size(typography, parsed.value())?,
-            "font-weight" => typography = apply_font_weight(typography, parsed.value())?,
-            "font-style" => typography = apply_font_style(typography, parsed.value())?,
-            _ => {}
-        }
-    }
+    let mut checkpoint = || Ok::<(), Error>(());
+    crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+        text.attribute("style").unwrap_or_default(),
+        &mut checkpoint,
+        |boundary| {
+            let Some(parsed) = crate::mermaid_style::parse_style_declaration(boundary.raw()) else {
+                return Ok(true);
+            };
+            match parsed.property() {
+                "font-family" => {
+                    font_stack = if parsed.inherits_property_value() {
+                        None
+                    } else {
+                        Some(parse_css_font_stack(parsed.value()).ok_or_else(|| {
+                            sequence_text_error("Sequence terminal font family is unsupported")
+                        })?)
+                    };
+                }
+                "font-size" => typography = apply_font_size(typography.clone(), parsed.value())?,
+                "font-weight" => {
+                    typography = apply_font_weight(typography.clone(), parsed.value())?
+                }
+                "font-style" => typography = apply_font_style(typography.clone(), parsed.value())?,
+                _ => {}
+            }
+            Ok(true)
+        },
+    )?;
     Ok((typography, font_stack))
 }
 
@@ -437,5 +453,19 @@ mod tests {
             .expect_err("overlapping prepared-text edits must fail closed");
 
         assert!(error.to_string().contains("overlap"), "{error}");
+    }
+
+    #[test]
+    fn terminal_text_typography_rejects_unrepresentable_quoted_semicolons_in_font_family() {
+        let document = roxmltree::Document::parse(
+            r#"<svg><text style='font-family:"a;b",sans-serif;font-size:18px'>Label</text></svg>"#,
+        )
+        .expect("valid sequence text fixture");
+        let text = document.root_element().first_element_child().expect("text");
+
+        let error = terminal_text_typography(&ThemeTextStyle::default(), text)
+            .expect_err("unsupported font-family must fail closed");
+
+        assert!(error.to_string().contains("font family is unsupported"));
     }
 }

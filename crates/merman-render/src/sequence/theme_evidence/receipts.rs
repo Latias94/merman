@@ -1354,22 +1354,21 @@ fn typography_rule_matches(
     };
     let mut font_family_count = 0usize;
     let mut font_size_count = 0usize;
-    let valid =
-        visit_valid_stylesheet_declarations(body, |declaration| match declaration.property() {
-            "font-family" => {
-                font_family_count = font_family_count.saturating_add(1);
-                declaration.value() == expected_font_family
-            }
-            "font-size" => {
-                font_size_count = font_size_count.saturating_add(1);
-                declaration
-                    .value()
-                    .strip_suffix("px")
-                    .and_then(|value| value.parse::<f64>().ok())
-                    .is_some_and(|value| value.to_bits() == expected_font_size_bits)
-            }
-            _ => true,
-        });
+    let valid = visit_valid_style_declarations(body, |declaration| match declaration.property() {
+        "font-family" => {
+            font_family_count = font_family_count.saturating_add(1);
+            declaration.value() == expected_font_family
+        }
+        "font-size" => {
+            font_size_count = font_size_count.saturating_add(1);
+            declaration
+                .value()
+                .strip_suffix("px")
+                .and_then(|value| value.parse::<f64>().ok())
+                .is_some_and(|value| value.to_bits() == expected_font_size_bits)
+        }
+        _ => true,
+    });
     valid && font_family_count == 1 && font_size_count == 1
 }
 
@@ -1382,7 +1381,7 @@ fn font_family_variable_rule_matches(
         return false;
     };
     let mut declaration_count = 0usize;
-    let valid = visit_valid_stylesheet_declarations(body, |declaration| {
+    let valid = visit_valid_style_declarations(body, |declaration| {
         if declaration.property() == "--mermaid-font-family" {
             declaration_count = declaration_count.saturating_add(1);
             declaration.value() == expected_font_family
@@ -1393,7 +1392,7 @@ fn font_family_variable_rule_matches(
     valid && declaration_count == 1
 }
 
-fn visit_valid_stylesheet_declarations(
+fn visit_valid_style_declarations(
     declaration_list: &str,
     mut visit: impl FnMut(&crate::mermaid_style::ParsedStyleDeclaration<'_>) -> bool,
 ) -> bool {
@@ -1455,15 +1454,16 @@ fn terminal_text_inherits_property(
     if text.attribute(property_name).is_some() {
         return false;
     }
-    !text
-        .attribute("style")
-        .unwrap_or_default()
-        .split(';')
-        .filter_map(crate::mermaid_style::parse_style_declaration)
-        .any(|declaration| {
-            declaration.property().eq_ignore_ascii_case(property_name)
-                || declaration.property().eq_ignore_ascii_case("font")
-        })
+    let mut has_override = false;
+    let valid = visit_valid_style_declarations(
+        text.attribute("style").unwrap_or_default(),
+        |declaration| {
+            has_override |=
+                declaration.property() == property_name || declaration.property() == "font";
+            true
+        },
+    );
+    valid && !has_override
 }
 
 fn unique_rule_body<'a>(stylesheet: &'a str, selector: &str) -> Option<&'a str> {
@@ -1615,5 +1615,33 @@ mod tests {
 
         assert_eq!(meter.used(), 3);
         assert!(!receipt.base.terminal_svg_observed());
+    }
+
+    #[test]
+    fn inline_font_family_with_quoted_semicolon_is_not_counted_as_inherited() {
+        let document = roxmltree::Document::parse(
+            r#"<svg><text style='font-family:"a;b",sans-serif'>Visible</text></svg>"#,
+        )
+        .expect("valid sequence text fixture");
+        let text = document.root_element().first_element_child().expect("text");
+
+        assert!(!terminal_text_inherits_property(
+            text,
+            ThemeTypographyProperty::FontStack
+        ));
+    }
+
+    #[test]
+    fn malformed_inline_typography_is_fail_closed_for_inherited_evidence() {
+        let document = roxmltree::Document::parse(
+            r#"<svg><text style='font-family:"unterminated'>Visible</text></svg>"#,
+        )
+        .expect("valid sequence text fixture");
+        let text = document.root_element().first_element_child().expect("text");
+
+        assert!(!terminal_text_inherits_property(
+            text,
+            ThemeTypographyProperty::FontStack
+        ));
     }
 }
