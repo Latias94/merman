@@ -186,6 +186,11 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("npm run prebuild", prebuild)
         self.assertIn("PREBUILDS_ONLY=1 npm run test:node", prebuild)
         self.assertIn("TREE_SITTER_MERMAID_REQUIRE_PREBUILDS=1", assemble)
+        self.assertIn(
+            "expected_prebuilds=(darwin-arm64 darwin-x64 linux-x64 win32-x64)",
+            assemble,
+        )
+        self.assertIn("-eq 4", assemble)
         self.assertIn('"metadata/provenance.json"', verify)
         self.assertIn('"CMakeLists.txt": cmake.group(1)', verify)
         self.assertIn('"Makefile": make.group(1)', verify)
@@ -215,12 +220,17 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             'npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball',
             publish_npm,
         )
+        self.assertIn('"dist-tags.$NPM_DIST_TAG"', publish_npm)
+        for publish_job in (publish_crates, publish_npm, publish_github):
+            self.assertIn("git/ref/tags/$RELEASE_TAG", publish_job)
+            self.assertIn("commits/$RELEASE_TAG", publish_job)
         self.assertIn(
             "uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
             attest,
         )
         self.assertIn("attestations: write", attest)
         self.assertIn("gh release create", publish_github)
+        self.assertIn("GH_REPO: ${{ github.repository }}", publish_github)
         self.assertIn("verify_existing_release", publish_github)
         self.assertIn(
             "if: ${{ inputs.publish && inputs.publish_github_release }}",
@@ -277,6 +287,12 @@ jobs:
         self.assertIn("recovery_run_id:", text)
         self.assertIn("Download prior crates.io receipts for recovery", text)
         self.assertIn("--recovery-receipts-dir recovery-receipts", text)
+        self.assertIn("source_ref must be the matching immutable release tag", text)
+        self.assertNotIn("reviewed full commit SHA", text)
+        publish = workflow_job(text, "publish")
+        self.assertIn("git/ref/tags/$RELEASE_TAG", publish)
+        self.assertIn("commits/$RELEASE_TAG", publish)
+        self.assertIn('test "$observed" = "$SOURCE_SHA"', publish)
         self.assertNotIn('default: "main"', text)
         self.assertNotIn('SOURCE_REF" == "main"', text)
         self.assertNotIn("cargo yank", text)
@@ -364,6 +380,9 @@ jobs:
         self.assertIn("path: trusted", publish)
         self.assertIn("scripts/reconcile_pypi_wheels.py", text)
         self.assertIn("skip-existing: true", text)
+        self.assertIn("Reconcile PyPI wheels after publication", publish)
+        self.assertIn("--require-exact", publish)
+        self.assertIn("PyPI did not expose the exact wheel set", publish)
 
     def test_pubdev_skip_existing_is_guarded_by_archive_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-flutter.yml")
@@ -373,31 +392,38 @@ jobs:
 
     def test_independent_crate_has_fresh_registry_dependent_compile_gate(self) -> None:
         independent = read(WORKFLOW_ROOT / "release-independent-crate.yml")
+        publish = workflow_job(independent, "publish")
         preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
         self.assertIn("scripts/release_registry_dependents.py", preflight)
         self.assertIn("--candidate-path crates/roughr", preflight)
         self.assertIn("--dependent merman-render=0.7.0", preflight)
         self.assertIn("--dependent merman-render=0.8.0-alpha.5", preflight)
         self.assertIn("preflight-independent", independent)
+        self.assertGreaterEqual(publish.count("preflight-independent"), 3)
         self.assertIn("Verify published dependent lanes", independent)
 
-    def test_node_publish_supports_verified_cross_run_recovery(self) -> None:
+    def test_tag_bound_publishers_recheck_remote_tag_at_mutation_boundary(self) -> None:
+        jobs = (
+            ("release-android.yml", "upload-release"),
+            ("release-apple.yml", "upload-release"),
+            ("release-flutter.yml", "publish"),
+            ("release-python.yml", "github-release"),
+            ("release-python.yml", "publish"),
+        )
+        for workflow_name, job_name in jobs:
+            job = workflow_job(read(WORKFLOW_ROOT / workflow_name), job_name)
+            with self.subTest(workflow=workflow_name, job=job_name):
+                self.assertIn("git/ref/tags/$RELEASE_TAG", job)
+                self.assertIn("commits/$RELEASE_TAG", job)
+                self.assertIn('test "$observed" = "$SOURCE_SHA"', job)
+
+    def test_node_publish_uses_only_the_same_run_package_group(self) -> None:
         text = read(WORKFLOW_ROOT / "release-node.yml")
         publish = workflow_job(text, "publish")
-        self.assertIn("recovery_run_id:", text)
-        self.assertIn("DISPATCH_RECOVERY_RUN_ID", text)
-        self.assertIn("recovery_run_id requires publish_to_npm=true", text)
-        self.assertIn("actions: read", publish)
-        self.assertIn("always()", publish)
-        self.assertIn(
-            "needs.package-group.result == 'success' || needs.validate-inputs.outputs.recovery_run_id != ''",
-            publish,
-        )
-        self.assertIn("github-token: ${{ github.token }}", publish)
-        self.assertIn(
-            "run-id: ${{ needs.validate-inputs.outputs.recovery_run_id != '' && needs.validate-inputs.outputs.recovery_run_id || github.run_id }}",
-            publish,
-        )
+        self.assertNotIn("recovery_run_id", text)
+        self.assertNotIn("run-id:", publish)
+        self.assertNotIn("github-token:", publish)
+        self.assertIn("needs:\n      - validate-inputs\n      - package-group", publish)
 
     def test_performance_pull_requests_are_read_only_and_summary_only(self) -> None:
         text = read(WORKFLOW_ROOT / "performance.yml")

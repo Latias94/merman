@@ -187,8 +187,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
         run: |
           set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
+          observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          test "$observed" = "$SOURCE_SHA" || {
+            echo "::error::Release tag moved after artifact verification." >&2
+            exit 1
+          }
           shopt -s nullglob
           assets=(platforms/apple/Merman.xcframework-*.zip platforms/apple/Merman.xcframework-*.zip.checksum)
           test "${#assets[@]}" -eq 2

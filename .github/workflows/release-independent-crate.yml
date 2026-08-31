@@ -192,6 +192,9 @@ jobs:
           }
 
           if crate_version_available "$PACKAGE" "$VERSION"; then
+            python3 scripts/crates_io_release.py preflight-independent \
+              --package "$PACKAGE" \
+              --version "$VERSION"
             echo "Skipping $PACKAGE $VERSION because it is already published."
             exit 0
           fi
@@ -200,6 +203,9 @@ jobs:
 
           for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
             if crate_version_available "$PACKAGE" "$VERSION"; then
+              python3 scripts/crates_io_release.py preflight-independent \
+                --package "$PACKAGE" \
+                --version "$VERSION"
               echo "$PACKAGE $VERSION is visible in crates.io."
               exit 0
             fi

@@ -26,6 +26,7 @@ jobs:
     outputs:
       source_ref: ${{ steps.release.outputs.source_ref }}
       source_sha: ${{ steps.pin-source.outputs.source_sha }}
+      source_date_epoch: ${{ steps.pin-source.outputs.source_date_epoch }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
     steps:
@@ -89,10 +90,12 @@ jobs:
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
           if [[ "$EXPECTED_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             test "$source_sha" = "$EXPECTED_SOURCE_REF"
           fi
           printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          printf 'source_date_epoch=%s\n' "$source_date_epoch" >> "$GITHUB_OUTPUT"
 
   versions-and-packages:
     needs: validate-inputs
@@ -255,6 +258,8 @@ jobs:
           - ubuntu-24.04
           - macos-15
           - windows-2025-vs2026
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.validate-inputs.outputs.source_date_epoch }}
     defaults:
       run:
         shell: bash

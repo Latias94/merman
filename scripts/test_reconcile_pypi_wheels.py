@@ -10,6 +10,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from zipfile import ZipFile, ZIP_DEFLATED
+from unittest import mock
 
 from scripts import reconcile_pypi_wheels as reconcile
 
@@ -132,6 +133,24 @@ class PyPIWheelReconciliationTests(unittest.TestCase):
                     "0.8.0a6",
                     opener=lambda *_args, **_kwargs: self.response(payload),
                 )
+
+    def test_require_exact_returns_retryable_status_when_registry_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "merman-0.8.0a6-py3-none-any.whl"
+            wheel(path)
+            with mock.patch.object(reconcile, "reconcile", return_value=False):
+                status = reconcile.main(
+                    [
+                        "--directory",
+                        temp_dir,
+                        "--project",
+                        "merman",
+                        "--version",
+                        "0.8.0a6",
+                        "--require-exact",
+                    ]
+                )
+        self.assertEqual(status, 3)
 
 
 if __name__ == "__main__":

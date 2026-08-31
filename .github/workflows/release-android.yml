@@ -200,8 +200,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
         run: |
           set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
+          observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          test "$observed" = "$SOURCE_SHA" || {
+            echo "::error::Release tag moved after artifact verification." >&2
+            exit 1
+          }
           asset="$(find target/release-assets -maxdepth 1 -type f -name '*.aar' -print -quit)"
           test -n "$asset"
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then

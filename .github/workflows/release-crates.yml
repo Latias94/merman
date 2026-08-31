@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Matching immutable release tag/ref or reviewed full commit SHA"
+        description: "Matching immutable release tag/ref"
         required: true
         type: string
       recovery_run_id:
@@ -66,14 +66,12 @@ jobs:
           [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           validated_source_ref="$SOURCE_REF"
-          if [[ "$SOURCE_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            validated_source_ref="$SOURCE_REF"
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
+          if [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
             validated_source_ref="refs/tags/$source_tag"
           else
-            fail "source_ref must be a reviewed full commit SHA or the matching immutable release tag."
+            fail "source_ref must be the matching immutable release tag."
           fi
 
           VERSION="${RELEASE_TAG#v}"
@@ -283,6 +281,20 @@ jobs:
       actions: read
       contents: read
     steps:
+      - name: Verify release tag still resolves to the source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
+          observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          test "$observed" = "$SOURCE_SHA" || {
+            echo "::error::Release tag moved after artifact verification." >&2
+            exit 1
+          }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}

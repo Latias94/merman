@@ -170,13 +170,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         required=True,
         help="workspace SemVer (for example 0.8.0-alpha.6) or PEP 440 spelling",
     )
+    parser.add_argument(
+        "--require-exact",
+        action="store_true",
+        help="fail when any local wheel is not yet visible with the exact SHA-256",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        reconcile(args.directory, args.project, args.version)
+        exact = reconcile(args.directory, args.project, args.version)
+        if args.require_exact and not exact:
+            print(
+                "reconcile_pypi_wheels.py: PyPI has not exposed the exact local wheel set yet",
+                file=sys.stderr,
+            )
+            return 3
     except (OSError, PyPIReconciliationError) as error:
         print(f"reconcile_pypi_wheels.py: {error}", file=sys.stderr)
         return 1
