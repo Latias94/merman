@@ -281,20 +281,6 @@ jobs:
       actions: read
       contents: read
     steps:
-      - name: Verify release tag still resolves to the source commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
-          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
-        run: |
-          set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
-          observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
-          test "$observed" = "$SOURCE_SHA" || {
-            echo "::error::Release tag moved after artifact verification." >&2
-            exit 1
-          }
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
@@ -349,6 +335,8 @@ jobs:
       - name: Upload crates to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
           SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
           SOURCE_TREE: ${{ needs.preflight.outputs.source_tree }}
         run: |
@@ -357,6 +345,12 @@ jobs:
           if [ -d recovery-receipts ]; then
             recovery_args+=(--recovery-receipts-dir recovery-receipts)
           fi
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
+          observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          test "$observed" = "$SOURCE_SHA" || {
+            echo "::error::Release tag moved after artifact verification." >&2
+            exit 1
+          }
           python3 trusted/scripts/crates_io_release.py publish-receipted \
             --repo-root source \
             --source-sha "$SOURCE_SHA" \
