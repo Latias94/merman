@@ -196,8 +196,13 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
     ctx.checkpoint_emit()?;
     session.details.root_calls += 1;
 
+    // The published `@mermaid-js/layout-elk@0.2.3` renderer creates the common
+    // layout groups below one `.root` wrapper. Keep this wrapper in the ELK
+    // adapter path as well; the browser-facing Mermaid source and the package
+    // artifact agree on the hierarchy even though the package still uses the
+    // historical singular `edgePath` class.
+    out.push_str(r#"<g class="root">"#);
     render_flowchart_elk_subgraphs(out, ctx, session)?;
-    render_flowchart_elk_nodes(out, ctx, session)?;
 
     let _g_edges_select = detail_guard(session.timing, &mut session.details.edges_select);
     let edges = flowchart_elk_edges(ctx)?;
@@ -205,6 +210,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
 
     render_flowchart_elk_edge_paths(out, ctx, session, &edges)?;
     render_flowchart_elk_edge_labels(out, ctx, session, &edges)?;
+    render_flowchart_elk_nodes(out, ctx, session)?;
+    out.push_str("</g>");
     Ok(())
 }
 
@@ -265,16 +272,14 @@ fn render_flowchart_elk_subgraphs(
     }
 
     if clusters_to_draw.is_empty() {
-        out.push_str(r#"<g class="subgraphs"/>"#);
+        out.push_str(r#"<g class="clusters"/>"#);
         return Ok(());
     }
 
-    out.push_str(r#"<g class="subgraphs">"#);
+    out.push_str(r#"<g class="clusters">"#);
     for cluster in clusters_to_draw {
         ctx.checkpoint_emit()?;
-        out.push_str(r#"<g class="subgraph">"#);
         render_flowchart_cluster(out, ctx, cluster, 0.0, 0.0)?;
-        out.push_str("</g>");
     }
     out.push_str("</g>");
     Ok(())
@@ -338,11 +343,14 @@ fn render_flowchart_elk_edge_paths(
     ctx.checkpoint_emit()?;
     let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
     if edges.is_empty() {
-        out.push_str(r#"<g class="edges edgePaths"/>"#);
+        out.push_str(r#"<g class="edges edgePath"/>"#);
         return Ok(());
     }
 
-    out.push_str(r#"<g class="edges edgePaths">"#);
+    // The published 0.2.3 ELK bundle predates Mermaid core's pluralized
+    // default and emits `edges edgePath`; this is the class present in the
+    // pinned 11.17.2 reference CLI SVGs.
+    out.push_str(r#"<g class="edges edgePath">"#);
     let mut scratch = FlowchartEdgeDataPointsScratch::default();
     for e in edges {
         ctx.checkpoint_emit()?;
@@ -375,16 +383,15 @@ fn render_flowchart_elk_edge_labels(
     }
 
     out.push_str(r#"<g class="edgeLabels">"#);
-    if !ctx.edge_html_labels {
-        for e in edges {
-            ctx.checkpoint_emit()?;
-            if edge_label_is_empty(ctx, e) {
-                out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
-            }
-        }
-    }
     for e in edges {
         ctx.checkpoint_emit()?;
+        // Mermaid's common renderer inserts an edge-label element only when
+        // `hasEdgeLabel(edge)` is true. Plain flowchart edges with no authored
+        // label therefore do not leave empty `.edgeLabel` placeholders in the
+        // ELK group.
+        if edge_label_is_empty(ctx, e) {
+            continue;
+        }
         render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, &*session.edge_cache);
     }
     out.push_str("</g>");

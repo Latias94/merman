@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::c4::{C4_DEFAULT_FONT_FAMILY, C4ConfigView};
+use crate::c4::{C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4ConfigView};
 use merman_core::diagrams::c4::{
     C4BoundaryRenderModel, C4DiagramRenderModel, C4RelRenderModel, C4ShapeRenderModel,
 };
@@ -131,6 +131,28 @@ fn c4_css(
         r#"#{} .person{{stroke:{};fill:{};}}"#,
         diagram_id, person_border, person_bkg
     );
+    // Mermaid's C4 stylesheet is assembled through CSSOM and emits a rule for each
+    // configured element type before the shared label rules. Keep the same order so
+    // computed font settings and the serialized stylesheet remain source-backed.
+    let c4_cfg = C4ConfigView::new(effective_config);
+    for type_name in C4_ELEMENT_TYPES {
+        let font = c4_cfg.shape_font(type_name);
+        let family = crate::config::normalize_css_font_family(
+            font.font_family
+                .as_deref()
+                .unwrap_or(C4_DEFAULT_FONT_FAMILY),
+        );
+        let weight = font.font_weight.as_deref().unwrap_or("normal");
+        let _ = write!(
+            &mut out,
+            r#"#{} .c4-shape.c4-{} .label{{font-family:{};font-size:{}px;font-weight:{};}}"#,
+            diagram_id,
+            type_name,
+            family,
+            fmt(font.font_size),
+            weight,
+        );
+    }
     let _ = write!(
         &mut out,
         r#"#{} .c4-shape .label,#{} .c4-shape .label text{{color:inherit;fill:currentColor;}}#{} .c4-shape .label .c4-name{{font-weight:bold;}}#{} .c4-shape .label .c4-type{{font-size:0.75em;}}#{} .c4-shape .label .c4-descr{{font-size:0.82em;}}#{} .c4-shape .basic,#{} .c4-shape rect,#{} .c4-shape path,#{} .c4-shape circle,#{} .c4-shape ellipse,#{} .c4-shape line{{stroke-width:2px;}}"#,

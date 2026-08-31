@@ -3,6 +3,30 @@ use crate::text::TextStyle;
 use serde_json::Value;
 
 pub(crate) const C4_DEFAULT_FONT_FAMILY: &str = r#""Open Sans", sans-serif"#;
+
+/// Mermaid emits one CSS rule for every C4 element type, including external variants.
+pub(crate) const C4_ELEMENT_TYPES: &[&str] = &[
+    "person",
+    "external_person",
+    "system",
+    "external_system",
+    "system_db",
+    "external_system_db",
+    "system_queue",
+    "external_system_queue",
+    "container",
+    "external_container",
+    "container_db",
+    "external_container_db",
+    "container_queue",
+    "external_container_queue",
+    "component",
+    "external_component",
+    "component_db",
+    "external_component_db",
+    "component_queue",
+    "external_component_queue",
+];
 const DEFAULT_DIAGRAM_MARGIN_X: f64 = 50.0;
 const DEFAULT_DIAGRAM_MARGIN_Y: f64 = 10.0;
 const DEFAULT_C4_SHAPE_MARGIN: f64 = 50.0;

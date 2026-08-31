@@ -5,7 +5,7 @@ use serde_json::Value;
 mod config;
 
 pub(crate) use config::{
-    C4_DEFAULT_FONT_FAMILY, C4ConfigView, C4LayoutSettings, default_use_max_width,
+    C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4ConfigView, C4LayoutSettings, default_use_max_width,
 };
 
 type C4Model = C4DiagramRenderModel;

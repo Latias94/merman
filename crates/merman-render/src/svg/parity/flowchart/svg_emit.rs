@@ -468,10 +468,12 @@ pub(super) fn render_flowchart_svg_model(
         emit.checkpoint()?;
         defs.push_extra_markers(&mut out);
         emit.checkpoint()?;
+        render_flowchart_elk_root_groups(&mut out, &ctx, &mut root_session)?;
         out.push_str("</g>");
+        // The shadow filters are siblings of Mermaid's marker/root wrapper,
+        // rather than children of the wrapper that owns the painted graph.
         push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
         emit.checkpoint()?;
-        render_flowchart_elk_root_groups(&mut out, &ctx, &mut root_session)?;
     } else {
         push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
         emit.checkpoint()?;

@@ -1782,7 +1782,7 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
 }
 
 fn layout_shape_for_node(n: &Node) -> String {
-    // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at the pinned Mermaid 11.16.1 baseline.
+    // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at the pinned Mermaid baseline.
     if n.img.is_some() {
         return "imageSquare".to_string();
     }

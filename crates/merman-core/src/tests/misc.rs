@@ -39,7 +39,7 @@ fn parse_indented_headers_across_common_diagrams() {
         ),
         (
             "     classDiagram\n     class C1[\"Class 1 with text label\"]\n",
-            "class",
+            "classDiagram",
         ),
         ("     erDiagram\n     PERSON ||--o{ ORDER : places\n", "er"),
         (
@@ -2237,13 +2237,13 @@ line "Series 2" [2 "early", 3 "late"]
     assert_eq!(parsed_json.model["yAxis"]["min"], json!(1.0));
     assert_eq!(parsed_json.model["yAxis"]["max"], json!(5.0));
     assert_eq!(parsed_json.model["plots"][0]["type"], json!("bar"));
-    assert!(parsed_json.model["plots"][0].get("title").is_none());
+    assert_eq!(parsed_json.model["plots"][0]["title"], json!("Series 1"));
     assert_eq!(parsed_json.model["plots"][1]["type"], json!("line"));
     assert_eq!(
         parsed_json.model["plots"][1]["pointLabels"],
         json!(["early", "late"])
     );
-    assert!(parsed_json.model["plots"][1].get("title").is_none());
+    assert_eq!(parsed_json.model["plots"][1]["title"], json!("Series 2"));
     assert!(parsed_json.model.get("config").is_some());
     assert_eq!(typed_json, parsed_json.model);
 }

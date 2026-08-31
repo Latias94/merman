@@ -1176,7 +1176,7 @@ Animal <|-- Duck
                 capability: RenderCapability::LayoutElk,
                 diagram_type,
             }
-                if diagram_type == "class"
+                if diagram_type == "classDiagram"
         ));
     }
 

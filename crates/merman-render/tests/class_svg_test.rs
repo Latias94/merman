@@ -137,7 +137,7 @@ fn deep_class_namespace_text(depth: usize) -> String {
 #[test]
 fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
     for (source, expected_role) in [
-        ("classDiagram\nclass Animal\n", "class"),
+        ("classDiagram\nclass Animal\n", "classDiagram"),
         ("classDiagram-v2\nclass Animal\n", "classDiagram"),
         (
             "%%{init: {\"class\": {\"defaultRenderer\": \"dagre-wrapper\"}}}%%\nclassDiagram\nclass Animal\n",
@@ -474,7 +474,7 @@ classDiagram
         .root_element()
         .attribute("aria-roledescription")
         .expect("Class diagram role");
-    assert_eq!(diagram_role, "class");
+    assert_eq!(diagram_role, "classDiagram");
     for marker_id in marker_ids.iter().filter(|id| !id.ends_with("-margin")) {
         let marker = document
             .descendants()
