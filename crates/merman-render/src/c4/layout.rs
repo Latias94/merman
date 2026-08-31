@@ -1,9 +1,12 @@
-use super::{C4Conf, C4ConfigView, C4Model, measure_c4_text};
+use super::{
+    C4Conf, C4ConfigView, C4Model, C4NodeShape, c4_node_shape, c4_stereotype_text, measure_c4_text,
+    measure_c4_unified_text,
+};
 use crate::model::{
     Bounds, C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout,
     C4TextBlockLayout, LayoutPoint,
 };
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::TextMeasurer;
 use crate::{Error, Result};
 use merman_core::diagrams::c4::{C4BoundaryRenderModel, C4DiagramRenderModel};
 use serde_json::Value;
@@ -241,20 +244,246 @@ fn intersect_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
     })
 }
 
-fn intersect_points(from: &Rect, to: &Rect) -> (LayoutPoint, LayoutPoint) {
-    let end_intersect_point = LayoutPoint {
-        x: to.origin.x + to.size.width / 2.0,
-        y: to.origin.y + to.size.height / 2.0,
-    };
-    let start_point = intersect_point(from, end_intersect_point);
+fn intersect_cylinder_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
+    let mut point = intersect_point(from, end_point.clone());
+    let center_x = from.origin.x + from.size.width / 2.0;
+    let center_y = from.origin.y + from.size.height / 2.0;
+    let x = point.x - center_x;
+    let width = from.size.width.max(1.0);
+    let rx = width / 2.0;
+    let ry = rx / (2.5 + width / 50.0);
 
-    let end_intersect_point = LayoutPoint {
+    if rx != 0.0
+        && (x.abs() < width / 2.0
+            || ((x.abs() - width / 2.0).abs() < 1e-12
+                && (point.y - center_y).abs() > from.size.height / 2.0 - ry))
+    {
+        let mut cap = ry * ry * (1.0 - (x * x) / (rx * rx));
+        cap = cap.max(0.0).sqrt();
+        cap = ry - cap;
+        if end_point.y - center_y > 0.0 {
+            cap = -cap;
+        }
+        point.y += cap;
+    }
+
+    point
+}
+
+fn intersect_horizontal_cylinder_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
+    let mut point = intersect_point(from, end_point.clone());
+    let center_x = from.origin.x + from.size.width / 2.0;
+    let center_y = from.origin.y + from.size.height / 2.0;
+    let y = point.y - center_y;
+    let half_height = from.size.height / 2.0;
+    let top_or_bottom_center = (end_point.x - center_x).abs() < 1e-6
+        && (point.x - center_x).abs() < 1e-6
+        && (y.abs() - half_height).abs() < 1e-6;
+    if top_or_bottom_center {
+        return point;
+    }
+
+    let ry = half_height;
+    let rx = if ry == 0.0 {
+        0.0
+    } else {
+        ry / (2.5 + from.size.height / 50.0)
+    };
+    if ry != 0.0
+        && (y.abs() < half_height
+            || (y.abs() - half_height).abs() < 1e-12
+                && (point.x - center_x).abs() > from.size.width / 2.0 - rx)
+    {
+        let mut cap = rx * rx * (1.0 - (y * y) / (ry * ry));
+        cap = cap.abs().sqrt();
+        cap = rx - cap;
+        if end_point.x - center_x > 0.0 {
+            cap = -cap;
+        }
+        point.x += cap;
+    }
+    point
+}
+
+fn cross(a: LayoutPoint, b: LayoutPoint) -> f64 {
+    a.x * b.y - a.y * b.x
+}
+
+fn ray_polygon_intersection(
+    origin: LayoutPoint,
+    target: LayoutPoint,
+    polygon: &[LayoutPoint],
+) -> Option<LayoutPoint> {
+    let direction = LayoutPoint {
+        x: target.x - origin.x,
+        y: target.y - origin.y,
+    };
+    if direction.x.abs() < 1e-12 && direction.y.abs() < 1e-12 {
+        return None;
+    }
+
+    let mut nearest: Option<(f64, LayoutPoint)> = None;
+    for (a, b) in polygon
+        .iter()
+        .zip(polygon.iter().cycle().skip(1))
+        .take(polygon.len())
+    {
+        let edge = LayoutPoint {
+            x: b.x - a.x,
+            y: b.y - a.y,
+        };
+        let origin_to_a = LayoutPoint {
+            x: a.x - origin.x,
+            y: a.y - origin.y,
+        };
+        let denominator = cross(direction.clone(), edge.clone());
+        if denominator.abs() < 1e-12 {
+            continue;
+        }
+        let t = cross(origin_to_a.clone(), edge) / denominator;
+        let u = cross(origin_to_a, direction.clone()) / denominator;
+        if t < 0.0 || !(0.0..=1.0).contains(&u) {
+            continue;
+        }
+        let point = LayoutPoint {
+            x: origin.x + direction.x * t,
+            y: origin.y + direction.y * t,
+        };
+        if nearest.as_ref().is_none_or(|(best, _)| t < *best) {
+            nearest = Some((t, point));
+        }
+    }
+    nearest.map(|(_, point)| point)
+}
+
+fn person_polygon(width: f64, height: f64) -> Vec<LayoutPoint> {
+    fn append_arc(
+        points: &mut Vec<LayoutPoint>,
+        cx: f64,
+        cy: f64,
+        radius: f64,
+        start_deg: f64,
+        end_deg: f64,
+    ) {
+        for i in 1..=6 {
+            let angle = (start_deg + (end_deg - start_deg) * i as f64 / 6.0).to_radians();
+            points.push(LayoutPoint {
+                x: cx + radius * angle.cos(),
+                y: cy + radius * angle.sin(),
+            });
+        }
+    }
+
+    let width = width.max(1.0);
+    let height = height.max(1.0);
+    let head_radius = (width * 0.23).clamp(16.0, 56.0);
+    let overlap = head_radius * 0.27;
+    let body_height = (height - 2.0 * head_radius + overlap).max(0.0);
+    let body_radius = (width * 0.177).min(body_height * 0.45);
+    let top = -height / 2.0;
+    let body_top = top + 2.0 * head_radius - overlap;
+    let head_center_y = top + head_radius;
+    let intersection_y = body_top - head_center_y;
+    let intersection_x = (head_radius * head_radius - intersection_y * intersection_y)
+        .max(0.0)
+        .sqrt();
+
+    let mut points = Vec::with_capacity(48);
+    let start = intersection_y.atan2(intersection_x);
+    // Walk the exposed (upper) major arc, leaving the lower central arc hidden by the body.
+    let end = std::f64::consts::PI - start - 2.0 * std::f64::consts::PI;
+    for i in 0..=24 {
+        let angle = start + (end - start) * i as f64 / 24.0;
+        points.push(LayoutPoint {
+            x: head_radius * angle.cos(),
+            y: head_center_y + head_radius * angle.sin(),
+        });
+    }
+
+    // Continue clockwise from the left shoulder around the rounded body.
+    points.push(LayoutPoint {
+        x: -width / 2.0 + body_radius,
+        y: body_top,
+    });
+    append_arc(
+        &mut points,
+        -width / 2.0 + body_radius,
+        body_top + body_radius,
+        body_radius,
+        -90.0,
+        -180.0,
+    );
+    points.push(LayoutPoint {
+        x: -width / 2.0,
+        y: height / 2.0 - body_radius,
+    });
+    append_arc(
+        &mut points,
+        -width / 2.0 + body_radius,
+        height / 2.0 - body_radius,
+        body_radius,
+        180.0,
+        90.0,
+    );
+    points.push(LayoutPoint {
+        x: width / 2.0 - body_radius,
+        y: height / 2.0,
+    });
+    append_arc(
+        &mut points,
+        width / 2.0 - body_radius,
+        height / 2.0 - body_radius,
+        body_radius,
+        90.0,
+        0.0,
+    );
+    points.push(LayoutPoint {
+        x: width / 2.0,
+        y: body_top + body_radius,
+    });
+    append_arc(
+        &mut points,
+        width / 2.0 - body_radius,
+        body_top + body_radius,
+        body_radius,
+        0.0,
+        -90.0,
+    );
+    points.push(LayoutPoint {
+        x: intersection_x,
+        y: body_top,
+    });
+    points
+}
+
+fn intersect_person_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
+    let center = LayoutPoint {
         x: from.origin.x + from.size.width / 2.0,
         y: from.origin.y + from.size.height / 2.0,
     };
-    let end_point = intersect_point(to, end_intersect_point);
+    let local_target = LayoutPoint {
+        x: end_point.x - center.x,
+        y: end_point.y - center.y,
+    };
+    let polygon = person_polygon(from.size.width, from.size.height);
+    if let Some(point) =
+        ray_polygon_intersection(LayoutPoint { x: 0.0, y: 0.0 }, local_target, &polygon)
+    {
+        return LayoutPoint {
+            x: center.x + point.x,
+            y: center.y + point.y,
+        };
+    }
+    intersect_point(from, end_point)
+}
 
-    (start_point, end_point)
+fn intersect_shape_point(shape: C4NodeShape, from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
+    match shape {
+        C4NodeShape::Rounded | C4NodeShape::Framed => intersect_point(from, end_point),
+        C4NodeShape::Person => intersect_person_point(from, end_point),
+        C4NodeShape::Cylinder => intersect_cylinder_point(from, end_point),
+        C4NodeShape::HorizontalCylinder => intersect_horizontal_cylinder_point(from, end_point),
+    }
 }
 
 fn layout_c4_shape_array(
@@ -265,152 +494,161 @@ fn layout_c4_shape_array(
 ) {
     for idx in shape_indices {
         let shape = &ctx.model.shapes[*idx];
-        let mut y = ctx.conf.c4_shape_padding;
-
         let type_c4_shape = shape.type_c4_shape.as_str().to_string();
-        let mut type_conf = ctx.cfg.shape_font(&type_c4_shape);
-        type_conf.font_size -= 2.0;
+        let shape_kind = c4_node_shape(shape);
+        let text_wrap = ctx.conf.wrap;
+        let text_limit_width = (ctx.conf.width - ctx.conf.c4_shape_padding * 2.0).max(32.0);
+        let text_conf = ctx.cfg.shape_font(&type_c4_shape);
 
-        let type_text = format!("«{}»", type_c4_shape);
-        let type_metrics = ctx.measurer.measure(&type_text, &type_conf);
-        let type_block = C4TextBlockLayout {
-            text: type_text,
-            y,
-            width: type_metrics.width,
-            height: type_conf.font_size + 2.0,
-            line_count: 1,
-        };
-        y = y + type_block.height - 4.0;
-
-        let mut image = C4ImageLayout {
-            width: 0.0,
-            height: 0.0,
-            y: 0.0,
-        };
-        if matches!(type_c4_shape.as_str(), "person" | "external_person") {
-            image.width = 48.0;
-            image.height = 48.0;
-            image.y = y;
-            y = image.y + image.height;
-        }
-        if has_sprite(&shape.sprite) {
-            image.width = 48.0;
-            image.height = 48.0;
-            image.y = y;
-            y = image.y + image.height;
-        }
-
-        let text_wrap = shape.wrap && ctx.conf.wrap;
-        let text_limit_width = ctx.conf.width - ctx.conf.c4_shape_padding * 2.0;
-
-        let mut label_conf = ctx.cfg.shape_font(&type_c4_shape);
-        label_conf.font_size += 2.0;
-        label_conf.font_weight = Some("bold".to_string());
-
+        // Unified C4 labels are measured as stacked name/stereotype/description sections.
+        // Their CSS font sizes are part of the geometry contract, so measure each section with
+        // the same scale that the SVG renderer emits.
         let label_text = shape.label.as_str().to_string();
-        let label_m = measure_c4_text(
-            ctx.measurer,
-            &label_text,
-            &label_conf,
-            text_wrap,
-            text_limit_width,
-        );
+        let has_label = !label_text.trim().is_empty();
+        let label_m = if !has_label {
+            super::TextMeasure {
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
+            }
+        } else {
+            let mut name_conf = text_conf.clone();
+            name_conf.font_weight = Some("bold".to_string());
+            measure_c4_unified_text(
+                ctx.measurer,
+                &label_text,
+                &name_conf,
+                text_wrap,
+                text_limit_width,
+            )
+        };
         let label = C4TextBlockLayout {
             text: label_text,
-            y: y + 8.0,
+            y: 0.0,
             width: label_m.width,
             height: label_m.height,
             line_count: label_m.line_count,
         };
-        y = label.y + label.height;
 
-        let mut ty_block: Option<C4TextBlockLayout> = None;
-        let mut techn_block: Option<C4TextBlockLayout> = None;
+        let stereotype_text = c4_stereotype_text(shape);
+        let mut stereotype_conf = text_conf.clone();
+        stereotype_conf.font_size *= 0.75;
+        let stereotype_m = measure_c4_unified_text(
+            ctx.measurer,
+            &stereotype_text,
+            &stereotype_conf,
+            text_wrap,
+            text_limit_width,
+        );
+        let type_block = C4TextBlockLayout {
+            text: stereotype_text,
+            y: 0.0,
+            width: stereotype_m.width,
+            height: stereotype_m.height,
+            line_count: stereotype_m.line_count,
+        };
 
-        if let Some(ty) = shape.ty.as_ref().filter(|t| !t.as_str().is_empty()) {
-            let type_text = format!("[{}]", ty.as_str());
-            let type_conf = ctx.cfg.shape_font(&type_c4_shape);
-            let m = measure_c4_text(
-                ctx.measurer,
-                &type_text,
-                &type_conf,
-                text_wrap,
-                text_limit_width,
-            );
-            let block = C4TextBlockLayout {
-                text: type_text,
-                y: y + 5.0,
-                width: m.width,
-                height: m.height,
-                line_count: m.line_count,
-            };
-            y = block.y + block.height;
-            ty_block = Some(block);
-        } else if let Some(techn) = shape.techn.as_ref().filter(|t| !t.as_str().is_empty()) {
-            let techn_text = format!("[{}]", techn.as_str());
-            // Mermaid@11.12.2 C4 renderer quirk: `techn` text is measured with
-            // `c4ShapeFont(conf, c4Shape.techn.text)`, where `c4Shape.techn.text` already contains
-            // the bracketed string (e.g. `[Rust]`). That key does not exist in the config object,
-            // so the downstream `calculateTextDimensions` falls back to its defaults
-            // (`fontSize=12`, `fontFamily='Arial'`).
-            //
-            // Upstream SVG baselines encode this behavior into shape heights and ultimately the
-            // root viewBox. Mirror it here for parity.
-            let techn_conf = TextStyle {
-                font_family: Some("Arial".to_string()),
-                font_size: 12.0,
-                font_weight: None,
-                font_style: None,
-            };
-            let m = measure_c4_text(
-                ctx.measurer,
-                &techn_text,
-                &techn_conf,
-                text_wrap,
-                text_limit_width,
-            );
-            let block = C4TextBlockLayout {
-                text: techn_text,
-                y: y + 5.0,
-                width: m.width,
-                height: m.height,
-                line_count: m.line_count,
-            };
-            y = block.y + block.height;
-            techn_block = Some(block);
+        let descr_block = shape
+            .descr
+            .as_ref()
+            .filter(|text| !text.as_str().is_empty())
+            .map(|descr| {
+                let text = descr.as_str().to_string();
+                let mut descr_conf = text_conf.clone();
+                descr_conf.font_size *= 0.82;
+                let measured = measure_c4_unified_text(
+                    ctx.measurer,
+                    &text,
+                    &descr_conf,
+                    text_wrap,
+                    text_limit_width,
+                );
+                C4TextBlockLayout {
+                    text,
+                    y: 0.0,
+                    width: measured.width,
+                    height: measured.height,
+                    line_count: measured.line_count,
+                }
+            });
+
+        let section_gap = 3.0;
+        let has_descr = descr_block.is_some();
+        let section_count = usize::from(has_label) + 1 + usize::from(has_descr);
+        let content_width = label
+            .width
+            .max(type_block.width)
+            .max(descr_block.as_ref().map(|block| block.width).unwrap_or(0.0));
+        let content_height = label.height
+            + type_block.height
+            + descr_block
+                .as_ref()
+                .map(|block| block.height)
+                .unwrap_or(0.0)
+            + section_gap * section_count.saturating_sub(1) as f64;
+
+        // Store section centre positions relative to the top-left layout box. The SVG renderer
+        // translates the unified shape to its centre and uses these values to place each label.
+        let mut section_y = (ctx
+            .conf
+            .height
+            .max(content_height + 2.0 * ctx.conf.c4_shape_padding)
+            - content_height)
+            / 2.0;
+        let mut label = label;
+        if has_label {
+            label.y = section_y + label.height / 2.0;
+            section_y += label.height + section_gap;
+        }
+        let mut type_block = type_block;
+        type_block.y = section_y + type_block.height / 2.0;
+        section_y += type_block.height + section_gap;
+        let mut descr_block = descr_block;
+        if let Some(descr) = descr_block.as_mut() {
+            descr.y = section_y + descr.height / 2.0;
         }
 
-        let mut rect_height = y;
-        let mut rect_width = label.width;
-
-        let mut descr_block: Option<C4TextBlockLayout> = None;
-        if let Some(descr) = shape.descr.as_ref().filter(|t| !t.as_str().is_empty()) {
-            let descr_text = descr.as_str().to_string();
-            let descr_conf = ctx.cfg.shape_font(&type_c4_shape);
-            let m = measure_c4_text(
-                ctx.measurer,
-                &descr_text,
-                &descr_conf,
-                text_wrap,
-                text_limit_width,
-            );
-            let block = C4TextBlockLayout {
-                text: descr_text,
-                y: y + 20.0,
-                width: m.width,
-                height: m.height,
-                line_count: m.line_count,
-            };
-            y = block.y + block.height;
-            rect_width = rect_width.max(block.width);
-            rect_height = y - block.line_count as f64 * 5.0;
-            descr_block = Some(block);
-        }
-
-        rect_width += ctx.conf.c4_shape_padding;
-
-        let width = ctx.conf.width.max(rect_width);
-        let height = ctx.conf.height.max(rect_height);
+        let image = C4ImageLayout {
+            width: 0.0,
+            height: 0.0,
+            y: 0.0,
+        };
+        let padding = ctx.conf.c4_shape_padding;
+        let base_width = (content_width + 2.0 * padding).max(ctx.conf.width);
+        // Unified shapes receive the configured width as a target, but no legacy minimum
+        // height. Their self-sized label bounds determine the vertical extent.
+        let base_height = content_height + 2.0 * padding;
+        let (width, height) = match shape_kind {
+            C4NodeShape::Rounded => (base_width, base_height),
+            C4NodeShape::Framed => (
+                (content_width + padding + 16.0).max(ctx.conf.width),
+                content_height + padding,
+            ),
+            C4NodeShape::Person => {
+                let width = base_width.max(100.0);
+                let head_radius = (width * 0.23).clamp(16.0, 56.0);
+                let overlap = head_radius * 0.27;
+                let body_height = base_height;
+                (width, body_height + 2.0 * head_radius - overlap)
+            }
+            C4NodeShape::Cylinder => {
+                // The unified cylinder reserves one padding unit around the label, while the
+                // legacy `c4.width` remains a lower bound for the full shape.
+                let width = (content_width + padding).max(ctx.conf.width).max(1.0);
+                let rx = width / 2.0;
+                let ry = rx / (2.5 + width / 50.0);
+                // `cylinder`'s path extends one cap radius beyond its vertical body on both
+                // sides; the legacy grid stores the resulting outer bounding-box height.
+                (width, content_height + padding + 3.0 * ry)
+            }
+            C4NodeShape::HorizontalCylinder => {
+                let h = (content_height + padding / 2.0).max(1.0);
+                let ry = h / 2.0;
+                let rx = ry / (2.5 + h / 50.0);
+                let label_width = content_width.max(ctx.conf.width - padding / 2.0);
+                (label_width + rx + padding / 2.0, h)
+            }
+        };
         let margin = ctx.conf.c4_shape_margin;
 
         let mut rect = Rect {
@@ -434,8 +672,8 @@ fn layout_c4_shape_array(
                 image,
                 type_block,
                 label,
-                ty: ty_block,
-                techn: techn_block,
+                ty: None,
+                techn: None,
                 descr: descr_block,
             },
         );
@@ -819,18 +1057,21 @@ pub(crate) fn layout_c4_diagram_typed(
         max_y: box_stopy,
     });
 
-    let mut shape_rects: HashMap<&str, Rect> = HashMap::new();
+    let mut shape_rects: HashMap<&str, (Rect, C4NodeShape)> = HashMap::new();
     for s in model.shapes.iter() {
         let Some(l) = state.shapes.get(&s.alias) else {
             continue;
         };
         shape_rects.insert(
             s.alias.as_str(),
-            Rect {
-                origin: merman_core::geom::point(l.x, l.y),
-                size: merman_core::geom::Size::new(l.width, l.height),
-                margin: l.margin,
-            },
+            (
+                Rect {
+                    origin: merman_core::geom::point(l.x, l.y),
+                    size: merman_core::geom::Size::new(l.width, l.height),
+                    margin: l.margin,
+                },
+                c4_node_shape(s),
+            ),
         );
     }
 
@@ -888,24 +1129,35 @@ pub(crate) fn layout_c4_diagram_typed(
                 }
             });
 
-        let from = shape_rects
-            .get(rel.from_alias.as_str())
-            .ok_or_else(|| Error::InvalidModel {
-                message: format!(
-                    "c4: relationship references missing from shape {}",
-                    rel.from_alias
-                ),
-            })?;
-        let to = shape_rects
-            .get(rel.to_alias.as_str())
-            .ok_or_else(|| Error::InvalidModel {
-                message: format!(
-                    "c4: relationship references missing to shape {}",
-                    rel.to_alias
-                ),
-            })?;
+        let (from, from_shape) =
+            shape_rects
+                .get(rel.from_alias.as_str())
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!(
+                        "c4: relationship references missing from shape {}",
+                        rel.from_alias
+                    ),
+                })?;
+        let (to, to_shape) =
+            shape_rects
+                .get(rel.to_alias.as_str())
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!(
+                        "c4: relationship references missing to shape {}",
+                        rel.to_alias
+                    ),
+                })?;
 
-        let (start_point, end_point) = intersect_points(from, to);
+        let from_center = LayoutPoint {
+            x: to.origin.x + to.size.width / 2.0,
+            y: to.origin.y + to.size.height / 2.0,
+        };
+        let to_center = LayoutPoint {
+            x: from.origin.x + from.size.width / 2.0,
+            y: from.origin.y + from.size.height / 2.0,
+        };
+        let start_point = intersect_shape_point(*from_shape, from, from_center);
+        let end_point = intersect_shape_point(*to_shape, to, to_center);
 
         rels_out.push(C4RelLayout {
             from: rel.from_alias.clone(),
