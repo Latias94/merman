@@ -3598,7 +3598,7 @@ mod tests {
             dagre_data_id_adapter_config("requirement").unwrap(),
         )
         .unwrap();
-        let traces = &requirement["test_req-test_req2-0"];
+        let traces = &requirement["test_req-test_req2-1"];
         assert_eq!(traces.text, "<<traces>>");
         assert_eq!(traces.geometry.anchor_x, 242.40006);
         assert_eq!(traces.geometry.anchor_y, 426.14623);
