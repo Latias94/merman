@@ -37,13 +37,13 @@ record. The current source and generated contract are authoritative for these su
   unqualified aggregate routes plus `Default`, `Active`, `Success`, and `Error` property-local
   variants. Gantt `Warning` remains a compatibility residual and is intentionally outside the
   typed route inventory. These counts describe KTD17 authority only, not complete theme coverage.
-- The support-claim manifest is internal revision 19. KTD23 remains version 1 with 56 historical
+- The support-claim manifest is internal revision 20. KTD23 remains version 1 with 56 historical
   retirement routes and 112 transparent/solid probes. These are separate authorities: neither
   support discovery nor historical retirement can expand KTD17 route authorization.
 - All 33 families have at least one direct typed surface. Six families have no family-owned
   `LegacyCompatibility` route (State, Packet, Error, EventModeling, Ishikawa, and ZenUML), while 27
   may still enter the bridge. Base `FontStack` is Typed/Legacy/Unsupported for 27/5/1 families;
-  base `FontSize` is 13/8/12. These counts describe migration state, not feature completeness.
+  base `FontSize` is 14/7/12. These counts describe migration state, not feature completeness.
 - C6a remains complete at 18/18 representative native cells. C7a is still not eligible because the
   public authoring/consumer rollout and remaining pre-freeze gates are intentionally open.
 - The acceptance manifest remains an independent, reviewed authority. It is reconciled exactly
@@ -591,9 +591,9 @@ Public presets declare per-target admission expectations and allowed residual ID
   projection, the terminal family owner, explicit source/site precedence, visible-text evidence,
   and the unsupported sibling properties that remain fail-closed. The matrix disposition, bridge
   suppression, terminal evidence, and ledger row must land atomically for migrations introduced
-  after KTD19. The ledger explicitly ratifies the pre-KTD19 Packet migration and records the
-  Flowchart, Swimlane, Sequence, Railroad, Info, Error, Cynefin, Wardley, Mindmap, Block,
-  EventModeling, Ishikawa, Venn, and Class property migrations.
+  after KTD19. The compact ledger below is the complete authority; it explicitly ratifies earlier
+  migrations such as Packet and Kanban `FontStack` instead of maintaining a second family list in
+  this decision text.
   This is not a wildcard for family typography, rule typography, paint, effects, or arbitrary
   inherited CSS; it
   does not enter the scalar route manifest, require a PNG pair, create a C6 cell, or broaden a
@@ -910,6 +910,12 @@ are recorded in the reconciliation section above and must not be inferred from t
 | C4a | Native core and single-face terminal binding landed; broader gate remains open | Native rustybuzz shaping, cluster fallback, projection, bounded wrapping, consumed-label sidecars, and sealed label tokens are retained. The exact tokenized artifact is bound to request/projection/line/run identity, while PNG/JPEG/PDF exporters verify final emitted line text and face/source observations. External results remain `HostDependent`; exact multi-face source/visible range proof remains in C6b. |
 | C4b | Conditional follow-up; assurance excluded | Session-private fallback candidates and basic response admission may remain, but no current product consumer requires the unfinished generation, budget, or circuit-breaker framework. Keep stable injection disabled. Implement those controls only before enabling a concrete crate-private external consumer. External output remains `HostDependent`; any later assurance or promotion requires C7c. |
 | C5 | In progress; program stages 1-2 and catalog authority converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly. Flowchart and Swimlane directly consume family-wide base `FontStack`/`FontSize` plus narrow Node/NodeLabel/Edge tranches; Swimlane also owns Cluster fill/stroke while retaining bridge routes for uncovered mechanisms. Sequence directly consumes family-wide base `FontStack`/`FontSize`, selected Actor, Lifeline, Note, Activation, Loop label-box, Message stroke, four role-label paint/typography routes, and the direct-only SequenceNumberLabel fill route; message fill, loop-frame lines, remaining signal/control surfaces, and unsupported base or label typography siblings remain bridged or fail closed. Recent slices include Treemap `Title.fill`, Block `Node.fill`/`stroke` plus base `FontStack`/`FontSize`, Requirement `Requirement.fill`/`stroke`, Pie `PieSlice.fill`/`stroke`, Class `Edge.stroke`, Node/NodeLabel paint, and base `FontStack` shared by Dagre/ELK layout and terminal CSS, ER `Relation.stroke` plus Text fill and base `FontStack`/`FontSize`, Mindmap/GitGraph/Architecture `Edge.stroke`, GitGraph base `FontStack`/`FontSize`, Architecture Node/Marker/Cluster terminal paint and `Text.fill`, Gantt `Task.fill`/`stroke` plus base `FontStack` shared by layout and terminal CSS, Kanban `Task.stroke`, Journey `JourneyTask.fill`/`stroke`, Timeline `TimelineEvent.radius`/`opacity` with clamped geometry and sealed terminal-path observation, Tree View `NodeLabel`/`Text` fill and `Edge` fill/stroke with renderer-owned terminal receipts, C4 and Swimlane `Cluster.fill`/`Cluster.stroke`, Quadrant Chart `ChartSeries.fill`, the direct-only Sankey `Node` ordinal palette plus base `FontStack`, Radar `ChartSeries` ordinal palette plus base `FontStack`/`FontSize`, Flowchart/Swimlane/Sequence/Railroad base `FontStack`/`FontSize`, Info/Error/Cynefin/Wardley base `FontStack`, Info `Text.fill`, ZenUML/Venn `Title.fill` plus Venn `FontStack`, Ishikawa `Text.fill` plus base `FontStack`/`FontSize`, and EventModeling `Text.fill` plus base `FontStack`/`FontSize` CSS terminals. All 33 families now have at least one direct typed surface; 27 remain partial typed plus bridge, none remain without a direct surface, and 27/33 may still enter compatibility. State, Packet, Error, Ishikawa, EventModeling, and ZenUML are the six no-legacy families, with the latter five intentionally narrow because many theme facets remain Unsupported or browser-dependent. The version-26 148-route/164-artifact KTD17 manifest authorizes its declared static scalar domain only and does not close C6a; its selector domain includes unqualified routes plus explicitly enumerated static variants such as Gantt `Default`/`Active`/`Success`/`Error`, Requirement `Default`, ER `Relation` `Default`, Pie `PieSlice` `Default`, and Class `Node`/`NodeLabel` `Default`, while `Warning` remains a compatibility residual. SequenceNumberLabel has no legacy projection and remains outside KTD17, Sankey remains outside KTD18 because it replaces no legacy palette, each Flowchart/Swimlane/Sequence/Railroad/Radar/GitGraph KTD19 property pair retires one family-local bundled typography contribution atomically, the Block, EventModeling, and Ishikawa KTD19 rows retire their `FontStack`/`FontSize` projections, the ER `FontSize` row retires its last property-local typography projection, and the Info/Error/Cynefin/Wardley/Class KTD19 rows retire only their family-local `FontStack` projection. Venn and Sankey each retire their bundled typography contribution as a whole, with `FontStack` typed and `FontSize` Unsupported. KTD23 separately seals 56 historical dead-projection route shapes with 112 nonvisual bridge probes and uses family-owned occurrence facts to distinguish visible Unsupported residuals from absent or shadowed `NotApplicable` rules; it neither expands KTD17 nor creates C6 evidence. The core family catalog is the sole family-ID/alias/detection authority. Final surviving compatibility provenance, additional direct consumers, and parse/session theme binding remain convergence gates. |
+The C5 checkpoint now also records the Kanban base-typography slice: `KanbanTypographyPlan`
+resolves `FontStack` and `FontSize` once and shares the result with prepared label measurement,
+bbox-derived layout, final CSS, and writer-owned evidence. The slice is property-local: explicit
+`themeVariables.fontSize` ownership remains `NotApplicable`, malformed explicit values remain
+unverified, and the family still retains compatibility routes for other surfaces.
+
 The C5 checkpoint now also records the Venn `FontStack` slice: its family-local typed plan and
 renderer-owned receipt cover the four Venn text selector surfaces, with
 `themeVariables.fontFamily` taking precedence over root `fontFamily`. `FontSize` has no Venn
@@ -1382,7 +1388,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   recipe, licensing, resource-cost, maturity, and evidence rules as every other candidate.
 - **Capability-discovery candidate:** Build the versioned query/result envelope from the core family
   catalog and the landed renderer-owned, versioned support-claim manifest, whose internal revision is
-  currently 19 and whose claims reconcile against the private C5 mechanism matrix. C5 family/target
+  currently 20 and whose claims reconcile against the private C5 mechanism matrix. C5 family/target
   modules own complete value-domain arguments and runtime admission predicates. The non-published
   C6a harness validates representative end-to-end
   integration and detects manifest drift; it cannot upgrade a descriptor to `Unconditional` merely
@@ -1397,7 +1403,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   discovery does not reimplement them. Unknown string IDs and additive rows are preserved and
   normalize to `Unverified`, while execution requests still reject unknown executable IDs. A concrete
   final render or export report remains authoritative for one request. Because this candidate has
-  not been published, internal `claim_revision = 19` records pre-freeze claim-authority changes
+  not been published, internal `claim_revision = 20` records pre-freeze claim-authority changes
   without constituting a stable public compatibility promise. `claim_revision` versions only
   this capability-support claim authority. It is never reused as a preset-catalog schema, recipe
   revision, recipe/resource fingerprint, or qualification revision; those KTD21 identities advance
@@ -1488,7 +1494,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   lists only compiled-in recipes/resources while equivalent capability profiles receive identical
   public projections. Export vectors cover both `PresetExportV1` tags and reject unknown tags,
   missing or duplicate payloads, and untagged shape guessing. Revision tests keep the current
-  unpublished capability `claim_revision = 19` while independently changing catalog, recipe, and
+  unpublished capability `claim_revision = 20` while independently changing catalog, recipe, and
   qualification identities. The
   rollout gate then runs the native portions of the original U8-U11 matrices: Options/binding/Typst
   parity, native CLI scope, generated contracts, migration examples, and public API compilation.
@@ -1568,6 +1574,8 @@ It records only properties whose actual family writer owns the terminal inherita
 
 | Family / property | Former legacy contribution and complete projection | Direct terminal owner and required evidence | Status |
 | --- | --- | --- | --- |
+| Kanban / `FontStack` | `merman.legacy-family-theme.v1.kanban.typography`; root `fontFamily` plus `themeVariables.fontFamily`, formerly emitted by the bundled typography contribution | `KanbanTypographyPlan` resolves one inherited family stack shared by section/task label measurement, layout, final CSS, and the writer-owned visible-label receipt. Explicit root or `themeVariables.fontFamily` ownership wins and reports `NotApplicable`; source-owned descendant font declarations remain occurrence-local residuals rather than being promoted to measured typed evidence. | Migrated (property-local; previously landed, now ratified) |
+| Kanban / `FontSize` | `merman.legacy-family-theme.v1.kanban.typography`; `themeVariables.fontSize`, formerly the last surviving property-local assignment in that contribution | The same `KanbanTypographyPlan` shares one resolved size with section/task label measurement, bbox-derived card geometry using Mermaid's fixed padding and baselines, final CSS, and the writer-owned visible-label receipt. Explicit `themeVariables.fontSize` ownership wins and reports `NotApplicable`; root `fontSize` remains the Mermaid-compatible fallback when no typed winner is active. Source-owned descendant sizes remain fail-closed because they are not represented by the family-wide layout measurement. | Migrated (property-local) |
 | Packet / `FontStack` | `merman.legacy-family-theme.v1.packet.typography`; root `fontFamily` plus `themeVariables.fontFamily`, formerly bounded by the 4 KiB legacy assignment limit | `PacketTypographyThemePlan` bound to root and nested-SVG `font-family`, `--mermaid-font-family`, and emitted non-empty text inheritance; exact root / `themeVariables.fontFamily` source precedence; declaration-safe Packet role CSS; valid direct stacks above the retired bridge limit; unsupported sibling typography and remaining unmodeled paint remain explicit residuals. Packet role paints are separate direct-only routes with no former legacy projection and are not authorized by KTD19. | Migrated (pre-KTD19, ratified) |
 | Flowchart / `FontStack` | `merman.legacy-family-theme.v1.flowchart.typography`; root `fontFamily` plus `themeVariables.fontFamily`, formerly emitted by the bundled typography contribution | `FlowchartBaseTypographyPlan` shared by native and HTML label measurement, layout, root/nested-SVG/`.label` terminal CSS, and final visible-text receipt; exact root and `themeVariables.fontFamily` ownership; label-local source styles and typed target rules remain more specific winners | Migrated (atomic pair) |
 | Flowchart / `FontSize` | `merman.legacy-family-theme.v1.flowchart.typography`; `themeVariables.fontSize`, formerly emitted by the same bundled typography contribution | `FlowchartBaseTypographyPlan` shared by native and HTML label measurement, layout, root/nested-SVG/`.label` terminal CSS, and final visible-text receipt; exact root and `themeVariables.fontSize` ownership; unsupported sibling base properties remain fail-closed | Migrated (atomic pair) |
@@ -1602,11 +1610,11 @@ It records only properties whose actual family writer owns the terminal inherita
 | ER / `FontSize` | `merman.legacy-family-theme.v1.er.typography`; `themeVariables.fontSize`, formerly the last surviving property-local assignment in that contribution | `ErEntityThemePlan` and family preparation share one typed base size across entity-name, attribute-cell, and diagram-title measurement, Dagre/ELK layout, root/nested-SVG CSS, and writer-owned evidence. Explicit site/source `themeVariables.fontSize` ownership reports `NotApplicable`; root `fontSize` and `er.fontSize` remain the Mermaid-compatible fallback when no typed size is active. Relationship labels retain their independent fixed 14px measurement and CSS owner. Entity-local `classDef`/`style` font-size declarations remain terminal winners but fail closed as layout residuals until their occurrence-local browser measurement is proved. ER paint and qualified table-row compatibility routes remain outside this row. | Migrated (property-local) |
 
 Adding another row requires a deliberate plan edit and the same atomic implementation boundary.
-The Packet row ratifies the already-landed migration; each later row lands atomically with its
+The Packet and Kanban `FontStack` rows ratify already-landed migrations; each later row lands atomically with its
 matrix, bridge, writer evidence, and ledger changes. Each Flowchart, Swimlane, Sequence, Railroad,
 Radar, and GitGraph property pair is one indivisible family-local migration because its former `typography`
 contribution bundled both properties; no row independently authorizes partial suppression. The
-EventModeling's and Ishikawa's two-property pairs each retire one family-local typography
+EventModeling's, Ishikawa's, and Kanban's two-property pairs each retire one family-local typography
 contribution. Info, Error, Cynefin, Wardley, and Class retire only their family-local `FontStack`
 projection. The Venn and Sankey rows each retire their bundled contribution as a whole:
 `FontStack` is typed, while `FontSize` has no family base terminal and is Unsupported. Class deliberately retains its property-local

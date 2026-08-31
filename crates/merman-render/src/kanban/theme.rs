@@ -23,12 +23,125 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 /// without competing with a source-owned style channel. Section geometry remains independent.
 pub(super) const MERMAID_TASK_RADIUS_PX: f64 = 5.0;
 const MERMAID_TASK_PALETTE_SLOT_COUNT: usize = 12;
+const MERMAID_BASE_FONT_SIZE_PX: f64 = 16.0;
+
+fn positive_font_size(value: Option<f64>) -> Option<f64> {
+    value.filter(|value| value.is_finite() && *value > 0.0)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KanbanFontSizeOutcome {
+    Inactive,
+    Typed,
+    ConfigOwned,
+    UnverifiedConfig,
+}
+
+/// Resolves Kanban's inherited typography once for measurement, layout, CSS, and evidence.
+#[derive(Debug)]
+pub(crate) struct KanbanTypographyPlan {
+    inherited_font_stack: InheritedFontStackPlan,
+    font_size_css: Box<str>,
+    font_size_px: f64,
+    typed_font_size_requested: bool,
+    font_size_outcome: KanbanFontSizeOutcome,
+}
+
+impl KanbanTypographyPlan {
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+    ) -> Self {
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let typed_font_size_requested = theme.is_some_and(|theme| {
+            theme.family_mechanism_routes().iter().any(|route| {
+                route.mechanism()
+                    == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            })
+        });
+        let config_owns_font_size = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.fontSize",
+        );
+        let configured_theme_font_size = positive_font_size(crate::config::config_f64_css_px(
+            effective_config.as_value(),
+            &["themeVariables", "fontSize"],
+        ));
+        let fallback_font_size_px = positive_font_size(
+            crate::config::config_theme_or_root_font_size_px_opt(effective_config.as_value()),
+        )
+        .unwrap_or(MERMAID_BASE_FONT_SIZE_PX)
+        .max(1.0);
+        let fallback_font_size_css = positive_font_size(
+            crate::config::config_theme_font_size_css_or_root_number_px_opt(
+                effective_config.as_value(),
+            ),
+        )
+        .unwrap_or(MERMAID_BASE_FONT_SIZE_PX)
+        .max(1.0);
+        let font_size_outcome = match () {
+            _ if !typed_font_size_requested => KanbanFontSizeOutcome::Inactive,
+            _ if !config_owns_font_size => KanbanFontSizeOutcome::Typed,
+            _ if configured_theme_font_size.is_some() => KanbanFontSizeOutcome::ConfigOwned,
+            _ => KanbanFontSizeOutcome::UnverifiedConfig,
+        };
+        let (font_size_px, font_size_css) = match (theme, font_size_outcome) {
+            (Some(theme), KanbanFontSizeOutcome::Typed) => {
+                let font_size_px = theme.typography().font_size_px().max(1.0);
+                (
+                    f64::from(font_size_px),
+                    format!("{font_size_px}px").into_boxed_str(),
+                )
+            }
+            (_, KanbanFontSizeOutcome::ConfigOwned) => {
+                let font_size_px = configured_theme_font_size
+                    .expect("validated Kanban theme font-size ownership")
+                    .max(1.0);
+                (font_size_px, format!("{font_size_px}px").into_boxed_str())
+            }
+            _ => (
+                fallback_font_size_px,
+                format!("{fallback_font_size_css}px").into_boxed_str(),
+            ),
+        };
+
+        Self {
+            inherited_font_stack,
+            font_size_css,
+            font_size_px,
+            typed_font_size_requested,
+            font_size_outcome,
+        }
+    }
+
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn font_size_css(&self) -> &str {
+        &self.font_size_css
+    }
+
+    pub(crate) const fn font_size_px(&self) -> f64 {
+        self.font_size_px
+    }
+
+    fn typography_requested(&self) -> bool {
+        self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
+    }
+
+    fn uses_resolved_typography_css(&self) -> bool {
+        self.inherited_font_stack.typed_font_stack_requested() || self.typed_font_size_requested
+    }
+}
 
 /// Kanban task geometry and evidence resolved once for concrete item occurrences.
 #[derive(Debug)]
 pub(crate) struct KanbanTaskTheme {
     items: Box<[KanbanTaskResolvedItem]>,
-    inherited_font_stack: InheritedFontStackPlan,
+    typography: KanbanTypographyPlan,
     evidence: FamilyThemeEvidence,
     pending_radius_key: Option<FamilyThemeMechanismKey>,
     pending_fill_keys: BTreeSet<FamilyThemeMechanismKey>,
@@ -38,17 +151,19 @@ pub(crate) struct KanbanTaskTheme {
     terminal_receipt: OnceLock<KanbanTaskThemeReceipt>,
 }
 
-/// Prepared ownership facts for the inherited font-family terminals emitted by Kanban.
+/// Prepared ownership facts for the inherited typography terminals emitted by Kanban.
 ///
-/// The writer records these same facts at each text terminal. A typed font stack is only
-/// portable when every visible run is still inherited from the Kanban root and the prepared
-/// XHTML was successfully classified.
+/// The writer records these same facts at each text terminal. A typed base property is only
+/// portable when every visible run still inherits that property from the Kanban root and the
+/// prepared XHTML was successfully classified.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct KanbanTypographyFacts {
     terminal_count: usize,
     visible_run_count: usize,
     inherited_font_family_run_count: usize,
     unverified_font_family_run_count: usize,
+    inherited_font_size_run_count: usize,
+    unverified_font_size_run_count: usize,
     parse_valid: bool,
 }
 
@@ -59,6 +174,8 @@ impl Default for KanbanTypographyFacts {
             visible_run_count: 0,
             inherited_font_family_run_count: 0,
             unverified_font_family_run_count: 0,
+            inherited_font_size_run_count: 0,
+            unverified_font_size_run_count: 0,
             parse_valid: true,
         }
     }
@@ -79,6 +196,12 @@ impl KanbanTypographyFacts {
         self.unverified_font_family_run_count = self
             .unverified_font_family_run_count
             .saturating_add(facts.unverified_font_family_run_count());
+        self.inherited_font_size_run_count = self
+            .inherited_font_size_run_count
+            .saturating_add(facts.inherited_font_size_run_count());
+        self.unverified_font_size_run_count = self
+            .unverified_font_size_run_count
+            .saturating_add(facts.unverified_font_size_run_count());
         self.parse_valid &= facts.parse_valid();
     }
 
@@ -88,6 +211,7 @@ impl KanbanTypographyFacts {
             terminal_count: usize::from(visible),
             visible_run_count: usize::from(visible),
             inherited_font_family_run_count: usize::from(visible),
+            inherited_font_size_run_count: usize::from(visible),
             ..Self::default()
         }
     }
@@ -214,19 +338,16 @@ impl KanbanTaskOccurrence {
 }
 
 impl KanbanTaskTheme {
-    pub(crate) fn resolve_with_font_stack(
+    pub(crate) fn resolve_with_typography(
         theme: Option<&ResolvedDiagramTheme>,
         occurrences: Vec<KanbanTaskOccurrence>,
         effective_config: &MermaidConfig,
-        inherited_font_stack: InheritedFontStackPlan,
+        typography: KanbanTypographyPlan,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let item_count = occurrences.len();
         let Some(theme) = theme else {
-            return Ok(Self::baseline_occurrences(
-                occurrences,
-                inherited_font_stack,
-            ));
+            return Ok(Self::baseline_occurrences(occurrences, typography));
         };
 
         let palette_disposition = theme.ordinal_palette_disposition(ThemeTarget::Task);
@@ -536,7 +657,7 @@ impl KanbanTaskTheme {
 
         Ok(Self {
             items: items.into_boxed_slice(),
-            inherited_font_stack,
+            typography,
             evidence,
             pending_radius_key,
             pending_fill_keys,
@@ -547,21 +668,9 @@ impl KanbanTaskTheme {
         })
     }
 
-    pub(crate) fn baseline_with_config(
-        item_count: usize,
-        effective_config: &MermaidConfig,
-    ) -> Self {
-        Self::baseline_occurrences(
-            (0..item_count)
-                .map(|index| KanbanTaskOccurrence::new(format!("item-{index}"), []))
-                .collect(),
-            InheritedFontStackPlan::resolve_property_local(None, effective_config),
-        )
-    }
-
-    fn baseline_occurrences(
+    pub(super) fn baseline_occurrences(
         occurrences: Vec<KanbanTaskOccurrence>,
-        inherited_font_stack: InheritedFontStackPlan,
+        typography: KanbanTypographyPlan,
     ) -> Self {
         Self {
             items: occurrences
@@ -575,7 +684,7 @@ impl KanbanTaskTheme {
                     label_foreground: None,
                 })
                 .collect(),
-            inherited_font_stack,
+            typography,
             evidence: FamilyThemeEvidence::default(),
             pending_radius_key: None,
             pending_fill_keys: BTreeSet::new(),
@@ -591,13 +700,21 @@ impl KanbanTaskTheme {
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
+        self.typography.font_family_css()
     }
 
-    pub(crate) fn font_family_override(&self) -> Option<&str> {
-        self.inherited_font_stack
-            .typed_font_stack_active()
-            .then_some(self.font_family_css())
+    pub(crate) fn font_size_css(&self) -> &str {
+        self.typography.font_size_css()
+    }
+
+    pub(crate) const fn font_size_px(&self) -> f64 {
+        self.typography.font_size_px()
+    }
+
+    pub(crate) fn resolved_typography_for_css(&self) -> Option<(&str, &str)> {
+        self.typography
+            .uses_resolved_typography_css()
+            .then_some((self.font_family_css(), self.font_size_css()))
     }
 
     pub(crate) fn terminal_decisions(
@@ -653,23 +770,28 @@ impl KanbanTaskTheme {
         &self,
         decisions: &[KanbanTaskTerminalDecision],
         typography_facts: KanbanTypographyFacts,
+        typography_layout: &super::KanbanTypographyLayoutReceipt,
     ) -> Option<KanbanTaskThemeReceipt> {
         (self.pending_radius_key.is_some()
             || !self.pending_fill_keys.is_empty()
             || !self.pending_stroke_keys.is_empty()
             || self.palette_key.is_some()
             || !self.pending_label_keys.is_empty()
-            || self.inherited_font_stack.typed_font_stack_active()
-            || self
-                .inherited_font_stack
-                .has_unsupported_typography_properties())
+            || self.typography.typography_requested())
         .then(|| {
             KanbanTaskThemeReceipt::new_with_typography(
                 &self.items,
                 decisions,
-                self.inherited_font_stack.typed_font_stack_active(),
+                self.typography.typography_requested(),
+                self.typography
+                    .inherited_font_stack
+                    .typed_font_stack_requested(),
+                self.typography.typed_font_size_requested,
                 typography_facts,
                 self.font_family_css(),
+                self.font_size_css(),
+                self.font_size_px(),
+                typography_layout,
             )
         })
     }
@@ -680,29 +802,34 @@ impl KanbanTaskTheme {
             || !self.pending_stroke_keys.is_empty()
             || self.palette_key.is_some()
             || !self.pending_label_keys.is_empty()
-            || self.inherited_font_stack.typed_font_stack_active()
-            || self
-                .inherited_font_stack
-                .has_unsupported_typography_properties())
-            && receipt.proves(self.items.len())
+            || self.typography.typography_requested())
             && self.terminal_receipt.set(receipt).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        self.inherited_font_stack
+        self.typography
+            .inherited_font_stack
             .mark_unsupported_typography_evidence(
                 &mut evidence,
-                self.terminal_receipt
-                    .get()
-                    .is_none_or(KanbanTaskThemeReceipt::typography_visible),
+                self.terminal_receipt.get().is_none_or(
+                    KanbanTaskThemeReceipt::typography_has_visible_or_unverified_terminals,
+                ),
             );
         if let Some(receipt) = self.terminal_receipt.get() {
             if let Some(key) = self.pending_radius_key.clone() {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::RoundedGeometry]);
+                if receipt.proves_radius() {
+                    evidence
+                        .mark_applied_with_capabilities(key, [ThemeCapability::RoundedGeometry]);
+                } else {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedGeometry);
+                }
             }
             if let Some(key) = self.palette_key.clone() {
-                if receipt.palette_capabilities.is_empty() {
+                if !receipt.proves_palette() {
+                    evidence
+                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
+                } else if receipt.palette_capabilities.is_empty() {
                     evidence.mark_not_applicable(key);
                 } else {
                     evidence.mark_applied_with_capabilities(
@@ -754,6 +881,9 @@ impl KanbanTaskTheme {
                 }
             }
         } else {
+            if let Some(key) = self.pending_radius_key.clone() {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedGeometry);
+            }
             for key in &self.pending_fill_keys {
                 evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
             }
@@ -767,36 +897,54 @@ impl KanbanTaskTheme {
                 evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
             }
         }
-        let typography_key =
-            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        if self.inherited_font_stack.typed_font_stack_active() {
-            if let Some(receipt) = self.terminal_receipt.get()
-                && receipt.proves_typography()
-            {
-                if receipt.typography_visible() {
-                    evidence.mark_applied_with_capabilities(
-                        typography_key,
-                        [ThemeCapability::Typography],
-                    );
-                } else {
-                    evidence.mark_not_applicable(typography_key);
+
+        if self
+            .typography
+            .inherited_font_stack
+            .typed_font_stack_requested()
+        {
+            let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+            match self.typography.inherited_font_stack.outcome() {
+                InheritedFontStackOutcome::Typed => match self.terminal_receipt.get() {
+                    Some(receipt) if receipt.typography_is_not_applicable() => {
+                        evidence.mark_not_applicable(key)
+                    }
+                    Some(receipt) if receipt.proves_font_family() => {
+                        evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography])
+                    }
+                    Some(_) | None => evidence
+                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
+                },
+                InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
+                InheritedFontStackOutcome::Unsupported => {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography)
                 }
-            } else {
-                evidence.mark_residual(
-                    typography_key,
-                    FamilyThemeResidualReason::UnsupportedTypography,
-                );
+                InheritedFontStackOutcome::Inactive => {}
             }
-        } else {
-            match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::ConfigOwned => {
-                    evidence.mark_not_applicable(typography_key)
-                }
-                InheritedFontStackOutcome::Unsupported => evidence.mark_residual(
-                    typography_key,
-                    FamilyThemeResidualReason::UnsupportedTypography,
-                ),
-                InheritedFontStackOutcome::Inactive | InheritedFontStackOutcome::Typed => {}
+        }
+
+        if self.typography.typed_font_size_requested {
+            let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
+            match self.typography.font_size_outcome {
+                KanbanFontSizeOutcome::Typed => match self.terminal_receipt.get() {
+                    Some(receipt) if receipt.typography_is_not_applicable() => {
+                        evidence.mark_not_applicable(key)
+                    }
+                    Some(receipt) if receipt.proves_font_size() => {
+                        evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography])
+                    }
+                    Some(_) | None => evidence
+                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
+                },
+                KanbanFontSizeOutcome::ConfigOwned => evidence.mark_not_applicable(key),
+                KanbanFontSizeOutcome::UnverifiedConfig => match self.terminal_receipt.get() {
+                    Some(receipt) if receipt.typography_is_not_applicable() => {
+                        evidence.mark_not_applicable(key)
+                    }
+                    Some(_) | None => evidence
+                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
+                },
+                KanbanFontSizeOutcome::Inactive => {}
             }
         }
         evidence
@@ -924,16 +1072,27 @@ fn typed_radius_px(
 #[derive(Debug)]
 pub(crate) struct KanbanTaskThemeReceipt {
     items: Vec<KanbanTaskReceiptItem>,
-    schema_valid: bool,
+    rect_identity_valid: bool,
+    radius_valid: bool,
+    palette_valid: bool,
+    label_schema_valid: bool,
     expected_font_family: Box<str>,
+    expected_font_size_css: Box<str>,
+    expected_font_size_px: f64,
+    typography_layout: super::KanbanTypographyLayoutReceipt,
     typography_required: bool,
+    font_family_requested: bool,
+    font_size_requested: bool,
     expected_typography: KanbanTypographyFacts,
     actual_typography: KanbanTypographyFacts,
     typography_css_recorded: bool,
-    typography_css_matches: bool,
+    font_family_css_matches: bool,
+    font_size_css_matches: bool,
     palette_capabilities: BTreeSet<ThemeCapability>,
     typed_fill_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     typed_stroke_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
+    invalid_fill_rules: BTreeSet<usize>,
+    invalid_stroke_rules: BTreeSet<usize>,
     label_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     unverified_label_rules: BTreeSet<usize>,
 }
@@ -953,8 +1112,19 @@ impl KanbanTaskThemeReceipt {
             items,
             decisions,
             false,
+            false,
+            false,
             KanbanTypographyFacts::default(),
             "",
+            "",
+            MERMAID_BASE_FONT_SIZE_PX,
+            &super::KanbanTypographyLayoutReceipt::new(
+                "",
+                MERMAID_BASE_FONT_SIZE_PX,
+                0,
+                items.len(),
+                0,
+            ),
         )
     }
 
@@ -962,8 +1132,13 @@ impl KanbanTaskThemeReceipt {
         items: &[KanbanTaskResolvedItem],
         decisions: &[KanbanTaskTerminalDecision],
         typography_required: bool,
+        font_family_requested: bool,
+        font_size_requested: bool,
         expected_typography: KanbanTypographyFacts,
         expected_font_family: &str,
+        expected_font_size_css: &str,
+        expected_font_size_px: f64,
+        typography_layout: &super::KanbanTypographyLayoutReceipt,
     ) -> Self {
         let schema_valid = items.len() == decisions.len();
         Self {
@@ -980,28 +1155,48 @@ impl KanbanTaskThemeReceipt {
                     emitted_labels: KanbanTaskLabelRoles::default(),
                 })
                 .collect(),
-            schema_valid,
+            rect_identity_valid: schema_valid,
+            radius_valid: true,
+            palette_valid: true,
+            label_schema_valid: schema_valid,
             expected_font_family: expected_font_family.into(),
+            expected_font_size_css: expected_font_size_css.into(),
+            expected_font_size_px,
+            typography_layout: typography_layout.clone(),
             typography_required,
+            font_family_requested,
+            font_size_requested,
             expected_typography,
             actual_typography: KanbanTypographyFacts::default(),
             typography_css_recorded: false,
-            typography_css_matches: false,
+            font_family_css_matches: false,
+            font_size_css_matches: false,
             palette_capabilities: BTreeSet::new(),
             typed_fill_capabilities: BTreeMap::new(),
             typed_stroke_capabilities: BTreeMap::new(),
+            invalid_fill_rules: BTreeSet::new(),
+            invalid_stroke_rules: BTreeSet::new(),
             label_capabilities: BTreeMap::new(),
             unverified_label_rules: BTreeSet::new(),
         }
     }
 
-    pub(crate) fn record_typography_css(&mut self, emitted_font_family: &str) {
+    pub(crate) fn record_typography_css(
+        &mut self,
+        emitted_font_family: &str,
+        emitted_font_size_css: &str,
+        base_typography_emitted: bool,
+    ) {
         if !self.typography_required || self.typography_css_recorded {
-            self.typography_css_matches = false;
+            self.font_family_css_matches = false;
+            self.font_size_css_matches = false;
             return;
         }
         self.typography_css_recorded = true;
-        self.typography_css_matches = emitted_font_family == self.expected_font_family.as_ref();
+        self.font_family_css_matches =
+            base_typography_emitted && emitted_font_family == self.expected_font_family.as_ref();
+        self.font_size_css_matches = base_typography_emitted
+            && emitted_font_size_css == self.expected_font_size_css.as_ref();
     }
 
     pub(crate) fn record_typography_text(
@@ -1010,6 +1205,8 @@ impl KanbanTaskThemeReceipt {
         visible_run_count: usize,
         inherited_font_family_run_count: usize,
         unverified_font_family_run_count: usize,
+        inherited_font_size_run_count: usize,
+        unverified_font_size_run_count: usize,
     ) {
         if self.typography_required {
             self.actual_typography.terminal_count =
@@ -1026,6 +1223,14 @@ impl KanbanTaskThemeReceipt {
                 .actual_typography
                 .unverified_font_family_run_count
                 .saturating_add(unverified_font_family_run_count);
+            self.actual_typography.inherited_font_size_run_count = self
+                .actual_typography
+                .inherited_font_size_run_count
+                .saturating_add(inherited_font_size_run_count);
+            self.actual_typography.unverified_font_size_run_count = self
+                .actual_typography
+                .unverified_font_size_run_count
+                .saturating_add(unverified_font_size_run_count);
             self.actual_typography.parse_valid &= parse_valid;
         }
     }
@@ -1034,35 +1239,51 @@ impl KanbanTaskThemeReceipt {
         &mut self,
         item_index: usize,
         semantic_id: &str,
-        attributes_match: bool,
+        actual_radius: (f64, f64),
+        actual_fill: Option<&str>,
+        actual_stroke: Option<&str>,
+        expected_radius: f64,
         terminal_decision: &KanbanTaskTerminalDecision,
     ) {
         let Some(item) = self.items.get_mut(item_index) else {
-            self.schema_valid = false;
+            self.rect_identity_valid = false;
             return;
         };
         if item.rect_checkpointed {
-            self.schema_valid = false;
+            self.rect_identity_valid = false;
             return;
         }
         item.rect_checkpointed = true;
-        self.schema_valid &= item.semantic_id.as_ref() == semantic_id && attributes_match;
+        self.rect_identity_valid &= item.semantic_id.as_ref() == semantic_id;
+        self.radius_valid &= actual_radius == (expected_radius, expected_radius);
         if let Some(fill_capability) = terminal_decision.fill_capability {
             if let Some(rule_index) = terminal_decision.fill_rule_index {
-                self.typed_fill_capabilities
-                    .entry(rule_index)
-                    .or_default()
-                    .insert(fill_capability);
+                if actual_fill == terminal_decision.fill_css() {
+                    self.typed_fill_capabilities
+                        .entry(rule_index)
+                        .or_default()
+                        .insert(fill_capability);
+                } else {
+                    self.invalid_fill_rules.insert(rule_index);
+                }
             } else {
-                self.palette_capabilities.insert(fill_capability);
+                if actual_fill == terminal_decision.fill_css() {
+                    self.palette_capabilities.insert(fill_capability);
+                } else {
+                    self.palette_valid = false;
+                }
             }
         }
         if let Some(stroke_capability) = terminal_decision.stroke_capability {
             if let Some(rule_index) = terminal_decision.stroke_rule_index {
-                self.typed_stroke_capabilities
-                    .entry(rule_index)
-                    .or_default()
-                    .insert(stroke_capability);
+                if actual_stroke == terminal_decision.stroke_css() {
+                    self.typed_stroke_capabilities
+                        .entry(rule_index)
+                        .or_default()
+                        .insert(stroke_capability);
+                } else {
+                    self.invalid_stroke_rules.insert(rule_index);
+                }
             }
         }
     }
@@ -1079,7 +1300,7 @@ impl KanbanTaskThemeReceipt {
         decision: &KanbanTaskTerminalDecision,
     ) {
         let Some(item) = self.items.get_mut(item_index) else {
-            self.schema_valid = false;
+            self.label_schema_valid = false;
             return;
         };
         let (Some(expected_css), Some(capability), Some(rule_index)) = (
@@ -1087,23 +1308,23 @@ impl KanbanTaskThemeReceipt {
             decision.label_capability,
             decision.label_rule_index,
         ) else {
-            self.schema_valid = false;
+            self.label_schema_valid = false;
             return;
         };
-        self.schema_valid &= item.semantic_id.as_ref() == semantic_id;
-        self.schema_valid &= item.expected_labels.contains(role);
-        self.schema_valid &= item.emitted_labels.insert(role);
-        self.schema_valid &= visible_run_count > 0;
-        self.schema_valid &=
+        self.label_schema_valid &= item.semantic_id.as_ref() == semantic_id;
+        self.label_schema_valid &= item.expected_labels.contains(role);
+        self.label_schema_valid &= item.emitted_labels.insert(role);
+        self.label_schema_valid &= visible_run_count > 0;
+        self.label_schema_valid &=
             inherited_color_run_count > 0 && inherited_color_run_count <= visible_run_count;
         if inherited_color_run_count != visible_run_count {
             self.unverified_label_rules.insert(rule_index);
         }
-        self.schema_valid &=
+        self.label_schema_valid &=
             terminal_style_property(actual_group_style, "color") == Some(expected_css);
-        self.schema_valid &=
+        self.label_schema_valid &=
             terminal_style_property(actual_group_style, "fill") == Some(expected_css);
-        self.schema_valid &=
+        self.label_schema_valid &=
             terminal_style_property(actual_div_style, "color") == Some(expected_css);
         self.label_capabilities
             .entry(rule_index)
@@ -1112,7 +1333,7 @@ impl KanbanTaskThemeReceipt {
     }
 
     fn proves_label_rule(&self, rule_index: usize) -> bool {
-        self.schema_valid
+        self.labels_complete()
             && !self.unverified_label_rules.contains(&rule_index)
             && self
                 .label_capabilities
@@ -1121,7 +1342,8 @@ impl KanbanTaskThemeReceipt {
     }
 
     fn proves_fill_rule(&self, rule_index: usize) -> bool {
-        self.schema_valid
+        self.rect_identities_complete()
+            && !self.invalid_fill_rules.contains(&rule_index)
             && self
                 .typed_fill_capabilities
                 .get(&rule_index)
@@ -1129,41 +1351,108 @@ impl KanbanTaskThemeReceipt {
     }
 
     fn proves_stroke_rule(&self, rule_index: usize) -> bool {
-        self.schema_valid
+        self.rect_identities_complete()
+            && !self.invalid_stroke_rules.contains(&rule_index)
             && self
                 .typed_stroke_capabilities
                 .get(&rule_index)
                 .is_some_and(|capabilities| !capabilities.is_empty())
     }
 
-    fn terminal_occurrences_complete(&self) -> bool {
-        self.items
-            .iter()
-            .all(|item| item.rect_checkpointed && item.expected_labels == item.emitted_labels)
+    fn rect_identities_complete(&self) -> bool {
+        self.rect_identity_valid && self.items.iter().all(|item| item.rect_checkpointed)
     }
 
-    fn typography_visible(&self) -> bool {
-        self.expected_typography.visible_run_count != 0
+    fn proves_radius(&self) -> bool {
+        self.rect_identities_complete() && self.radius_valid
     }
 
-    fn proves_typography(&self) -> bool {
+    fn proves_palette(&self) -> bool {
+        self.rect_identities_complete() && self.palette_valid
+    }
+
+    fn labels_complete(&self) -> bool {
+        self.label_schema_valid
+            && self
+                .items
+                .iter()
+                .all(|item| item.expected_labels == item.emitted_labels)
+    }
+
+    fn typography_visibility(&self) -> KanbanTypographyVisibility {
+        if !self.expected_typography.parse_valid || !self.actual_typography.parse_valid {
+            KanbanTypographyVisibility::Unverified
+        } else if self.expected_typography.visible_run_count != 0 {
+            KanbanTypographyVisibility::VisibleText
+        } else {
+            KanbanTypographyVisibility::NoVisibleText
+        }
+    }
+
+    fn typography_is_not_applicable(&self) -> bool {
+        matches!(
+            self.typography_visibility(),
+            KanbanTypographyVisibility::NoVisibleText
+        )
+    }
+
+    fn typography_has_visible_or_unverified_terminals(&self) -> bool {
+        !self.typography_is_not_applicable()
+    }
+
+    fn typography_observation_complete(&self) -> bool {
         !self.typography_required
             || (self.typography_css_recorded
-                && self.typography_css_matches
+                && self.actual_typography.terminal_count == self.expected_typography.terminal_count
+                && self.actual_typography.visible_run_count
+                    == self.expected_typography.visible_run_count
+                && self.actual_typography.parse_valid == self.expected_typography.parse_valid)
+    }
+
+    fn layout_terminal_count_matches(&self) -> bool {
+        self.typography_layout.terminal_count() == self.expected_typography.terminal_count
+    }
+
+    fn proves_font_family(&self) -> bool {
+        !self.font_family_requested
+            || (self.typography_observation_complete()
+                && self.font_family_css_matches
+                && self.layout_terminal_count_matches()
+                && self.typography_layout.font_family_css() == self.expected_font_family.as_ref()
                 && self.expected_typography.parse_valid
                 && self.actual_typography.parse_valid
-                && self.actual_typography == self.expected_typography
+                && self.actual_typography.inherited_font_family_run_count
+                    == self.expected_typography.inherited_font_family_run_count
+                && self.actual_typography.unverified_font_family_run_count
+                    == self.expected_typography.unverified_font_family_run_count
                 && self.expected_typography.inherited_font_family_run_count
                     == self.expected_typography.visible_run_count
                 && self.expected_typography.unverified_font_family_run_count == 0)
     }
 
-    fn proves(&self, expected_item_count: usize) -> bool {
-        self.items.len() == expected_item_count
-            && self.schema_valid
-            && self.terminal_occurrences_complete()
-            && self.proves_typography()
+    fn proves_font_size(&self) -> bool {
+        !self.font_size_requested
+            || (self.typography_observation_complete()
+                && self.font_size_css_matches
+                && self.layout_terminal_count_matches()
+                && self.typography_layout.font_size_px() == self.expected_font_size_px
+                && self.expected_typography.parse_valid
+                && self.actual_typography.parse_valid
+                && self.actual_typography.inherited_font_size_run_count
+                    == self.expected_typography.inherited_font_size_run_count
+                && self.actual_typography.unverified_font_size_run_count
+                    == self.expected_typography.unverified_font_size_run_count
+                && self.expected_typography.inherited_font_size_run_count
+                    == self.expected_typography.visible_run_count
+                && self.expected_typography.unverified_font_size_run_count == 0)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KanbanTypographyVisibility {
+    NoVisibleText,
+    VisibleText,
+    Unverified,
 }
 
 fn terminal_style_property<'a>(style: &'a str, property: &str) -> Option<&'a str> {
@@ -1189,10 +1478,11 @@ struct KanbanTaskRuleObservation {
 
 #[cfg(test)]
 mod tests {
+    use super::super::KanbanTypographyLayoutReceipt;
     use super::{
         KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskResolvedItem,
         KanbanTaskTerminalDecision, KanbanTaskTheme, KanbanTaskThemeReceipt, KanbanTypographyFacts,
-        MERMAID_TASK_RADIUS_PX,
+        KanbanTypographyPlan, MERMAID_TASK_RADIUS_PX,
     };
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -1200,7 +1490,6 @@ mod tests {
         EffectInput, EffectPrimitive, FamilyThemeMechanismKey, ThemeCapability, ThemeRule,
         ThemeRuleSet, ThemeStylePatch, ThemeTarget,
     };
-    use crate::family::InheritedFontStackPlan;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use merman_core::MermaidConfig;
 
@@ -1243,6 +1532,35 @@ mod tests {
         }
     }
 
+    fn typography_layout(
+        font_family: &str,
+        font_size_px: f64,
+        terminal_count: usize,
+    ) -> KanbanTypographyLayoutReceipt {
+        KanbanTypographyLayoutReceipt::new(font_family, font_size_px, terminal_count, 0, 0)
+    }
+
+    fn typed_font_size_receipt(
+        emitted_font_size_css: &str,
+        typography_layout: &KanbanTypographyLayoutReceipt,
+    ) -> KanbanTaskThemeReceipt {
+        let mut receipt = KanbanTaskThemeReceipt::new_with_typography(
+            &[],
+            &[],
+            true,
+            false,
+            true,
+            KanbanTypographyFacts::with_visible(true),
+            "Typed, sans-serif",
+            "24px",
+            24.0,
+            typography_layout,
+        );
+        receipt.record_typography_css("Typed, sans-serif", emitted_font_size_css, true);
+        receipt.record_typography_text(true, 1, 1, 0, 1, 0);
+        receipt
+    }
+
     #[test]
     fn task_theme_receipt_requires_each_terminal_occurrence_once() {
         let item = resolved_item(KanbanTaskOccurrence::new(
@@ -1255,7 +1573,15 @@ mod tests {
             std::slice::from_ref(&item),
             std::slice::from_ref(&decision),
         );
-        incomplete.record_checkpointed_item(0, "task", true, &decision);
+        incomplete.record_checkpointed_item(
+            0,
+            "task",
+            (MERMAID_TASK_RADIUS_PX, MERMAID_TASK_RADIUS_PX),
+            None,
+            None,
+            MERMAID_TASK_RADIUS_PX,
+            &decision,
+        );
         incomplete.record_label(
             0,
             "task",
@@ -1266,13 +1592,21 @@ mod tests {
             1,
             &decision,
         );
-        assert!(!incomplete.proves(1));
+        assert!(!incomplete.proves_label_rule(7));
 
         let mut mismatched = KanbanTaskThemeReceipt::new(
             std::slice::from_ref(&item),
             std::slice::from_ref(&decision),
         );
-        mismatched.record_checkpointed_item(0, "task", true, &decision);
+        mismatched.record_checkpointed_item(
+            0,
+            "task",
+            (MERMAID_TASK_RADIUS_PX, MERMAID_TASK_RADIUS_PX),
+            None,
+            None,
+            MERMAID_TASK_RADIUS_PX,
+            &decision,
+        );
         for role in [KanbanTaskLabelRole::Title, KanbanTaskLabelRole::Ticket] {
             mismatched.record_label(
                 0,
@@ -1285,10 +1619,18 @@ mod tests {
                 &decision,
             );
         }
-        assert!(!mismatched.proves(1));
+        assert!(!mismatched.proves_label_rule(7));
 
         let mut complete = KanbanTaskThemeReceipt::new(&[item], std::slice::from_ref(&decision));
-        complete.record_checkpointed_item(0, "task", true, &decision);
+        complete.record_checkpointed_item(
+            0,
+            "task",
+            (MERMAID_TASK_RADIUS_PX, MERMAID_TASK_RADIUS_PX),
+            None,
+            None,
+            MERMAID_TASK_RADIUS_PX,
+            &decision,
+        );
         for role in [KanbanTaskLabelRole::Title, KanbanTaskLabelRole::Ticket] {
             complete.record_label(
                 0,
@@ -1301,7 +1643,7 @@ mod tests {
                 &decision,
             );
         }
-        assert!(complete.proves(1));
+        assert!(complete.rect_identities_complete());
         assert!(complete.proves_label_rule(7));
 
         complete.record_label(
@@ -1314,7 +1656,7 @@ mod tests {
             1,
             &decision,
         );
-        assert!(!complete.proves(1));
+        assert!(!complete.proves_label_rule(7));
     }
 
     #[test]
@@ -1326,9 +1668,17 @@ mod tests {
         let decision = palette_decision();
         let mut receipt = KanbanTaskThemeReceipt::new(&[item], std::slice::from_ref(&decision));
 
-        receipt.record_checkpointed_item(0, "task", true, &decision);
+        receipt.record_checkpointed_item(
+            0,
+            "task",
+            (MERMAID_TASK_RADIUS_PX, MERMAID_TASK_RADIUS_PX),
+            Some("#ffffff"),
+            None,
+            MERMAID_TASK_RADIUS_PX,
+            &decision,
+        );
 
-        assert!(receipt.proves(1));
+        assert!(receipt.proves_palette());
         assert_eq!(
             receipt.palette_capabilities,
             [ThemeCapability::SolidPaint].into_iter().collect()
@@ -1344,19 +1694,71 @@ mod tests {
             std::slice::from_ref(&item),
             std::slice::from_ref(&decision),
             true,
+            true,
+            true,
             KanbanTypographyFacts::with_visible(true),
             "Typed, sans-serif",
+            "24px",
+            24.0,
+            &typography_layout("Typed, sans-serif", 24.0, 1),
         );
 
-        receipt.record_checkpointed_item(0, "task", true, &decision);
-        receipt.record_typography_css("Typed, sans-serif");
-        receipt.record_typography_text(true, 1, 1, 0);
+        receipt.record_checkpointed_item(
+            0,
+            "task",
+            (MERMAID_TASK_RADIUS_PX, MERMAID_TASK_RADIUS_PX),
+            Some("#ffffff"),
+            None,
+            MERMAID_TASK_RADIUS_PX,
+            &decision,
+        );
+        receipt.record_typography_css("Typed, sans-serif", "24px", true);
+        receipt.record_typography_text(true, 1, 1, 0, 1, 0);
 
-        assert!(receipt.proves(1));
-        assert!(receipt.proves_typography());
+        assert!(receipt.proves_palette());
+        assert!(receipt.proves_font_family());
+        assert!(receipt.proves_font_size());
 
-        receipt.record_typography_css("Other, sans-serif");
-        assert!(!receipt.proves(1));
+        let mut wrong_family = KanbanTaskThemeReceipt::new_with_typography(
+            std::slice::from_ref(&item),
+            std::slice::from_ref(&decision),
+            true,
+            true,
+            true,
+            KanbanTypographyFacts::with_visible(true),
+            "Typed, sans-serif",
+            "24px",
+            24.0,
+            &typography_layout("Typed, sans-serif", 24.0, 1),
+        );
+        wrong_family.record_checkpointed_item(
+            0,
+            "task",
+            (MERMAID_TASK_RADIUS_PX, MERMAID_TASK_RADIUS_PX),
+            Some("#ffffff"),
+            None,
+            MERMAID_TASK_RADIUS_PX,
+            &decision,
+        );
+        wrong_family.record_typography_css("Other, sans-serif", "24px", true);
+        wrong_family.record_typography_text(true, 1, 1, 0, 1, 0);
+        assert!(!wrong_family.proves_font_family());
+        assert!(wrong_family.proves_font_size());
+    }
+
+    #[test]
+    fn task_theme_receipt_rejects_font_size_css_layout_and_terminal_count_mismatches() {
+        let wrong_css =
+            typed_font_size_receipt("23px", &typography_layout("Typed, sans-serif", 24.0, 1));
+        assert!(!wrong_css.proves_font_size());
+
+        let wrong_layout_size =
+            typed_font_size_receipt("24px", &typography_layout("Typed, sans-serif", 23.0, 1));
+        assert!(!wrong_layout_size.proves_font_size());
+
+        let wrong_terminal_count =
+            typed_font_size_receipt("24px", &typography_layout("Typed, sans-serif", 24.0, 2));
+        assert!(!wrong_terminal_count.proves_font_size());
     }
 
     #[test]
@@ -1365,13 +1767,19 @@ mod tests {
             &[],
             &[],
             true,
+            true,
+            true,
             KanbanTypographyFacts::with_visible(false),
             "Typed, sans-serif",
+            "24px",
+            24.0,
+            &typography_layout("Typed, sans-serif", 24.0, 0),
         );
-        receipt.record_typography_css("Typed, sans-serif");
+        receipt.record_typography_css("Typed, sans-serif", "24px", true);
 
-        assert!(receipt.proves(0));
-        assert!(!receipt.typography_visible());
+        assert!(receipt.proves_font_family());
+        assert!(receipt.proves_font_size());
+        assert!(receipt.typography_is_not_applicable());
     }
 
     #[test]
@@ -1385,19 +1793,63 @@ mod tests {
             &[],
             &[],
             true,
+            true,
+            false,
             expected,
             "Typed, sans-serif",
+            "16px",
+            16.0,
+            &typography_layout("Typed, sans-serif", 16.0, expected.terminal_count),
         );
 
-        receipt.record_typography_css("Typed, sans-serif");
+        receipt.record_typography_css("Typed, sans-serif", "16px", true);
         receipt.record_typography_text(
             facts.parse_valid(),
             facts.visible_run_count(),
             facts.inherited_font_family_run_count(),
             facts.unverified_font_family_run_count(),
+            facts.inherited_font_size_run_count(),
+            facts.unverified_font_size_run_count(),
         );
 
-        assert!(!receipt.proves_typography());
+        assert!(!receipt.proves_font_family());
+    }
+
+    #[test]
+    fn task_theme_receipt_does_not_treat_malformed_xhtml_as_absent_text() {
+        let facts = crate::text::VisibleTextStyleFacts::from_xhtml_fragment("<span>");
+        assert!(!facts.parse_valid());
+        assert_eq!(facts.visible_run_count(), 0);
+
+        let mut expected = KanbanTypographyFacts::default();
+        expected.record_visible_style_facts(&facts);
+        let terminal_count = expected.terminal_count;
+        let mut receipt = KanbanTaskThemeReceipt::new_with_typography(
+            &[],
+            &[],
+            true,
+            true,
+            true,
+            expected,
+            "Typed, sans-serif",
+            "24px",
+            24.0,
+            &typography_layout("Typed, sans-serif", 24.0, terminal_count),
+        );
+
+        receipt.record_typography_css("Typed, sans-serif", "24px", true);
+        receipt.record_typography_text(
+            facts.parse_valid(),
+            facts.visible_run_count(),
+            facts.inherited_font_family_run_count(),
+            facts.unverified_font_family_run_count(),
+            facts.inherited_font_size_run_count(),
+            facts.unverified_font_size_run_count(),
+        );
+
+        assert!(!receipt.typography_is_not_applicable());
+        assert!(!receipt.proves_font_family());
+        assert!(!receipt.proves_font_size());
     }
 
     #[test]
@@ -1452,11 +1904,12 @@ mod tests {
             effect_id: bound_effect_id.to_string(),
         };
 
-        let task_theme = KanbanTaskTheme::resolve_with_font_stack(
+        let config = MermaidConfig::default();
+        let task_theme = KanbanTaskTheme::resolve_with_typography(
             Some(&theme),
             vec![KanbanTaskOccurrence::new("task", [])],
-            &MermaidConfig::default(),
-            InheritedFontStackPlan::resolve_property_local(Some(&theme), &MermaidConfig::default()),
+            &config,
+            KanbanTypographyPlan::resolve(Some(&theme), &config),
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
         .expect("resolve Kanban task effect evidence fixture");

@@ -4,19 +4,34 @@ use crate::kanban::{
     KanbanPreparedLabelGeometry, KanbanTaskLabelRole, KanbanTypographyFacts,
 };
 
+struct KanbanCssEmission {
+    font_family: Box<str>,
+    font_size_css: Box<str>,
+    base_typography_emitted: bool,
+}
+
 fn write_kanban_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config: &serde_json::Value,
-    resolved_font_family: Option<&str>,
-) -> Result<Box<str>> {
+    resolved_typography: Option<(&str, &str)>,
+) -> Result<KanbanCssEmission> {
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let parts = resolved_font_family.map_or_else(
-        || info_css_parts_with_config(diagram_id, effective_config),
-        |font_family| info_css_parts_with_font_family(diagram_id, effective_config, font_family),
-    );
+    let parts = match resolved_typography {
+        Some((font_family, font_size_css)) => info_css_parts_with_resolved_typography(
+            diagram_id,
+            effective_config,
+            font_family,
+            font_size_css,
+        ),
+        None => info_css_parts_with_config(diagram_id, effective_config),
+    };
     let theme = MermaidThemeAdapter::new(effective_config).kanban()?;
-    let emitted_font_family = parts.font_family.clone().into_boxed_str();
+    let emission = KanbanCssEmission {
+        font_family: parts.font_family.clone().into_boxed_str(),
+        font_size_css: parts.font_size_css.clone().into_boxed_str(),
+        base_typography_emitted: parts.base_typography_emitted,
+    };
     let root_rule = parts.root_rule;
 
     out.push_str(&parts.css_prefix);
@@ -95,7 +110,7 @@ fn write_kanban_css(
     );
     out.push_str(&root_rule);
     out.checkpoint()?;
-    Ok(emitted_font_family)
+    Ok(emission)
 }
 
 #[cfg(test)]
@@ -109,22 +124,6 @@ fn kanban_dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
     format!("{diagram_id}-{raw_id}")
 }
 
-fn measure_kanban_plain_label(
-    text_measurer: &dyn crate::text::TextMeasurer,
-    text: Option<&str>,
-    style: &crate::text::TextStyle,
-) -> KanbanPreparedLabelGeometry {
-    let Some(text) = text.filter(|text| !text.is_empty()) else {
-        return KanbanPreparedLabelGeometry::empty();
-    };
-    let metrics = text_measurer.measure_wrapped(text, style, None, crate::text::WrapMode::HtmlLike);
-    KanbanPreparedLabelGeometry {
-        content_height: metrics.height,
-        foreign_object_width: metrics.width,
-        wrapped: false,
-    }
-}
-
 struct KanbanLabelRenderContext {
     max_width: f64,
     min_height: f64,
@@ -136,12 +135,14 @@ struct KanbanLabelGroup<'a> {
     html: Option<&'a str>,
     geometry: KanbanPreparedLabelGeometry,
     div_class: Option<&'a str>,
-    wrap_title: bool,
+    markdown: bool,
     foreground: Option<&'a str>,
     visible_run_count: usize,
     inherited_color_run_count: usize,
     inherited_font_family_run_count: usize,
     unverified_font_family_run_count: usize,
+    inherited_font_size_run_count: usize,
+    unverified_font_size_run_count: usize,
 }
 
 struct KanbanLabelGroupEmission {
@@ -152,6 +153,8 @@ struct KanbanLabelGroupEmission {
     inherited_color_run_count: usize,
     inherited_font_family_run_count: usize,
     unverified_font_family_run_count: usize,
+    inherited_font_size_run_count: usize,
+    unverified_font_size_run_count: usize,
 }
 
 struct KanbanTaskRectEmission {
@@ -159,20 +162,6 @@ struct KanbanTaskRectEmission {
     ry: f64,
     fill: Option<String>,
     stroke: Option<String>,
-}
-
-impl KanbanTaskRectEmission {
-    fn matches_theme(
-        &self,
-        expected_radius: f64,
-        expected_fill: Option<&str>,
-        expected_stroke: Option<&str>,
-    ) -> bool {
-        self.rx == expected_radius
-            && self.ry == expected_radius
-            && self.fill.as_deref() == expected_fill
-            && self.stroke.as_deref() == expected_stroke
-    }
 }
 
 fn write_kanban_task_rect(
@@ -221,16 +210,18 @@ fn write_kanban_label_group(
         html,
         geometry,
         div_class,
-        wrap_title,
+        markdown,
         foreground,
         visible_run_count,
         inherited_color_run_count,
         inherited_font_family_run_count,
         unverified_font_family_run_count,
+        inherited_font_size_run_count,
+        unverified_font_size_run_count,
     } = group;
     let max_width = context.max_width;
     let div_style_overrides = match text {
-        Some(text) if !text.is_empty() && wrap_title && geometry.wrapped => Some(format!(
+        Some(text) if !text.is_empty() && geometry.wrapped => Some(format!(
             "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; width: {width}px;",
             width = fmt(max_width),
         )),
@@ -259,7 +250,7 @@ fn write_kanban_label_group(
             format!("color:{foreground};fill:{foreground};text-align:left !important")
         })
         .unwrap_or_else(|| "text-align:left !important".to_string());
-    let span_class = if wrap_title {
+    let span_class = if markdown {
         "nodeLabel markdown-node-label"
     } else {
         "nodeLabel"
@@ -297,6 +288,8 @@ fn write_kanban_label_group(
         inherited_color_run_count,
         inherited_font_family_run_count,
         unverified_font_family_run_count,
+        inherited_font_size_run_count,
+        unverified_font_size_run_count,
     })
 }
 
@@ -331,6 +324,8 @@ fn record_kanban_typography_text(
     visible_run_count: usize,
     inherited_font_family_run_count: usize,
     unverified_font_family_run_count: usize,
+    inherited_font_size_run_count: usize,
+    unverified_font_size_run_count: usize,
 ) {
     if let Some(receipt) = receipt {
         receipt.record_typography_text(
@@ -338,6 +333,8 @@ fn record_kanban_typography_text(
             visible_run_count,
             inherited_font_family_run_count,
             unverified_font_family_run_count,
+            inherited_font_size_run_count,
+            unverified_font_size_run_count,
         );
     }
 }
@@ -352,8 +349,8 @@ fn kanban_typography_facts(
     }
     for item in prepared_items {
         facts.record_visible_style_facts(&item.title.visible_style_facts);
-        facts.record_visible_style_facts(&item.ticket_style_facts);
-        facts.record_visible_style_facts(&item.assigned_style_facts);
+        facts.record_visible_style_facts(&item.ticket.visible_style_facts);
+        facts.record_visible_style_facts(&item.assigned.visible_style_facts);
     }
     facts
 }
@@ -405,26 +402,29 @@ pub(crate) fn render_kanban_diagram_svg(
     options.checkpoint_emit()?;
 
     let typography_facts = kanban_typography_facts(prepared_sections, prepared_items);
-    let mut task_theme_receipt =
-        task_theme.begin_terminal_receipt(&task_terminal_decisions, typography_facts);
+    let mut task_theme_receipt = task_theme.begin_terminal_receipt(
+        &task_terminal_decisions,
+        typography_facts,
+        prepared.typography_layout(),
+    );
     out.push_str("<style>");
-    let emitted_font_family = write_kanban_css(
+    let typography_emission = write_kanban_css(
         &mut out,
         diagram_id.semantic_str(),
         effective_config,
-        task_theme.font_family_override(),
+        task_theme.resolved_typography_for_css(),
     )?;
     if let Some(receipt) = task_theme_receipt.as_mut() {
-        receipt.record_typography_css(&emitted_font_family);
+        receipt.record_typography_css(
+            &typography_emission.font_family,
+            &typography_emission.font_size_css,
+            typography_emission.base_typography_emitted,
+        );
     }
     out.push_str("</style>");
     out.checkpoint()?;
     let config_view = crate::kanban::KanbanConfigView::new(effective_config);
-    let label_style = config_view
-        .layout_settings_with_font_family(task_theme.font_family_css())
-        .text_style;
-    let label_min_height =
-        KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX * (label_style.font_size / 16.0).max(f64::EPSILON);
+    let label_min_height = KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX;
     let data_look = config_view.look();
     let data_look_attr = escape_attr(data_look.as_str());
 
@@ -483,6 +483,12 @@ pub(crate) fn render_kanban_diagram_svg(
             prepared_label
                 .visible_style_facts
                 .unverified_font_family_run_count(),
+            prepared_label
+                .visible_style_facts
+                .inherited_font_size_run_count(),
+            prepared_label
+                .visible_style_facts
+                .unverified_font_size_run_count(),
         );
     }
     out.push_str("</g>");
@@ -491,7 +497,6 @@ pub(crate) fn render_kanban_diagram_svg(
     out.push_str(r#"<g class="items">"#);
     out.checkpoint()?;
     let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
-    let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
 
     fn kanban_priority_stroke(priority: &str) -> Option<&'static str> {
         match priority.trim() {
@@ -511,10 +516,8 @@ pub(crate) fn render_kanban_diagram_svg(
         let rect_x = -n.width / 2.0;
         let rect_y = -n.height / 2.0;
         let title_geometry = prepared_item.title.geometry;
-        let ticket_geometry =
-            measure_kanban_plain_label(&text_measurer, n.ticket.as_deref(), &label_style);
-        let assigned_geometry =
-            measure_kanban_plain_label(&text_measurer, n.assigned.as_deref(), &label_style);
+        let ticket_geometry = prepared_item.ticket.geometry;
+        let assigned_geometry = prepared_item.assigned.geometry;
         let height_adj = ticket_geometry
             .content_height
             .max(assigned_geometry.content_height)
@@ -562,7 +565,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 html: Some(prepared_item.title.html.as_str()),
                 geometry: title_geometry,
                 div_class: n.icon.as_deref().map(|_| "labelBkg"),
-                wrap_title: true,
+                markdown: true,
                 foreground: terminal_decision.label_css(),
                 visible_run_count: prepared_item.title.visible_style_facts.visible_run_count(),
                 inherited_color_run_count: prepared_item
@@ -577,6 +580,14 @@ pub(crate) fn render_kanban_diagram_svg(
                     .title
                     .visible_style_facts
                     .unverified_font_family_run_count(),
+                inherited_font_size_run_count: prepared_item
+                    .title
+                    .visible_style_facts
+                    .inherited_font_size_run_count(),
+                unverified_font_size_run_count: prepared_item
+                    .title
+                    .visible_style_facts
+                    .unverified_font_size_run_count(),
             },
         )?;
         record_kanban_label_emission(
@@ -593,6 +604,8 @@ pub(crate) fn render_kanban_diagram_svg(
             title_emission.visible_run_count,
             title_emission.inherited_font_family_run_count,
             title_emission.unverified_font_family_run_count,
+            title_emission.inherited_font_size_run_count,
+            title_emission.unverified_font_size_run_count,
         );
 
         // Ticket label: wrap in <a> when ticketBaseUrl is configured (upstream behavior).
@@ -616,18 +629,32 @@ pub(crate) fn render_kanban_diagram_svg(
                         html: None,
                         geometry: ticket_geometry,
                         div_class: None,
-                        wrap_title: false,
+                        markdown: false,
                         foreground: terminal_decision.label_css(),
-                        visible_run_count: prepared_item.ticket_style_facts.visible_run_count(),
+                        visible_run_count: prepared_item
+                            .ticket
+                            .visible_style_facts
+                            .visible_run_count(),
                         inherited_color_run_count: prepared_item
-                            .ticket_style_facts
+                            .ticket
+                            .visible_style_facts
                             .inherited_color_run_count(),
                         inherited_font_family_run_count: prepared_item
-                            .ticket_style_facts
+                            .ticket
+                            .visible_style_facts
                             .inherited_font_family_run_count(),
                         unverified_font_family_run_count: prepared_item
-                            .ticket_style_facts
+                            .ticket
+                            .visible_style_facts
                             .unverified_font_family_run_count(),
+                        inherited_font_size_run_count: prepared_item
+                            .ticket
+                            .visible_style_facts
+                            .inherited_font_size_run_count(),
+                        unverified_font_size_run_count: prepared_item
+                            .ticket
+                            .visible_style_facts
+                            .unverified_font_size_run_count(),
                     },
                 )?;
                 record_kanban_label_emission(
@@ -640,10 +667,12 @@ pub(crate) fn render_kanban_diagram_svg(
                 );
                 record_kanban_typography_text(
                     task_theme_receipt.as_mut(),
-                    prepared_item.ticket_style_facts.parse_valid(),
+                    prepared_item.ticket.visible_style_facts.parse_valid(),
                     ticket_emission.visible_run_count,
                     ticket_emission.inherited_font_family_run_count,
                     ticket_emission.unverified_font_family_run_count,
+                    ticket_emission.inherited_font_size_run_count,
+                    ticket_emission.unverified_font_size_run_count,
                 );
                 out.push_str("</a>");
                 out.checkpoint()?;
@@ -657,18 +686,32 @@ pub(crate) fn render_kanban_diagram_svg(
                         html: None,
                         geometry: ticket_geometry,
                         div_class: None,
-                        wrap_title: false,
+                        markdown: false,
                         foreground: terminal_decision.label_css(),
-                        visible_run_count: prepared_item.ticket_style_facts.visible_run_count(),
+                        visible_run_count: prepared_item
+                            .ticket
+                            .visible_style_facts
+                            .visible_run_count(),
                         inherited_color_run_count: prepared_item
-                            .ticket_style_facts
+                            .ticket
+                            .visible_style_facts
                             .inherited_color_run_count(),
                         inherited_font_family_run_count: prepared_item
-                            .ticket_style_facts
+                            .ticket
+                            .visible_style_facts
                             .inherited_font_family_run_count(),
                         unverified_font_family_run_count: prepared_item
-                            .ticket_style_facts
+                            .ticket
+                            .visible_style_facts
                             .unverified_font_family_run_count(),
+                        inherited_font_size_run_count: prepared_item
+                            .ticket
+                            .visible_style_facts
+                            .inherited_font_size_run_count(),
+                        unverified_font_size_run_count: prepared_item
+                            .ticket
+                            .visible_style_facts
+                            .unverified_font_size_run_count(),
                     },
                 )?;
                 record_kanban_label_emission(
@@ -681,10 +724,12 @@ pub(crate) fn render_kanban_diagram_svg(
                 );
                 record_kanban_typography_text(
                     task_theme_receipt.as_mut(),
-                    prepared_item.ticket_style_facts.parse_valid(),
+                    prepared_item.ticket.visible_style_facts.parse_valid(),
                     ticket_emission.visible_run_count,
                     ticket_emission.inherited_font_family_run_count,
                     ticket_emission.unverified_font_family_run_count,
+                    ticket_emission.inherited_font_size_run_count,
+                    ticket_emission.unverified_font_size_run_count,
                 );
             }
         } else {
@@ -697,24 +742,36 @@ pub(crate) fn render_kanban_diagram_svg(
                     html: None,
                     geometry: ticket_geometry,
                     div_class: None,
-                    wrap_title: false,
+                    markdown: false,
                     foreground: terminal_decision.label_css(),
                     visible_run_count: 0,
                     inherited_color_run_count: 0,
                     inherited_font_family_run_count: 0,
                     unverified_font_family_run_count: 0,
+                    inherited_font_size_run_count: 0,
+                    unverified_font_size_run_count: 0,
                 },
             )?;
             record_kanban_typography_text(
                 task_theme_receipt.as_mut(),
-                prepared_item.ticket_style_facts.parse_valid(),
-                prepared_item.ticket_style_facts.visible_run_count(),
+                prepared_item.ticket.visible_style_facts.parse_valid(),
+                prepared_item.ticket.visible_style_facts.visible_run_count(),
                 prepared_item
-                    .ticket_style_facts
+                    .ticket
+                    .visible_style_facts
                     .inherited_font_family_run_count(),
                 prepared_item
-                    .ticket_style_facts
+                    .ticket
+                    .visible_style_facts
                     .unverified_font_family_run_count(),
+                prepared_item
+                    .ticket
+                    .visible_style_facts
+                    .inherited_font_size_run_count(),
+                prepared_item
+                    .ticket
+                    .visible_style_facts
+                    .unverified_font_size_run_count(),
             );
         }
 
@@ -728,18 +785,32 @@ pub(crate) fn render_kanban_diagram_svg(
                 html: None,
                 geometry: assigned_geometry,
                 div_class: None,
-                wrap_title: false,
+                markdown: false,
                 foreground: terminal_decision.label_css(),
-                visible_run_count: prepared_item.assigned_style_facts.visible_run_count(),
+                visible_run_count: prepared_item
+                    .assigned
+                    .visible_style_facts
+                    .visible_run_count(),
                 inherited_color_run_count: prepared_item
-                    .assigned_style_facts
+                    .assigned
+                    .visible_style_facts
                     .inherited_color_run_count(),
                 inherited_font_family_run_count: prepared_item
-                    .assigned_style_facts
+                    .assigned
+                    .visible_style_facts
                     .inherited_font_family_run_count(),
                 unverified_font_family_run_count: prepared_item
-                    .assigned_style_facts
+                    .assigned
+                    .visible_style_facts
                     .unverified_font_family_run_count(),
+                inherited_font_size_run_count: prepared_item
+                    .assigned
+                    .visible_style_facts
+                    .inherited_font_size_run_count(),
+                unverified_font_size_run_count: prepared_item
+                    .assigned
+                    .visible_style_facts
+                    .unverified_font_size_run_count(),
             },
         )?;
         record_kanban_label_emission(
@@ -752,10 +823,12 @@ pub(crate) fn render_kanban_diagram_svg(
         );
         record_kanban_typography_text(
             task_theme_receipt.as_mut(),
-            prepared_item.assigned_style_facts.parse_valid(),
+            prepared_item.assigned.visible_style_facts.parse_valid(),
             assigned_emission.visible_run_count,
             assigned_emission.inherited_font_family_run_count,
             assigned_emission.unverified_font_family_run_count,
+            assigned_emission.inherited_font_size_run_count,
+            assigned_emission.unverified_font_size_run_count,
         );
 
         if let Some(p) = n.priority.as_deref() {
@@ -781,13 +854,10 @@ pub(crate) fn render_kanban_diagram_svg(
             receipt.record_checkpointed_item(
                 item_index,
                 &n.id,
-                task_theme.radius_px(item_index).is_some_and(|expected| {
-                    task_rect_emission.matches_theme(
-                        expected,
-                        terminal_decision.fill_css(),
-                        terminal_decision.stroke_css(),
-                    )
-                }),
+                (task_rect_emission.rx, task_rect_emission.ry),
+                task_rect_emission.fill.as_deref(),
+                task_rect_emission.stroke.as_deref(),
+                task_theme.radius_px(item_index).unwrap_or_default(),
                 terminal_decision,
             );
         }
@@ -931,20 +1001,22 @@ mod tests {
     }
 
     #[test]
-    fn kanban_css_reports_and_emits_the_resolved_font_family() {
+    fn kanban_css_reports_and_emits_the_resolved_typography() {
         let mut out = String::new();
         let emitted = write_kanban_css(
             &mut out,
             "k",
             &serde_json::json!({}),
-            Some("Typed, sans-serif"),
+            Some(("Typed, sans-serif", "24px")),
         )
         .unwrap();
 
-        assert_eq!(emitted.as_ref(), "Typed, sans-serif");
+        assert_eq!(emitted.font_family.as_ref(), "Typed, sans-serif");
+        assert_eq!(emitted.font_size_css.as_ref(), "24px");
+        assert!(emitted.base_typography_emitted);
         assert!(
-            out.contains("font-family:Typed, sans-serif"),
-            "resolved Kanban font family must reach the common CSS writer: {out}"
+            out.contains("font-family:Typed, sans-serif;font-size:24px"),
+            "resolved Kanban typography must reach the common CSS writer: {out}"
         );
     }
 
@@ -1449,9 +1521,8 @@ mod tests {
         );
         assert_eq!(attr_f64(title_fo, "height"), 40.0);
         assert_eq!(
-            measurement_count_after_render,
-            measurement_count_before_render + 2,
-            "SVG emission must measure each non-empty detail label exactly once"
+            measurement_count_after_render, measurement_count_before_render,
+            "prepared Kanban geometry must own detail measurements; SVG emission must not remeasure"
         );
         assert!(report.entries().iter().any(|entry| {
             entry.provenance().phase == TextMeasurementPhase::Wrap

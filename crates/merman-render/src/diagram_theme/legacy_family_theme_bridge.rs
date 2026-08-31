@@ -2935,6 +2935,40 @@ mod tests {
     }
 
     #[test]
+    fn kanban_base_typography_is_property_local() {
+        const SOURCE: &str = "kanban\n  todo[Todo]\n    task[Task]\n";
+
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::new(["Kanban Typed", "sans-serif"])
+                    .expect("valid Kanban font stack"),
+            )
+            .with_font_size_px(24.0)
+            .expect("valid Kanban font size");
+        let spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::KANBAN, typography),
+        );
+        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::KANBAN);
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+
+        let baseline = parse(&DiagramThemeSpec::default(), SOURCE);
+        let parsed = parse(&spec, SOURCE);
+        assert_eq!(fallback_contribution_count(&parsed), 0);
+        for path in [
+            "fontFamily",
+            "themeVariables.fontFamily",
+            "themeVariables.fontSize",
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed Kanban typography must not write legacy `{path}`"
+            );
+        }
+    }
+
+    #[test]
     fn quadrant_chart_font_stack_is_property_local_while_font_size_uses_legacy_bridge() {
         const SOURCE: &str = "quadrantChart\nFeature: [0.5, 0.5]\n";
 

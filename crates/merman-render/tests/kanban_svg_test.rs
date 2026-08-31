@@ -6,13 +6,19 @@ use merman_render::diagram_theme::{
     ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
     ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::model::KanbanDiagramLayout;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn kanban_task_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
     let styles = rules
@@ -108,23 +114,53 @@ fn try_render_kanban_with_theme_and_engine(
     engine: Engine,
     portability: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
+    try_render_kanban_with_theme_engine_and_environment(
+        source,
+        theme,
+        engine,
+        portability,
+        RenderEnvironment::deterministic(),
+    )
+}
+
+fn try_render_kanban_with_layout_and_environment(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+    environment: RenderEnvironment,
+) -> merman_render::Result<(KanbanDiagramLayout, family::RenderedFamilySvg)> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Kanban")
         .expect("detect themed Kanban");
-    let session = RenderEnvironment::deterministic()
+    let session = environment
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Kanban session");
-    family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed Kanban")
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("kanban-palette".to_string()),
-                ..Default::default()
-            },
-            &SvgDebugOptions::default(),
-        )
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let projection = artifact.layout_json()?;
+    let layout = serde_json::from_value(projection["layout"]["KanbanDiagram"].clone())
+        .expect("Kanban layout projection");
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("kanban-palette".to_string()),
+            ..Default::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok((layout, rendered))
+}
+
+fn try_render_kanban_with_theme_engine_and_environment(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+    environment: RenderEnvironment,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    try_render_kanban_with_layout_and_environment(source, theme, engine, portability, environment)
+        .map(|(_, rendered)| rendered)
 }
 
 fn kanban_task_rect_style<'input>(
@@ -176,6 +212,120 @@ fn kanban_task_title_div_class<'input>(
                 .find(|node| node.has_tag_name("div"))
         })
         .and_then(|div| div.attribute("class"))
+}
+
+fn kanban_task_rect_height(document: &roxmltree::Document<'_>, id: &str) -> f64 {
+    document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some(id))
+        .and_then(|group| group.children().find(|node| node.has_tag_name("rect")))
+        .and_then(|rect| rect.attribute("height"))
+        .and_then(|height| height.parse::<f64>().ok())
+        .expect("Kanban task rect height")
+}
+
+fn kanban_task_label_foreign_object(
+    document: &roxmltree::Document<'_>,
+    id: &str,
+    text: &str,
+) -> (f64, f64) {
+    let task = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some(id))
+        .expect("Kanban task group");
+    let paragraph = task
+        .descendants()
+        .find(|node| node.has_tag_name("p") && node.text() == Some(text))
+        .unwrap_or_else(|| panic!("Kanban task label {text:?}"));
+    let foreign_object = paragraph
+        .ancestors()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .expect("Kanban label foreignObject");
+    (
+        foreign_object
+            .attribute("width")
+            .expect("Kanban label foreignObject width")
+            .parse()
+            .expect("numeric Kanban label width"),
+        foreign_object
+            .attribute("height")
+            .expect("Kanban label foreignObject height")
+            .parse()
+            .expect("numeric Kanban label height"),
+    )
+}
+
+#[derive(Debug)]
+struct KanbanLayoutProbeMeasurer {
+    expected_font_size: f64,
+    expected_size_calls: Arc<AtomicUsize>,
+    unexpected_size_calls: Arc<AtomicUsize>,
+}
+
+impl KanbanLayoutProbeMeasurer {
+    fn metrics(text: &str, font_size: f64) -> (f64, f64) {
+        let height = match text {
+            "Todo" => font_size + 8.0,
+            "Task" => font_size + 13.0,
+            "MC-2038" => font_size - 6.0,
+            "Alice" => font_size + 10.0,
+            "Next" => font_size + 4.0,
+            _ => font_size,
+        };
+        let width = match text {
+            "Todo" => 64.0,
+            "Task" => 72.0,
+            "MC-2038" => 60.0,
+            "Alice" => 50.0,
+            "Next" => 48.0,
+            _ => (text.chars().count() as f64 * 8.0).max(1.0),
+        };
+        (width, height.max(1.0))
+    }
+
+    fn record_font_size(&self, style: &TextStyle) {
+        if (style.font_size - self.expected_font_size).abs() < f64::EPSILON {
+            self.expected_size_calls.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.unexpected_size_calls.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+impl TextMeasurer for KanbanLayoutProbeMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        self.record_font_size(style);
+        let (width, height) = Self::metrics(text, style.font_size);
+        TextMetrics {
+            width,
+            height,
+            line_count: 1,
+        }
+    }
+}
+
+fn kanban_probe_environment(
+    expected_font_size: f64,
+    profile_id: &str,
+) -> (RenderEnvironment, Arc<AtomicUsize>, Arc<AtomicUsize>) {
+    let expected_size_calls = Arc::new(AtomicUsize::new(0));
+    let unexpected_size_calls = Arc::new(AtomicUsize::new(0));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new(profile_id).expect("valid Kanban probe profile id"),
+        "test",
+    )
+    .expect("valid Kanban probe profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(KanbanLayoutProbeMeasurer {
+                expected_font_size,
+                expected_size_calls: Arc::clone(&expected_size_calls),
+                unexpected_size_calls: Arc::clone(&unexpected_size_calls),
+            }),
+        )),
+    );
+    (environment, expected_size_calls, unexpected_size_calls)
 }
 
 fn render_kanban_artifact(
@@ -1204,9 +1354,193 @@ fn kanban_task_radius_is_not_applicable_without_items() {
 }
 
 #[test]
-fn kanban_unsupported_typography_is_property_local_to_the_typed_font_stack() {
+fn kanban_typed_font_size_reaches_measurement_layout_css_and_evidence() {
+    let source = concat!(
+        "kanban\n",
+        "  todo[Todo]\n",
+        "    task[Task]@{ ticket: MC-2038, assigned: 'Alice' }\n",
+        "    next[Next]\n",
+    );
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Kanban font size"),
+    );
+    let (environment, expected_size_calls, unexpected_size_calls) =
+        kanban_probe_environment(24.0, "test.kanban-typed-font-size");
+    let (layout, rendered) = try_render_kanban_with_layout_and_environment(
+        source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "fontSize": 30
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+        environment,
+    )
+    .expect("render typed Kanban font size");
+
+    assert!(expected_size_calls.load(Ordering::Relaxed) > 0);
+    assert_eq!(unexpected_size_calls.load(Ordering::Relaxed), 0);
+    assert!(
+        rendered.svg().contains("font-size:24px"),
+        "typed Kanban size must reach the shared stylesheet: {}",
+        rendered.svg()
+    );
+    assert!(
+        !rendered.svg().contains("font-size:30px"),
+        "root fontSize is a fallback and must not override typed Kanban FontSize"
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid typed Kanban SVG");
+    assert_eq!(
+        kanban_task_rect_height(&document, "kanban-palette-task"),
+        74.0,
+        "typed Kanban size must use title/detail bbox geometry and fixed Mermaid padding"
+    );
+    assert_eq!(layout.items.len(), 2);
+    assert_eq!(layout.items[0].height, 74.0);
+    assert_eq!(layout.items[1].height, 48.0);
+    assert_eq!(layout.items[0].center_y, -231.0);
+    assert_eq!(layout.items[1].center_y, -165.0);
+    assert_eq!(layout.max_label_height, 32.0);
+    assert_eq!(layout.sections[0].rect_height, 169.0);
+    assert_eq!(
+        kanban_task_label_foreign_object(&document, "kanban-palette-task", "MC-2038"),
+        (60.0, 24.0),
+        "ticket geometry must be prepared once and retain Mermaid's minimum label height"
+    );
+    assert_eq!(
+        kanban_task_label_foreign_object(&document, "kanban-palette-task", "Alice"),
+        (50.0, 34.0),
+        "assigned geometry must be emitted from the prepared detail bbox"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn kanban_typed_font_size_yields_to_explicit_theme_variable_ownership() {
+    let source = concat!(
+        "kanban\n",
+        "  todo[Todo]\n",
+        "    task[Task]@{ ticket: MC-2038, assigned: 'Alice' }\n",
+        "    next[Next]\n",
+    );
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Kanban font size"),
+    );
+    let (environment, expected_size_calls, unexpected_size_calls) =
+        kanban_probe_environment(30.0, "test.kanban-config-font-size");
+    let (layout, rendered) = try_render_kanban_with_layout_and_environment(
+        source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": { "fontSize": "30px" }
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+        environment,
+    )
+    .expect("render Kanban with config-owned font size");
+
+    assert!(expected_size_calls.load(Ordering::Relaxed) > 0);
+    assert_eq!(unexpected_size_calls.load(Ordering::Relaxed), 0);
+    assert!(rendered.svg().contains("font-size:30px"));
+    assert!(!rendered.svg().contains("font-size:24px"));
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid config-owned SVG");
+    assert_eq!(layout.items[0].height, 83.0);
+    assert_eq!(layout.items[1].height, 54.0);
+    assert_eq!(layout.items[0].center_y, -220.5);
+    assert_eq!(layout.items[1].center_y, -147.0);
+    assert_eq!(layout.max_label_height, 38.0);
+    assert_eq!(layout.sections[0].rect_height, 190.0);
+    assert_eq!(
+        kanban_task_rect_height(&document, "kanban-palette-task"),
+        83.0,
+        "config-owned font size must drive the same prepared layout as its CSS"
+    );
+    assert_eq!(
+        kanban_task_label_foreign_object(&document, "kanban-palette-task", "Alice"),
+        (50.0, 40.0)
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn kanban_invalid_explicit_font_size_is_unverified_not_not_applicable() {
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Kanban font size"),
+    );
+
+    for (label, value) in [
+        ("negative number", serde_json::json!(-2)),
+        ("zero number", serde_json::json!(0)),
+        ("negative px", serde_json::json!("-2px")),
+        ("zero px", serde_json::json!("0px")),
+        ("relative unit", serde_json::json!("1em")),
+        ("unknown value", serde_json::json!("bogus")),
+    ] {
+        let source = "kanban\n  todo[Todo]\n    task[Task]\n";
+        let rendered = render_kanban_with_theme_and_engine(
+            &source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": value }
+            }))),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        assert!(
+            rendered.svg().contains("font-size:16px"),
+            "invalid configured size should use a bounded fallback in BestEffort mode: {label}"
+        );
+        assert!(!rendered.svg().contains("font-size:24px"));
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "value={label}");
+        assert_eq!(evidence.accounted_count(), 1, "value={label}");
+        assert_eq!(evidence.applied_count(), 0, "value={label}");
+        assert_eq!(evidence.not_applicable_count(), 0, "value={label}");
+        assert_eq!(evidence.theme_residual_count(), 1, "value={label}");
+
+        let error = match try_render_kanban_with_theme_and_engine(
+            &source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": value }
+            }))),
+            ThemePortabilityRequirement::RequirePortable,
+        ) {
+            Ok(_) => panic!("invalid source size must fail closed in portable mode"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::KANBAN, 1)),
+            "value={label}"
+        );
+    }
+}
+
+#[test]
+fn kanban_unsupported_typography_is_property_local_to_the_typed_base_properties() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(FontStack::single("KanbanTyped").expect("valid Kanban font stack"))
+        .with_font_size_px(24.0)
+        .expect("valid Kanban font size")
         .with_font_weight(700)
         .expect("valid unsupported Kanban font weight");
     let theme = kanban_typography_theme(typography);
@@ -1219,10 +1553,11 @@ fn kanban_unsupported_typography_is_property_local_to_the_typed_font_stack() {
     );
 
     assert!(rendered.svg().contains("font-family:KanbanTyped"));
+    assert!(rendered.svg().contains("font-size:24px"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.accounted_count(), 2);
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.required_count(), 3);
+    assert_eq!(evidence.accounted_count(), 3);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 1);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 
@@ -1233,6 +1568,46 @@ fn kanban_unsupported_typography_is_property_local_to_the_typed_font_stack() {
         ThemePortabilityRequirement::RequirePortable,
     ) {
         Ok(_) => panic!("strict Kanban must reject unsupported font weight"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::KANBAN, 1))
+    );
+}
+
+#[test]
+fn kanban_source_owned_font_size_is_a_property_local_portability_residual() {
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Kanban font size"),
+    );
+    let source = concat!(
+        "%%{init: {\"securityLevel\": \"loose\"}}%%\n",
+        "kanban\n  todo[Todo]\n",
+        "    task[\"Visible <span style='font-size:30px'>Source sized</span>\"]\n",
+    );
+    let rendered = render_kanban_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    assert!(rendered.svg().contains("font-size:24px"));
+    assert!(rendered.svg().contains("font-size:30px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let error = match try_render_kanban_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    ) {
+        Ok(_) => panic!("source-owned Kanban font size must fail closed in portable mode"),
         Err(error) => error,
     };
     assert_eq!(

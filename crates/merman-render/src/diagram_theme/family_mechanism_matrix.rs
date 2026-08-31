@@ -1075,6 +1075,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::ER
             | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::REQUIREMENT
+            | DiagramFamilyId::KANBAN
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1084,7 +1085,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::C4
             | DiagramFamilyId::JOURNEY
-            | DiagramFamilyId::KANBAN
             | DiagramFamilyId::QUADRANT_CHART
             | DiagramFamilyId::TREEMAP
             | DiagramFamilyId::XY_CHART
@@ -5667,6 +5667,40 @@ mod tests {
             route.mechanism()
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
                 && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(
+            routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        );
+    }
+
+    #[test]
+    fn kanban_directly_owns_base_font_stack_and_size() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("monospace").expect("valid Kanban base font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid Kanban font size")
+            .with_font_weight(700)
+            .expect("valid Kanban font weight");
+        let routes = compile_base_typography_routes(DiagramFamilyId::KANBAN, &typography);
+
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
         }));
         assert!(
             routes
