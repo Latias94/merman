@@ -1713,12 +1713,12 @@ fn validate_resolved_lifeline_path(
     }
 
     let mut segments = path.data().segments();
-    let Some(tiny_skia::PathSegment::MoveTo(mut start)) = segments.next() else {
+    let Some(tiny_skia::PathSegment::MoveTo(start)) = segments.next() else {
         return Err(ExportError::RasterPaintCutover(
             "renderer lifeline path has no move-to segment",
         ));
     };
-    let Some(tiny_skia::PathSegment::LineTo(mut end)) = segments.next() else {
+    let Some(tiny_skia::PathSegment::LineTo(end)) = segments.next() else {
         return Err(ExportError::RasterPaintCutover(
             "renderer lifeline path is not a single line",
         ));
@@ -1729,9 +1729,6 @@ fn validate_resolved_lifeline_path(
         ));
     }
 
-    let transform = path.abs_transform();
-    transform.map_point(&mut start);
-    transform.map_point(&mut end);
     let expected = [
         (expected_geometry.x1(), expected_geometry.y1()),
         (expected_geometry.x2(), expected_geometry.y2()),

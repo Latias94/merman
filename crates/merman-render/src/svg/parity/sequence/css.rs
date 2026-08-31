@@ -385,7 +385,7 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     );
     let _ = write!(
         &mut out,
-        r#"#{} .actor-man circle,#{} line{{stroke:{};fill:{};stroke-width:2px;}}"#,
+        r#"#{} .actor-man circle,#{} .actor-man line{{stroke:{};fill:{};stroke-width:2px;}}"#,
         id, id, actor_border, actor_fill
     );
     if let Some(typed_actor_fill) = typed.actor_fill {
@@ -625,6 +625,10 @@ mod tests {
         assert!(css.contains(r#"#seq .actor{stroke:#220000;fill:#330000;stroke-width:2;}"#));
         assert!(css.contains(r#"#seq text.actor>tspan{fill:#fafafa;stroke:none;}"#));
         assert!(css.contains(r#"#seq .actor-line{stroke:#444444;}"#));
+        assert!(css.contains(
+            r#"#seq .actor-man circle,#seq .actor-man line{stroke:#220000;fill:#330000;stroke-width:2px;}"#
+        ));
+        assert!(!css.contains(r#"#seq .actor-man circle,#seq line{"#));
         assert!(css.contains(r#"#seq .messageLine0{stroke-width:1.5;stroke-dasharray:none;}"#));
         assert!(css.contains(r#"#seq .messageLine0,#seq .messageLine1{stroke:#555555;}"#));
         assert!(css.contains(r#"#seq .sequenceNumber,#seq .sequenceNumber>tspan{fill:#666666;}"#));
