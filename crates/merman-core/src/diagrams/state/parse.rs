@@ -152,13 +152,16 @@ pub(crate) fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_state_semantic_source(code, meta)?.db.to_model(meta)
 }
 
-pub(crate) fn parse_state_model_for_render(
+pub(crate) fn parse_state_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<StateDiagramRenderModel> {
-    parse_state_semantic_source(code, meta)?
-        .db
-        .to_model_for_render_typed(meta)
+    control: &OperationControl,
+) -> OperationControlResult<Result<StateDiagramRenderModel>> {
+    let construction = construct_state_semantic_source(code, control)?;
+    match construction {
+        Ok(source) => Ok(source.db.to_model_for_render_typed(meta)),
+        Err(failure) => Ok(Err(failure.into_parse_error(meta, code.len()))),
+    }
 }
 
 pub(crate) fn parse_state_json_and_editor_facts(

@@ -162,13 +162,17 @@ pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> 
         .into_model(meta))
 }
 
-pub(crate) fn parse_sequence_model_for_render(
+pub(crate) fn parse_sequence_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<SequenceDiagramRenderModel> {
-    Ok(parse_sequence_semantic_source(code, meta)?
-        .db
-        .into_render_model())
+    control: &OperationControl,
+) -> OperationControlResult<Result<SequenceDiagramRenderModel>> {
+    let construction =
+        construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), control)?;
+    match construction {
+        Ok(source) => Ok(Ok(source.db.into_render_model())),
+        Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
+    }
 }
 
 pub(crate) fn parse_sequence_json_and_editor_facts(

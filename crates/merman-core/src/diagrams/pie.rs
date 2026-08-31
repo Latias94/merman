@@ -107,6 +107,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_pie_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -119,6 +120,29 @@ pub(crate) fn parse_pie_model_for_render(
         )),
         PieParseOutput::Model(model) => Ok(model),
     }
+}
+
+pub(crate) fn parse_pie_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<PieDiagramRenderModel>> {
+    let construction = construct_pie_semantic_source_controlled(code, meta, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(failure.into_error())),
+    };
+    let model = match source.output {
+        PieParseOutput::Empty => PieDiagramRenderModel::empty_compatibility_output(),
+        PieParseOutput::ExpectedPie => {
+            return Ok(Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                "expected pie".to_string(),
+            )));
+        }
+        PieParseOutput::Model(model) => model,
+    };
+    Ok(Ok(model))
 }
 
 fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSemanticSource> {

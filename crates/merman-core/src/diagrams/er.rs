@@ -529,11 +529,26 @@ fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemant
         .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_er_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<ErDiagramRenderModel> {
     Ok(parse_er_semantic_source(code, meta)?.db.into_render_model())
+}
+
+pub(crate) fn parse_er_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ErDiagramRenderModel>> {
+    let construction = construct_er_semantic_source(code, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err((*failure).into_parse_error(meta, code.len()))),
+    };
+    control.checkpoint()?;
+    Ok(Ok(source.db.into_render_model()))
 }
 
 pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {

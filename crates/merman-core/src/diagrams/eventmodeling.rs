@@ -111,6 +111,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_eventmodeling_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -118,6 +119,19 @@ pub(crate) fn parse_eventmodeling_model_for_render(
     Ok(construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_render_model(meta))
+}
+
+pub(crate) fn parse_eventmodeling_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<EventModelingDiagramRenderModel>> {
+    let construction = construct_eventmodeling_semantic_source_controlled(code, meta, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(*failure.error)),
+    };
+    Ok(Ok(source.into_render_model_controlled(meta, control)?))
 }
 
 #[derive(Debug, Clone)]

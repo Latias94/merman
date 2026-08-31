@@ -1529,11 +1529,24 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_git_graph_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<GitGraphRenderModel> {
     Ok(parse_git_graph_semantic_source(code, meta)?.model)
+}
+
+pub(crate) fn parse_git_graph_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<GitGraphRenderModel>> {
+    let source = construct_git_graph_semantic_source_controlled(code, meta, control)?;
+    control.checkpoint()?;
+    Ok(source
+        .map(|source| source.model)
+        .map_err(|failure| *failure.error))
 }
 
 fn push_gitgraph_entity_fact(

@@ -464,6 +464,7 @@ pub(crate) fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
     source.db.to_model(meta)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_c4_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -472,6 +473,17 @@ pub(crate) fn parse_c4_model_for_render(
         .into_strict_source()?
         .db
         .to_render_model()
+}
+
+pub(crate) fn parse_c4_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<C4DiagramRenderModel>> {
+    let outcome = construct_c4_semantic_source_controlled(code, meta, control)?;
+    Ok(outcome
+        .into_strict_source()
+        .and_then(|source| source.db.to_render_model()))
 }
 
 pub(crate) fn parse_c4_json_and_editor_facts(

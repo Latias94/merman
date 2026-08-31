@@ -808,6 +808,23 @@ pub(super) fn parse_semantic_source(
     Ok(ArchitectureSemanticSource { db, editor_facts })
 }
 
+pub(super) fn parse_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<super::ArchitectureDiagramRenderModel>> {
+    control.checkpoint()?;
+    let trace = match parse_trace_controlled(code, meta, ArchitectureParseMode::Strict, control)? {
+        Ok(trace) => trace,
+        Err(error) => return Ok(Err(error)),
+    };
+    let db = match trace.build_db_controlled(control)? {
+        Ok(db) => db,
+        Err(error) => return Ok(Err(error)),
+    };
+    Ok(Ok(db.render_model_controlled(control)?))
+}
+
 pub(super) fn parse_combined_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
@@ -1414,6 +1431,7 @@ impl ArchitectureSemanticSource {
             .expect("Architecture typed model must remain JSON-serializable")
     }
 
+    #[cfg(test)]
     pub(super) fn render_model(&self) -> ArchitectureDiagramRenderModel {
         self.db.render_model()
     }

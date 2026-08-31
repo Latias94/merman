@@ -14,7 +14,7 @@ pub use render_model::{
     StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
 };
 
-pub(crate) use parse::{parse_state, parse_state_model_for_render};
+pub(crate) use parse::{parse_state, parse_state_model_for_render_controlled};
 
 pub(crate) use parse::parse_state_json_and_editor_facts;
 #[cfg(test)]

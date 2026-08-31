@@ -938,11 +938,20 @@ pub struct ArchitectureRenderLayoutHint {
     pub members: Vec<String>,
 }
 
+#[cfg(test)]
 pub(crate) fn parse_architecture_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<ArchitectureDiagramRenderModel> {
     Ok(parse::parse_semantic_source(code, meta)?.render_model())
+}
+
+pub(crate) fn parse_architecture_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ArchitectureDiagramRenderModel>> {
+    parse::parse_model_for_render_controlled(code, meta, control)
 }
 
 #[cfg(test)]

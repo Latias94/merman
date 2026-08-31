@@ -463,32 +463,36 @@ pub(crate) fn parse_railroad_peg(code: &str, meta: &ParseMetadata) -> Result<Val
     parse_railroad_for_dialect(code, meta, RailroadDialect::Peg)
 }
 
-pub(crate) fn parse_railroad_model_for_render(
+pub(crate) fn parse_railroad_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<RailroadDiagramRenderModel> {
-    parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Ir)
+    control: &OperationControl,
+) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+    parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Ir, control)
 }
 
-pub(crate) fn parse_railroad_ebnf_model_for_render(
+pub(crate) fn parse_railroad_ebnf_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<RailroadDiagramRenderModel> {
-    parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Ebnf)
+    control: &OperationControl,
+) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+    parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Ebnf, control)
 }
 
-pub(crate) fn parse_railroad_abnf_model_for_render(
+pub(crate) fn parse_railroad_abnf_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<RailroadDiagramRenderModel> {
-    parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Abnf)
+    control: &OperationControl,
+) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+    parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Abnf, control)
 }
 
-pub(crate) fn parse_railroad_peg_model_for_render(
+pub(crate) fn parse_railroad_peg_model_for_render_controlled(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<RailroadDiagramRenderModel> {
-    parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Peg)
+    control: &OperationControl,
+) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+    parse_railroad_model_for_render_dialect_controlled(code, meta, RailroadDialect::Peg, control)
 }
 
 pub(crate) fn parse_railroad_json_and_editor_facts(
@@ -578,12 +582,17 @@ fn parse_railroad_for_dialect(
     parse_railroad_semantic_source(code, meta, dialect)?.into_compat_json(meta)
 }
 
-fn parse_railroad_model_for_render_dialect(
+fn parse_railroad_model_for_render_dialect_controlled(
     code: &str,
     meta: &ParseMetadata,
     dialect: RailroadDialect,
-) -> Result<RailroadDiagramRenderModel> {
-    Ok(parse_railroad_semantic_source(code, meta, dialect)?.into_render_model(meta))
+    control: &OperationControl,
+) -> OperationControlResult<Result<RailroadDiagramRenderModel>> {
+    let construction = construct_railroad_semantic_source(code, meta, dialect, control)?;
+    match construction {
+        Ok(source) => Ok(Ok(source.into_render_model(meta))),
+        Err(failure) => Ok(Err(*failure.error)),
+    }
 }
 
 fn parse_railroad_json_and_editor_facts_for_dialect(
