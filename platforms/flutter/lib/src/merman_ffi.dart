@@ -201,12 +201,20 @@ class MermanDiagnosticErrorDetails {
     required this.span,
     required this.field,
     required this.diagramType,
+    this.requestedMaxWidth,
+    this.actualWidth,
+    this.widthProfile,
+    this.fallbackReason,
   });
 
   final String code;
   final MermanDiagnosticSpan? span;
   final String? field;
   final String? diagramType;
+  final int? requestedMaxWidth;
+  final int? actualWidth;
+  final String? widthProfile;
+  final String? fallbackReason;
 }
 
 /// Error returned by the native ABI or by a local contract validation failure.
@@ -614,11 +622,26 @@ MermanDiagnosticErrorDetails? _parseDiagnosticErrorDetails(
       (diagramType != null && diagramType is! String)) {
     return null;
   }
+  final requestedMaxWidth = diagnostic['requested_max_width'];
+  final actualWidth = diagnostic['actual_width'];
+  final widthProfile = diagnostic['width_profile'];
+  final fallbackReason = diagnostic['fallback_reason'];
+  if ((requestedMaxWidth != null &&
+          (requestedMaxWidth is! int || requestedMaxWidth < 0)) ||
+      (actualWidth != null && (actualWidth is! int || actualWidth < 0)) ||
+      (widthProfile != null && widthProfile is! String) ||
+      (fallbackReason != null && fallbackReason is! String)) {
+    return null;
+  }
   return MermanDiagnosticErrorDetails(
     code: code,
     span: span,
     field: field as String?,
     diagramType: diagramType as String?,
+    requestedMaxWidth: requestedMaxWidth as int?,
+    actualWidth: actualWidth as int?,
+    widthProfile: widthProfile as String?,
+    fallbackReason: fallbackReason as String?,
   );
 }
 

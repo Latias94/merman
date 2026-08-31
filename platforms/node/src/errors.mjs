@@ -72,6 +72,8 @@ const RESPONSE_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
   ["error", "details", "resource", "max"],
   ["error", "details", "diagnostic", "span", "start"],
   ["error", "details", "diagnostic", "span", "end"],
+  ["error", "details", "diagnostic", "requested_max_width"],
+  ["error", "details", "diagnostic", "actual_width"],
   ["error", "details", "icon_registry", "pack_index"],
 ]);
 const OPERATION_METADATA_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
@@ -1209,6 +1211,14 @@ function validateErrorDetails(details) {
       diagnostic.code.length === 0 ||
       (diagnostic.field !== null && typeof diagnostic.field !== "string") ||
       (diagnostic.diagram_type !== null && typeof diagnostic.diagram_type !== "string") ||
+      !isOptionalDiagnosticUnsignedInteger(diagnostic.requested_max_width) ||
+      !isOptionalDiagnosticUnsignedInteger(diagnostic.actual_width) ||
+      (diagnostic.width_profile !== undefined &&
+        diagnostic.width_profile !== null &&
+        typeof diagnostic.width_profile !== "string") ||
+      (diagnostic.fallback_reason !== undefined &&
+        diagnostic.fallback_reason !== null &&
+        typeof diagnostic.fallback_reason !== "string") ||
       (span !== null &&
         (!isPlainJsonObject(span) ||
           !Number.isSafeInteger(span.start) ||
@@ -1262,6 +1272,12 @@ function isBindingResourceCount(value) {
   }
   return compareCanonicalUnsignedDecimals(value, MAX_SAFE_INTEGER_DECIMAL) > 0 &&
     compareCanonicalUnsignedDecimals(value, U64_MAX_DECIMAL) <= 0;
+}
+
+function isOptionalDiagnosticUnsignedInteger(value) {
+  return value === undefined ||
+    value === null ||
+    (Number.isSafeInteger(value) && value >= 0);
 }
 
 function compareCanonicalUnsignedDecimals(left, right) {

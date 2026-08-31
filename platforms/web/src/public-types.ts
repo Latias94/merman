@@ -304,6 +304,7 @@ export type CommonBindingOptions = BindingVersionOptions &
 export type AsciiCharsetOption = "ascii" | "unicode";
 export type AsciiWidthProfileOption = "unicode" | "cjk";
 export type AsciiLayoutProfileOption = "canonical" | "compact";
+export type AsciiOverflowOption = "allow" | "fallback" | "error";
 export type AsciiDirectionOption =
   | "lr"
   | "leftRight"
@@ -342,6 +343,11 @@ export interface AsciiThemeOptions {
 
 export interface AsciiRenderOptions {
   charset?: AsciiCharsetOption;
+  max_width?: number;
+  maxWidth?: number;
+  overflow?: AsciiOverflowOption;
+  trim_trailing_spaces?: boolean;
+  trimTrailingSpaces?: boolean;
   layout_profile?: AsciiLayoutProfileOption;
   layoutProfile?: AsciiLayoutProfileOption;
   width_profile?: AsciiWidthProfileOption;

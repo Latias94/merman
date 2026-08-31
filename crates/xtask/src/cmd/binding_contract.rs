@@ -1021,6 +1021,26 @@ fn render_kotlin() -> String {
 private fun decodeMermanOutputPlan(plan: JSONObject): MermanOutputPlan {
     val kind = plan.requiredGeneratedString("kind")
     return when (kind) {
+        "ascii" -> MermanAsciiOutputPlan(
+            schemaVersion = plan.requiredGeneratedUnsignedShort("schema_version"),
+            family = plan.requiredGeneratedString("family"),
+            projection = plan.requiredGeneratedString("projection"),
+            encoding = plan.requiredGeneratedString("encoding"),
+            primaryWidth = plan.requiredGeneratedLong("primary_width"),
+            primaryHeight = plan.requiredGeneratedLong("primary_height"),
+            emittedWidth = plan.requiredGeneratedLong("emitted_width"),
+            emittedHeight = plan.requiredGeneratedLong("emitted_height"),
+            widthProfile = plan.requiredGeneratedString("width_profile"),
+            layoutProfile = plan.requiredGeneratedString("layout_profile"),
+            requestedMaxWidth = plan.optionalGeneratedLong("requested_max_width"),
+            overflowed = plan.requiredGeneratedBoolean("overflowed"),
+            outcome = plan.requiredGeneratedString("outcome"),
+            fallbackCapability = plan.requiredGeneratedString("fallback_capability"),
+            fallbackAttempted = plan.requiredGeneratedBoolean("fallback_attempted"),
+            fallbackReason = plan.optionalGeneratedString("fallback_reason"),
+            trimmed = plan.requiredGeneratedBoolean("trimmed"),
+            lossiness = plan.requiredGeneratedString("lossiness"),
+        )
         "raster" -> MermanRasterOutputPlan(
             requestedWidthPx = plan.requiredGeneratedDouble("requested_width_px"),
             requestedHeightPx = plan.requiredGeneratedDouble("requested_height_px"),
@@ -1064,10 +1084,32 @@ private fun JSONObject.requiredGeneratedLong(key: String): Long {
     return value
 }
 
+private fun JSONObject.optionalGeneratedLong(key: String): Long? =
+    when (opt(key)) {
+        null, JSONObject.NULL -> null
+        else -> requiredGeneratedLong(key)
+    }
+
+private fun JSONObject.optionalGeneratedString(key: String): String? =
+    when (opt(key)) {
+        null, JSONObject.NULL -> null
+        else -> requiredGeneratedString(key)
+    }
+
 private fun JSONObject.requiredGeneratedInt(key: String): Int {
     val value = requiredGeneratedLong(key)
     if (value > Int.MAX_VALUE.toLong()) {
         throw MermanException("Merman operation metadata field `$key` exceeds Int range")
+    }
+    return value.toInt()
+}
+
+private fun JSONObject.requiredGeneratedUnsignedShort(key: String): Int {
+    val value = requiredGeneratedLong(key)
+    if (value > UShort.MAX_VALUE.toLong()) {
+        throw MermanException(
+            "Merman operation metadata field `$key` exceeds unsigned 16-bit range",
+        )
     }
     return value.toInt()
 }
@@ -1459,6 +1501,29 @@ final class MermanBindingOperationExpectation {
 MermanOutputPlan _decodeMermanOutputPlan(Map<String, Object?> plan) {
   final kind = _requiredGeneratedString(plan, 'kind');
   return switch (kind) {
+    'ascii' => MermanAsciiOutputPlan(
+        schemaVersion: _requiredGeneratedUint16(plan, 'schema_version'),
+        family: _requiredGeneratedString(plan, 'family'),
+        projection: _requiredGeneratedString(plan, 'projection'),
+        encoding: _requiredGeneratedString(plan, 'encoding'),
+        primaryWidth: _requiredGeneratedUint64(plan, 'primary_width'),
+        primaryHeight: _requiredGeneratedUint64(plan, 'primary_height'),
+        emittedWidth: _requiredGeneratedUint64(plan, 'emitted_width'),
+        emittedHeight: _requiredGeneratedUint64(plan, 'emitted_height'),
+        widthProfile: _requiredGeneratedString(plan, 'width_profile'),
+        layoutProfile: _requiredGeneratedString(plan, 'layout_profile'),
+        requestedMaxWidth:
+            _optionalGeneratedUint64(plan, 'requested_max_width'),
+        overflowed: _requiredGeneratedBool(plan, 'overflowed'),
+        outcome: _requiredGeneratedString(plan, 'outcome'),
+        fallbackCapability:
+            _requiredGeneratedString(plan, 'fallback_capability'),
+        fallbackAttempted:
+            _requiredGeneratedBool(plan, 'fallback_attempted'),
+        fallbackReason: _optionalGeneratedString(plan, 'fallback_reason'),
+        trimmed: _requiredGeneratedBool(plan, 'trimmed'),
+        lossiness: _requiredGeneratedString(plan, 'lossiness'),
+      ),
     'raster' => MermanRasterOutputPlan(
         requestedWidthPx: _requiredGeneratedDouble(plan, 'requested_width_px'),
         requestedHeightPx:
@@ -1518,6 +1583,16 @@ int _requiredGeneratedUint32(Map<String, Object?> value, String key) {
   return field;
 }
 
+int _requiredGeneratedUint16(Map<String, Object?> value, String key) {
+  final field = _requiredGeneratedUint64(value, key);
+  if (field > 0xffff) {
+    throw FormatException(
+      'operation metadata field `$key` exceeds unsigned 16-bit range',
+    );
+  }
+  return field;
+}
+
 int _requiredGeneratedUint64(Map<String, Object?> value, String key) {
   final field = value[key];
   if (field is! int || field < 0) {
@@ -1526,6 +1601,20 @@ int _requiredGeneratedUint64(Map<String, Object?> value, String key) {
     );
   }
   return field;
+}
+
+int? _optionalGeneratedUint64(Map<String, Object?> value, String key) {
+  if (value[key] == null) {
+    return null;
+  }
+  return _requiredGeneratedUint64(value, key);
+}
+
+String? _optionalGeneratedString(Map<String, Object?> value, String key) {
+  if (value[key] == null) {
+    return null;
+  }
+  return _requiredGeneratedString(value, key);
 }
 
 double _requiredGeneratedDouble(Map<String, Object?> value, String key) {
@@ -2005,6 +2094,7 @@ mod tests {
         let kotlin = render_kotlin();
         assert!(kotlin.contains("MERMAN_BINDING_TRANSPORT_EXPOSURE_SPECS"));
         assert!(kotlin.contains("decodeMermanOperationMetadata"));
+        assert!(kotlin.contains("\"ascii\" -> MermanAsciiOutputPlan("));
         assert!(kotlin.contains("MermanUnknownOutputPlan"));
         assert!(kotlin.contains("MERMAN_BINDING_OPERATION_EXPECTATIONS"));
         assert!(kotlin.contains("MermanBindingMetadataId"));
@@ -2016,6 +2106,7 @@ mod tests {
         let dart = render_dart();
         assert!(dart.contains("mermanBindingTransportExposureSpecs"));
         assert!(dart.contains("decodeMermanOperationMetadata"));
+        assert!(dart.contains("'ascii' => MermanAsciiOutputPlan("));
         assert!(dart.contains("MermanUnknownOutputPlan"));
         assert!(dart.contains("mermanBindingOperationExpectations"));
         assert!(dart.contains("abstract final class MermanBindingMetadataId"));

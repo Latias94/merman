@@ -193,6 +193,10 @@ test("operation errors preserve structured diagnostic details", () => {
     span: { start: 3, end: 8, kind: "exact" },
     field: null,
     diagram_type: "flowchart-v2",
+    requested_max_width: 10,
+    actual_width: 42,
+    width_profile: "unicode",
+    fallback_reason: "primary_overflow",
   };
   const error = new MermanOperationError({
     code: 5,
@@ -1607,6 +1611,10 @@ test("public TypeScript declarations cover the generic operation API", () => {
   assert.match(declarations, /type MermanResourceCount\s*=\s*number\s*\|\s*string/);
   assert.match(declarations, /readonly actual:\s*MermanResourceCount/);
   assert.match(declarations, /readonly max:\s*MermanResourceCount/);
+  assert.match(declarations, /readonly requested_max_width\?:\s*number \| null/);
+  assert.match(declarations, /readonly actual_width\?:\s*number \| null/);
+  assert.match(declarations, /readonly width_profile\?:\s*string \| null/);
+  assert.match(declarations, /readonly fallback_reason\?:\s*string \| null/);
   assert.match(declarations, /\breadonly runtimeCatalog:/);
   assert.match(declarations, /\boptionsJson\?: string;/);
   assert.match(declarations, /provider_ids:\s*string\[\]/);

@@ -129,6 +129,12 @@ fn ascii_viewport_from_json(
         .overflow(overflow)
         .trim(trim);
     if let Some(max_width) = ascii.max_width {
+        if (max_width as u128) > u128::from(crate::RUNTIME_CATALOG_MAX_SAFE_INTEGER) {
+            return Err(invalid_ascii_option(
+                "ascii.max_width",
+                "must not exceed the portable JSON integer limit",
+            ));
+        }
         viewport = viewport.max_width(max_width);
     }
     viewport.validate().map_err(|error| {
@@ -560,6 +566,12 @@ mod tests {
             .expect_err("zero max width must be rejected before rendering");
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("max_width"), "{error:?}");
+
+        let too_wide = crate::RUNTIME_CATALOG_MAX_SAFE_INTEGER + 1;
+        let options = format!(r#"{{"ascii":{{"max_width":{too_wide}}}}}"#);
+        let error = render_ascii(b"flowchart TD\nA", options.as_bytes())
+            .expect_err("non-portable JSON widths must be rejected before rendering");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
     }
 
     #[test]

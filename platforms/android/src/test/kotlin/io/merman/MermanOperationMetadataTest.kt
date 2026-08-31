@@ -65,6 +65,60 @@ class MermanOperationMetadataTest {
     }
 
     @Test
+    fun decodesKnownAsciiPlan() {
+        val metadata = decodeMermanOperationMetadata(
+            metadataJson(
+                operationId = "ascii",
+                mediaType = "text/plain; charset=utf-8",
+                byteLength = 96,
+                outputPlan = """
+                    {
+                      "kind":"ascii",
+                      "schema_version":2,
+                      "family":"flowchart-v2",
+                      "projection":"unicode",
+                      "encoding":"utf-8",
+                      "primary_width":42,
+                      "primary_height":8,
+                      "emitted_width":40,
+                      "emitted_height":8,
+                      "width_profile":"unicode",
+                      "layout_profile":"compact",
+                      "requested_max_width":40,
+                      "overflowed":true,
+                      "outcome":"fallback",
+                      "fallback_capability":"ascii",
+                      "fallback_attempted":true,
+                      "fallback_reason":"primary_overflow",
+                      "trimmed":true,
+                      "lossiness":"fallback"
+                    }
+                """.trimIndent(),
+            ),
+        )
+
+        val plan = metadata.outputPlan as MermanAsciiOutputPlan
+        assertEquals(2, plan.schemaVersion)
+        assertEquals("flowchart-v2", plan.family)
+        assertEquals("unicode", plan.projection)
+        assertEquals("utf-8", plan.encoding)
+        assertEquals(42L, plan.primaryWidth)
+        assertEquals(8L, plan.primaryHeight)
+        assertEquals(40L, plan.emittedWidth)
+        assertEquals(8L, plan.emittedHeight)
+        assertEquals("unicode", plan.widthProfile)
+        assertEquals("compact", plan.layoutProfile)
+        assertEquals(40L, plan.requestedMaxWidth)
+        assertTrue(plan.overflowed)
+        assertEquals("fallback", plan.outcome)
+        assertEquals("ascii", plan.fallbackCapability)
+        assertTrue(plan.fallbackAttempted)
+        assertEquals("primary_overflow", plan.fallbackReason)
+        assertTrue(plan.trimmed)
+        assertEquals("fallback", plan.lossiness)
+    }
+
+    @Test
     fun preservesUnknownOutputPlanAndOriginalMetadataJson() {
         val raw = metadataJson(
             operationId = "future",
@@ -161,6 +215,40 @@ class MermanOperationMetadataTest {
             )
         }.exceptionOrNull()
         assertTrue(error is MermanException)
+
+        val oversizedSchemaVersion = runCatching {
+            decodeMermanOperationMetadata(
+                metadataJson(
+                    "ascii",
+                    "text/plain; charset=utf-8",
+                    1,
+                    """
+                        {
+                          "kind":"ascii",
+                          "schema_version":65536,
+                          "family":"flowchart-v2",
+                          "projection":"unicode",
+                          "encoding":"utf-8",
+                          "primary_width":1,
+                          "primary_height":1,
+                          "emitted_width":1,
+                          "emitted_height":1,
+                          "width_profile":"unicode",
+                          "layout_profile":"canonical",
+                          "requested_max_width":null,
+                          "overflowed":false,
+                          "outcome":"primary",
+                          "fallback_capability":"none",
+                          "fallback_attempted":false,
+                          "fallback_reason":null,
+                          "trimmed":false,
+                          "lossiness":"none"
+                        }
+                    """.trimIndent(),
+                ),
+            )
+        }.exceptionOrNull()
+        assertTrue(oversizedSchemaVersion is MermanException)
     }
 
     private fun assertRejectedResult(
