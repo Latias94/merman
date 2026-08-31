@@ -1795,9 +1795,10 @@ fn assign_optional_argument(
     arg: Option<&C4Arg>,
 ) {
     match arg {
-        None => {
-            obj.remove(positional_key);
-        }
+        // A named argument may occupy an earlier positional slot.  A later
+        // missing positional value must not clobber the named value that was
+        // already applied to the object.
+        None => {}
         Some(C4Arg::Text(value)) => {
             obj.insert(positional_key.to_string(), json!(value));
         }
@@ -2757,7 +2758,7 @@ Rel(a, b, "second")
     }
 
     #[test]
-    fn c4_redeclaring_shape_clears_omitted_optional_fields() {
+    fn c4_redeclaring_shape_keeps_omitted_optional_fields_like_mermaid() {
         let model = parse(
             r#"C4Context
 Person(customer, "First", "Original description", "users", "retail", "https://example.com")
@@ -2768,22 +2769,13 @@ Person(customer, "Second")
 
         assert_eq!(shape["label"]["text"], json!("Second"));
         assert_eq!(shape["descr"]["text"], json!(""));
-        assert!(
-            !shape.contains_key("sprite"),
-            "a redeclaration must clear an omitted sprite"
-        );
-        assert!(
-            !shape.contains_key("tags"),
-            "a redeclaration must clear omitted tags"
-        );
-        assert!(
-            !shape.contains_key("link"),
-            "a redeclaration must clear an omitted link"
-        );
+        assert_eq!(shape["sprite"], json!("users"));
+        assert_eq!(shape["tags"], json!("retail"));
+        assert_eq!(shape["link"], json!("https://example.com"));
     }
 
     #[test]
-    fn c4_redeclaring_container_and_component_clears_omitted_optional_fields() {
+    fn c4_redeclaring_container_and_component_keeps_omitted_optional_fields() {
         let model = parse(
             r#"C4Component
 Container(container, "First container", "Rust", "Description", "database", "backend", "https://example.com/container")
@@ -2808,14 +2800,14 @@ Component(component, "Second component")
             assert_eq!(shape["label"]["text"], json!(label));
             assert_eq!(shape["techn"]["text"], json!(""));
             assert_eq!(shape["descr"]["text"], json!(""));
-            assert!(!shape.contains_key("sprite"));
-            assert!(!shape.contains_key("tags"));
-            assert!(!shape.contains_key("link"));
+            assert!(shape.contains_key("sprite"));
+            assert!(shape.contains_key("tags"));
+            assert!(shape.contains_key("link"));
         }
     }
 
     #[test]
-    fn c4_redeclaring_relation_clears_omitted_optional_fields() {
+    fn c4_redeclaring_relation_keeps_omitted_optional_fields() {
         let model = parse(
             r#"C4Dynamic
 Rel(a, b, "First", "HTTPS", "Description", "server", "backend", "https://example.com")
@@ -2828,9 +2820,9 @@ Rel(a, b, "Second")
         assert_eq!(rel["label"]["text"], json!("Second"));
         assert_eq!(rel["techn"]["text"], json!(""));
         assert_eq!(rel["descr"]["text"], json!(""));
-        assert!(!rel.contains_key("sprite"));
-        assert!(!rel.contains_key("tags"));
-        assert!(!rel.contains_key("link"));
+        assert!(rel.contains_key("sprite"));
+        assert!(rel.contains_key("tags"));
+        assert!(rel.contains_key("link"));
     }
 
     #[test]
@@ -2851,7 +2843,7 @@ Boundary(b, "Boundary") {
     }
 
     #[test]
-    fn c4_named_arguments_follow_pinned_positional_overwrite_order() {
+    fn c4_named_arguments_in_earlier_slots_are_not_clobbered() {
         let model = parse(
             r#"C4Context
 Person(p, "Person", "Description", $tags="tag1,tag2", $link="https://example.com")
@@ -2860,7 +2852,7 @@ Person(p, "Person", "Description", $tags="tag1,tag2", $link="https://example.com
         let shape = model["shapes"][0].as_object().unwrap();
 
         assert_eq!(shape["tags"], json!("tag1,tag2"));
-        assert!(!shape.contains_key("link"));
+        assert_eq!(shape["link"], json!("https://example.com"));
     }
 
     #[test]
