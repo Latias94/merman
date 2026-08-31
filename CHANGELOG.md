@@ -21,6 +21,10 @@ Alpha.6 is a deliberately breaking prerelease that makes long-running work easie
 
 Barring unexpected release-critical findings, `0.8.0-alpha.7` is planned as the final alpha before `0.8.0`. It will focus on making theme-driven Mermaid styling easier to define, reuse, and apply consistently across first-party surfaces; the goal is to keep that pass focused and move promptly to the stable release after the extended 0.8 prerelease cycle.
 
+### Mermaid compatibility baseline
+
+Alpha.6 remains pinned to Mermaid `11.16.1` and parser `1.2.0`. Mermaid `11.17.2` is the next confirmed baseline, but it is not being half-pinned into this release: the follow-up upgrade must close the ER subgraph, collapsed Flowchart subgraph, new Flowchart shape, XYChart legend, and unified C4/Class renderer changes before Merman claims full `11.17.2` parity. Keeping that work separate preserves a reproducible alpha.6 while leaving alpha.7 as the final focused pass for theme-driven styling, barring unexpected findings.
+
 ### Upgrade first
 
 The detailed contracts remain in **Breaking changes** below. Start with these migration groups before mixing alpha.5 code, generated bindings, or package artifacts with alpha.6:
