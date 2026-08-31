@@ -240,7 +240,6 @@ pub struct RasterPaintCutoverReceipt {
     requested_changed_control_pixels: usize,
     changed_pixels: usize,
     changed_outside_target_pixels: usize,
-    transparent_control_pixels: usize,
     unchanged_control_pixels: usize,
     transparent_reference_mismatches: usize,
     digest: [u8; 32],
@@ -268,7 +267,6 @@ impl RasterPaintCutoverReceipt {
             requested_changed_control_pixels: facts.requested_changed_control_pixels,
             changed_pixels: facts.changed_pixels,
             changed_outside_target_pixels: facts.changed_outside_target_pixels,
-            transparent_control_pixels: facts.transparent_control_pixels,
             unchanged_control_pixels: facts.unchanged_control_pixels,
             transparent_reference_mismatches: facts.transparent_reference_mismatches,
             digest: [0; 32],
@@ -301,14 +299,13 @@ impl RasterPaintCutoverReceipt {
             && self.requested_changed_control_pixels > 0
             && self.changed_pixels > 0
             && self.changed_outside_target_pixels == 0
-            && self.transparent_control_pixels == 0
             && self.transparent_reference_mismatches == 0
             && self.digest == self.canonical_digest()
     }
 
     fn canonical_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v7");
+        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v8");
         update_len_prefixed(&mut hasher, self.facet.id());
         hasher.update(self.control_rgb);
         hasher.update(self.solid_source_digest);
@@ -328,7 +325,6 @@ impl RasterPaintCutoverReceipt {
         update_usize(&mut hasher, self.requested_changed_control_pixels);
         update_usize(&mut hasher, self.changed_pixels);
         update_usize(&mut hasher, self.changed_outside_target_pixels);
-        update_usize(&mut hasher, self.transparent_control_pixels);
         update_usize(&mut hasher, self.unchanged_control_pixels);
         update_usize(&mut hasher, self.transparent_reference_mismatches);
         hasher.finalize().into()
@@ -499,17 +495,6 @@ fn encode_pair_on_backend_stack(
             "transparent PNG differs from the solid SVG underlay reference",
         ));
     }
-    let transparent_control_pixels = count_control_pixels_in_regions(
-        &transparent_pixmap,
-        &solid_tree.targets,
-        solid_placement,
-        control_rgb,
-    )?;
-    if transparent_control_pixels != 0 {
-        return Err(ExportError::RasterPaintCutover(
-            "transparent PNG retained the solid control paint",
-        ));
-    }
     let transparent_bytes = transparent_pixmap
         .encode_png()
         .map_err(|_| ExportError::PngEncode)?;
@@ -535,7 +520,6 @@ fn encode_pair_on_backend_stack(
         changed_control_pixels: solid_delta.changed_control_pixels,
         requested_changed_control_pixels: solid_delta.requested_changed_control_pixels,
         changed_outside_target_pixels: solid_delta.changed_outside_target_pixels,
-        transparent_control_pixels,
         unchanged_control_pixels: solid_delta.unchanged_control_pixels,
         transparent_reference_mismatches,
     })
@@ -2117,27 +2101,6 @@ fn terminal_pixel_proofs(
         .collect())
 }
 
-fn count_control_pixels_in_regions(
-    pixmap: &tiny_skia::Pixmap,
-    targets: &[TargetPath],
-    placement: RasterPlacement,
-    control_rgb: [u8; 3],
-) -> Result<usize> {
-    let regions = pixel_regions(targets, placement)?;
-    let width = pixmap.width() as usize;
-    Ok(pixmap
-        .pixels()
-        .iter()
-        .enumerate()
-        .filter(|(index, pixel)| {
-            let x = (*index % width) as u32;
-            let y = (*index / width) as u32;
-            regions.iter().any(|region| region.contains(x, y))
-                && pixel_near_rgb(**pixel, control_rgb, COLOR_TOLERANCE)
-        })
-        .count())
-}
-
 #[derive(Clone, Copy)]
 struct PixelRegion {
     left: u32,
@@ -2240,7 +2203,6 @@ struct RasterPaintCutoverFacts {
     requested_changed_control_pixels: usize,
     changed_pixels: usize,
     changed_outside_target_pixels: usize,
-    transparent_control_pixels: usize,
     unchanged_control_pixels: usize,
     transparent_reference_mismatches: usize,
 }
@@ -2570,6 +2532,23 @@ mod tests {
             "#dc2626",
             &missing,
         ));
+    }
+
+    #[test]
+    fn renderer_sidecar_allows_unrelated_control_paint_inside_selected_region() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/><rect x="9" y="8" width="3" height="3" fill="#dc2626"/></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="transparent" stroke-width="3"/><rect x="9" y="8" width="3" height="3" fill="#dc2626"/></svg>"##;
+        let bindings = [lifeline_binding("actor0", 10.0)];
+
+        let pair = encode_pair_with_bindings(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+            &bindings,
+        )
+        .expect("unrelated same-color paint is not a selected terminal residual");
+        assert!(pair.into_parts().2.proves_semantics());
     }
 
     #[test]
