@@ -13,6 +13,13 @@ use crate::runner::{C6ProofError, C6ProofResult};
 
 const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 27;
 
+// Acceptance-owned authority. Update this digest together with the manifest version only after
+// reviewing the complete route inventory and its projection obligations.
+pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
+    0x2a, 0xff, 0x3b, 0x55, 0xae, 0x5b, 0x7a, 0x81, 0x6c, 0xee, 0xcc, 0x70, 0xae, 0x81, 0x82, 0x0c,
+    0x32, 0x31, 0xda, 0x87, 0xf8, 0xce, 0x4e, 0x8d, 0x21, 0xeb, 0x2c, 0xda, 0xbc, 0x3f, 0x37, 0x84,
+];
+
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,

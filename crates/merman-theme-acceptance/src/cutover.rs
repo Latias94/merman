@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::cutover_manifest::authorize_cutover_routes;
+use crate::cutover_manifest::{EXPECTED_AUTHORIZED_MANIFEST_DIGEST, authorize_cutover_routes};
 use crate::observation::{RouteCutoverRuntimeError, append_len_prefixed, sha256};
 use crate::runner::{
     C6ProofError, C6ProofResult, FamilyEvidenceRequirements, portable_svg_request,
@@ -664,6 +664,17 @@ pub(crate) fn run_route_cutover_witnesses()
         authorized_manifest.manifest_version(),
         authorized_manifest.routes(),
     );
+    if manifest_digest != EXPECTED_AUTHORIZED_MANIFEST_DIGEST {
+        return Err(C6ProofError::new(
+            "route-manifest",
+            format!(
+                "frozen cutover manifest digest mismatch: expected {}, observed {}",
+                hex_digest(&EXPECTED_AUTHORIZED_MANIFEST_DIGEST),
+                hex_digest(&manifest_digest)
+            ),
+        )
+        .into_route_runtime("manifest"));
+    }
     let authorized = authorized_manifest.into_routes();
 
     let mut rendered = BTreeMap::new();
@@ -1155,6 +1166,10 @@ fn authorized_manifest_digest(
     sha256(value)
 }
 
+fn hex_digest(digest: &[u8; 32]) -> String {
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 type RouteShape = (
     DiagramFamilyId,
     ThemeTarget,
@@ -1283,6 +1298,7 @@ mod tests {
         expected_cutover_witnesses, legacy_replacing_typed_theme_routes,
         run_route_cutover_witnesses,
     };
+    use crate::cutover_manifest::EXPECTED_AUTHORIZED_MANIFEST_DIGEST;
 
     #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
@@ -1310,6 +1326,18 @@ mod tests {
 
         assert_eq!(inventory.len(), 150);
         assert_eq!(expected_cutover_witnesses(&inventory).len(), 166);
+    }
+
+    #[test]
+    fn route_manifest_digest_matches_frozen_authority() {
+        let manifest = super::authorize_cutover_routes(
+            legacy_replacing_typed_theme_routes().expect("derive current route inventory"),
+        )
+        .expect("authorize current route inventory");
+        let digest =
+            super::authorized_manifest_digest(manifest.manifest_version(), manifest.routes());
+
+        assert_eq!(digest, EXPECTED_AUTHORIZED_MANIFEST_DIGEST);
     }
 
     #[test]
