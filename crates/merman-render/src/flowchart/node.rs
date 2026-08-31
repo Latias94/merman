@@ -183,6 +183,15 @@ fn node_render_dimensions(
             (s, s)
         }
 
+        // Mermaid 11.17 folder/directory shape: a file-folder outline with a raised tab.
+        // The tab is part of the rendered bounds, so include it in the layout height.
+        "folder" | "directory" => {
+            let w = (text_w + 2.0 * p).max(90.0);
+            let content_height = text_h + 2.0 * p;
+            let tab_height = (content_height * 0.16).clamp(8.0, 14.0);
+            (w, content_height + tab_height)
+        }
+
         // Hexagon / prepare. Mermaid 11.15 computes the shoulder from the padded height, then
         // adds that shoulder on both sides plus the regular horizontal padding.
         "hexagon" | "hex" | "prepare" => {

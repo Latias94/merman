@@ -1141,6 +1141,23 @@ fn parse_diagram_flowchart_node_data_shape_data_accepts_datastore() {
 }
 
 #[test]
+fn parse_diagram_flowchart_node_data_accepts_folder_aliases() {
+    let engine = Engine::new();
+
+    for shape in ["folder", "directory"] {
+        let diagram = format!("flowchart TB\nD@{{ shape: {shape}, label: \"Source\" }}");
+        let res = block_on(engine.parse_diagram(&diagram, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let nodes = res.model["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 1, "diagram: {diagram}");
+        assert_eq!(nodes[0]["id"], json!("D"), "diagram: {diagram}");
+        assert_eq!(nodes[0]["layoutShape"], json!(shape), "diagram: {diagram}");
+        assert_eq!(nodes[0]["label"], json!("Source"), "diagram: {diagram}");
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_shape_data_accepts_document_variants() {
     let engine = Engine::new();
 

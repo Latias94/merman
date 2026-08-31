@@ -1789,6 +1789,91 @@ fn flowchart_classic_hexagon_renders_polygon_container() {
 }
 
 #[test]
+fn flowchart_folder_shape_renders_aliases_and_clips_edges_to_the_tab_polygon() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let text = r#"flowchart TB
+A@{ shape: folder, label: "src" } --> B@{ shape: directory, label: "include" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
+    let nodes = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        _session,
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    for id in ["A", "B"] {
+        let node = document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element
+                        .attribute("id")
+                        .is_some_and(|value| value.contains(&format!("-flowchart-{id}-")))
+            })
+            .unwrap_or_else(|| panic!("rendered node {id}: {svg}"));
+        assert!(
+            node.children().any(|child| {
+                child.has_tag_name("path")
+                    && child.attribute("class") == Some("basic label-container")
+            }),
+            "folder alias {id} must emit its path container: {svg}"
+        );
+    }
+
+    let edge = layout.edges.first().expect("folder edge");
+    let points = flowchart_svg_edge_data_points(&svg, &edge.id);
+    assert!(
+        points.len() >= 2,
+        "folder edge must have endpoints: {points:?}"
+    );
+    let source = nodes("A");
+    let target = nodes("B");
+    assert!(
+        (points[0].y - (source.y + source.height / 2.0)).abs() <= 1.0,
+        "source endpoint should meet the folder body bottom: {points:?}"
+    );
+    assert!(
+        points[points.len() - 1].y > target.y - target.height / 2.0 + 5.0,
+        "target endpoint should use the folder body top below the tab: {points:?}"
+    );
+
+    let hand_drawn = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "handDrawn"}}%%
+flowchart TB
+A@{ shape: folder, label: "src" }
+"#,
+    );
+    assert!(
+        hand_drawn.contains(r#"class="basic label-container""#),
+        "handDrawn folder must retain the basic label-container contract: {hand_drawn}"
+    );
+}
+
+#[test]
 fn flowchart_no_label_special_shapes_render_outer_path_group() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()

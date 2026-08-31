@@ -66,6 +66,9 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::DividedRectangle => {
             super::render_divided_rect(out, common, label, details);
         }
+        FlowchartShape::Folder => {
+            super::render_folder(out, ctx, common, label, details);
+        }
         FlowchartShape::Document => {
             super::render_wave_document(out, ctx, common, label, details);
         }

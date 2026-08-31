@@ -57,6 +57,8 @@ pub(in crate::svg::parity::flowchart) fn is_polygon_layout_shape(
                 | "sl-rect"
                 | "hourglass"
                 | "collate"
+                | "folder"
+                | "directory"
         )
     )
 }
@@ -545,6 +547,52 @@ fn intersect_polygon_hourglass(
     intersections[0].clone()
 }
 
+fn folder_tab_height_from_total_height(total_height: f64) -> f64 {
+    // Invert Mermaid's tab rule for the layout dimensions available to edge routing. The
+    // measured content height is clamped to an 8px minimum and a 14px maximum.
+    if total_height <= 58.0 {
+        8.0
+    } else if total_height < 101.5 {
+        total_height * 0.16 / 1.16
+    } else {
+        14.0
+    }
+}
+
+fn folder_polygon_points(node: &BoundaryNode) -> Vec<crate::model::LayoutPoint> {
+    let width = node.width.max(1.0);
+    let total_height = node.height.max(1.0);
+    let tab_height = folder_tab_height_from_total_height(total_height).min(total_height);
+    let tab_width = (width * 0.38).max(28.0);
+    let top = -total_height / 2.0;
+    vec![
+        crate::model::LayoutPoint {
+            x: -width / 2.0,
+            y: top,
+        },
+        crate::model::LayoutPoint {
+            x: -width / 2.0 + tab_width,
+            y: top,
+        },
+        crate::model::LayoutPoint {
+            x: -width / 2.0 + tab_width,
+            y: top + tab_height,
+        },
+        crate::model::LayoutPoint {
+            x: width / 2.0,
+            y: top + tab_height,
+        },
+        crate::model::LayoutPoint {
+            x: width / 2.0,
+            y: total_height / 2.0,
+        },
+        crate::model::LayoutPoint {
+            x: -width / 2.0,
+            y: total_height / 2.0,
+        },
+    ]
+}
+
 fn polygon_points_for_layout_shape(
     layout_shape: &str,
     node: &BoundaryNode,
@@ -718,6 +766,7 @@ fn polygon_points_for_layout_shape(
             crate::model::LayoutPoint { x: 0.0, y: h },
             crate::model::LayoutPoint { x: w, y: h },
         ]),
+        "folder" | "directory" => Some(folder_polygon_points(node)),
         _ => None,
     }
 }
@@ -1515,6 +1564,9 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         Some("win-pane" | "internal-storage" | "window-pane") => {
             intersect_window_pane(ctx, node_id, node, point)
         }
+        Some("folder" | "directory") => polygon_points_for_layout_shape("folder", node)
+            .map(|pts| intersect_polygon(node, &pts, point))
+            .unwrap_or_else(|| intersect_rect(node, point)),
         Some(s) if is_polygon_layout_shape(Some(s)) => polygon_points_for_layout_shape(s, node)
             .map(|pts| intersect_polygon(node, &pts, point))
             .unwrap_or_else(|| intersect_rect(node, point)),

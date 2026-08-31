@@ -18,6 +18,7 @@ pub(crate) enum FlowchartShape {
     Datastore,
     Delay,
     Diamond,
+    Folder,
     DividedRectangle,
     Document,
     DoubleCircle,
@@ -80,6 +81,7 @@ impl FlowchartShape {
             "datastore" | "data-store" => Self::Datastore,
             "delay" | "half-rounded-rectangle" => Self::Delay,
             "diamond" | "question" | "diam" | "decision" => Self::Diamond,
+            "folder" | "directory" => Self::Folder,
             "div-rect" | "div-proc" | "divided-rectangle" | "divided-process" => {
                 Self::DividedRectangle
             }

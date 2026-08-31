@@ -1255,6 +1255,7 @@ V@{ shape: delay, label: "Label" }
 W@{ shape: lin-doc, label: "Label" }
 X@{ shape: tag-doc, label: "Label" }
 Y@{ shape: curved-trapezoid, label: "Label" }
+Z@{ shape: folder, label: "Label" }
 "#;
 
     let engine = Engine::new();
@@ -1524,6 +1525,15 @@ Y@{ shape: curved-trapezoid, label: "Label" }
         };
         assert_close(n.width, w, "cylinder width");
         assert_close(n.height, expected_h, "cylinder height");
+    }
+
+    // folder/directory
+    {
+        let n = nodes_by_id["Z"];
+        let content_height = th + 2.0 * p;
+        let tab_height = (content_height * 0.16).clamp(8.0, 14.0);
+        assert_close(n.width, (tw + 2.0 * p).max(90.0), "folder width");
+        assert_close(n.height, content_height + tab_height, "folder height");
     }
 
     // lined cylinder / disk storage
