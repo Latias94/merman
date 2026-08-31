@@ -2,6 +2,9 @@
 
 mod basic_geoms;
 mod bow_tie_rect;
+mod browser;
+mod bucket;
+mod console;
 mod curly_braces;
 mod curved_trapezoid;
 mod cylinders;
@@ -26,6 +29,7 @@ mod note;
 mod odd;
 mod organic;
 mod paper_tape;
+mod person;
 mod process;
 mod rounded_rect;
 mod shaded_process;
@@ -41,6 +45,9 @@ mod window_pane;
 
 pub(super) use basic_geoms::{render_circle, render_diamond, render_double_circle};
 pub(super) use bow_tie_rect::render_bow_tie_rect;
+pub(super) use browser::render_browser;
+pub(super) use bucket::render_bucket;
+pub(super) use console::render_console;
 pub(in crate::svg::parity::flowchart) use curly_braces::curly_brace_comment_geometry;
 pub(super) use curly_braces::render_curly_brace_comment;
 pub(super) use curved_trapezoid::render_curved_trapezoid;
@@ -68,6 +75,7 @@ pub(super) use note::render_note;
 pub(super) use odd::render_odd;
 pub(super) use organic::{render_bang, render_cloud};
 pub(super) use paper_tape::render_paper_tape;
+pub(super) use person::render_person;
 pub(super) use process::render_process_rectangle;
 pub(super) use rounded_rect::render_rounded_rect;
 pub(super) use shaded_process::render_shaded_process;

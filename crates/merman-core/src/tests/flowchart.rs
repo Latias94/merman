@@ -1158,6 +1158,23 @@ fn parse_diagram_flowchart_node_data_accepts_folder_aliases() {
 }
 
 #[test]
+fn parse_diagram_flowchart_node_data_accepts_mermaid_1172_object_shapes() {
+    let engine = Engine::new();
+
+    for shape in ["person", "bucket", "console", "browser"] {
+        let diagram = format!("flowchart TB\nD@{{ shape: {shape}, label: \"Object\" }}");
+        let res = block_on(engine.parse_diagram(&diagram, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let nodes = res.model["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 1, "diagram: {diagram}");
+        assert_eq!(nodes[0]["id"], json!("D"), "diagram: {diagram}");
+        assert_eq!(nodes[0]["layoutShape"], json!(shape), "diagram: {diagram}");
+        assert_eq!(nodes[0]["label"], json!("Object"), "diagram: {diagram}");
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_shape_data_accepts_document_variants() {
     let engine = Engine::new();
 

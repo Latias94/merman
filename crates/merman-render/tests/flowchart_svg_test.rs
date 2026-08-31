@@ -1874,6 +1874,100 @@ A@{ shape: folder, label: "src" }
 }
 
 #[test]
+fn flowchart_mermaid_1172_object_shapes_render_their_native_chrome() {
+    let text = r#"flowchart TB
+A@{ shape: person, label: "person" } --> B@{ shape: bucket, label: "bucket" }
+B --> C@{ shape: console, label: "console" }
+C --> D@{ shape: browser, label: "browser" }
+"#;
+    let svg = render_flowchart_svg_from_text(text);
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+
+    let node = |id: &str| {
+        document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element
+                        .attribute("id")
+                        .is_some_and(|value| value.contains(&format!("-flowchart-{id}-")))
+            })
+            .unwrap_or_else(|| panic!("rendered node {id}: {svg}"))
+    };
+
+    let person = node("A");
+    assert!(person.children().any(|child| child.has_tag_name("g")
+        && child.attribute("class") == Some("basic label-container")));
+    assert!(
+        person
+            .descendants()
+            .any(|child| child.has_tag_name("circle"))
+    );
+    assert!(person.descendants().any(|child| child.has_tag_name("rect")));
+
+    let bucket = node("B");
+    assert!(
+        bucket
+            .descendants()
+            .any(|child| child.has_tag_name("ellipse"))
+    );
+    assert!(bucket.descendants().any(|child| child.has_tag_name("path")));
+
+    let console = node("C");
+    assert!(console.descendants().any(|child| {
+        child.has_tag_name("text") && child.attribute("class") == Some("console-glyph")
+    }));
+
+    let browser = node("D");
+    assert!(
+        browser
+            .descendants()
+            .any(|child| child.has_tag_name("line"))
+    );
+    assert!(browser.descendants().any(|child| {
+        child.has_tag_name("rect") && child.attribute("class") == Some("browser-address-bar")
+    }));
+    assert_eq!(
+        browser
+            .descendants()
+            .filter(|child| child.has_tag_name("circle"))
+            .count(),
+        3
+    );
+
+    let edges = document
+        .descendants()
+        .filter(|element| {
+            element.has_tag_name("path") && element.attribute("data-edge") == Some("true")
+        })
+        .count();
+    assert_eq!(edges, 3, "all object-shape edges should render: {svg}");
+
+    for shape in ["person", "bucket", "console", "browser"] {
+        let source = format!(
+            "%%{{init: {{\"look\": \"handDrawn\"}}}}%%\nflowchart TB\nA@{{ shape: {shape}, label: \"{shape}\" }}"
+        );
+        let hand_drawn = render_flowchart_svg_from_text(&source);
+        let hand_document = roxmltree::Document::parse(&hand_drawn).expect("valid handDrawn SVG");
+        let node = hand_document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element
+                        .attribute("id")
+                        .is_some_and(|value| value.contains("-flowchart-A-"))
+            })
+            .unwrap_or_else(|| panic!("handDrawn node for {shape}: {hand_drawn}"));
+        assert!(
+            node.children().any(|child| {
+                child.has_tag_name("g") && child.attribute("class") == Some("basic label-container")
+            }),
+            "handDrawn {shape} must retain its shape group: {hand_drawn}"
+        );
+    }
+}
+
+#[test]
 fn flowchart_no_label_special_shapes_render_outer_path_group() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()

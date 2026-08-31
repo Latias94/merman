@@ -46,10 +46,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_folder(
         common.node_classes,
         common.node_styles,
     );
-    let (width, measured_height, tab_height) =
+    let (measured_width, measured_height, tab_height) =
         folder_geometry(metrics.width, metrics.height, ctx.node_padding);
-    // Layout dimensions are normally the measured folder bounds. Preserve a larger externally
-    // supplied height if a layout adapter has expanded the node.
+    // Mermaid takes the larger of the rendered label box and any pre-existing node dimensions.
+    let width = measured_width.max(common.layout_node.width.max(0.0));
     let total_height = measured_height.max(common.layout_node.height.max(0.0));
     let points = folder_points(width, total_height, tab_height.min(total_height));
     let path_data = path_from_points(&points);
