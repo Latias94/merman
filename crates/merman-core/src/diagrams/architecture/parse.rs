@@ -543,7 +543,7 @@ impl<'a> ArchitectureStatementParser<'a> {
                 if ch == ']' {
                     break;
                 }
-                if !(ch.is_ascii_alphanumeric() || ch == '_' || ch == ' ') {
+                if matches!(ch, '[' | '\r' | '\n') {
                     return Err(self.exact_char_error("invalid architecture title", ch));
                 }
                 count += 1;
