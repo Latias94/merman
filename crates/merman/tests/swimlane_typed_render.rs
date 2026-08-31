@@ -490,7 +490,7 @@ fn loose_nodes_render_the_synthetic_default_lane() {
         svg.contains(r#"<foreignObject width="0" height="0">"#),
         "{svg}"
     );
-    assert!(svg.contains(r#"<g class="edges edgePath">"#), "{svg}");
+    assert!(svg.contains(r#"<g class="edges edgePaths">"#), "{svg}");
 }
 
 #[test]
