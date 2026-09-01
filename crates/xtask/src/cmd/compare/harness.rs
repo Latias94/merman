@@ -2046,6 +2046,18 @@ pub(crate) fn fixture_dom_profile(
         );
     }
 
+    // C4's migrated label helper delegates wrapping to SVG
+    // `getComputedTextLength()` on the browser-created tspan run. The
+    // deterministic headless profile cannot promise the same fallback font
+    // metrics, so keep row segmentation as a narrow family-level residual
+    // while retaining every surrounding DOM and the root viewport contract.
+    if diagram == "c4" && !matches!(requested, svgdom::DomMode::Strict) {
+        profile = profile.with_browser_text_word_boundaries_normalized();
+        residual_note = Some(
+            "pinned Mermaid C4 derives generated text-row segmentation from browser font measurement; only generated row boundaries are normalized",
+        );
+    }
+
     match merman_fixture_render_context::fixture_dom_evidence(diagram, stem) {
         Some(merman_fixture_render_context::FixtureDomEvidence::StructureOnly)
             if matches!(
@@ -2620,6 +2632,28 @@ mod tests {
         let (neighbor, note) =
             fixture_dom_profile("sequence", "any_fixture", svgdom::DomMode::Parity);
         assert!(!neighbor.normalizes_browser_text_length());
+        assert_eq!(note, None);
+    }
+
+    #[test]
+    fn c4_family_profile_joins_only_generated_word_wrapping_boundaries() {
+        let (profile, note) = fixture_dom_profile(
+            "c4",
+            "upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010",
+            svgdom::DomMode::Parity,
+        );
+        assert!(profile.normalizes_browser_text_wrapping());
+        assert!(
+            note.expect("C4 browser text note")
+                .contains("row boundaries")
+        );
+
+        let (strict, note) = fixture_dom_profile(
+            "c4",
+            "upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010",
+            svgdom::DomMode::Strict,
+        );
+        assert!(!strict.normalizes_browser_text_wrapping());
         assert_eq!(note, None);
     }
 

@@ -92,7 +92,7 @@ pub(crate) fn c4_stereotype_text(shape: &C4ShapeRenderModel) -> String {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct TextMeasure {
+pub(crate) struct TextMeasure {
     width: f64,
     height: f64,
     line_count: usize,

@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 1232.0,
-        "max_y": 1683.009
+        "max_y": 1707.187
       },
       "width": 1282.0,
-      "height": 1693.009,
+      "height": 1717.187,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 1082.0,
-          "height": 1567.009,
+          "height": 1591.187,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -134,7 +134,7 @@
           "x": 150.0,
           "y": 609.834,
           "width": 982.0,
-          "height": 973.175,
+          "height": 997.353,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -274,7 +274,7 @@
           "x": 200.0,
           "y": 1138.668,
           "width": 416.0,
-          "height": 394.341,
+          "height": 418.519,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -302,7 +302,7 @@
           "x": 250.0,
           "y": 1194.668,
           "width": 316.0,
-          "height": 288.341,
+          "height": 312.519,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -330,7 +330,7 @@
           "x": 666.0,
           "y": 1138.668,
           "width": 416.0,
-          "height": 394.341,
+          "height": 418.519,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -358,7 +358,7 @@
           "x": 716.0,
           "y": 1194.668,
           "width": 316.0,
-          "height": 288.341,
+          "height": 312.519,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -541,7 +541,7 @@
           "x": 300.0,
           "y": 1294.668,
           "width": 216.0,
-          "height": 138.341,
+          "height": 162.519,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -550,10 +550,10 @@
           },
           "type_block": {
             "text": "[Container: Relational Database Schema]",
-            "y": 44.175,
-            "width": 173.775,
-            "height": 11.55,
-            "line_count": 1.0
+            "y": 49.95,
+            "width": 134.295,
+            "height": 23.1,
+            "line_count": 2.0
           },
           "label": {
             "text": "Database",
@@ -566,10 +566,10 @@
           "techn": null,
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
-            "y": 71.892,
-            "width": 160.95,
-            "height": 37.884,
-            "line_count": 3.0
+            "y": 89.756,
+            "width": 123.525,
+            "height": 50.512,
+            "line_count": 4.0
           }
         },
         {
@@ -579,7 +579,7 @@
           "x": 766.0,
           "y": 1294.668,
           "width": 216.0,
-          "height": 138.341,
+          "height": 162.519,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -588,10 +588,10 @@
           },
           "type_block": {
             "text": "[Container: Relational Database Schema]",
-            "y": 44.175,
-            "width": 173.775,
-            "height": 11.55,
-            "line_count": 1.0
+            "y": 49.95,
+            "width": 134.295,
+            "height": 23.1,
+            "line_count": 2.0
           },
           "label": {
             "text": "Database",
@@ -604,10 +604,10 @@
           "techn": null,
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
-            "y": 71.892,
-            "width": 160.95,
-            "height": 37.884,
-            "line_count": 3.0
+            "y": 89.756,
+            "width": 123.525,
+            "height": 50.512,
+            "line_count": 4.0
           }
         }
       ],
@@ -701,12 +701,12 @@
           "to": "db",
           "rel_type": "rel",
           "start_point": {
-            "x": 419.042,
+            "x": 418.801,
             "y": 932.668
           },
           "end_point": {
-            "x": 425.897,
-            "y": 1294.887
+            "x": 429.025,
+            "y": 1294.971
           },
           "offset_x": 5.0,
           "offset_y": -20.0,
@@ -731,12 +731,12 @@
           "to": "db2",
           "rel_type": "rel",
           "start_point": {
-            "x": 466.688,
+            "x": 465.408,
             "y": 932.668
           },
           "end_point": {
-            "x": 814.675,
-            "y": 1297.271
+            "x": 804.307,
+            "y": 1298.406
           },
           "offset_x": -40.0,
           "offset_y": -20.0,
@@ -762,11 +762,11 @@
           "rel_type": "rel_r",
           "start_point": {
             "x": 516.0,
-            "y": 1376.853
+            "y": 1391.217
           },
           "end_point": {
             "x": 766.0,
-            "y": 1384.706
+            "y": 1400.442
           },
           "offset_x": null,
           "offset_y": -10.0,

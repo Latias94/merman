@@ -5,33 +5,33 @@
       "nodes": [
         {
           "id": "block1",
-          "x": 70.88,
+          "x": 94.88,
           "y": -28.0,
-          "width": 141.76,
+          "width": 189.76,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "id-<id>-1",
-          "x": 70.88,
+          "x": 94.88,
           "y": 28.0,
-          "width": 141.76,
+          "width": 189.76,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "block2",
-          "x": 37.44,
+          "x": 49.44,
           "y": 28.0,
-          "width": 58.88,
+          "width": 82.88,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "block3",
-          "x": 104.32,
+          "x": 140.32,
           "y": 28.0,
-          "width": 58.88,
+          "width": 82.88,
           "height": 32.0,
           "is_cluster": false
         }
@@ -41,14 +41,14 @@
         {
           "id": "block1",
           "allocated": {
-            "x": 70.88,
+            "x": 94.88,
             "y": -28.0,
-            "width": 141.76,
+            "width": 189.76,
             "height": 48.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 141.76,
+            "width": 189.76,
             "height": 48.0,
             "radius": 0.0,
             "kind": "basic"
@@ -57,14 +57,14 @@
         {
           "id": "id-<id>-1",
           "allocated": {
-            "x": 70.88,
+            "x": 94.88,
             "y": 28.0,
-            "width": 141.76,
+            "width": 189.76,
             "height": 48.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 141.76,
+            "width": 189.76,
             "height": 48.0,
             "radius": 0.0,
             "kind": "composite"
@@ -73,14 +73,14 @@
         {
           "id": "block2",
           "allocated": {
-            "x": 37.44,
+            "x": 49.44,
             "y": 28.0,
-            "width": 58.88,
+            "width": 82.88,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 58.88,
+            "width": 82.88,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -89,14 +89,14 @@
         {
           "id": "block3",
           "allocated": {
-            "x": 104.32,
+            "x": 140.32,
             "y": 28.0,
-            "width": 58.88,
+            "width": 82.88,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 58.88,
+            "width": 82.88,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -106,7 +106,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -52.0,
-        "max_x": 141.76,
+        "max_x": 189.76,
         "max_y": 52.0
       }
     }

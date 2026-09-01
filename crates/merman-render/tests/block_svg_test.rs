@@ -286,7 +286,7 @@ fn block_svg_applies_class_definitions_to_assigned_nodes() {
     );
 
     assert!(
-        svg.contains(r#"class="node default front flowchart-label""#),
+        svg.contains(r#"class="node front flowchart-label""#),
         "expected the Frontend node to retain its assigned class: {svg}"
     );
     assert!(
@@ -373,7 +373,7 @@ fn block_circle_edge_starts_on_the_rendered_circle_boundary() {
 }
 
 #[test]
-fn block_short_stadium_edge_starts_on_the_svg_clamped_boundary() {
+fn block_stadium_renders_rough_outer_path_and_clips_edge() {
     let svg = render_block_svg_from_text(
         r#"block
   A(["A"]) --> B["B"]
@@ -384,10 +384,33 @@ fn block_short_stadium_edge_starts_on_the_svg_clamped_boundary() {
         .descendants()
         .find(|node| node.attribute("id") == Some("merman-A"))
         .expect("rendered stadium node");
-    let rect = stadium
+    let outer_path = stadium
         .descendants()
-        .find(|node| node.has_tag_name("rect") && node.attribute("width").is_some())
-        .expect("rendered stadium outline");
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class == "basic label-container outer-path")
+        })
+        .expect("rendered stadium outer-path group");
+    let paths = outer_path
+        .children()
+        .filter(|node| node.has_tag_name("path"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths.len(),
+        2,
+        "RoughJS stadiums emit fill and stroke paths"
+    );
+    assert_eq!(paths[0].attribute("stroke"), Some("none"));
+    assert_eq!(paths[1].attribute("fill"), Some("none"));
+    let stroke_width: f64 = paths[1]
+        .attribute("stroke-width")
+        .expect("RoughJS stroke width")
+        .parse()
+        .expect("numeric RoughJS stroke width");
+    assert!((stroke_width - 1.3).abs() <= 1e-6);
+    assert!(!outer_path.children().any(|node| node.has_tag_name("rect")));
     let edge = document
         .descendants()
         .find(|node| {
@@ -397,18 +420,9 @@ fn block_short_stadium_edge_starts_on_the_svg_clamped_boundary() {
 
     let (center_x, center_y) = translated_center(stadium);
     let (edge_x, edge_y) = path_start(edge);
-    let width: f64 = rect
-        .attribute("width")
-        .expect("stadium width")
-        .parse()
-        .expect("numeric stadium width");
-    let height: f64 = rect
-        .attribute("height")
-        .expect("stadium height")
-        .parse()
-        .expect("numeric stadium height");
-
-    assert!(width < height, "fixture must exercise SVG radius clamping");
-    assert!((edge_x - (center_x + width / 2.0)).abs() <= 1e-3);
+    assert!(
+        edge_x > center_x,
+        "edge must leave the stadium on its right side"
+    );
     assert!((edge_y - center_y).abs() <= 1e-3);
 }

@@ -213,7 +213,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "4cfbe5acbc71e0a670e1e527a0bfbfd0dc7d67e1bca28ebc799bf41afff57e08",
+      "local_svg_signature_sha256": "9dd7fe3903c5f75c5e8790adcfde2b441a39bd07d5df59092aa27aead9cb5ec8",
       "input_sha256": "892001b030f8c0581eeb1bbdb5a196c54763f4bd41d5ffd93ca96658a7347de7",
       "upstream_svg_sha256": "601ea2ff34022441b3e0c48198f81f4a818363a72fab82e8293614cbf1432dbe"
     },
@@ -224,7 +224,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "74c734c60762f0cdf5938b9db459abf0a0fa8401dba59d26dcb0b308848d6359",
+      "local_svg_signature_sha256": "f6c8b4471dd83f385cdab96a455c689aee555219254972c3811256b9c40e553d",
       "input_sha256": "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0",
       "upstream_svg_sha256": "709ab9cab13c2c176765d5eb6d793402b1c91b7272e3681ed61510e8445dc9e6"
     },
@@ -257,7 +257,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "e7d0d91e726f721a94f8c95e1c6d259bd9a6c7b92406d31434845498e222ca04",
+      "local_svg_signature_sha256": "b6725466afd5d8c588087e8df97ceceb38067996804efb67a40e9b8005e71f7f",
       "input_sha256": "9d7b12b1d6a4089afa6840303a8dd07dd0a49baedc57c4528395afe5d50c5a60",
       "upstream_svg_sha256": "aecda3c251223081845d1248b4627bf008cf19346b40ba9ed26e9eadaffb4ff1"
     },
@@ -285,12 +285,34 @@
     },
     {
       "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_v2_spec_3_a_link_with_correct_arrowhead_to_a_subgraph_003",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "4e5c45f18ef77877a9beee13cf970f9482268875d1ee7b0e961a7423b304ad77",
+      "input_sha256": "081b8bfc4bf3e0424bb93e08d7aaac9de8adce6ef29ce7d069c214a809150ce8",
+      "upstream_svg_sha256": "7fd25c23d47cb33ddbb6acf7e2eaa4ea66771e0e1ec1417e154f580e6837de90"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_flowchart_v2_spec_5059_should_render_when_subgraph_contains_only_subgraphs_has_lin_045",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "cec2397ea6cf03c5c0f5b7cbc604faca07975f9ae14ed8e4952c1da873f42181",
+      "input_sha256": "6f1e807a7df22e6ab4540fa0175eca9c2443d5a7552398b3e71e85bd212e7ca2",
+      "upstream_svg_sha256": "a7a142807ee9267626ef27bc6aff38f4ee1f50051bc77f02079578edd4c928bd"
+    },
+    {
+      "diagram": "flowchart",
       "fixture": "upstream_cypress_flowchart_v2_spec_should_render_self_loops_elk_064",
       "modes": [
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "200a453c2f1b326156e18f18d55414e71205cb5f5209a4da3dde3df24a993c81",
+      "local_svg_signature_sha256": "eadff14a63460f66c0b70d73f2247e8675681afe423f33fcf4241782bc0b83dd",
       "input_sha256": "2ada2dac48de239638668cf63815a83bb231d318e0143b9437ce03b5e51bb5b1",
       "upstream_svg_sha256": "dbe8893ccdebcdcc14e503b0249578138ed7b343592f5d6a3d4b3bf7fd12d168"
     },
@@ -485,6 +507,28 @@
       "local_svg_signature_sha256": "e325510f3970974784e5e72ad1ab39670209a8f096dc5f2a7ae27a028490790b",
       "input_sha256": "9ffb06af06068d4203ead08066f4710f1afc11edad697dab3f6e750eb0fee9fa",
       "upstream_svg_sha256": "f5f5b353ca00411a9142b3bd10baa93a0a58f3ef427ff0b1613ca60a4a8e59ab"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_flowchart_v2_link_to_subgraph_arrowhead_spec",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "e117f3f8b264d4fe06ebf2b34d712cff32f24631b0a64c87c66b3ef24ab4cc9a",
+      "input_sha256": "ad07b4f1e16969fe654a83599c03185e5b779d91f8d2dcc40500c3a915e50320",
+      "upstream_svg_sha256": "df88e2eb4a2639b1022828a22d99a7f66ec77f46f160765c0325418ac905f42a"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_flowchart_v2_subgraph_only_subgraphs_links_outside_spec",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "e392654510cb9569b50b00f94b84c6d70b8c751103a0303b41947353800621d4",
+      "input_sha256": "1766beea4cad50e58716f4bc90ddc8f502a370f218f026649bbb238e72d12eb1",
+      "upstream_svg_sha256": "46082a77bab8069b33e8a065920839d4a46fd6f274e2867555c412510a3e8890"
     },
     {
       "diagram": "gantt",

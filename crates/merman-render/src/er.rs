@@ -1199,12 +1199,6 @@ fn layout_er_diagram_dagre_typed(
         let Some(n) = g.node(&id) else {
             continue;
         };
-        // Self-loop helper nodes are layout-only. Mermaid keeps them in Dagre's private graph so
-        // the engine can choose a stable loop side, but the normalized LayoutData and SVG expose
-        // only the original entity nodes and the single logical relationship edge.
-        if is_er_self_loop_dummy_node_id(&id) {
-            continue;
-        }
         let is_cluster = subgraph_ids.contains(id.as_str());
         let x = n.x.unwrap_or(0.0);
         let y = n.y.unwrap_or(0.0);
@@ -1373,11 +1367,34 @@ fn layout_er_diagram_dagre_typed(
         );
     }
 
-    // Dagre needs the three helper segments above for self-loop ranking, while Mermaid's
-    // `getEdgesToRender()` merges those segments back into one logical edge before painting. Do
-    // the same at this boundary: internal routing remains available, but no helper IDs, nodes,
-    // split markers, or duplicate labels leak into the public layout artifact.
-    let mut out_edges: Vec<LayoutEdge> = Vec::with_capacity(model.relationships.len());
+    // Keep the Dagre graph projection intact for layout artifacts. Mermaid's common painter
+    // consumes a second projection where self-loop segments are merged into one visible edge;
+    // build that projection below without discarding the helper ranks from the canonical layout.
+    let to_layout_edge = |edge: LayoutEdgeParts| LayoutEdge {
+        id: edge.id,
+        from: edge.from,
+        to: edge.to,
+        from_cluster: None,
+        to_cluster: None,
+        points: edge.points,
+        label: edge.label,
+        start_label_left: None,
+        start_label_right: None,
+        end_label_left: None,
+        end_label_right: None,
+        start_marker: edge.start_marker,
+        end_marker: edge.end_marker,
+        stroke_dasharray: edge.stroke_dasharray,
+    };
+
+    let mut layout_edges = edges_by_id
+        .values()
+        .cloned()
+        .map(to_layout_edge)
+        .collect::<Vec<_>>();
+    layout_edges.sort_by(|left, right| left.id.cmp(&right.id));
+
+    let mut render_edges: Vec<LayoutEdge> = Vec::with_capacity(model.relationships.len());
     for (idx, relationship) in model.relationships.iter().enumerate() {
         let edge_id = format!("er-rel-{idx}");
         if relationship.entity_a == relationship.entity_b {
@@ -1388,6 +1405,9 @@ fn layout_er_diagram_dagre_typed(
             let last = edges_by_id.get(&last_id).cloned();
 
             let Some(node) = g.node(&relationship.entity_a).cloned() else {
+                if let Some(edge) = middle.or(first).or(last) {
+                    render_edges.push(to_layout_edge(edge));
+                }
                 continue;
             };
             let dummy_ids = [
@@ -1426,7 +1446,7 @@ fn layout_er_diagram_dagre_typed(
                 .contains(relationship.entity_a.as_str())
                 .then(|| relationship.entity_a.clone());
 
-            out_edges.push(LayoutEdge {
+            render_edges.push(LayoutEdge {
                 id: edge_id.clone(),
                 from: relationship.entity_a.clone(),
                 to: relationship.entity_b.clone(),
@@ -1443,59 +1463,18 @@ fn layout_er_diagram_dagre_typed(
                 stroke_dasharray: (relationship.rel_spec.rel_type == "NON_IDENTIFYING")
                     .then(|| "8,8".to_string()),
             });
-            // Even if Dagre returns an unexpected partial segment set, no cyclic-special edge or
-            // helper route should leak into the public artifact.
-            edges_by_id.remove(&first_id);
-            edges_by_id.remove(&edge_id);
-            edges_by_id.remove(&last_id);
             continue;
-        } else if let Some(edge) = edges_by_id.remove(&edge_id) {
-            out_edges.push(LayoutEdge {
-                id: edge.id,
-                from: edge.from,
-                to: edge.to,
-                from_cluster: None,
-                to_cluster: None,
-                points: edge.points,
-                label: edge.label,
-                start_label_left: None,
-                start_label_right: None,
-                end_label_left: None,
-                end_label_right: None,
-                start_marker: edge.start_marker,
-                end_marker: edge.end_marker,
-                stroke_dasharray: edge.stroke_dasharray,
-            });
+        } else if let Some(edge) = edges_by_id.get(&edge_id).cloned() {
+            render_edges.push(to_layout_edge(edge));
         }
     }
 
-    // Keep a defensive path for malformed/internal edges, but sort it after source relationships
-    // so a valid diagram's public edge order remains exactly Mermaid's relationship declaration
-    // order.
-    let mut leftovers = edges_by_id.into_values().collect::<Vec<_>>();
-    leftovers.sort_by(|left, right| left.id.cmp(&right.id));
-    out_edges.extend(leftovers.into_iter().map(|edge| LayoutEdge {
-        id: edge.id,
-        from: edge.from,
-        to: edge.to,
-        from_cluster: None,
-        to_cluster: None,
-        points: edge.points,
-        label: edge.label,
-        start_label_left: None,
-        start_label_right: None,
-        end_label_left: None,
-        end_label_right: None,
-        start_marker: edge.start_marker,
-        end_marker: edge.end_marker,
-        stroke_dasharray: edge.stroke_dasharray,
-    }));
-
-    let bounds = er_layout_bounds(&nodes, &out_edges);
+    let bounds = er_layout_bounds(&nodes, &layout_edges);
 
     Ok(ErDiagramLayout {
         nodes,
-        edges: out_edges,
+        edges: layout_edges,
+        render_edges,
         clusters,
         bounds,
     })
@@ -1686,6 +1665,7 @@ fn layout_er_diagram_elk_typed(
     let bounds = er_layout_bounds(&out_nodes, &out_edges);
     Ok(ErDiagramLayout {
         nodes: out_nodes,
+        render_edges: out_edges.clone(),
         edges: out_edges,
         clusters,
         bounds,

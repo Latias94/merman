@@ -105,10 +105,22 @@ System(framed, "Framed", "A component-shaped system", $shape="component")
             "missing unified C4 label section {class}: {svg}"
         );
     }
-    assert!(svg.contains("[Person]"));
-    assert!(svg.contains("[Container: Rust]"));
-    assert!(svg.contains("A short description"));
-    assert!(svg.matches("<line ").count() >= 2);
+    let type_texts = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("c4-type"))
+        .map(svg_text_content)
+        .collect::<Vec<_>>();
+    assert!(type_texts.iter().any(|text| text == "[Person]"));
+    assert!(type_texts.iter().any(|text| text == "[Container: Rust]"));
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("c4-descr"))
+            .map(svg_text_content)
+            .any(|text| text == "A short description")
+    );
+    assert_eq!(svg.matches("<circle ").count(), 2);
+    assert_eq!(svg.matches("<polygon ").count(), 1);
     assert!(!svg.contains("<<person>>"));
     assert!(!svg.contains("<<system>>"));
     assert!(!svg.contains("<<external_person>>"));

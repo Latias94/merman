@@ -684,11 +684,6 @@ where
     );
     let _ = write!(
         &mut out,
-        r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster-label text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}"#,
-        id, cluster_bkg, cluster_border, id, title_color, id, title_color, id, id, title_color
-    );
-    let _ = write!(
-        &mut out,
         r#"#{} .relationshipLabelBox{{fill:{};opacity:0.7;background-color:{};}}"#,
         id, tertiary_color, tertiary_color
     );
@@ -733,6 +728,16 @@ where
         &mut out,
         r#"#{} .marker{{fill:none!important;stroke:{}!important;stroke-width:1;}}"#,
         id, line_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} [data-look=neo].labelBkg{{background-color:{};}}"#,
+        id, label_background
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster-label text{{fill:{};}}"#,
+        id, cluster_bkg, cluster_border, id, title_color, id, title_color
     );
     write_mermaid_common_neo_css(&mut out, id, effective_config);
     out.push_str(&mermaid_base_css_root_rule(id, &font));

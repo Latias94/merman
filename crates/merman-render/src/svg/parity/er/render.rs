@@ -467,10 +467,21 @@ pub(crate) fn render_er_diagram_svg_model(
     let mut nodes = layout.nodes.clone();
     nodes.sort_by_key(|n| er_node_sort_key(&n.id));
 
-    let mut edges = layout.edges.clone();
-    fn er_edge_sort_key(id: &str) -> (i64, i64) {
+    // Layout keeps Dagre's helper segments for reproducible layout artifacts. The family
+    // preparation path also carries Mermaid's SVG-facing projection, where self-loops are
+    // already merged into one visible edge. Fall back to the canonical edges for hand-built
+    // layouts used by unit tests and older callers.
+    let mut edges = if layout.render_edges.is_empty() {
+        layout.edges.clone()
+    } else {
+        layout.render_edges.clone()
+    };
+    fn er_edge_sort_key(edge: &crate::model::LayoutEdge) -> (i64, i64, i64) {
+        // Mermaid's getEdgesToRender() appends merged self-loops after ordinary graph edges.
+        let self_loop = i64::from(edge.from == edge.to);
+        let id = edge.id.as_str();
         let Some(rest) = id.strip_prefix("er-rel-") else {
-            return (i64::MAX, i64::MAX);
+            return (self_loop, i64::MAX, i64::MAX);
         };
         let mut digits_len = 0usize;
         for ch in rest.chars() {
@@ -480,14 +491,14 @@ pub(crate) fn render_er_diagram_svg_model(
             digits_len += ch.len_utf8();
         }
         if digits_len == 0 {
-            return (i64::MAX, i64::MAX);
+            return (self_loop, i64::MAX, i64::MAX);
         }
         let Ok(idx) = rest[..digits_len].parse::<i64>() else {
-            return (i64::MAX, i64::MAX);
+            return (self_loop, i64::MAX, i64::MAX);
         };
-        (idx, 0)
+        (self_loop, idx, 0)
     }
-    edges.sort_by_key(|e| er_edge_sort_key(&e.id));
+    edges.sort_by_key(er_edge_sort_key);
 
     let include_md_parent = edges.iter().any(|e| {
         matches!(
@@ -1807,6 +1818,7 @@ mod tests {
                 },
             ],
             edges: Vec::new(),
+            render_edges: Vec::new(),
             clusters: Vec::new(),
             bounds: Some(Bounds {
                 min_x: 0.0,

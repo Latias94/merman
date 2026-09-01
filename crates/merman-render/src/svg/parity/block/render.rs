@@ -1,6 +1,9 @@
 use super::super::*;
 use crate::block::{BlockRectangleKind, BlockShapeBoundary, block_label_is_effectively_empty};
 use crate::model::LayoutPoint;
+use crate::svg::parity::roughjs_common::{
+    closed_path_d_from_points, ops_to_svg_path_d, parse_hex_color_to_srgba,
+};
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
@@ -14,6 +17,175 @@ pub(crate) fn render_block_diagram_svg_model(
         // Mermaid's block diagram labels are rendered via an HTML foreignObject label helper,
         // which decodes HTML entities (notably `&nbsp;`).
         raw.replace("&nbsp;", "\u{00A0}")
+    }
+
+    fn roughjs_block_paths(
+        path_data: &str,
+        fill: &str,
+        stroke: &str,
+        stroke_width: f32,
+        randomness: &roughr::core::RoughRandomness,
+    ) -> Option<(String, String)> {
+        let fill = parse_hex_color_to_srgba(fill)?;
+        let stroke = parse_hex_color_to_srgba(stroke)?;
+        let mut stroke_options = roughr::core::OptionsBuilder::default()
+            .randomness(randomness.clone())
+            .roughness(0.0)
+            .bowing(1.0)
+            .fill(fill)
+            .fill_style(roughr::core::FillStyle::Solid)
+            .stroke(stroke)
+            .stroke_width(stroke_width)
+            .stroke_line_dash(vec![0.0, 0.0])
+            .stroke_line_dash_offset(0.0)
+            .fill_line_dash(vec![0.0, 0.0])
+            .fill_line_dash_offset(0.0)
+            .disable_multi_stroke(false)
+            .disable_multi_stroke_fill(false)
+            .build()
+            .ok()?;
+
+        // Mermaid's RoughJS path emitter draws the outline first, then reuses the advanced
+        // randomizer for the solid fill pass.  Keep that order even at roughness zero because the
+        // seeded path data is part of the stable SVG contract.
+        let stroke_opset =
+            roughr::renderer::svg_path::<f64>(path_data.to_string(), &mut stroke_options);
+        let distance = 0.5;
+        let sets = roughr::points_on_path::points_on_path::<f64>(
+            path_data.to_string(),
+            Some(1.0),
+            Some(distance),
+        );
+        let mut fill_options = stroke_options.clone();
+        let fill_opset = if sets.len() == 1 {
+            fill_options.disable_multi_stroke = Some(true);
+            fill_options.roughness = Some(0.0);
+            let mut opset =
+                roughr::renderer::svg_path::<f64>(path_data.to_string(), &mut fill_options);
+            opset.ops = opset
+                .ops
+                .iter()
+                .cloned()
+                .enumerate()
+                .filter_map(|(index, op)| {
+                    if index != 0 && op.op == roughr::core::OpType::Move {
+                        None
+                    } else {
+                        Some(op)
+                    }
+                })
+                .collect();
+            opset
+        } else {
+            roughr::renderer::solid_fill_polygon(&sets, &mut fill_options)
+        };
+
+        Some((
+            ops_to_svg_path_d(&fill_opset),
+            ops_to_svg_path_d(&stroke_opset),
+        ))
+    }
+
+    fn block_stadium_points(width: f64, height: f64) -> Vec<LayoutPoint> {
+        fn circle_points(
+            center_x: f64,
+            center_y: f64,
+            radius: f64,
+            count: usize,
+            start_deg: f64,
+            end_deg: f64,
+        ) -> Vec<LayoutPoint> {
+            let start = start_deg.to_radians();
+            let step = (end_deg.to_radians() - start) / (count.saturating_sub(1).max(1) as f64);
+            (0..count)
+                .map(|index| {
+                    let angle = start + index as f64 * step;
+                    // Mermaid's generateCirclePoints() negates generated coordinates.
+                    LayoutPoint {
+                        x: -(center_x + radius * angle.cos()),
+                        y: -(center_y + radius * angle.sin()),
+                    }
+                })
+                .collect()
+        }
+
+        let radius = height / 2.0;
+        let mut points = vec![
+            LayoutPoint {
+                x: -width / 2.0 + radius,
+                y: -height / 2.0,
+            },
+            LayoutPoint {
+                x: width / 2.0 - radius,
+                y: -height / 2.0,
+            },
+        ];
+        points.extend(circle_points(
+            -width / 2.0 + radius,
+            0.0,
+            radius,
+            50,
+            90.0,
+            270.0,
+        ));
+        points.push(LayoutPoint {
+            x: width / 2.0 - radius,
+            y: height / 2.0,
+        });
+        points.extend(circle_points(
+            width / 2.0 - radius,
+            0.0,
+            radius,
+            50,
+            270.0,
+            450.0,
+        ));
+        points
+    }
+
+    fn emit_rough_paths(
+        out: &mut String,
+        path_data: &str,
+        style: &str,
+        fill: &str,
+        stroke: &str,
+        stroke_width: f32,
+        randomness: &roughr::core::RoughRandomness,
+        transform: Option<(f64, f64)>,
+    ) -> bool {
+        if let Some((fill_d, stroke_d)) =
+            roughjs_block_paths(path_data, fill, stroke, stroke_width, randomness)
+        {
+            if let Some((tx, ty)) = transform {
+                let _ = write!(
+                    out,
+                    r#"<g class="basic label-container outer-path" transform="translate({},{})">"#,
+                    fmt_display(tx),
+                    fmt_display(ty)
+                );
+            } else {
+                let _ = write!(out, r#"<g class="basic label-container outer-path">"#);
+            }
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+                escape_attr(&fill_d),
+                escape_attr(fill),
+                escape_attr(style)
+            );
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/>"#,
+                escape_attr(&stroke_d),
+                escape_attr(stroke),
+                fmt_display(stroke_width as f64),
+                escape_attr(style)
+            );
+            out.push_str("</g>");
+            true
+        } else {
+            false
+        }
     }
 
     #[derive(Clone)]
@@ -374,6 +546,19 @@ pub(crate) fn render_block_diagram_svg_model(
     }
 
     let diagram_id = options.diagram_id_or("merman");
+    let hand_drawn_seed = options.rough_randomness(
+        effective_config
+            .get("handDrawnSeed")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(options.seed() as f64),
+        "render.block.roughjs",
+    );
+    let node_theme = PresentationTheme::new(effective_config).node_diagram();
+    let node_fill_color = node_theme.main_bkg.as_str();
+    let node_stroke_color = node_theme.node_border.as_str();
+    // RoughJS uses 1.3px as its default node stroke width in Mermaid's handDrawnShapeStyles.
+    // Keep this independent from the CSS `stroke-width: 1px` rule used by ordinary shapes.
+    let node_stroke_width = 1.3_f32;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -411,36 +596,7 @@ pub(crate) fn render_block_diagram_svg_model(
     out.push_str("</style><g/>");
     options.checkpoint_emit()?;
 
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="6" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(&marker_id(diagram_id, "pointEnd"))
-    );
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(&marker_id(diagram_id, "pointStart"))
-    );
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(&marker_id(diagram_id, "circleEnd"))
-    );
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(&marker_id(diagram_id, "circleStart"))
-    );
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{}" class="marker cross block" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(&marker_id(diagram_id, "crossEnd"))
-    );
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{}" class="marker cross block" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(&marker_id(diagram_id, "crossStart"))
-    );
+    super::super::markers::push_base_edge_markers(&mut out, diagram_id, "block");
     options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="block">"#);
@@ -451,11 +607,10 @@ pub(crate) fn render_block_diagram_svg_model(
         };
 
         let class_str = if node.classes.is_empty() {
-            "default".to_string()
+            "default flowchart-label".to_string()
         } else {
-            node.classes.join(" ")
+            format!("{} flowchart-label", node.classes.join(" "))
         };
-        let class_str = format!("{class_str} flowchart-label");
         let (node_box_style, node_text_style, node_div_style_prefix) =
             compile_block_inline_styles(&node.styles);
 
@@ -469,7 +624,7 @@ pub(crate) fn render_block_diagram_svg_model(
         options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
-            r#"<g class="node default {}"{} transform="translate({}, {})">"#,
+            r#"<g class="node {}"{} transform="translate({}, {})">"#,
             escape_attr(&class_str),
             id_attr,
             fmt(geometry.allocated.x),
@@ -500,52 +655,60 @@ pub(crate) fn render_block_diagram_svg_model(
                     fmt(*height)
                 );
             }
-            BlockShapeBoundary::Circle {
-                radius,
-                width_attribute,
-                height_attribute,
-            } => {
+            BlockShapeBoundary::Circle { radius, .. } => {
                 let _ = write!(
                     &mut out,
-                    r#"<circle style="{}" rx="0" ry="0" r="{}" width="{}" height="{}"/>"#,
+                    r#"<circle class="basic label-container" style="{}" r="{}" cx="0" cy="0"/>"#,
                     escape_attr(&node_box_style),
                     fmt(*radius),
-                    fmt(*width_attribute),
-                    fmt(*height_attribute)
                 );
             }
             BlockShapeBoundary::DoubleCircle {
                 outer_radius,
                 inner_radius,
-                inner_width_attribute,
-                inner_height_attribute,
+                ..
             } => {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="default flowchart-label"><circle style="{}" rx="0" ry="0" r="{}" width="{}" height="{}"/><circle style="{}" rx="0" ry="0" r="{}" width="{}" height="{}"/></g>"#,
+                    r#"<g class="basic label-container" style="{}"><circle class="outer-circle" style="{}" r="{}" cx="0" cy="0"/><circle class="inner-circle" style="{}" r="{}" cx="0" cy="0"/></g>"#,
+                    escape_attr(&node_box_style),
                     escape_attr(&node_box_style),
                     fmt(*outer_radius),
-                    fmt(inner_width_attribute + 10.0),
-                    fmt(inner_height_attribute + 10.0),
                     escape_attr(&node_box_style),
                     fmt(*inner_radius),
-                    fmt(*inner_width_attribute),
-                    fmt(*inner_height_attribute)
                 );
             }
             BlockShapeBoundary::Stadium { width, height } => {
-                let radius = height / 2.0;
-                let _ = write!(
-                    &mut out,
-                    r#"<rect rx="{}" ry="{}" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-                    fmt(radius),
-                    fmt(radius),
-                    escape_attr(&node_box_style),
-                    fmt(-width / 2.0),
-                    fmt(-height / 2.0),
-                    fmt(*width),
-                    fmt(*height)
+                let points = block_stadium_points(*width, *height);
+                let path_data = closed_path_d_from_points(
+                    &points
+                        .iter()
+                        .map(|point| (point.x, point.y))
+                        .collect::<Vec<_>>(),
                 );
+                if !emit_rough_paths(
+                    &mut out,
+                    &path_data,
+                    &node_box_style,
+                    node_fill_color,
+                    node_stroke_color,
+                    node_stroke_width,
+                    &hand_drawn_seed,
+                    None,
+                ) {
+                    let radius = height / 2.0;
+                    let _ = write!(
+                        &mut out,
+                        r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
+                        escape_attr(&node_box_style),
+                        fmt(-width / 2.0),
+                        fmt(-height / 2.0),
+                        fmt(*width),
+                        fmt(*height),
+                        fmt(radius),
+                        fmt(radius)
+                    );
+                }
             }
             BlockShapeBoundary::Cylinder {
                 width,
@@ -555,7 +718,7 @@ pub(crate) fn render_block_diagram_svg_model(
             } => {
                 let _ = write!(
                     &mut out,
-                    r#"<path d="M {},{} a {},{} 0,0,0 {} 0 a {},{} 0,0,0 {} 0 l 0,{} a {},{} 0,0,0 {} 0 l 0,{}" style="{}" transform="translate({},{})"/>"#,
+                    r#"<path d="M{},{} a{},{} 0,0,0 {} 0 a{},{} 0,0,0 {} 0 l0,{} a{},{} 0,0,0 {} 0 l0,{}" class="basic label-container outer-path" style="{}" transform="translate({}, {})"/>"#,
                     fmt_display(0.0),
                     fmt_display(*radius_y),
                     fmt_display(*radius_x),
@@ -578,25 +741,45 @@ pub(crate) fn render_block_diagram_svg_model(
                 points,
                 translation,
             } => {
-                out.push_str(r#"<polygon points=""#);
-                for (index, point) in points.iter().enumerate() {
-                    if index > 0 {
-                        out.push(' ');
+                let odd_shape = matches!(node.block_type.as_str(), "odd" | "rect_left_inv_arrow");
+                let points_as_tuples: Vec<(f64, f64)> =
+                    points.iter().map(|point| (point.x, point.y)).collect();
+                let path_data = closed_path_d_from_points(&points_as_tuples);
+                if odd_shape
+                    && emit_rough_paths(
+                        &mut out,
+                        &path_data,
+                        &node_box_style,
+                        node_fill_color,
+                        node_stroke_color,
+                        node_stroke_width,
+                        &hand_drawn_seed,
+                        Some((translation.x, translation.y)),
+                    )
+                {
+                    // The odd shape is always emitted through RoughJS in Mermaid 11.17.2,
+                    // including the default look (roughness is simply zero there).
+                } else {
+                    out.push_str(r#"<polygon points=""#);
+                    for (index, point) in points.iter().enumerate() {
+                        if index > 0 {
+                            out.push(' ');
+                        }
+                        let _ = write!(
+                            &mut out,
+                            "{},{}",
+                            fmt_display(point.x),
+                            fmt_display(point.y)
+                        );
                     }
                     let _ = write!(
                         &mut out,
-                        "{},{}",
-                        fmt_display(point.x),
-                        fmt_display(point.y)
+                        r#"" class="label-container" style="{}" transform="translate({},{})"/>"#,
+                        escape_attr(&node_box_style),
+                        fmt_display(translation.x),
+                        fmt_display(translation.y)
                     );
                 }
-                let _ = write!(
-                    &mut out,
-                    r#"" class="label-container" style="{}" transform="translate({},{})"/>"#,
-                    escape_attr(&node_box_style),
-                    fmt_display(translation.x),
-                    fmt_display(translation.y)
-                );
             }
         }
 
@@ -608,7 +791,15 @@ pub(crate) fn render_block_diagram_svg_model(
         } else {
             let label_w = n.label_width.unwrap_or(0.0).max(0.0);
             let label_h = n.label_height.unwrap_or(0.0).max(0.0);
-            (-label_w / 2.0, -label_h / 2.0, label_w, label_h)
+            let label_dx = if matches!(node.block_type.as_str(), "odd" | "rect_left_inv_arrow") {
+                match &geometry.boundary {
+                    BlockShapeBoundary::Polygon { translation, .. } => translation.x,
+                    _ => 0.0,
+                }
+            } else {
+                0.0
+            };
+            (label_dx - label_w / 2.0, -label_h / 2.0, label_w, label_h)
         };
         let span_style_attr = if node_text_style.is_empty() {
             String::new()
@@ -653,6 +844,8 @@ pub(crate) fn render_block_diagram_svg_model(
             }
             _ => le.points.clone(),
         };
+        let data_points =
+            base64::engine::general_purpose::STANDARD.encode(json_stringify_points(&edge_points));
         if edge_points.len() >= 2 {
             let start_inset = block_edge_start_marker_inset(e.arrow_type_start.as_deref());
             if start_inset > 0.0 {
@@ -667,12 +860,16 @@ pub(crate) fn render_block_diagram_svg_model(
         }
         let d = curve_basis_path_d(&edge_points);
         let class_attr = "edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1";
+        let prefixed_edge_id = dom_id(diagram_id, &e.id);
+        let path_id = dom_id(diagram_id, &prefixed_edge_id);
         let _ = write!(
             &mut out,
-            r#"<path d="{}" id="{}" class="{}""#,
+            r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
             escape_attr(&d),
-            escape_attr(&dom_id(diagram_id, &e.id)),
-            escape_attr(class_attr)
+            escape_attr(&path_id),
+            escape_attr(class_attr),
+            escape_attr(&prefixed_edge_id),
+            escape_attr(&data_points)
         );
 
         if let Some(m) = edge_marker_start(e.arrow_type_start.as_deref()) {
@@ -703,9 +900,10 @@ pub(crate) fn render_block_diagram_svg_model(
 
         let _ = write!(
             &mut out,
-            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="stroke: rgb(51, 51, 51); stroke-width: 1.5px; display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel" style="stroke: #333; stroke-width: 1.5px;color:none;"><p>{}</p></span></div></foreignObject></g></g>"#,
+            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
             fmt(lbl.x),
             fmt(lbl.y),
+            escape_attr(&e.id),
             fmt(-lbl.width / 2.0),
             fmt(-lbl.height / 2.0),
             fmt(lbl.width),

@@ -920,11 +920,6 @@ fn flowchart_edge_to_ancestor_cluster_keeps_directioned_clusters_in_parent_root(
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
         .expect("layout ok");
 
-    let nodes_by_id = layout
-        .nodes
-        .iter()
-        .map(|n| (n.id.as_str(), (n.x, n.y)))
-        .collect::<std::collections::HashMap<_, _>>();
     let clusters_by_id = layout
         .clusters
         .iter()

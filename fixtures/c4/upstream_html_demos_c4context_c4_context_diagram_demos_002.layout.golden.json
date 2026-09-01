@@ -297,7 +297,7 @@
           "descr": {
             "text": "Stores user registration information, hashed auth credentials, access logs, etc.",
             "y": 71.892,
-            "width": 172.889,
+            "width": 134.316,
             "height": 37.884,
             "line_count": 3.0
           }

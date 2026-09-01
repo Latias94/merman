@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 882.0,
-        "max_y": 1182.987
+        "max_y": 1207.165
       },
       "width": 932.0,
-      "height": 1192.987,
+      "height": 1217.165,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 732.0,
-          "height": 1066.987,
+          "height": 1091.165,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -48,7 +48,7 @@
           "alias": "api",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 621.175,
+          "y": 645.353,
           "width": 632.0,
           "height": 461.812,
           "image": {
@@ -157,7 +157,7 @@
           "x": 150.0,
           "y": 376.834,
           "width": 216.0,
-          "height": 138.341,
+          "height": 162.519,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -166,10 +166,10 @@
           },
           "type_block": {
             "text": "[Container: Relational Database Schema]",
-            "y": 44.175,
-            "width": 173.775,
-            "height": 11.55,
-            "line_count": 1.0
+            "y": 49.95,
+            "width": 134.295,
+            "height": 23.1,
+            "line_count": 2.0
           },
           "label": {
             "text": "Database",
@@ -182,10 +182,10 @@
           "techn": null,
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
-            "y": 71.892,
-            "width": 160.95,
-            "height": 37.884,
-            "line_count": 3.0
+            "y": 89.756,
+            "width": 123.525,
+            "height": 50.512,
+            "line_count": 4.0
           }
         },
         {
@@ -231,7 +231,7 @@
           "parent_boundary": "api",
           "type_c4_shape": "component",
           "x": 200.0,
-          "y": 721.175,
+          "y": 745.353,
           "width": 216.0,
           "height": 98.206,
           "margin": 50.0,
@@ -269,7 +269,7 @@
           "parent_boundary": "api",
           "type_c4_shape": "component",
           "x": 516.0,
-          "y": 721.175,
+          "y": 745.353,
           "width": 216.0,
           "height": 98.206,
           "margin": 50.0,
@@ -307,7 +307,7 @@
           "parent_boundary": "api",
           "type_c4_shape": "component",
           "x": 200.0,
-          "y": 919.381,
+          "y": 943.559,
           "width": 216.0,
           "height": 98.206,
           "margin": 50.0,
@@ -345,7 +345,7 @@
           "parent_boundary": "api",
           "type_c4_shape": "component",
           "x": 516.0,
-          "y": 919.381,
+          "y": 943.559,
           "width": 216.0,
           "height": 113.606,
           "margin": 50.0,
@@ -386,11 +386,11 @@
           "rel_type": "rel",
           "start_point": {
             "x": 329.443,
-            "y": 819.381
+            "y": 843.559
           },
           "end_point": {
             "x": 343.567,
-            "y": 919.381
+            "y": 943.559
           },
           "offset_x": -160.0,
           "offset_y": 10.0,
@@ -410,11 +410,11 @@
           "rel_type": "rel",
           "start_point": {
             "x": 644.796,
-            "y": 819.381
+            "y": 843.559
           },
           "end_point": {
             "x": 665.144,
-            "y": 919.381
+            "y": 943.559
           },
           "offset_x": 140.0,
           "offset_y": 10.0,
@@ -433,12 +433,12 @@
           "to": "db",
           "rel_type": "rel",
           "start_point": {
-            "x": 314.016,
-            "y": 919.381
+            "x": 313.866,
+            "y": 943.559
           },
           "end_point": {
-            "x": 276.472,
-            "y": 514.942
+            "x": 278.848,
+            "y": 539.055
           },
           "offset_x": null,
           "offset_y": -40.0,
@@ -463,11 +463,11 @@
           "to": "mbs",
           "rel_type": "rel",
           "start_point": {
-            "x": 630.763,
-            "y": 919.381
+            "x": 630.443,
+            "y": 943.559
           },
           "end_point": {
-            "x": 588.609,
+            "x": 588.042,
             "y": 487.668
           },
           "offset_x": null,
@@ -493,12 +493,12 @@
           "to": "sign",
           "rel_type": "rel_b",
           "start_point": {
-            "x": 272.49,
+            "x": 271.932,
             "y": 276.834
           },
           "end_point": {
-            "x": 313.699,
-            "y": 721.175
+            "x": 313.436,
+            "y": 745.353
           },
           "offset_x": null,
           "offset_y": -40.0,
@@ -523,12 +523,12 @@
           "to": "accounts",
           "rel_type": "rel",
           "start_point": {
-            "x": 301.469,
+            "x": 299.797,
             "y": 276.834
           },
           "end_point": {
-            "x": 598.651,
-            "y": 721.175
+            "x": 599.82,
+            "y": 745.353
           },
           "offset_x": 40.0,
           "offset_y": 40.0,
@@ -553,12 +553,12 @@
           "to": "sign",
           "rel_type": "rel",
           "start_point": {
-            "x": 559.51,
+            "x": 560.068,
             "y": 276.834
           },
           "end_point": {
-            "x": 344.747,
-            "y": 721.175
+            "x": 343.051,
+            "y": 745.353
           },
           "offset_x": -90.0,
           "offset_y": 40.0,
@@ -583,12 +583,12 @@
           "to": "accounts",
           "rel_type": "rel",
           "start_point": {
-            "x": 588.49,
+            "x": 587.932,
             "y": 276.834
           },
           "end_point": {
-            "x": 629.699,
-            "y": 721.175
+            "x": 629.436,
+            "y": 745.353
           },
           "offset_x": null,
           "offset_y": -40.0,

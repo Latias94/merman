@@ -27,6 +27,7 @@ pub(crate) struct DomComparisonProfile {
     descendants: DomMode,
     root_contract: bool,
     normalize_browser_text_wrapping: bool,
+    normalize_browser_text_word_boundaries: bool,
     normalize_browser_text_length: bool,
 }
 
@@ -35,6 +36,7 @@ struct DomSignatureKey {
     descendants: DomMode,
     decimals: u32,
     normalize_browser_text_wrapping: bool,
+    normalize_browser_text_word_boundaries: bool,
     normalize_browser_text_length: bool,
 }
 
@@ -83,12 +85,14 @@ impl DomComparisonProfile {
                 descendants: DomMode::Parity,
                 root_contract: true,
                 normalize_browser_text_wrapping: false,
+                normalize_browser_text_word_boundaries: false,
                 normalize_browser_text_length: false,
             },
             descendants => Self {
                 descendants,
                 root_contract: false,
                 normalize_browser_text_wrapping: false,
+                normalize_browser_text_word_boundaries: false,
                 normalize_browser_text_length: false,
             },
         }
@@ -100,6 +104,7 @@ impl DomComparisonProfile {
             descendants,
             root_contract: true,
             normalize_browser_text_wrapping: false,
+            normalize_browser_text_word_boundaries: false,
             normalize_browser_text_length: false,
         }
     }
@@ -107,6 +112,14 @@ impl DomComparisonProfile {
     pub(crate) const fn with_browser_text_wrapping_normalized(mut self) -> Self {
         if !matches!(self.descendants, DomMode::Strict) {
             self.normalize_browser_text_wrapping = true;
+        }
+        self
+    }
+
+    pub(crate) const fn with_browser_text_word_boundaries_normalized(mut self) -> Self {
+        if !matches!(self.descendants, DomMode::Strict) {
+            self.normalize_browser_text_wrapping = true;
+            self.normalize_browser_text_word_boundaries = true;
         }
         self
     }
@@ -139,6 +152,7 @@ impl DomComparisonProfile {
             descendants: self.descendants,
             decimals,
             normalize_browser_text_wrapping: self.normalize_browser_text_wrapping,
+            normalize_browser_text_word_boundaries: self.normalize_browser_text_word_boundaries,
             normalize_browser_text_length: self.normalize_browser_text_length,
         }
     }
@@ -191,6 +205,7 @@ impl<'input> ParsedSvgDom<'input> {
             descendants: mode,
             decimals,
             normalize_browser_text_wrapping: false,
+            normalize_browser_text_word_boundaries: false,
             normalize_browser_text_length: false,
         })
     }
@@ -218,7 +233,10 @@ impl<'input> ParsedSvgDom<'input> {
                     key.normalize_browser_text_wrapping,
                 );
                 if key.normalize_browser_text_wrapping {
-                    normalize_browser_text_wrapping(&mut signature);
+                    normalize_browser_text_wrapping(
+                        &mut signature,
+                        key.normalize_browser_text_word_boundaries,
+                    );
                 }
                 if key.normalize_browser_text_length {
                     normalize_browser_text_length(&mut signature);
@@ -1273,6 +1291,23 @@ fn build_node(
                 None
             }
 
+            fn find_first_c4_node_id(n: &SvgDomNode) -> Option<&str> {
+                if n.name == "g"
+                    && n.attrs
+                        .get("class")
+                        .is_some_and(|class| class.split_whitespace().any(|token| token == "node"))
+                    && let Some(id) = n.attrs.get("id")
+                {
+                    return Some(id.as_str());
+                }
+                for c in &n.children {
+                    if let Some(id) = find_first_c4_node_id(c) {
+                        return Some(id);
+                    }
+                }
+                None
+            }
+
             if let Some(id) = n.attrs.get("id") {
                 return id.as_str();
             }
@@ -1300,6 +1335,13 @@ fn build_node(
                     && !n.attrs.contains_key("data-id")
                     && let Some(id) = find_first_path_id(n)
                 {
+                    return id;
+                }
+
+                // C4 paints each node inside an anonymous translated wrapper. The wrapper's
+                // transform is geometry-dependent, so use the nested node id as its stable
+                // semantic key instead of letting browser/font-driven coordinates reorder peers.
+                if let Some(id) = find_first_c4_node_id(n) {
                     return id;
                 }
 
@@ -1530,9 +1572,9 @@ pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<S
     Ok(document.signature_for_mode(mode, decimals).clone())
 }
 
-fn normalize_browser_text_wrapping(node: &mut SvgDomNode) {
+fn normalize_browser_text_wrapping(node: &mut SvgDomNode, word_boundaries: bool) {
     for child in &mut node.children {
-        normalize_browser_text_wrapping(child);
+        normalize_browser_text_wrapping(child, word_boundaries);
     }
 
     if node.name != "text" || node.children.is_empty() {
@@ -1554,11 +1596,12 @@ fn normalize_browser_text_wrapping(node: &mut SvgDomNode) {
     // Row boundaries are safe to remove only when doing so preserves the exact normalized text.
     // A boundary between `Hello` and `world` cannot prove whether the source contained a space, so
     // whitespace remains semantic and that browser-dependent case stays a bounded residual.
-    let text = node
+    let row_texts = node
         .children
         .iter()
         .filter_map(|child| child.text.as_deref())
-        .collect::<String>();
+        .collect::<Vec<_>>();
+    let text = row_texts.join(if word_boundaries { " " } else { "" });
     node.children = vec![SvgDomNode {
         name: "tspan".to_string(),
         attrs: [("class".to_string(), "text-outer-tspan".to_string())].into(),

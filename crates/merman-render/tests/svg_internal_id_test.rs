@@ -269,7 +269,7 @@ A --> B"#,
 }
 
 #[test]
-fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
+fn tree_view_iconify_internal_ids_are_scoped_per_node_and_deterministic() {
     let icon_body = r##"<defs><clipPath id="none"><path id="shape" d="M0 0H16V16H0z"/></clipPath></defs><path data-icon="tree-view-id-fixture" fill="none" clip-path="url(#none)" d="M0 0H16V16H0z"/><use href="#shape" xlink:href="#shape"/><animate begin="shape.end;shape.click"/>"##;
     let foo = serde_json::json!({
         "prefix": "foo",
@@ -327,34 +327,13 @@ fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
     );
 
     let document = roxmltree::Document::parse(&svg).expect("valid SVG");
-    let symbol_references = document
+    let inline_icons = document
         .descendants()
         .filter(|node| {
-            node.has_tag_name("use") && node.attribute("class") == Some("treeView-node-icon")
+            node.has_tag_name("g") && node.attribute("class") == Some("treeView-node-icon")
         })
-        .filter_map(|node| {
-            node.attributes()
-                .find(|attribute| attribute.name() == "href")
-                .and_then(|attribute| attribute.value().strip_prefix('#'))
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        symbol_references,
-        [
-            "tv-icon-m15-tree-view-icons-foo-bar-baz-3",
-            "tv-icon-m15-tree-view-icons-foo-bar-baz",
-            "tv-icon-m15-tree-view-icons-foo-bar-baz-2",
-        ],
-        "{svg}"
-    );
-    assert_eq!(
-        symbol_references
-            .iter()
-            .collect::<std::collections::BTreeSet<_>>()
-            .len(),
-        symbol_references.len(),
-        "{svg}"
-    );
+        .count();
+    assert_eq!(inline_icons, 3, "{svg}");
 
     let ids = internal_iconify_ids(&svg);
     assert_eq!(ids.len(), 6, "{svg}");

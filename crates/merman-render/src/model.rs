@@ -743,6 +743,13 @@ pub enum ClassRenderItem {
 pub struct ErDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
+    /// SVG-facing edge projection.
+    ///
+    /// Dagre needs self-loop helper nodes and three internal edge segments to produce stable
+    /// ranks. Mermaid's common painter merges those segments back into one visible edge. Keep
+    /// that projection beside the canonical layout without serializing it into layout artifacts.
+    #[serde(default, skip)]
+    pub(crate) render_edges: Vec<LayoutEdge>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,

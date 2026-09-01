@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 882.0,
-        "max_y": 770.097
+        "max_y": 794.275
       },
       "width": 932.0,
-      "height": 780.097,
+      "height": 804.275,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 732.0,
-          "height": 654.097,
+          "height": 678.275,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -48,7 +48,7 @@
           "alias": "b",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 410.341,
+          "y": 434.519,
           "width": 632.0,
           "height": 259.756,
           "image": {
@@ -81,7 +81,7 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 138.341,
+          "height": 162.519,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -90,10 +90,10 @@
           },
           "type_block": {
             "text": "[Container: Relational Database Schema]",
-            "y": 44.175,
-            "width": 173.775,
-            "height": 11.55,
-            "line_count": 1.0
+            "y": 49.95,
+            "width": 134.295,
+            "height": 23.1,
+            "line_count": 2.0
           },
           "label": {
             "text": "Database",
@@ -106,10 +106,10 @@
           "techn": null,
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
-            "y": 71.892,
-            "width": 160.95,
-            "height": 37.884,
-            "line_count": 3.0
+            "y": 89.756,
+            "width": 123.525,
+            "height": 50.512,
+            "line_count": 4.0
           }
         },
         {
@@ -155,7 +155,7 @@
           "parent_boundary": "b",
           "type_c4_shape": "component",
           "x": 200.0,
-          "y": 510.341,
+          "y": 534.519,
           "width": 216.0,
           "height": 98.206,
           "margin": 50.0,
@@ -193,7 +193,7 @@
           "parent_boundary": "b",
           "type_c4_shape": "component",
           "x": 516.0,
-          "y": 510.341,
+          "y": 534.519,
           "width": 216.0,
           "height": 109.756,
           "margin": 50.0,
@@ -233,12 +233,12 @@
           "to": "c2",
           "rel_type": "rel",
           "start_point": {
-            "x": 595.933,
+            "x": 594.68,
             "y": 276.834
           },
           "end_point": {
-            "x": 635.016,
-            "y": 510.341
+            "x": 634.166,
+            "y": 534.519
           },
           "offset_x": null,
           "offset_y": -40.0,
@@ -264,11 +264,11 @@
           "rel_type": "rel",
           "start_point": {
             "x": 516.0,
-            "y": 590.715
+            "y": 614.893
           },
           "end_point": {
             "x": 416.0,
-            "y": 573.423
+            "y": 597.601
           },
           "offset_x": -40.0,
           "offset_y": 60.0,
@@ -287,12 +287,12 @@
           "to": "c4",
           "rel_type": "rel",
           "start_point": {
-            "x": 318.35,
-            "y": 510.341
+            "x": 317.914,
+            "y": 534.519
           },
           "end_point": {
-            "x": 285.778,
-            "y": 303.809
+            "x": 288.743,
+            "y": 327.864
           },
           "offset_x": 10.0,
           "offset_y": -40.0,

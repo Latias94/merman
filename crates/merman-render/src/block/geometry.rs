@@ -92,7 +92,10 @@ impl BlockShapeGeometry {
         padding: f64,
         width_in_columns: i64,
     ) -> Option<Self> {
-        let boundary = boundary_for(
+        // Mermaid renders a block twice: the first pass measures the label and shape, while the
+        // second pass supplies the grid-allocated slot.  Keep the final outline calculation
+        // separate from the slot itself so routing never intersects the slot by accident.
+        let boundary = rendered_boundary_for(
             BlockShapeInputs {
                 block_type,
                 directions,
@@ -158,7 +161,10 @@ impl BlockShapeGeometry {
     }
 }
 
-/// Computes the natural size used while the grid is choosing a common slot.
+/// Computes the intrinsic shape size used while the grid is choosing a common slot.
+///
+/// This is the equivalent of Mermaid's first `insertNode(..., positioned = false)` pass.  The
+/// returned dimensions are shape dimensions, not the eventual grid slot dimensions.
 pub(crate) fn natural_shape_size(
     block_type: &str,
     directions: &[String],
@@ -167,28 +173,28 @@ pub(crate) fn natural_shape_size(
     padding: f64,
     has_label: bool,
 ) -> Option<(f64, f64)> {
-    let boundary = boundary_for(
-        BlockShapeInputs {
-            block_type,
-            directions,
-            label_width,
-            label_height,
-            padding,
-        },
-        BlockShapeAllocation::default(),
-    )?;
+    let boundary = intrinsic_boundary_for(BlockShapeInputs {
+        block_type,
+        directions,
+        label_width,
+        label_height,
+        padding,
+    })?;
     if matches!(block_type, "composite" | "group") && !has_label {
         return None;
     }
     Some(boundary_size(&boundary))
 }
 
-fn boundary_for(
-    inputs: BlockShapeInputs<'_>,
-    allocation: BlockShapeAllocation,
-) -> Option<BlockShapeBoundary> {
-    // Keep these formulas aligned with Mermaid 11.16's dagre-wrapper/nodes.js. Block arrows also
-    // consume dagre-wrapper/blockArrowHelper.ts through block_arrow_points_for_width().
+impl BlockShapeAllocation {
+    fn is_slot(self) -> bool {
+        self.width > 0.0 || self.height > 0.0
+    }
+}
+
+fn intrinsic_boundary_for(inputs: BlockShapeInputs<'_>) -> Option<BlockShapeBoundary> {
+    // Keep these formulas aligned with Mermaid 11.17.2's rendering-util shape modules.  This is
+    // deliberately the unpositioned/intrinsic pass; slot-aware adjustments live below.
     let BlockShapeInputs {
         block_type,
         directions,
@@ -196,58 +202,39 @@ fn boundary_for(
         label_height,
         padding,
     } = inputs;
-    let BlockShapeAllocation {
-        width: allocated_width,
-        height: allocated_height,
-        width_in_columns,
-    } = allocation;
-    let rect_w = (label_width + padding).max(1.0);
+    let rect_w = (label_width + 4.0 * padding).max(1.0);
     let rect_h = (label_height + padding).max(1.0);
     let block_arrow_height = label_height + 2.0 * padding;
     let natural_block_arrow_width = label_width + block_arrow_height + padding;
 
     Some(match block_type {
         "composite" => BlockShapeBoundary::Rectangle {
-            width: if allocated_width > 0.0 {
-                allocated_width
-            } else {
-                label_width.max(1.0)
-            },
-            height: if allocated_height > 0.0 {
-                allocated_height
-            } else {
-                rect_h
-            },
+            width: label_width.max(1.0),
+            height: label_height.max(1.0),
             radius: 0.0,
             kind: BlockRectangleKind::Composite,
         },
         "group" => BlockShapeBoundary::Rectangle {
-            width: if allocated_width > 0.0 {
-                allocated_width
-            } else {
-                rect_w
-            },
-            height: if allocated_height > 0.0 {
-                allocated_height
-            } else {
-                rect_h
-            },
+            width: rect_w,
+            height: rect_h,
             radius: 0.0,
             kind: BlockRectangleKind::Basic,
         },
         "space" => return None,
         "circle" => BlockShapeBoundary::Circle {
-            radius: rect_w / 2.0,
-            width_attribute: rect_w,
-            height_attribute: rect_h,
+            // `circle.ts` uses half the label padding on each side.  Circle's positioned pass
+            // still derives its radius from the measured label, so the grid slot is not used.
+            radius: (label_width + padding).max(1.0) / 2.0,
+            width_attribute: (label_width + padding).max(1.0),
+            height_attribute: (label_width + padding).max(1.0),
         },
         "doublecircle" => {
-            let outer_radius = rect_w / 2.0 + 5.0;
+            let outer_radius = (label_width / 2.0 + padding).max(1.0);
             BlockShapeBoundary::DoubleCircle {
                 outer_radius,
-                inner_radius: rect_w / 2.0,
-                inner_width_attribute: rect_w,
-                inner_height_attribute: rect_h,
+                inner_radius: (outer_radius - 5.0).max(0.0),
+                inner_width_attribute: (outer_radius - 5.0).max(0.0) * 2.0,
+                inner_height_attribute: (outer_radius - 5.0).max(0.0) * 2.0,
             }
         }
         "stadium" => BlockShapeBoundary::Stadium {
@@ -255,18 +242,19 @@ fn boundary_for(
             height: rect_h,
         },
         "cylinder" => {
-            let radius_x = rect_w / 2.0;
-            let radius_y = radius_x / (2.5 + rect_w / 50.0);
-            let body_height = (label_height + radius_y + padding).max(1.0);
+            let width = (label_width + padding).max(1.0);
+            let radius_x = width / 2.0;
+            let radius_y = radius_x / (2.5 + width / 50.0);
+            let body_height = (label_height + padding + radius_y).max(1.0);
             BlockShapeBoundary::Cylinder {
-                width: rect_w,
+                width,
                 body_height,
                 radius_x,
                 radius_y,
             }
         }
         "diamond" => {
-            let side = (rect_w + rect_h).max(1.0);
+            let side = (label_width + padding + label_height + padding).max(1.0);
             BlockShapeBoundary::Polygon {
                 points: vec![
                     LayoutPoint {
@@ -287,18 +275,15 @@ fn boundary_for(
                     },
                 ],
                 translation: LayoutPoint {
-                    x: -side / 2.0,
+                    x: -side / 2.0 + 0.5,
                     y: side / 2.0,
                 },
             }
         }
         "hexagon" => {
-            let (width, height) = if allocated_width > 0.0 && allocated_height > 0.0 {
-                (allocated_width, allocated_height)
-            } else {
-                let shoulder = rect_h / 4.0;
-                ((label_width + 2.0 * shoulder + padding).max(1.0), rect_h)
-            };
+            let height = rect_h;
+            let shoulder = height / 4.0;
+            let width = (label_width + 2.0 * shoulder + padding).max(1.0);
             let shoulder = height / 4.0;
             polygon_boundary(
                 vec![
@@ -331,152 +316,14 @@ fn boundary_for(
                 height,
             )
         }
-        "rect_left_inv_arrow" => polygon_boundary(
-            vec![
-                LayoutPoint {
-                    x: -rect_h / 2.0,
-                    y: 0.0,
-                },
-                LayoutPoint { x: rect_w, y: 0.0 },
-                LayoutPoint {
-                    x: rect_w,
-                    y: -rect_h,
-                },
-                LayoutPoint {
-                    x: -rect_h / 2.0,
-                    y: -rect_h,
-                },
-                LayoutPoint {
-                    x: 0.0,
-                    y: -rect_h / 2.0,
-                },
-            ],
-            rect_w,
-            rect_h,
-        ),
-        "subroutine" => polygon_boundary(
-            vec![
-                LayoutPoint { x: 0.0, y: 0.0 },
-                LayoutPoint { x: rect_w, y: 0.0 },
-                LayoutPoint {
-                    x: rect_w,
-                    y: -rect_h,
-                },
-                LayoutPoint { x: 0.0, y: -rect_h },
-                LayoutPoint { x: 0.0, y: 0.0 },
-                LayoutPoint { x: -8.0, y: 0.0 },
-                LayoutPoint {
-                    x: rect_w + 8.0,
-                    y: 0.0,
-                },
-                LayoutPoint {
-                    x: rect_w + 8.0,
-                    y: -rect_h,
-                },
-                LayoutPoint {
-                    x: -8.0,
-                    y: -rect_h,
-                },
-                LayoutPoint { x: -8.0, y: 0.0 },
-            ],
-            rect_w,
-            rect_h,
-        ),
-        "lean_right" => polygon_boundary(
-            vec![
-                LayoutPoint {
-                    x: -rect_h / 3.0,
-                    y: 0.0,
-                },
-                LayoutPoint {
-                    x: rect_w - rect_h / 6.0,
-                    y: 0.0,
-                },
-                LayoutPoint {
-                    x: rect_w + rect_h / 3.0,
-                    y: -rect_h,
-                },
-                LayoutPoint {
-                    x: rect_h / 6.0,
-                    y: -rect_h,
-                },
-            ],
-            rect_w,
-            rect_h,
-        ),
-        "lean_left" => polygon_boundary(
-            vec![
-                LayoutPoint {
-                    x: rect_h / 3.0,
-                    y: 0.0,
-                },
-                LayoutPoint {
-                    x: rect_w + rect_h / 6.0,
-                    y: 0.0,
-                },
-                LayoutPoint {
-                    x: rect_w - rect_h / 3.0,
-                    y: -rect_h,
-                },
-                LayoutPoint {
-                    x: -rect_h / 6.0,
-                    y: -rect_h,
-                },
-            ],
-            rect_w,
-            rect_h,
-        ),
-        "trapezoid" => polygon_boundary(
-            vec![
-                LayoutPoint {
-                    x: -rect_h / 3.0,
-                    y: 0.0,
-                },
-                LayoutPoint {
-                    x: rect_w + rect_h / 3.0,
-                    y: 0.0,
-                },
-                LayoutPoint {
-                    x: rect_w - rect_h / 6.0,
-                    y: -rect_h,
-                },
-                LayoutPoint {
-                    x: rect_h / 6.0,
-                    y: -rect_h,
-                },
-            ],
-            rect_w,
-            rect_h,
-        ),
-        "inv_trapezoid" => polygon_boundary(
-            vec![
-                LayoutPoint {
-                    x: rect_h / 6.0,
-                    y: 0.0,
-                },
-                LayoutPoint {
-                    x: rect_w - rect_h / 6.0,
-                    y: 0.0,
-                },
-                LayoutPoint {
-                    x: rect_w + rect_h / 3.0,
-                    y: -rect_h,
-                },
-                LayoutPoint {
-                    x: -rect_h / 3.0,
-                    y: -rect_h,
-                },
-            ],
-            rect_w,
-            rect_h,
-        ),
+        "rect_left_inv_arrow" => odd_boundary(label_width, label_height, padding),
+        "subroutine" => subroutine_boundary(label_width, label_height, padding),
+        "lean_right" => lean_boundary("lean_right", label_width, label_height, padding),
+        "lean_left" => lean_boundary("lean_left", label_width, label_height, padding),
+        "trapezoid" => lean_boundary("trapezoid", label_width, label_height, padding),
+        "inv_trapezoid" => inverted_trapezoid_boundary(label_width, label_height, padding),
         "block_arrow" => {
-            let natural_width = natural_block_arrow_width.max(1.0);
-            let width = if width_in_columns > 1 && allocated_width > natural_width {
-                allocated_width
-            } else {
-                natural_width
-            };
+            let width = natural_block_arrow_width.max(1.0);
             let points =
                 super::block_arrow_points_for_width(directions, label_height, padding, width)
                     .into_iter()
@@ -488,34 +335,490 @@ fn boundary_for(
             polygon_boundary(points, width, block_arrow_height)
         }
         "round" => BlockShapeBoundary::Rectangle {
-            width: if allocated_width > 0.0 {
-                allocated_width
-            } else {
-                rect_w
-            },
-            height: if allocated_height > 0.0 {
-                allocated_height
-            } else {
-                rect_h
-            },
+            width: rect_w,
+            height: rect_h,
             radius: 5.0,
             kind: BlockRectangleKind::Basic,
         },
         _ => BlockShapeBoundary::Rectangle {
-            width: if allocated_width > 0.0 {
-                allocated_width
-            } else {
-                rect_w
-            },
-            height: if allocated_height > 0.0 {
-                allocated_height
-            } else {
-                rect_h
-            },
+            width: rect_w,
+            height: rect_h,
             radius: 0.0,
             kind: BlockRectangleKind::Basic,
         },
     })
+}
+
+fn rendered_boundary_for(
+    inputs: BlockShapeInputs<'_>,
+    allocation: BlockShapeAllocation,
+) -> Option<BlockShapeBoundary> {
+    let intrinsic = intrinsic_boundary_for(inputs)?;
+    if !allocation.is_slot() {
+        return Some(intrinsic);
+    }
+
+    let BlockShapeInputs {
+        block_type,
+        directions,
+        label_width,
+        label_height,
+        padding,
+    } = inputs;
+    let slot_width = allocation.width.max(0.0);
+    let slot_height = allocation.height.max(0.0);
+    let intrinsic_width = boundary_size(&intrinsic).0;
+    let intrinsic_height = boundary_size(&intrinsic).1;
+
+    Some(match block_type {
+        // drawRect() uses max(label-derived dimensions, node.width/node.height) in the positioned
+        // pass.  This is the only ordinary shape where both dimensions are directly slot-aware.
+        "composite" => BlockShapeBoundary::Rectangle {
+            width: slot_width.max(1.0),
+            height: slot_height.max(1.0),
+            radius: 0.0,
+            kind: BlockRectangleKind::Composite,
+        },
+        "group" => BlockShapeBoundary::Rectangle {
+            width: slot_width.max(intrinsic_width).max(1.0),
+            height: slot_height.max(intrinsic_height).max(1.0),
+            radius: 0.0,
+            kind: BlockRectangleKind::Basic,
+        },
+        "square" | "default" | "round" => BlockShapeBoundary::Rectangle {
+            width: slot_width.max(intrinsic_width).max(1.0),
+            height: slot_height.max(intrinsic_height).max(1.0),
+            radius: if block_type == "round" { 5.0 } else { 0.0 },
+            kind: BlockRectangleKind::Basic,
+        },
+        // circle.ts intentionally ignores node.width/node.height when computing the circle.  A
+        // wider common grid slot only changes the label wrapping width, not the outline radius.
+        "circle" | "stadium" | "diamond" => intrinsic,
+        "doublecircle" => {
+            let outer_radius = (slot_width / 2.0 + padding).max(1.0);
+            let inner_radius = (outer_radius - 5.0).max(0.0);
+            BlockShapeBoundary::DoubleCircle {
+                outer_radius,
+                inner_radius,
+                inner_width_attribute: inner_radius * 2.0,
+                inner_height_attribute: inner_radius * 2.0,
+            }
+        }
+        "cylinder" => {
+            cylinder_boundary(label_width, label_height, padding, slot_width, slot_height)
+        }
+        "hexagon" => hexagon_boundary(label_width, label_height, padding, slot_width, slot_height),
+        "rect_left_inv_arrow" => {
+            odd_boundary_slot(label_width, label_height, padding, slot_width, slot_height)
+        }
+        "subroutine" => {
+            subroutine_boundary_slot(label_width, label_height, padding, slot_width, slot_height)
+        }
+        "lean_right" | "lean_left" | "trapezoid" => lean_boundary_slot(
+            block_type,
+            label_width,
+            label_height,
+            padding,
+            slot_width,
+            slot_height,
+        ),
+        "inv_trapezoid" => inverted_trapezoid_boundary_slot(
+            label_width,
+            label_height,
+            padding,
+            slot_width,
+            slot_height,
+        ),
+        "block_arrow" => {
+            let natural_width = label_width + label_height + 3.0 * padding;
+            let height = label_height + 2.0 * padding;
+            let width = if allocation.width_in_columns > 1 && slot_width > natural_width {
+                slot_width
+            } else {
+                natural_width.max(1.0)
+            };
+            let points =
+                super::block_arrow_points_for_width(directions, label_height, padding, width)
+                    .into_iter()
+                    .map(|point| LayoutPoint {
+                        x: point.x,
+                        y: point.y,
+                    })
+                    .collect();
+            polygon_boundary(points, width, height)
+        }
+        // Unknown block shapes have the default rectangular renderer in Mermaid.
+        _ => BlockShapeBoundary::Rectangle {
+            width: slot_width.max(intrinsic_width).max(1.0),
+            height: slot_height.max(intrinsic_height).max(1.0),
+            radius: 0.0,
+            kind: BlockRectangleKind::Basic,
+        },
+    })
+}
+
+// Kept as a small compatibility seam for geometry unit tests and callers that still want to
+// provide an explicit allocation.  New code should use `intrinsic_boundary_for` for measurement
+// and `rendered_boundary_for` for the final slot-aware outline.
+#[cfg(test)]
+fn boundary_for(
+    inputs: BlockShapeInputs<'_>,
+    allocation: BlockShapeAllocation,
+) -> Option<BlockShapeBoundary> {
+    rendered_boundary_for(inputs, allocation)
+}
+
+fn cylinder_boundary(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    // cylinder.ts mutates node.width/node.height before labelHelper(), then adds the cap geometry
+    // back after measuring.  Reproduce those mutations analytically without conflating the slot
+    // with the final path body height.
+    let original_width = slot_width.max(0.0);
+    let adjusted_width = if original_width > 0.0 {
+        (original_width - padding).max(8.0)
+    } else {
+        0.0
+    };
+    let original_radius_x = original_width / 2.0;
+    let original_radius_y = if original_width > 0.0 {
+        original_radius_x / (2.5 + original_width / 50.0)
+    } else {
+        0.0
+    };
+    let adjusted_height = if slot_height > 0.0 {
+        (slot_height - padding - original_radius_y * 3.0).max(8.0)
+    } else {
+        0.0
+    };
+    let width = (adjusted_width.max(label_width) + padding).max(1.0);
+    let radius_x = width / 2.0;
+    let radius_y = radius_x / (2.5 + width / 50.0);
+    let body_height = (adjusted_height.max(label_height) + padding + radius_y).max(1.0);
+    BlockShapeBoundary::Cylinder {
+        width,
+        body_height,
+        radius_x,
+        radius_y,
+    }
+}
+
+fn hexagon_boundary(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    let original_height = slot_height.max(0.0);
+    let m = original_height / 4.0;
+    let adjusted_width = if original_height > 0.0 {
+        (slot_width - 2.0 * m - padding).max(0.0)
+    } else {
+        0.0
+    };
+    let adjusted_height = if original_height > 0.0 {
+        (slot_height - padding).max(0.0)
+    } else {
+        0.0
+    };
+    let height = (adjusted_height.max(label_height) + padding).max(1.0);
+    let shoulder = height / 4.0;
+    let width = (adjusted_width.max(label_width) + 2.0 * shoulder + padding).max(1.0);
+    polygon_boundary(
+        vec![
+            LayoutPoint {
+                x: shoulder,
+                y: 0.0,
+            },
+            LayoutPoint {
+                x: width - shoulder,
+                y: 0.0,
+            },
+            LayoutPoint {
+                x: width,
+                y: -height / 2.0,
+            },
+            LayoutPoint {
+                x: width - shoulder,
+                y: -height,
+            },
+            LayoutPoint {
+                x: shoulder,
+                y: -height,
+            },
+            LayoutPoint {
+                x: 0.0,
+                y: -height / 2.0,
+            },
+        ],
+        width,
+        height,
+    )
+}
+
+fn odd_boundary(label_width: f64, label_height: f64, padding: f64) -> BlockShapeBoundary {
+    odd_boundary_with_slot(label_width, label_height, padding, 0.0, 0.0)
+}
+
+fn odd_boundary_slot(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    odd_boundary_with_slot(label_width, label_height, padding, slot_width, slot_height)
+}
+
+fn odd_boundary_with_slot(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    let height = (label_height + padding).max(slot_height).max(1.0);
+    let notch_width = height / 4.0;
+    let width = (label_width + padding)
+        .max((slot_width - notch_width).max(0.0))
+        .max(1.0);
+    let x = -width / 2.0;
+    let y = -height / 2.0;
+    let notch = y / 2.0;
+    polygon_with_translation(
+        vec![
+            LayoutPoint { x: x + notch, y },
+            LayoutPoint { x, y: 0.0 },
+            LayoutPoint {
+                x: x + notch,
+                y: -y,
+            },
+            LayoutPoint { x: -x, y: -y },
+            LayoutPoint { x: -x, y },
+        ],
+        LayoutPoint {
+            x: -notch / 2.0,
+            y: 0.0,
+        },
+    )
+}
+
+fn subroutine_boundary(label_width: f64, label_height: f64, padding: f64) -> BlockShapeBoundary {
+    subroutine_boundary_with_slot(label_width, label_height, padding, 0.0, 0.0)
+}
+
+fn subroutine_boundary_slot(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    subroutine_boundary_with_slot(label_width, label_height, padding, slot_width, slot_height)
+}
+
+fn subroutine_boundary_with_slot(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    const FRAME_WIDTH: f64 = 8.0;
+    let total_width = (label_width + 2.0 * FRAME_WIDTH + padding)
+        .max(slot_width)
+        .max(1.0);
+    let total_height = (label_height + padding).max(slot_height).max(1.0);
+    let width = (total_width - 2.0 * FRAME_WIDTH).max(0.0);
+    let points = vec![
+        LayoutPoint { x: 0.0, y: 0.0 },
+        LayoutPoint { x: width, y: 0.0 },
+        LayoutPoint {
+            x: width,
+            y: -total_height,
+        },
+        LayoutPoint {
+            x: 0.0,
+            y: -total_height,
+        },
+        LayoutPoint { x: 0.0, y: 0.0 },
+        LayoutPoint {
+            x: -FRAME_WIDTH,
+            y: 0.0,
+        },
+        LayoutPoint {
+            x: width + FRAME_WIDTH,
+            y: 0.0,
+        },
+        LayoutPoint {
+            x: width + FRAME_WIDTH,
+            y: -total_height,
+        },
+        LayoutPoint {
+            x: -FRAME_WIDTH,
+            y: -total_height,
+        },
+        LayoutPoint {
+            x: -FRAME_WIDTH,
+            y: 0.0,
+        },
+    ];
+    polygon_boundary(points, width, total_height)
+}
+
+fn lean_boundary(
+    kind: &str,
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+) -> BlockShapeBoundary {
+    lean_boundary_with_slot(kind, label_width, label_height, padding, 0.0, 0.0)
+}
+
+fn lean_boundary_slot(
+    kind: &str,
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    lean_boundary_with_slot(
+        kind,
+        label_width,
+        label_height,
+        padding,
+        slot_width,
+        slot_height,
+    )
+}
+
+fn lean_boundary_with_slot(
+    kind: &str,
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    let height = (label_height + padding).max(slot_height).max(1.0);
+    let width = (label_width + padding)
+        .max((slot_width - height).max(0.0))
+        .max(1.0);
+    let points = match kind {
+        "lean_right" => vec![
+            LayoutPoint {
+                x: -3.0 * height / 6.0,
+                y: 0.0,
+            },
+            LayoutPoint { x: width, y: 0.0 },
+            LayoutPoint {
+                x: width + 3.0 * height / 6.0,
+                y: -height,
+            },
+            LayoutPoint { x: 0.0, y: -height },
+        ],
+        "lean_left" => vec![
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint {
+                x: width + 3.0 * height / 6.0,
+                y: 0.0,
+            },
+            LayoutPoint {
+                x: width,
+                y: -height,
+            },
+            LayoutPoint {
+                x: -3.0 * height / 6.0,
+                y: -height,
+            },
+        ],
+        "trapezoid" => vec![
+            LayoutPoint {
+                x: -3.0 * height / 6.0,
+                y: 0.0,
+            },
+            LayoutPoint {
+                x: width + 3.0 * height / 6.0,
+                y: 0.0,
+            },
+            LayoutPoint {
+                x: width,
+                y: -height,
+            },
+            LayoutPoint { x: 0.0, y: -height },
+        ],
+        _ => vec![LayoutPoint { x: 0.0, y: 0.0 }],
+    };
+    polygon_boundary(points, width, height)
+}
+
+fn inverted_trapezoid_boundary(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+) -> BlockShapeBoundary {
+    inverted_trapezoid_boundary_with_slot(label_width, label_height, padding, 0.0, 0.0)
+}
+
+fn inverted_trapezoid_boundary_slot(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    inverted_trapezoid_boundary_with_slot(
+        label_width,
+        label_height,
+        padding,
+        slot_width,
+        slot_height,
+    )
+}
+
+fn inverted_trapezoid_boundary_with_slot(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    slot_width: f64,
+    slot_height: f64,
+) -> BlockShapeBoundary {
+    let height = (label_height + 2.0 * padding).max(slot_height).max(1.0);
+    let width = (label_width + 2.0 * padding)
+        .max((slot_width - height).max(0.0))
+        .max(1.0);
+    polygon_boundary(
+        vec![
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: width, y: 0.0 },
+            LayoutPoint {
+                x: width + 3.0 * height / 6.0,
+                y: -height,
+            },
+            LayoutPoint {
+                x: -3.0 * height / 6.0,
+                y: -height,
+            },
+        ],
+        width,
+        height,
+    )
+}
+
+fn polygon_with_translation(
+    points: Vec<LayoutPoint>,
+    translation: LayoutPoint,
+) -> BlockShapeBoundary {
+    BlockShapeBoundary::Polygon {
+        points,
+        translation,
+    }
 }
 
 fn polygon_boundary(
