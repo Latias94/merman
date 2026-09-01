@@ -2290,8 +2290,10 @@ mod tests {
     #[test]
     fn generic_title_paint_does_not_recreate_a_legacy_projection_without_a_title_consumer() {
         for family in [
+            DiagramFamilyId::ARCHITECTURE,
             DiagramFamilyId::C4,
             DiagramFamilyId::CYNEFIN,
+            DiagramFamilyId::RAILROAD,
             DiagramFamilyId::SANKEY,
         ] {
             for variant in [None, Some(ThemeVariant::Default)] {
@@ -2325,9 +2327,12 @@ mod tests {
                 let text_id = format!("{CONTRIBUTION_ID_PREFIX}{}.text.fill", family.as_str());
                 let title_id = format!("{CONTRIBUTION_ID_PREFIX}{}.title.fill", family.as_str());
 
-                assert!(
+                let expects_text_bridge = family != DiagramFamilyId::ARCHITECTURE
+                    || variant == Some(ThemeVariant::Default);
+                assert_eq!(
                     artifact.contribution_ids.contains(&text_id),
-                    "{family} must retain the real generic text compatibility projection for variant={variant:?}"
+                    expects_text_bridge,
+                    "{family} generic text bridge ownership drifted for variant={variant:?}"
                 );
                 assert!(
                     !artifact.contribution_ids.contains(&title_id),

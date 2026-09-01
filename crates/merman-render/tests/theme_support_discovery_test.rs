@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 29);
+    assert_eq!(support.claim_revision(), 30);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -213,8 +213,10 @@ fn wardley_generic_text_paint_routes_are_unsupported() {
 #[test]
 fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
     for family in [
+        DiagramFamilyId::ARCHITECTURE,
         DiagramFamilyId::C4,
         DiagramFamilyId::CYNEFIN,
+        DiagramFamilyId::RAILROAD,
         DiagramFamilyId::SANKEY,
     ] {
         let query = ThemeSupportQueryV1::known(
@@ -226,8 +228,16 @@ fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
 
         let support = describe_theme_support(&query);
 
-        assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-        assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
+        if family == DiagramFamilyId::ARCHITECTURE && !merman_render::layout_cytoscape_available() {
+            assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
+            assert_eq!(
+                support.reason_ids(),
+                ["theme-support.family-render-capability-not-built"]
+            );
+        } else {
+            assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
+            assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
+        }
     }
 }
 

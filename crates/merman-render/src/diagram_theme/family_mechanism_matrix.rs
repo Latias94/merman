@@ -1252,9 +1252,11 @@ fn terminal_absent_legacy_paint_route(
                 && unqualified_or_default
                 && fill
         }
-        DiagramFamilyId::C4 | DiagramFamilyId::CYNEFIN | DiagramFamilyId::SANKEY => {
-            target == ThemeTarget::Title && unqualified_or_default && fill
-        }
+        DiagramFamilyId::ARCHITECTURE
+        | DiagramFamilyId::C4
+        | DiagramFamilyId::CYNEFIN
+        | DiagramFamilyId::RAILROAD
+        | DiagramFamilyId::SANKEY => target == ThemeTarget::Title && unqualified_or_default && fill,
         _ => false,
     }
 }
@@ -5997,8 +5999,10 @@ mod tests {
     #[test]
     fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
         for family in [
+            DiagramFamilyId::ARCHITECTURE,
             DiagramFamilyId::C4,
             DiagramFamilyId::CYNEFIN,
+            DiagramFamilyId::RAILROAD,
             DiagramFamilyId::SANKEY,
         ] {
             for paint_kind in [
@@ -6019,6 +6023,11 @@ mod tests {
                 }
             }
 
+            let expected_text_disposition = if family == DiagramFamilyId::ARCHITECTURE {
+                FamilyThemeDisposition::TypedAdapter
+            } else {
+                FamilyThemeDisposition::LegacyCompatibility
+            };
             assert_eq!(
                 classify_rule_facet(
                     family,
@@ -6026,8 +6035,8 @@ mod tests {
                     FamilyThemeSelectorShape::Static { variant: None },
                     FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
                 ),
-                FamilyThemeDisposition::LegacyCompatibility,
-                "{family} still has a real generic text compatibility consumer"
+                expected_text_disposition,
+                "{family} must retain its real generic text consumer"
             );
         }
     }
