@@ -720,6 +720,7 @@ pub(super) struct ArchitectureCssParts {
     pub(super) css: String,
     pub(super) font_family: String,
     pub(super) font_size: f64,
+    pub(super) typography_emission: crate::architecture::ArchitectureTypographyCssEmission,
 }
 
 #[cfg(feature = "layout-cytoscape")]
@@ -730,15 +731,32 @@ pub(super) fn architecture_css_parts_with_config<I>(
 where
     I: Copy + std::fmt::Display,
 {
+    architecture_css_parts_with_typography(diagram_id, effective_config, None, None)
+}
+
+#[cfg(feature = "layout-cytoscape")]
+pub(super) fn architecture_css_parts_with_typography<I>(
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    resolved_font_family: Option<&str>,
+    resolved_font_size_px: Option<f64>,
+) -> ArchitectureCssParts
+where
+    I: Copy + std::fmt::Display,
+{
     // Architecture uses the same "info-like" base stylesheet as Mermaid, but should honor
     // user-configured `fontFamily` / `fontSize` and theme variable colors.
     let id = diagram_id;
     let fragment_id = diagram_id;
 
-    let font_family = SvgTheme::new(effective_config).font_family_css();
-    let font_size =
-        crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
-            .max(1.0);
+    let font_family = resolved_font_family
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| SvgTheme::new(effective_config).font_family_css());
+    let font_size = resolved_font_size_px
+        .unwrap_or_else(|| {
+            crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
+        })
+        .max(1.0);
     let font_size_css = format!("{}px", fmt(font_size));
     let normal_edge_stroke_width_css = mermaid_stroke_width_px(effective_config);
 
@@ -768,7 +786,7 @@ where
     .unwrap_or_else(|| "2px".to_string());
 
     let mut out = String::new();
-    write_mermaid_base_css_prefix(
+    let base_font_emission = write_mermaid_base_css_prefix_with_font_emission(
         &mut out,
         id,
         MermaidBaseCss {
@@ -816,12 +834,21 @@ where
     )
     .expect("String-backed Architecture neo CSS emission cannot fail");
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
-    write_mermaid_base_css_root_rule(&mut out, id, &font_family)
-        .expect("String-backed Architecture root CSS emission cannot fail");
+    let root_font_emission =
+        write_mermaid_base_css_root_rule_with_font_emission(&mut out, id, &font_family)
+            .expect("String-backed Architecture root CSS emission cannot fail");
+    let typography_emission = crate::architecture::ArchitectureTypographyCssEmission::new(
+        base_font_emission.diagram_root_font_family_css(),
+        base_font_emission.nested_svg_font_family_css(),
+        base_font_emission.diagram_root_font_size_css(),
+        base_font_emission.nested_svg_font_size_css(),
+        root_font_emission.font_family_css(),
+    );
     ArchitectureCssParts {
         css: out,
         font_family,
         font_size,
+        typography_emission,
     }
 }
 

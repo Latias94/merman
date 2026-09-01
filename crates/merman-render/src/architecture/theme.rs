@@ -16,6 +16,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod edge_stroke;
 mod surfaces;
+mod typography;
 
 use edge_stroke::ArchitectureEdgeStrokePlan;
 pub(crate) use edge_stroke::ArchitectureEdgeThemeReceipt;
@@ -26,6 +27,10 @@ pub(crate) use surfaces::{
     ArchitecturePaintTerminalEmission, ArchitectureServiceTerminal,
     ArchitectureServiceTerminalEmission, ArchitectureSurfaceThemeReceipt,
     ArchitectureTextTerminalEmission,
+};
+pub(crate) use typography::{
+    ArchitectureTypographyCssEmission, ArchitectureTypographyTerminalInventory,
+    ArchitectureTypographyThemePlan, ArchitectureTypographyThemeReceipt,
 };
 
 /// Final Architecture group paint shared by terminal emission and family evidence.
@@ -38,6 +43,7 @@ pub(crate) struct ArchitectureGroupThemePlan {
     terminal_receipt: OnceLock<()>,
     edge_stroke: ArchitectureEdgeStrokePlan,
     surfaces: Box<ArchitectureSurfaceThemePlan>,
+    typography: ArchitectureTypographyThemePlan,
 }
 
 impl ArchitectureGroupThemePlan {
@@ -46,10 +52,13 @@ impl ArchitectureGroupThemePlan {
         effective_config: &merman_core::MermaidConfig,
         group_count: usize,
         edge_count: usize,
+        typography_terminals: ArchitectureTypographyTerminalInventory,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
+        let typography =
+            ArchitectureTypographyThemePlan::resolve(theme, effective_config, typography_terminals);
         let Some(theme) = theme else {
-            return Ok(Self::baseline(group_count, edge_count));
+            return Ok(Self::baseline(group_count, edge_count, typography));
         };
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let surfaces = Box::new(ArchitectureSurfaceThemePlan::resolve(
@@ -78,6 +87,7 @@ impl ArchitectureGroupThemePlan {
                 terminal_receipt: OnceLock::new(),
                 edge_stroke,
                 surfaces,
+                typography,
             });
         }
 
@@ -223,10 +233,15 @@ impl ArchitectureGroupThemePlan {
             terminal_receipt: OnceLock::new(),
             edge_stroke,
             surfaces,
+            typography,
         })
     }
 
-    fn baseline(group_count: usize, edge_count: usize) -> Self {
+    fn baseline(
+        group_count: usize,
+        edge_count: usize,
+        typography: ArchitectureTypographyThemePlan,
+    ) -> Self {
         Self {
             group_count,
             inline_style: None,
@@ -235,6 +250,7 @@ impl ArchitectureGroupThemePlan {
             terminal_receipt: OnceLock::new(),
             edge_stroke: ArchitectureEdgeStrokePlan::baseline(edge_count),
             surfaces: Box::new(ArchitectureSurfaceThemePlan::baseline()),
+            typography,
         }
     }
 
@@ -259,6 +275,10 @@ impl ArchitectureGroupThemePlan {
 
     pub(crate) fn edge_stroke(&self) -> Option<(usize, &str)> {
         self.edge_stroke.terminal_stroke()
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &ArchitectureTypographyThemePlan {
+        &self.typography
     }
 
     pub(crate) fn begin_edge_terminal_receipt<'a>(
@@ -289,6 +309,7 @@ impl ArchitectureGroupThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        evidence.merge_accounted_from(self.typography.finish_evidence());
         if self.terminal_receipt.get().is_some() {
             for (key, capabilities) in &self.pending {
                 evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());

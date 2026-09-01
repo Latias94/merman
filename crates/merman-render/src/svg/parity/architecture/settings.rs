@@ -5,6 +5,8 @@ use super::super::{SvgDiagramId, config_f64};
 #[derive(Clone)]
 pub(super) struct ArchitectureRenderSettings {
     pub(super) css: String,
+    pub(super) font_family_css: String,
+    pub(super) typography_css_emission: crate::architecture::ArchitectureTypographyCssEmission,
     pub(super) icon_size_px: f64,
     pub(super) half_icon: f64,
     pub(super) padding_px: f64,
@@ -22,12 +24,38 @@ impl ArchitectureRenderSettings {
         Self::from_config_for_id(diagram_id, effective_config)
     }
 
+    pub(super) fn from_config_with_typography(
+        diagram_id: SvgDiagramId<'_>,
+        effective_config: &serde_json::Value,
+        typography: &crate::architecture::ArchitectureTypographyThemePlan,
+    ) -> Self {
+        Self::from_config_parts(
+            diagram_id,
+            effective_config,
+            Some(typography.font_family_css()),
+            Some(typography.font_size_px()),
+        )
+    }
+
     fn from_config_for_id(
         diagram_id: impl std::fmt::Display + Copy,
         effective_config: &serde_json::Value,
     ) -> Self {
-        let css_parts =
-            super::super::css::architecture_css_parts_with_config(diagram_id, effective_config);
+        Self::from_config_parts(diagram_id, effective_config, None, None)
+    }
+
+    fn from_config_parts(
+        diagram_id: impl std::fmt::Display + Copy,
+        effective_config: &serde_json::Value,
+        resolved_font_family: Option<&str>,
+        resolved_font_size_px: Option<f64>,
+    ) -> Self {
+        let css_parts = super::super::css::architecture_css_parts_with_typography(
+            diagram_id,
+            effective_config,
+            resolved_font_family,
+            resolved_font_size_px,
+        );
 
         let icon_size_px = config_f64(effective_config, &["architecture", "iconSize"])
             .unwrap_or(80.0)
@@ -50,20 +78,18 @@ impl ArchitectureRenderSettings {
             .unwrap_or(true);
 
         let text_style = TextStyle {
-            font_family: Some(css_parts.font_family),
+            font_family: Some(css_parts.font_family.clone()),
             font_size: css_parts.font_size,
             font_weight: None,
             font_style: None,
         };
-        let compound_text_style = TextStyle {
-            font_family: text_style.font_family.clone(),
-            font_size: arch_font_size_px,
-            font_weight: None,
-            font_style: None,
-        };
+        let compound_text_style =
+            crate::architecture::architecture_cytoscape_text_style(arch_font_size_px);
 
         Self {
             css: css_parts.css,
+            font_family_css: css_parts.font_family,
+            typography_css_emission: css_parts.typography_emission,
             icon_size_px,
             half_icon,
             padding_px,
@@ -80,7 +106,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn architecture_render_settings_use_css_font_family_for_measurement() {
+    fn architecture_render_settings_keep_cytoscape_measurement_owner() {
         let cfg = serde_json::json!({
             "fontFamily": "Courier, monospace",
             "themeVariables": {
@@ -99,7 +125,7 @@ mod tests {
         );
         assert_eq!(
             settings.compound_text_style.font_family.as_deref(),
-            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
+            Some("Helvetica Neue,Helvetica,sans-serif")
         );
         assert!(settings.css.contains(
             r#"#arch{font-family:"IBM Plex Sans",Arial,sans-serif;font-size:16px;fill:#333;}"#

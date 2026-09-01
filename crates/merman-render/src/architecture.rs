@@ -29,6 +29,8 @@ pub(crate) use theme::{
     ArchitectureGroupThemePlan, ArchitectureGroupThemeReceipt, ArchitecturePaintTerminalEmission,
     ArchitectureServiceTerminal, ArchitectureServiceTerminalEmission,
     ArchitectureSurfaceThemeReceipt, ArchitectureTextTerminalEmission,
+    ArchitectureTypographyCssEmission, ArchitectureTypographyTerminalInventory,
+    ArchitectureTypographyThemePlan, ArchitectureTypographyThemeReceipt,
 };
 
 struct ArchitectureManateeWorkControl<'a> {
@@ -1279,7 +1281,7 @@ struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
 
 const CYTOSCAPE_DEFAULT_FONT_FAMILY: &str = "Helvetica Neue,Helvetica,sans-serif";
 
-fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
+pub(crate) fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
     TextStyle {
         // Mermaid sets only `font-size` on Architecture nodes, so Cytoscape retains its own
         // default canvas font family rather than inheriting Mermaid's root Trebuchet stack.

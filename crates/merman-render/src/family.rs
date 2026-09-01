@@ -848,7 +848,7 @@ impl FamilyThemeEvidence {
             .collect()
     }
 
-    fn merge_accounted_from(&mut self, mut other: Self) {
+    pub(crate) fn merge_accounted_from(&mut self, mut other: Self) {
         debug_assert_eq!(self.required, other.required);
         for key in other.applied {
             let capabilities = other.applied_capabilities.remove(&key).unwrap_or_default();

@@ -34,6 +34,8 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess, 
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) surface_theme_receipt:
         Option<&'a mut crate::architecture::ArchitectureSurfaceThemeReceipt>,
+    pub(super) typography_theme_receipt:
+        Option<&'a mut crate::architecture::ArchitectureTypographyThemeReceipt>,
     pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
@@ -93,6 +95,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     let text_measurer = ctx.text_measurer;
     let sanitize_config = ctx.sanitize_config;
     let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
+    let mut typography_theme_receipt = ctx.typography_theme_receipt.take();
     let icon_registry = ctx.icon_registry;
     let work_meter = ctx.work_meter;
     let icon_scope_root = &mut ctx.icon_scope_root;
@@ -148,6 +151,14 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 } else {
                     None
                 };
+            if has_title {
+                if let Some(receipt) = typography_theme_receipt.as_deref_mut() {
+                    receipt.record_native_svg_text_terminal(
+                        settings.font_family_css.as_str(),
+                        settings.text_style.font_size,
+                    );
+                }
+            }
             let service_title_bounds = service_title_emission
                 .as_ref()
                 .map(|emission| &emission.bounds);
@@ -185,10 +196,9 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     out.push_str("</g>");
 
                     // Mermaid computes `iconText` clamp from the DOM `font-size` applied to the
-                    // foreignObject content. For Architecture this tracks `architecture.fontSize`,
-                    // not the separate SVG text measurement/font-size path used for service/group
-                    // labels.
-                    let line_clamp = ((settings.icon_size_px - 2.0) / settings.arch_font_size_px)
+                    // foreignObject content. That content inherits the diagram root CSS size;
+                    // `architecture.fontSize` remains a separate Cytoscape-layout setting.
+                    let line_clamp = ((settings.icon_size_px - 2.0) / settings.text_style.font_size)
                         .floor()
                         .max(1.0) as i64;
                     let sanitized =
@@ -204,6 +214,11 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     );
                     out.push_str(&sanitized);
                     out.push_str("</div></div></foreignObject></g>");
+                    if has_icon_text {
+                        if let Some(receipt) = typography_theme_receipt.as_deref_mut() {
+                            receipt.record_icon_text_terminal();
+                        }
+                    }
                 }
                 (None, None) => {
                     out.push_str(r#"<path class="node-bkg" id=""#);
@@ -283,6 +298,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     }
     out.checkpoint()?;
     ctx.surface_theme_receipt = surface_theme_receipt;
+    ctx.typography_theme_receipt = typography_theme_receipt;
     Ok(())
 }
 
@@ -299,6 +315,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
     let text_measurer = ctx.text_measurer;
     let content_bounds = &mut *ctx.content_bounds;
     let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
+    let mut typography_theme_receipt = ctx.typography_theme_receipt.take();
     let icon_registry = ctx.icon_registry;
     let work_meter = ctx.work_meter;
     let icon_scope_root = &mut ctx.icon_scope_root;
@@ -424,6 +441,12 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                 );
                 let writer_facts = write_svg_text_lines(out, &lines, group_title_style.as_deref());
                 out.push_str("</g></g>");
+                if let Some(receipt) = typography_theme_receipt.as_deref_mut() {
+                    receipt.record_native_svg_text_terminal(
+                        settings.font_family_css.as_str(),
+                        settings.text_style.font_size,
+                    );
+                }
                 (Some(terminal_bounds), Some(writer_facts))
             } else {
                 (None, None)
@@ -459,5 +482,6 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
     }
     out.checkpoint()?;
     ctx.surface_theme_receipt = surface_theme_receipt;
+    ctx.typography_theme_receipt = typography_theme_receipt;
     Ok(())
 }

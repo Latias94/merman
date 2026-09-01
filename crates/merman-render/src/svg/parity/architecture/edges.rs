@@ -33,6 +33,8 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess, 
     pub(super) terminal_receipt: Option<&'a mut crate::architecture::ArchitectureEdgeThemeReceipt>,
     pub(super) surface_theme_receipt:
         Option<&'a mut crate::architecture::ArchitectureSurfaceThemeReceipt>,
+    pub(super) typography_theme_receipt:
+        Option<&'a mut crate::architecture::ArchitectureTypographyThemeReceipt>,
     pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
@@ -440,6 +442,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
     let edge_inline_style = ctx.edge_inline_style;
     let mut terminal_receipt = ctx.terminal_receipt.take();
     let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
+    let mut typography_theme_receipt = ctx.typography_theme_receipt.take();
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let layout = ctx.layout;
@@ -686,6 +689,12 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                 let writer_facts =
                     write_svg_text_lines(out, &label_plan.lines, label_style.as_deref());
                 out.push_str("</g></g>");
+                if let Some(receipt) = typography_theme_receipt.as_deref_mut() {
+                    receipt.record_native_svg_text_terminal(
+                        settings.font_family_css.as_str(),
+                        settings.text_style.font_size,
+                    );
+                }
                 #[cfg(feature = "internal-theme-acceptance")]
                 {
                     label_fragment_digest = Some(writer_facts.fragment_digest);
@@ -735,6 +744,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
             }
         }
     }
+    ctx.typography_theme_receipt = typography_theme_receipt;
     Ok(())
 }
 
@@ -877,6 +887,7 @@ mod tests {
                 edge_inline_style: None,
                 terminal_receipt: None,
                 surface_theme_receipt: None,
+                typography_theme_receipt: None,
                 checkpoints: ArchitectureEmitCheckpoints::new(options.work_meter()),
             };
 

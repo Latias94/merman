@@ -2910,6 +2910,10 @@ mod tests {
 
         for (family, source) in [
             (
+                DiagramFamilyId::ARCHITECTURE,
+                "architecture-beta\nservice api(server)[API]\n",
+            ),
+            (
                 DiagramFamilyId::EVENT_MODELING,
                 "eventmodeling\ntf 01 ui View\n",
             ),

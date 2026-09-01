@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 26);
+    assert_eq!(support.claim_revision(), 27);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -1108,6 +1108,31 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
             support.reason_ids(),
             expected_reasons,
             "family={family} property={property:?}"
+        );
+    }
+}
+
+#[cfg(feature = "layout-cytoscape")]
+#[test]
+fn v2_architecture_base_typography_reports_the_typed_surface_when_built() {
+    for property in [
+        ThemeSupportBaseTypographyPropertyV2::FontStack,
+        ThemeSupportBaseTypographyPropertyV2::FontSize,
+    ] {
+        let support = describe_theme_support_v2(&ThemeSupportQueryV2::base_typography(
+            DiagramFamilyId::ARCHITECTURE.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            property,
+        ));
+
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ],
+            "property={property:?}"
         );
     }
 }

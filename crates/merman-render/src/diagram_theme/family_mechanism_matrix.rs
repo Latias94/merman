@@ -1046,13 +1046,11 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::C4
+            | DiagramFamilyId::ARCHITECTURE
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if matches!(
-        family,
-        DiagramFamilyId::ARCHITECTURE | DiagramFamilyId::TREEMAP
-    ) {
+    if family == DiagramFamilyId::TREEMAP {
         return FamilyThemeDisposition::LegacyCompatibility;
     }
     FamilyThemeDisposition::Unsupported
@@ -1076,13 +1074,11 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::C4
+            | DiagramFamilyId::ARCHITECTURE
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if matches!(
-        family,
-        DiagramFamilyId::CLASS | DiagramFamilyId::ARCHITECTURE
-    ) {
+    if family == DiagramFamilyId::CLASS {
         return FamilyThemeDisposition::LegacyCompatibility;
     }
     FamilyThemeDisposition::Unsupported
@@ -6083,7 +6079,7 @@ mod tests {
     }
 
     #[test]
-    fn oversized_legacy_font_stack_is_unsupported_without_shadowing_font_size() {
+    fn architecture_direct_typography_accepts_oversized_font_stacks() {
         let families = (0..32)
             .map(|index| format!("font-{index}-{}", "x".repeat(180)))
             .collect::<Vec<_>>();
@@ -6094,16 +6090,15 @@ mod tests {
         let routes = compile_base_typography_routes(DiagramFamilyId::ARCHITECTURE, &typography);
 
         assert_eq!(routes.len(), 2);
-        assert!(routes.iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
-                && route.disposition() == FamilyThemeDisposition::Unsupported
-        }));
-        assert!(routes.iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
-        }));
+        for property in [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+        ] {
+            assert!(routes.iter().any(|route| {
+                route.mechanism() == FamilyThemeMechanism::BaseTypography(property)
+                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            }));
+        }
     }
 
     #[test]

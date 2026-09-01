@@ -108,7 +108,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let diagram_id = options.diagram_id_or("architecture");
     let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter());
     checkpoints.checkpoint()?;
-    let settings = ArchitectureRenderSettings::from_config(diagram_id, effective_config);
+    let settings = ArchitectureRenderSettings::from_config_with_typography(
+        diagram_id,
+        effective_config,
+        group_theme.typography_theme(),
+    );
     checkpoints.checkpoint()?;
     let css = settings.css.as_str();
     let icon_size_px = settings.icon_size_px;
@@ -118,6 +122,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let use_max_width = settings.use_max_width;
     let text_style = &settings.text_style;
     let compound_text_style = &settings.compound_text_style;
+    let mut typography_theme_receipt = group_theme.typography_theme().begin_terminal_receipt();
+    if let Some(receipt) = typography_theme_receipt.as_mut() {
+        receipt.record_css_emission(&settings.typography_css_emission);
+    }
 
     let a11y = architecture_a11y_nodes(diagram_id, model.acc_title(), model.acc_descr());
     checkpoints.checkpoint()?;
@@ -346,6 +354,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             edge_inline_style: edge_inline_style.as_deref(),
             terminal_receipt: edge_theme_receipt.as_mut(),
             surface_theme_receipt: surface_theme_receipt.as_mut(),
+            typography_theme_receipt: typography_theme_receipt.as_mut(),
             checkpoints,
         };
         push_architecture_edges(&mut edge_render_ctx)?;
@@ -370,6 +379,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             group_icon_scope_prefix: None,
             content_bounds: &mut content_bounds,
             surface_theme_receipt: surface_theme_receipt.as_mut(),
+            typography_theme_receipt: typography_theme_receipt.as_mut(),
             checkpoints,
         };
         push_architecture_services_and_junctions(&mut node_render_ctx)?;
@@ -410,6 +420,13 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         return Err(crate::Error::InvalidModel {
             message: "Architecture surface theme receipt did not match the terminal SVG"
                 .to_string(),
+        });
+    }
+    if typography_theme_receipt
+        .is_some_and(|receipt| !group_theme.typography_theme().record_terminal(receipt))
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Architecture typography receipt did not match the terminal SVG".to_string(),
         });
     }
 
