@@ -69,7 +69,7 @@ the EventModeling, Ishikawa, Venn, Sankey, Class, Radar, GitGraph, ER, Pie, Requ
 and Timeline cutovers, plus the Quadrant Chart base-size boundary correction, Journey typography
 cutover, and Treemap base-size boundary correction, only two families retain both `FontStack` and
 `FontSize` on the bridge. The current property totals are `FontStack`: 28 Typed, 3 Legacy, 2
-Unsupported; and `FontSize`: 16 Typed, 3 Legacy, 14 Unsupported.
+Unsupported; and `FontSize`: 15 Typed, 3 Legacy, 15 Unsupported.
 
 The compatibility bridge is deliberately family-local and runs only after detection. It never
 projects one family's semantic targets into unrelated renderers. Its contribution IDs and

@@ -43,7 +43,7 @@ record. The current source and generated contract are authoritative for these su
 - All 33 families have at least one direct typed surface. Six families have no family-owned
   `LegacyCompatibility` route (State, Packet, Error, EventModeling, Ishikawa, and ZenUML), while 27
   may still enter the bridge. Base `FontStack` is Typed/Legacy/Unsupported for 28/3/2 families;
-  base `FontSize` is 16/3/14. These counts describe migration state, not feature completeness.
+  base `FontSize` is 15/3/15. These counts describe migration state, not feature completeness.
 - C6a remains complete at 18/18 representative native cells. C7a is still not eligible because the
   public authoring/consumer rollout and remaining pre-freeze gates are intentionally open.
 - The acceptance manifest remains an independent, reviewed authority. It is reconciled exactly
