@@ -20,18 +20,21 @@ Pull requests answer whether a change is safe to review and merge:
 
 The central `CI` workflow is the pull-request and merge-queue orchestrator. Its planner compares the
 trusted base and head commits with a NUL-delimited Git name-status diff, selects owner jobs, and
-records the reasons in one JSON document. Unknown paths, workflow or classifier changes, malformed
-diffs, and missing Git objects select every owner. A valid empty diff is the only case that runs no
-owner job.
+records the reasons in one validated JSON document. The detailed plan remains at the producer
+boundary; only the fixed-size owner selector map crosses into downstream jobs. Unknown paths,
+workflow or classifier changes, malformed diffs, and missing Git objects select every owner. A
+valid empty diff is the only case that runs no owner job.
 
 Every selected owner completes in that same workflow run. The final `pr-gate` check rejects failed,
 cancelled, skipped, missing, or malformed selected results; unselected owners appear as deliberate
-skips. This stable check is the repository-side branch-protection target, but it is not a standalone
-trust root: a pull request can propose changes to repository workflows or the planner itself. The
-checked-in `CODEOWNERS` file therefore assigns those paths to the maintainer. A `main` ruleset must
-require pull requests, code-owner approval, and `pr-gate` before the check is enforcement rather
-than reporting. Repository rules and release-environment protection remain external maintainer
-configuration and must not be described as enabled until a read-only GitHub query confirms them.
+skips. It aggregates the bounded selector map and explicit job results rather than transporting the
+full changed-path plan through a runner environment. This stable check is the repository-side
+branch-protection target, but it is not a standalone trust root: a pull request can propose changes
+to repository workflows or the planner itself. The checked-in `CODEOWNERS` file therefore assigns
+those paths to the maintainer. A `main` ruleset must require pull requests, code-owner approval, and
+`pr-gate` before the check is enforcement rather than reporting. Repository rules and
+release-environment protection remain external maintainer configuration and must not be described
+as enabled until a read-only GitHub query confirms them.
 
 Performance evidence produced from pull-request code remains read-only: it may upload diagnostic
 artifacts and append a job summary, but it does not receive repository write permissions or feed a

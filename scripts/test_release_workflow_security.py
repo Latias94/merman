@@ -110,6 +110,8 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertNotIn("\n    name: pr-gate\n", ci)
         self.assertIn("if: ${{ always() }}", ci)
         self.assertIn("python3 scripts/ci_plan.py gate", ci)
+        self.assertIn("CI_OWNER_SELECTIONS_JSON: ${{ needs.ci-plan.outputs.owners }}", ci)
+        self.assertNotIn("needs.ci-plan.outputs.plan", ci)
         self.assertNotIn("workflow_run:", ci)
         self.assertNotIn("secrets: inherit", ci)
 
