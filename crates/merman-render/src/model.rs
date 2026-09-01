@@ -1518,6 +1518,25 @@ pub struct GanttDiagramLayout {
     pub title_y: f64,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct C4TextRowLayout {
+    /// Source words emitted into one Mermaid `createText` outer tspan.
+    ///
+    /// Keeping the source words (rather than only a joined string) preserves the same
+    /// whitespace/token boundaries for layout and SVG emission.
+    pub(crate) words: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct C4TextRenderPlan {
+    /// Wrapped source-word rows consumed by the C4 SVG emitter.
+    pub(crate) rows: Vec<C4TextRowLayout>,
+    /// The section bbox x offset relative to the centered outer tspan anchor.
+    pub(crate) bbox_x: f64,
+    /// The section bbox y offset produced by Mermaid's createText DOM shape.
+    pub(crate) bbox_y: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C4TextBlockLayout {
     pub text: String,
@@ -1525,6 +1544,13 @@ pub struct C4TextBlockLayout {
     pub width: f64,
     pub height: f64,
     pub line_count: usize,
+    /// Unified C4 labels carry the exact wrapped rows used during measurement. Legacy C4
+    /// boundary and relationship labels leave this unset and continue using their historical
+    /// text path.
+    /// This is an in-memory render artifact; the public layout projection intentionally keeps
+    /// the stable historical C4 layout schema and does not expose tokenization details.
+    #[serde(skip)]
+    pub(crate) render_plan: Option<C4TextRenderPlan>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

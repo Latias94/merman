@@ -248,30 +248,47 @@ fn c4_write_unified_section(
     out: &mut String,
     class: &str,
     block: &crate::model::C4TextBlockLayout,
-    shape: &crate::model::C4ShapeLayout,
-    family: &str,
-    size: f64,
-    weight: &str,
+    total_width: f64,
+    section_y: f64,
     color: &str,
 ) {
-    if block.text.trim().is_empty() {
+    let Some(plan) = block.render_plan.as_ref() else {
+        return;
+    };
+    if plan.rows.is_empty() || block.text.trim().is_empty() {
         return;
     }
-    let _ = write!(out, r#"<g class="{}">"#, class);
-    c4_write_text_by_tspan(
+
+    let section_x = total_width / 2.0 - plan.bbox_x - block.width / 2.0;
+    let section_y = section_y - plan.bbox_y;
+    let _ = write!(
         out,
-        C4TspanText {
-            content: &block.text,
-            x: -shape.width / 2.0,
-            y: block.y - shape.height / 2.0,
-            width: shape.width,
-            font_family: family,
-            font_size: size,
-            font_weight: weight,
-            attrs: &[("fill", color)],
-        },
+        r#"<g class="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="fill:{} !important">"#,
+        class,
+        fmt(section_x),
+        fmt(section_y),
+        escape_attr(color),
     );
-    out.push_str("</g>");
+    for (index, row) in plan.rows.iter().enumerate() {
+        let y = index as f64 * 1.1 - 0.1;
+        let _ = write!(
+            out,
+            r#"<tspan class="text-outer-tspan row" x="0" y="{}em" dy="1.1em" text-anchor="middle">"#,
+            fmt(y),
+        );
+        for (word_index, word) in row.words.iter().enumerate() {
+            let visible = crate::entities::decode_svg_text_content_entities(word);
+            let prefix = if word_index == 0 { "" } else { " " };
+            let _ = write!(
+                out,
+                r#"<tspan class="text-inner-tspan">{}{}</tspan>"#,
+                prefix,
+                escape_xml(visible.as_ref()),
+            );
+        }
+        out.push_str("</tspan>");
+    }
+    out.push_str("</text></g></g>");
 }
 
 fn c4_write_unified_shape(
@@ -280,43 +297,54 @@ fn c4_write_unified_shape(
     node_shape: crate::c4::C4NodeShape,
     fill: &str,
     stroke: &str,
-    color: &str,
 ) {
     let width = shape.width.max(1.0);
     let height = shape.height.max(1.0);
-    let style = format!("fill:{};stroke:{};color:{}", fill, stroke, color);
+    let shape_style = |with_radius: bool| {
+        if with_radius {
+            format!(
+                "fill:{} !important;stroke:{} !important;rx:12px !important;ry:12px !important",
+                fill, stroke
+            )
+        } else {
+            format!("fill:{} !important;stroke:{} !important", fill, stroke)
+        }
+    };
     match node_shape {
         crate::c4::C4NodeShape::Rounded => {
             let _ = write!(
                 out,
-                r#"<rect class="basic label-container" x="{}" y="{}" width="{}" height="{}" rx="12" ry="12" style="{}"/>"#,
+                r#"<rect class="basic label-container" style="{}" rx="5" ry="5" x="{}" y="{}" width="{}" height="{}"/>"#,
+                escape_attr(&shape_style(true)),
                 fmt(-width / 2.0),
                 fmt(-height / 2.0),
                 fmt(width),
                 fmt(height),
-                escape_attr(&style)
             );
         }
         crate::c4::C4NodeShape::Framed => {
             let frame_width = 8.0;
+            let points = format!(
+                "0,0 {},0 {},-{} 0,-{} 0,0 -8,0 {},0 {},-{} -8,-{} -8,0",
+                fmt(width - 2.0 * frame_width),
+                fmt(width - 2.0 * frame_width),
+                fmt(height),
+                fmt(height),
+                fmt(width - frame_width),
+                fmt(width - frame_width),
+                fmt(height),
+                fmt(height),
+            );
             let _ = write!(
                 out,
-                r#"<g class="basic label-container"><rect x="{}" y="{}" width="{}" height="{}" rx="0" ry="0" style="{}"/><line x1="{}" y1="{}" x2="{}" y2="{}" style="{}"/><line x1="{}" y1="{}" x2="{}" y2="{}" style="{}"/></g>"#,
+                r#"<polygon points="{}" class="label-container" transform="translate({}, {})" style="{}"/>"#,
+                points,
                 fmt(-width / 2.0),
-                fmt(-height / 2.0),
-                fmt(width),
-                fmt(height),
-                escape_attr(&style),
-                fmt(-width / 2.0 + frame_width),
-                fmt(-height / 2.0),
-                fmt(-width / 2.0 + frame_width),
                 fmt(height / 2.0),
-                escape_attr(&style),
-                fmt(width / 2.0 - frame_width),
-                fmt(-height / 2.0),
-                fmt(width / 2.0 - frame_width),
-                fmt(height / 2.0),
-                escape_attr(&style)
+                // The C4 adapter supplies the same rx/ry node overrides for rounded and
+                // framed elements; preserve those inline styles even though SVG polygons ignore
+                // the radius properties.
+                escape_attr(&shape_style(true)),
             );
         }
         crate::c4::C4NodeShape::Person => {
@@ -336,10 +364,10 @@ fn c4_write_unified_shape(
                 fmt(body_height),
                 fmt(body_radius),
                 fmt(body_radius),
-                escape_attr(&style),
+                escape_attr(&shape_style(false)),
                 fmt(top + head_radius),
                 fmt(head_radius),
-                escape_attr(&style)
+                escape_attr(&shape_style(false))
             );
         }
         crate::c4::C4NodeShape::Cylinder => {
@@ -367,37 +395,36 @@ fn c4_write_unified_shape(
                 escape_attr(&path),
                 fmt(-width / 2.0),
                 fmt(-(body_height / 2.0 + ry)),
-                escape_attr(&style)
+                escape_attr(&shape_style(false))
             );
         }
         crate::c4::C4NodeShape::HorizontalCylinder => {
             let h = height.max(1.0);
             let ry = h / 2.0;
             let rx = ry / (2.5 + h / 50.0);
-            let body_width = (width - 2.0 * rx).max(1.0);
             let path = format!(
-                "M0,0a{},{} 0,0,1 0,{}l{},0a{},{} 0,0,1 0,{}M{},{}a{},{} 0,0,0 0,{}l{},0",
-                fmt(rx),
-                fmt(ry),
-                fmt(-h),
-                fmt(body_width),
+                "M0,0\n    a{},{} 0,0,1 0,-{}\n    l{},0\n    a{},{} 0,0,1 0,{}\n    M{},-{}\n    a{},{} 0,0,0 0,{}\n    l-{},0",
                 fmt(rx),
                 fmt(ry),
                 fmt(h),
-                fmt(body_width),
-                fmt(-h),
+                fmt(width),
                 fmt(rx),
                 fmt(ry),
                 fmt(h),
-                fmt(-body_width)
+                fmt(width),
+                fmt(h),
+                fmt(rx),
+                fmt(ry),
+                fmt(h),
+                fmt(width)
             );
             let _ = write!(
                 out,
                 r#"<path class="basic label-container outer-path" d="{}" transform="translate({}, {})" style="{}"/>"#,
                 escape_attr(&path),
-                fmt(-width / 2.0 + rx),
-                fmt(-h / 2.0),
-                escape_attr(&style)
+                fmt(-width / 2.0),
+                fmt(h / 2.0),
+                escape_attr(&shape_style(false))
             );
         }
     }
@@ -567,7 +594,6 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let font_color = meta
                     .and_then(|m| m.font_color.clone())
                     .unwrap_or_else(|| "#FFFFFF".to_string());
-                let shape_font = c4_cfg.shape_font(&s.type_c4_shape);
                 let Some(meta) = meta else {
                     return Err(crate::Error::InvalidModel {
                         message: format!("c4: missing model shape {}", s.alias),
@@ -575,62 +601,85 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 };
                 let node_shape = crate::c4::c4_node_shape(meta);
                 let classes = c4_shape_classes(meta);
-                let style = format!("color:{}", font_color);
                 let _ = write!(
                     &mut out,
-                    r#"<g id="{}" class="{}" transform="translate({}, {})" style="{}">"#,
-                    escape_attr_display(scoped_svg_id(diagram_id, &s.alias)),
-                    classes,
+                    r#"<g transform="translate({}, {})"><g id="{}" class="node {}">"#,
                     fmt(s.x + s.width / 2.0),
                     fmt(s.y + s.height / 2.0),
-                    escape_attr(&style)
+                    escape_attr_display(scoped_svg_id(diagram_id, &s.alias)),
+                    classes,
                 );
-                c4_write_unified_shape(
+                c4_write_unified_shape(&mut out, s, node_shape, &bg_color, &border_color);
+                let sections = [
+                    (
+                        "c4-name",
+                        (!s.label.text.trim().is_empty()).then_some(&s.label),
+                    ),
+                    ("c4-type", Some(&s.type_block)),
+                    ("c4-descr", s.descr.as_ref()),
+                ];
+                let total_width = sections
+                    .iter()
+                    .filter_map(|(_, block)| block.as_ref())
+                    .map(|block| block.width)
+                    .fold(0.0, f64::max);
+                let total_height = sections
+                    .iter()
+                    .filter_map(|(_, block)| block.as_ref())
+                    .map(|block| block.height)
+                    .sum::<f64>()
+                    + 3.0
+                        * sections
+                            .iter()
+                            .filter(|(_, block)| block.is_some())
+                            .count()
+                            .saturating_sub(1) as f64;
+                let padding = c4_cfg.layout_settings().c4_shape_padding;
+                let label_transform = match node_shape {
+                    crate::c4::C4NodeShape::Person => {
+                        let head_radius = (s.width * 0.23).clamp(16.0, 56.0);
+                        let overlap = head_radius * 0.27;
+                        let body_height = (s.height - 2.0 * head_radius + overlap).max(1.0);
+                        let body_top = -s.height / 2.0 + 2.0 * head_radius - overlap;
+                        (
+                            -total_width / 2.0,
+                            body_top + body_height / 2.0 - total_height / 2.0,
+                        )
+                    }
+                    crate::c4::C4NodeShape::Cylinder => {
+                        (-total_width / 2.0, -total_height / 2.0 + padding / 1.5)
+                    }
+                    crate::c4::C4NodeShape::HorizontalCylinder => {
+                        let ry = s.height / 2.0;
+                        let rx = ry / (2.5 + s.height / 50.0);
+                        (-total_width / 2.0 - rx, -total_height / 2.0)
+                    }
+                    crate::c4::C4NodeShape::Rounded | crate::c4::C4NodeShape::Framed => {
+                        (-total_width / 2.0, -total_height / 2.0)
+                    }
+                };
+                let _ = write!(
                     &mut out,
-                    s,
-                    node_shape,
-                    &bg_color,
-                    &border_color,
-                    &font_color,
+                    r#"<g class="label" style="color:{} !important" transform="translate({}, {})"><rect/>"#,
+                    escape_attr(&font_color),
+                    fmt(label_transform.0),
+                    fmt(label_transform.1),
                 );
-                let family = shape_font
-                    .font_family
-                    .as_deref()
-                    .unwrap_or(C4_DEFAULT_FONT_FAMILY);
-                out.push_str(r#"<g class="label">"#);
-                c4_write_unified_section(
-                    &mut out,
-                    "c4-name",
-                    &s.label,
-                    s,
-                    family,
-                    shape_font.font_size,
-                    "bold",
-                    &font_color,
-                );
-                c4_write_unified_section(
-                    &mut out,
-                    "c4-type",
-                    &s.type_block,
-                    s,
-                    family,
-                    shape_font.font_size * 0.75,
-                    shape_font.font_weight.as_deref().unwrap_or("normal"),
-                    &font_color,
-                );
-                if let Some(descr) = &s.descr {
-                    c4_write_unified_section(
-                        &mut out,
-                        "c4-descr",
-                        descr,
-                        s,
-                        family,
-                        shape_font.font_size * 0.82,
-                        shape_font.font_weight.as_deref().unwrap_or("normal"),
-                        &font_color,
-                    );
+                let mut section_y = 0.0;
+                for (class, block) in sections {
+                    if let Some(block) = block {
+                        c4_write_unified_section(
+                            &mut out,
+                            class,
+                            block,
+                            total_width,
+                            section_y,
+                            &font_color,
+                        );
+                        section_y += block.height + 3.0;
+                    }
                 }
-                out.push_str("</g></g>");
+                out.push_str("</g></g></g>");
             }
             C4PaintItem::Boundary(index) => {
                 let b = &layout.boundaries[index];

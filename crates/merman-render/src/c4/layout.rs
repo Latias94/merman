@@ -497,7 +497,17 @@ fn layout_c4_shape_array(
         let type_c4_shape = shape.type_c4_shape.as_str().to_string();
         let shape_kind = c4_node_shape(shape);
         let text_wrap = ctx.conf.wrap;
-        let text_limit_width = (ctx.conf.width - ctx.conf.c4_shape_padding * 2.0).max(32.0);
+        let text_limit_width = match shape_kind {
+            // Mermaid's cylinder handlers subtract one padding unit from the requested node
+            // width before c4LabelHelper derives its inner wrapping width.
+            C4NodeShape::Cylinder => (ctx.conf.width - ctx.conf.c4_shape_padding * 3.0).max(32.0),
+            C4NodeShape::HorizontalCylinder => {
+                // `tiltedCylinder` first subtracts half the padding from the target width;
+                // the label helper then subtracts the full node padding for its wrap probe.
+                (ctx.conf.width - ctx.conf.c4_shape_padding * 2.5).max(32.0)
+            }
+            _ => (ctx.conf.width - ctx.conf.c4_shape_padding * 2.0).max(32.0),
+        };
         let text_conf = ctx.cfg.shape_font(&type_c4_shape);
 
         // Unified C4 labels are measured as stacked name/stereotype/description sections.
@@ -506,28 +516,25 @@ fn layout_c4_shape_array(
         let label_text = shape.label.as_str().to_string();
         let has_label = !label_text.trim().is_empty();
         let label_m = if !has_label {
-            super::TextMeasure {
-                width: 0.0,
-                height: 0.0,
-                line_count: 0,
-            }
+            None
         } else {
             let mut name_conf = text_conf.clone();
             name_conf.font_weight = Some("bold".to_string());
-            measure_c4_unified_text(
+            Some(measure_c4_unified_text(
                 ctx.measurer,
                 &label_text,
                 &name_conf,
                 text_wrap,
                 text_limit_width,
-            )
+            ))
         };
         let label = C4TextBlockLayout {
             text: label_text,
             y: 0.0,
-            width: label_m.width,
-            height: label_m.height,
-            line_count: label_m.line_count,
+            width: label_m.as_ref().map_or(0.0, |m| m.metrics.width),
+            height: label_m.as_ref().map_or(0.0, |m| m.metrics.height),
+            line_count: label_m.as_ref().map_or(0, |m| m.metrics.line_count),
+            render_plan: label_m.map(|m| m.render_plan),
         };
 
         let stereotype_text = c4_stereotype_text(shape);
@@ -543,9 +550,10 @@ fn layout_c4_shape_array(
         let type_block = C4TextBlockLayout {
             text: stereotype_text,
             y: 0.0,
-            width: stereotype_m.width,
-            height: stereotype_m.height,
-            line_count: stereotype_m.line_count,
+            width: stereotype_m.metrics.width,
+            height: stereotype_m.metrics.height,
+            line_count: stereotype_m.metrics.line_count,
+            render_plan: Some(stereotype_m.render_plan),
         };
 
         let descr_block = shape
@@ -566,9 +574,10 @@ fn layout_c4_shape_array(
                 C4TextBlockLayout {
                     text,
                     y: 0.0,
-                    width: measured.width,
-                    height: measured.height,
-                    line_count: measured.line_count,
+                    width: measured.metrics.width,
+                    height: measured.metrics.height,
+                    line_count: measured.metrics.line_count,
+                    render_plan: Some(measured.render_plan),
                 }
             });
 
@@ -642,11 +651,17 @@ fn layout_c4_shape_array(
                 (width, content_height + padding + 3.0 * ry)
             }
             C4NodeShape::HorizontalCylinder => {
-                let h = (content_height + padding / 2.0).max(1.0);
-                let ry = h / 2.0;
-                let rx = ry / (2.5 + h / 50.0);
-                let label_width = content_width.max(ctx.conf.width - padding / 2.0);
-                (label_width + rx + padding / 2.0, h)
+                // Mermaid's `h-cyl` resolves to `tiltedCylinder`: the requested width is
+                // reduced by half-padding for the wrap probe, then the rendered path adds that
+                // half-padding and a horizontal cap radius back. Its returned height is the
+                // path height itself (the path's vertical capsule is centered by a transform).
+                let label_padding = padding / 2.0;
+                let inner_width = (ctx.conf.width - label_padding).max(10.0);
+                let body_height = content_height + label_padding;
+                let ry = body_height / 2.0;
+                let rx = ry / (2.5 + body_height / 50.0);
+                let width = inner_width.max(content_width) + rx + label_padding;
+                (width, body_height)
             }
         };
         let margin = ctx.conf.c4_shape_margin;
@@ -758,6 +773,7 @@ fn prepare_c4_boundary_layout(
         width: label_m.width,
         height: label_m.height,
         line_count: label_m.line_count,
+        render_plan: None,
     };
     y = label.y + label.height;
 
@@ -772,6 +788,7 @@ fn prepare_c4_boundary_layout(
             width: m.width,
             height: m.height,
             line_count: m.line_count,
+            render_plan: None,
         };
         y = block.y + block.height;
         ty = Some(block);
@@ -795,6 +812,7 @@ fn prepare_c4_boundary_layout(
             width: m.width,
             height: m.height,
             line_count: m.line_count,
+            render_plan: None,
         };
         y = block.y + block.height;
         descr = Some(block);
@@ -1093,6 +1111,7 @@ pub(crate) fn layout_c4_diagram_typed(
             width: label_m.width,
             height: label_m.height,
             line_count: label_m.line_count,
+            render_plan: None,
         };
 
         let techn = rel
@@ -1109,6 +1128,7 @@ pub(crate) fn layout_c4_diagram_typed(
                     width: m.width,
                     height: m.height,
                     line_count: m.line_count,
+                    render_plan: None,
                 }
             });
 
@@ -1126,6 +1146,7 @@ pub(crate) fn layout_c4_diagram_typed(
                     width: m.width,
                     height: m.height,
                     line_count: m.line_count,
+                    render_plan: None,
                 }
             });
 

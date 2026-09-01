@@ -1,6 +1,8 @@
+use crate::model::{C4TextRenderPlan, C4TextRowLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode, measure_mermaid_text_dimensions};
 use merman_core::diagrams::c4::{C4DiagramRenderModel, C4ShapeRenderModel};
 use serde_json::Value;
+use unicode_segmentation::UnicodeSegmentation;
 
 mod config;
 
@@ -96,6 +98,12 @@ struct TextMeasure {
     line_count: usize,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct UnifiedTextMeasure {
+    pub(crate) metrics: TextMeasure,
+    pub(crate) render_plan: C4TextRenderPlan,
+}
+
 fn measure_c4_text(
     measurer: &dyn TextMeasurer,
     text: &str,
@@ -133,18 +141,195 @@ fn measure_c4_unified_text(
     style: &TextStyle,
     wrap: bool,
     text_limit_width: f64,
-) -> TextMeasure {
-    if wrap {
-        let metrics =
-            measurer.measure_wrapped(text, style, Some(text_limit_width), WrapMode::SvgLike);
-        return TextMeasure {
-            width: metrics.width.max(0.0),
-            height: metrics.height.max(0.0),
-            line_count: metrics.line_count.max(1),
+) -> UnifiedTextMeasure {
+    let source_lines = c4_source_word_lines(text);
+    let rows = c4_wrap_source_word_lines(
+        measurer,
+        &source_lines,
+        style,
+        wrap.then_some(text_limit_width),
+    );
+    let visible = c4_visible_text(&rows);
+
+    if visible.is_empty() {
+        return UnifiedTextMeasure {
+            metrics: TextMeasure {
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
+            },
+            render_plan: C4TextRenderPlan {
+                rows,
+                bbox_x: 0.0,
+                bbox_y: 0.0,
+            },
         };
     }
 
-    measure_c4_text(measurer, text, style, false, text_limit_width)
+    // The rows above are the source of truth for both layout and SVG. Measuring the joined
+    // visible rows avoids asking the host to wrap the original source a second time.
+    let measured = measurer.measure_wrapped(&visible, style, None, WrapMode::SvgLike);
+    let mut left: f64 = 0.0;
+    let mut right: f64 = 0.0;
+    for row in &rows {
+        let row_text = c4_visible_row(&row.words);
+        if row_text.is_empty() {
+            continue;
+        }
+        let (row_left, row_right) = measurer.measure_svg_text_bbox_x(&row_text, style);
+        left = left.max(row_left.max(0.0));
+        right = right.max(row_right.max(0.0));
+    }
+    let first_row = rows
+        .first()
+        .map(|row| c4_visible_row(&row.words))
+        .unwrap_or_default();
+    let bbox_y = measurer.measure_svg_create_text_bbox_y_offset_px(&first_row, style);
+    let metrics = TextMeasure {
+        width: measured.width.max(left + right).max(0.0),
+        height: measured.height.max(0.0),
+        line_count: rows.len().max(1),
+    };
+    UnifiedTextMeasure {
+        metrics,
+        render_plan: C4TextRenderPlan {
+            rows,
+            bbox_x: -left,
+            bbox_y,
+        },
+    }
+}
+
+fn c4_source_word_lines(text: &str) -> Vec<Vec<String>> {
+    // Mermaid's nonMarkdownToLines treats literal `\\n`, actual newlines and `<br>` variants as
+    // explicit line boundaries before tokenizing each trimmed line.
+    let normalized = text.replace("\\n", "\n");
+    crate::text::split_html_br_lines(&normalized)
+        .into_iter()
+        .map(|line| {
+            crate::text::non_markdown_svg_words(line.trim())
+                .map(str::to_string)
+                .collect()
+        })
+        .collect()
+}
+
+fn c4_visible_row(row: &[String]) -> String {
+    let mut visible = String::new();
+    for (index, word) in row.iter().enumerate() {
+        if index > 0 {
+            visible.push(' ');
+        }
+        let decoded = crate::entities::decode_svg_text_content_entities(word);
+        visible.push_str(decoded.as_ref());
+    }
+    visible
+}
+
+fn c4_visible_text(rows: &[C4TextRowLayout]) -> String {
+    rows.iter()
+        .map(|row| c4_visible_row(&row.words))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn c4_row_width(measurer: &dyn TextMeasurer, row: &[String], style: &TextStyle) -> f64 {
+    measurer.measure_svg_text_computed_length_px(&c4_visible_row(row), style)
+}
+
+fn c4_split_long_word(
+    measurer: &dyn TextMeasurer,
+    word: &str,
+    style: &TextStyle,
+    max_width: f64,
+) -> Vec<String> {
+    let boundaries = word
+        .grapheme_indices(true)
+        .map(|(offset, _)| offset)
+        .chain(std::iter::once(word.len()))
+        .collect::<Vec<_>>();
+    if boundaries.len() <= 1 {
+        return vec![word.to_string()];
+    }
+
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start + 1 < boundaries.len() {
+        let mut end = start + 1;
+        let mut best = end;
+        while end < boundaries.len() {
+            let candidate = &word[boundaries[start]..boundaries[end]];
+            if measurer.measure_svg_text_computed_length_px(candidate, style) <= max_width {
+                best = end;
+                end += 1;
+            } else {
+                break;
+            }
+        }
+        chunks.push(word[boundaries[start]..boundaries[best]].to_string());
+        start = best;
+    }
+    chunks
+}
+
+fn c4_wrap_source_word_lines(
+    measurer: &dyn TextMeasurer,
+    source_lines: &[Vec<String>],
+    style: &TextStyle,
+    max_width: Option<f64>,
+) -> Vec<C4TextRowLayout> {
+    let Some(max_width) = max_width.filter(|width| width.is_finite() && *width > 0.0) else {
+        return source_lines
+            .iter()
+            .cloned()
+            .map(|words| C4TextRowLayout { words })
+            .collect();
+    };
+
+    let mut wrapped = Vec::new();
+    for source_line in source_lines {
+        if source_line.is_empty() {
+            wrapped.push(C4TextRowLayout { words: Vec::new() });
+            continue;
+        }
+        if c4_row_width(measurer, source_line, style) <= max_width {
+            wrapped.push(C4TextRowLayout {
+                words: source_line.clone(),
+            });
+            continue;
+        }
+
+        let mut current = Vec::new();
+        for word in source_line {
+            let mut candidate = current.clone();
+            candidate.push(word.clone());
+            if c4_row_width(measurer, &candidate, style) <= max_width {
+                current.push(word.clone());
+                continue;
+            }
+            if !current.is_empty() {
+                wrapped.push(C4TextRowLayout {
+                    words: std::mem::take(&mut current),
+                });
+            }
+            if c4_row_width(measurer, std::slice::from_ref(word), style) <= max_width {
+                current.push(word.clone());
+            } else {
+                for chunk in c4_split_long_word(measurer, word, style, max_width) {
+                    wrapped.push(C4TextRowLayout { words: vec![chunk] });
+                }
+            }
+        }
+        if !current.is_empty() {
+            wrapped.push(C4TextRowLayout { words: current });
+        }
+    }
+
+    if wrapped.is_empty() {
+        vec![C4TextRowLayout { words: Vec::new() }]
+    } else {
+        wrapped
+    }
 }
 
 mod layout;
