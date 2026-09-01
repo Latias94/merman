@@ -1394,7 +1394,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   recipe, licensing, resource-cost, maturity, and evidence rules as every other candidate.
 - **Capability-discovery candidate:** Build the versioned query/result envelope from the core family
   catalog and the landed renderer-owned, versioned support-claim manifest, whose internal revision is
-  currently 20 and whose claims reconcile against the private C5 mechanism matrix. C5 family/target
+  currently 21 and whose claims reconcile against the private C5 mechanism matrix. C5 family/target
   modules own complete value-domain arguments and runtime admission predicates. The non-published
   C6a harness validates representative end-to-end
   integration and detects manifest drift; it cannot upgrade a descriptor to `Unconditional` merely
@@ -1409,7 +1409,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   discovery does not reimplement them. Unknown string IDs and additive rows are preserved and
   normalize to `Unverified`, while execution requests still reject unknown executable IDs. A concrete
   final render or export report remains authoritative for one request. Because this candidate has
-  not been published, internal `claim_revision = 20` records pre-freeze claim-authority changes
+  not been published, internal `claim_revision = 21` records pre-freeze claim-authority changes
   without constituting a stable public compatibility promise. `claim_revision` versions only
   this capability-support claim authority. It is never reused as a preset-catalog schema, recipe
   revision, recipe/resource fingerprint, or qualification revision; those KTD21 identities advance
@@ -1500,7 +1500,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   lists only compiled-in recipes/resources while equivalent capability profiles receive identical
   public projections. Export vectors cover both `PresetExportV1` tags and reject unknown tags,
   missing or duplicate payloads, and untagged shape guessing. Revision tests keep the current
-  unpublished capability `claim_revision = 20` while independently changing catalog, recipe, and
+  unpublished capability `claim_revision = 21` while independently changing catalog, recipe, and
   qualification identities. The
   rollout gate then runs the native portions of the original U8-U11 matrices: Options/binding/Typst
   parity, native CLI scope, generated contracts, migration examples, and public API compilation.
