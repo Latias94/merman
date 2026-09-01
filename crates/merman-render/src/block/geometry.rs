@@ -159,6 +159,21 @@ impl BlockShapeGeometry {
             } => intersect_polygon(&center, points, translation, target),
         }
     }
+
+    /// Returns the geometric bounds of the emitted outline in diagram coordinates.
+    ///
+    /// Block layout stores the grid slot separately from the shape that Mermaid actually draws.
+    /// The latter is the source of truth for the SVG root viewport, because several shapes may
+    /// intentionally extend beyond their allocated slot.
+    pub(crate) fn rendered_extents(&self) -> (f64, f64, f64, f64) {
+        let (min_x, min_y, max_x, max_y) = boundary_extents(&self.boundary);
+        (
+            self.allocated.x + min_x,
+            self.allocated.y + min_y,
+            self.allocated.x + max_x,
+            self.allocated.y + max_y,
+        )
+    }
 }
 
 /// Computes the intrinsic shape size used while the grid is choosing a common slot.

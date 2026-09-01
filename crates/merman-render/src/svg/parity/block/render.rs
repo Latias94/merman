@@ -1,5 +1,7 @@
 use super::super::*;
-use crate::block::{BlockRectangleKind, BlockShapeBoundary, block_label_is_effectively_empty};
+use crate::block::{
+    BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry, block_label_is_effectively_empty,
+};
 use crate::model::LayoutPoint;
 use crate::svg::parity::roughjs_common::{
     closed_path_d_from_points, ops_to_svg_path_d, parse_hex_color_to_srgba,
@@ -568,7 +570,7 @@ pub(crate) fn render_block_diagram_svg_model(
     // Keep this independent from the CSS `stroke-width: 1px` rule used by ordinary shapes.
     let node_stroke_width = 1.3_f32;
 
-    let bounds = layout.bounds.clone().unwrap_or(Bounds {
+    let layout_bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
         min_y: 0.0,
         max_x: 100.0,
@@ -578,12 +580,37 @@ pub(crate) fn render_block_diagram_svg_model(
         .unwrap_or(5.0)
         .max(0.0);
 
+    // Mermaid derives Block's root viewport from the rendered node group (`getBBox()`), not the
+    // grid slots used during layout.  Use the shared shape geometry so circles, arrows, and
+    // slanted shapes that extend beyond their slots remain inside the root viewBox.
+    let rendered_bounds = layout
+        .shape_geometries
+        .iter()
+        .map(BlockShapeGeometry::rendered_extents)
+        .fold(None, |bounds: Option<(f64, f64, f64, f64)>, extents| {
+            Some(match bounds {
+                None => extents,
+                Some((min_x, min_y, max_x, max_y)) => (
+                    min_x.min(extents.0),
+                    min_y.min(extents.1),
+                    max_x.max(extents.2),
+                    max_y.max(extents.3),
+                ),
+            })
+        })
+        .unwrap_or((
+            layout_bounds.min_x,
+            layout_bounds.min_y,
+            layout_bounds.max_x,
+            layout_bounds.max_y,
+        ));
+
     let mut out = String::new();
     let root_bounds = root_svg::DiagramBounds::from_extents(
-        bounds.min_x,
-        bounds.min_y,
-        bounds.max_x,
-        bounds.max_y,
+        rendered_bounds.0,
+        rendered_bounds.1,
+        rendered_bounds.2,
+        rendered_bounds.3,
         diagram_padding,
     );
     let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)

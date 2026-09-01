@@ -82,6 +82,18 @@ fn path_start(path: roxmltree::Node<'_, '_>) -> (f64, f64) {
     )
 }
 
+fn root_view_box(document: &roxmltree::Document<'_>) -> (f64, f64, f64, f64) {
+    let root = document.root_element();
+    let values = root
+        .attribute("viewBox")
+        .expect("root viewBox")
+        .split_ascii_whitespace()
+        .map(|value| value.parse::<f64>().expect("numeric viewBox component"))
+        .collect::<Vec<_>>();
+    assert_eq!(values.len(), 4, "viewBox must contain four components");
+    (values[0], values[1], values[2], values[3])
+}
+
 fn deep_block_chain(depth: usize) -> String {
     let mut input = String::from("block\n");
     for level in 0..depth {
@@ -370,6 +382,37 @@ fn block_circle_edge_starts_on_the_rendered_circle_boundary() {
         (endpoint_radius - radius).abs() <= 1e-3,
         "edge must start on the rendered circle: center=({center_x},{center_y}), endpoint=({edge_x},{edge_y}), endpoint_radius={endpoint_radius}, circle_radius={radius}, svg={svg}"
     );
+}
+
+#[test]
+fn block_root_viewbox_uses_rendered_shape_bounds() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  id1((("This is the text in the circle")))
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-id1"))
+        .expect("rendered double-circle node");
+    let outer_circle = node
+        .descendants()
+        .find(|node| node.attribute("class") == Some("outer-circle"))
+        .expect("rendered outer circle");
+    let (center_x, center_y) = translated_center(node);
+    let radius = outer_circle
+        .attribute("r")
+        .expect("outer circle radius")
+        .parse::<f64>()
+        .expect("numeric outer circle radius");
+    let (view_x, view_y, view_width, view_height) = root_view_box(&document);
+    let padding = 5.0;
+
+    assert!(view_x <= center_x - radius - padding + 1e-9);
+    assert!(view_y <= center_y - radius - padding + 1e-9);
+    assert!(view_x + view_width >= center_x + radius + padding - 1e-9);
+    assert!(view_y + view_height >= center_y + radius + padding - 1e-9);
 }
 
 #[test]
