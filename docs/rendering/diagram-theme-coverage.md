@@ -66,10 +66,10 @@ families are partial typed adapters that may still enter the compatibility bridg
 remains without a family-local direct typed surface, and 27/33 families may still enter compatibility.
 Across base typography, 4 families still have at least one `LegacyCompatibility` property. After
 the EventModeling, Ishikawa, Venn, Sankey, Class, Radar, GitGraph, ER, Pie, Requirement, Kanban,
-and Timeline cutovers, plus the Quadrant Chart base-size boundary correction and the Journey
-typography cutover, only three families retain both `FontStack` and `FontSize` on the bridge. The
-current property totals are `FontStack`: 28 Typed, 3 Legacy, 2 Unsupported; and `FontSize`: 16
-Typed, 4 Legacy, 13 Unsupported.
+and Timeline cutovers, plus the Quadrant Chart base-size boundary correction, Journey typography
+cutover, and Treemap base-size boundary correction, only two families retain both `FontStack` and
+`FontSize` on the bridge. The current property totals are `FontStack`: 28 Typed, 3 Legacy, 2
+Unsupported; and `FontSize`: 16 Typed, 3 Legacy, 14 Unsupported.
 
 The compatibility bridge is deliberately family-local and runs only after detection. It never
 projects one family's semantic targets into unrelated renderers. Its contribution IDs and
