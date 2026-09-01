@@ -1271,20 +1271,18 @@ fn extract_clusters_recursively(
             .into_iter()
             .filter(|id| graph.has_node(id))
             .filter(|id| graph.child_count(id) != 0)
-            // Mermaid 11.16 always extracts a cluster with an explicit `direction`, including
-            // clusters with external connections. Otherwise it retains the historical isolated-
-            // cluster rule based on the global `clusterDb.externalConnections` flag.
+            // Mermaid's Dagre extractor only promotes clusters without external connections.
+            // An explicit `direction` controls the nested graph's rankdir after extraction; it
+            // does not change whether the cluster is extracted. Keeping this predicate tied to
+            // the computed `externalConnections` flag also keeps cluster extraction, edge
+            // ownership, and the downstream render plan on the same semantic boundary.
             //
             // Reference:
             // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
             .filter(|id| {
-                let has_explicit_dir = subgraphs_by_id
+                external_connections_by_id
                     .get(id.as_str())
-                    .is_some_and(|subgraph| subgraph.has_explicit_dir);
-                has_explicit_dir
-                    || external_connections_by_id
-                        .get(id.as_str())
-                        .is_some_and(|external| !external)
+                    .is_some_and(|external| !external)
             })
             .collect();
 
@@ -2243,8 +2241,8 @@ fn layout_flowchart_with_model(
             0,
             work_control,
         )?;
-        // Explicit-direction extraction can rebind a cross-boundary edge to the cluster node.
-        // Refresh root endpoints after extraction so output lookup uses the surviving nodes.
+        // Cluster extraction can rebind a cross-boundary edge to the cluster node. Refresh root
+        // endpoints after extraction so output lookup uses the surviving nodes.
         let edge_snapshot_work = work_control.checked_add(g.edge_slot_count(), g.edge_count())?;
         work_control.charge_adapter(edge_snapshot_work)?;
         for ek in g.edge_keys() {
@@ -2261,7 +2259,8 @@ fn layout_flowchart_with_model(
 
     // Mermaid's flowchart-v2 renderer inserts node DOM elements in pinned Graphlib
     // `graph.nodes()` order before Dagre layout, including recursively extracted cluster graphs.
-    // Capture that object-key enumeration per root so strict headless DOM order stays aligned.
+    // This per-root map is the render plan consumed by the SVG renderer, hierarchy ownership, and
+    // viewBox calculation; capture it from the same extracted graphs used for layout.
     let mut dom_node_order_by_root: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     let mut dom_order_work = node_id_snapshot_work_upper_bound(&g, work_control)?;

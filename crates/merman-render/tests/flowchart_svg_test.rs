@@ -695,44 +695,43 @@ fn flowchart_svg_renders_regular_edges_before_compact_self_loops() {
 }
 
 #[test]
-fn flowchart_svg_renders_explicit_direction_cluster_as_recursive_root() {
+fn flowchart_svg_keeps_external_direction_cluster_in_parent_root() {
     let svg = render_flowchart_svg_from_text(
         "flowchart TB\nsubgraph A\n  direction LR\n  a --> b\nend\na --> c\n",
     );
 
     assert_eq!(
         svg.matches(r#"<g class="root""#).count(),
-        2,
-        "the extracted cluster should render as one nested root: {svg}"
+        1,
+        "an external edge must keep the directioned cluster in the parent root: {svg}"
     );
     assert_eq!(
         svg.matches(r#"id="merman-A""#).count(),
         1,
-        "the cluster should render exactly once inside its recursive root: {svg}"
+        "the cluster should render exactly once in the parent root: {svg}"
     );
     assert_eq!(
         svg.matches(r#"id="merman-flowchart-a-"#).count(),
         1,
-        "the extracted cluster's internal node should remain in the SVG DOM: {svg}"
+        "the cluster's internal node should remain in the SVG DOM: {svg}"
     );
     assert_eq!(
         svg.matches(r#"id="merman-flowchart-b-"#).count(),
         1,
-        "the extracted cluster's internal node should remain in the SVG DOM: {svg}"
+        "the cluster's internal node should remain in the SVG DOM: {svg}"
     );
 }
 
 #[test]
-fn flowchart_svg_renders_edge_to_ancestor_cluster_inside_that_root() {
+fn flowchart_svg_keeps_edge_to_ancestor_cluster_in_parent_root() {
     let svg = render_flowchart_svg_from_text(
         "flowchart LR\nsubgraph Outer\n  direction TB\n  subgraph Inner\n    direction LR\n    a --> b\n  end\n  b --> c\nend\nc --> Outer\n",
     );
 
-    assert!(
-        svg.contains(
-            r#"<g class="root"><g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/><g class="nodes"><g class="root""#
-        ),
-        "the edge to an ancestor cluster must not be promoted into the top-level root: {svg}"
+    assert_eq!(
+        svg.matches(r#"<g class="root""#).count(),
+        1,
+        "external connections must keep directioned clusters in the parent root: {svg}"
     );
     assert_eq!(
         svg.matches(r#"data-id="L_c_Outer_0""#).count(),
