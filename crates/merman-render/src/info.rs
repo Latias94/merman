@@ -169,7 +169,7 @@ impl InfoTypographyThemePlan {
                 theme,
                 &style,
                 &[ThemeTarget::Text],
-                DirectStaticSelectorDomain::Unqualified,
+                DirectStaticSelectorDomain::Default,
             )
         });
         let config_owns_text_fill = theme.is_some()
@@ -292,8 +292,16 @@ fn info_theme_routes(theme: Option<&ResolvedDiagramTheme>) -> InfoThemeRoutes {
                 rule_index,
                 target: ThemeTarget::Text,
                 facet: FamilyThemeRuleFacet::Fill(_),
+                selector,
                 ..
-            } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
+            } if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                && matches!(
+                    selector,
+                    crate::diagram_theme::FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default)
+                    }
+                ) =>
+            {
                 direct_text_fill.push(InfoDirectTextFillRoute {
                     key: theme.family_mechanism_key(route),
                     rule_index,

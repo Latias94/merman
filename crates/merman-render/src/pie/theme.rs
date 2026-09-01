@@ -522,7 +522,7 @@ impl PieThemePlan {
                         theme,
                         style,
                         &[ThemeTarget::Title],
-                        DirectStaticSelectorDomain::Unqualified,
+                        DirectStaticSelectorDomain::Default,
                     )
                 })
             })
@@ -575,7 +575,9 @@ impl PieThemePlan {
             match (route.disposition(), selector, facet) {
                 (
                     FamilyThemeDisposition::TypedAdapter,
-                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                     FamilyThemeRuleFacet::Fill(_),
                 ) if typed_fill_rule == Some(rule_index) => {
                     observation.fill_pending = true;
@@ -654,7 +656,7 @@ impl PieThemePlan {
                     theme,
                     &style,
                     &[ThemeTarget::Text],
-                    DirectStaticSelectorDomain::Unqualified,
+                    DirectStaticSelectorDomain::Default,
                 )
             })
             .flatten();
@@ -706,7 +708,9 @@ impl PieThemePlan {
             match (route.disposition(), selector, facet) {
                 (
                     FamilyThemeDisposition::TypedAdapter,
-                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                     FamilyThemeRuleFacet::Fill(
                         FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                     ),

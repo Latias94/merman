@@ -1293,7 +1293,12 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::INFO
         && target == ThemeTarget::Text
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -1857,7 +1862,12 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::PIE
         && target == ThemeTarget::Title
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -1869,7 +1879,12 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::PIE
         && target == ThemeTarget::Text
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -5360,7 +5375,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 36);
+        assert_eq!(qualified.len(), 42);
         assert_eq!(
             qualified
                 .iter()
@@ -5394,7 +5409,14 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::PIE)
                 .count(),
-            4
+            8
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::INFO)
+                .count(),
+            2
         );
         assert_eq!(
             qualified
@@ -5463,11 +5485,28 @@ mod tests {
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::PIE {
-                let expected = match route.facet() {
-                    ThemeRouteCutoverFacet::Fill => ThemeRouteCutoverProjection::PieSliceFill,
-                    ThemeRouteCutoverFacet::Stroke => ThemeRouteCutoverProjection::PieSliceStroke,
+                let expected = match (route.target(), route.facet()) {
+                    (ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Fill) => {
+                        ThemeRouteCutoverProjection::PieSliceFill
+                    }
+                    (ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Stroke) => {
+                        ThemeRouteCutoverProjection::PieSliceStroke
+                    }
+                    (ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+                        ThemeRouteCutoverProjection::TitleFill
+                    }
+                    (ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+                        ThemeRouteCutoverProjection::TextFill
+                    }
+                    _ => panic!("unexpected Pie qualified route: {route:?}"),
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
+            } else if route.family_id() == DiagramFamilyId::INFO {
+                assert_eq!(
+                    projections,
+                    vec![ThemeRouteCutoverProjection::TextFill],
+                    "route={route:?}"
+                );
             }
         }
     }
@@ -6017,7 +6056,7 @@ mod tests {
         .with_variant(ThemeVariant::Default);
         assert_eq!(
             compile_rule_routes(DiagramFamilyId::INFO, 0, &explicit_default)[0].disposition(),
-            FamilyThemeDisposition::LegacyCompatibility
+            FamilyThemeDisposition::TypedAdapter
         );
         assert_eq!(
             disposition(DiagramFamilyId::INFO, ThemeTarget::Title),

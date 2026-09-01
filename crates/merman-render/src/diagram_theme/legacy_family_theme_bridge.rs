@@ -210,9 +210,6 @@ fn compile_selected_family(
         LegacyFamilyDispatch::Er => {
             compile_er_family(&mut builder, &reader)?;
         }
-        LegacyFamilyDispatch::Pie => {
-            compile_pie_family(&mut builder, &reader)?;
-        }
         LegacyFamilyDispatch::Chart => {
             compile_chart_family(&mut builder, &reader)?;
         }
@@ -245,7 +242,6 @@ enum LegacyFamilyDispatch {
     Task,
     Requirement,
     Er,
-    Pie,
     Chart,
     Timeline,
     Journey,
@@ -364,7 +360,6 @@ fn legacy_family_dispatch(
         DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN => LegacyFamilyDispatch::Task,
         DiagramFamilyId::REQUIREMENT => LegacyFamilyDispatch::Requirement,
         DiagramFamilyId::ER => LegacyFamilyDispatch::Er,
-        DiagramFamilyId::PIE => LegacyFamilyDispatch::Pie,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
             LegacyFamilyDispatch::Chart
         }
@@ -375,14 +370,15 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::CYNEFIN
         | DiagramFamilyId::RAILROAD
         | DiagramFamilyId::SANKEY
-        | DiagramFamilyId::INFO
         | DiagramFamilyId::TREEMAP
         | DiagramFamilyId::VENN => LegacyFamilyDispatch::Text,
         DiagramFamilyId::STATE
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::ERROR
         | DiagramFamilyId::EVENT_MODELING
+        | DiagramFamilyId::INFO
         | DiagramFamilyId::ISHIKAWA
+        | DiagramFamilyId::PIE
         | DiagramFamilyId::WARDLEY
         | DiagramFamilyId::ZENUML => LegacyFamilyDispatch::NoLegacy,
         _ => {
@@ -893,24 +889,6 @@ fn compile_er_family(builder: &mut OverlayBuilder, reader: &FamilyStyleReader) -
             "rowEven",
             reader.fill_variant(ThemeTarget::Table, ThemeVariant::Even),
         )],
-    );
-    contributions.finish_into(builder)
-}
-
-fn compile_pie_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-
-    contributions.add_typography(reader);
-    contributions.add_theme_variables(
-        "title.fill",
-        [("pieTitleTextColor", reader.fill(ThemeTarget::Title))],
-    );
-    contributions.add_theme_variables(
-        "text.fill",
-        [("pieSectionTextColor", reader.text_fill(ThemeTarget::Text))],
     );
     contributions.finish_into(builder)
 }
@@ -2262,8 +2240,10 @@ mod tests {
                 DiagramFamilyId::PACKET,
                 DiagramFamilyId::ERROR,
                 DiagramFamilyId::EVENT_MODELING,
+                DiagramFamilyId::INFO,
                 DiagramFamilyId::ISHIKAWA,
                 DiagramFamilyId::WARDLEY,
+                DiagramFamilyId::PIE,
                 DiagramFamilyId::ZENUML,
             ])
         );

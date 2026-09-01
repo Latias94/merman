@@ -568,6 +568,38 @@ fn info_text_fill_is_written_and_proved_by_the_version_terminal() {
 }
 
 #[test]
+fn info_explicit_default_text_fill_is_typed_and_verified() {
+    let family = InheritedTextFamily::Info;
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid("#2563eb")
+                                .expect("valid explicit-Default Info text fill"),
+                        ),
+                    )
+                    .for_family(family.family_id())
+                    .with_variant(ThemeVariant::Default),
+                ),
+            ),
+        )
+        .expect("compile explicit-Default Info text theme");
+    let rendered = try_render_family(
+        family,
+        family.base_source(),
+        &theme,
+        Engine::new(),
+        "info-explicit-default-text-fill",
+    )
+    .expect("explicit-Default Info text fill must remain portable");
+
+    assert_single_info_text_fill(rendered, Some("#2563eb"), 1, 0);
+}
+
+#[test]
 fn info_config_text_color_outranks_typed_text_fill_per_property() {
     let family = InheritedTextFamily::Info;
     let theme = inherited_paint_theme(family, &[ThemeTarget::Text]);

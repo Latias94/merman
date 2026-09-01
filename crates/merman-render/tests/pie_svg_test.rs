@@ -277,6 +277,23 @@ fn pie_title_default_fill_theme(fill: CanvasPaint) -> DiagramTheme {
         .expect("compile explicit-Default Pie title fill theme")
 }
 
+fn pie_text_default_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::PIE)
+                    .with_variant(ThemeVariant::Default),
+                ),
+            ),
+        )
+        .expect("compile explicit-Default Pie text fill theme")
+}
+
 fn pie_title_and_text_fill_theme() -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
@@ -641,40 +658,65 @@ fn pie_mixed_font_stack_and_size_keeps_the_stack_but_fails_closed() {
 }
 
 #[test]
-fn pie_explicit_default_title_fill_remains_on_the_compatibility_bridge() {
+fn pie_explicit_default_title_fill_is_typed_and_verified() {
     let theme = pie_title_default_fill_theme(
         CanvasPaint::solid("#2563eb").expect("valid explicit-Default Pie title fill"),
     );
     let rendered = try_render_pie_with_theme_requirement(
         "pie title Default title\n  \"Alpha\" : 1\n",
         &theme,
-        ThemePortabilityRequirement::BestEffort,
+        ThemePortabilityRequirement::RequirePortable,
     )
-    .expect("best-effort explicit-Default Pie title render");
+    .expect("explicit-Default Pie title fill must be portable");
     assert_eq!(
         pie_stylesheet_property_values(rendered.svg(), "#merman .pieTitleText", "fill"),
         ["#2563eb"]
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 0);
-    assert_eq!(evidence.accounted_count(), 0);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
 
-    let Err(error) = try_render_pie_with_theme_requirement(
-        "pie title Default title\n  \"Alpha\" : 1\n",
+#[test]
+fn pie_explicit_default_text_fill_is_typed_and_verified() {
+    let theme = pie_text_default_fill_theme(
+        CanvasPaint::solid("#b45309").expect("valid explicit-Default Pie text fill"),
+    );
+    let rendered = try_render_pie_with_theme_requirement(
+        "pie\n  \"Alpha\" : 1\n",
         &theme,
         ThemePortabilityRequirement::RequirePortable,
-    ) else {
-        panic!("explicit-Default Pie title must remain outside the direct tranche");
-    };
-    assert!(matches!(
-        error,
-        Error::LegacyFamilyThemeCompatibility {
-            family_id: DiagramFamilyId::PIE,
-            residual_count: 1,
-        }
-    ));
+    )
+    .expect("explicit-Default Pie text fill must be portable");
+    assert_eq!(
+        pie_stylesheet_property_values(rendered.svg(), "#merman .slice", "fill"),
+        ["#b45309"]
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Pie SVG");
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class") == Some("slice")
+                    && node.text().is_some_and(|text| !text.trim().is_empty())
+            })
+            .count(),
+        1,
+        "the typed section-text route must bind exactly one visible terminal"
+    );
+    drop(document);
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
