@@ -24,7 +24,8 @@
           "text": "external_system"
         },
         "parentBoundary": "global",
-        "wrap": false
+        "wrap": false,
+        "tags": "v1.0"
       },
       {
         "alias": "customer",
@@ -38,7 +39,8 @@
           "text": "person"
         },
         "parentBoundary": "global",
-        "wrap": false
+        "wrap": false,
+        "tags": "v1.0"
       },
       {
         "alias": "spa",

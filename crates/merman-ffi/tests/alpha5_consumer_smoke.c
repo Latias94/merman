@@ -98,6 +98,11 @@ typedef MermanNativeStatus (*MermanNativeGetApiFn)(
 #define MERMAN_NATIVE_API_MINIMUM_PREFIX_LAYOUT_DIGEST \
     "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41"
 
+#if defined(_WIN32)
+__declspec(dllexport)
+#else
+__attribute__((visibility("default")))
+#endif
 int merman_alpha5_consumer_smoke(MermanNativeGetApiFn discover) {
     static const char digest[] = MERMAN_NATIVE_API_MINIMUM_PREFIX_LAYOUT_DIGEST;
     MermanNativeApiRequest request = {0};

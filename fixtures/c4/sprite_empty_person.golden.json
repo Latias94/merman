@@ -25,7 +25,8 @@
         },
         "parentBoundary": "global",
         "wrap": false,
-        "tags": "tag1,tag2"
+        "tags": "tag1,tag2",
+        "link": "https://example.com/customer"
       },
       {
         "alias": "s1",
