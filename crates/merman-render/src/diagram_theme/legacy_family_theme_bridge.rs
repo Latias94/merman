@@ -273,7 +273,6 @@ fn legacy_family_dispatch(
         DiagramFamilyId::ARCHITECTURE
         | DiagramFamilyId::C4
         | DiagramFamilyId::CYNEFIN
-        | DiagramFamilyId::WARDLEY
         | DiagramFamilyId::RAILROAD
         | DiagramFamilyId::SANKEY
         | DiagramFamilyId::INFO
@@ -284,6 +283,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::ERROR
         | DiagramFamilyId::EVENT_MODELING
         | DiagramFamilyId::ISHIKAWA
+        | DiagramFamilyId::WARDLEY
         | DiagramFamilyId::ZENUML => LegacyFamilyDispatch::NoLegacy,
         _ => {
             return Err(ThemeCompatibilityOverlayError::provider_failure(
@@ -2166,9 +2166,36 @@ mod tests {
                 DiagramFamilyId::ERROR,
                 DiagramFamilyId::EVENT_MODELING,
                 DiagramFamilyId::ISHIKAWA,
+                DiagramFamilyId::WARDLEY,
                 DiagramFamilyId::ZENUML,
             ])
         );
+    }
+
+    #[test]
+    fn wardley_generic_text_paint_does_not_recreate_a_legacy_projection() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid("#334155")),
+                    )
+                    .for_family(DiagramFamilyId::WARDLEY),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                    )
+                    .for_family(DiagramFamilyId::WARDLEY),
+                ),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::WARDLEY);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
     }
 
     #[test]

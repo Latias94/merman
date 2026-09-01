@@ -1146,6 +1146,11 @@ fn terminal_absent_legacy_paint_route(
                 || (target == ThemeTarget::Cluster && unqualified_or_default && (fill || stroke))
                 || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
         }
+        DiagramFamilyId::WARDLEY => {
+            matches!(target, ThemeTarget::Text | ThemeTarget::Title)
+                && unqualified_or_default
+                && fill
+        }
         _ => false,
     }
 }
@@ -2111,7 +2116,6 @@ fn legacy_paint_variants(
         | Family::ARCHITECTURE
         | Family::C4
         | Family::CYNEFIN
-        | Family::WARDLEY
         | Family::RAILROAD
         | Family::SANKEY
         | Family::TREEMAP
@@ -5822,6 +5826,29 @@ mod tests {
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
                 && route.disposition() == FamilyThemeDisposition::Unsupported
         }));
+    }
+
+    #[test]
+    fn wardley_generic_text_paint_routes_are_unsupported_without_terminals() {
+        for paint_kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            for target in [ThemeTarget::Text, ThemeTarget::Title] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    assert_eq!(
+                        classify_rule_facet(
+                            DiagramFamilyId::WARDLEY,
+                            target,
+                            FamilyThemeSelectorShape::Static { variant },
+                            FamilyThemeRuleFacet::Fill(paint_kind),
+                        ),
+                        FamilyThemeDisposition::Unsupported,
+                        "target={target:?} facet=Fill({paint_kind:?}) variant={variant:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
