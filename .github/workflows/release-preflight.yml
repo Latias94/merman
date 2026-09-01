@@ -148,6 +148,13 @@ jobs:
       - name: Verify exhaustive Cargo feature and artifact recipes
         run: cargo run --locked -p xtask -- verify-feature-matrix --strict
 
+      - name: Verify native ABI projections
+        run: cargo run --locked -p xtask -- verify-native-abi
+
+      - name: Test KTD23 legacy projection retirement
+        run: cargo test --locked -p merman-theme-acceptance \
+          --no-default-features --test legacy_projection_retirement
+
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
 
@@ -1023,6 +1030,9 @@ jobs:
         working-directory: platforms/flutter
         run: |
           flutter pub get
+          dart run ffigen --config ffigen.yaml
+          git ls-files --error-unmatch -- lib/src/generated/native_abi.dart
+          git diff --exit-code -- lib/src/generated/native_abi.dart
           flutter analyze
           dart format --set-exit-if-changed \
             lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
