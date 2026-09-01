@@ -2033,17 +2033,20 @@ pub(crate) fn fixture_dom_profile(
     diagram: &str,
     stem: &str,
     requested: svgdom::DomMode,
-) -> (svgdom::DomComparisonProfile, Option<&'static str>) {
+) -> (svgdom::DomComparisonProfile, Option<String>) {
     let diagram_evidence = merman_fixture_render_context::diagram_dom_evidence(diagram);
     let mut profile = svgdom::DomComparisonProfile::from_mode(requested);
-    let mut residual_note = None;
+    let mut residual_notes = Vec::new();
     if let Some(merman_fixture_render_context::DiagramDomEvidence::BrowserMeasuredTextLength) =
         diagram_evidence
     {
         profile = profile.with_browser_text_length_normalized();
-        residual_note = (!matches!(requested, svgdom::DomMode::Strict)).then_some(
-            merman_fixture_render_context::DiagramDomEvidence::BrowserMeasuredTextLength.reason(),
-        );
+        if !matches!(requested, svgdom::DomMode::Strict) {
+            residual_notes.push(
+                merman_fixture_render_context::DiagramDomEvidence::BrowserMeasuredTextLength
+                    .reason(),
+            );
+        }
     }
 
     // C4's migrated label helper delegates wrapping to SVG
@@ -2053,7 +2056,7 @@ pub(crate) fn fixture_dom_profile(
     // while retaining every surrounding DOM and the root viewport contract.
     if diagram == "c4" && !matches!(requested, svgdom::DomMode::Strict) {
         profile = profile.with_browser_text_word_boundaries_normalized();
-        residual_note = Some(
+        residual_notes.push(
             "pinned Mermaid C4 derives generated text-row segmentation from browser font measurement; only generated row boundaries are normalized",
         );
     }
@@ -2072,18 +2075,29 @@ pub(crate) fn fixture_dom_profile(
             };
             (
                 profile,
-                Some(merman_fixture_render_context::FixtureDomEvidence::StructureOnly.reason()),
+                Some(
+                    merman_fixture_render_context::FixtureDomEvidence::StructureOnly
+                        .reason()
+                        .to_string(),
+                ),
             )
         }
-        Some(merman_fixture_render_context::FixtureDomEvidence::StructureOnly) | None => {
-            (profile, residual_note)
-        }
-        Some(merman_fixture_render_context::FixtureDomEvidence::BrowserTextWrapping) => (
-            profile.with_browser_text_wrapping_normalized(),
-            (!matches!(requested, svgdom::DomMode::Strict)).then_some(
-                merman_fixture_render_context::FixtureDomEvidence::BrowserTextWrapping.reason(),
-            ),
+        Some(merman_fixture_render_context::FixtureDomEvidence::StructureOnly) | None => (
+            profile,
+            (!residual_notes.is_empty()).then(|| residual_notes.join("; ")),
         ),
+        Some(merman_fixture_render_context::FixtureDomEvidence::BrowserTextWrapping) => {
+            profile = profile.with_browser_text_wrapping_normalized();
+            if !matches!(requested, svgdom::DomMode::Strict) {
+                residual_notes.push(
+                    merman_fixture_render_context::FixtureDomEvidence::BrowserTextWrapping.reason(),
+                );
+            }
+            (
+                profile,
+                (!residual_notes.is_empty()).then(|| residual_notes.join("; ")),
+            )
+        }
     }
 }
 
