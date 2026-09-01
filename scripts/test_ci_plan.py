@@ -7,12 +7,17 @@ import json
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 try:
+    import scripts.ci_plan as ci_plan_module
     from scripts.ci_plan import (
         OWNER_NAMES,
         GateError,
+        main,
         _validate_plan,
         _write_github_outputs,
         evaluate_gate,
@@ -23,9 +28,11 @@ try:
         plan_selected,
     )
 except ModuleNotFoundError:
+    import ci_plan as ci_plan_module
     from ci_plan import (
         OWNER_NAMES,
         GateError,
+        main,
         _validate_plan,
         _write_github_outputs,
         evaluate_gate,
@@ -686,6 +693,46 @@ class PlannerTests(unittest.TestCase):
         self.assertIn('\nowners={"cli":false,"core":true,', f"\n{output}")
         self.assertIn("\nsvg_parity=true\n", output)
         self.assertNotIn("\nplan=", f"\n{output}")
+
+    def test_plan_cli_validates_and_publishes_bounded_selectors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "github-output"
+            with patch.object(
+                ci_plan_module,
+                "_validate_plan",
+                wraps=ci_plan_module._validate_plan,
+            ) as validate_plan:
+                with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                    exit_code = main(
+                        [
+                            "plan",
+                            "--base",
+                            "a" * 40,
+                            "--head",
+                            "b" * 40,
+                            "--select-owner",
+                            "core",
+                            "--github-output",
+                            str(output_path),
+                        ]
+                    )
+
+            output = output_path.read_text(encoding="utf-8")
+            entries = dict(line.split("=", 1) for line in output.splitlines())
+
+        self.assertEqual(exit_code, 0)
+        validate_plan.assert_called_once()
+        owners = json.loads(entries["owners"])
+        self.assertEqual(set(owners), set(OWNER_NAMES))
+        self.assertTrue(owners["core"])
+        self.assertEqual(entries["core"], "true")
+        self.assertNotIn("plan", entries)
+
+        summary = evaluate_gate(
+            owners,
+            {"build-test": {"owner": "core", "required": True, "result": "success"}},
+        )
+        self.assertEqual(summary["selected"], ["build-test"])
 
     def test_non_pr_host_safety_net_can_select_only_core(self) -> None:
         plan = plan_selected(

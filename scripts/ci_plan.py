@@ -1034,7 +1034,11 @@ def main(argv: Iterable[str] | None = None) -> int:
             )
         else:
             plan = plan_repository_diff(args.repository, args.base, args.head)
-        plan = _validate_plan(plan)
+        try:
+            plan = _validate_plan(plan)
+        except GateError as exc:
+            print(f"ci-plan failed closed: {exc}", file=sys.stderr)
+            return 1
         encoded = _compact_json(plan)
         print(encoded)
         if args.github_output is not None:

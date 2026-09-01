@@ -21,7 +21,7 @@ Pull requests answer whether a change is safe to review and merge:
 The central `CI` workflow is the pull-request and merge-queue orchestrator. Its planner compares the
 trusted base and head commits with a NUL-delimited Git name-status diff, selects owner jobs, and
 records the reasons in one validated JSON document. The detailed plan remains at the producer
-boundary; only the fixed-size owner selector map crosses into downstream jobs. Unknown paths,
+boundary; only fixed-size selectors cross into downstream jobs. Unknown paths,
 workflow or classifier changes, malformed diffs, and missing Git objects select every owner. A
 valid empty diff is the only case that runs no owner job.
 
