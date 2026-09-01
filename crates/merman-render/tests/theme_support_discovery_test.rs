@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 25);
+    assert_eq!(support.claim_revision(), 26);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -200,6 +200,27 @@ fn wardley_generic_text_paint_routes_are_unsupported() {
             DiagramFamilyId::WARDLEY.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
+            ThemeRuleFacetV1::Fill,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
+        assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
+    }
+}
+
+#[test]
+fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
+    for family in [
+        DiagramFamilyId::C4,
+        DiagramFamilyId::CYNEFIN,
+        DiagramFamilyId::SANKEY,
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            ThemeTarget::Title.id(),
             ThemeRuleFacetV1::Fill,
         );
 

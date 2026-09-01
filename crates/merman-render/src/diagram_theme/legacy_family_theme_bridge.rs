@@ -2199,6 +2199,56 @@ mod tests {
     }
 
     #[test]
+    fn generic_title_paint_does_not_recreate_a_legacy_projection_without_a_title_consumer() {
+        for family in [
+            DiagramFamilyId::C4,
+            DiagramFamilyId::CYNEFIN,
+            DiagramFamilyId::SANKEY,
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let text_rule = ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(solid("#334155")),
+                )
+                .for_family(family);
+                let title_rule = ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                )
+                .for_family(family);
+                let text_rule = if let Some(variant) = variant {
+                    text_rule.with_variant(variant)
+                } else {
+                    text_rule
+                };
+                let title_rule = if let Some(variant) = variant {
+                    title_rule.with_variant(variant)
+                } else {
+                    title_rule
+                };
+                let spec = DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(text_rule)
+                        .with_rule(title_rule),
+                );
+                let bridge = bridge(&spec);
+                let artifact = bridge.compile_for_family(family);
+                let text_id = format!("{CONTRIBUTION_ID_PREFIX}{}.text.fill", family.as_str());
+                let title_id = format!("{CONTRIBUTION_ID_PREFIX}{}.title.fill", family.as_str());
+
+                assert!(
+                    artifact.contribution_ids.contains(&text_id),
+                    "{family} must retain the real generic text compatibility projection for variant={variant:?}"
+                );
+                assert!(
+                    !artifact.contribution_ids.contains(&title_id),
+                    "{family} must not recreate the terminal-less title projection for variant={variant:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn every_matrix_legacy_route_reaches_the_bridge_with_its_probe_value() {
         let mut matrix_legacy_families = BTreeSet::new();
 

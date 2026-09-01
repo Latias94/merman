@@ -1151,6 +1151,9 @@ fn terminal_absent_legacy_paint_route(
                 && unqualified_or_default
                 && fill
         }
+        DiagramFamilyId::C4 | DiagramFamilyId::CYNEFIN | DiagramFamilyId::SANKEY => {
+            target == ThemeTarget::Title && unqualified_or_default && fill
+        }
         _ => false,
     }
 }
@@ -5848,6 +5851,44 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
+        for family in [
+            DiagramFamilyId::C4,
+            DiagramFamilyId::CYNEFIN,
+            DiagramFamilyId::SANKEY,
+        ] {
+            for paint_kind in [
+                FamilyThemePaintKind::Transparent,
+                FamilyThemePaintKind::Solid,
+            ] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    assert_eq!(
+                        classify_rule_facet(
+                            family,
+                            ThemeTarget::Title,
+                            FamilyThemeSelectorShape::Static { variant },
+                            FamilyThemeRuleFacet::Fill(paint_kind),
+                        ),
+                        FamilyThemeDisposition::Unsupported,
+                        "family={family} facet=Fill({paint_kind:?}) variant={variant:?}"
+                    );
+                }
+            }
+
+            assert_eq!(
+                classify_rule_facet(
+                    family,
+                    ThemeTarget::Text,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+                ),
+                FamilyThemeDisposition::LegacyCompatibility,
+                "{family} still has a real generic text compatibility consumer"
+            );
         }
     }
 

@@ -37,7 +37,7 @@ record. The current source and generated contract are authoritative for these su
   unqualified aggregate routes plus `Default`, `Active`, `Success`, and `Error` property-local
   variants. Gantt `Warning` remains a compatibility residual and is intentionally outside the
   typed route inventory. These counts describe KTD17 authority only, not complete theme coverage.
-- The support-claim manifest is internal revision 25. KTD23 remains version 1 with 56 historical
+- The support-claim manifest is internal revision 26. KTD23 remains version 1 with 56 historical
   retirement routes and 112 transparent/solid probes. These are separate authorities: neither
   support discovery nor historical retirement can expand KTD17 route authorization.
 - All 33 families have at least one direct typed surface. Seven families have no family-owned
@@ -939,9 +939,15 @@ typography properties are Unsupported; mixed base typography fails closed withou
 retired bundled contribution or claiming layout ownership. Text and Title paint remain separate
 compatibility surfaces, so Sankey still uses the family bridge for those routes.
 
+The C5 checkpoint also retires the generic `Title.fill` compatibility routes for C4, Cynefin, and
+Sankey. C4's title inherits the generic text surface rather than consuming `titleColor`; Cynefin's
+visible title uses `cynefin.labelColor`; and Sankey has no title terminal. These routes are now
+explicitly `Unsupported`, while each family's real generic `Text.fill` compatibility route remains
+unchanged. The support-claim manifest advances to internal revision 26.
+
 | C6a | Complete; `18/18` representative native cells execute and the eligibility receipt is issued | Schema v4 is the current 18-cell authority and binds the immutable schema-v3 predecessor, which remains fixed at its historical 12 enforced and 6 deferred cells. The loader rejects lineage shrinkage, and the private unique issuer emits `C6aEligibilityReceipt` only after all nine Brutalist/Spotless/Cyberpunk by Flowchart/State/Sequence render groups pass on Standalone SVG and PNG with target-owned receipts. Each render group projects both targets from one `RenderedDocument`; Flowchart and Sequence also retain prepared terminal text through their production font seals. The separate route-cutover manifest remains a non-cell ownership proof and does not increase C6a progress. |
 | C6b | Paused; no active denominator | Four historical Brutalist/State cross-target observations exist, but the 45-cell equal-depth certification program is not active. JPEG/PDF retain representative smoke coverage; Browser SVG starts only after a real adapter and release requirement exist. |
-| C7a | Not eligible; intentionally blocked | ADR-0082 is accepted as an unfrozen design authority. Coarse Rust support discovery and its independent renderer-owned support-claim manifest (internal revision 25), the contract-owned `MaterializedThemeWireV1`, bounded typed/JSON materialization, the versioned diagnostic envelope, shared light/dark readable/canonical/materialized vectors, Flowchart/State/Sequence SVG+PNG light-dark-light isolation and cross-renderer reuse, root canvas/base-typography terminal witnesses, complete-spec cold start, all generated expansion rows, and representative Class/Gantt/Pie shape probes have landed. Required first-party cross-transport/public discovery rollout, the complete C5 mechanism classification and primary writer tranche, executable preset qualification, and the mandatory independent non-Rust wire-consumer author task remain open. Remaining long-tail bridge migration is C7b work unless it exposes a missing public recipe shape. Browser SVG and native export discovery qualification also remain separate release work. Do not declare the alpha contract candidate or freeze the contract before those gates close. |
+| C7a | Not eligible; intentionally blocked | ADR-0082 is accepted as an unfrozen design authority. Coarse Rust support discovery and its independent renderer-owned support-claim manifest (internal revision 26), the contract-owned `MaterializedThemeWireV1`, bounded typed/JSON materialization, the versioned diagnostic envelope, shared light/dark readable/canonical/materialized vectors, Flowchart/State/Sequence SVG+PNG light-dark-light isolation and cross-renderer reuse, root canvas/base-typography terminal witnesses, complete-spec cold start, all generated expansion rows, and representative Class/Gantt/Pie shape probes have landed. Required first-party cross-transport/public discovery rollout, the complete C5 mechanism classification and primary writer tranche, executable preset qualification, and the mandatory independent non-Rust wire-consumer author task remain open. Remaining long-tail bridge migration is C7b work unless it exposes a missing public recipe shape. Browser SVG and native export discovery qualification also remain separate release work. Do not declare the alpha contract candidate or freeze the contract before those gates close. |
 | C7b/C7c | Deferred independently | Remaining family/preset/showcase breadth proceeds under C7b without waiting for external assurance. External-host assurance fields remain a separately triggered C7c plan. |
 
 The latest C5 Mindmap slice moves only the family `FontStack` route to a typed terminal. One
@@ -1394,7 +1400,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   recipe, licensing, resource-cost, maturity, and evidence rules as every other candidate.
 - **Capability-discovery candidate:** Build the versioned query/result envelope from the core family
   catalog and the landed renderer-owned, versioned support-claim manifest, whose internal revision is
-  currently 25 and whose claims reconcile against the private C5 mechanism matrix. C5 family/target
+  currently 26 and whose claims reconcile against the private C5 mechanism matrix. C5 family/target
   modules own complete value-domain arguments and runtime admission predicates. The non-published
   C6a harness validates representative end-to-end
   integration and detects manifest drift; it cannot upgrade a descriptor to `Unconditional` merely
@@ -1409,7 +1415,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   discovery does not reimplement them. Unknown string IDs and additive rows are preserved and
   normalize to `Unverified`, while execution requests still reject unknown executable IDs. A concrete
   final render or export report remains authoritative for one request. Because this candidate has
-  not been published, internal `claim_revision = 21` records pre-freeze claim-authority changes
+  not been published, `claim_revision = 26` remains an alpha-only claim-authority lineage marker
   without constituting a stable public compatibility promise. `claim_revision` versions only
   this capability-support claim authority. It is never reused as a preset-catalog schema, recipe
   revision, recipe/resource fingerprint, or qualification revision; those KTD21 identities advance
@@ -1500,7 +1506,7 @@ and public theme scope from the independent renderer taxonomy before adding face
   lists only compiled-in recipes/resources while equivalent capability profiles receive identical
   public projections. Export vectors cover both `PresetExportV1` tags and reject unknown tags,
   missing or duplicate payloads, and untagged shape guessing. Revision tests keep the current
-  unpublished capability `claim_revision = 21` while independently changing catalog, recipe, and
+  unpublished capability `claim_revision = 26` while independently changing catalog, recipe, and
   qualification identities. The
   rollout gate then runs the native portions of the original U8-U11 matrices: Options/binding/Typst
   parity, native CLI scope, generated contracts, migration examples, and public API compilation.

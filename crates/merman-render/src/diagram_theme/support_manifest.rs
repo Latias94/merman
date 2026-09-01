@@ -10,7 +10,7 @@ use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportBaseTypographyProperty
 ///
 /// Bump this revision whenever a claim row changes, even when the wire query/result schemas do
 /// not change. Public descriptor revisions follow this manifest revision.
-pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 25;
+pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 26;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SupportClaimKind {
@@ -943,12 +943,6 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         facets: &["fill"],
     },
     RuleClaim {
-        family: "c4",
-        target: "title",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill"],
-    },
-    RuleClaim {
         family: "class",
         target: "cluster",
         kind: SupportClaimKind::LegacyPartial,
@@ -981,12 +975,6 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     RuleClaim {
         family: "cynefin",
         target: "text",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill"],
-    },
-    RuleClaim {
-        family: "cynefin",
-        target: "title",
         kind: SupportClaimKind::LegacyPartial,
         facets: &["fill"],
     },
@@ -1203,12 +1191,6 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     RuleClaim {
         family: "sankey",
         target: "text",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill"],
-    },
-    RuleClaim {
-        family: "sankey",
-        target: "title",
         kind: SupportClaimKind::LegacyPartial,
         facets: &["fill"],
     },
