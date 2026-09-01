@@ -681,7 +681,7 @@ style Client fill:#ddffdd,stroke:#00aa00,stroke-width:2px
 
 #[cfg(feature = "layout-elk")]
 #[test]
-fn class_svg_elk_layout_uses_upstream_adapter_dom() {
+fn class_svg_elk_layout_uses_common_painter_dom() {
     let svg = render_class_svg_from_text(
         r#"---
 config:
@@ -695,23 +695,68 @@ Animal <|-- Duck
 "#,
     );
 
-    assert!(
-        !svg.contains(r#"<g class="root""#),
-        "Class ELK must not emit the Dagre root wrapper: {svg}"
-    );
-    let subgraphs = svg
-        .find(r#"<g class="subgraphs""#)
-        .expect("Class ELK subgraphs group");
+    let root = svg
+        .find(r#"<g class="root""#)
+        .expect("Class ELK common root group");
     let nodes = svg
         .find(r#"<g class="nodes""#)
         .expect("Class ELK nodes group");
     let edges = svg
-        .find(r#"<g class="edges edgePaths""#)
+        .find(r#"<g class="edges edgePath""#)
         .expect("Class ELK edge paths group");
     let labels = svg
         .find(r#"<g class="edgeLabels""#)
         .expect("Class ELK edge labels group");
-    assert!(subgraphs < nodes && nodes < edges && edges < labels);
+    let clusters = svg
+        .find(r#"<g class="clusters""#)
+        .expect("Class ELK clusters group");
+    assert!(root < edges && edges < clusters && clusters < labels && labels < nodes);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_svg_elk_layout_uses_layout_elk_023_marker_profile() {
+    let svg = render_class_svg_from_text(
+        r#"---
+config:
+  layout: elk
+---
+classDiagram
+class C1["One"]
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Class ELK SVG");
+    let marker_units = |name: &str| {
+        document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("marker")
+                    && node.attribute("id").is_some_and(|id| id.ends_with(name))
+            })
+            .and_then(|node| node.attribute("markerUnits"))
+    };
+    for marker in [
+        "aggregationStart",
+        "aggregationEnd",
+        "extensionEnd",
+        "compositionStart",
+        "compositionEnd",
+        "dependencyStart",
+        "dependencyEnd",
+        "lollipopStart",
+        "lollipopEnd",
+    ] {
+        assert_eq!(
+            marker_units(marker),
+            None,
+            "ELK 0.2.3 ordinary marker {marker}"
+        );
+    }
+    assert_eq!(marker_units("extensionStart"), Some("userSpaceOnUse"));
+    assert_eq!(
+        marker_units("aggregationStart-margin"),
+        Some("userSpaceOnUse")
+    );
 }
 
 #[test]

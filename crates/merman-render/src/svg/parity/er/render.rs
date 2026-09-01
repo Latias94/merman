@@ -485,14 +485,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let Ok(idx) = rest[..digits_len].parse::<i64>() else {
             return (i64::MAX, i64::MAX);
         };
-        let suffix = &rest[digits_len..];
-        let variant = match suffix {
-            "-cyclic-0" => 0,
-            "" => 1,
-            "-cyclic-2" => 2,
-            _ => 99,
-        };
-        (idx, variant)
+        (idx, 0)
     }
     edges.sort_by_key(|e| er_edge_sort_key(&e.id));
 
@@ -685,20 +678,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let Some(rel) = relationships.get(idx) else {
             return edge_id.to_string();
         };
-        let rest = edge_id.strip_prefix("er-rel-").unwrap_or("");
-        let idx_prefix = idx.to_string();
-        let suffix = rest.strip_prefix(&idx_prefix).unwrap_or("");
-
-        if rel.entity_a == rel.entity_b {
-            match suffix {
-                "-cyclic-0" => format!("{}-cyclic-special-1", rel.entity_a),
-                "" => format!("{}-cyclic-special-mid", rel.entity_a),
-                "-cyclic-2" => format!("{}-cyclic-special-2", rel.entity_a),
-                _ => format!("{}-cyclic-special-mid", rel.entity_a),
-            }
-        } else {
-            format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
-        }
+        format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
     }
 
     let subgraph_context = ErSubgraphRenderContext {
@@ -710,20 +690,11 @@ pub(crate) fn render_er_diagram_svg_model(
         translate_y,
     };
 
-    if is_elk_layout {
-        // Mermaid's ER diagram output changes shape when `layout=elk` is enabled: markers are
-        // emitted in their own wrapper `<g>`, and the rest of the content is written as sibling
-        // top-level groups (`edges/edgePaths`, `subgraphs`, `nodes`, `edgeLabels`).
-        out.push_str("</g>\n");
-        if layout.clusters.is_empty() {
-            out.push_str(r#"<g class="subgraphs"/>"#);
-        } else {
-            out.push_str(r#"<g class="subgraphs">"#);
-            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
-            out.push_str("</g>");
-        }
-    } else {
-        let _ = writeln!(&mut out, r#"<g class="root">"#);
+    // Mermaid 11.17 renders both providers through the common layout painter. The provider only
+    // changes the edge group name and z-order: ELK lowers `.edges` beneath `.clusters`, while
+    // Dagre keeps the ordinary `edgePaths` group after clusters.
+    let _ = writeln!(&mut out, r#"<g class="root">"#);
+    if !is_elk_layout {
         if layout.clusters.is_empty() {
             out.push_str(r#"<g class="clusters"/>"#);
         } else {
@@ -734,7 +705,7 @@ pub(crate) fn render_er_diagram_svg_model(
     }
 
     if is_elk_layout {
-        out.push_str(r#"<g class="edges edgePaths">"#);
+        out.push_str(r#"<g class="edges edgePath">"#);
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
     }
@@ -800,6 +771,18 @@ pub(crate) fn render_er_diagram_svg_model(
         }
     }
     out.push_str("</g>");
+
+    // The published `@mermaid-js/layout-elk@0.2.3` common painter lowers the edge group after
+    // insertion, so its root order is edges, clusters, edgeLabels, nodes.
+    if is_elk_layout {
+        if layout.clusters.is_empty() {
+            out.push_str(r#"<g class="clusters"/>"#);
+        } else {
+            out.push_str(r#"<g class="clusters">"#);
+            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
+            out.push_str("</g>");
+        }
+    }
 
     out.push_str(r#"<g class="edgeLabels">"#);
     if options.debug.include_edges {
@@ -1578,10 +1561,7 @@ pub(crate) fn render_er_diagram_svg_model(
         out.push_str("</g>");
     }
     out.push_str("</g>\n");
-
-    if !is_elk_layout {
-        out.push_str("</g>\n</g>\n");
-    }
+    out.push_str("</g>\n</g>\n");
 
     push_er_gradient(&mut out, diagram_id, effective_config);
 

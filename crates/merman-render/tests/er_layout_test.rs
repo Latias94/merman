@@ -82,7 +82,7 @@ fn er_layout_emits_markers_and_dashes_from_rel_spec() {
 }
 
 #[test]
-fn er_dagre_recursive_relationship_keeps_original_node_before_helper_ranks() {
+fn er_dagre_recursive_relationship_hides_internal_helper_ranks() {
     let path = workspace_root()
         .join("fixtures")
         .join("er")
@@ -100,14 +100,34 @@ fn er_dagre_recursive_relationship_keeps_original_node_before_helper_ranks() {
             .unwrap_or_else(|| panic!("missing ER layout node {id}"))
     };
     let customer = node("entity-CUSTOMER-0");
-    let helper_1 = node("entity-CUSTOMER-0---entity-CUSTOMER-0---1");
-    let helper_2 = node("entity-CUSTOMER-0---entity-CUSTOMER-0---2");
     let order = node("entity-ORDER-1");
     let line_item = node("entity-LINE-ITEM-2");
 
-    assert!(customer.y < helper_1.y && helper_1.y < helper_2.y);
-    assert!((helper_1.y - order.y).abs() < 1e-9);
-    assert!((helper_2.y - line_item.y).abs() < 1e-9);
+    assert!(layout.nodes.iter().all(|node| !node.id.contains("---")));
+    let loop_edge = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == customer.id && edge.to == customer.id)
+        .expect("logical recursive relationship edge");
+    assert_eq!(
+        layout
+            .edges
+            .iter()
+            .filter(|edge| edge.from == customer.id && edge.to == customer.id)
+            .count(),
+        1
+    );
+    assert_eq!(loop_edge.points.len(), 4);
+    assert!(loop_edge.label.is_some());
+    let loop_start = &loop_edge.points[0];
+    let loop_inner_start = &loop_edge.points[1];
+    let loop_inner_end = &loop_edge.points[2];
+    let loop_end = &loop_edge.points[3];
+    let customer_bottom = customer.y + customer.height / 2.0;
+    assert!((loop_start.y - customer_bottom).abs() < 1e-6);
+    assert!((loop_end.y - customer_bottom).abs() < 1e-6);
+    assert!(loop_inner_start.y > customer_bottom && loop_inner_end.y > customer_bottom);
+    assert!(customer.y < order.y && order.y < line_item.y);
 }
 
 #[test]
@@ -215,7 +235,7 @@ fn er_elk_layout_materializes_compound_subgraphs_and_svg_groups() {
         .expect("render ER SVG")
         .svg()
         .to_owned();
-    assert!(svg.contains("subgraphs"), "{svg}");
+    assert!(svg.contains(r#"class="clusters""#), "{svg}");
     assert!(svg.contains("er-elk-subgraph-Orders"), "{svg}");
     assert!(svg.contains("Order Domain"), "{svg}");
 }

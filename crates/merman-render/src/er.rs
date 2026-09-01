@@ -5,7 +5,7 @@ use crate::text::{
 };
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
+use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 use serde_json::Value;
@@ -401,7 +401,16 @@ fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
 
 fn is_er_self_loop_dummy_node_id(id: &str) -> bool {
     // Mermaid's dagre renderer creates self-loop helper nodes using `${nodeId}---${nodeId}---{1|2}`.
-    id.contains("---")
+    let Some((base, suffix)) = id.rsplit_once("---") else {
+        return false;
+    };
+    if !matches!(suffix, "1" | "2") {
+        return false;
+    }
+    let Some((left, right)) = base.split_once("---") else {
+        return false;
+    };
+    left == right
 }
 
 #[derive(Debug, Clone)]
@@ -414,6 +423,251 @@ struct LayoutEdgeParts {
     start_marker: Option<String>,
     end_marker: Option<String>,
     stroke_dasharray: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ErSelfLoopSide {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+fn er_default_self_loop_side(rankdir: RankDir) -> ErSelfLoopSide {
+    match rankdir {
+        RankDir::BT => ErSelfLoopSide::Bottom,
+        RankDir::LR => ErSelfLoopSide::Right,
+        RankDir::RL => ErSelfLoopSide::Left,
+        RankDir::TB => ErSelfLoopSide::Top,
+    }
+}
+
+fn er_self_loop_side(
+    node: &NodeLabel,
+    hints: impl IntoIterator<Item = (f64, f64)>,
+    rankdir: RankDir,
+) -> ErSelfLoopSide {
+    let hints = hints.into_iter().collect::<Vec<_>>();
+    if hints.is_empty() {
+        return er_default_self_loop_side(rankdir);
+    }
+
+    let (sum_x, sum_y) = hints.iter().fold((0.0, 0.0), |(x, y), (hint_x, hint_y)| {
+        (x + hint_x, y + hint_y)
+    });
+    let count = hints.len() as f64;
+    let dx = sum_x / count - node.x.unwrap_or(0.0);
+    let dy = sum_y / count - node.y.unwrap_or(0.0);
+    if dx.abs() > dy.abs() {
+        if dx > 0.0 {
+            ErSelfLoopSide::Right
+        } else {
+            ErSelfLoopSide::Left
+        }
+    } else if dy > 0.0 {
+        ErSelfLoopSide::Bottom
+    } else if dy < 0.0 {
+        ErSelfLoopSide::Top
+    } else {
+        er_default_self_loop_side(rankdir)
+    }
+}
+
+fn er_self_loop_points(
+    node: &NodeLabel,
+    side: ErSelfLoopSide,
+    label_width: f64,
+) -> Vec<LayoutPoint> {
+    let x = node.x.unwrap_or(0.0);
+    let y = node.y.unwrap_or(0.0);
+    let half_width = node.width / 2.0;
+    let half_height = node.height / 2.0;
+    let max_span = (node.width * 0.8).min(100.0).max(36.0);
+    let span = label_width.max(node.width * 0.35).clamp(36.0, max_span);
+    let depth = node
+        .width
+        .min(node.height)
+        .mul_add(0.45, 0.0)
+        .clamp(24.0, 48.0);
+
+    let mut points = match side {
+        ErSelfLoopSide::Bottom => vec![
+            LayoutPoint {
+                x: x - span / 2.0,
+                y: y + half_height,
+            },
+            LayoutPoint {
+                x: x - span / 2.0,
+                y: y + half_height + depth,
+            },
+            LayoutPoint {
+                x: x + span / 2.0,
+                y: y + half_height + depth,
+            },
+            LayoutPoint {
+                x: x + span / 2.0,
+                y: y + half_height,
+            },
+        ],
+        ErSelfLoopSide::Right => vec![
+            LayoutPoint {
+                x: x + half_width,
+                y: y - span / 2.0,
+            },
+            LayoutPoint {
+                x: x + half_width + depth,
+                y: y - span / 2.0,
+            },
+            LayoutPoint {
+                x: x + half_width + depth,
+                y: y + span / 2.0,
+            },
+            LayoutPoint {
+                x: x + half_width,
+                y: y + span / 2.0,
+            },
+        ],
+        ErSelfLoopSide::Left => vec![
+            LayoutPoint {
+                x: x - half_width,
+                y: y - span / 2.0,
+            },
+            LayoutPoint {
+                x: x - half_width - depth,
+                y: y - span / 2.0,
+            },
+            LayoutPoint {
+                x: x - half_width - depth,
+                y: y + span / 2.0,
+            },
+            LayoutPoint {
+                x: x - half_width,
+                y: y + span / 2.0,
+            },
+        ],
+        ErSelfLoopSide::Top => vec![
+            LayoutPoint {
+                x: x - span / 2.0,
+                y: y - half_height,
+            },
+            LayoutPoint {
+                x: x - span / 2.0,
+                y: y - half_height - depth,
+            },
+            LayoutPoint {
+                x: x + span / 2.0,
+                y: y - half_height - depth,
+            },
+            LayoutPoint {
+                x: x + span / 2.0,
+                y: y - half_height,
+            },
+        ],
+    };
+
+    // Mermaid's edge painter clips the first/last points against the node by shooting a ray from
+    // the node center toward the adjacent inner bend. Keep the compact route's inner points
+    // intact, but expose the same boundary intersections in the public LayoutEdge so the
+    // headless SVG path/data-points match the browser renderer.
+    if points.len() >= 4 {
+        let first_inner = points[1].clone();
+        let last_index = points.len() - 1;
+        let last_inner = points[last_index - 1].clone();
+        points[0] = er_intersect_node_rect(node, &first_inner);
+        let last_boundary = er_intersect_node_rect(node, &last_inner);
+        points[last_index] = last_boundary;
+    }
+    points
+}
+
+fn er_intersect_node_rect(node: &NodeLabel, point: &LayoutPoint) -> LayoutPoint {
+    // Port of Mermaid's intersect.rect: the ray starts at the node center and ends at the
+    // requested route point. This deliberately handles the self-loop endpoint case separately
+    // from `clip_edge_endpoints`, whose segment clipping assumes the point is already inside the
+    // rectangle and would leave raw boundary coordinates unchanged.
+    let x = node.x.unwrap_or(0.0);
+    let y = node.y.unwrap_or(0.0);
+    let dx = point.x - x;
+    let dy = point.y - y;
+    let mut half_width = node.width / 2.0;
+    let mut half_height = node.height / 2.0;
+
+    let (sx, sy) = if dy.abs() * half_width > dx.abs() * half_height {
+        if dy < 0.0 {
+            half_height = -half_height;
+        }
+        let sx = if dy == 0.0 {
+            0.0
+        } else {
+            (half_height * dx) / dy
+        };
+        (sx, half_height)
+    } else {
+        if dx < 0.0 {
+            half_width = -half_width;
+        }
+        let sy = if dx == 0.0 {
+            0.0
+        } else {
+            (half_width * dy) / dx
+        };
+        (half_width, sy)
+    };
+
+    LayoutPoint {
+        x: x + sx,
+        y: y + sy,
+    }
+}
+
+fn er_self_loop_label_position(
+    points: &[LayoutPoint],
+    side: ErSelfLoopSide,
+    label_width: f64,
+    label_height: f64,
+    node: &NodeLabel,
+) -> (f64, f64) {
+    let x = node.x.unwrap_or(0.0);
+    let y = node.y.unwrap_or(0.0);
+    let gap = 4.0;
+    match side {
+        ErSelfLoopSide::Bottom => (
+            x,
+            points
+                .iter()
+                .map(|point| point.y)
+                .fold(f64::NEG_INFINITY, f64::max)
+                + label_height / 2.0
+                + gap,
+        ),
+        ErSelfLoopSide::Right => (
+            points
+                .iter()
+                .map(|point| point.x)
+                .fold(f64::NEG_INFINITY, f64::max)
+                + label_width / 2.0
+                + gap,
+            y,
+        ),
+        ErSelfLoopSide::Left => (
+            points
+                .iter()
+                .map(|point| point.x)
+                .fold(f64::INFINITY, f64::min)
+                - label_width / 2.0
+                - gap,
+            y,
+        ),
+        ErSelfLoopSide::Top => (
+            x,
+            points
+                .iter()
+                .map(|point| point.y)
+                .fold(f64::INFINITY, f64::min)
+                - label_height / 2.0
+                - gap,
+        ),
+    }
 }
 
 // Layout-engine fallback used before SVG path insertion. This deliberately stays outside the SVG
@@ -699,6 +953,7 @@ fn layout_er_diagram_dagre_typed(
         // Mermaid's Dagre adapter always enables `compound: true`, even without clusters.
         compound: true,
     });
+    let rankdir = graph_label.rankdir;
     g.set_graph(graph_label);
 
     fn parse_entity_counter_from_id(id: &str) -> Option<usize> {
@@ -817,6 +1072,7 @@ fn layout_er_diagram_dagre_typed(
             let node_id = r.entity_a.as_str();
             let special_1 = format!("{node_id}---{node_id}---1");
             let special_2 = format!("{node_id}---{node_id}---2");
+            let parent_id = g.parent(node_id).map(str::to_owned);
 
             if g.node(&special_1).is_none() {
                 g.set_node(
@@ -837,6 +1093,12 @@ fn layout_er_diagram_dagre_typed(
                         ..Default::default()
                     },
                 );
+            }
+            if let Some(parent_id) = parent_id.as_deref()
+                && g.has_node(parent_id)
+            {
+                g.set_parent_ref(&special_1, parent_id);
+                g.set_parent_ref(&special_2, parent_id);
             }
 
             let (label_w, label_h) = if r.role_a.trim().is_empty() {
@@ -937,6 +1199,12 @@ fn layout_er_diagram_dagre_typed(
         let Some(n) = g.node(&id) else {
             continue;
         };
+        // Self-loop helper nodes are layout-only. Mermaid keeps them in Dagre's private graph so
+        // the engine can choose a stable loop side, but the normalized LayoutData and SVG expose
+        // only the original entity nodes and the single logical relationship edge.
+        if is_er_self_loop_dummy_node_id(&id) {
+            continue;
+        }
         let is_cluster = subgraph_ids.contains(id.as_str());
         let x = n.x.unwrap_or(0.0);
         let y = n.y.unwrap_or(0.0);
@@ -1001,7 +1269,7 @@ fn layout_er_diagram_dagre_typed(
         node_rect_by_id.insert(n.id.clone(), Rect::from_center(n.x, n.y, n.width, n.height));
     }
 
-    let mut edges: Vec<LayoutEdgeParts> = Vec::new();
+    let mut edges_by_id: HashMap<String, LayoutEdgeParts> = HashMap::new();
     for key in g.edge_keys() {
         let Some(e) = g.edge_by_key(&key) else {
             continue;
@@ -1087,38 +1355,141 @@ fn layout_er_diagram_dagre_typed(
                 })
             };
 
-        edges.push(LayoutEdgeParts {
+        edges_by_id.insert(
             id,
-            from: key.v.clone(),
-            to: key.w.clone(),
-            points,
-            label,
-            start_marker,
-            end_marker,
-            stroke_dasharray,
-        });
+            LayoutEdgeParts {
+                id: key
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("edge:{}:{}", key.v, key.w)),
+                from: key.v.clone(),
+                to: key.w.clone(),
+                points,
+                label,
+                start_marker,
+                end_marker,
+                stroke_dasharray,
+            },
+        );
     }
-    edges.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let mut out_edges: Vec<LayoutEdge> = Vec::new();
-    for e in edges {
-        out_edges.push(LayoutEdge {
-            id: e.id,
-            from: e.from,
-            to: e.to,
-            from_cluster: None,
-            to_cluster: None,
-            points: e.points,
-            label: e.label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: e.start_marker,
-            end_marker: e.end_marker,
-            stroke_dasharray: e.stroke_dasharray,
-        });
+    // Dagre needs the three helper segments above for self-loop ranking, while Mermaid's
+    // `getEdgesToRender()` merges those segments back into one logical edge before painting. Do
+    // the same at this boundary: internal routing remains available, but no helper IDs, nodes,
+    // split markers, or duplicate labels leak into the public layout artifact.
+    let mut out_edges: Vec<LayoutEdge> = Vec::with_capacity(model.relationships.len());
+    for (idx, relationship) in model.relationships.iter().enumerate() {
+        let edge_id = format!("er-rel-{idx}");
+        if relationship.entity_a == relationship.entity_b {
+            let first_id = format!("{edge_id}-cyclic-0");
+            let last_id = format!("{edge_id}-cyclic-2");
+            let first = edges_by_id.get(&first_id).cloned();
+            let middle = edges_by_id.get(&edge_id).cloned();
+            let last = edges_by_id.get(&last_id).cloned();
+
+            let Some(node) = g.node(&relationship.entity_a).cloned() else {
+                continue;
+            };
+            let dummy_ids = [
+                format!("{}---{}---1", relationship.entity_a, relationship.entity_a),
+                format!("{}---{}---2", relationship.entity_a, relationship.entity_a),
+            ];
+            let mut hints = dummy_ids
+                .iter()
+                .filter_map(|id| g.node(id))
+                .filter_map(|node| Some((node.x?, node.y?)))
+                .collect::<Vec<_>>();
+            if hints.is_empty() {
+                for part in [first.as_ref(), middle.as_ref(), last.as_ref()]
+                    .into_iter()
+                    .flatten()
+                {
+                    hints.extend(part.points.iter().map(|point| (point.x, point.y)));
+                }
+            }
+            let side = er_self_loop_side(&node, hints, rankdir);
+            let label = middle
+                .as_ref()
+                .and_then(|part| part.label.clone())
+                .or_else(|| first.as_ref().and_then(|part| part.label.clone()))
+                .or_else(|| last.as_ref().and_then(|part| part.label.clone()));
+            let label_width = label.as_ref().map(|label| label.width).unwrap_or(0.0);
+            let points = er_self_loop_points(&node, side, label_width);
+            let label = label.map(|mut label| {
+                let (x, y) =
+                    er_self_loop_label_position(&points, side, label.width, label.height, &node);
+                label.x = x;
+                label.y = y;
+                label
+            });
+            let self_loop_cluster = subgraph_ids
+                .contains(relationship.entity_a.as_str())
+                .then(|| relationship.entity_a.clone());
+
+            out_edges.push(LayoutEdge {
+                id: edge_id.clone(),
+                from: relationship.entity_a.clone(),
+                to: relationship.entity_b.clone(),
+                from_cluster: self_loop_cluster.clone(),
+                to_cluster: self_loop_cluster,
+                points,
+                label,
+                start_label_left: None,
+                start_label_right: None,
+                end_label_left: None,
+                end_label_right: None,
+                start_marker: er_marker_id(relationship.rel_spec.card_b.as_str(), "START"),
+                end_marker: er_marker_id(relationship.rel_spec.card_a.as_str(), "END"),
+                stroke_dasharray: (relationship.rel_spec.rel_type == "NON_IDENTIFYING")
+                    .then(|| "8,8".to_string()),
+            });
+            // Even if Dagre returns an unexpected partial segment set, no cyclic-special edge or
+            // helper route should leak into the public artifact.
+            edges_by_id.remove(&first_id);
+            edges_by_id.remove(&edge_id);
+            edges_by_id.remove(&last_id);
+            continue;
+        } else if let Some(edge) = edges_by_id.remove(&edge_id) {
+            out_edges.push(LayoutEdge {
+                id: edge.id,
+                from: edge.from,
+                to: edge.to,
+                from_cluster: None,
+                to_cluster: None,
+                points: edge.points,
+                label: edge.label,
+                start_label_left: None,
+                start_label_right: None,
+                end_label_left: None,
+                end_label_right: None,
+                start_marker: edge.start_marker,
+                end_marker: edge.end_marker,
+                stroke_dasharray: edge.stroke_dasharray,
+            });
+        }
     }
+
+    // Keep a defensive path for malformed/internal edges, but sort it after source relationships
+    // so a valid diagram's public edge order remains exactly Mermaid's relationship declaration
+    // order.
+    let mut leftovers = edges_by_id.into_values().collect::<Vec<_>>();
+    leftovers.sort_by(|left, right| left.id.cmp(&right.id));
+    out_edges.extend(leftovers.into_iter().map(|edge| LayoutEdge {
+        id: edge.id,
+        from: edge.from,
+        to: edge.to,
+        from_cluster: None,
+        to_cluster: None,
+        points: edge.points,
+        label: edge.label,
+        start_label_left: None,
+        start_label_right: None,
+        end_label_left: None,
+        end_label_right: None,
+        start_marker: edge.start_marker,
+        end_marker: edge.end_marker,
+        stroke_dasharray: edge.stroke_dasharray,
+    }));
 
     let bounds = er_layout_bounds(&nodes, &out_edges);
 
