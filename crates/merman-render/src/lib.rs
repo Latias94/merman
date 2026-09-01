@@ -38,6 +38,7 @@ mod mermaid_style;
 pub mod mindmap;
 pub mod model;
 mod native_filter_receipt;
+mod number_format;
 pub mod packet;
 pub mod pie;
 pub mod quadrantchart;

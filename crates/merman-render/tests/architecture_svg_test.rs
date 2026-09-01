@@ -629,7 +629,7 @@ fn architecture_icon_text_clamp_uses_root_svg_font_size_not_architecture_layout_
     let svg = render_architecture_text_with_engine_and_options(
         &engine,
         include_str!(
-            "../../../../../fixtures/architecture/upstream_architecture_docs_service_icon_text.mmd"
+            "../../../fixtures/architecture/upstream_architecture_docs_service_icon_text.mmd"
         ),
         &SvgRenderOptions {
             diagram_id: Some("architecture-icontext".to_string()),
@@ -741,6 +741,64 @@ fn architecture_typed_base_typography_reaches_svg_css_and_preserves_cytoscape_la
     assert_eq!(evidence.required_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn architecture_near_integer_font_size_uses_one_canonical_css_receipt() {
+    let font_stack =
+        FontStack::new(["Architecture Canonical", "monospace"]).expect("valid Architecture font");
+    let theme = architecture_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(font_stack)
+            // This is the largest f32 below 16.0. CSS emission canonicalizes it to 16px.
+            .with_font_size_px(f32::from_bits(0x417f_ffff))
+            .expect("valid Architecture font size"),
+    );
+    let host = Arc::new(CountingArchitectureHost::default());
+    let source = r#"architecture-beta
+  group platform(cloud)[Platform]
+  service api(server)[API] in platform
+  service icon_text "Canonical icon text" [Icon text title]
+  api:R -[request]- L:icon_text
+"#;
+    let artifact = prepare_architecture_with_theme_and_environment(
+        source,
+        &theme,
+        Engine::new(),
+        counting_architecture_environment(Arc::clone(&host)),
+    );
+
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("architecture-canonical-size".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render themed Architecture");
+    let stylesheet = architecture_stylesheet(rendered.svg());
+    assert!(
+        stylesheet.contains("font-size:16px")
+            && !stylesheet.contains("15.999999")
+            && !stylesheet.contains("15.999998"),
+        "near-integer typed font size must use the canonical CSS spelling: {stylesheet}"
+    );
+
+    let render_styles = host
+        .styles
+        .lock()
+        .expect("Architecture render styles lock")
+        .clone();
+    assert!(
+        render_styles.iter().any(|style| style.font_size == 16.0),
+        "text measurement must consume the same canonical font size as CSS: {render_styles:?}"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 

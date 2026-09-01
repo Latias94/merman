@@ -753,7 +753,7 @@ pub(super) fn architecture_css_parts_with_typography<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
     resolved_font_family: Option<&str>,
-    resolved_font_size_px: Option<f64>,
+    resolved_font_size: Option<(f64, &str)>,
 ) -> ArchitectureCssParts
 where
     I: Copy + std::fmt::Display,
@@ -766,12 +766,17 @@ where
     let font_family = resolved_font_family
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| SvgTheme::new(effective_config).font_family_css());
-    let font_size = resolved_font_size_px
+    let (font_size, font_size_css) = resolved_font_size
+        .map(|(font_size, font_size_css)| (font_size, font_size_css.to_string()))
         .unwrap_or_else(|| {
-            crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
-        })
-        .max(1.0);
-    let font_size_css = format!("{}px", fmt(font_size));
+            let font_size =
+                crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
+                    .max(1.0);
+            (
+                font_size,
+                format!("{}px", crate::number_format::canonical_number(font_size)),
+            )
+        });
     let normal_edge_stroke_width_css = mermaid_stroke_width_px(effective_config);
 
     let text_color = theme_token(effective_config, "textColor", "#333");

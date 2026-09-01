@@ -70,6 +70,7 @@ impl ArchitectureTypographyCssEmission {
 pub(crate) struct ArchitectureTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     font_size_px: f64,
+    font_size_css: Box<str>,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     terminals: ArchitectureTypographyTerminalInventory,
@@ -125,10 +126,14 @@ impl ArchitectureTypographyThemePlan {
                 .unwrap_or(16.0)
                 .max(1.0),
         };
+        let font_size_px = crate::number_format::canonicalize_number(font_size_px).max(1.0);
+        let font_size_css =
+            format!("{}px", crate::number_format::canonical_number(font_size_px)).into_boxed_str();
 
         Self {
             inherited_font_stack,
             font_size_px,
+            font_size_css,
             typed_font_size_requested,
             typed_font_size_active,
             terminals,
@@ -145,6 +150,10 @@ impl ArchitectureTypographyThemePlan {
         self.font_size_px
     }
 
+    pub(crate) fn font_size_css(&self) -> &str {
+        &self.font_size_css
+    }
+
     pub(crate) fn typography_requested(&self) -> bool {
         self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
@@ -154,7 +163,7 @@ impl ArchitectureTypographyThemePlan {
             .then(|| ArchitectureTypographyThemeReceipt {
                 expected_font_family_css: self.font_family_css().into(),
                 expected_font_size_px: self.font_size_px,
-                expected_font_size_css: format!("{}px", self.font_size_px).into(),
+                expected_font_size_css: self.font_size_css().into(),
                 expected_terminals: self.terminals,
                 css_emitted: false,
                 native_svg_text_count: 0,

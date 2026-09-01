@@ -291,6 +291,35 @@ fn render_class_svg_with_theme(source: &str, theme: &DiagramTheme, engine: Engin
         .to_owned()
 }
 
+fn layout_and_render_class_svg_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> (
+    merman_render::model::ClassDiagramLayout,
+    family::RenderedFamilySvg,
+) {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Class diagram")
+        .expect("detect themed Class diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Class session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed Class diagram");
+    let layout = serde_json::from_value(
+        artifact.layout_json().expect("Class layout projection")["layout"]["ClassDiagramV2"]
+            .clone(),
+    )
+    .expect("Class layout");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed Class SVG");
+    (layout, rendered)
+}
+
 fn try_render_class_svg_with_resource_policy(
     source: &str,
     resource_policy: RenderResourcePolicy,
@@ -415,6 +444,79 @@ fn class_typed_font_size_outranks_root_layout_fallback() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn class_cardinality_geometry_keeps_mermaids_fixed_font_size() {
+    fn theme_with_size(font_size_px: f32) -> DiagramTheme {
+        class_typography_theme(
+            ThemeTextStyle::default()
+                .with_font_size_px(font_size_px)
+                .expect("valid Class font size"),
+        )
+    }
+
+    fn cardinality_dimensions(
+        layout: &merman_render::model::ClassDiagramLayout,
+    ) -> Vec<(f64, f64)> {
+        layout
+            .edges
+            .iter()
+            .flat_map(|edge| {
+                [
+                    edge.start_label_left.as_ref(),
+                    edge.start_label_right.as_ref(),
+                    edge.end_label_left.as_ref(),
+                    edge.end_label_right.as_ref(),
+                ]
+            })
+            .flatten()
+            .map(|label| (label.width, label.height))
+            .collect()
+    }
+
+    let source = "classDiagram\n  Alpha \"one\" --> \"many\" Beta : owns\n";
+    let (small_layout, small_rendered) =
+        layout_and_render_class_svg_with_theme(source, &theme_with_size(12.0), Engine::new());
+    let (large_layout, large_rendered) =
+        layout_and_render_class_svg_with_theme(source, &theme_with_size(48.0), Engine::new());
+
+    let small_dimensions = cardinality_dimensions(&small_layout);
+    let large_dimensions = cardinality_dimensions(&large_layout);
+    assert!(
+        !small_dimensions.is_empty(),
+        "expected Class cardinality labels"
+    );
+    assert_eq!(large_dimensions, small_dimensions);
+    assert!(large_rendered.svg().contains("font-size:48px;"));
+    assert!(
+        large_rendered
+            .svg()
+            .contains(".edgeTerminals{font-size:11px;line-height:initial;}")
+    );
+    for text in ["one", "many"] {
+        let needle = format!("<p>{text}</p>");
+        let small_terminal = foreign_object_for_text(small_rendered.svg(), &needle);
+        let large_terminal = foreign_object_for_text(large_rendered.svg(), &needle);
+        assert_eq!(
+            (
+                attr_f64(large_terminal, "width"),
+                attr_f64(large_terminal, "height"),
+            ),
+            (
+                attr_f64(small_terminal, "width"),
+                attr_f64(small_terminal, "height"),
+            ),
+            "Class cardinality {text:?} must remain on the fixed 11px terminal style"
+        );
+    }
+
+    let evidence =
+        merman_render::__private::family_evidence(large_rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }

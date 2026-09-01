@@ -42,6 +42,22 @@ type ClassNote = merman_core::models::class_diagram::ClassNote;
 type ClassLayoutGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 type ExtractedClusterGraph = (Box<ClassLayoutGraph>, HashSet<String>);
 
+pub(crate) const CLASS_CARDINALITY_FONT_SIZE_PX: f64 = 11.0;
+
+/// Returns the fixed Mermaid text style used by class-relation cardinalities.
+///
+/// Cardinalities inherit the diagram font family, but Mermaid's stylesheet owns their size at
+/// 11px independently of the base typography route. Layout and SVG emission must therefore use
+/// this same style instead of the base label style.
+pub(crate) fn class_cardinality_text_style(base: &TextStyle) -> TextStyle {
+    TextStyle {
+        font_family: base.font_family.clone(),
+        font_size: CLASS_CARDINALITY_FONT_SIZE_PX,
+        font_weight: None,
+        font_style: None,
+    }
+}
+
 pub(crate) fn class_node_requires_math(node: &ClassNode) -> bool {
     [
         node.label.as_str(),
@@ -2314,6 +2330,7 @@ fn layout_class_diagram_typed_inner(
             message: "Class typography layout font size changed after preparation".to_string(),
         });
     }
+    let cardinality_text_style = class_cardinality_text_style(&text_style);
     let contains_math = class_requires_math(model);
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike) || contains_math;
     let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike) || contains_math;
@@ -2534,7 +2551,7 @@ fn layout_class_diagram_typed_inner(
         let (srw, srh) = label_metrics(
             &start_text,
             measurer,
-            &text_style,
+            &cardinality_text_style,
             wrap_mode_label,
             mermaid_config,
             math_renderer,
@@ -2542,7 +2559,7 @@ fn layout_class_diagram_typed_inner(
         let (elw, elh) = label_metrics(
             &end_text,
             measurer,
-            &text_style,
+            &cardinality_text_style,
             wrap_mode_label,
             mermaid_config,
             math_renderer,

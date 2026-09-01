@@ -293,7 +293,7 @@ pub(super) fn fmt_string(v: f64) -> String {
     out
 }
 
-pub(super) fn fmt_display(v: f64) -> FmtDisplay {
+pub(super) fn fmt_display(v: f64) -> crate::number_format::CanonicalNumber {
     fmt(v)
 }
 
@@ -316,67 +316,15 @@ pub(super) fn push_point_pair(out: &mut impl SvgOutput, x: f64, y: f64) {
     let _ = write!(out, "{},{}", fmt_display(x), fmt_display(y));
 }
 
-pub(super) fn fmt(v: f64) -> FmtDisplay {
-    FmtDisplay(v)
-}
-
-const MAX_SAFE_INTEGER_F64: f64 = 9_007_199_254_740_991.0;
-
-fn fmt_fast_integer(v: f64) -> Option<i64> {
-    (v.fract() == 0.0 && v.abs() <= MAX_SAFE_INTEGER_F64).then_some(v as i64)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) struct FmtDisplay(f64);
-
-impl std::fmt::Display for FmtDisplay {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut v = self.0;
-        if !v.is_finite() {
-            return f.write_str("0");
-        }
-
-        if v.abs() < 1e-9 {
-            v = 0.0;
-        }
-        let nearest = v.round();
-        if (v - nearest).abs() < 1e-6 {
-            v = nearest;
-        }
-        if v == -0.0 {
-            v = 0.0;
-        }
-        if let Some(i) = fmt_fast_integer(v) {
-            return write!(f, "{i}");
-        }
-
-        write!(f, "{v}")
-    }
+pub(super) fn fmt(v: f64) -> crate::number_format::CanonicalNumber {
+    crate::number_format::canonical_number(v)
 }
 
 pub(super) fn fmt_into(out: &mut impl SvgOutput, v: f64) {
     // Match how Mermaid/D3 generally stringify numbers for SVG attributes:
     // use a round-trippable decimal form (similar to JS `Number#toString()`),
     // but avoid `-0` and tiny float noise from our own calculations.
-    if !v.is_finite() {
-        out.push('0');
-        return;
-    }
-
-    let mut v = if v.abs() < 1e-9 { 0.0 } else { v };
-    let nearest = v.round();
-    if (v - nearest).abs() < 1e-6 {
-        v = nearest;
-    }
-    if v == -0.0 {
-        v = 0.0;
-    }
-    if let Some(i) = fmt_fast_integer(v) {
-        let _ = write!(out, "{i}");
-        return;
-    }
-
-    let _ = write!(out, "{v}");
+    let _ = write!(out, "{}", crate::number_format::canonical_number(v));
 }
 
 pub(super) fn fmt_path(v: f64) -> String {

@@ -13,6 +13,7 @@ pub(crate) const KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX: f64 = 25.0;
 pub(crate) const KANBAN_SECTION_PADDING_PX: f64 = 10.0;
 pub(crate) const KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX: f64 = 24.0;
 pub(crate) const KANBAN_ITEM_LABEL_PADDING_Y_PX: f64 = 10.0;
+const KANBAN_DETAIL_LABEL_MEASUREMENT_PASSES: usize = 2;
 
 pub(crate) struct KanbanMarkdown<'a> {
     sanitize_config: &'a merman_core::MermaidConfig,
@@ -317,12 +318,31 @@ fn kanban_layout_work_units(model: &KanbanDiagramRenderModel) -> usize {
         .iter()
         .filter(|node| node.parent_id.is_some())
         .count();
+    let non_empty_detail_labels = model
+        .nodes
+        .iter()
+        .filter(|node| node.parent_id.is_some())
+        .fold(0usize, |count, node| {
+            count
+                .saturating_add(usize::from(
+                    node.ticket.as_deref().is_some_and(|text| !text.is_empty()),
+                ))
+                .saturating_add(usize::from(
+                    node.assigned
+                        .as_deref()
+                        .is_some_and(|text| !text.is_empty()),
+                ))
+        });
+    let detail_measurement_work =
+        non_empty_detail_labels.saturating_mul(KANBAN_DETAIL_LABEL_MEASUREMENT_PASSES);
+
     model
         .nodes
         .len()
         .saturating_mul(2)
         .saturating_add(sections.saturating_mul(2))
         .saturating_add(items.saturating_mul(3))
+        .saturating_add(detail_measurement_work)
 }
 
 #[cfg(test)]
@@ -733,10 +753,16 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
 
 #[cfg(test)]
 mod tests {
-    use super::{layout_kanban_diagram_typed, replace_first_like_javascript};
-    use crate::text::DeterministicTextMeasurer;
+    use super::{
+        kanban_layout_work_units, layout_kanban_diagram_typed,
+        prepare_kanban_diagram_typed_with_work_meter, replace_first_like_javascript,
+    };
+    use crate::Error;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
     use serde_json::json;
+    use std::cell::Cell;
 
     fn section(id: &str, label: &str) -> KanbanRenderNode {
         let mut node = KanbanRenderNode::new(id, label);
@@ -750,12 +776,109 @@ mod tests {
         node
     }
 
+    fn item_with_details(
+        id: &str,
+        label: &str,
+        parent_id: &str,
+        ticket: Option<&str>,
+        assigned: Option<&str>,
+    ) -> KanbanRenderNode {
+        let mut node = item(id, label, parent_id);
+        node.ticket = ticket.map(str::to_owned);
+        node.assigned = assigned.map(str::to_owned);
+        node
+    }
+
+    #[derive(Default)]
+    struct CountingTextMeasurer {
+        calls: Cell<usize>,
+        inner: DeterministicTextMeasurer,
+    }
+
+    impl TextMeasurer for CountingTextMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.calls.set(self.calls.get().saturating_add(1));
+            self.inner.measure(text, style)
+        }
+    }
+
     #[test]
     fn kanban_geometry_constants_match_mermaid() {
         assert_eq!(super::KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX, 25.0);
         assert_eq!(super::KANBAN_SECTION_PADDING_PX, 10.0);
         assert_eq!(super::KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, 24.0);
         assert_eq!(super::KANBAN_ITEM_LABEL_PADDING_Y_PX, 10.0);
+    }
+
+    #[test]
+    fn kanban_layout_work_units_charge_each_non_empty_detail_label() {
+        let cases = [
+            ("no details", None, None, 9),
+            ("ticket only", Some("MC-2038"), None, 11),
+            ("assigned only", None, Some("Alice"), 11),
+            ("ticket and assigned", Some("MC-2038"), Some("Alice"), 13),
+            ("empty details", Some(""), Some(""), 9),
+        ];
+
+        for (name, ticket, assigned, expected) in cases {
+            let model = KanbanDiagramRenderModel {
+                nodes: vec![
+                    section("todo", "Todo"),
+                    item_with_details("task-1", "Task", "todo", ticket, assigned),
+                ],
+            };
+
+            assert_eq!(kanban_layout_work_units(&model), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn kanban_layout_work_budget_is_charged_before_detail_measurement() {
+        let model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "Todo"),
+                item_with_details("task-1", "Task", "todo", Some("MC-2038"), Some("Alice")),
+            ],
+        };
+        let expected_work = kanban_layout_work_units(&model);
+        let measurer = CountingTextMeasurer::default();
+        let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
+            .unwrap();
+        let narrow_meter = OperationWorkMeter::new(narrow_policy);
+        let error = prepare_kanban_diagram_typed_with_work_meter(
+            &model,
+            &merman_core::MermaidConfig::from_value(json!({})),
+            None,
+            &measurer,
+            &narrow_meter,
+        )
+        .unwrap_err();
+
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected structured layout work rejection");
+        };
+        assert_eq!(error.actual, expected_work);
+        assert_eq!(error.max, expected_work - 1);
+        assert_eq!(narrow_meter.used(), 0);
+        assert_eq!(measurer.calls.get(), 0);
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work)
+            .unwrap();
+        let exact_meter = OperationWorkMeter::new(exact_policy);
+        let exact_measurer = CountingTextMeasurer::default();
+        prepare_kanban_diagram_typed_with_work_meter(
+            &model,
+            &merman_core::MermaidConfig::from_value(json!({})),
+            None,
+            &exact_measurer,
+            &exact_meter,
+        )
+        .unwrap();
+
+        assert_eq!(exact_meter.used(), expected_work);
+        assert!(exact_measurer.calls.get() > 0);
     }
 
     #[test]

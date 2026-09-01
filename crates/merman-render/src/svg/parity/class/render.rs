@@ -185,12 +185,7 @@ fn render_class_diagram_svg_model_inner(
 
     drop(build_ctx_guard);
 
-    let terminal_text_style = TextStyle {
-        font_family: settings.text_style.font_family.clone(),
-        font_size: 11.0,
-        font_weight: None,
-        font_style: None,
-    };
+    let terminal_text_style = crate::class::class_cardinality_text_style(&settings.text_style);
     let group_ctx = ClassSplitEdgeGroupsRenderContext {
         edges: &layout.edges,
         relations_by_id: &relations_by_id,

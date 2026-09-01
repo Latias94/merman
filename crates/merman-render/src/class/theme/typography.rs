@@ -133,8 +133,15 @@ impl ClassTypographyThemePlan {
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let (font_size_px, font_size_css) = match (theme, typed_font_size_active) {
             (Some(theme), true) => {
-                let font_size_px = f64::from(theme.typography().font_size_px()).max(1.0);
-                (font_size_px, format!("{font_size_px}px").into_boxed_str())
+                let font_size_px = crate::number_format::canonicalize_number(f64::from(
+                    theme.typography().font_size_px(),
+                ))
+                .max(1.0);
+                (
+                    font_size_px,
+                    format!("{}px", crate::number_format::canonical_number(font_size_px))
+                        .into_boxed_str(),
+                )
             }
             _ => (
                 configured_font_size_px,

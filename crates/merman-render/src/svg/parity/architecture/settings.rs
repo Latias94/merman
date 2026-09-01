@@ -33,7 +33,7 @@ impl ArchitectureRenderSettings {
             diagram_id,
             effective_config,
             Some(typography.font_family_css()),
-            Some(typography.font_size_px()),
+            Some((typography.font_size_px(), typography.font_size_css())),
         )
     }
 
@@ -48,13 +48,13 @@ impl ArchitectureRenderSettings {
         diagram_id: impl std::fmt::Display + Copy,
         effective_config: &serde_json::Value,
         resolved_font_family: Option<&str>,
-        resolved_font_size_px: Option<f64>,
+        resolved_font_size: Option<(f64, &str)>,
     ) -> Self {
         let css_parts = super::super::css::architecture_css_parts_with_typography(
             diagram_id,
             effective_config,
             resolved_font_family,
-            resolved_font_size_px,
+            resolved_font_size,
         );
 
         let icon_size_px = config_f64(effective_config, &["architecture", "iconSize"])
