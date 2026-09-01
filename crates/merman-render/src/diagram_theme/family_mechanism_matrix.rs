@@ -1053,7 +1053,6 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::C4
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::TREEMAP
-            | DiagramFamilyId::XY_CHART
     ) {
         return FamilyThemeDisposition::LegacyCompatibility;
     }
@@ -1086,7 +1085,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::C4
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::TREEMAP
-            | DiagramFamilyId::XY_CHART
     ) {
         return FamilyThemeDisposition::LegacyCompatibility;
     }
@@ -5782,6 +5780,28 @@ mod tests {
                 .iter()
                 .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility));
         }
+    }
+
+    #[test]
+    fn xychart_base_typography_is_unsupported_without_a_legacy_projection() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("XY Chart Phantom Font")
+                    .expect("valid XY Chart font stack"),
+            )
+            .with_font_size_px(24.0)
+            .expect("valid XY Chart font size");
+        let routes = compile_base_typography_routes(DiagramFamilyId::XY_CHART, &typography);
+
+        assert_eq!(routes.len(), 2);
+        assert!(routes.iter().all(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::BaseTypography(
+                    ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
+                )
+            ) && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
     }
 
     #[test]

@@ -37,7 +37,7 @@ record. The current source and generated contract are authoritative for these su
   unqualified aggregate routes plus `Default`, `Active`, `Success`, and `Error` property-local
   variants. Gantt `Warning` remains a compatibility residual and is intentionally outside the
   typed route inventory. These counts describe KTD17 authority only, not complete theme coverage.
-- The support-claim manifest is internal revision 21. KTD23 remains version 1 with 56 historical
+- The support-claim manifest is internal revision 22. KTD23 remains version 1 with 56 historical
   retirement routes and 112 transparent/solid probes. These are separate authorities: neither
   support discovery nor historical retirement can expand KTD17 route authorization.
 - All 33 families have at least one direct typed surface. Six families have no family-owned

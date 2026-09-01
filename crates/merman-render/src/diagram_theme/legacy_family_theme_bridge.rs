@@ -825,7 +825,6 @@ fn compile_chart_family(
     let title = reader.text_fill(ThemeTarget::Title);
     let axis_text = reader.text_fill(ThemeTarget::Axis);
     let axis_line = reader.stroke_or_fill(ThemeTarget::Axis);
-    contributions.add_typography(reader);
     match family {
         DiagramFamilyId::XY_CHART => {
             let mut xy = Map::new();
@@ -4455,6 +4454,27 @@ mod tests {
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.journey.task.palette")
         );
+    }
+
+    #[test]
+    fn xychart_base_typography_does_not_create_a_legacy_projection() {
+        let spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                DiagramFamilyId::XY_CHART,
+                TextStyle::default()
+                    .with_font_stack(
+                        FontStack::single("XY Chart Phantom Font")
+                            .expect("valid XY Chart font stack"),
+                    )
+                    .with_font_size_px(24.0)
+                    .expect("valid XY Chart font size"),
+            ),
+        );
+
+        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::XY_CHART);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
     }
 
     #[test]

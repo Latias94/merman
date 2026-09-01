@@ -10,7 +10,7 @@ use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportBaseTypographyProperty
 ///
 /// Bump this revision whenever a claim row changes, even when the wire query/result schemas do
 /// not change. Public descriptor revisions follow this manifest revision.
-pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 21;
+pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 22;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SupportClaimKind {
@@ -1530,7 +1530,7 @@ const BASE_CLAIMS: &[BaseClaim] = &[
     },
     BaseClaim {
         family: "xychart",
-        kind: SupportClaimKind::LegacySurface,
+        kind: SupportClaimKind::Unsupported,
         properties: &["font-size", "font-stack"],
     },
 ];

@@ -64,11 +64,11 @@ make no browser-dependent font-geometry claim; ZenUML's bridge-free status is na
 `Title.fill` is direct while generic text and base typography are Unsupported. The other twenty-seven
 families are partial typed adapters that may still enter the compatibility bridge. No concrete family
 remains without a family-local direct typed surface, and 27/33 families may still enter compatibility.
-Across base typography, 6 families still have at least one `LegacyCompatibility` property. After
+Across base typography, 5 families still have at least one `LegacyCompatibility` property. After
 the EventModeling, Ishikawa, Venn, Sankey, Class, Radar, GitGraph, ER, Pie, Requirement, Kanban,
-and Timeline cutovers, plus the Quadrant Chart base-size boundary correction, only five families
+and Timeline cutovers, plus the Quadrant Chart base-size boundary correction, only four families
 retain both `FontStack` and `FontSize` on the bridge. The current property totals are
-`FontStack`: 27 Typed, 5 Legacy, 1 Unsupported; and `FontSize`: 14 Typed, 6 Legacy, 13 Unsupported.
+`FontStack`: 27 Typed, 4 Legacy, 1 Unsupported; and `FontSize`: 14 Typed, 5 Legacy, 13 Unsupported.
 
 The compatibility bridge is deliberately family-local and runs only after detection. It never
 projects one family's semantic targets into unrelated renderers. Its contribution IDs and
