@@ -482,7 +482,7 @@ fn er_self_loop_points(
     let y = node.y.unwrap_or(0.0);
     let half_width = node.width / 2.0;
     let half_height = node.height / 2.0;
-    let max_span = (node.width * 0.8).min(100.0).max(36.0);
+    let max_span = (node.width * 0.8).clamp(36.0, 100.0);
     let span = label_width.max(node.width * 0.35).clamp(36.0, max_span);
     let depth = node
         .width

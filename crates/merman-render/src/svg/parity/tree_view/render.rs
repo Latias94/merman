@@ -11,6 +11,14 @@ use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 
+struct TreeViewNodeRenderContext<'a, 'id> {
+    layout: &'a TreeViewDiagramLayout,
+    diagram_id: SvgDiagramId<'id>,
+    icon_registry: Option<&'a crate::svg::IconRegistry>,
+    effective_config: &'a merman_core::MermaidConfig,
+    work_meter: &'a crate::resources::OperationWorkMeter,
+}
+
 pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramRenderModel,
@@ -76,20 +84,18 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         .count();
     let mut width_before_highlight =
         layout.total_width - highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
+    let node_context = TreeViewNodeRenderContext {
+        layout,
+        diagram_id,
+        icon_registry: options.icon_registry(),
+        effective_config,
+        work_meter: options.work_meter(),
+    };
     for line in &layout.lines {
         if line.kind == "horizontal"
             && let Some(node) = layout.nodes.get(next_node)
         {
-            push_tree_view_node(
-                &mut out,
-                node,
-                layout,
-                diagram_id,
-                options.icon_registry(),
-                effective_config,
-                options.work_meter(),
-                &mut width_before_highlight,
-            )?;
+            push_tree_view_node(&mut out, node, &node_context, &mut width_before_highlight)?;
             next_node += 1;
         }
         let _ = write!(
@@ -103,16 +109,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         );
     }
     for node in layout.nodes.iter().skip(next_node) {
-        push_tree_view_node(
-            &mut out,
-            node,
-            layout,
-            diagram_id,
-            options.icon_registry(),
-            effective_config,
-            options.work_meter(),
-            &mut width_before_highlight,
-        )?;
+        push_tree_view_node(&mut out, node, &node_context, &mut width_before_highlight)?;
     }
     out.push_str("</g></svg>\n");
     options.checkpoint_emit()?;
@@ -122,11 +119,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
 fn push_tree_view_node(
     out: &mut String,
     node: &TreeViewNodeLayout,
-    layout: &TreeViewDiagramLayout,
-    diagram_id: SvgDiagramId<'_>,
-    icon_registry: Option<&crate::svg::IconRegistry>,
-    effective_config: &merman_core::MermaidConfig,
-    work_meter: &crate::resources::OperationWorkMeter,
+    context: &TreeViewNodeRenderContext<'_, '_>,
     width_before_highlight: &mut f64,
 ) -> Result<()> {
     out.push_str("<g>");
@@ -147,17 +140,17 @@ fn push_tree_view_node(
     if let Some(icon) = node.resolved_icon.as_deref() {
         let icon_svg = tree_view_icon_svg(
             icon,
-            diagram_id,
+            context.diagram_id,
             node.id,
-            icon_registry,
-            effective_config,
-            work_meter,
+            context.icon_registry,
+            context.effective_config,
+            context.work_meter,
         )?;
         let _ = write!(
             out,
             r#"<g class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
-            fmt(node.x + layout.padding_x),
-            fmt(node.y + layout.padding_y),
+            fmt(node.x + context.layout.padding_x),
+            fmt(node.y + context.layout.padding_y),
             icon_svg
         );
     }

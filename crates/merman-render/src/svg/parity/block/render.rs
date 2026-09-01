@@ -143,20 +143,28 @@ pub(crate) fn render_block_diagram_svg_model(
         points
     }
 
+    struct RoughPathRenderOptions<'a> {
+        style: &'a str,
+        fill: &'a str,
+        stroke: &'a str,
+        stroke_width: f32,
+        randomness: &'a roughr::core::RoughRandomness,
+        transform: Option<(f64, f64)>,
+    }
+
     fn emit_rough_paths(
         out: &mut String,
         path_data: &str,
-        style: &str,
-        fill: &str,
-        stroke: &str,
-        stroke_width: f32,
-        randomness: &roughr::core::RoughRandomness,
-        transform: Option<(f64, f64)>,
+        options: RoughPathRenderOptions<'_>,
     ) -> bool {
-        if let Some((fill_d, stroke_d)) =
-            roughjs_block_paths(path_data, fill, stroke, stroke_width, randomness)
-        {
-            if let Some((tx, ty)) = transform {
+        if let Some((fill_d, stroke_d)) = roughjs_block_paths(
+            path_data,
+            options.fill,
+            options.stroke,
+            options.stroke_width,
+            options.randomness,
+        ) {
+            if let Some((tx, ty)) = options.transform {
                 let _ = write!(
                     out,
                     r#"<g class="basic label-container outer-path" transform="translate({},{})">"#,
@@ -170,16 +178,16 @@ pub(crate) fn render_block_diagram_svg_model(
                 out,
                 r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
                 escape_attr(&fill_d),
-                escape_attr(fill),
-                escape_attr(style)
+                escape_attr(options.fill),
+                escape_attr(options.style)
             );
             let _ = write!(
                 out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/>"#,
                 escape_attr(&stroke_d),
-                escape_attr(stroke),
-                fmt_display(stroke_width as f64),
-                escape_attr(style)
+                escape_attr(options.stroke),
+                fmt_display(options.stroke_width as f64),
+                escape_attr(options.style)
             );
             out.push_str("</g>");
             true
@@ -689,12 +697,14 @@ pub(crate) fn render_block_diagram_svg_model(
                 if !emit_rough_paths(
                     &mut out,
                     &path_data,
-                    &node_box_style,
-                    node_fill_color,
-                    node_stroke_color,
-                    node_stroke_width,
-                    &hand_drawn_seed,
-                    None,
+                    RoughPathRenderOptions {
+                        style: &node_box_style,
+                        fill: node_fill_color,
+                        stroke: node_stroke_color,
+                        stroke_width: node_stroke_width,
+                        randomness: &hand_drawn_seed,
+                        transform: None,
+                    },
                 ) {
                     let radius = height / 2.0;
                     let _ = write!(
@@ -749,12 +759,14 @@ pub(crate) fn render_block_diagram_svg_model(
                     && emit_rough_paths(
                         &mut out,
                         &path_data,
-                        &node_box_style,
-                        node_fill_color,
-                        node_stroke_color,
-                        node_stroke_width,
-                        &hand_drawn_seed,
-                        Some((translation.x, translation.y)),
+                        RoughPathRenderOptions {
+                            style: &node_box_style,
+                            fill: node_fill_color,
+                            stroke: node_stroke_color,
+                            stroke_width: node_stroke_width,
+                            randomness: &hand_drawn_seed,
+                            transform: Some((translation.x, translation.y)),
+                        },
                     )
                 {
                     // The odd shape is always emitted through RoughJS in Mermaid 11.17.2,
