@@ -3,7 +3,7 @@ use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, OrdinalSelector,
     Specified, ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget, ThemeVariant,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -24,6 +24,24 @@ fn journey_task_paint_theme() -> merman_render::diagram_theme::DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(styles))
         .expect("compile Journey task paint theme")
+}
+
+fn journey_typography_theme(font_size: f32) -> merman_render::diagram_theme::DiagramTheme {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(
+            merman_render::diagram_theme::FontStack::single("Journey Typed")
+                .expect("valid Journey font stack"),
+        )
+        .with_font_size_px(font_size)
+        .expect("valid Journey font size");
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default()
+                    .with_family_style(merman_render::DiagramFamilyId::JOURNEY, typography),
+            ),
+        )
+        .expect("compile Journey typography theme")
 }
 
 #[test]
@@ -151,6 +169,110 @@ fn journey_task_static_paint_reaches_terminal_rect_and_is_fully_accounted() {
     assert_eq!(evidence.required_count(), 2);
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn journey_base_typography_drives_scoped_css_and_is_fully_accounted() {
+    let theme = journey_typography_theme(21.0);
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(
+            "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse themed Journey")
+        .expect("detect themed Journey");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict portable Journey session");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare themed Journey");
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("journey-base-typography".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render themed Journey SVG");
+
+    let svg = rendered.svg();
+    assert!(
+        svg.contains("#journey-base-typography .legend"),
+        "Journey actor legend selector missing from SVG CSS"
+    );
+    assert!(
+        svg.contains("font-family:\"Journey Typed\""),
+        "typed Journey font family missing from SVG CSS: {svg}"
+    );
+    assert!(
+        svg.contains("font-size:21px"),
+        "typed Journey font size missing from SVG CSS: {svg}"
+    );
+
+    let document = roxmltree::Document::parse(svg).expect("valid Journey SVG");
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|token| token == "legend")
+                })
+        }),
+        "typed Journey actor legend terminal missing"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn journey_explicit_theme_font_size_owns_only_the_size_route() {
+    let theme = journey_typography_theme(21.0);
+    let parsed = merman_render::__private::install_parse_compatibility(
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": { "fontSize": "24px" }
+        }))),
+    )
+    .parse_diagram_for_render_model_sync(
+        "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
+        ParseOptions::strict(),
+    )
+    .expect("parse configured Journey")
+    .expect("detect configured Journey");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict portable Journey session");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare configured Journey");
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("journey-configured-font-size".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render configured Journey SVG");
+
+    assert!(rendered.svg().contains("font-family:\"Journey Typed\""));
+    assert!(rendered.svg().contains("font-size:24px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }

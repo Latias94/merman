@@ -902,7 +902,6 @@ fn compile_journey_family(
     reader: &FamilyStyleReader,
 ) -> BridgeResult<()> {
     let mut contributions = FamilyContributions::new();
-    contributions.add_typography(reader);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::JourneyTaskFill.contribution_id(),
         [("mainBkg", reader.fill(ThemeTarget::JourneyTask))],
@@ -2465,32 +2464,40 @@ mod tests {
 
     #[test]
     fn journey_direct_paint_suppresses_only_property_local_bridge_projections() {
-        let spec = DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default()
-                .with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::JourneyTask,
-                        ThemeStylePatch::default()
-                            .with_fill(solid("#ef4444"))
-                            .with_stroke(solid("#2563eb")),
+        let typography = TextStyle::default()
+            .with_font_stack(FontStack::single("Journey Typed").expect("valid Journey font"))
+            .with_font_size_px(21.0)
+            .expect("valid Journey font size");
+        let spec = DiagramThemeSpec::new()
+            .with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::JOURNEY, typography),
+            )
+            .with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::JourneyTask,
+                            ThemeStylePatch::default()
+                                .with_fill(solid("#ef4444"))
+                                .with_stroke(solid("#2563eb")),
+                        )
+                        .for_family(DiagramFamilyId::JOURNEY),
                     )
-                    .for_family(DiagramFamilyId::JOURNEY),
-                )
-                .with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default().with_fill(solid("#16a34a")),
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default().with_fill(solid("#16a34a")),
+                        )
+                        .for_family(DiagramFamilyId::JOURNEY),
                     )
-                    .for_family(DiagramFamilyId::JOURNEY),
-                )
-                .with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Title,
-                        ThemeStylePatch::default().with_fill(solid("#9333ea")),
-                    )
-                    .for_family(DiagramFamilyId::JOURNEY),
-                ),
-        );
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Title,
+                            ThemeStylePatch::default().with_fill(solid("#9333ea")),
+                        )
+                        .for_family(DiagramFamilyId::JOURNEY),
+                    ),
+            );
         let bridge = bridge(&spec);
         let artifact = bridge.compile_for_family(DiagramFamilyId::JOURNEY);
 

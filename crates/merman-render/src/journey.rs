@@ -11,9 +11,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 mod config;
 mod theme;
+mod typography;
 
 pub(crate) use config::{JourneyConfigView, default_use_max_width};
 pub(crate) use theme::{JourneyTaskTheme, JourneyTaskThemeReceipt};
+pub(crate) use typography::JourneyTypographyThemePlan;
 
 const JOURNEY_LEGEND_CIRCLE_R_PX: f64 = 7.0;
 pub(crate) const JOURNEY_VIEWBOX_TOP_PAD_PX: f64 = 25.0;
@@ -142,6 +144,22 @@ pub(crate) fn layout_journey_diagram_typed(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
+    layout_journey_diagram_typed_with_resolved_typography(
+        model,
+        effective_config,
+        None,
+        None,
+        measurer,
+    )
+}
+
+pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
+    model: &JourneyDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    resolved_font_family_css: Option<&str>,
+    resolved_font_size_px: Option<f64>,
+    measurer: &dyn TextMeasurer,
+) -> Result<JourneyDiagramLayout> {
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),
@@ -167,7 +185,13 @@ pub(crate) fn layout_journey_diagram_typed(
         actor_map.insert(actor.clone(), (pos, color));
     }
 
-    let legend_style = journey_actor_legend_text_style(effective_config);
+    let mut legend_style = journey_actor_legend_text_style(effective_config);
+    if let Some(font_family_css) = resolved_font_family_css {
+        legend_style.font_family = Some(font_family_css.to_owned());
+    }
+    if let Some(font_size_px) = resolved_font_size_px {
+        legend_style.font_size = font_size_px.max(1.0);
+    }
     let mut max_actor_label_width: f64 = 0.0;
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 

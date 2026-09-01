@@ -547,9 +547,15 @@ fn prepare_journey_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let layout = crate::journey::layout_journey_diagram_typed(
+    let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
+    let layout = crate::journey::layout_journey_diagram_typed_with_resolved_typography(
         &model,
         meta.effective_config.as_value(),
+        Some(typography_theme.font_family_css()),
+        Some(typography_theme.font_size_px()),
         execution.text_measurer(),
     )?;
     let task_theme = crate::journey::JourneyTaskTheme::resolve(
@@ -562,6 +568,7 @@ fn prepare_journey_family(
         JourneyFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             task_theme,
+            typography_theme,
         },
     )))
 }

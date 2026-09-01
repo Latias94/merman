@@ -1,3 +1,4 @@
+use super::super::css::InfoCssParts;
 use super::super::theme::JourneyTheme;
 use super::super::*;
 use crate::journey::{
@@ -262,10 +263,53 @@ fn journey_css(
     emit_palette_css: bool,
 ) -> String {
     let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let mut out = parts.css_prefix;
-    let font = theme.font_family_css.as_str();
-    let text_color = theme.text_color.as_str();
-    let line_color = theme.line_color.as_str();
+    journey_css_from_parts(diagram_id, theme, emit_palette_css, parts).css
+}
+
+struct JourneyCss {
+    css: String,
+    font_family: String,
+    font_size_css: String,
+    base_typography_emitted: bool,
+    root_typography_emitted: bool,
+}
+
+fn journey_css_with_resolved_typography(
+    diagram_id: impl SvgDiagramIdValue,
+    effective_config: &serde_json::Value,
+    theme: &JourneyTheme,
+    font_family_css: &str,
+    font_size_css: &str,
+    emit_palette_css: bool,
+) -> JourneyCss {
+    let parts = info_css_parts_with_resolved_typography(
+        diagram_id,
+        effective_config,
+        font_family_css,
+        font_size_css,
+    );
+    journey_css_from_parts(diagram_id, theme, emit_palette_css, parts)
+}
+
+fn journey_css_from_parts(
+    diagram_id: impl SvgDiagramIdValue,
+    theme: &JourneyTheme,
+    emit_palette_css: bool,
+    parts: InfoCssParts,
+) -> JourneyCss {
+    let InfoCssParts {
+        css_prefix,
+        root_rule,
+        font_family,
+        font_size_css,
+        base_typography_emitted,
+        text_color,
+        line_color,
+    } = parts;
+    let mut out = css_prefix;
+    let font = font_family.as_str();
+    let text_color = text_color.as_str();
+    let line_color = line_color.as_str();
 
     // Mermaid's journey diagram reuses the historical "user-journey" stylesheet, post-processed by
     // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
@@ -385,14 +429,22 @@ fn journey_css(
         diagram_id
     );
 
-    out.push_str(&parts.root_rule);
-    out
+    let root_typography_emitted = !root_rule.is_empty();
+    out.push_str(&root_rule);
+    JourneyCss {
+        css: out,
+        font_family,
+        font_size_css,
+        base_typography_emitted,
+        root_typography_emitted,
+    }
 }
 
 pub(crate) fn render_journey_diagram_svg_model(
     layout: &crate::model::JourneyDiagramLayout,
     model: &JourneyDiagramRenderModel,
     task_theme: &crate::journey::JourneyTaskTheme,
+    typography_theme: &crate::journey::JourneyTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
@@ -503,14 +555,24 @@ pub(crate) fn render_journey_diagram_svg_model(
     out.checkpoint()?;
 
     let theme = MermaidThemeAdapter::new(effective_config).journey();
-    let css = journey_css(
+    let css = journey_css_with_resolved_typography(
         diagram_id,
         effective_config,
         &theme,
+        typography_theme.font_family_css(),
+        typography_theme.font_size_css(),
         !task_theme.palette_surface_owned(),
     );
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    drop(css);
+    let mut typography_receipt = typography_theme.begin_terminal_receipt(layout);
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_css_emission(
+            &css.font_family,
+            &css.font_size_css,
+            css.base_typography_emitted,
+            css.root_typography_emitted,
+        );
+    }
+    let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
     out.push_str(r#"<g/>"#);
     let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
     let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
@@ -540,6 +602,9 @@ pub(crate) fn render_journey_diagram_svg_model(
                 tx = fmt(line.tspan_x),
                 text = escape_xml(&line.text),
             );
+            if let Some(receipt) = typography_receipt.as_mut() {
+                receipt.record_text_run(&line.text);
+            }
         }
         out.checkpoint()?;
     }
@@ -743,6 +808,11 @@ pub(crate) fn render_journey_diagram_svg_model(
             message: "Journey task radius receipt did not match the terminal SVG".to_string(),
         });
     }
+    if typography_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Journey typography receipt did not match the terminal SVG".to_string(),
+        });
+    }
     Ok(rooted_svg)
 }
 
@@ -757,6 +827,7 @@ mod tests {
         RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
     };
     use crate::text::DeterministicTextMeasurer;
+    use merman_core::MermaidConfig;
     use merman_core::diagrams::journey::JourneyDiagramRenderModel;
 
     fn bounded_journey_layout() -> crate::model::JourneyDiagramLayout {
@@ -835,10 +906,15 @@ mod tests {
                 .expect("SVG execution");
         let layout = bounded_journey_layout();
         let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
+        let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
+            None,
+            &MermaidConfig::from_value(serde_json::json!({})),
+        );
         render_journey_diagram_svg_model(
             &layout,
             &JourneyDiagramRenderModel::default(),
             &task_theme,
+            &typography_theme,
             &serde_json::json!({}),
             None,
             &DeterministicTextMeasurer::default(),
@@ -988,12 +1064,17 @@ mod tests {
             ..Default::default()
         };
         let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
+        let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
+            None,
+            &MermaidConfig::from_value(cfg.clone()),
+        );
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramRenderModel::default(),
                 &task_theme,
+                &typography_theme,
                 &cfg,
                 None,
                 &DeterministicTextMeasurer::default(),
@@ -1042,12 +1123,17 @@ mod tests {
             ..Default::default()
         };
         let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
+        let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
+            None,
+            &MermaidConfig::from_value(serde_json::json!({})),
+        );
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramRenderModel::default(),
                 &task_theme,
+                &typography_theme,
                 &serde_json::json!({}),
                 None,
                 &DeterministicTextMeasurer::default(),

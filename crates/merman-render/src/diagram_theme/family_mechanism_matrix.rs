@@ -1044,15 +1044,13 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::QUADRANT_CHART
             | DiagramFamilyId::TIMELINE
+            | DiagramFamilyId::JOURNEY
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
     if matches!(
         family,
-        DiagramFamilyId::ARCHITECTURE
-            | DiagramFamilyId::C4
-            | DiagramFamilyId::JOURNEY
-            | DiagramFamilyId::TREEMAP
+        DiagramFamilyId::ARCHITECTURE | DiagramFamilyId::C4 | DiagramFamilyId::TREEMAP
     ) {
         return FamilyThemeDisposition::LegacyCompatibility;
     }
@@ -1075,6 +1073,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::REQUIREMENT
             | DiagramFamilyId::KANBAN
+            | DiagramFamilyId::JOURNEY
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1083,7 +1082,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
         DiagramFamilyId::CLASS
             | DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::C4
-            | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::TREEMAP
     ) {
         return FamilyThemeDisposition::LegacyCompatibility;
