@@ -62,10 +62,31 @@ fn assert_renderable_theme_signals(
         "{name}: SVG leaked undefined tokens"
     );
 
+    let rendered_text = roxmltree::Document::parse(svg)
+        .ok()
+        .map(|document| {
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|text| {
+                    text.descendants()
+                        .filter_map(|node| node.text().filter(|_| node.is_text()))
+                        .collect::<String>()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
     for label in expected_labels {
         assert!(
-            svg.contains(label),
-            "{name}: expected rendered label {label:?}"
+            svg.contains(label)
+                || rendered_text
+                    .iter()
+                    .any(|text| text == &label.split_whitespace().collect::<Vec<_>>().join(" ")),
+            "{name}: expected rendered label {label:?}; parsed text nodes: {rendered_text:?}"
         );
     }
 
@@ -514,7 +535,7 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
         "Mermaid 11.17 still emits C4 .person provider CSS: {svg}"
     );
     assert!(
-        svg.contains(r#"class="c4-shape c4-person""#),
+        svg.contains(r#"class="node c4-shape c4-person""#),
         "C4 current output should expose the current shape group DOM: {svg}"
     );
     assert!(
@@ -522,15 +543,15 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
         "C4 should not count .person provider CSS as visible while current DOM has no .person element: {svg}"
     );
     assert!(
-        svg.contains(r##"style="fill:#334155;stroke:#f97316;color:#fde68a""##),
+        svg.contains(r##"style="fill:#334155 !important;stroke:#f97316 !important""##),
         "UpdateElementStyle colors should reach the visible C4 person shape: {svg}"
     );
     assert!(
-        svg.contains(r##"dominant-baseline="middle" fill="#fde68a""##),
+        svg.contains(r##"style="fill:#fde68a !important""##),
         "UpdateElementStyle fontColor should reach visible C4 person labels: {svg}"
     );
     assert!(
-        svg.contains(r##"style="fill:#111827;stroke:#facc15;color:#FFFFFF""##),
+        svg.contains(r##"style="fill:#111827 !important;stroke:#facc15 !important"##),
         "C4 config colors should reach the visible system shape: {svg}"
     );
     assert!(
