@@ -1,10 +1,11 @@
 use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
     LinearGradient, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient,
     Specified, ThemeColorValue, ThemeGeometryPatch, ThemeLength, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
+    TypographySpec,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -85,10 +86,25 @@ fn c4_cluster_fill_with_ordinal_palette_theme(fill: CanvasPaint) -> DiagramTheme
         .expect("compile C4 Cluster fill and ordinal palette theme")
 }
 
-fn try_render_c4_svg_with_theme(
+fn c4_typography_theme(font_stack: FontStack, font_size_px: f32) -> DiagramTheme {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(font_stack)
+        .with_font_size_px(font_size_px)
+        .expect("valid C4 typography");
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default()
+                    .with_family_style(merman_render::DiagramFamilyId::C4, typography),
+            ),
+        )
+        .expect("compile C4 typography theme")
+}
+
+fn try_render_c4_rendered_with_theme(
     source: &str,
     theme: &DiagramTheme,
-) -> merman_render::Result<String> {
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed C4 diagram")
@@ -99,8 +115,14 @@ fn try_render_c4_svg_with_theme(
         .expect("begin strict portable C4 session");
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
-    Ok(artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
+    artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+}
+
+fn try_render_c4_svg_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> merman_render::Result<String> {
+    Ok(try_render_c4_rendered_with_theme(source, theme)?
         .svg()
         .to_owned())
 }
@@ -305,6 +327,27 @@ Boundary(boundary, "Boundary") {
         c4_rect_labeled(&document, "Boundary").attribute("fill"),
         Some("#ef4444")
     );
+}
+
+#[test]
+fn c4_typed_base_typography_reaches_root_css_and_title_evidence() {
+    let font_stack = FontStack::single("Inter").expect("valid C4 font stack");
+    let theme = c4_typography_theme(font_stack, 18.0);
+    let source = "---\ntitle: C4 typography\n---\nC4Context\nSystem(service, \"Service\")\n";
+
+    let rendered =
+        try_render_c4_rendered_with_theme(source, &theme).expect("render typed C4 title");
+    assert!(rendered.svg().contains("font-family:Inter;"));
+    assert!(rendered.svg().contains("font-size:18px;"));
+    assert!(rendered.svg().contains(">C4 typography</text>"));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

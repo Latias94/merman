@@ -1493,6 +1493,7 @@ pub(crate) struct ClassFamilyArtifact {
 pub(crate) struct C4FamilyArtifact {
     pair: FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>,
     cluster_theme: crate::c4::C4ClusterThemePlan,
+    typography_theme: crate::c4::C4TypographyThemePlan,
 }
 
 impl C4FamilyArtifact {
@@ -1504,6 +1505,10 @@ impl C4FamilyArtifact {
 
     pub(crate) const fn cluster_theme(&self) -> &crate::c4::C4ClusterThemePlan {
         &self.cluster_theme
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::c4::C4TypographyThemePlan {
+        &self.typography_theme
     }
 }
 
@@ -2530,7 +2535,11 @@ impl BuiltinFamilyArtifact {
 
     fn c4_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::C4(artifact) => Some(artifact.cluster_theme().finish_evidence()),
+            Self::C4(artifact) => {
+                let mut evidence = artifact.cluster_theme().finish_evidence();
+                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
+                Some(evidence)
+            }
             _ => None,
         }
     }

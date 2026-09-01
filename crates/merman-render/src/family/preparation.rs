@@ -434,6 +434,11 @@ fn prepare_c4_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
+    let typography_theme = crate::c4::C4TypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        meta.title.as_deref().or(model.title.as_deref()),
+    );
     let cluster_theme = crate::c4::C4ClusterThemePlan::resolve(
         execution.resolved_theme(),
         &model.boundaries,
@@ -450,6 +455,7 @@ fn prepare_c4_family(
     Ok(BuiltinFamilyArtifact::C4(Box::new(C4FamilyArtifact {
         pair: FamilyPair::new(model, layout),
         cluster_theme,
+        typography_theme,
     })))
 }
 

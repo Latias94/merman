@@ -1262,6 +1262,7 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             title,
             measurer,
+            artifact.typography_theme(),
             artifact.cluster_theme(),
             options,
         ),

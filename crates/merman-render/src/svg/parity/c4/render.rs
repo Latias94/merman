@@ -119,7 +119,34 @@ fn write_c4_css(
     diagram_id: impl std::fmt::Display + Copy,
     effective_config: &serde_json::Value,
 ) -> Result<()> {
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    write_c4_css_with_typography(out, diagram_id, effective_config, None).map(drop)
+}
+
+#[derive(Debug, Clone)]
+struct C4CssEmission {
+    font_family: String,
+    font_size_css: String,
+    base_typography_emitted: bool,
+    root_typography_emitted: bool,
+}
+
+fn write_c4_css_with_typography(
+    out: &mut impl SvgOutput,
+    diagram_id: impl std::fmt::Display + Copy,
+    effective_config: &serde_json::Value,
+    typography: Option<&crate::c4::C4TypographyThemePlan>,
+) -> Result<C4CssEmission> {
+    let parts = typography.map_or_else(
+        || info_css_parts_with_config(diagram_id, effective_config),
+        |typography| {
+            info_css_parts_with_resolved_typography(
+                diagram_id,
+                effective_config,
+                typography.font_family_css(),
+                typography.font_size_css(),
+            )
+        },
+    );
     out.push_str(&parts.css_prefix);
     out.checkpoint()?;
     let person_border = theme_token(
@@ -134,8 +161,14 @@ fn write_c4_css(
         diagram_id, person_border, person_bkg
     );
     out.checkpoint()?;
+    let root_typography_emitted = !parts.root_rule.is_empty();
     out.push_str(&parts.root_rule);
-    out.checkpoint()
+    out.checkpoint().map(|()| C4CssEmission {
+        font_family: parts.font_family,
+        font_size_css: parts.font_size_css,
+        base_typography_emitted: parts.base_typography_emitted,
+        root_typography_emitted,
+    })
 }
 
 struct C4TspanText<'a> {
@@ -262,6 +295,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
+    typography_theme: &crate::c4::C4TypographyThemePlan,
     cluster_theme: &crate::c4::C4ClusterThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -289,6 +323,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         .or_else(|| model.title.clone())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
+    let mut typography_receipt = typography_theme.begin_terminal_receipt();
     let extra_vert_for_title = if title.is_some() { 60.0 } else { 0.0 };
 
     let viewbox_x = bounds.min_x - diagram_margin_x;
@@ -357,7 +392,20 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    write_c4_css(&mut out, diagram_id, effective_config)?;
+    let css_emission = write_c4_css_with_typography(
+        &mut out,
+        diagram_id,
+        effective_config,
+        Some(typography_theme),
+    )?;
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_css_emission(
+            &css_emission.font_family,
+            &css_emission.font_size_css,
+            css_emission.base_typography_emitted,
+            css_emission.root_typography_emitted,
+        );
+    }
     out.push_str("</style>");
     out.checkpoint()?;
     out.push_str("<g/>");
@@ -917,6 +965,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
             escape_xml(&title)
         );
         out.checkpoint()?;
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_title_text(&title);
+        }
     }
 
     out.push_str("</svg>");
@@ -925,6 +976,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
     if cluster_theme_receipt.is_some_and(|receipt| !cluster_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
             message: "C4 cluster theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if typography_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "C4 typography receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted_svg)

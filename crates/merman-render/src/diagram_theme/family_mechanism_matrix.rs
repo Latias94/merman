@@ -1045,12 +1045,13 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::QUADRANT_CHART
             | DiagramFamilyId::TIMELINE
             | DiagramFamilyId::JOURNEY
+            | DiagramFamilyId::C4
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
     if matches!(
         family,
-        DiagramFamilyId::ARCHITECTURE | DiagramFamilyId::C4 | DiagramFamilyId::TREEMAP
+        DiagramFamilyId::ARCHITECTURE | DiagramFamilyId::TREEMAP
     ) {
         return FamilyThemeDisposition::LegacyCompatibility;
     }
@@ -1074,12 +1075,13 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::REQUIREMENT
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::JOURNEY
+            | DiagramFamilyId::C4
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
     if matches!(
         family,
-        DiagramFamilyId::CLASS | DiagramFamilyId::ARCHITECTURE | DiagramFamilyId::C4
+        DiagramFamilyId::CLASS | DiagramFamilyId::ARCHITECTURE
     ) {
         return FamilyThemeDisposition::LegacyCompatibility;
     }
@@ -6021,7 +6023,7 @@ mod tests {
             .with_font_stack(super::super::FontStack::new(families).expect("valid font stack"))
             .with_font_size_px(18.0)
             .expect("valid font size");
-        let routes = compile_base_typography_routes(DiagramFamilyId::C4, &typography);
+        let routes = compile_base_typography_routes(DiagramFamilyId::ARCHITECTURE, &typography);
 
         assert_eq!(routes.len(), 2);
         assert!(routes.iter().any(|route| {

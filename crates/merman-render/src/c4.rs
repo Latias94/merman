@@ -45,7 +45,9 @@ fn measure_c4_text(
 }
 
 mod layout;
+mod typography;
 pub(crate) use layout::layout_c4_diagram_typed;
+pub(crate) use typography::C4TypographyThemePlan;
 
 #[cfg(test)]
 mod tests {
