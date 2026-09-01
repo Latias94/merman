@@ -5,6 +5,18 @@ use crate::treemap::{
 
 // Treemap diagram SVG renderer implementation (split from parity.rs).
 
+fn measure_treemap_computed_length(
+    measurer: &dyn crate::text::TextMeasurer,
+    text: &str,
+    style: &crate::text::TextStyle,
+    typography_receipt: &mut Option<crate::treemap::TreemapTypographyThemeReceipt<'_>>,
+) -> f64 {
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_measurement(style.font_family.as_deref());
+    }
+    measurer.measure_svg_text_computed_length_px(text, style)
+}
+
 fn write_treemap_leaf_group_open(
     out: &mut impl SvgOutput,
     group_class: &str,
@@ -25,6 +37,7 @@ pub(crate) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,
     effective_config: &serde_json::Value,
     title_theme: &crate::treemap::TreemapTitleThemePlan,
+    typography_theme: &crate::treemap::TreemapTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     #[derive(Default)]
@@ -252,14 +265,19 @@ pub(crate) fn render_treemap_diagram_svg(
 
     let measurer = options.text_measurer();
     let title = layout.title.as_deref().filter(|t| !t.trim().is_empty());
+    let mut typography_theme_receipt = typography_theme.begin_terminal_receipt(layout);
     let title_shift_y = layout.title_height;
     let title_bbox = title.map(|t| {
         let style = crate::text::TextStyle {
-            font_family: Some(r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()),
+            font_family: Some(typography_theme.font_family_css().to_string()),
             font_size: 14.0,
             font_weight: None,
             font_style: None,
         };
+        if let Some(receipt) = typography_theme_receipt.as_mut() {
+            receipt.record_measurement(style.font_family.as_deref());
+            receipt.record_measurement(style.font_family.as_deref());
+        }
         let w = measurer
             .measure_svg_simple_text_bbox_width_px(t, &style)
             .max(0.0);
@@ -424,13 +442,18 @@ pub(crate) fn render_treemap_diagram_svg(
     }
 
     let mut title_theme_receipt = title_theme.begin_terminal_receipt();
-    let (css, title_css_emission) = super::super::css::treemap_css_with_title_fill(
-        diagram_id,
-        effective_config,
-        title_theme.fill_css(),
-    )?;
+    let (css, title_css_emission, typography_css_emission) =
+        super::super::css::treemap_css_with_title_fill_and_font_family(
+            diagram_id,
+            effective_config,
+            Some(typography_theme.font_family_css()),
+            title_theme.fill_css(),
+        )?;
     if let Some(receipt) = title_theme_receipt.as_mut() {
         receipt.record_stylesheet(title_css_emission.class(), title_css_emission.fill());
+    }
+    if let Some(receipt) = typography_theme_receipt.as_mut() {
+        receipt.record_css_emission(typography_css_emission);
     }
     let _ = write!(&mut out, "<style>{}</style>", css);
     drop(css);
@@ -450,6 +473,13 @@ pub(crate) fn render_treemap_diagram_svg(
         if let Some(receipt) = title_theme_receipt.as_mut() {
             receipt.record_title_text(TREEMAP_TITLE_CLASS);
         }
+        if let Some(receipt) = typography_theme_receipt.as_mut() {
+            receipt.record_text(
+                crate::treemap::TreemapTextRole::Title,
+                true,
+                crate::mermaid_style::CssFontFamilyOwnership::Inherited,
+            );
+        }
     }
 
     let _ = write!(
@@ -460,7 +490,7 @@ pub(crate) fn render_treemap_diagram_svg(
     out.checkpoint()?;
 
     let computed_length_measurer = options.text_measurer_for(TextMeasurementPhase::ComputedLength);
-    let font_family = r#""trebuchet ms",verdana,arial,sans-serif"#.to_string();
+    let font_family = typography_theme.font_family_css().to_string();
     let section_header_height = TREEMAP_SECTION_HEADER_HEIGHT_PX;
     let section_header_center_y = section_header_height / 2.0;
     let section_label_inset_x: f64 = 6.0;
@@ -553,6 +583,13 @@ pub(crate) fn render_treemap_diagram_svg(
                 id = section_clip_id.as_str(),
             );
             out.checkpoint()?;
+            if let Some(receipt) = typography_theme_receipt.as_mut() {
+                receipt.record_text(
+                    crate::treemap::TreemapTextRole::SectionLabel,
+                    false,
+                    typography_theme.section_font_ownership(i),
+                );
+            }
         } else {
             // Mirror Mermaid's truncation loop in `renderer.ts` (uses `getComputedTextLength()`).
             let total_header_width = w;
@@ -578,8 +615,12 @@ pub(crate) fn render_treemap_diagram_svg(
                 font_style: None,
             };
 
-            if computed_length_measurer.measure_svg_text_computed_length_px(&label_text, &style)
-                > actual_available_width
+            if measure_treemap_computed_length(
+                &computed_length_measurer,
+                &label_text,
+                &style,
+                &mut typography_theme_receipt,
+            ) > actual_available_width
             {
                 let ellipsis = "...";
                 let original = label_text.clone();
@@ -587,9 +628,12 @@ pub(crate) fn render_treemap_diagram_svg(
                 while !current.is_empty() {
                     current.pop();
                     if current.is_empty() {
-                        if computed_length_measurer
-                            .measure_svg_text_computed_length_px(ellipsis, &style)
-                            > actual_available_width
+                        if measure_treemap_computed_length(
+                            &computed_length_measurer,
+                            ellipsis,
+                            &style,
+                            &mut typography_theme_receipt,
+                        ) > actual_available_width
                         {
                             label_text.clear();
                         } else {
@@ -598,9 +642,12 @@ pub(crate) fn render_treemap_diagram_svg(
                         break;
                     }
                     let candidate = format!("{current}{ellipsis}");
-                    if computed_length_measurer
-                        .measure_svg_text_computed_length_px(&candidate, &style)
-                        <= actual_available_width
+                    if measure_treemap_computed_length(
+                        &computed_length_measurer,
+                        &candidate,
+                        &style,
+                        &mut typography_theme_receipt,
+                    ) <= actual_available_width
                     {
                         label_text = candidate;
                         break;
@@ -624,6 +671,13 @@ pub(crate) fn render_treemap_diagram_svg(
                 text = escape_xml(&label_text)
             );
             out.checkpoint()?;
+            if let Some(receipt) = typography_theme_receipt.as_mut() {
+                receipt.record_text(
+                    crate::treemap::TreemapTextRole::SectionLabel,
+                    true,
+                    typography_theme.section_font_ownership(i),
+                );
+            }
         }
 
         if layout.show_values {
@@ -661,6 +715,13 @@ pub(crate) fn render_treemap_diagram_svg(
                 );
             }
             out.checkpoint()?;
+            if let Some(receipt) = typography_theme_receipt.as_mut() {
+                receipt.record_text(
+                    crate::treemap::TreemapTextRole::SectionValue,
+                    section.depth != 0 && !value_text.is_empty(),
+                    typography_theme.section_font_ownership(i),
+                );
+            }
         }
 
         out.push_str("</g>");
@@ -744,8 +805,12 @@ pub(crate) fn render_treemap_diagram_svg(
             };
 
             loop {
-                if computed_length_measurer.measure_svg_text_computed_length_px(&leaf.name, &style)
-                    <= available_w
+                if measure_treemap_computed_length(
+                    &computed_length_measurer,
+                    &leaf.name,
+                    &style,
+                    &mut typography_theme_receipt,
+                ) <= available_w
                     || label_font_size <= min_label_font_size
                 {
                     break;
@@ -778,8 +843,12 @@ pub(crate) fn render_treemap_diagram_svg(
                     label_hidden = true;
                 }
             } else {
-                if computed_length_measurer.measure_svg_text_computed_length_px(&leaf.name, &style)
-                    > available_w
+                if measure_treemap_computed_length(
+                    &computed_length_measurer,
+                    &leaf.name,
+                    &style,
+                    &mut typography_theme_receipt,
+                ) > available_w
                     || label_font_size < min_label_font_size
                     || available_h < label_font_size
                 {
@@ -824,6 +893,13 @@ pub(crate) fn render_treemap_diagram_svg(
             text = escape_xml(&leaf.name)
         );
         out.checkpoint()?;
+        if let Some(receipt) = typography_theme_receipt.as_mut() {
+            receipt.record_text(
+                crate::treemap::TreemapTextRole::LeafLabel,
+                !label_hidden && !leaf.name.trim().is_empty(),
+                typography_theme.leaf_font_ownership(i),
+            );
+        }
 
         if layout.show_values {
             let value_text = if leaf.value != 0.0 {
@@ -856,8 +932,12 @@ pub(crate) fn render_treemap_diagram_svg(
                     font_weight: None,
                     font_style: None,
                 };
-                let value_w_px = computed_length_measurer
-                    .measure_svg_text_computed_length_px(&value_text, &style);
+                let value_w_px = measure_treemap_computed_length(
+                    &computed_length_measurer,
+                    &value_text,
+                    &style,
+                    &mut typography_theme_receipt,
+                );
                 if value_w_px <= available_w_for_value
                     && value_y + value_font_size <= max_value_bottom_y
                     && value_font_size >= min_value_font_size
@@ -900,6 +980,13 @@ pub(crate) fn render_treemap_diagram_svg(
                 );
             }
             out.checkpoint()?;
+            if let Some(receipt) = typography_theme_receipt.as_mut() {
+                receipt.record_text(
+                    crate::treemap::TreemapTextRole::LeafValue,
+                    !value_hidden && !value_text.is_empty(),
+                    typography_theme.leaf_font_ownership(i),
+                );
+            }
         }
 
         out.push_str("</g>");
@@ -911,6 +998,11 @@ pub(crate) fn render_treemap_diagram_svg(
     if title_theme_receipt.is_some_and(|receipt| !title_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
             message: "Treemap title theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if typography_theme_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Treemap typography receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted)
@@ -1091,8 +1183,16 @@ mod tests {
             session.work_meter().as_ref(),
         )
         .unwrap();
-        let svg = render_treemap_diagram_svg(&layout, config.as_value(), &title_theme, &execution)
-            .unwrap();
+        let typography_theme =
+            crate::treemap::TreemapTypographyThemePlan::resolve(None, &config, &layout);
+        let svg = render_treemap_diagram_svg(
+            &layout,
+            config.as_value(),
+            &title_theme,
+            &typography_theme,
+            &execution,
+        )
+        .unwrap();
 
         let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");
         assert!(

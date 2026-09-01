@@ -1,7 +1,8 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, TypographySpec,
 };
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -16,18 +17,38 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, TextStyle};
 use merman_render::{DiagramFamilyId, LayoutOptions};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 struct CountingTreemapHost {
     calls: AtomicUsize,
+    font_families: Mutex<Vec<Option<String>>>,
 }
 
 impl CountingTreemapHost {
     fn width(&self, text: &str, style: &TextStyle) -> f64 {
         self.calls.fetch_add(1, Ordering::Relaxed);
+        self.font_families
+            .lock()
+            .expect("font family recorder is not poisoned")
+            .push(style.font_family.clone());
         text.chars().count() as f64 * style.font_size.max(1.0)
+    }
+
+    fn reset(&self) {
+        self.calls.store(0, Ordering::Relaxed);
+        self.font_families
+            .lock()
+            .expect("font family recorder is not poisoned")
+            .clear();
+    }
+
+    fn observed_font_families(&self) -> Vec<Option<String>> {
+        self.font_families
+            .lock()
+            .expect("font family recorder is not poisoned")
+            .clone()
     }
 }
 
@@ -166,6 +187,17 @@ fn treemap_title_fill_theme(fill: CanvasPaint) -> DiagramTheme {
             ),
         )
         .expect("compile Treemap title fill theme")
+}
+
+fn treemap_typography_theme(font_stack: FontStack) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                DiagramFamilyId::TREEMAP,
+                ThemeTextStyle::default().with_font_stack(font_stack),
+            ),
+        ))
+        .expect("compile Treemap typography theme")
 }
 
 fn render_treemap_with_theme(
@@ -388,6 +420,63 @@ fn treemap_title_fill_is_not_applicable_without_a_title() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn treemap_typed_font_stack_reaches_css_and_all_text_measurements() {
+    let expected_font = "TreemapTyped, monospace";
+    let theme = treemap_typography_theme(
+        FontStack::new(["TreemapTyped", "monospace"]).expect("valid Treemap font stack"),
+    );
+    let source = r#"treemap
+title Typed treemap
+"Section"
+  "A long leaf label": 4
+  "Another leaf": 2
+"#;
+    let host = Arc::new(CountingTreemapHost::default());
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Treemap")
+        .expect("detect themed Treemap");
+    let session = counting_treemap_environment(Arc::clone(&host))
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict portable Treemap session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed Treemap");
+    host.reset();
+
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed Treemap");
+    assert!(
+        rendered
+            .svg()
+            .contains(&format!("font-family:{expected_font};")),
+        "typed Treemap FontStack must reach the final stylesheet: {}",
+        rendered.svg()
+    );
+
+    let observed_families = host.observed_font_families();
+    assert!(
+        !observed_families.is_empty(),
+        "Treemap should measure visible text"
+    );
+    assert!(
+        observed_families
+            .iter()
+            .all(|family| family.as_deref() == Some(expected_font)),
+        "every Treemap text measurement must use the resolved typed font: {observed_families:?}"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

@@ -1176,6 +1176,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             effective_config_value,
             artifact.title_theme(),
+            artifact.typography_theme(),
             options,
         ),
         BuiltinFamilyArtifact::Venn(artifact) => {

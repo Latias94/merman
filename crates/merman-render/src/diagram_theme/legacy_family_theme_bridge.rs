@@ -2102,7 +2102,7 @@ mod tests {
     }
 
     #[test]
-    fn treemap_unsupported_font_size_is_not_projected_into_legacy_config() {
+    fn treemap_typed_font_stack_and_unsupported_font_size_are_not_projected_into_legacy_config() {
         const SOURCE: &str = "treemap\n\"Root\"\n  \"Leaf\": 1\n";
 
         let typography = TextStyle::default()
@@ -2116,11 +2116,8 @@ mod tests {
             TypographySpec::default().with_family_style(DiagramFamilyId::TREEMAP, typography),
         );
         let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::TREEMAP);
-        assert!(
-            artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.treemap.typography")
-        );
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
 
         let baseline = parse(&DiagramThemeSpec::default(), SOURCE);
         let themed = parse(&spec, SOURCE);
@@ -2134,13 +2131,13 @@ mod tests {
             baseline.effective_config.get_str("fontSize"),
             "Treemap FontSize must not shadow the root fallback"
         );
-        assert_ne!(
-            themed.effective_config.get_str("themeVariables.fontFamily"),
-            baseline
-                .effective_config
-                .get_str("themeVariables.fontFamily"),
-            "Treemap FontStack remains the sole typography compatibility projection"
-        );
+        for path in ["fontFamily", "themeVariables.fontFamily"] {
+            assert_eq!(
+                themed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "Treemap FontStack must not enter the compatibility overlay"
+            );
+        }
     }
 
     fn fallback_contribution_count(metadata: &merman_core::ParseMetadata) -> usize {

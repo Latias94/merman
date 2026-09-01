@@ -1511,7 +1511,7 @@ pub(super) fn treemap_css<I>(diagram_id: I, effective_config: &serde_json::Value
 where
     I: SvgDiagramIdValue,
 {
-    treemap_css_inner(diagram_id, effective_config, None).map(|(css, _)| css)
+    treemap_css_inner(diagram_id, effective_config, None, None).map(|(css, _, _)| css)
 }
 
 pub(super) struct TreemapTitleCssEmission {
@@ -1529,29 +1529,49 @@ impl TreemapTitleCssEmission {
     }
 }
 
-pub(super) fn treemap_css_with_title_fill<I>(
+pub(super) fn treemap_css_with_title_fill_and_font_family<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
+    resolved_font_family: Option<&str>,
     title_fill: Option<&str>,
-) -> Result<(String, TreemapTitleCssEmission)>
+) -> Result<(
+    String,
+    TreemapTitleCssEmission,
+    crate::treemap::TreemapTypographyCssEmission,
+)>
 where
     I: SvgDiagramIdValue,
 {
-    treemap_css_inner(diagram_id, effective_config, title_fill)
+    treemap_css_inner(
+        diagram_id,
+        effective_config,
+        resolved_font_family,
+        title_fill,
+    )
 }
 
 fn treemap_css_inner<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
+    resolved_font_family: Option<&str>,
     title_fill: Option<&str>,
-) -> Result<(String, TreemapTitleCssEmission)>
+) -> Result<(
+    String,
+    TreemapTitleCssEmission,
+    crate::treemap::TreemapTypographyCssEmission,
+)>
 where
     I: SvgDiagramIdValue,
 {
     // Mermaid's treemap styles merge `treemap.*` options with theme title/text colors. Keep
     // `:root` last to match upstream SVG baselines.
     let id = CssSelectorDiagramId(diagram_id);
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let parts = match resolved_font_family {
+        Some(font_family) => {
+            info_css_parts_with_font_family(diagram_id, effective_config, font_family)
+        }
+        None => info_css_parts_with_config(diagram_id, effective_config),
+    };
     let theme = MermaidThemeAdapter::new(effective_config).treemap()?;
     let mut out = parts.css_prefix;
 
@@ -1584,8 +1604,13 @@ where
         class: title_class,
         fill: title_fill.into(),
     };
+    let typography_emission = crate::treemap::TreemapTypographyCssEmission::new(
+        &parts.font_family,
+        parts.base_typography_emitted,
+        !parts.root_rule.is_empty(),
+    );
     out.push_str(&parts.root_rule);
-    Ok((out, title_emission))
+    Ok((out, title_emission, typography_emission))
 }
 
 pub(super) fn push_xychart_css<I>(out: &mut String, diagram_id: I)

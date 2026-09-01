@@ -687,10 +687,16 @@ fn prepare_treemap_family(
         layout.title.as_deref(),
         execution.work_meter_ref(),
     )?;
+    let typography_theme = crate::treemap::TreemapTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &layout,
+    );
     Ok(BuiltinFamilyArtifact::Treemap(Box::new(
         TreemapFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             title_theme,
+            typography_theme,
         },
     )))
 }

@@ -1047,11 +1047,9 @@ fn classify_font_stack(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::JOURNEY
             | DiagramFamilyId::C4
             | DiagramFamilyId::ARCHITECTURE
+            | DiagramFamilyId::TREEMAP
     ) {
         return FamilyThemeDisposition::TypedAdapter;
-    }
-    if family == DiagramFamilyId::TREEMAP {
-        return FamilyThemeDisposition::LegacyCompatibility;
     }
     FamilyThemeDisposition::Unsupported
 }
@@ -5803,7 +5801,7 @@ mod tests {
     }
 
     #[test]
-    fn treemap_base_font_size_is_unsupported_without_a_terminal() {
+    fn treemap_font_stack_is_typed_while_font_size_remains_unsupported() {
         let typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::single("Treemap font stack")
@@ -5816,7 +5814,7 @@ mod tests {
         assert!(routes.iter().any(|route| {
             route.mechanism()
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
-                && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
         }));
         assert!(routes.iter().any(|route| {
             route.mechanism()

@@ -15,7 +15,10 @@ mod theme;
 
 use config::TreemapConfigView;
 
-pub(crate) use theme::TreemapTitleThemePlan;
+pub(crate) use theme::{
+    TreemapTextRole, TreemapTitleThemePlan, TreemapTypographyCssEmission,
+    TreemapTypographyThemePlan, TreemapTypographyThemeReceipt,
+};
 
 #[derive(Debug, Clone)]
 struct HierNode {

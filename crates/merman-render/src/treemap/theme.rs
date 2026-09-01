@@ -9,10 +9,369 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    InheritedFontStackOutcome, InheritedFontStackPlan, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
+use crate::model::TreemapDiagramLayout;
 use crate::resources::OperationWorkMeter;
+
+/// Final inherited Treemap font stack shared by CSS emission, text fitting, and evidence.
+///
+/// Treemap's other text sizes are role-local values from Mermaid (`14px`, `12px`, `10px`, and
+/// the adaptive leaf sizes), so base `FontSize` remains intentionally unsupported. The inherited
+/// stack is nevertheless a real consumer: Mermaid uses it for the title and all section/leaf text
+/// while measuring those same terminals through `getComputedTextLength()`.
+#[derive(Debug)]
+pub(crate) struct TreemapTypographyThemePlan {
+    inherited_font_stack: InheritedFontStackPlan,
+    section_font_ownership: Box<[crate::mermaid_style::CssFontFamilyOwnership]>,
+    leaf_font_ownership: Box<[crate::mermaid_style::CssFontFamilyOwnership]>,
+    possible_visible_text_count: usize,
+    evidence: FamilyThemeEvidence,
+    terminal_receipt: OnceLock<TreemapTypographyTerminalSeal>,
+}
+
+impl TreemapTypographyThemePlan {
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+        layout: &TreemapDiagramLayout,
+    ) -> Self {
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let section_font_ownership = layout
+            .sections
+            .iter()
+            .map(|section| {
+                crate::mermaid_style::css_font_family_ownership(
+                    section
+                        .css_compiled_styles
+                        .as_deref()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(String::as_str),
+                )
+            })
+            .collect();
+        let leaf_font_ownership = layout
+            .leaves
+            .iter()
+            .map(|leaf| {
+                crate::mermaid_style::css_font_family_ownership(
+                    leaf.css_compiled_styles
+                        .as_deref()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(String::as_str),
+                )
+            })
+            .collect();
+        let possible_visible_text_count = possible_visible_text_count(layout);
+
+        Self {
+            inherited_font_stack,
+            section_font_ownership,
+            leaf_font_ownership,
+            possible_visible_text_count,
+            evidence: FamilyThemeEvidence::from_theme(theme),
+            terminal_receipt: OnceLock::new(),
+        }
+    }
+
+    pub(crate) fn font_family_css(&self) -> &str {
+        self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn section_font_ownership(
+        &self,
+        index: usize,
+    ) -> crate::mermaid_style::CssFontFamilyOwnership {
+        self.section_font_ownership
+            .get(index)
+            .copied()
+            .unwrap_or(crate::mermaid_style::CssFontFamilyOwnership::Unverified)
+    }
+
+    pub(crate) fn leaf_font_ownership(
+        &self,
+        index: usize,
+    ) -> crate::mermaid_style::CssFontFamilyOwnership {
+        self.leaf_font_ownership
+            .get(index)
+            .copied()
+            .unwrap_or(crate::mermaid_style::CssFontFamilyOwnership::Unverified)
+    }
+
+    pub(crate) fn begin_terminal_receipt(
+        &self,
+        layout: &TreemapDiagramLayout,
+    ) -> Option<TreemapTypographyThemeReceipt<'_>> {
+        self.inherited_font_stack
+            .typography_requested()
+            .then(|| TreemapTypographyThemeReceipt::new(self, layout))
+    }
+
+    pub(crate) fn record_terminal(&self, receipt: TreemapTypographyThemeReceipt<'_>) -> bool {
+        receipt
+            .seal()
+            .is_some_and(|seal| self.terminal_receipt.set(seal).is_ok())
+    }
+
+    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.evidence.clone();
+        let Some(receipt) = self.terminal_receipt.get() else {
+            self.inherited_font_stack
+                .mark_unsupported_typography_evidence(
+                    &mut evidence,
+                    self.possible_visible_text_count != 0,
+                );
+            if self.inherited_font_stack.typed_font_stack_requested()
+                && self.possible_visible_text_count != 0
+            {
+                evidence.mark_residual(
+                    FamilyThemeMechanismKey::Typography(
+                        crate::diagram_theme::ThemeTypographyProperty::FontStack,
+                    ),
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                );
+            }
+            return evidence;
+        };
+
+        self.inherited_font_stack
+            .mark_unsupported_typography_evidence(&mut evidence, receipt.visible_count != 0);
+        if !self.inherited_font_stack.typed_font_stack_requested() {
+            return evidence;
+        }
+
+        let key = FamilyThemeMechanismKey::Typography(
+            crate::diagram_theme::ThemeTypographyProperty::FontStack,
+        );
+        match self.inherited_font_stack.outcome() {
+            InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
+            InheritedFontStackOutcome::Typed
+                if receipt.visible_count == 0
+                    && receipt.source_owned_count == 0
+                    && receipt.unverified_count == 0 =>
+            {
+                evidence.mark_not_applicable(key)
+            }
+            InheritedFontStackOutcome::Typed
+                if receipt.source_owned_count == receipt.visible_count
+                    && receipt.unverified_count == 0 =>
+            {
+                evidence.mark_not_applicable(key)
+            }
+            InheritedFontStackOutcome::Typed
+                if receipt.visible_count != 0
+                    && receipt.source_owned_count == 0
+                    && receipt.unverified_count == 0 =>
+            {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography])
+            }
+            InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::Unsupported => {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography)
+            }
+            InheritedFontStackOutcome::Inactive => {}
+        }
+        evidence
+    }
+}
+
+/// CSS facts returned by the Treemap stylesheet writer. These are writer-owned values; the
+/// typography receipt never reparses the final stylesheet.
+#[derive(Debug, Clone)]
+pub(crate) struct TreemapTypographyCssEmission {
+    font_family_css: Box<str>,
+    base_typography_emitted: bool,
+    root_typography_emitted: bool,
+}
+
+impl TreemapTypographyCssEmission {
+    pub(crate) fn new(
+        font_family_css: &str,
+        base_typography_emitted: bool,
+        root_typography_emitted: bool,
+    ) -> Self {
+        Self {
+            font_family_css: font_family_css.into(),
+            base_typography_emitted,
+            root_typography_emitted,
+        }
+    }
+
+    pub(crate) fn font_family_css(&self) -> &str {
+        &self.font_family_css
+    }
+
+    pub(crate) const fn base_typography_emitted(&self) -> bool {
+        self.base_typography_emitted
+    }
+
+    pub(crate) const fn root_typography_emitted(&self) -> bool {
+        self.root_typography_emitted
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TreemapTextRole {
+    Title,
+    SectionLabel,
+    SectionValue,
+    LeafLabel,
+    LeafValue,
+}
+
+#[derive(Debug)]
+pub(crate) struct TreemapTypographyThemeReceipt<'a> {
+    expected_font_family_css: &'a str,
+    expected_roles: Box<[TreemapTextRole]>,
+    next_role: usize,
+    css_emitted: bool,
+    css_matches: bool,
+    terminal_matches: bool,
+    measurement_matches: bool,
+    visible_count: usize,
+    source_owned_count: usize,
+    unverified_count: usize,
+}
+
+#[derive(Debug)]
+struct TreemapTypographyTerminalSeal {
+    visible_count: usize,
+    source_owned_count: usize,
+    unverified_count: usize,
+}
+
+impl<'a> TreemapTypographyThemeReceipt<'a> {
+    fn new(plan: &'a TreemapTypographyThemePlan, layout: &TreemapDiagramLayout) -> Self {
+        let mut expected_roles = Vec::with_capacity(
+            usize::from(layout.title.is_some())
+                .saturating_add(
+                    layout
+                        .sections
+                        .len()
+                        .saturating_mul(usize::from(layout.show_values).saturating_add(1)),
+                )
+                .saturating_add(
+                    layout
+                        .leaves
+                        .len()
+                        .saturating_mul(usize::from(layout.show_values).saturating_add(1)),
+                ),
+        );
+        if layout
+            .title
+            .as_deref()
+            .is_some_and(|title| !title.trim().is_empty())
+        {
+            expected_roles.push(TreemapTextRole::Title);
+        }
+        for _ in &layout.sections {
+            expected_roles.push(TreemapTextRole::SectionLabel);
+            if layout.show_values {
+                expected_roles.push(TreemapTextRole::SectionValue);
+            }
+        }
+        for _ in &layout.leaves {
+            expected_roles.push(TreemapTextRole::LeafLabel);
+            if layout.show_values {
+                expected_roles.push(TreemapTextRole::LeafValue);
+            }
+        }
+        Self {
+            expected_font_family_css: plan.font_family_css(),
+            expected_roles: expected_roles.into_boxed_slice(),
+            next_role: 0,
+            css_emitted: false,
+            css_matches: false,
+            terminal_matches: true,
+            measurement_matches: true,
+            visible_count: 0,
+            source_owned_count: 0,
+            unverified_count: 0,
+        }
+    }
+
+    pub(crate) fn record_css_emission(&mut self, emission: TreemapTypographyCssEmission) {
+        self.terminal_matches &= !self.css_emitted;
+        self.css_matches = emission.base_typography_emitted()
+            && emission.root_typography_emitted()
+            && emission.font_family_css() == self.expected_font_family_css;
+        self.css_emitted = true;
+    }
+
+    pub(crate) fn record_measurement(&mut self, font_family_css: Option<&str>) {
+        self.measurement_matches &= font_family_css == Some(self.expected_font_family_css);
+    }
+
+    pub(crate) fn record_text(
+        &mut self,
+        role: TreemapTextRole,
+        visible: bool,
+        ownership: crate::mermaid_style::CssFontFamilyOwnership,
+    ) {
+        self.terminal_matches &= self
+            .expected_roles
+            .get(self.next_role)
+            .is_some_and(|expected| *expected == role);
+        self.terminal_matches &= self.css_emitted;
+        self.next_role = self.next_role.saturating_add(1);
+        if !visible {
+            return;
+        }
+        self.visible_count = self.visible_count.saturating_add(1);
+        match ownership {
+            crate::mermaid_style::CssFontFamilyOwnership::Inherited => {}
+            crate::mermaid_style::CssFontFamilyOwnership::SourceOwned => {
+                self.source_owned_count = self.source_owned_count.saturating_add(1)
+            }
+            crate::mermaid_style::CssFontFamilyOwnership::Unverified => {
+                self.unverified_count = self.unverified_count.saturating_add(1)
+            }
+        }
+    }
+
+    fn seal(self) -> Option<TreemapTypographyTerminalSeal> {
+        (self.css_emitted
+            && self.css_matches
+            && self.terminal_matches
+            && self.measurement_matches
+            && self.next_role == self.expected_roles.len())
+        .then_some(TreemapTypographyTerminalSeal {
+            visible_count: self.visible_count,
+            source_owned_count: self.source_owned_count,
+            unverified_count: self.unverified_count,
+        })
+    }
+}
+
+fn possible_visible_text_count(layout: &TreemapDiagramLayout) -> usize {
+    let title = usize::from(
+        layout
+            .title
+            .as_deref()
+            .is_some_and(|title| !title.trim().is_empty()),
+    );
+    let sections = layout
+        .sections
+        .iter()
+        .map(|section| {
+            usize::from(section.depth != 0 && !section.name.trim().is_empty())
+                + usize::from(layout.show_values && section.depth != 0 && section.value != 0.0)
+        })
+        .sum::<usize>();
+    let leaves = layout
+        .leaves
+        .iter()
+        .map(|leaf| {
+            usize::from(!leaf.name.trim().is_empty())
+                + usize::from(layout.show_values && leaf.value != 0.0)
+        })
+        .sum::<usize>();
+    title.saturating_add(sections).saturating_add(leaves)
+}
 
 /// Final Treemap title fill shared by stylesheet emission and terminal evidence.
 #[derive(Debug)]

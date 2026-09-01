@@ -1877,6 +1877,7 @@ impl GitGraphFamilyArtifact {
 pub(crate) struct TreemapFamilyArtifact {
     pair: FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>,
     title_theme: crate::treemap::TreemapTitleThemePlan,
+    typography_theme: crate::treemap::TreemapTypographyThemePlan,
 }
 
 #[derive(Debug)]
@@ -1930,6 +1931,10 @@ impl TreemapFamilyArtifact {
 
     pub(crate) const fn title_theme(&self) -> &crate::treemap::TreemapTitleThemePlan {
         &self.title_theme
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::treemap::TreemapTypographyThemePlan {
+        &self.typography_theme
     }
 }
 
@@ -2514,7 +2519,11 @@ impl BuiltinFamilyArtifact {
 
     fn treemap_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Treemap(artifact) => Some(artifact.title_theme().finish_evidence()),
+            Self::Treemap(artifact) => {
+                let mut evidence = artifact.title_theme().finish_evidence();
+                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
+                Some(evidence)
+            }
             _ => None,
         }
     }
