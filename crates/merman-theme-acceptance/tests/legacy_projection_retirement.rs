@@ -16,3 +16,16 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
     assert_ne!(authorization.production_inventory_digest(), &[0; 32]);
     assert_ne!(authorization.receipt_report_digest(), &[0; 32]);
 }
+
+#[test]
+fn bridge_retirement_gate_reports_live_legacy_routes_without_visual_proof() {
+    let status = merman::__theme_acceptance::legacy_family_theme_bridge_retirement_status();
+
+    assert_eq!(status.dispatch_error_count(), 0);
+    assert!(status.matrix_route_count() > 0);
+    assert!(status.matrix_family_count() > 0);
+    assert!(status.dispatched_family_count() > 0);
+    assert_eq!(status.matrix_only_family_count(), 0);
+    assert_eq!(status.dispatch_only_family_count(), 0);
+    assert!(!status.can_delete_bridge());
+}

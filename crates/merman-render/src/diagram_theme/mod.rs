@@ -94,6 +94,10 @@ pub(crate) use family_mechanism_matrix::{
     FamilyThemeSelectorShape,
 };
 #[cfg(feature = "internal-theme-acceptance")]
+pub use legacy_family_theme_bridge::{
+    LegacyFamilyThemeBridgeRetirementStatus, legacy_family_theme_bridge_retirement_status,
+};
+#[cfg(feature = "internal-theme-acceptance")]
 #[doc(hidden)]
 pub use legacy_projection_retirement::{
     ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,

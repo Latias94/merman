@@ -125,6 +125,22 @@ pub(crate) enum ThemeTypographyProperty {
 }
 
 impl ThemeTypographyProperty {
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    pub(crate) const ALL: &'static [Self] = &[
+        Self::FontStack,
+        Self::FontSize,
+        Self::FontWeight,
+        Self::FontStyle,
+        Self::LineHeight,
+        Self::LetterSpacing,
+        Self::WordSpacing,
+        Self::Transform,
+        Self::Decoration,
+        Self::TextAlign,
+        Self::WhiteSpace,
+        Self::Wrap,
+    ];
+
     pub(crate) const fn id(self) -> &'static str {
         match self {
             Self::FontStack => "font-stack",

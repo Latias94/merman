@@ -76,8 +76,8 @@ pub(crate) enum FamilyThemePaintKind {
 }
 
 impl FamilyThemePaintKind {
-    #[cfg(test)]
-    const ALL: [Self; 6] = [
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    pub(crate) const ALL: [Self; 6] = [
         Self::Clear,
         Self::Transparent,
         Self::Solid,
@@ -213,6 +213,85 @@ pub(crate) enum FamilyThemeMechanism {
 pub(crate) struct FamilyThemeRoute {
     mechanism: FamilyThemeMechanism,
     disposition: FamilyThemeDisposition,
+}
+
+/// Stable, index-free identity for one route that can still enter the legacy compatibility
+/// bridge. Rule indexes and binding indexes are compilation details, so the retirement gate uses
+/// this semantic key instead of copying a concrete recipe's positions.
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum LegacyCompatibilityRouteKey {
+    BaseTypography {
+        family: DiagramFamilyId,
+        property: ThemeTypographyProperty,
+    },
+    RuleFacet {
+        family: DiagramFamilyId,
+        target: ThemeTarget,
+        selector: FamilyThemeSelectorShape,
+        facet: FamilyThemeRuleFacet,
+    },
+    OrdinalPalette {
+        family: DiagramFamilyId,
+        target: ThemeTarget,
+    },
+    EffectBinding {
+        family: DiagramFamilyId,
+        target: ThemeTarget,
+    },
+}
+
+/// Enumerates the complete semantic route domain understood by the matrix.
+///
+/// This is intentionally independent of any concrete theme recipe. A recipe only materializes
+/// routes that have values, while bridge retirement must answer whether *any* valid input could
+/// still reach the compatibility lane. The domain is kept here next to the classifiers so a new
+/// mechanism cannot silently bypass the exit gate.
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+pub(crate) fn legacy_compatibility_route_inventory() -> Vec<LegacyCompatibilityRouteKey> {
+    let mut routes = Vec::new();
+    for &family in DiagramFamilyId::all() {
+        for &property in ThemeTypographyProperty::ALL {
+            if classify_base_typography(family, property)
+                == FamilyThemeDisposition::LegacyCompatibility
+            {
+                routes.push(LegacyCompatibilityRouteKey::BaseTypography { family, property });
+            }
+        }
+
+        for &target in ThemeTarget::ALL {
+            if target == ThemeTarget::Canvas || !target.valid_for(family) {
+                continue;
+            }
+            for_each_matrix_selector(|selector| {
+                for_each_matrix_rule_facet(|facet| {
+                    if classify_rule_facet(family, target, selector, facet)
+                        == FamilyThemeDisposition::LegacyCompatibility
+                    {
+                        routes.push(LegacyCompatibilityRouteKey::RuleFacet {
+                            family,
+                            target,
+                            selector,
+                            facet,
+                        });
+                    }
+                });
+            });
+            if compile_ordinal_palette_route(family, target).disposition()
+                == FamilyThemeDisposition::LegacyCompatibility
+            {
+                routes.push(LegacyCompatibilityRouteKey::OrdinalPalette { family, target });
+            }
+            if compile_effect_binding_route(family, 0, target).disposition()
+                == FamilyThemeDisposition::LegacyCompatibility
+            {
+                routes.push(LegacyCompatibilityRouteKey::EffectBinding { family, target });
+            }
+        }
+    }
+    routes.sort_unstable();
+    routes.dedup();
+    routes
 }
 
 impl FamilyThemeRoute {
@@ -875,8 +954,8 @@ pub(super) fn summarize_base_typography_support(
     summary
 }
 
-#[cfg(test)]
-fn for_each_public_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn for_each_matrix_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
     for variant in std::iter::once(None).chain(ThemeVariant::ALL.iter().copied().map(Some)) {
         visit(FamilyThemeSelectorShape::Static { variant });
         visit(FamilyThemeSelectorShape::Ordinal {
@@ -890,6 +969,36 @@ fn for_each_public_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
                 offset: 0,
             },
         });
+    }
+}
+
+#[cfg(test)]
+fn for_each_public_selector(visit: impl FnMut(FamilyThemeSelectorShape)) {
+    for_each_matrix_selector(visit);
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn for_each_matrix_rule_facet(mut visit: impl FnMut(FamilyThemeRuleFacet)) {
+    for kind in FamilyThemePaintKind::ALL {
+        visit(FamilyThemeRuleFacet::Fill(kind));
+        visit(FamilyThemeRuleFacet::Stroke(kind));
+    }
+    for facet in [
+        FamilyThemeRuleFacet::StrokeWidth,
+        FamilyThemeRuleFacet::StrokeDasharray,
+        FamilyThemeRuleFacet::StrokeLinecap,
+        FamilyThemeRuleFacet::StrokeLinejoin,
+        FamilyThemeRuleFacet::Opacity,
+        FamilyThemeRuleFacet::FillOpacity,
+        FamilyThemeRuleFacet::StrokeOpacity,
+        FamilyThemeRuleFacet::Radius,
+        FamilyThemeRuleFacet::Padding,
+        FamilyThemeRuleFacet::Effect,
+    ] {
+        visit(facet);
+    }
+    for &property in ThemeTypographyProperty::ALL {
+        visit(FamilyThemeRuleFacet::Typography(property));
     }
 }
 

@@ -18,6 +18,10 @@ use super::canvas::CanvasPaint;
 use super::family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeRuleFacet, MAX_LEGACY_ASSIGNMENT_STRING_BYTES,
 };
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use super::family_mechanism_matrix::{
+    LegacyCompatibilityRouteKey, legacy_compatibility_route_inventory,
+};
 use super::family_program::{FamilyThemeProgram, FamilyThemeProgramCache};
 use super::resolved::{ResolvedProperty, ResolvedThemeStyle, ThemeTypographyProperty};
 use super::semantic::{ThemeTarget, ThemeVariant};
@@ -247,6 +251,102 @@ enum LegacyFamilyDispatch {
     Journey,
     Text,
     NoLegacy,
+}
+
+/// Matrix-derived readiness facts for retiring the compatibility bridge.
+///
+/// A zero count is meaningful only when both sides are zero: the matrix must have no reachable
+/// legacy route and the dispatch table must have no family left to send to the bridge. Keeping
+/// these facts together prevents a migration from updating one ledger while leaving the other
+/// executable.
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyFamilyThemeBridgeRetirementStatus {
+    matrix_route_count: usize,
+    matrix_family_count: usize,
+    dispatched_family_count: usize,
+    matrix_only_family_count: usize,
+    dispatch_only_family_count: usize,
+    dispatch_error_count: usize,
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+impl LegacyFamilyThemeBridgeRetirementStatus {
+    pub const fn matrix_route_count(self) -> usize {
+        self.matrix_route_count
+    }
+
+    pub const fn matrix_family_count(self) -> usize {
+        self.matrix_family_count
+    }
+
+    pub const fn dispatched_family_count(self) -> usize {
+        self.dispatched_family_count
+    }
+
+    /// Families with a matrix-declared legacy route but no executable bridge dispatch.
+    pub const fn matrix_only_family_count(self) -> usize {
+        self.matrix_only_family_count
+    }
+
+    /// Families still dispatched to the bridge despite having no matrix-declared legacy route.
+    pub const fn dispatch_only_family_count(self) -> usize {
+        self.dispatch_only_family_count
+    }
+
+    pub const fn dispatch_error_count(self) -> usize {
+        self.dispatch_error_count
+    }
+
+    pub const fn can_delete_bridge(self) -> bool {
+        self.matrix_route_count == 0
+            && self.matrix_family_count == 0
+            && self.dispatched_family_count == 0
+            && self.matrix_only_family_count == 0
+            && self.dispatch_only_family_count == 0
+            && self.dispatch_error_count == 0
+    }
+}
+
+/// Returns the single, matrix-driven predicate used to decide when the bridge can be removed.
+///
+/// This is deliberately independent of a concrete recipe and of C6/KTD17 output witnesses. A
+/// bridge deletion decision must be about executable route ownership, not about whether a
+/// particular fixture happened to produce an empty overlay.
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+pub fn legacy_family_theme_bridge_retirement_status() -> LegacyFamilyThemeBridgeRetirementStatus {
+    let matrix_routes = legacy_compatibility_route_inventory();
+    let matrix_families = matrix_routes
+        .iter()
+        .map(|route| match route {
+            LegacyCompatibilityRouteKey::BaseTypography { family, .. }
+            | LegacyCompatibilityRouteKey::RuleFacet { family, .. }
+            | LegacyCompatibilityRouteKey::OrdinalPalette { family, .. }
+            | LegacyCompatibilityRouteKey::EffectBinding { family, .. } => *family,
+        })
+        .collect::<BTreeSet<_>>();
+    let mut dispatched_families = BTreeSet::new();
+    let mut dispatch_error_count = 0;
+    for &family in DiagramFamilyId::all() {
+        match legacy_family_dispatch(family) {
+            Ok(LegacyFamilyDispatch::NoLegacy) => {}
+            Ok(_) => {
+                dispatched_families.insert(family);
+            }
+            Err(_) => dispatch_error_count += 1,
+        }
+    }
+    let matrix_only_family_count = matrix_families.difference(&dispatched_families).count();
+    let dispatch_only_family_count = dispatched_families.difference(&matrix_families).count();
+
+    LegacyFamilyThemeBridgeRetirementStatus {
+        matrix_route_count: matrix_routes.len(),
+        matrix_family_count: matrix_families.len(),
+        dispatched_family_count: dispatched_families.len(),
+        matrix_only_family_count,
+        dispatch_only_family_count,
+        dispatch_error_count,
+    }
 }
 
 fn legacy_family_dispatch(
@@ -2167,6 +2267,18 @@ mod tests {
                 DiagramFamilyId::ZENUML,
             ])
         );
+    }
+
+    #[test]
+    fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
+        let status = legacy_family_theme_bridge_retirement_status();
+        assert_eq!(status.dispatch_error_count(), 0);
+        assert!(status.matrix_route_count() > 0);
+        assert!(status.matrix_family_count() > 0);
+        assert!(status.dispatched_family_count() > 0);
+        assert_eq!(status.matrix_only_family_count(), 0);
+        assert_eq!(status.dispatch_only_family_count(), 0);
+        assert!(!status.can_delete_bridge());
     }
 
     #[test]

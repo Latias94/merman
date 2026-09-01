@@ -181,6 +181,13 @@ pub mod __theme_acceptance {
         .map(|inner| ThemeRoutePngCutoverPairView { inner })
     }
 
+    /// Returns the renderer-owned readiness facts for removing the legacy family bridge.
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub fn legacy_family_theme_bridge_retirement_status()
+    -> merman_render::__private::LegacyFamilyThemeBridgeRetirementStatus {
+        merman_render::__private::legacy_family_theme_bridge_retirement_status()
+    }
+
     /// Borrowed production-owned artifact and its inseparable target admission receipt.
     ///
     /// The acceptance harness may inspect the exact bytes, but it cannot pair arbitrary bytes with

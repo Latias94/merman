@@ -112,6 +112,9 @@ pub mod __private {
     };
 
     #[cfg(feature = "internal-theme-acceptance")]
+    pub use crate::diagram_theme::LegacyFamilyThemeBridgeRetirementStatus;
+
+    #[cfg(feature = "internal-theme-acceptance")]
     pub use crate::diagram_theme::{
         ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
         ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
@@ -150,6 +153,17 @@ pub mod __private {
         ThemeLegacyProjectionRetirementInventoryError,
     > {
         crate::diagram_theme::legacy_projection_retirement_receipts()
+    }
+
+    /// Returns matrix-derived readiness facts for removing the legacy family bridge.
+    ///
+    /// This gate is intentionally independent of C6 visual qualification and route artifact
+    /// witnesses. It becomes true only after every executable legacy route and bridge dispatch
+    /// entry has been retired.
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub fn legacy_family_theme_bridge_retirement_status()
+    -> crate::diagram_theme::LegacyFamilyThemeBridgeRetirementStatus {
+        crate::diagram_theme::legacy_family_theme_bridge_retirement_status()
     }
 
     /// Seals renderer-owned route receipts against both finalized SVG representations.
