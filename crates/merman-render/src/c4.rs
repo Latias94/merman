@@ -143,10 +143,19 @@ fn measure_c4_unified_text(
     text_limit_width: f64,
 ) -> UnifiedTextMeasure {
     let source_lines = c4_source_word_lines(text);
+    // Mermaid's `createText` installs `font-weight="normal"` and
+    // `font-style="normal"` on the temporary tspans used by its line-fitting
+    // probe. `c4LabelHelper` removes those attributes only after wrapping, so
+    // the final section can inherit C4 typography such as the bold name style.
+    // Keep those two measurement phases distinct: wrapping follows the
+    // temporary normal text, while the final bounds use the rendered style.
+    let mut wrapping_style = style.clone();
+    wrapping_style.font_weight = Some("normal".to_string());
+    wrapping_style.font_style = Some("normal".to_string());
     let rows = c4_wrap_source_word_lines(
         measurer,
         &source_lines,
-        style,
+        &wrapping_style,
         wrap.then_some(text_limit_width),
     );
     let visible = c4_visible_text(&rows);
@@ -339,7 +348,7 @@ pub(crate) use layout::layout_c4_diagram_typed;
 mod tests {
     use crate::text::{TextMeasurer, TextMetrics};
 
-    use super::{TextStyle, measure_c4_text};
+    use super::{TextStyle, measure_c4_text, measure_c4_unified_text};
 
     struct C4ProbeMeasurer;
 
@@ -393,5 +402,45 @@ mod tests {
         assert_eq!(measured.width, 200.0);
         assert_eq!(measured.height, 57.0);
         assert_eq!(measured.line_count, 3);
+    }
+
+    struct C4UnifiedWrapProbeMeasurer;
+
+    impl TextMeasurer for C4UnifiedWrapProbeMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            let width_per_character = if style.font_weight.as_deref() == Some("bold") {
+                8.0
+            } else {
+                7.0
+            };
+            let lines = text.lines().collect::<Vec<_>>();
+            TextMetrics {
+                width: lines
+                    .iter()
+                    .map(|line| line.chars().count() as f64 * width_per_character)
+                    .fold(0.0, f64::max),
+                height: lines.len().max(1) as f64 * 20.0,
+                line_count: lines.len().max(1),
+            }
+        }
+    }
+
+    #[test]
+    fn c4_unified_text_wraps_before_inheriting_final_section_weight() {
+        let style = TextStyle {
+            font_weight: Some("bold".to_string()),
+            ..TextStyle::default()
+        };
+        let measured = measure_c4_unified_text(
+            &C4UnifiedWrapProbeMeasurer,
+            "Mainframe Banking System",
+            &style,
+            true,
+            176.0,
+        );
+
+        assert_eq!(measured.metrics.line_count, 1);
+        assert_eq!(measured.render_plan.rows.len(), 1);
+        assert!(measured.metrics.width > 176.0);
     }
 }
