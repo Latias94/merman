@@ -1079,10 +1079,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
     }
     if matches!(
         family,
-        DiagramFamilyId::CLASS
-            | DiagramFamilyId::ARCHITECTURE
-            | DiagramFamilyId::C4
-            | DiagramFamilyId::TREEMAP
+        DiagramFamilyId::CLASS | DiagramFamilyId::ARCHITECTURE | DiagramFamilyId::C4
     ) {
         return FamilyThemeDisposition::LegacyCompatibility;
     }
@@ -5799,6 +5796,29 @@ mod tests {
                     ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
                 )
             ) && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
+    }
+
+    #[test]
+    fn treemap_base_font_size_is_unsupported_without_a_terminal() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("Treemap font stack")
+                    .expect("valid Treemap font stack"),
+            )
+            .with_font_size_px(24.0)
+            .expect("valid Treemap font size");
+        let routes = compile_base_typography_routes(DiagramFamilyId::TREEMAP, &typography);
+
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
         }));
     }
 

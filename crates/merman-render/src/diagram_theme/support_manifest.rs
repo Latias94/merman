@@ -1516,7 +1516,12 @@ const BASE_CLAIMS: &[BaseClaim] = &[
     BaseClaim {
         family: "treemap",
         kind: SupportClaimKind::LegacySurface,
-        properties: &["font-size", "font-stack"],
+        properties: &["font-stack"],
+    },
+    BaseClaim {
+        family: "treemap",
+        kind: SupportClaimKind::Unsupported,
+        properties: &["font-size"],
     },
     BaseClaim {
         family: "treeView",

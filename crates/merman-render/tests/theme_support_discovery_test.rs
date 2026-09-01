@@ -1038,6 +1038,21 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
+        (
+            DiagramFamilyId::TREEMAP,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.legacy-compatibility-only",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::TREEMAP,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Unsupported,
+            &["theme-support.no-supported-route"][..],
+        ),
     ] {
         let query = ThemeSupportQueryV2::base_typography(
             family.as_str(),
