@@ -1286,9 +1286,10 @@ fn class_label_style_facts(
     css_style: &str,
     node_owns_color: bool,
     node_font_ownership: crate::mermaid_style::CssFontFamilyOwnership,
+    node_font_size_ownership: crate::mermaid_style::CssFontSizeOwnership,
     writer_uses_html_labels: bool,
 ) -> ClassNodeLabelStyleFacts {
-    use crate::mermaid_style::CssFontFamilyOwnership;
+    use crate::mermaid_style::{CssFontFamilyOwnership, CssFontSizeOwnership};
 
     let local_font_ownership = crate::mermaid_style::css_font_family_ownership([css_style]);
     let writer_font_ownership =
@@ -1297,9 +1298,20 @@ fn class_label_style_facts(
         } else {
             local_font_ownership
         };
+    let local_font_size_ownership =
+        crate::mermaid_style::css_font_size_declaration_ownership([css_style]);
+    let writer_font_size_ownership =
+        if writer_uses_html_labels && node_font_size_ownership != CssFontSizeOwnership::Inherited {
+            node_font_size_ownership
+        } else {
+            local_font_size_ownership
+        };
     let font_ownership_unverified = crate::math::contains_delimited_math(text)
         || local_font_ownership == CssFontFamilyOwnership::Unverified
         || writer_font_ownership == CssFontFamilyOwnership::Unverified;
+    let font_size_ownership_unverified = crate::math::contains_delimited_math(text)
+        || local_font_size_ownership == CssFontSizeOwnership::Unverified
+        || writer_font_size_ownership == CssFontSizeOwnership::Unverified;
     let text_is_math_only = class_text_is_math_only(text);
     let parent_owns_color =
         node_owns_color || text_is_math_only || class_label_parent_owns_color(css_style);
@@ -1311,6 +1323,9 @@ fn class_label_style_facts(
         local_font_ownership == CssFontFamilyOwnership::SourceOwned,
         writer_font_ownership == CssFontFamilyOwnership::SourceOwned,
         font_ownership_unverified,
+        local_font_size_ownership == CssFontSizeOwnership::SourceOwned,
+        writer_font_size_ownership == CssFontSizeOwnership::SourceOwned,
+        font_size_ownership_unverified,
     );
     summary
 }
@@ -1345,6 +1360,9 @@ fn class_box_dimensions(
     let writer_uses_html_labels = use_html_labels || node_requires_math;
     let prepare_html_labels = use_html_labels && !node_requires_math;
     let node_font_ownership = crate::mermaid_style::css_font_family_declaration_ownership(
+        node.styles.iter().map(String::as_str),
+    );
+    let node_font_size_ownership = crate::mermaid_style::css_font_size_declaration_ownership(
         node.styles.iter().map(String::as_str),
     );
     let node_owns_color = class_node_styles_own_color(&node.styles);
@@ -1494,6 +1512,7 @@ fn class_box_dimensions(
                 css_style,
                 node_owns_color,
                 node_font_ownership,
+                node_font_size_ownership,
                 writer_uses_html_labels,
             );
             return (metrics, None, style_facts);
@@ -1513,6 +1532,7 @@ fn class_box_dimensions(
                 css_style,
                 node_owns_color,
                 node_font_ownership,
+                node_font_size_ownership,
                 writer_uses_html_labels,
             );
             (
@@ -1533,6 +1553,7 @@ fn class_box_dimensions(
                     css_style,
                     node_owns_color,
                     node_font_ownership,
+                    node_font_size_ownership,
                     writer_uses_html_labels,
                 ),
             )
@@ -1561,6 +1582,7 @@ fn class_box_dimensions(
                     css_style,
                     node_owns_color,
                     node_font_ownership,
+                    node_font_size_ownership,
                     writer_uses_html_labels,
                 ),
             )
@@ -1704,6 +1726,7 @@ fn class_box_dimensions(
         "",
         node_owns_color,
         node_font_ownership,
+        node_font_size_ownership,
         writer_uses_html_labels,
     );
 
@@ -2286,6 +2309,11 @@ fn layout_class_diagram_typed_inner(
         title_margin_bottom,
     } = ClassConfigView::new(effective_config).layout_settings();
     typography_theme.apply_layout_text_styles(&mut text_style, &mut html_calc_text_style);
+    if !typography_theme.seal_layout_font_size(text_style.font_size) {
+        return Err(crate::Error::InvalidModel {
+            message: "Class typography layout font size changed after preparation".to_string(),
+        });
+    }
     let contains_math = class_requires_math(model);
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike) || contains_math;
     let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike) || contains_math;
@@ -3491,6 +3519,7 @@ mod tests {
             "font-family:MemberOwned",
             false,
             crate::mermaid_style::CssFontFamilyOwnership::Unverified,
+            crate::mermaid_style::CssFontSizeOwnership::Inherited,
             true,
         );
         assert_eq!(html.unverified_font_run_count(), 1);
@@ -3501,6 +3530,7 @@ mod tests {
             "font-family:MemberOwned",
             false,
             crate::mermaid_style::CssFontFamilyOwnership::Unverified,
+            crate::mermaid_style::CssFontSizeOwnership::Inherited,
             false,
         );
         assert_eq!(svg.unverified_font_run_count(), 0);

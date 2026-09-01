@@ -2881,7 +2881,7 @@ mod tests {
         let class_baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nclass Alpha\n");
         let flowchart = parse(&spec, "flowchart LR\nA --> B\n");
 
-        assert_eq!(fallback_contribution_count(&class), 1);
+        assert_eq!(fallback_contribution_count(&class), 0);
         assert_ne!(class.effective_config.get_str("theme"), Some("base"));
         assert_eq!(
             class.effective_config.get_str("fontFamily"),
@@ -2895,7 +2895,9 @@ mod tests {
         );
         assert_eq!(
             class.effective_config.get_str("themeVariables.fontSize"),
-            Some("18px")
+            class_baseline
+                .effective_config
+                .get_str("themeVariables.fontSize")
         );
         assert_eq!(fallback_contribution_count(&flowchart), 0);
     }
@@ -2913,6 +2915,7 @@ mod tests {
                 DiagramFamilyId::ARCHITECTURE,
                 "architecture-beta\nservice api(server)[API]\n",
             ),
+            (DiagramFamilyId::CLASS, "classDiagram\nclass Alpha\n"),
             (
                 DiagramFamilyId::EVENT_MODELING,
                 "eventmodeling\ntf 01 ui View\n",
@@ -3555,7 +3558,7 @@ mod tests {
     }
 
     #[test]
-    fn oversized_font_stack_does_not_drop_independent_font_size() {
+    fn oversized_class_typography_does_not_recreate_legacy_overlay() {
         let families = (0..32)
             .map(|index| format!("font-{index}-{}", "x".repeat(180)))
             .collect::<Vec<_>>();
@@ -3571,10 +3574,10 @@ mod tests {
         let parsed = parse(&spec, "classDiagram\nclass Alpha\n");
         let baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nclass Alpha\n");
 
-        assert_eq!(fallback_contribution_count(&parsed), 1);
+        assert_eq!(fallback_contribution_count(&parsed), 0);
         assert_eq!(
             parsed.effective_config.get_str("themeVariables.fontSize"),
-            Some("18px")
+            baseline.effective_config.get_str("themeVariables.fontSize")
         );
         assert_eq!(
             parsed.effective_config.get_str("fontFamily"),

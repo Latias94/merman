@@ -285,6 +285,21 @@ pub(crate) fn css_font_family_declaration_ownership<'a>(
     )
 }
 
+/// Resolves a sequence whose items are already individual CSS declarations.
+///
+/// Class labels use this for parent style attributes before the declaration list is embedded in
+/// the terminal fragment. Malformed items are ignored, matching the existing font-family helper
+/// instead of allowing a partial declaration to claim the typed value.
+pub(crate) fn css_font_size_declaration_ownership<'a>(
+    declarations: impl IntoIterator<Item = &'a str>,
+) -> CssFontSizeOwnership {
+    let mut winner = None;
+    for declaration in declarations.into_iter().filter_map(parse_style_declaration) {
+        observe_css_font_size_ownership(&mut winner, &declaration);
+    }
+    winner.map_or(CssFontSizeOwnership::Inherited, |winner| winner.ownership())
+}
+
 fn css_font_family_ownership_from_parsed<'a>(
     declarations: impl IntoIterator<Item = ParsedStyleDeclaration<'a>>,
 ) -> CssFontFamilyOwnership {

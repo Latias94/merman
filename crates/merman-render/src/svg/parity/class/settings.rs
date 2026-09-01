@@ -30,10 +30,10 @@ impl ClassRenderSettings {
         let font_size = config.render_font_size(diagram_use_html_labels);
         let wrap_probe_font_size = config.wrap_probe_font_size();
         let mut html_calc_text_style = config.html_calculate_text_style();
-        let line_height = font_size * 1.5;
         let class_padding = config.render_class_padding();
         let mut text_style = config.render_text_style(font_size);
         typography_theme.apply_layout_text_styles(&mut text_style, &mut html_calc_text_style);
+        let line_height = text_style.font_size * 1.5;
         let viewport_padding = config.render_viewport_padding();
         let hide_empty_members_box = config.hide_empty_members_box();
         let default_node_fill = config.default_node_fill();

@@ -27,13 +27,15 @@ pub(super) fn write_class_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
     stylesheet_font_family: &str,
+    stylesheet_font_size: &str,
     seal_typography_emission: bool,
 ) -> Result<Option<crate::class::ClassTypographyCssEmission>> {
     let id = crate::svg::escape_css_identifier(diagram_id);
     let resolved_font_family = normalize_css_font_family(stylesheet_font_family);
-    let info_css = super::super::css::InfoCssWriter::raw_theme_font_size_with_font_family(
+    let info_css = super::super::css::InfoCssWriter::with_resolved_typography(
         effective_config,
         resolved_font_family.as_str(),
+        stylesheet_font_size,
     );
     let theme = MermaidThemeAdapter::new(effective_config).class_diagram();
     let font_family = info_css.font_family();
@@ -164,6 +166,8 @@ pub(super) fn write_class_css(
         crate::class::ClassTypographyCssEmission::from_successful_writes(
             base_font_emission.diagram_root_font_family_css(),
             base_font_emission.nested_svg_font_family_css(),
+            base_font_emission.diagram_root_font_size_css(),
+            base_font_emission.nested_svg_font_size_css(),
             class_group_font_family_css,
             root_font_emission.font_family_css(),
         )
@@ -241,6 +245,7 @@ mod tests {
             "class-css-receipt",
             &config,
             "Inter,sans-serif",
+            "18px",
             true,
         )
         .expect("write complete Class CSS");
@@ -253,6 +258,7 @@ mod tests {
                 "class-css-receipt",
                 &config,
                 "Inter,sans-serif",
+                "18px",
                 true,
             )
             .expect_err("a failed Class CSS checkpoint must prevent receipt emission");

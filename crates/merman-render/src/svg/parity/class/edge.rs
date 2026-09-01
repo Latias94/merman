@@ -833,7 +833,7 @@ fn render_class_edge_terminal_group(
     if crate::math::contains_delimited_math(trimmed) {
         crate::class::ClassTypographyTerminalFacts::unverified_text(trimmed)
     } else {
-        crate::class::ClassTypographyTerminalFacts::inherited_text(trimmed)
+        crate::class::ClassTypographyTerminalFacts::fixed_font_size_text(trimmed)
     }
 }
 

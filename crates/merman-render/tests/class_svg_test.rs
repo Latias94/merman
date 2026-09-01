@@ -345,7 +345,7 @@ fn class_typed_font_stack_reaches_scoped_css_and_strict_receipt() {
 }
 
 #[test]
-fn class_mixed_typography_composes_in_best_effort_but_remains_nonportable() {
+fn class_mixed_typography_composes_without_legacy_overlay() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(FontStack::single("ClassMixed").expect("valid Class mixed font stack"))
         .with_font_size_px(24.0)
@@ -357,9 +357,9 @@ fn class_mixed_typography_composes_in_best_effort_but_remains_nonportable() {
         .expect("parse Class compatibility metadata");
     assert_eq!(
         metadata.effective_config.get_str("themeVariables.fontSize"),
-        Some("24px")
+        Some("16px")
     );
-    assert!(merman_core::__private::fallback_overlay_owns_path(
+    assert!(!merman_core::__private::fallback_overlay_owns_path(
         &metadata.effective_config,
         "themeVariables.fontSize"
     ));
@@ -382,22 +382,103 @@ fn class_mixed_typography_composes_in_best_effort_but_remains_nonportable() {
     assert!(rendered.svg().contains("ClassMixed"));
     assert!(rendered.svg().contains("font-size:24px;"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new())
+        .expect("RequirePortable accepts typed Class typography");
+}
+
+#[test]
+fn class_typed_font_size_outranks_root_layout_fallback() {
+    let typography = ThemeTextStyle::default()
+        .with_font_size_px(24.0)
+        .expect("valid Class font size");
+    let theme = class_typography_theme(typography);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "fontSize": 30
+    })));
+    let rendered =
+        try_render_class_svg_with_theme_and_engine("classDiagram\n  class Alpha\n", &theme, engine)
+            .expect("typed Class font size outranks the root-only layout fallback");
+
+    assert!(
+        rendered.svg().contains("#merman{font-family:")
+            && rendered.svg().contains("font-size:24px;"),
+        "typed Class font size must reach the scoped stylesheet: {}",
+        rendered.svg()
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn class_explicit_theme_font_size_ownership_outranks_typed_font_size() {
+    let typography = ThemeTextStyle::default()
+        .with_font_size_px(24.0)
+        .expect("valid Class font size");
+    let theme = class_typography_theme(typography);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "themeVariables": { "fontSize": "30px" }
+    })));
+    let rendered =
+        try_render_class_svg_with_theme_and_engine("classDiagram\n  class Alpha\n", &theme, engine)
+            .expect("explicit Class theme font size owns the route");
+
+    assert!(
+        rendered.svg().contains("font-size:30px;"),
+        "config-owned Class font size must reach the scoped stylesheet: {}",
+        rendered.svg()
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn class_html_node_font_size_ownership_fails_closed_until_layout_consumes_it() {
+    let typography = ThemeTextStyle::default()
+        .with_font_size_px(24.0)
+        .expect("valid Class font size");
+    let theme = class_typography_theme(typography);
+    let source = r#"%%{init: {"htmlLabels": true}}%%
+classDiagram
+  class Alpha
+  style Alpha font-size:40px
+"#;
+
+    let rendered = try_render_class_svg_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort preserves source-owned Class node font size");
+    assert!(rendered.svg().contains("font-size:40px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let error = try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new())
         .err()
-        .expect("RequirePortable rejects mixed Class typography");
-    assert!(matches!(
-        error,
-        merman_render::Error::LegacyFamilyThemeCompatibility {
-            family_id: DiagramFamilyId::CLASS,
-            residual_count: 1,
-        }
-    ));
+        .expect("RequirePortable rejects split Class font-size ownership");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::CLASS, 1))
+    );
 }
 
 #[test]

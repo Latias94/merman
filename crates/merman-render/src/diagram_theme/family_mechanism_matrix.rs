@@ -1064,6 +1064,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::SEQUENCE
             | DiagramFamilyId::BLOCK
             | DiagramFamilyId::RAILROAD
+            | DiagramFamilyId::CLASS
             | DiagramFamilyId::ISHIKAWA
             | DiagramFamilyId::EVENT_MODELING
             | DiagramFamilyId::GIT_GRAPH
@@ -1077,9 +1078,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::ARCHITECTURE
     ) {
         return FamilyThemeDisposition::TypedAdapter;
-    }
-    if family == DiagramFamilyId::CLASS {
-        return FamilyThemeDisposition::LegacyCompatibility;
     }
     FamilyThemeDisposition::Unsupported
 }
@@ -6031,7 +6029,7 @@ mod tests {
     }
 
     #[test]
-    fn eventmodeling_gitgraph_ishikawa_and_radar_mark_font_stack_and_font_size_as_typed() {
+    fn class_eventmodeling_gitgraph_ishikawa_and_radar_mark_font_stack_and_font_size_as_typed() {
         let typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::single("DirectTypographySans")
@@ -6043,6 +6041,7 @@ mod tests {
             .expect("valid unsupported direct typography font weight");
 
         for family in [
+            DiagramFamilyId::CLASS,
             DiagramFamilyId::EVENT_MODELING,
             DiagramFamilyId::GIT_GRAPH,
             DiagramFamilyId::ISHIKAWA,

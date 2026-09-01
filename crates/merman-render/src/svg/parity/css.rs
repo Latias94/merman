@@ -521,6 +521,20 @@ impl InfoCssWriter {
         }
     }
 
+    pub(super) fn with_resolved_typography(
+        effective_config: &serde_json::Value,
+        font_family: &str,
+        font_size_css: &str,
+    ) -> Self {
+        Self {
+            values: InfoCssValues::with_resolved_typography(
+                effective_config,
+                font_family.to_string(),
+                font_size_css.to_string(),
+            ),
+        }
+    }
+
     pub(super) fn font_family(&self) -> &str {
         &self.values.font_family
     }
