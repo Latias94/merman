@@ -2969,7 +2969,7 @@ mod tests {
     }
 
     #[test]
-    fn quadrant_chart_font_stack_is_property_local_while_font_size_uses_legacy_bridge() {
+    fn quadrant_chart_font_stack_is_property_local_while_font_size_is_unsupported() {
         const SOURCE: &str = "quadrantChart\nFeature: [0.5, 0.5]\n";
 
         let font_stack = super::super::FontStack::new(["Quadrant Typed", "sans-serif"])
@@ -2993,18 +2993,15 @@ mod tests {
                 .with_family_style(DiagramFamilyId::QUADRANT_CHART, mixed_typography),
         );
         let mixed_bridge = bridge(&mixed_spec).compile_for_family(DiagramFamilyId::QUADRANT_CHART);
-        assert!(
-            mixed_bridge
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.quadrantChart.typography")
-        );
+        assert!(mixed_bridge.overlay.is_empty());
+        assert!(mixed_bridge.contribution_ids.is_empty());
 
         let baseline = parse(&DiagramThemeSpec::default(), SOURCE);
         let mixed = parse(&mixed_spec, SOURCE);
-        assert_eq!(fallback_contribution_count(&mixed), 1);
+        assert_eq!(fallback_contribution_count(&mixed), 0);
         assert_eq!(
             mixed.effective_config.get_str("themeVariables.fontSize"),
-            Some("24px")
+            baseline.effective_config.get_str("themeVariables.fontSize")
         );
         for path in ["fontFamily", "themeVariables.fontFamily"] {
             assert_eq!(

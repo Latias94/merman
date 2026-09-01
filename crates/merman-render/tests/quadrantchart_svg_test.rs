@@ -63,14 +63,28 @@ fn prepare_quadrantchart_family_with_theme_and_engine(
     theme: &DiagramTheme,
     engine: Engine,
 ) -> family::FamilyRenderArtifact {
+    prepare_quadrantchart_family_with_theme_requirement_and_engine(
+        source,
+        theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn prepare_quadrantchart_family_with_theme_requirement_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> family::FamilyRenderArtifact {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Quadrant Chart")
         .expect("detect themed Quadrant Chart");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable Quadrant Chart session");
+        .expect("begin themed Quadrant Chart session");
     family::prepare(parsed, &LayoutOptions::default(), session)
         .expect("prepare themed Quadrant Chart artifact")
 }
@@ -83,6 +97,21 @@ fn render_quadrantchart_with_theme_and_engine(
     prepare_quadrantchart_family_with_theme_and_engine(source, theme, engine)
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render themed Quadrant Chart SVG")
+}
+
+fn render_quadrantchart_with_theme_requirement_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    prepare_quadrantchart_family_with_theme_requirement_and_engine(
+        source,
+        theme,
+        engine,
+        portability,
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
 fn render_quadrantchart_svg_with_theme(source: &str, theme: &DiagramTheme) -> String {
@@ -338,6 +367,114 @@ fn quadrantchart_site_font_family_outranks_typed_font_stack() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn quadrantchart_font_size_is_unsupported_without_recreating_legacy_projection() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    merman_render::DiagramFamilyId::QUADRANT_CHART,
+                    ThemeTextStyle::default()
+                        .with_font_size_px(24.0)
+                        .expect("valid unsupported Quadrant Chart font size"),
+                ),
+            ),
+        )
+        .expect("compile Quadrant Chart font-size theme");
+    let source = r#"quadrantChart
+  title Typography proof
+  x-axis Low --> High
+  y-axis Low --> High
+  quadrant-1 Plan
+  Feature: [0.7, 0.8]
+"#;
+    let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders the structured Quadrant Chart font-size residual");
+
+    assert!(!rendered.svg().contains("font-size:24px"));
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid Quadrant Chart SVG XML");
+    let font_sizes = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .map(|node| {
+            node.attribute("font-size")
+                .expect("Quadrant Chart text terminals have role-local font sizes")
+        })
+        .collect::<Vec<_>>();
+    assert!(!font_sizes.is_empty());
+    assert!(
+        font_sizes
+            .iter()
+            .all(|size| matches!(*size, "20" | "16" | "12"))
+    );
+    assert!(font_sizes.contains(&"20"));
+    assert!(font_sizes.contains(&"16"));
+    assert!(font_sizes.contains(&"12"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let error = render_quadrantchart_with_theme_requirement_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .err()
+    .expect("RequirePortable rejects unsupported Quadrant Chart font size");
+    assert!(matches!(
+        error,
+        merman_render::Error::UnverifiedFamilyTheme {
+            family_id: merman_render::DiagramFamilyId::QUADRANT_CHART,
+            residual_count: 1,
+        }
+    ));
+}
+
+#[test]
+fn quadrantchart_mixed_font_stack_and_size_keeps_the_typed_stack_property_local() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("Quadrant Mixed").expect("valid mixed font stack"))
+        .with_font_size_px(24.0)
+        .expect("valid unsupported mixed Quadrant Chart font size");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default()
+                    .with_family_style(merman_render::DiagramFamilyId::QUADRANT_CHART, typography),
+            ),
+        )
+        .expect("compile mixed Quadrant Chart typography theme");
+    let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+        "quadrantChart\nFeature: [0.5, 0.5]\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders mixed Quadrant Chart typography");
+
+    assert!(rendered.svg().contains("Quadrant Mixed"));
+    assert!(!rendered.svg().contains("font-size:24px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

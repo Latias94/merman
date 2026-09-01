@@ -37,13 +37,13 @@ record. The current source and generated contract are authoritative for these su
   unqualified aggregate routes plus `Default`, `Active`, `Success`, and `Error` property-local
   variants. Gantt `Warning` remains a compatibility residual and is intentionally outside the
   typed route inventory. These counts describe KTD17 authority only, not complete theme coverage.
-- The support-claim manifest is internal revision 20. KTD23 remains version 1 with 56 historical
+- The support-claim manifest is internal revision 21. KTD23 remains version 1 with 56 historical
   retirement routes and 112 transparent/solid probes. These are separate authorities: neither
   support discovery nor historical retirement can expand KTD17 route authorization.
 - All 33 families have at least one direct typed surface. Six families have no family-owned
   `LegacyCompatibility` route (State, Packet, Error, EventModeling, Ishikawa, and ZenUML), while 27
   may still enter the bridge. Base `FontStack` is Typed/Legacy/Unsupported for 27/5/1 families;
-  base `FontSize` is 14/7/12. These counts describe migration state, not feature completeness.
+  base `FontSize` is 14/6/13. These counts describe migration state, not feature completeness.
 - C6a remains complete at 18/18 representative native cells. C7a is still not eligible because the
   public authoring/consumer rollout and remaining pre-freeze gates are intentionally open.
 - The acceptance manifest remains an independent, reviewed authority. It is reconciled exactly
@@ -915,6 +915,12 @@ resolves `FontStack` and `FontSize` once and shares the result with prepared lab
 bbox-derived layout, final CSS, and writer-owned evidence. The slice is property-local: explicit
 `themeVariables.fontSize` ownership remains `NotApplicable`, malformed explicit values remain
 unverified, and the family still retains compatibility routes for other surfaces.
+
+The C5 checkpoint now also records the Quadrant Chart base-size boundary: its role-local
+`quadrantChart.*FontSize` settings are the only visible text-size owners, so the family-wide
+`FontSize` route is explicitly Unsupported and no layout or root-CSS consumer is claimed. This
+removes the dead `quadrantChart.typography` compatibility projection without changing the
+family's typed `FontStack` or chart-series routes.
 
 The C5 checkpoint now also records the Venn `FontStack` slice: its family-local typed plan and
 renderer-owned receipt cover the four Venn text selector surfaces, with

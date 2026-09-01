@@ -1085,7 +1085,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
             | DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::C4
             | DiagramFamilyId::JOURNEY
-            | DiagramFamilyId::QUADRANT_CHART
             | DiagramFamilyId::TREEMAP
             | DiagramFamilyId::XY_CHART
     ) {
@@ -5591,6 +5590,7 @@ mod tests {
             DiagramFamilyId::SANKEY,
             DiagramFamilyId::VENN,
             DiagramFamilyId::PIE,
+            DiagramFamilyId::QUADRANT_CHART,
         ] {
             let routes = compile_base_typography_routes(family, &typography);
             assert!(
