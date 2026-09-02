@@ -4,7 +4,7 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0-alpha.6] - Unreleased
+## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes the prepared alpha.6 source candidate. The Apple artifact channel remains independently published and requires the matching generated Swift bindings and XCFramework before adoption.
 

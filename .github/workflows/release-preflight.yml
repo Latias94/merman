@@ -160,6 +160,9 @@ jobs:
             --dependent merman-render=0.7.0 \
             --dependent merman-render=0.8.0-alpha.5
 
+      - name: Prefetch locked Rust dependencies for offline metadata and license reports
+        run: cargo fetch --locked
+
       - name: Verify artifact dependency boundaries
         run: python3 scripts/verify_artifact_dependency_closures.py
 
@@ -213,9 +216,6 @@ jobs:
 
       - name: Verify CLI installation metadata
         run: python3 scripts/cli_installation_contract.py
-
-      - name: Prefetch locked Rust dependencies for offline license reports
-        run: cargo fetch --locked
 
       - name: Verify exact Rust dependency license reports
         run: python3 scripts/generate-rust-license-report.py --check
