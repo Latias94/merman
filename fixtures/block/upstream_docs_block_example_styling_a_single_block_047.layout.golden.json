@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "id1",
-          "x": 22.56,
+          "x": 34.56,
           "y": 0.0,
-          "width": 45.12,
+          "width": 69.12,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "id2",
-          "x": 128.8,
+          "x": 188.8,
           "y": 0.0,
-          "width": 45.12,
+          "width": 69.12,
           "height": 32.0,
           "is_cluster": false
         }
@@ -29,15 +29,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 22.56,
+              "x": 34.56,
               "y": 0.0
             },
             {
-              "x": 75.68,
+              "x": 111.68,
               "y": 0.0
             },
             {
-              "x": 128.8,
+              "x": 188.8,
               "y": 0.0
             }
           ],
@@ -55,14 +55,14 @@
         {
           "id": "id1",
           "allocated": {
-            "x": 22.56,
+            "x": 34.56,
             "y": 0.0,
-            "width": 45.12,
+            "width": 69.12,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 45.12,
+            "width": 69.12,
             "height": 32.0,
             "radius": 5.0,
             "kind": "basic"
@@ -71,14 +71,14 @@
         {
           "id": "id2",
           "allocated": {
-            "x": 128.8,
+            "x": 188.8,
             "y": 0.0,
-            "width": 45.12,
+            "width": 69.12,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 45.12,
+            "width": 69.12,
             "height": 32.0,
             "radius": 5.0,
             "kind": "basic"
@@ -88,7 +88,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,
-        "max_x": 151.36,
+        "max_x": 223.36,
         "max_y": 16.0
       }
     }

@@ -1402,7 +1402,7 @@ mod tests {
     }
 
     #[test]
-    fn requirement_prepared_edge_plan_keeps_last_duplicate_relationship() {
+    fn requirement_prepared_edge_plan_keeps_parallel_relationships() {
         let mut model = prepared_requirement_model();
         model.relationships = vec![
             RequirementRenderRelationship {
@@ -1437,16 +1437,24 @@ mod tests {
         .unwrap();
 
         assert!(svg.contains("&lt;&lt;contains&gt;&gt;"), "{svg}");
-        assert!(!svg.contains("&lt;&lt;satisfies&gt;&gt;"), "{svg}");
+        assert!(svg.contains("&lt;&lt;satisfies&gt;&gt;"), "{svg}");
         assert!(svg.contains("edge-pattern-solid relationshipLine"), "{svg}");
         assert!(
-            !svg.contains("edge-pattern-dashed relationshipLine"),
+            svg.contains("edge-pattern-dashed relationshipLine"),
+            "{svg}"
+        );
+        assert!(
+            svg.contains(r#"data-id="element-b-requirement-a-0""#),
+            "{svg}"
+        );
+        assert!(
+            svg.contains(r#"data-id="element-b-requirement-a-1""#),
             "{svg}"
         );
     }
 
     #[test]
-    fn requirement_prepared_edge_plan_uses_structured_identity_for_colliding_public_ids() {
+    fn requirement_prepared_edge_plan_disambiguates_colliding_endpoint_text() {
         let model = RequirementDiagramRenderModel {
             requirements: vec![
                 requirement_node("a-b"),
@@ -1480,14 +1488,19 @@ mod tests {
 
         let (layout, _, edge_plans) = prepared.render_parts();
         assert_eq!(layout.edges.len(), 2);
-        assert!(layout.edges.iter().all(|edge| edge.id == "a-b-c-0"));
         for edge in &layout.edges {
             let identity =
                 dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(edge.id.as_str()));
             let label_plan = edge_plans.get(&identity).expect("prepared edge identity");
             match (edge.from.as_str(), edge.to.as_str()) {
-                ("a-b", "c") => assert_eq!(label_plan.relationship_type, "contains"),
-                ("a", "b-c") => assert_eq!(label_plan.relationship_type, "satisfies"),
+                ("a-b", "c") => {
+                    assert_eq!(edge.id, "a-b-c-0");
+                    assert_eq!(label_plan.relationship_type, "contains");
+                }
+                ("a", "b-c") => {
+                    assert_eq!(edge.id, "a-b-c-1");
+                    assert_eq!(label_plan.relationship_type, "satisfies");
+                }
                 endpoints => panic!("unexpected Requirement edge: {endpoints:?}"),
             }
         }

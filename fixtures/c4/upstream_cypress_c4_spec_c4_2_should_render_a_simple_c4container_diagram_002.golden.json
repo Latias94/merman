@@ -14,55 +14,56 @@
     "shapes": [
       {
         "alias": "email_system",
-        "label": {
-          "text": "E-Mail System"
-        },
-        "descr": {
-          "text": "The internal Microsoft Exchange system"
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "external_system"
         },
-        "parentBoundary": "global",
+        "label": {
+          "text": "E-Mail System"
+        },
         "wrap": false,
-        "tags": "v1.0"
+        "tags": "v1.0",
+        "descr": {
+          "text": "The internal Microsoft Exchange system"
+        }
       },
       {
         "alias": "customer",
-        "label": {
-          "text": "Customer"
-        },
-        "descr": {
-          "text": "A customer of the bank, with personal bank accounts"
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "person"
         },
-        "parentBoundary": "global",
+        "label": {
+          "text": "Customer"
+        },
         "wrap": false,
-        "tags": "v1.0"
+        "tags": "v1.0",
+        "descr": {
+          "text": "A customer of the bank, with personal bank accounts"
+        }
       },
       {
         "alias": "spa",
+        "parentBoundary": "c1",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "Single-Page App"
         },
+        "wrap": false,
         "techn": {
           "text": "JavaScript, Angular"
         },
         "descr": {
           "text": "Provides all the Internet banking functionality to customers via their web browser"
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "c1",
-        "wrap": false
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -70,26 +71,25 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       },
       {
         "alias": "c1",
+        "parentBoundary": "global",
         "label": {
           "text": "Internet Banking"
         },
         "type": {
           "text": "CONTAINER"
         },
-        "parentBoundary": "global",
         "wrap": false
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "customer",
         "to": "spa",
+        "type": "rel",
         "label": {
           "text": "Uses"
         },
@@ -102,9 +102,9 @@
         "wrap": false
       },
       {
-        "type": "rel",
         "from": "email_system",
         "to": "customer",
+        "type": "rel",
         "label": {
           "text": "Sends e-mails to"
         },

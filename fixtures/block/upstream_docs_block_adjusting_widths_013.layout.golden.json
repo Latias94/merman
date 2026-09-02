@@ -5,41 +5,41 @@
       "nodes": [
         {
           "id": "id-<id>-1",
-          "x": 34.24,
+          "x": 46.24,
           "y": 0.0,
-          "width": 68.48,
+          "width": 92.48,
           "height": 168.0,
           "is_cluster": false
         },
         {
           "id": "a",
-          "x": 34.24,
+          "x": 46.24,
           "y": -60.0,
-          "width": 52.48,
+          "width": 76.48,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "b",
-          "x": 34.24,
+          "x": 46.24,
           "y": -20.0,
-          "width": 52.48,
+          "width": 76.48,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "c",
-          "x": 34.24,
+          "x": 46.24,
           "y": 20.0,
-          "width": 52.48,
+          "width": 76.48,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "d",
-          "x": 34.24,
+          "x": 46.24,
           "y": 60.0,
-          "width": 52.48,
+          "width": 76.48,
           "height": 32.0,
           "is_cluster": false
         }
@@ -49,14 +49,14 @@
         {
           "id": "id-<id>-1",
           "allocated": {
-            "x": 34.24,
+            "x": 46.24,
             "y": 0.0,
-            "width": 68.48,
+            "width": 92.48,
             "height": 168.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 68.48,
+            "width": 92.48,
             "height": 168.0,
             "radius": 0.0,
             "kind": "composite"
@@ -65,14 +65,14 @@
         {
           "id": "a",
           "allocated": {
-            "x": 34.24,
+            "x": 46.24,
             "y": -60.0,
-            "width": 52.48,
+            "width": 76.48,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 52.48,
+            "width": 76.48,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -81,14 +81,14 @@
         {
           "id": "b",
           "allocated": {
-            "x": 34.24,
+            "x": 46.24,
             "y": -20.0,
-            "width": 52.48,
+            "width": 76.48,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 52.48,
+            "width": 76.48,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -97,14 +97,14 @@
         {
           "id": "c",
           "allocated": {
-            "x": 34.24,
+            "x": 46.24,
             "y": 20.0,
-            "width": 52.48,
+            "width": 76.48,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 52.48,
+            "width": 76.48,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -113,14 +113,14 @@
         {
           "id": "d",
           "allocated": {
-            "x": 34.24,
+            "x": 46.24,
             "y": 60.0,
-            "width": 52.48,
+            "width": 76.48,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 52.48,
+            "width": 76.48,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -130,7 +130,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -84.0,
-        "max_x": 68.48,
+        "max_x": 92.48,
         "max_y": 84.0
       }
     }

@@ -35,6 +35,9 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::Bang => {
             super::render_bang(out, ctx, common, label, details);
         }
+        FlowchartShape::Browser => {
+            super::render_browser(out, ctx, common, label, details);
+        }
         FlowchartShape::BowTieRectangle => {
             super::render_bow_tie_rect(out, ctx, common, label, details);
         }
@@ -42,11 +45,22 @@ pub(in super::super) fn render_flowchart_shape(
             // The shared renderer uses the original spelling to select left/right/both braces.
             super::render_curly_brace_comment(out, ctx, common, label, details);
         }
+        FlowchartShape::Bucket => {
+            super::render_bucket(out, ctx, common, label, details);
+        }
         FlowchartShape::Circle => {
             super::render_circle(out, common);
         }
         FlowchartShape::Cloud => {
             super::render_cloud(out, ctx, common, label, details);
+        }
+        FlowchartShape::CollapsedGroup => {
+            return Err(Error::InvalidModel {
+                message: "collapsedGroup must use the ordered node renderer".to_string(),
+            });
+        }
+        FlowchartShape::Console => {
+            super::render_console(out, ctx, common, label, details);
         }
         FlowchartShape::CurvedTrapezoid => {
             super::render_curved_trapezoid(out, ctx, common, label, details);
@@ -65,6 +79,9 @@ pub(in super::super) fn render_flowchart_shape(
         }
         FlowchartShape::DividedRectangle => {
             super::render_divided_rect(out, common, label, details);
+        }
+        FlowchartShape::Folder => {
+            super::render_folder(out, ctx, common, label, details);
         }
         FlowchartShape::Document => {
             super::render_wave_document(out, ctx, common, label, details);
@@ -147,6 +164,9 @@ pub(in super::super) fn render_flowchart_shape(
         }
         FlowchartShape::PaperTape => {
             super::render_paper_tape(out, ctx, common, label, details);
+        }
+        FlowchartShape::Person => {
+            super::render_person(out, ctx, common, label, details);
         }
         FlowchartShape::Process => {
             super::render_process_rectangle(out, common, details);

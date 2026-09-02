@@ -473,10 +473,19 @@ def plan_selected(
     )
 
 
-def evaluate_gate(plan: Mapping[str, Any], jobs: Mapping[str, Any]) -> dict[str, Any]:
+def _validate_owner_selection(owners: Mapping[str, Any]) -> dict[str, bool]:
+    if not isinstance(owners, Mapping) or set(owners) != _ALL_OWNERS:
+        raise GateError("owner selection has an incomplete owner map")
+    for owner in OWNER_NAMES:
+        if not isinstance(owners[owner], bool):
+            raise GateError(f"owner selection {owner} is not boolean")
+    return dict(owners)
+
+
+def evaluate_gate(owners: Mapping[str, Any], jobs: Mapping[str, Any]) -> dict[str, Any]:
     """Fail closed unless every selected owner has a successful required job."""
 
-    normalized_plan = _validate_plan(plan)
+    normalized_owners = _validate_owner_selection(owners)
     if not isinstance(jobs, Mapping):
         raise GateError("job results must be a JSON object")
 
@@ -507,7 +516,7 @@ def evaluate_gate(plan: Mapping[str, Any], jobs: Mapping[str, Any]) -> dict[str,
         if result in {"cancelled", "failure"}:
             failures.append(f"{job_name} ended with {result}")
 
-    for owner, selected in normalized_plan["owners"].items():
+    for owner, selected in normalized_owners.items():
         entries = owner_jobs[owner]
         if not selected:
             skipped.extend(
@@ -962,7 +971,7 @@ def _compact_json(document: Any) -> str:
 
 
 def _write_github_outputs(path: Path, plan: Mapping[str, Any]) -> None:
-    lines = [f"plan={_compact_json(plan)}"]
+    lines = [f"owners={_compact_json(plan['owners'])}"]
     lines.extend(f"{owner}={str(plan['owners'][owner]).lower()}" for owner in OWNER_NAMES)
     lines.append(f"svg_parity={str(plan['svg_parity']).lower()}")
     with path.open("a", encoding="utf-8", newline="\n") as output:
@@ -1001,7 +1010,7 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--github-output", type=Path)
 
     gate_parser = subparsers.add_parser("gate", help="aggregate same-run owner results")
-    gate_parser.add_argument("--plan-json", required=True)
+    gate_parser.add_argument("--owners-json", required=True)
     gate_parser.add_argument("--jobs-json", required=True)
     return parser
 
@@ -1025,6 +1034,11 @@ def main(argv: Iterable[str] | None = None) -> int:
             )
         else:
             plan = plan_repository_diff(args.repository, args.base, args.head)
+        try:
+            plan = _validate_plan(plan)
+        except GateError as exc:
+            print(f"ci-plan failed closed: {exc}", file=sys.stderr)
+            return 1
         encoded = _compact_json(plan)
         print(encoded)
         if args.github_output is not None:
@@ -1032,9 +1046,9 @@ def main(argv: Iterable[str] | None = None) -> int:
         return 0
 
     try:
-        plan = _parse_json_argument(args.plan_json, label="planner output")
+        owners = _parse_json_argument(args.owners_json, label="owner selection")
         jobs = _parse_json_argument(args.jobs_json, label="job results")
-        summary = evaluate_gate(plan, jobs)
+        summary = evaluate_gate(owners, jobs)
     except GateError as exc:
         print(f"pr-gate failed closed: {exc}", file=sys.stderr)
         return 1

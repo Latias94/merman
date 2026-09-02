@@ -110,15 +110,21 @@ fn render_class_diagram_svg_model_inner(
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
-    // Mermaid 11.16 inserts both the ordinary and margin-aware marker variants for every look.
-    class_markers(&mut out, diagram_id, aria_roledescription, true);
+    // The host Dagre path uses Mermaid 11.17.2's marker helper. The selected ELK 0.2.3 release
+    // bundles the pre-marker-fix helper, which intentionally omits markerUnits on nine ordinary
+    // markers while retaining it on extensionStart and all margin variants.
+    class_markers(
+        &mut out,
+        diagram_id,
+        aria_roledescription,
+        true,
+        if layout.uses_elk_adapter_dom {
+            ClassMarkerProfile::LayoutElk023
+        } else {
+            ClassMarkerProfile::Mermaid1172
+        },
+    );
     emit.checkpoint()?;
-    if layout.uses_elk_adapter_dom {
-        out.push_str("</g>");
-        push_class_shadow_defs(&mut out, diagram_id, effective_config);
-        push_class_gradient(&mut out, diagram_id, effective_config);
-        emit.checkpoint()?;
-    }
 
     let ClassRenderLookups {
         class_nodes_by_id,
@@ -153,7 +159,7 @@ fn render_class_diagram_svg_model_inner(
         hand_drawn_seed: settings.hand_drawn_seed.clone(),
         timing,
         edge_paths_class: if layout.uses_elk_adapter_dom {
-            "edges edgePaths"
+            "edges edgePath"
         } else {
             "edgePaths"
         },
@@ -182,6 +188,7 @@ fn render_class_diagram_svg_model_inner(
         emit,
     };
     if layout.uses_elk_adapter_dom {
+        out.push_str(r#"<g class="root">"#);
         render_class_elk_adapter_dom(
             ClassNodesRenderState {
                 out: &mut out,
@@ -193,6 +200,8 @@ fn render_class_diagram_svg_model_inner(
             &nodes_ctx,
             &group_ctx,
         )?;
+        out.push_str("</g>"); // root
+        out.push_str("</g>"); // wrapper
     } else {
         out.push_str(r#"<g class="root">"#);
         render_class_render_tree(
@@ -213,13 +222,11 @@ fn render_class_diagram_svg_model_inner(
         detail.nodes += s.elapsed();
     }
 
-    // The Dagre renderer completes its graph wrapper before the shared resources are appended.
-    // The registered ELK renderer receives those resources before it inserts its top-level groups.
-    if !layout.uses_elk_adapter_dom {
-        push_class_shadow_defs(&mut out, diagram_id, effective_config);
-        push_class_gradient(&mut out, diagram_id, effective_config);
-        emit.checkpoint()?;
-    }
+    // Both Mermaid 11.17.2 renderers append shared resources after the graph wrapper. ELK changes
+    // only the layout geometry and edge z-order; it does not create a second top-level painter.
+    push_class_shadow_defs(&mut out, diagram_id, effective_config);
+    push_class_gradient(&mut out, diagram_id, effective_config);
+    emit.checkpoint()?;
 
     drop(render_guard);
     let viewbox_guard = timing.section(&mut timings.viewbox);

@@ -687,8 +687,10 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             "C4Component\nComponentDb(db, \"Database\", \"Postgres\", \"Stores data\")\nComponentQueue(queue, \"Queue\", \"NATS\", \"Events\")",
             &["#111827", "#475569"],
             &[
-                "fill=\"#111827\" stroke-width=\"0.5\" stroke=\"#475569\"",
-                "stroke-width=\"0.5\" stroke=\"#475569\"",
+                r#"class="node c4-shape c4-component_db""#,
+                r#"class="node c4-shape c4-component_queue""#,
+                r#"class="basic label-container outer-path""#,
+                r#"style="fill:#111827;stroke:#475569""#,
             ],
         ),
         (

@@ -28,7 +28,7 @@ export type ExampleEvidence =
 
 export const PLAYGROUND_MERMAN_VERSION = "0.8.0-alpha.6" as const;
 
-export const PLAYGROUND_EXAMPLE_BASELINE = "mermaid@11.16.1" as const;
+export const PLAYGROUND_EXAMPLE_BASELINE = "mermaid@11.17.2" as const;
 
 export const GENERATED_EXAMPLES = [
   {
@@ -150,7 +150,7 @@ export const GENERATED_EXAMPLES = [
     order: 40,
     diagramType: "class",
     effectiveLayoutId: "dagre",
-    syntaxId: "class",
+    syntaxId: "classDiagram",
     aliases: ["classDiagram", "types", "inheritance"],
     fixture: "fixtures/class/basic.mmd",
     evidence: {"role":"family-baseline","claim":"Canonical class syntax and default rendering."},
@@ -164,7 +164,7 @@ export const GENERATED_EXAMPLES = [
     order: 41,
     diagramType: "class",
     effectiveLayoutId: "dagre",
-    syntaxId: "class",
+    syntaxId: "classDiagram",
     aliases: ["nested namespaces", "generic types", "direction LR"],
     fixture: "fixtures/class/upstream_namespaces_and_generics.mmd",
     evidence: {"role":"variant","kind":"syntax","claim":"Fixture demonstrates class namespaces and generics."},
@@ -178,7 +178,7 @@ export const GENERATED_EXAMPLES = [
     order: 42,
     diagramType: "class",
     effectiveLayoutId: "dagre",
-    syntaxId: "class",
+    syntaxId: "classDiagram",
     aliases: ["classDef", "cssClass", "inline style"],
     fixture: "fixtures/class/upstream_styles_spec.mmd",
     evidence: {"role":"variant","kind":"behavior","claim":"Fixture demonstrates class styling."},

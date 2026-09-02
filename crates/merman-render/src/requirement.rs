@@ -487,8 +487,8 @@ fn requirement_edge_id(src: &str, dst: &str, idx: usize) -> String {
     format!("{src}-{dst}-{idx}")
 }
 
-fn requirement_edge_key(src: &str, dst: &str) -> EdgeKey {
-    EdgeKey::new(src, dst, Some(requirement_edge_id(src, dst, 0)))
+fn requirement_edge_key(src: &str, dst: &str, index: usize) -> EdgeKey {
+    EdgeKey::new(src, dst, Some(requirement_edge_id(src, dst, index)))
 }
 
 fn requirement_layout_edge_label(width: f64, height: f64) -> EdgeLabel {
@@ -758,7 +758,9 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
         element_node_labels.insert(e.name.clone(), label_plan);
     }
 
-    for rel in &model.relationships {
+    // Mermaid assigns one monotonically increasing edge counter across the complete
+    // relationship list, including parallel relationships and mixed relationship kinds.
+    for (relationship_index, rel) in model.relationships.iter().enumerate() {
         if !g.has_node(&rel.src) {
             return Err(Error::InvalidModel {
                 message: format!("relationship src node not found: {}", rel.src),
@@ -858,9 +860,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
                 },
             );
         } else {
-            // Mermaid's Requirement edge counter resets to zero. Graph identity remains the full
-            // (source, target, name) tuple even when two public ids collide.
-            let edge_key = requirement_edge_key(&rel.src, &rel.dst);
+            let edge_key = requirement_edge_key(&rel.src, &rel.dst, relationship_index);
             let rendered_id = edge_key
                 .name
                 .clone()

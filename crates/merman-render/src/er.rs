@@ -5,7 +5,7 @@ use crate::text::{
 };
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
+use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 use serde_json::Value;
@@ -20,6 +20,7 @@ use config::{ErLayoutAlgorithm, ErLayoutSettings};
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
+pub(crate) type ErSubgraph = merman_core::diagrams::er::ErSubgraphRenderModel;
 
 pub(crate) fn uses_elk_layout(effective_config: &Value) -> bool {
     ErConfigView::new(effective_config).is_elk_layout()
@@ -400,7 +401,16 @@ fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
 
 fn is_er_self_loop_dummy_node_id(id: &str) -> bool {
     // Mermaid's dagre renderer creates self-loop helper nodes using `${nodeId}---${nodeId}---{1|2}`.
-    id.contains("---")
+    let Some((base, suffix)) = id.rsplit_once("---") else {
+        return false;
+    };
+    if !matches!(suffix, "1" | "2") {
+        return false;
+    }
+    let Some((left, right)) = base.split_once("---") else {
+        return false;
+    };
+    left == right
 }
 
 #[derive(Debug, Clone)]
@@ -413,6 +423,251 @@ struct LayoutEdgeParts {
     start_marker: Option<String>,
     end_marker: Option<String>,
     stroke_dasharray: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ErSelfLoopSide {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+fn er_default_self_loop_side(rankdir: RankDir) -> ErSelfLoopSide {
+    match rankdir {
+        RankDir::BT => ErSelfLoopSide::Bottom,
+        RankDir::LR => ErSelfLoopSide::Right,
+        RankDir::RL => ErSelfLoopSide::Left,
+        RankDir::TB => ErSelfLoopSide::Top,
+    }
+}
+
+fn er_self_loop_side(
+    node: &NodeLabel,
+    hints: impl IntoIterator<Item = (f64, f64)>,
+    rankdir: RankDir,
+) -> ErSelfLoopSide {
+    let hints = hints.into_iter().collect::<Vec<_>>();
+    if hints.is_empty() {
+        return er_default_self_loop_side(rankdir);
+    }
+
+    let (sum_x, sum_y) = hints.iter().fold((0.0, 0.0), |(x, y), (hint_x, hint_y)| {
+        (x + hint_x, y + hint_y)
+    });
+    let count = hints.len() as f64;
+    let dx = sum_x / count - node.x.unwrap_or(0.0);
+    let dy = sum_y / count - node.y.unwrap_or(0.0);
+    if dx.abs() > dy.abs() {
+        if dx > 0.0 {
+            ErSelfLoopSide::Right
+        } else {
+            ErSelfLoopSide::Left
+        }
+    } else if dy > 0.0 {
+        ErSelfLoopSide::Bottom
+    } else if dy < 0.0 {
+        ErSelfLoopSide::Top
+    } else {
+        er_default_self_loop_side(rankdir)
+    }
+}
+
+fn er_self_loop_points(
+    node: &NodeLabel,
+    side: ErSelfLoopSide,
+    label_width: f64,
+) -> Vec<LayoutPoint> {
+    let x = node.x.unwrap_or(0.0);
+    let y = node.y.unwrap_or(0.0);
+    let half_width = node.width / 2.0;
+    let half_height = node.height / 2.0;
+    let max_span = (node.width * 0.8).clamp(36.0, 100.0);
+    let span = label_width.max(node.width * 0.35).clamp(36.0, max_span);
+    let depth = node
+        .width
+        .min(node.height)
+        .mul_add(0.45, 0.0)
+        .clamp(24.0, 48.0);
+
+    let mut points = match side {
+        ErSelfLoopSide::Bottom => vec![
+            LayoutPoint {
+                x: x - span / 2.0,
+                y: y + half_height,
+            },
+            LayoutPoint {
+                x: x - span / 2.0,
+                y: y + half_height + depth,
+            },
+            LayoutPoint {
+                x: x + span / 2.0,
+                y: y + half_height + depth,
+            },
+            LayoutPoint {
+                x: x + span / 2.0,
+                y: y + half_height,
+            },
+        ],
+        ErSelfLoopSide::Right => vec![
+            LayoutPoint {
+                x: x + half_width,
+                y: y - span / 2.0,
+            },
+            LayoutPoint {
+                x: x + half_width + depth,
+                y: y - span / 2.0,
+            },
+            LayoutPoint {
+                x: x + half_width + depth,
+                y: y + span / 2.0,
+            },
+            LayoutPoint {
+                x: x + half_width,
+                y: y + span / 2.0,
+            },
+        ],
+        ErSelfLoopSide::Left => vec![
+            LayoutPoint {
+                x: x - half_width,
+                y: y - span / 2.0,
+            },
+            LayoutPoint {
+                x: x - half_width - depth,
+                y: y - span / 2.0,
+            },
+            LayoutPoint {
+                x: x - half_width - depth,
+                y: y + span / 2.0,
+            },
+            LayoutPoint {
+                x: x - half_width,
+                y: y + span / 2.0,
+            },
+        ],
+        ErSelfLoopSide::Top => vec![
+            LayoutPoint {
+                x: x - span / 2.0,
+                y: y - half_height,
+            },
+            LayoutPoint {
+                x: x - span / 2.0,
+                y: y - half_height - depth,
+            },
+            LayoutPoint {
+                x: x + span / 2.0,
+                y: y - half_height - depth,
+            },
+            LayoutPoint {
+                x: x + span / 2.0,
+                y: y - half_height,
+            },
+        ],
+    };
+
+    // Mermaid's edge painter clips the first/last points against the node by shooting a ray from
+    // the node center toward the adjacent inner bend. Keep the compact route's inner points
+    // intact, but expose the same boundary intersections in the public LayoutEdge so the
+    // headless SVG path/data-points match the browser renderer.
+    if points.len() >= 4 {
+        let first_inner = points[1].clone();
+        let last_index = points.len() - 1;
+        let last_inner = points[last_index - 1].clone();
+        points[0] = er_intersect_node_rect(node, &first_inner);
+        let last_boundary = er_intersect_node_rect(node, &last_inner);
+        points[last_index] = last_boundary;
+    }
+    points
+}
+
+fn er_intersect_node_rect(node: &NodeLabel, point: &LayoutPoint) -> LayoutPoint {
+    // Port of Mermaid's intersect.rect: the ray starts at the node center and ends at the
+    // requested route point. This deliberately handles the self-loop endpoint case separately
+    // from `clip_edge_endpoints`, whose segment clipping assumes the point is already inside the
+    // rectangle and would leave raw boundary coordinates unchanged.
+    let x = node.x.unwrap_or(0.0);
+    let y = node.y.unwrap_or(0.0);
+    let dx = point.x - x;
+    let dy = point.y - y;
+    let mut half_width = node.width / 2.0;
+    let mut half_height = node.height / 2.0;
+
+    let (sx, sy) = if dy.abs() * half_width > dx.abs() * half_height {
+        if dy < 0.0 {
+            half_height = -half_height;
+        }
+        let sx = if dy == 0.0 {
+            0.0
+        } else {
+            (half_height * dx) / dy
+        };
+        (sx, half_height)
+    } else {
+        if dx < 0.0 {
+            half_width = -half_width;
+        }
+        let sy = if dx == 0.0 {
+            0.0
+        } else {
+            (half_width * dy) / dx
+        };
+        (half_width, sy)
+    };
+
+    LayoutPoint {
+        x: x + sx,
+        y: y + sy,
+    }
+}
+
+fn er_self_loop_label_position(
+    points: &[LayoutPoint],
+    side: ErSelfLoopSide,
+    label_width: f64,
+    label_height: f64,
+    node: &NodeLabel,
+) -> (f64, f64) {
+    let x = node.x.unwrap_or(0.0);
+    let y = node.y.unwrap_or(0.0);
+    let gap = 4.0;
+    match side {
+        ErSelfLoopSide::Bottom => (
+            x,
+            points
+                .iter()
+                .map(|point| point.y)
+                .fold(f64::NEG_INFINITY, f64::max)
+                + label_height / 2.0
+                + gap,
+        ),
+        ErSelfLoopSide::Right => (
+            points
+                .iter()
+                .map(|point| point.x)
+                .fold(f64::NEG_INFINITY, f64::max)
+                + label_width / 2.0
+                + gap,
+            y,
+        ),
+        ErSelfLoopSide::Left => (
+            points
+                .iter()
+                .map(|point| point.x)
+                .fold(f64::INFINITY, f64::min)
+                - label_width / 2.0
+                - gap,
+            y,
+        ),
+        ErSelfLoopSide::Top => (
+            x,
+            points
+                .iter()
+                .map(|point| point.y)
+                .fold(f64::INFINITY, f64::min)
+                - label_height / 2.0
+                - gap,
+        ),
+    }
 }
 
 // Layout-engine fallback used before SVG path insertion. This deliberately stays outside the SVG
@@ -624,22 +879,23 @@ fn layout_er_diagram_typed_with_elk_authority(
 fn validate_er_relationship_endpoints(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
 ) -> Result<()> {
-    let entity_ids: HashSet<&str> = model
+    let mut node_ids: HashSet<&str> = model
         .entities
         .values()
         .map(|entity| entity.id.as_str())
         .collect();
+    node_ids.extend(model.subgraphs.iter().map(|subgraph| subgraph.id.as_str()));
     for relationship in &model.relationships {
         // The render model indexes entities by source name, while relationships store the
         // renderer-facing generated `entity-*` ids.  Validate against the entity values rather
         // than the map keys; checking the keys would reject every ordinary parsed relationship
         // before Dagre/ELK gets a chance to lay it out.
-        if !entity_ids.contains(relationship.entity_a.as_str())
-            || !entity_ids.contains(relationship.entity_b.as_str())
+        if !node_ids.contains(relationship.entity_a.as_str())
+            || !node_ids.contains(relationship.entity_b.as_str())
         {
             return Err(Error::InvalidModel {
                 message: format!(
-                    "relationship references missing entities: {} -> {}",
+                    "relationship references missing ER nodes: {} -> {}",
                     relationship.entity_a, relationship.entity_b
                 ),
             });
@@ -659,9 +915,19 @@ fn er_layout_adapter_work(
     let attribute_work = work_control.checked_mul(attribute_count, 6)?;
     let relationship_work = work_control.checked_mul(model.relationships.len(), 10)?;
     let class_work = work_control.checked_mul(model.classes.len(), 3)?;
+    let subgraph_membership = model.subgraphs.iter().try_fold(0usize, |total, subgraph| {
+        work_control.checked_add(total, subgraph.nodes.len())
+    })?;
+    let subgraph_work = work_control.checked_add(
+        work_control.checked_mul(model.subgraphs.len(), 12)?,
+        subgraph_membership,
+    )?;
     work_control.checked_add(
         work_control.checked_add(entity_work, attribute_work)?,
-        work_control.checked_add(relationship_work, class_work)?,
+        work_control.checked_add(
+            work_control.checked_add(relationship_work, class_work)?,
+            subgraph_work,
+        )?,
     )
 }
 
@@ -687,11 +953,57 @@ fn layout_er_diagram_dagre_typed(
         // Mermaid's Dagre adapter always enables `compound: true`, even without clusters.
         compound: true,
     });
+    let rankdir = graph_label.rankdir;
     g.set_graph(graph_label);
 
     fn parse_entity_counter_from_id(id: &str) -> Option<usize> {
         let (_prefix, tail) = id.rsplit_once('-')?;
         tail.parse::<usize>().ok()
+    }
+
+    // Groups are first-class compound nodes in Mermaid's ER graph. Keep the source names in the
+    // semantic model and translate entity members to their renderer-facing `entity-*` ids only
+    // at this boundary.
+    let subgraph_ids: HashSet<&str> = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| subgraph.id.as_str())
+        .collect();
+    let entity_id_by_name: HashMap<&str, &str> = model
+        .entities
+        .iter()
+        .map(|(name, entity)| (name.as_str(), entity.id.as_str()))
+        .collect();
+    let entity_name_by_id: HashMap<&str, &str> = model
+        .entities
+        .iter()
+        .map(|(name, entity)| (entity.id.as_str(), name.as_str()))
+        .collect();
+    let mut subgraph_title_metrics: HashMap<String, (f64, f64)> = HashMap::new();
+
+    // Insert groups in reverse declaration order, matching Mermaid's `getData()` projection and
+    // keeping nested group order deterministic for Dagre's compound ranking.
+    for subgraph in model.subgraphs.iter().rev() {
+        let title = ErBoxLabel::from_source(&subgraph.title);
+        let metrics = er_box_label_metrics(&title, measurer, &label_style);
+        let has_children = subgraph.nodes.iter().any(|member| {
+            subgraph_ids.contains(member.as_str())
+                || entity_id_by_name.contains_key(member.as_str())
+        });
+        let node_label = if has_children {
+            NodeLabel::default()
+        } else {
+            NodeLabel {
+                width: (metrics.width + 16.0).max(16.0),
+                height: (metrics.height + 16.0).max(16.0),
+                ..Default::default()
+            }
+        };
+        subgraph_title_metrics.insert(
+            subgraph.id.clone(),
+            (metrics.width.max(0.0), metrics.height.max(0.0)),
+        );
+        g.set_node(subgraph.id.clone(), node_label);
     }
 
     // Nodes.
@@ -703,6 +1015,13 @@ fn layout_er_diagram_dagre_typed(
     });
 
     for e in entities_in_layout_order {
+        // Mermaid's `getData()` omits an entity whose source name collides with a subgraph id.
+        if entity_name_by_id
+            .get(e.id.as_str())
+            .is_some_and(|name| subgraph_ids.contains(*name))
+        {
+            continue;
+        }
         let (w, h) =
             entity_box_dimensions(e, measurer, &label_style, &attr_style, entity_measurement);
         g.set_node(
@@ -715,6 +1034,23 @@ fn layout_er_diagram_dagre_typed(
         );
     }
 
+    // Apply compound membership after every node has been inserted so nested groups and group
+    // endpoints are available to Dagre's parent index.
+    for subgraph in &model.subgraphs {
+        for member in &subgraph.nodes {
+            let child_id = if subgraph_ids.contains(member.as_str()) {
+                member.clone()
+            } else if let Some(entity_id) = entity_id_by_name.get(member.as_str()) {
+                (*entity_id).to_string()
+            } else {
+                continue;
+            };
+            if child_id != subgraph.id && g.has_node(&child_id) && g.has_node(&subgraph.id) {
+                g.set_parent_ref(&child_id, &subgraph.id);
+            }
+        }
+    }
+
     // Edges. Mermaid ER uses edge labels ("roleA") and the unified renderer routes through the
     // generic dagre pipeline, which accounts for label bbox in spacing. Mirror that by giving
     // dagre real label sizes here.
@@ -722,7 +1058,7 @@ fn layout_er_diagram_dagre_typed(
         if g.node(&r.entity_a).is_none() || g.node(&r.entity_b).is_none() {
             return Err(Error::InvalidModel {
                 message: format!(
-                    "relationship references missing entities: {} -> {}",
+                    "relationship references missing ER nodes: {} -> {}",
                     r.entity_a, r.entity_b
                 ),
             });
@@ -736,6 +1072,7 @@ fn layout_er_diagram_dagre_typed(
             let node_id = r.entity_a.as_str();
             let special_1 = format!("{node_id}---{node_id}---1");
             let special_2 = format!("{node_id}---{node_id}---2");
+            let parent_id = g.parent(node_id).map(str::to_owned);
 
             if g.node(&special_1).is_none() {
                 g.set_node(
@@ -756,6 +1093,12 @@ fn layout_er_diagram_dagre_typed(
                         ..Default::default()
                     },
                 );
+            }
+            if let Some(parent_id) = parent_id.as_deref()
+                && g.has_node(parent_id)
+            {
+                g.set_parent_ref(&special_1, parent_id);
+                g.set_parent_ref(&special_2, parent_id);
             }
 
             let (label_w, label_h) = if r.role_a.trim().is_empty() {
@@ -851,29 +1194,76 @@ fn layout_er_diagram_dagre_typed(
         .map_err(|error| work_control.map_dugong_error(error))?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
+    let mut clusters = Vec::new();
     for id in g.node_ids() {
         let Some(n) = g.node(&id) else {
             continue;
         };
+        let is_cluster = subgraph_ids.contains(id.as_str());
+        let x = n.x.unwrap_or(0.0);
+        let y = n.y.unwrap_or(0.0);
+        let mut width = n.width.max(1.0);
+        let mut height = n.height.max(1.0);
+        if is_cluster {
+            let (title_width, title_height) = subgraph_title_metrics
+                .get(&id)
+                .copied()
+                .unwrap_or((0.0, 0.0));
+            // Mermaid's ER group renderer keeps an 8px title inset and widens empty groups to
+            // contain their title. Compound Dagre groups already include their children; only
+            // the title-driven minimum is added here.
+            width = width.max(title_width + 16.0);
+            height = height.max(title_height + 16.0);
+            if let Some(subgraph) = model.subgraphs.iter().find(|subgraph| subgraph.id == id) {
+                let padding = 8.0;
+                let title_label = LayoutLabel {
+                    x,
+                    y: y - height / 2.0 + padding + title_height / 2.0,
+                    width: title_width,
+                    height: title_height,
+                };
+                let effective_dir = subgraph
+                    .dir
+                    .clone()
+                    .unwrap_or_else(|| model.direction.clone());
+                clusters.push(crate::model::LayoutCluster {
+                    id: id.clone(),
+                    x,
+                    y,
+                    width,
+                    height,
+                    diff: (title_width - width) / 2.0 - padding / 2.0,
+                    offset_y: title_height - padding / 2.0,
+                    title: subgraph.title.clone(),
+                    title_label,
+                    requested_dir: subgraph.dir.clone(),
+                    effective_dir,
+                    padding,
+                    title_margin_top: 0.0,
+                    title_margin_bottom: 0.0,
+                });
+            }
+        }
         nodes.push(LayoutNode {
             id: id.clone(),
-            x: n.x.unwrap_or(0.0),
-            y: n.y.unwrap_or(0.0),
-            width: n.width,
-            height: n.height,
-            is_cluster: false,
+            x,
+            y,
+            width,
+            height,
+            is_cluster,
             label_width: None,
             label_height: None,
         });
     }
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    clusters.sort_by(|a, b| a.id.cmp(&b.id));
 
     let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
     for n in &nodes {
         node_rect_by_id.insert(n.id.clone(), Rect::from_center(n.x, n.y, n.width, n.height));
     }
 
-    let mut edges: Vec<LayoutEdgeParts> = Vec::new();
+    let mut edges_by_id: HashMap<String, LayoutEdgeParts> = HashMap::new();
     for key in g.edge_keys() {
         let Some(e) = g.edge_by_key(&key) else {
             continue;
@@ -959,44 +1349,133 @@ fn layout_er_diagram_dagre_typed(
                 })
             };
 
-        edges.push(LayoutEdgeParts {
+        edges_by_id.insert(
             id,
-            from: key.v.clone(),
-            to: key.w.clone(),
-            points,
-            label,
-            start_marker,
-            end_marker,
-            stroke_dasharray,
-        });
-    }
-    edges.sort_by(|a, b| a.id.cmp(&b.id));
-
-    let mut out_edges: Vec<LayoutEdge> = Vec::new();
-    for e in edges {
-        out_edges.push(LayoutEdge {
-            id: e.id,
-            from: e.from,
-            to: e.to,
-            from_cluster: None,
-            to_cluster: None,
-            points: e.points,
-            label: e.label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: e.start_marker,
-            end_marker: e.end_marker,
-            stroke_dasharray: e.stroke_dasharray,
-        });
+            LayoutEdgeParts {
+                id: key
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("edge:{}:{}", key.v, key.w)),
+                from: key.v.clone(),
+                to: key.w.clone(),
+                points,
+                label,
+                start_marker,
+                end_marker,
+                stroke_dasharray,
+            },
+        );
     }
 
-    let bounds = er_layout_bounds(&nodes, &out_edges);
+    // Keep the Dagre graph projection intact for layout artifacts. Mermaid's common painter
+    // consumes a second projection where self-loop segments are merged into one visible edge;
+    // build that projection below without discarding the helper ranks from the canonical layout.
+    let to_layout_edge = |edge: LayoutEdgeParts| LayoutEdge {
+        id: edge.id,
+        from: edge.from,
+        to: edge.to,
+        from_cluster: None,
+        to_cluster: None,
+        points: edge.points,
+        label: edge.label,
+        start_label_left: None,
+        start_label_right: None,
+        end_label_left: None,
+        end_label_right: None,
+        start_marker: edge.start_marker,
+        end_marker: edge.end_marker,
+        stroke_dasharray: edge.stroke_dasharray,
+    };
+
+    let mut layout_edges = edges_by_id
+        .values()
+        .cloned()
+        .map(to_layout_edge)
+        .collect::<Vec<_>>();
+    layout_edges.sort_by(|left, right| left.id.cmp(&right.id));
+
+    let mut render_edges: Vec<LayoutEdge> = Vec::with_capacity(model.relationships.len());
+    for (idx, relationship) in model.relationships.iter().enumerate() {
+        let edge_id = format!("er-rel-{idx}");
+        if relationship.entity_a == relationship.entity_b {
+            let first_id = format!("{edge_id}-cyclic-0");
+            let last_id = format!("{edge_id}-cyclic-2");
+            let first = edges_by_id.get(&first_id).cloned();
+            let middle = edges_by_id.get(&edge_id).cloned();
+            let last = edges_by_id.get(&last_id).cloned();
+
+            let Some(node) = g.node(&relationship.entity_a).cloned() else {
+                if let Some(edge) = middle.or(first).or(last) {
+                    render_edges.push(to_layout_edge(edge));
+                }
+                continue;
+            };
+            let dummy_ids = [
+                format!("{}---{}---1", relationship.entity_a, relationship.entity_a),
+                format!("{}---{}---2", relationship.entity_a, relationship.entity_a),
+            ];
+            let mut hints = dummy_ids
+                .iter()
+                .filter_map(|id| g.node(id))
+                .filter_map(|node| Some((node.x?, node.y?)))
+                .collect::<Vec<_>>();
+            if hints.is_empty() {
+                for part in [first.as_ref(), middle.as_ref(), last.as_ref()]
+                    .into_iter()
+                    .flatten()
+                {
+                    hints.extend(part.points.iter().map(|point| (point.x, point.y)));
+                }
+            }
+            let side = er_self_loop_side(&node, hints, rankdir);
+            let label = middle
+                .as_ref()
+                .and_then(|part| part.label.clone())
+                .or_else(|| first.as_ref().and_then(|part| part.label.clone()))
+                .or_else(|| last.as_ref().and_then(|part| part.label.clone()));
+            let label_width = label.as_ref().map(|label| label.width).unwrap_or(0.0);
+            let points = er_self_loop_points(&node, side, label_width);
+            let label = label.map(|mut label| {
+                let (x, y) =
+                    er_self_loop_label_position(&points, side, label.width, label.height, &node);
+                label.x = x;
+                label.y = y;
+                label
+            });
+            let self_loop_cluster = subgraph_ids
+                .contains(relationship.entity_a.as_str())
+                .then(|| relationship.entity_a.clone());
+
+            render_edges.push(LayoutEdge {
+                id: edge_id.clone(),
+                from: relationship.entity_a.clone(),
+                to: relationship.entity_b.clone(),
+                from_cluster: self_loop_cluster.clone(),
+                to_cluster: self_loop_cluster,
+                points,
+                label,
+                start_label_left: None,
+                start_label_right: None,
+                end_label_left: None,
+                end_label_right: None,
+                start_marker: er_marker_id(relationship.rel_spec.card_b.as_str(), "START"),
+                end_marker: er_marker_id(relationship.rel_spec.card_a.as_str(), "END"),
+                stroke_dasharray: (relationship.rel_spec.rel_type == "NON_IDENTIFYING")
+                    .then(|| "8,8".to_string()),
+            });
+            continue;
+        } else if let Some(edge) = edges_by_id.get(&edge_id).cloned() {
+            render_edges.push(to_layout_edge(edge));
+        }
+    }
+
+    let bounds = er_layout_bounds(&nodes, &layout_edges);
 
     Ok(ErDiagramLayout {
         nodes,
-        edges: out_edges,
+        edges: layout_edges,
+        render_edges,
+        clusters,
         bounds,
     })
 }
@@ -1031,6 +1510,21 @@ fn layout_er_diagram_elk_typed(
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let elk_graph = er_elk_graph(model, effective_config, measurer, &settings)?;
+    let subgraph_by_id: HashMap<&str, &ErSubgraph> = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| (subgraph.id.as_str(), subgraph))
+        .collect();
+    let subgraph_ids: HashSet<&str> = subgraph_by_id.keys().copied().collect();
+    let mut subgraph_title_metrics = HashMap::with_capacity(subgraph_by_id.len());
+    for subgraph in model.subgraphs.iter() {
+        let title = ErBoxLabel::from_source(&subgraph.title);
+        let metrics = er_box_label_metrics(&title, measurer, &settings.label_style);
+        subgraph_title_metrics.insert(
+            subgraph.id.as_str(),
+            (metrics.width.max(0.0), metrics.height.max(0.0)),
+        );
+    }
     let source_edge_by_id = elk_graph
         .edges
         .iter()
@@ -1049,17 +1543,59 @@ fn layout_er_diagram_elk_typed(
     let mut out_nodes = elk_layout
         .nodes
         .into_iter()
-        .map(|node| LayoutNode {
-            id: node.id,
+        .map(|node| {
+            let is_cluster = subgraph_ids.contains(node.id.as_str());
+            LayoutNode {
+                id: node.id,
+                x: node.x,
+                y: node.y,
+                width: node.width,
+                height: node.height,
+                is_cluster,
+                label_width: None,
+                label_height: None,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut clusters = Vec::with_capacity(subgraph_by_id.len());
+    for node in out_nodes.iter_mut().filter(|node| node.is_cluster) {
+        let Some(subgraph) = subgraph_by_id.get(node.id.as_str()).copied() else {
+            continue;
+        };
+        let (title_width, title_height) = subgraph_title_metrics
+            .get(node.id.as_str())
+            .copied()
+            .unwrap_or((0.0, 0.0));
+        let padding = 8.0;
+        node.width = node.width.max(title_width + padding * 2.0);
+        node.height = node.height.max(title_height + padding * 2.0);
+        let title_label = LayoutLabel {
+            x: node.x,
+            y: node.y - node.height / 2.0 + padding + title_height / 2.0,
+            width: title_width,
+            height: title_height,
+        };
+        clusters.push(crate::model::LayoutCluster {
+            id: node.id.clone(),
             x: node.x,
             y: node.y,
             width: node.width,
             height: node.height,
-            is_cluster: false,
-            label_width: None,
-            label_height: None,
-        })
-        .collect::<Vec<_>>();
+            diff: (title_width - node.width) / 2.0 - padding / 2.0,
+            offset_y: title_height - padding / 2.0,
+            title: subgraph.title.clone(),
+            title_label,
+            requested_dir: subgraph.dir.clone(),
+            effective_dir: subgraph
+                .dir
+                .clone()
+                .unwrap_or_else(|| model.direction.clone()),
+            padding,
+            title_margin_top: 0.0,
+            title_margin_bottom: 0.0,
+        });
+    }
 
     let mut out_edges = Vec::with_capacity(elk_layout.edges.len());
     for edge in elk_layout.edges {
@@ -1125,10 +1661,13 @@ fn layout_er_diagram_elk_typed(
 
     out_nodes.sort_by(|left, right| left.id.cmp(&right.id));
     out_edges.sort_by(|left, right| left.id.cmp(&right.id));
+    clusters.sort_by(|left, right| left.id.cmp(&right.id));
     let bounds = er_layout_bounds(&out_nodes, &out_edges);
     Ok(ErDiagramLayout {
         nodes: out_nodes,
+        render_edges: out_edges.clone(),
         edges: out_edges,
+        clusters,
         bounds,
     })
 }
@@ -1150,7 +1689,61 @@ fn er_elk_graph(
         entity_measurement,
     } = settings;
 
-    let mut entities: Vec<&ErEntity> = model.entities.values().collect();
+    let subgraph_ids: HashSet<&str> = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| subgraph.id.as_str())
+        .collect();
+    let entity_id_by_name: HashMap<&str, &str> = model
+        .entities
+        .iter()
+        .map(|(name, entity)| (name.as_str(), entity.id.as_str()))
+        .collect();
+    let mut parent_by_member: HashMap<&str, &str> = HashMap::new();
+    for subgraph in &model.subgraphs {
+        for member in &subgraph.nodes {
+            let member_id = if subgraph_ids.contains(member.as_str()) {
+                member.as_str()
+            } else if let Some(entity_id) = entity_id_by_name.get(member.as_str()) {
+                entity_id
+            } else {
+                continue;
+            };
+            parent_by_member.insert(member_id, subgraph.id.as_str());
+        }
+    }
+
+    let mut nodes = Vec::with_capacity(model.subgraphs.len() + model.entities.len());
+    for subgraph in model.subgraphs.iter().rev() {
+        let title = ErBoxLabel::from_source(&subgraph.title);
+        let metrics = er_box_label_metrics(&title, measurer, label_style);
+        let has_children = subgraph.nodes.iter().any(|member| {
+            subgraph_ids.contains(member.as_str())
+                || entity_id_by_name.contains_key(member.as_str())
+        });
+        nodes.push(elk::Node {
+            id: subgraph.id.clone(),
+            kind: elk::NodeKind::Group,
+            width: 0.0,
+            height: 0.0,
+            parent: parent_by_member
+                .get(subgraph.id.as_str())
+                .map(|parent| (*parent).to_string()),
+            direction: subgraph.dir.as_deref().and_then(er_elk_direction),
+            hierarchy_handling: Some(elk::HierarchyHandling::IncludeChildren),
+            layer_constraint: None,
+            label: has_children.then_some(elk::Label {
+                width: metrics.width.max(0.0),
+                height: metrics.height.max(0.0),
+            }),
+        });
+    }
+
+    let mut entities: Vec<&ErEntity> = model
+        .entities
+        .iter()
+        .filter_map(|(name, entity)| (!subgraph_ids.contains(name.as_str())).then_some(entity))
+        .collect();
     entities.sort_by(|left, right| {
         fn counter(id: &str) -> Option<usize> {
             id.rsplit_once('-')?.1.parse().ok()
@@ -1158,42 +1751,43 @@ fn er_elk_graph(
         (counter(&left.id), left.id.as_str()).cmp(&(counter(&right.id), right.id.as_str()))
     });
 
-    let nodes = entities
-        .into_iter()
-        .map(|entity| {
-            let (width, height) = entity_box_dimensions(
-                entity,
-                measurer,
-                label_style,
-                attr_style,
-                *entity_measurement,
-            );
-            elk::Node {
-                id: entity.id.clone(),
-                kind: elk::NodeKind::Leaf,
-                width,
-                height,
-                parent: None,
-                direction: None,
-                hierarchy_handling: None,
-                layer_constraint: None,
-                label: None,
-            }
-        })
-        .collect::<Vec<_>>();
+    nodes.extend(entities.into_iter().map(|entity| {
+        let (width, height) = entity_box_dimensions(
+            entity,
+            measurer,
+            label_style,
+            attr_style,
+            *entity_measurement,
+        );
+        elk::Node {
+            id: entity.id.clone(),
+            kind: elk::NodeKind::Leaf,
+            width,
+            height,
+            parent: parent_by_member
+                .get(entity.id.as_str())
+                .map(|parent| (*parent).to_string()),
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            label: None,
+        }
+    }));
 
-    let entity_ids = nodes
+    apply_er_cyclic_entry_constraints(model, effective_config, &mut nodes);
+
+    let node_ids = nodes
         .iter()
         .map(|node| node.id.as_str())
         .collect::<std::collections::HashSet<_>>();
     let mut edges = Vec::with_capacity(model.relationships.len());
     for (index, relationship) in model.relationships.iter().enumerate() {
-        if !entity_ids.contains(relationship.entity_a.as_str())
-            || !entity_ids.contains(relationship.entity_b.as_str())
+        if !node_ids.contains(relationship.entity_a.as_str())
+            || !node_ids.contains(relationship.entity_b.as_str())
         {
             return Err(Error::InvalidModel {
                 message: format!(
-                    "relationship references missing entities: {} -> {}",
+                    "relationship references missing ER nodes: {} -> {}",
                     relationship.entity_a, relationship.entity_b
                 ),
             });
@@ -1232,6 +1826,127 @@ fn er_elk_graph(
         spacing: elk::Spacing::default(),
         options: er_elk_layout_options(effective_config),
     })
+}
+
+#[cfg(feature = "layout-elk")]
+fn er_elk_direction(direction: &str) -> Option<elk::Direction> {
+    match direction.trim().to_ascii_uppercase().as_str() {
+        "LR" => Some(elk::Direction::Right),
+        "RL" => Some(elk::Direction::Left),
+        "BT" => Some(elk::Direction::Up),
+        "TB" => Some(elk::Direction::Down),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+fn apply_er_cyclic_entry_constraints(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    nodes: &mut [elk::Node],
+) {
+    use crate::config::config_bool;
+
+    if !config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
+        return;
+    }
+
+    let mut by_parent: HashMap<Option<&str>, Vec<&str>> = HashMap::new();
+    for node in nodes.iter() {
+        by_parent
+            .entry(node.parent.as_deref())
+            .or_default()
+            .push(node.id.as_str());
+    }
+
+    let node_ids: HashSet<&str> = nodes.iter().map(|node| node.id.as_str()).collect();
+    let mut edges_by_parent: HashMap<Option<&str>, Vec<(&str, &str)>> = HashMap::new();
+    for relationship in &model.relationships {
+        let source = relationship.entity_a.as_str();
+        let target = relationship.entity_b.as_str();
+        if source == target || !node_ids.contains(source) || !node_ids.contains(target) {
+            continue;
+        }
+        let source_parent = nodes
+            .iter()
+            .find(|node| node.id == source)
+            .and_then(|node| node.parent.as_deref());
+        let target_parent = nodes
+            .iter()
+            .find(|node| node.id == target)
+            .and_then(|node| node.parent.as_deref());
+        if source_parent == target_parent {
+            edges_by_parent
+                .entry(source_parent)
+                .or_default()
+                .push((source, target));
+        }
+    }
+
+    let mut entries = HashSet::new();
+    for (parent, ids) in by_parent {
+        let id_set: HashSet<&str> = ids.iter().copied().collect();
+        let mut incoming = ids
+            .iter()
+            .map(|id| (*id, 0usize))
+            .collect::<HashMap<_, _>>();
+        let mut neighbors = ids
+            .iter()
+            .map(|id| (*id, Vec::<&str>::new()))
+            .collect::<HashMap<_, _>>();
+        for &(source, target) in edges_by_parent
+            .get(&parent)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+        {
+            if !id_set.contains(source) || !id_set.contains(target) {
+                continue;
+            }
+            *incoming.entry(target).or_default() += 1;
+            neighbors.entry(source).or_default().push(target);
+            neighbors.entry(target).or_default().push(source);
+        }
+
+        let mut components: HashMap<&str, usize> = HashMap::new();
+        let mut component_count = 0usize;
+        for id in &ids {
+            if components.contains_key(id) {
+                continue;
+            }
+            let mut stack = vec![*id];
+            while let Some(current) = stack.pop() {
+                if components.insert(current, component_count).is_some() {
+                    continue;
+                }
+                for next in neighbors.get(current).into_iter().flatten() {
+                    if !components.contains_key(next) {
+                        stack.push(*next);
+                    }
+                }
+            }
+            component_count += 1;
+        }
+        let mut has_source = vec![false; component_count];
+        for id in &ids {
+            if incoming.get(id).copied().unwrap_or_default() == 0 {
+                has_source[components[id]] = true;
+            }
+        }
+        let mut nominated = vec![false; component_count];
+        for id in ids {
+            let component = components[&id];
+            if !has_source[component] && !nominated[component] {
+                entries.insert(id.to_string());
+                nominated[component] = true;
+            }
+        }
+    }
+
+    for node in nodes {
+        if entries.contains(node.id.as_str()) {
+            node.layer_constraint = Some(elk::LayerConstraint::First);
+        }
+    }
 }
 
 #[cfg(feature = "layout-elk")]
@@ -1282,6 +1997,18 @@ fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
                 },
             )
             .unwrap_or_default();
+    let self_loop_ordering = config_string(
+        effective_config,
+        &["elk", "layered", "edgeRouting", "selfLoopOrdering"],
+    )
+    .map(
+        |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+            "REVERSE_STACKED" => elk::SelfLoopOrderingStrategy::ReverseStacked,
+            "SEQUENCED" => elk::SelfLoopOrderingStrategy::Sequenced,
+            _ => elk::SelfLoopOrderingStrategy::Stacked,
+        },
+    )
+    .unwrap_or_default();
 
     elk::LayoutOptions {
         layered: elk::LayeredOptions {
@@ -1294,6 +2021,7 @@ fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
             )
             .unwrap_or(false),
             self_loop_distribution: elk::SelfLoopDistributionStrategy::Equally,
+            self_loop_ordering,
             force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
                 .unwrap_or(false),
             consider_model_order: model_order != elk::ModelOrderStrategy::None,

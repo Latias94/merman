@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 814.0,
-        "max_y": 418.0
+        "max_x": 782.0,
+        "max_y": 379.085
       },
-      "width": 864.0,
-      "height": 428.0,
+      "width": 832.0,
+      "height": 389.085,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 664.0,
-          "height": 302.0,
+          "width": 632.0,
+          "height": 263.085,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -52,8 +52,8 @@
           "type_c4_shape": "container",
           "x": 150.0,
           "y": 166.0,
-          "width": 248.0,
-          "height": 104.0,
+          "width": 216.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -61,76 +61,64 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
+            "text": "[Container: React]",
+            "y": 44.175,
+            "width": 78.54,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Web App",
-            "y": 38.0,
-            "width": 56.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 49.0,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[React]",
-            "y": 61.0,
-            "width": 36.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides Internet banking functionality.",
-            "y": 94.0,
-            "width": 228.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 119.507,
+            "height": 25.256,
+            "line_count": 2.0
           }
         },
         {
           "alias": "db",
           "parent_boundary": "global",
           "type_c4_shape": "external_container_db",
-          "x": 498.0,
+          "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 152.0,
+          "height": 113.085,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«external_container_db»",
-            "y": 20.0,
-            "width": 116.76,
-            "height": 14.0,
+            "text": "[Container: PostgreSQL]",
+            "y": 44.175,
+            "width": 106.47,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "External Container DB",
-            "y": 86.0,
-            "width": 147.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 128.94,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[PostgreSQL]",
-            "y": 109.0,
-            "width": 68.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "External database container.",
-            "y": 142.0,
-            "width": 162.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 132.709,
+            "height": 12.628,
             "line_count": 1.0
           }
         }
@@ -141,12 +129,12 @@
           "to": "db",
           "rel_type": "rel",
           "start_point": {
-            "x": 398.0,
-            "y": 238.667
+            "x": 366.0,
+            "y": 229.505
           },
           "end_point": {
-            "x": 498.0,
-            "y": 267.071
+            "x": 466.0,
+            "y": 248.038
           },
           "offset_x": null,
           "offset_y": null,

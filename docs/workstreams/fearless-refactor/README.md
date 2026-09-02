@@ -2,7 +2,7 @@
 
 This workstream tracks the cleanup plan for the next merman version. The goal is to make the project cleaner, faster, and easier to extend while preserving Mermaid parity.
 
-The active baseline is Mermaid `@11.16.1`. Current parity boundaries live in `docs/workstreams/PARITY_BOUNDARY.md`; family ownership and cleanup rules live in ADR-0073. This workstream remains historical context for internal architecture, maintainability, feature-gate health, and performance-oriented simplification.
+The active baseline is Mermaid `@11.17.2`. Current parity boundaries live in `docs/workstreams/PARITY_BOUNDARY.md`; family ownership and cleanup rules live in ADR-0073. This workstream remains historical context for internal architecture, maintainability, feature-gate health, and performance-oriented simplification.
 
 > **Historical snapshot:** the command and feature inventories below record the repository state when this workstream was active. They are not current, runnable guidance. Use [`docs/FEATURES.md`](../../FEATURES.md) for current feature names and the repository's active verification documentation for current commands.
 

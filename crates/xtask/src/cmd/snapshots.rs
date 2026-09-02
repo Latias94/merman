@@ -609,8 +609,8 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
 fn verify_theme_snapshot_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
     let expected_runtime = PathBuf::from(super::theme_snapshot::THEME_RUNTIME_OUTPUT);
     let expected_audit = PathBuf::from(super::theme_snapshot::THEME_AUDIT_OUTPUT);
-    let actual_runtime = tmp_dir.join("theme_variables_11_16_1.actual.json");
-    let actual_audit = tmp_dir.join("theme_variables_oracle_11_16_1.actual.json");
+    let actual_runtime = tmp_dir.join("theme_variables_11_17_2.actual.json");
+    let actual_audit = tmp_dir.join("theme_variables_oracle_11_17_2.actual.json");
     super::gen_theme_snapshot(vec![
         "--out".to_string(),
         actual_runtime.display().to_string(),

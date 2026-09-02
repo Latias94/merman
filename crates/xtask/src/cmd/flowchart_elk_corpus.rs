@@ -5,16 +5,19 @@ use std::path::Path;
 
 use crate::XtaskError;
 use crate::cmd::{
-    CypressCollectionEvidence, MERMAID_SOURCE_COMMIT, PINNED_MERMAID_VERSION, RawCypressCollection,
-    ValidationArgument,
+    CypressCollectionEvidence, CypressSourceIdentity, CypressSourcePolicy, MERMAID_SOURCE_COMMIT,
+    PINNED_MERMAID_VERSION, RawCypressCollection, ValidationArgument,
 };
 use crate::util::{is_canonical_sha256, sha256_hex};
 
 pub(crate) const FLOWCHART_ELK_MANIFEST_RELATIVE_PATH: &str =
     "fixtures/_upstream/flowchart-elk-11.16.1/_manifest.json";
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 const SCOPE_ID: &str = "flowchart-elk";
 const SCOPE_DESCRIPTION: &str = "Mermaid 11.16 Flowchart ELK Cypress coverage";
+const HISTORICAL_MERMAID_VERSION: &str = "11.16.1";
+const HISTORICAL_MERMAID_TAG: &str = "mermaid@11.16.1";
+const HISTORICAL_MERMAID_SOURCE_COMMIT: &str = "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf";
 const SOURCE_SPEC: &str = "cypress/integration/rendering/flowchart/flowchart-elk.spec.js";
 const EXPECTED_ACTIVE_CALLS: usize = 64;
 const EXPECTED_SKIPPED_REGISTRATIONS: usize = 1;
@@ -30,6 +33,7 @@ const SUPPLEMENTAL_FIXTURES: &[&str] = &[
 #[serde(deny_unknown_fields)]
 pub(crate) struct FlowchartElkCollectionManifest {
     pub(crate) schema_version: u32,
+    pub(crate) source_policy: CypressSourcePolicy,
     pub(crate) mermaid_version: String,
     pub(crate) mermaid_source_commit: String,
     pub(crate) collection: CypressCollectionEvidence,
@@ -149,6 +153,7 @@ fn projected_flowchart_elk_manifest(
 
     Ok(FlowchartElkCollectionManifest {
         schema_version: SCHEMA_VERSION,
+        source_policy: CypressSourcePolicy::Selected,
         mermaid_version: PINNED_MERMAID_VERSION.to_string(),
         mermaid_source_commit: MERMAID_SOURCE_COMMIT.to_string(),
         collection: crate::cmd::collection_evidence(collection),
@@ -166,9 +171,11 @@ pub(crate) fn load_committed_flowchart_elk_manifest(
         .map_err(|error| format!("failed to parse {}: {error}", path.display()))
 }
 
-pub(crate) fn validate_flowchart_elk_manifest(
+fn validate_flowchart_elk_manifest_for_source(
     workspace_root: &Path,
     manifest: &FlowchartElkCollectionManifest,
+    expected_source: CypressSourceIdentity<'_>,
+    expected_policy: CypressSourcePolicy,
 ) -> Vec<String> {
     let mut failures = Vec::new();
     if manifest.schema_version != SCHEMA_VERSION {
@@ -177,11 +184,17 @@ pub(crate) fn validate_flowchart_elk_manifest(
             manifest.schema_version
         ));
     }
-    if manifest.mermaid_version != PINNED_MERMAID_VERSION
-        || manifest.mermaid_source_commit != MERMAID_SOURCE_COMMIT
+    if manifest.source_policy != expected_policy {
+        failures.push(format!(
+            "Flowchart ELK manifest source_policy must be {expected_policy:?}, found {:?}",
+            manifest.source_policy
+        ));
+    }
+    if manifest.mermaid_version != expected_source.version
+        || manifest.mermaid_source_commit != expected_source.commit
     {
         failures.push(
-            "Flowchart ELK manifest source identity disagrees with the selected Mermaid graph"
+            "Flowchart ELK manifest source identity disagrees with the expected Mermaid source"
                 .to_string(),
         );
     }
@@ -190,6 +203,7 @@ pub(crate) fn validate_flowchart_elk_manifest(
         &manifest.collection,
         SCOPE_ID,
         SCOPE_DESCRIPTION,
+        expected_source,
     ));
     if manifest.collection.expected_active_calls != EXPECTED_ACTIVE_CALLS
         || manifest.collection.expected_skipped_registrations != EXPECTED_SKIPPED_REGISTRATIONS
@@ -336,6 +350,42 @@ pub(crate) fn validate_flowchart_elk_manifest(
     failures
 }
 
+fn validate_historical_flowchart_elk_manifest(
+    workspace_root: &Path,
+    manifest: &FlowchartElkCollectionManifest,
+) -> Vec<String> {
+    validate_flowchart_elk_manifest_for_source(
+        workspace_root,
+        manifest,
+        CypressSourceIdentity {
+            package: "mermaid",
+            version: HISTORICAL_MERMAID_VERSION,
+            tag: HISTORICAL_MERMAID_TAG,
+            commit: HISTORICAL_MERMAID_SOURCE_COMMIT,
+        },
+        CypressSourcePolicy::Historical,
+    )
+}
+
+fn validate_selected_flowchart_elk_manifest(
+    workspace_root: &Path,
+    manifest: &FlowchartElkCollectionManifest,
+) -> Vec<String> {
+    validate_flowchart_elk_manifest_for_source(
+        workspace_root,
+        manifest,
+        CypressSourceIdentity::selected(),
+        CypressSourcePolicy::Selected,
+    )
+}
+
+pub(crate) fn validate_flowchart_elk_manifest(
+    workspace_root: &Path,
+    manifest: &FlowchartElkCollectionManifest,
+) -> Vec<String> {
+    validate_historical_flowchart_elk_manifest(workspace_root, manifest)
+}
+
 pub(crate) fn committed_flowchart_elk_collection_failures(workspace_root: &Path) -> Vec<String> {
     match load_committed_flowchart_elk_manifest(workspace_root) {
         Ok(manifest) => validate_flowchart_elk_manifest(workspace_root, &manifest),
@@ -349,7 +399,7 @@ pub(crate) fn project_flowchart_elk_collection(
 ) -> Result<(), XtaskError> {
     let projected = projected_flowchart_elk_manifest(collection)?;
     let workspace_root = crate::cmd::workspace_root();
-    let projected_failures = validate_flowchart_elk_manifest(&workspace_root, &projected);
+    let projected_failures = validate_selected_flowchart_elk_manifest(&workspace_root, &projected);
     if !projected_failures.is_empty() {
         return Err(XtaskError::AlignmentCheckFailed(
             projected_failures.join("\n"),
@@ -364,12 +414,21 @@ pub(crate) fn project_flowchart_elk_collection(
                     .to_string(),
             ));
         }
-        let failures = validate_flowchart_elk_manifest(&workspace_root, &committed);
+        let failures = validate_selected_flowchart_elk_manifest(&workspace_root, &committed);
         return if failures.is_empty() {
             Ok(())
         } else {
             Err(XtaskError::AlignmentCheckFailed(failures.join("\n")))
         };
+    }
+
+    let committed = load_committed_flowchart_elk_manifest(&workspace_root)
+        .map_err(XtaskError::AlignmentCheckFailed)?;
+    if committed.source_policy != CypressSourcePolicy::Selected {
+        return Err(XtaskError::AlignmentCheckFailed(
+            "historical Flowchart ELK evidence is immutable; refresh it from a separately reviewed historical checkout"
+                .to_string(),
+        ));
     }
 
     let path = workspace_root.join(FLOWCHART_ELK_MANIFEST_RELATIVE_PATH);
@@ -384,7 +443,7 @@ pub(crate) fn project_flowchart_elk_collection(
         path: path.display().to_string(),
         source,
     })?;
-    let failures = validate_flowchart_elk_manifest(&workspace_root, &projected);
+    let failures = validate_selected_flowchart_elk_manifest(&workspace_root, &projected);
     if failures.is_empty() {
         Ok(())
     } else {

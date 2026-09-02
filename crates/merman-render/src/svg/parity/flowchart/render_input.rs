@@ -12,24 +12,33 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
+    render_context: &crate::flowchart::FlowchartRenderContext,
     uses_elk_adapter_dom: bool,
 ) -> FlowchartRenderInputs<'a> {
+    let projected_edges = model
+        .edges
+        .iter()
+        .filter_map(|edge| crate::flowchart::project_flowchart_edge(edge, render_context))
+        .collect::<Vec<_>>();
     if uses_elk_adapter_dom {
         return FlowchartRenderInputs {
-            render_edges: model.edges.iter().map(Cow::Borrowed).collect(),
+            render_edges: projected_edges.into_iter().map(Cow::Owned).collect(),
             extra_nodes: Vec::new(),
         };
     }
 
     // Mermaid 11.16 keeps the helper nodes used by Dagre, but merges their three layout segments
     // back into the original logical self-loop before rendering.
-    let mut render_edges: Vec<Cow<'a, crate::flowchart::FlowEdge>> =
-        model.edges.iter().map(Cow::Borrowed).collect();
     let mut self_loop_label_node_ids: BTreeSet<String> = BTreeSet::new();
-    for edge in model.edges.iter().filter(|edge| edge.from == edge.to) {
+    for edge in &projected_edges {
+        if edge.from != edge.to {
+            continue;
+        }
         self_loop_label_node_ids.insert(format!("{}---{}---1", edge.from, edge.from));
         self_loop_label_node_ids.insert(format!("{}---{}---2", edge.from, edge.from));
     }
+    let mut render_edges: Vec<Cow<'a, crate::flowchart::FlowEdge>> =
+        projected_edges.into_iter().map(Cow::Owned).collect();
 
     // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
     // nodes by removing and re-adding them (after swapping endpoints to anchor nodes). This has a
@@ -39,6 +48,12 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         .subgraphs
         .iter()
         .filter(|sg| !sg.nodes.is_empty())
+        .filter(|sg| !render_context.is_subgraph_collapsed(sg.id.as_str()))
+        .filter(|sg| {
+            render_context
+                .collapsed_replacement(sg.id.as_str())
+                .is_none()
+        })
         .map(|sg| sg.id.as_str())
         .collect();
     if !cluster_ids_with_children.is_empty() && render_edges.len() >= 2 {

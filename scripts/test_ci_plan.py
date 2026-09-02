@@ -7,12 +7,18 @@ import json
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 try:
+    import scripts.ci_plan as ci_plan_module
     from scripts.ci_plan import (
         OWNER_NAMES,
         GateError,
+        main,
+        _validate_plan,
         _write_github_outputs,
         evaluate_gate,
         parse_name_status_z,
@@ -22,9 +28,12 @@ try:
         plan_selected,
     )
 except ModuleNotFoundError:
+    import ci_plan as ci_plan_module
     from ci_plan import (
         OWNER_NAMES,
         GateError,
+        main,
+        _validate_plan,
         _write_github_outputs,
         evaluate_gate,
         parse_name_status_z,
@@ -670,7 +679,7 @@ class PlannerTests(unittest.TestCase):
 
         self.assertTrue(plan["svg_parity"])
 
-    def test_github_outputs_include_svg_parity_selector(self) -> None:
+    def test_github_outputs_are_bounded_selectors(self) -> None:
         plan = plan_changes(
             parse_name_status_z(b"M\0crates/merman-render/src/lib.rs\0"),
             base="a" * 40,
@@ -681,7 +690,49 @@ class PlannerTests(unittest.TestCase):
             _write_github_outputs(output_path, plan)
             output = output_path.read_text(encoding="utf-8")
 
+        self.assertIn('\nowners={"cli":false,"core":true,', f"\n{output}")
         self.assertIn("\nsvg_parity=true\n", output)
+        self.assertNotIn("\nplan=", f"\n{output}")
+
+    def test_plan_cli_validates_and_publishes_bounded_selectors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "github-output"
+            with patch.object(
+                ci_plan_module,
+                "_validate_plan",
+                wraps=ci_plan_module._validate_plan,
+            ) as validate_plan:
+                with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                    exit_code = main(
+                        [
+                            "plan",
+                            "--base",
+                            "a" * 40,
+                            "--head",
+                            "b" * 40,
+                            "--select-owner",
+                            "core",
+                            "--github-output",
+                            str(output_path),
+                        ]
+                    )
+
+            output = output_path.read_text(encoding="utf-8")
+            entries = dict(line.split("=", 1) for line in output.splitlines())
+
+        self.assertEqual(exit_code, 0)
+        validate_plan.assert_called_once()
+        owners = json.loads(entries["owners"])
+        self.assertEqual(set(owners), set(OWNER_NAMES))
+        self.assertTrue(owners["core"])
+        self.assertEqual(entries["core"], "true")
+        self.assertNotIn("plan", entries)
+
+        summary = evaluate_gate(
+            owners,
+            {"build-test": {"owner": "core", "required": True, "result": "success"}},
+        )
+        self.assertEqual(summary["selected"], ["build-test"])
 
     def test_non_pr_host_safety_net_can_select_only_core(self) -> None:
         plan = plan_selected(
@@ -698,7 +749,7 @@ class PlannerTests(unittest.TestCase):
         )
         self.assertTrue(plan["svg_parity"])
         summary = evaluate_gate(
-            plan,
+            plan["owners"],
             {"build-test": {"owner": "core", "required": True, "result": "success"}},
         )
         self.assertEqual(summary["selected"], ["build-test"])
@@ -720,6 +771,7 @@ class GateTests(unittest.TestCase):
             base="a" * 40,
             head="b" * 40,
         )
+        self.owners = self.plan["owners"]
 
     def test_selected_success_and_unselected_skip_pass(self) -> None:
         jobs = {
@@ -727,7 +779,7 @@ class GateTests(unittest.TestCase):
             "core": {"owner": "core", "required": True, "result": "skipped"},
         }
 
-        summary = evaluate_gate(self.plan, jobs)
+        summary = evaluate_gate(self.owners, jobs)
 
         self.assertEqual(summary["selected"], ["hygiene"])
         self.assertEqual(summary["skipped"], ["core"])
@@ -743,13 +795,13 @@ class GateTests(unittest.TestCase):
                     }
                 }
                 with self.assertRaises(GateError):
-                    evaluate_gate(self.plan, jobs)
+                    evaluate_gate(self.owners, jobs)
 
     def test_missing_selected_owner_job_fails_closed(self) -> None:
         with self.assertRaises(GateError):
-            evaluate_gate(self.plan, {})
+            evaluate_gate(self.owners, {})
 
-    def test_malformed_plan_or_job_shape_fails_closed(self) -> None:
+    def test_malformed_plan_fails_closed_at_the_producer_boundary(self) -> None:
         malformed_plans = (
             {},
             {**self.plan, "owners": {"hygiene": True}},
@@ -786,18 +838,30 @@ class GateTests(unittest.TestCase):
         for plan in malformed_plans:
             with self.subTest(plan=plan):
                 with self.assertRaises(GateError):
-                    evaluate_gate(plan, {})
+                    _validate_plan(plan)
+
+    def test_malformed_owner_or_job_shape_fails_closed(self) -> None:
+        malformed_owners = (
+            {},
+            {"hygiene": True},
+            {**self.owners, "hygiene": "true"},
+            {**self.owners, "unexpected": False},
+        )
+        for owners in malformed_owners:
+            with self.subTest(owners=owners):
+                with self.assertRaises(GateError):
+                    evaluate_gate(owners, {})
 
         with self.assertRaises(GateError):
             evaluate_gate(
-                self.plan,
+                self.owners,
                 {"hygiene": {"owner": "missing", "required": True, "result": "success"}},
             )
 
     def test_valid_empty_diff_needs_no_owner_job(self) -> None:
         plan = plan_changes([], base="a" * 40, head="b" * 40)
 
-        summary = evaluate_gate(plan, {})
+        summary = evaluate_gate(plan["owners"], {})
 
         self.assertEqual(summary["selected"], [])
         self.assertEqual(summary["skipped"], [])

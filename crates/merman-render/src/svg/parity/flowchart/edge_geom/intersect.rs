@@ -57,6 +57,10 @@ pub(in crate::svg::parity::flowchart) fn is_polygon_layout_shape(
                 | "sl-rect"
                 | "hourglass"
                 | "collate"
+                | "bucket"
+                | "folder"
+                | "directory"
+                | "person"
         )
     )
 }
@@ -545,6 +549,155 @@ fn intersect_polygon_hourglass(
     intersections[0].clone()
 }
 
+fn folder_tab_height_from_total_height(total_height: f64) -> f64 {
+    // Invert Mermaid's tab rule for the layout dimensions available to edge routing. The
+    // measured content height is clamped to an 8px minimum and a 14px maximum.
+    if total_height <= 58.0 {
+        8.0
+    } else if total_height < 101.5 {
+        total_height * 0.16 / 1.16
+    } else {
+        14.0
+    }
+}
+
+fn folder_polygon_points(node: &BoundaryNode) -> Vec<crate::model::LayoutPoint> {
+    let width = node.width.max(1.0);
+    let total_height = node.height.max(1.0);
+    let tab_height = folder_tab_height_from_total_height(total_height).min(total_height);
+    let tab_width = (width * 0.38).max(28.0);
+    let top = -total_height / 2.0;
+    vec![
+        crate::model::LayoutPoint {
+            x: -width / 2.0,
+            y: top,
+        },
+        crate::model::LayoutPoint {
+            x: -width / 2.0 + tab_width,
+            y: top,
+        },
+        crate::model::LayoutPoint {
+            x: -width / 2.0 + tab_width,
+            y: top + tab_height,
+        },
+        crate::model::LayoutPoint {
+            x: width / 2.0,
+            y: top + tab_height,
+        },
+        crate::model::LayoutPoint {
+            x: width / 2.0,
+            y: total_height / 2.0,
+        },
+        crate::model::LayoutPoint {
+            x: -width / 2.0,
+            y: total_height / 2.0,
+        },
+    ]
+}
+
+fn bucket_polygon_points_for_dimensions(
+    width: f64,
+    total_height: f64,
+) -> Vec<crate::model::LayoutPoint> {
+    let width = width.max(1.0);
+    let total_height = total_height.max(1.0);
+    let rim_ry = (width * 0.08).clamp(5.0, 12.0);
+    let top_y = -total_height / 2.0 + rim_ry;
+    let bottom_y = total_height / 2.0;
+    let bottom_width = width * 0.72;
+    let segments = 12usize;
+    let mut points = Vec::with_capacity((segments + 1) * 2);
+    for i in 0..=segments {
+        let theta = std::f64::consts::PI - (i as f64 * std::f64::consts::PI / segments as f64);
+        points.push(crate::model::LayoutPoint {
+            x: width / 2.0 * theta.cos(),
+            y: top_y - rim_ry * theta.sin(),
+        });
+    }
+    for i in (0..=segments).rev() {
+        let theta = std::f64::consts::PI - (i as f64 * std::f64::consts::PI / segments as f64);
+        points.push(crate::model::LayoutPoint {
+            x: bottom_width / 2.0 * theta.cos(),
+            y: bottom_y + rim_ry * theta.sin(),
+        });
+    }
+    points
+}
+
+fn bucket_polygon_points(node: &BoundaryNode) -> Vec<crate::model::LayoutPoint> {
+    bucket_polygon_points_for_dimensions(node.width, node.height)
+}
+
+fn person_polygon_points_for_dimensions(
+    width: f64,
+    total_height: f64,
+) -> Vec<crate::model::LayoutPoint> {
+    let width = width.max(1.0);
+    let total_height = total_height.max(1.0);
+    let head_radius = (width * 0.23).clamp(16.0, 56.0);
+    let overlap = head_radius * 0.27;
+    let body_height = (total_height - 2.0 * head_radius + overlap).max(0.0);
+    let body_radius = (width * 0.177).min(body_height * 0.45);
+    let top = -total_height / 2.0;
+    let body_top = top + 2.0 * head_radius - overlap;
+    let head_center_y = top + head_radius;
+    let phi = ((body_top - head_center_y) / head_radius.max(1.0))
+        .clamp(-1.0, 1.0)
+        .asin();
+    let segments = 24usize;
+    let mut points = Vec::with_capacity(segments + 4 * 12 + 8);
+    for i in 0..=segments {
+        let start = (180.0 + phi.to_degrees()).to_radians();
+        let end = (-phi.to_degrees()).to_radians();
+        let angle = start + i as f64 * (end - start) / segments as f64;
+        points.push(crate::model::LayoutPoint {
+            x: -(head_radius * angle.cos()),
+            y: head_center_y - head_radius * angle.sin(),
+        });
+    }
+
+    let circle = |cx: f64, cy: f64, start_deg: f64, end_deg: f64| {
+        (0..12)
+            .map(|i| {
+                let angle = (start_deg + (end_deg - start_deg) * i as f64 / 11.0).to_radians();
+                crate::model::LayoutPoint {
+                    x: -(cx + body_radius * angle.cos()),
+                    y: -(cy + body_radius * angle.sin()),
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    points.extend(circle(
+        -(-width / 2.0 + body_radius),
+        -(body_top + body_radius),
+        90.0,
+        0.0,
+    ));
+    points.extend(circle(
+        -(-width / 2.0 + body_radius),
+        -(total_height / 2.0 - body_radius),
+        360.0,
+        270.0,
+    ));
+    points.extend(circle(
+        -(width / 2.0 - body_radius),
+        -(total_height / 2.0 - body_radius),
+        270.0,
+        180.0,
+    ));
+    points.extend(circle(
+        -(width / 2.0 - body_radius),
+        -(body_top + body_radius),
+        180.0,
+        90.0,
+    ));
+    points
+}
+
+fn person_polygon_points(node: &BoundaryNode) -> Vec<crate::model::LayoutPoint> {
+    person_polygon_points_for_dimensions(node.width, node.height)
+}
+
 fn polygon_points_for_layout_shape(
     layout_shape: &str,
     node: &BoundaryNode,
@@ -718,6 +871,9 @@ fn polygon_points_for_layout_shape(
             crate::model::LayoutPoint { x: 0.0, y: h },
             crate::model::LayoutPoint { x: w, y: h },
         ]),
+        "bucket" => Some(bucket_polygon_points(node)),
+        "folder" | "directory" => Some(folder_polygon_points(node)),
+        "person" => Some(person_polygon_points(node)),
         _ => None,
     }
 }
@@ -951,6 +1107,98 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             &crate::trig_tables::STADIUM_ARC_270_450_COS_SIN,
         ));
         intersect_polygon(node, &pts, point)
+    }
+
+    fn intersect_folder(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_polygon(node, &folder_polygon_points(node), point);
+        };
+        let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
+            Some("folder"),
+            metrics,
+            ctx.node_padding,
+            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+        );
+        let width = render_w.max(node.width).max(1.0);
+        let total_height = render_h.max(node.height).max(1.0);
+        let content_height = metrics.height + 2.0 * ctx.node_padding.max(0.0);
+        let tab_height = (content_height * 0.16).clamp(8.0, 14.0).min(total_height);
+        let tab_width = (width * 0.38).max(28.0);
+        let top = -total_height / 2.0;
+        let points = vec![
+            crate::model::LayoutPoint {
+                x: -width / 2.0,
+                y: top,
+            },
+            crate::model::LayoutPoint {
+                x: -width / 2.0 + tab_width,
+                y: top,
+            },
+            crate::model::LayoutPoint {
+                x: -width / 2.0 + tab_width,
+                y: top + tab_height,
+            },
+            crate::model::LayoutPoint {
+                x: width / 2.0,
+                y: top + tab_height,
+            },
+            crate::model::LayoutPoint {
+                x: width / 2.0,
+                y: total_height / 2.0,
+            },
+            crate::model::LayoutPoint {
+                x: -width / 2.0,
+                y: total_height / 2.0,
+            },
+        ];
+        intersect_polygon(node, &points, point)
+    }
+
+    fn intersect_bucket(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_polygon(node, &bucket_polygon_points(node), point);
+        };
+        let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
+            Some("bucket"),
+            metrics,
+            ctx.node_padding,
+            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+        );
+        let width = render_w.max(node.width).max(1.0);
+        let total_height = render_h.max(node.height).max(1.0);
+        let points = bucket_polygon_points_for_dimensions(width, total_height);
+        intersect_polygon(node, &points, point)
+    }
+
+    fn intersect_person(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_polygon(node, &person_polygon_points(node), point);
+        };
+        let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
+            Some("person"),
+            metrics,
+            ctx.node_padding,
+            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+        );
+        let width = render_w.max(node.width).max(1.0);
+        let total_height = render_h.max(node.height).max(1.0);
+        let points = person_polygon_points_for_dimensions(width, total_height);
+        intersect_polygon(node, &points, point)
     }
 
     fn intersect_hexagon(
@@ -1515,6 +1763,9 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         Some("win-pane" | "internal-storage" | "window-pane") => {
             intersect_window_pane(ctx, node_id, node, point)
         }
+        Some("folder" | "directory") => intersect_folder(ctx, node_id, node, point),
+        Some("bucket") => intersect_bucket(ctx, node_id, node, point),
+        Some("person") => intersect_person(ctx, node_id, node, point),
         Some(s) if is_polygon_layout_shape(Some(s)) => polygon_points_for_layout_shape(s, node)
             .map(|pts| intersect_polygon(node, &pts, point))
             .unwrap_or_else(|| intersect_rect(node, point)),

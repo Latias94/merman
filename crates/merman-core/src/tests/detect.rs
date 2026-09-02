@@ -25,6 +25,7 @@ fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
 #[test]
 fn generated_defaults_preserve_mermaids_runtime_class_object_override() {
     let expected = json!({
+        "defaultRenderer": "dagre-wrapper",
         "hideEmptyMembersBox": false,
         "hierarchicalNamespaces": true
     });
@@ -33,12 +34,12 @@ fn generated_defaults_preserve_mermaids_runtime_class_object_override() {
             .as_value()
             .get("class"),
         Some(&expected),
-        "Mermaid 11.16 defaultConfig.ts replaces rather than spreads the schema Class object"
+        "Mermaid 11.17 defaultConfig.ts replaces rather than spreads the schema Class object"
     );
 }
 
 #[test]
-fn class_diagram_detection_keeps_runtime_default_absent_when_site_config_is_merged() {
+fn class_diagram_detection_uses_mermaid_11_17_runtime_default_when_site_config_is_merged() {
     let engine = Engine::new().with_site_config({
         let mut cfg = MermaidConfig::empty_object();
         cfg.set_value("securityLevel", json!("sandbox"));
@@ -49,7 +50,7 @@ fn class_diagram_detection_keeps_runtime_default_absent_when_site_config_is_merg
 class Class1
 "#;
     let res = block_on(engine.parse_metadata(text)).unwrap();
-    assert_eq!(res.diagram_type, "class");
+    assert_eq!(res.diagram_type, "classDiagram");
 }
 
 #[test]

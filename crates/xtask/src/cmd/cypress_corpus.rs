@@ -6,15 +6,25 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::XtaskError;
 use crate::cmd::{
-    CypressCollectionEvidence, MERMAID_SOURCE_COMMIT, MERMAID_SOURCE_TAG, PINNED_MERMAID_VERSION,
-    RawCypressCollection, RawRenderCall, ValidationArgument,
+    CypressCollectionEvidence, CypressSourceIdentity, CypressSourcePolicy, MERMAID_SOURCE_COMMIT,
+    MERMAID_SOURCE_TAG, PINNED_MERMAID_VERSION, RawCypressCollection, RawRenderCall,
+    ValidationArgument,
 };
 use crate::util::{is_canonical_sha256, sha256_hex};
 
 pub(crate) const MANIFEST_RELATIVE_PATH: &str = "fixtures/_upstream/cypress-11.16.1/_manifest.json";
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 const SCOPE_ID: &str = "new-family";
 const SCOPE_DESCRIPTION: &str = "Mermaid 11.16 new-family Cypress render calls";
+const HISTORICAL_MERMAID_VERSION: &str = "11.16.1";
+const HISTORICAL_MERMAID_TAG: &str = "mermaid@11.16.1";
+const HISTORICAL_MERMAID_SOURCE_COMMIT: &str = "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf";
+const HISTORICAL_MERMAID_SOURCE: CypressSourceIdentity<'static> = CypressSourceIdentity {
+    package: "mermaid",
+    version: HISTORICAL_MERMAID_VERSION,
+    tag: HISTORICAL_MERMAID_TAG,
+    commit: HISTORICAL_MERMAID_SOURCE_COMMIT,
+};
 const MANAGED_FIXTURE_PREFIXES: &[&str] = &[
     "upstream_cypress_treeview_spec_",
     "upstream_cypress_cynefin_spec_",
@@ -134,6 +144,7 @@ impl fmt::Display for SafePathComponent {
 #[serde(deny_unknown_fields)]
 pub(crate) struct CypressCorpusManifest {
     pub(crate) schema_version: u32,
+    pub(crate) source_policy: CypressSourcePolicy,
     pub(crate) mermaid_version: String,
     pub(crate) mermaid_source_commit: String,
     pub(crate) collection: CypressCollectionEvidence,
@@ -415,14 +426,16 @@ pub(crate) fn committed_cypress_corpus_alignment_failures(workspace_root: &Path)
         Ok(manifest) => manifest,
         Err(error) => return vec![error],
     };
-    let mut failures = validate_pinned_manifest_contract(workspace_root, &manifest);
+    let mut failures = validate_historical_manifest_contract(workspace_root, &manifest);
     failures.extend(validate_cypress_corpus_manifest(workspace_root, &manifest));
     failures
 }
 
-fn validate_pinned_manifest_contract(
+fn validate_manifest_contract_for_source(
     workspace_root: &Path,
     manifest: &CypressCorpusManifest,
+    expected_source: CypressSourceIdentity<'_>,
+    expected_policy: CypressSourcePolicy,
 ) -> Vec<String> {
     let mut failures = Vec::new();
     if manifest.schema_version != SCHEMA_VERSION {
@@ -431,16 +444,22 @@ fn validate_pinned_manifest_contract(
             manifest.schema_version
         ));
     }
-    if manifest.mermaid_version != PINNED_MERMAID_VERSION {
+    if manifest.source_policy != expected_policy {
         failures.push(format!(
-            "Cypress corpus manifest Mermaid version must be {PINNED_MERMAID_VERSION}, found {}",
-            manifest.mermaid_version
+            "Cypress corpus manifest source_policy must be {expected_policy:?}, found {:?}",
+            manifest.source_policy
         ));
     }
-    if manifest.mermaid_source_commit != MERMAID_SOURCE_COMMIT {
+    if manifest.mermaid_version != expected_source.version {
         failures.push(format!(
-            "Cypress corpus manifest Mermaid commit must be {MERMAID_SOURCE_COMMIT}, found {}",
-            manifest.mermaid_source_commit
+            "Cypress corpus manifest Mermaid version must be {}, found {}",
+            expected_source.version, manifest.mermaid_version
+        ));
+    }
+    if manifest.mermaid_source_commit != expected_source.commit {
+        failures.push(format!(
+            "Cypress corpus manifest Mermaid commit must be {}, found {}",
+            expected_source.commit, manifest.mermaid_source_commit
         ));
     }
     if manifest.scope.description != SCOPE_DESCRIPTION {
@@ -454,6 +473,7 @@ fn validate_pinned_manifest_contract(
         collection,
         SCOPE_ID,
         SCOPE_DESCRIPTION,
+        expected_source,
     ));
     if collection.expected_active_calls != manifest.entries.len() {
         failures.push(format!(
@@ -552,32 +572,62 @@ fn validate_pinned_manifest_contract(
         }
     }
 
-    let lock_path = workspace_root.join("tools/upstreams/REPOS.lock.json");
-    match fs::read(&lock_path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-    {
-        Some(lock) => {
-            let pinned = lock.get("repos").and_then(|repos| repos.get("mermaid"));
-            let lock_ref = pinned
-                .and_then(|repo| repo.get("ref"))
-                .and_then(serde_json::Value::as_str);
-            let lock_commit = pinned
-                .and_then(|repo| repo.get("commit"))
-                .and_then(serde_json::Value::as_str);
-            if lock_ref != Some(MERMAID_SOURCE_TAG) || lock_commit != Some(MERMAID_SOURCE_COMMIT) {
-                failures.push(format!(
-                    "Cypress corpus manifest pin disagrees with {}",
-                    lock_path.display()
-                ));
+    // Selected evidence follows the current REPOS.lock. Historical evidence keeps its own source
+    // receipt and must not be relabeled or forced against the current 11.17.2 lock.
+    if expected_policy == CypressSourcePolicy::Selected {
+        let lock_path = workspace_root.join("tools/upstreams/REPOS.lock.json");
+        match fs::read(&lock_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        {
+            Some(lock) => {
+                let pinned = lock.get("repos").and_then(|repos| repos.get("mermaid"));
+                let lock_ref = pinned
+                    .and_then(|repo| repo.get("ref"))
+                    .and_then(serde_json::Value::as_str);
+                let lock_commit = pinned
+                    .and_then(|repo| repo.get("commit"))
+                    .and_then(serde_json::Value::as_str);
+                if lock_ref != Some(MERMAID_SOURCE_TAG)
+                    || lock_commit != Some(MERMAID_SOURCE_COMMIT)
+                {
+                    failures.push(format!(
+                        "Cypress corpus manifest pin disagrees with {}",
+                        lock_path.display()
+                    ));
+                }
             }
+            None => failures.push(format!(
+                "failed to read pinned Mermaid metadata from {}",
+                lock_path.display()
+            )),
         }
-        None => failures.push(format!(
-            "failed to read pinned Mermaid metadata from {}",
-            lock_path.display()
-        )),
     }
     failures
+}
+
+fn validate_historical_manifest_contract(
+    workspace_root: &Path,
+    manifest: &CypressCorpusManifest,
+) -> Vec<String> {
+    validate_manifest_contract_for_source(
+        workspace_root,
+        manifest,
+        HISTORICAL_MERMAID_SOURCE,
+        CypressSourcePolicy::Historical,
+    )
+}
+
+fn validate_selected_manifest_contract(
+    workspace_root: &Path,
+    manifest: &CypressCorpusManifest,
+) -> Vec<String> {
+    validate_manifest_contract_for_source(
+        workspace_root,
+        manifest,
+        CypressSourceIdentity::selected(),
+        CypressSourcePolicy::Selected,
+    )
 }
 
 pub(crate) fn validate_cypress_corpus_manifest(
@@ -913,6 +963,7 @@ pub(crate) fn project_new_family_cypress_collection(
         &evidence,
         SCOPE_ID,
         SCOPE_DESCRIPTION,
+        CypressSourceIdentity::selected(),
     );
     if !evidence_failures.is_empty() {
         return Err(XtaskError::AlignmentCheckFailed(
@@ -921,6 +972,12 @@ pub(crate) fn project_new_family_cypress_collection(
     }
     let committed = load_committed_cypress_corpus_manifest(&workspace_root)
         .map_err(XtaskError::AlignmentCheckFailed)?;
+    if committed.source_policy != CypressSourcePolicy::Selected {
+        return Err(XtaskError::AlignmentCheckFailed(
+            "historical Cypress evidence is immutable; refresh it from a separately reviewed historical checkout"
+                .to_string(),
+        ));
+    }
     let collected_source_paths = collection
         .source
         .specs
@@ -1010,6 +1067,7 @@ pub(crate) fn project_new_family_cypress_collection(
         .collect::<Result<Vec<_>, XtaskError>>()?;
     let projected = CypressCorpusManifest {
         schema_version: SCHEMA_VERSION,
+        source_policy: CypressSourcePolicy::Selected,
         mermaid_version: PINNED_MERMAID_VERSION.to_string(),
         mermaid_source_commit: MERMAID_SOURCE_COMMIT.to_string(),
         collection: evidence,
@@ -1026,7 +1084,7 @@ pub(crate) fn project_new_family_cypress_collection(
                 "committed Cypress corpus manifest differs from the pinned executable collection; rerun project-upstream-cypress-collection --scope new-family --input <collection.json> --refresh after review".to_string(),
             ));
         }
-        let failures = validate_pinned_manifest_contract(&workspace_root, &projected)
+        let failures = validate_selected_manifest_contract(&workspace_root, &projected)
             .into_iter()
             .chain(validate_cypress_corpus_manifest(
                 &workspace_root,
@@ -1167,6 +1225,7 @@ mod tests {
         let expected_active_calls = entries.len();
         CypressCorpusManifest {
             schema_version: SCHEMA_VERSION,
+            source_policy: CypressSourcePolicy::Selected,
             mermaid_version: PINNED_MERMAID_VERSION.to_string(),
             mermaid_source_commit: MERMAID_SOURCE_COMMIT.to_string(),
             collection: collection_evidence(expected_active_calls),

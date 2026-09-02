@@ -1,4 +1,4 @@
-# Class Diagram Upstream Test Coverage (Mermaid@11.16.1)
+# Class Diagram Upstream Test Coverage (Mermaid@11.17.2)
 
 This document tracks which upstream Mermaid `classDiagram` tests are covered in `merman` via:
 
@@ -6,7 +6,7 @@ This document tracks which upstream Mermaid `classDiagram` tests are covered in 
 - Rust unit tests under `crates/merman-core/src/lib.rs`
 - headless layout tests and debug SVG exports under `crates/merman-render`
 
-Scope: Mermaid tag `@11.16.1`.
+Scope: Mermaid tag `@11.17.2`.
 
 ## External regression cases
 
@@ -64,8 +64,11 @@ Class ELK entry-point coverage:
 
 - Mermaid-reachable `layout: elk` and `class.defaultRenderer: elk` requests dispatch through the
   feature-gated Class ELK adapter under `layout-elk`. The renderer shares Class semantic,
-  node, edge, and namespace emitters while selecting Mermaid 11.16's layout-adapter top-level DOM
-  (`subgraphs`, `nodes`, `edges edgePaths`, and `edgeLabels`) instead of the Dagre root wrapper.
+  node, edge, and namespace emitters while selecting the `@mermaid-js/layout-elk@0.2.3` artifact
+  from the Mermaid 11.17.2 npm graph. That package was published from its own 11.17.0-line tag and
+  emits the top-level DOM `root`, `clusters`, `edges edgePath`, `edgeLabels`, and `nodes`, rather
+  than the later host source's `edges edgePaths` spelling or the Dagre wrapper's edge group
+  contract.
   `render_model_dispatch_uses_elk_for_class_layout_config`,
   `render_model_dispatch_uses_elk_for_class_default_renderer_config`, and
   `class_svg_elk_layout_preserves_existing_renderer_semantics` cover dispatch plus rendered Class
@@ -229,7 +232,7 @@ Imported (parity-gated with upstream SVG baselines):
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_011.mmd`
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_012.mmd`
 
-Rechecked with `@mermaid-js/mermaid-cli@11.16.0` executing `mermaid@11.16.1` and still deferred
+Rechecked with `@mermaid-js/mermaid-cli@11.16.0` executing `mermaid@11.17.2` and still deferred
 because the upstream renderer fails, so no SVG baseline is committed:
 
 - `repo-ref/mermaid/demos/classchart.html` block that contains the line `class People List~List~Person~~`

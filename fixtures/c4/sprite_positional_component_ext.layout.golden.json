@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 782.0,
-        "max_y": 418.0
+        "max_y": 351.578
       },
       "width": 832.0,
-      "height": 428.0,
+      "height": 361.578,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 632.0,
-          "height": 302.0,
+          "height": 235.578,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -53,7 +53,7 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 104.0,
+          "height": 85.578,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -61,32 +61,26 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«component»",
-            "y": 20.0,
-            "width": 65.04,
-            "height": 14.0,
+            "text": "[Component: Rust]",
+            "y": 44.175,
+            "width": 79.275,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "API",
-            "y": 38.0,
-            "width": 24.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 21.0,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Rust]",
-            "y": 61.0,
-            "width": 31.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Handles requests.",
-            "y": 94.0,
-            "width": 99.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 81.278,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -97,40 +91,34 @@
           "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 152.0,
+          "height": 85.578,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«external_component»",
-            "y": 20.0,
-            "width": 108.48,
-            "height": 14.0,
+            "text": "[Component: HTTPS]",
+            "y": 44.175,
+            "width": 90.93,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "External Service",
-            "y": 86.0,
-            "width": 109.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 95.48,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[HTTPS]",
-            "y": 109.0,
-            "width": 44.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Third-party dependency.",
-            "y": 142.0,
-            "width": 137.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 112.504,
+            "height": 12.628,
             "line_count": 1.0
           }
         }
@@ -142,11 +130,11 @@
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
-            "y": 237.358
+            "y": 219.688
           },
           "end_point": {
             "x": 466.0,
-            "y": 269.0
+            "y": 231.006
           },
           "offset_x": null,
           "offset_y": null,

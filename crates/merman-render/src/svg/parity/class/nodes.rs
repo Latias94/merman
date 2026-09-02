@@ -9,7 +9,7 @@ use super::interface::{
 };
 use super::label::class_apply_inline_styles;
 use super::namespace::{
-    ClassNamespaceClusterGroupContext, class_namespace_root_offset, render_class_elk_subgraphs,
+    ClassNamespaceClusterGroupContext, class_namespace_root_offset,
     render_class_namespace_cluster_group, render_class_namespace_clusters_in_root,
 };
 use super::node::{
@@ -316,7 +316,31 @@ pub(super) fn render_class_elk_adapter_dom(
         });
     }
 
-    detail.clusters += render_class_elk_subgraphs(
+    // `layout-elk@0.2.3` uses Mermaid's common layout painter. It inserts one root and four
+    // sibling groups; ELK's post-paint z-order is edge paths, clusters, edge labels, nodes.
+    let edges = root
+        .edge_ids
+        .iter()
+        .map(|id| {
+            edges_by_id
+                .get(id.as_str())
+                .copied()
+                .expect("validated Class ELK render edge")
+                .clone()
+        })
+        .collect::<Vec<_>>();
+    let split = render_class_split_edges_for_namespace(
+        content_bounds,
+        detail,
+        edge_ctx,
+        &edges,
+        0.0,
+        0.0,
+        false,
+    )?;
+    out.push_str(&split.edge_paths);
+
+    detail.clusters += render_class_namespace_cluster_group(
         out,
         content_bounds,
         &ctx.layout.clusters,
@@ -333,6 +357,7 @@ pub(super) fn render_class_elk_adapter_dom(
             emit: ctx.emit,
         },
     )?;
+    out.push_str(&split.edge_labels);
 
     out.push_str(r#"<g class="nodes">"#);
     for item in &root.items {
@@ -358,29 +383,6 @@ pub(super) fn render_class_elk_adapter_dom(
         )?;
     }
     out.push_str("</g>");
-
-    let edges = root
-        .edge_ids
-        .iter()
-        .map(|id| {
-            edges_by_id
-                .get(id.as_str())
-                .copied()
-                .expect("validated Class ELK render edge")
-                .clone()
-        })
-        .collect::<Vec<_>>();
-    let split = render_class_split_edges_for_namespace(
-        content_bounds,
-        detail,
-        edge_ctx,
-        &edges,
-        0.0,
-        0.0,
-        false,
-    )?;
-    out.push_str(&split.edge_paths);
-    out.push_str(&split.edge_labels);
     Ok(())
 }
 

@@ -695,44 +695,43 @@ fn flowchart_svg_renders_regular_edges_before_compact_self_loops() {
 }
 
 #[test]
-fn flowchart_svg_renders_explicit_direction_cluster_as_recursive_root() {
+fn flowchart_svg_keeps_external_direction_cluster_in_parent_root() {
     let svg = render_flowchart_svg_from_text(
         "flowchart TB\nsubgraph A\n  direction LR\n  a --> b\nend\na --> c\n",
     );
 
     assert_eq!(
         svg.matches(r#"<g class="root""#).count(),
-        2,
-        "the extracted cluster should render as one nested root: {svg}"
+        1,
+        "an external edge must keep the directioned cluster in the parent root: {svg}"
     );
     assert_eq!(
         svg.matches(r#"id="merman-A""#).count(),
         1,
-        "the cluster should render exactly once inside its recursive root: {svg}"
+        "the cluster should render exactly once in the parent root: {svg}"
     );
     assert_eq!(
         svg.matches(r#"id="merman-flowchart-a-"#).count(),
         1,
-        "the extracted cluster's internal node should remain in the SVG DOM: {svg}"
+        "the cluster's internal node should remain in the SVG DOM: {svg}"
     );
     assert_eq!(
         svg.matches(r#"id="merman-flowchart-b-"#).count(),
         1,
-        "the extracted cluster's internal node should remain in the SVG DOM: {svg}"
+        "the cluster's internal node should remain in the SVG DOM: {svg}"
     );
 }
 
 #[test]
-fn flowchart_svg_renders_edge_to_ancestor_cluster_inside_that_root() {
+fn flowchart_svg_keeps_edge_to_ancestor_cluster_in_parent_root() {
     let svg = render_flowchart_svg_from_text(
         "flowchart LR\nsubgraph Outer\n  direction TB\n  subgraph Inner\n    direction LR\n    a --> b\n  end\n  b --> c\nend\nc --> Outer\n",
     );
 
-    assert!(
-        svg.contains(
-            r#"<g class="root"><g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/><g class="nodes"><g class="root""#
-        ),
-        "the edge to an ancestor cluster must not be promoted into the top-level root: {svg}"
+    assert_eq!(
+        svg.matches(r#"<g class="root""#).count(),
+        1,
+        "external connections must keep directioned clusters in the parent root: {svg}"
     );
     assert_eq!(
         svg.matches(r#"data-id="L_c_Outer_0""#).count(),
@@ -1395,7 +1394,7 @@ flowchart TB
         "expected numeric themeVariables.strokeWidth to drive Flowchart node stroke width CSS: {svg}"
     );
     assert!(
-        svg.contains(r#"#merman .edgePath .path{stroke:#112233;stroke-width:4px;}"#),
+        svg.contains(r#"#merman .edgePaths .path{stroke:#112233;stroke-width:4px;}"#),
         "expected numeric themeVariables.strokeWidth to drive Flowchart edge path stroke width CSS: {svg}"
     );
     assert!(
@@ -1786,6 +1785,322 @@ fn flowchart_classic_hexagon_renders_polygon_container() {
         !svg.contains(r#"<g class="basic label-container"><path "#),
         "expected classic hexagon not to use the hand-drawn RoughJS path branch: {svg}"
     );
+}
+
+#[test]
+fn flowchart_folder_shape_renders_aliases_and_clips_edges_to_the_tab_polygon() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let text = r#"flowchart TB
+A@{ shape: folder, label: "src" } --> B@{ shape: directory, label: "include" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
+    let nodes = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        _session,
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    for id in ["A", "B"] {
+        let node = document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element
+                        .attribute("id")
+                        .is_some_and(|value| value.contains(&format!("-flowchart-{id}-")))
+            })
+            .unwrap_or_else(|| panic!("rendered node {id}: {svg}"));
+        assert!(
+            node.children().any(|child| {
+                child.has_tag_name("path")
+                    && child.attribute("class") == Some("basic label-container")
+            }),
+            "folder alias {id} must emit its path container: {svg}"
+        );
+    }
+
+    let edge = layout.edges.first().expect("folder edge");
+    let points = flowchart_svg_edge_data_points(&svg, &edge.id);
+    assert!(
+        points.len() >= 2,
+        "folder edge must have endpoints: {points:?}"
+    );
+    let source = nodes("A");
+    let target = nodes("B");
+    assert!(
+        (points[0].y - (source.y + source.height / 2.0)).abs() <= 1.0,
+        "source endpoint should meet the folder body bottom: {points:?}"
+    );
+    assert!(
+        points[points.len() - 1].y > target.y - target.height / 2.0 + 5.0,
+        "target endpoint should use the folder body top below the tab: {points:?}"
+    );
+
+    let hand_drawn = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "handDrawn"}}%%
+flowchart TB
+A@{ shape: folder, label: "src" }
+"#,
+    );
+    assert!(
+        hand_drawn.contains(r#"class="basic label-container""#),
+        "handDrawn folder must retain the basic label-container contract: {hand_drawn}"
+    );
+}
+
+#[test]
+fn flowchart_mermaid_1172_object_shapes_render_their_native_chrome() {
+    let text = r#"flowchart TB
+A@{ shape: person, label: "person" } --> B@{ shape: bucket, label: "bucket" }
+B --> C@{ shape: console, label: "console" }
+C --> D@{ shape: browser, label: "browser" }
+"#;
+    let svg = render_flowchart_svg_from_text(text);
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+
+    let node = |id: &str| {
+        document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element
+                        .attribute("id")
+                        .is_some_and(|value| value.contains(&format!("-flowchart-{id}-")))
+            })
+            .unwrap_or_else(|| panic!("rendered node {id}: {svg}"))
+    };
+
+    let person = node("A");
+    assert!(person.children().any(|child| child.has_tag_name("g")
+        && child.attribute("class") == Some("basic label-container")));
+    assert!(
+        person
+            .descendants()
+            .any(|child| child.has_tag_name("circle"))
+    );
+    assert!(person.descendants().any(|child| child.has_tag_name("rect")));
+
+    let bucket = node("B");
+    assert!(
+        bucket
+            .descendants()
+            .any(|child| child.has_tag_name("ellipse"))
+    );
+    assert!(bucket.descendants().any(|child| child.has_tag_name("path")));
+
+    let console = node("C");
+    assert!(console.descendants().any(|child| {
+        child.has_tag_name("text") && child.attribute("class") == Some("console-glyph")
+    }));
+
+    let browser = node("D");
+    assert!(
+        browser
+            .descendants()
+            .any(|child| child.has_tag_name("line"))
+    );
+    assert!(browser.descendants().any(|child| {
+        child.has_tag_name("rect") && child.attribute("class") == Some("browser-address-bar")
+    }));
+    assert_eq!(
+        browser
+            .descendants()
+            .filter(|child| child.has_tag_name("circle"))
+            .count(),
+        3
+    );
+
+    let edges = document
+        .descendants()
+        .filter(|element| {
+            element.has_tag_name("path") && element.attribute("data-edge") == Some("true")
+        })
+        .count();
+    assert_eq!(edges, 3, "all object-shape edges should render: {svg}");
+
+    for shape in ["person", "bucket", "console", "browser"] {
+        let source = format!(
+            "%%{{init: {{\"look\": \"handDrawn\"}}}}%%\nflowchart TB\nA@{{ shape: {shape}, label: \"{shape}\" }}"
+        );
+        let hand_drawn = render_flowchart_svg_from_text(&source);
+        let hand_document = roxmltree::Document::parse(&hand_drawn).expect("valid handDrawn SVG");
+        let node = hand_document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element
+                        .attribute("id")
+                        .is_some_and(|value| value.contains("-flowchart-A-"))
+            })
+            .unwrap_or_else(|| panic!("handDrawn node for {shape}: {hand_drawn}"));
+        assert!(
+            node.children().any(|child| {
+                child.has_tag_name("g") && child.attribute("class") == Some("basic label-container")
+            }),
+            "handDrawn {shape} must retain its shape group: {hand_drawn}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_collapsed_subgraph_renders_as_one_leaf_and_redirects_boundary_edges() {
+    let svg = render_flowchart_svg_from_text(
+        r#"flowchart TD
+subgraph one[My Group]
+  A --> B
+end
+C --> A
+one@{ view: collapsed }
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid collapsed Flowchart SVG");
+
+    let collapsed = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some("merman-one"))
+        .expect("collapsed subgraph node");
+    assert_eq!(collapsed.attribute("class"), Some("node"));
+    assert!(collapsed.children().any(|child| {
+        child.has_tag_name("rect")
+            && child.attribute("class") == Some("basic label-container collapsed-group")
+    }));
+    assert_eq!(
+        collapsed
+            .children()
+            .filter(|child| child.has_tag_name("circle"))
+            .count(),
+        3,
+        "collapsed node must expose the ellipsis indicators"
+    );
+    assert!(collapsed.children().any(|child| {
+        child.has_tag_name("line") && child.attribute("class") == Some("collapsed-separator")
+    }));
+
+    for hidden_id in ["A", "B"] {
+        assert!(
+            !document.descendants().any(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.contains(&format!("-flowchart-{hidden_id}-")))
+            }),
+            "hidden member {hidden_id} must not be emitted: {svg}"
+        );
+    }
+
+    let edge = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .expect("redirected boundary edge");
+    assert_eq!(edge.attribute("data-id"), Some("L_C_A_0"));
+    assert!(
+        edge.attribute("d").is_some_and(|path| !path.is_empty()),
+        "redirected boundary edge must retain a route: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_collapsed_nested_subgraphs_keep_only_the_outermost_node() {
+    let svg = render_flowchart_svg_from_text(
+        r#"flowchart TD
+subgraph inner[Inner]
+  A --> B
+end
+subgraph outer[Outer]
+  inner
+  C
+end
+D --> A
+inner@{ view: collapsed }
+outer@{ view: collapsed }
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid nested collapsed SVG");
+    let node_ids = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class").is_some())
+        .filter_map(|node| node.attribute("id"))
+        .filter(|id| id.starts_with("merman-") && !id.contains("flowchart-v2"))
+        .collect::<Vec<_>>();
+    assert!(node_ids.contains(&"merman-outer"), "{svg}");
+    assert!(!node_ids.contains(&"merman-inner"), "{svg}");
+    for hidden_id in ["A", "B", "C"] {
+        assert!(
+            !node_ids
+                .iter()
+                .any(|id| id.contains(&format!("-flowchart-{hidden_id}-"))),
+            "hidden member {hidden_id} must not be emitted: {svg}"
+        );
+    }
+    let edge = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .expect("outer boundary edge");
+    assert_eq!(edge.attribute("data-id"), Some("L_D_A_0"));
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_collapsed_subgraph_hides_members_before_layout() {
+    let svg = render_flowchart_svg_from_text(
+        r#"---
+config:
+  layout: elk
+---
+flowchart TD
+subgraph one[My Group]
+  A --> B
+end
+C --> A
+one@{ view: collapsed }
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid ELK collapsed SVG");
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("g") && node.attribute("id") == Some("merman-one") })
+    );
+    for hidden_id in ["A", "B"] {
+        assert!(
+            !document.descendants().any(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.contains(&format!("-flowchart-{hidden_id}-")))
+            }),
+            "ELK hidden member {hidden_id} must not be emitted: {svg}"
+        );
+    }
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node.attribute("data-edge") == Some("true")
+            && node.attribute("data-id") == Some("L_C_A_0")
+    }));
 }
 
 #[test]

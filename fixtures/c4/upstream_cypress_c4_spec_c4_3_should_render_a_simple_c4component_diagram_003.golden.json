@@ -14,42 +14,43 @@
     "shapes": [
       {
         "alias": "spa",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "Single Page Application"
         },
+        "wrap": false,
         "techn": {
           "text": "javascript and angular"
         },
         "descr": {
           "text": "Provides all the internet banking functionality to customers via their web browser."
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "global",
-        "wrap": false
+        }
       },
       {
         "alias": "sign",
+        "parentBoundary": "api",
+        "typeC4Shape": {
+          "text": "component"
+        },
         "label": {
           "text": "Sign In Controller"
         },
+        "wrap": false,
         "techn": {
           "text": "MVC Rest Controller"
         },
         "descr": {
           "text": "Allows users to sign in to the internet banking system"
-        },
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "parentBoundary": "api",
-        "wrap": false
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -57,26 +58,25 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       },
       {
         "alias": "api",
+        "parentBoundary": "global",
         "label": {
           "text": "API Application"
         },
         "type": {
           "text": "CONTAINER"
         },
-        "parentBoundary": "global",
         "wrap": false
       }
     ],
     "rels": [
       {
-        "type": "rel_b",
         "from": "spa",
         "to": "sign",
+        "type": "rel_b",
         "label": {
           "text": "Uses"
         },

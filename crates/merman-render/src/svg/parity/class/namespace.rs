@@ -42,25 +42,6 @@ pub(super) fn render_class_namespace_cluster_group(
         .unwrap_or_default())
 }
 
-pub(super) fn render_class_elk_subgraphs(
-    out: &mut String,
-    content_bounds: &mut Option<Bounds>,
-    clusters: &[LayoutCluster],
-    ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> Result<std::time::Duration> {
-    let clusters_start = ctx.timing.start();
-    out.push_str(r#"<g class="subgraphs">"#);
-    for cluster in clusters {
-        out.push_str(r#"<g class="subgraph">"#);
-        render_class_namespace_cluster(out, content_bounds, cluster, ctx)?;
-        out.push_str("</g>");
-    }
-    out.push_str("</g>");
-    Ok(clusters_start
-        .map(|start| start.elapsed())
-        .unwrap_or_default())
-}
-
 fn render_class_namespace_cluster(
     out: &mut String,
     content_bounds: &mut Option<Bounds>,

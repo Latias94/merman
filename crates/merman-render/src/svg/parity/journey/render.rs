@@ -83,7 +83,7 @@ fn journey_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} .edgePath .path{{stroke:{};stroke-width:1.5px;}}"#,
+        r#"#{} .edgePaths .path{{stroke:{};stroke-width:1.5px;}}"#,
         diagram_id, line_color
     );
     let _ = write!(
@@ -630,7 +630,7 @@ mod tests {
         assert!(css.contains(r#"#journey .face{fill:#303030;stroke:#999;}"#));
         assert!(css.contains(r#"#journey .node rect,#journey .node circle,#journey .node ellipse,#journey .node polygon,#journey .node path{fill:#404040;stroke:#505050;stroke-width:1px;}"#));
         assert!(css.contains(r#"#journey .arrowheadPath{fill:#606060;}"#));
-        assert!(css.contains(r#"#journey .edgePath .path{stroke:#202020;stroke-width:1.5px;}"#));
+        assert!(css.contains(r#"#journey .edgePaths .path{stroke:#202020;stroke-width:1.5px;}"#));
         assert!(
             css.contains(r#"#journey .edgeLabel{background-color:#707070;text-align:center;}"#)
         );

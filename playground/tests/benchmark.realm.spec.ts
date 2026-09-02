@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, type ViteDevServer } from "vite";
 import { CANONICAL_BENCHMARK_SCREEN_AVAILABLE_WIDTH } from "../src/benchmark/input.ts";
+import { MERMAID_JS_VERSION } from "../src/generated/mermaid-reference.ts";
 
 const RUN_TOKEN = "r".repeat(43);
 const PLAYGROUND_ROOT = path.resolve(
@@ -194,7 +195,7 @@ test("opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-t
         role: "warmup",
       });
       expect(cold.type, JSON.stringify(cold)).toBe("benchmark-sample-success");
-      expect(cold.version).toBe("11.16.1");
+      expect(cold.version).toBe(MERMAID_JS_VERSION);
       expect(cold.trace.adapter_import_start).not.toBeNull();
       expect(cold.trace.adapter_import_end).toBeGreaterThanOrEqual(
         cold.trace.adapter_import_start!

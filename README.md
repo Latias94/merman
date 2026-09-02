@@ -14,7 +14,7 @@ Chromium, or another JavaScript runtime.
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-Merman currently follows `mermaid@11.16.1`. Its parser, layout, configuration, theming,
+Merman currently follows `mermaid@11.17.2`. Its parser, layout, configuration, theming,
 sanitization, and SVG structure are checked against pinned Mermaid source and fixtures.
 
 > [!NOTE]

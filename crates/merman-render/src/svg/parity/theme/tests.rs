@@ -55,6 +55,7 @@ fn presentation_theme_xychart_resolves_chart_roles() {
 
     assert_eq!(xychart.background_color, "#0f172a");
     assert_eq!(xychart.title_color, "#f43f5e");
+    assert_eq!(xychart.legend_text_color, "#f8fafc");
     assert_eq!(xychart.x_axis_title_color, "#f8fafc");
     assert_eq!(xychart.x_axis_label_color, "#22c55e");
     assert_eq!(xychart.y_axis_line_color, "#f8fafc");

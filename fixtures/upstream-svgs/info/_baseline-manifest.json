@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.1",
+    "mermaid_version": "11.17.2",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.1",
-    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "9298a915a40b6057827e8add6044309143f836b8dbca73c34ffba5b21a762ac5",
-    "package_lock_sha256": "0ee640d994c7986b67919b663a0fec2fc6baa51becf106d5e0161678294e9b7b",
+    "mermaid_source_tag": "mermaid@11.17.2",
+    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
+    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
+    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -26,12 +26,12 @@
       "operating_system": {
         "platform": "darwin",
         "arch": "arm64",
-        "release": "25.5.0"
+        "release": "25.6.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.1",
-        "iife_version": "11.16.1",
-        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
+        "esm_version": "11.17.2",
+        "iife_version": "11.17.2",
+        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {
@@ -44,77 +44,77 @@
   "fixtures": {
     "upstream_cypress_statediagram_v2_spec_v2_should_render_a_simple_info_001": {
       "input_sha256": "68a75951352e5a172016721f9b23e17d75d6295ee25d6666e8d096d6aa9897a3",
-      "svg_sha256": "925c18505d752163fa42e71b282a072dea8982f9b784f3708b2236baa29ad173",
+      "svg_sha256": "9191bbead747fc92e4e61adc4794c386f3cfa176b8c82f75c11e98e3b842e273",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_info_info_diagram_demos_001": {
       "input_sha256": "c628bc44716c62978abfde7d75ad46ed08e261777f8ad7edbe6723ad8fa2c8f0",
-      "svg_sha256": "4f51fc6ad09ed6fe8d35b070dd95b89cf89ab286efdc1ee762fd06f3c17d3830",
+      "svg_sha256": "1d21170d53153c3ff2d878e3c809cc467c1c34b3c937e28a119c78b3c224fab3",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_info_info_diagram_demos_002": {
       "input_sha256": "d4e4fcd93f340df32049f954b782ebd2b86eb64c9380faf5182fec4259b7a93f",
-      "svg_sha256": "6f88adb90995303e84f28786b1ebf80bdbb9322d457038aabbea31c4f55069b6",
+      "svg_sha256": "ea648bdc9e03ba3e140c89199226daf48aa54e02940555ed291f5c6835291d95",
       "renderer_profile": "mmdc-default"
     },
     "upstream_info_empty_leading_newline_spec": {
       "input_sha256": "c99f07f7e8cf90c51cb48dc85bd350ea684421ab645fedd8d314a80e7bf8f125",
-      "svg_sha256": "c96308b98cf7dfed8d3845efc43846790c9fe0a47aab1c79892f3854ae34ff48",
+      "svg_sha256": "62ba340e8fce05fd7cf33efcc4f2562c0ba58d39cc7723b661cdacb09fcbc869",
       "renderer_profile": "mmdc-default"
     },
     "upstream_info_show_info_multiline_spec": {
       "input_sha256": "aeaec1a369df80786c4e2bb8366aa52e445d1b0d5d6bcff12a93806ba107ed5f",
-      "svg_sha256": "0095647f45c740d135a62fc382d443ee4989cff203b04da4705e280d7f650e86",
+      "svg_sha256": "e9a2e900ff6944cf1e389e9ae7a69faa4efa351f5e7081a5aebb0fbbc19b4577",
       "renderer_profile": "mmdc-default"
     },
     "upstream_info_show_info_spec": {
       "input_sha256": "dbe1669f106bc61a4fac393605fe5198db59a66e5f6aa223022efc0b57c6dc4d",
-      "svg_sha256": "99a28c8fd32b7fcc64f40a3c9c2ca58ebf513094da5aedbe7304157f75133fd7",
+      "svg_sha256": "32180103ffee97eab434c737294630f6e4544c0451cae9cddb65b0aaf06e7f30",
       "renderer_profile": "mmdc-default"
     },
     "upstream_info_spec": {
       "input_sha256": "a2478d2ad0f1ebb60419fe3e8e39bf5651aabe6dad20ae36f794780dcdda31a4",
-      "svg_sha256": "3b1493c4d30cc58e0e1caed24fb279f6f9401923a6c66ade4d3c8e4e7028f5f0",
+      "svg_sha256": "296fed7b49584b4ef0167f9695a5571670d1dddb46965bb66147131abe34982f",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_info_test_002": {
       "input_sha256": "1546868e62f1e7bfdc0a35814f6ca9d4f84c3cec02f152ba7c9664b0a900a83d",
-      "svg_sha256": "8c6352ff5e62a54aba77460ecdb7f7179721a12886ad423d0e1fbc443a33b6fc",
+      "svg_sha256": "52ee17673dcc33f1856b0eddb4facbd39e9fb5f4b84993ab1750327304e98568",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_info_test_004": {
       "input_sha256": "5f9b65457e029ad5794a1bebaad39ee1e70ebec51f23874467e0b3838b07f8d9",
-      "svg_sha256": "c6d6b3ba7cf5c7faf503080a1cf3cbcad77f4b7bff062010e79e7a36939b733d",
+      "svg_sha256": "1cadef8eb7c7f2f856472bb40c33517d549996fdfd5671deeeb9b51a512c5942",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_info_test_007": {
       "input_sha256": "5eb41428b71d0960f8863ca95f87334634d0e36f88a50f5909b190cb29748b05",
-      "svg_sha256": "eeea63d99b66bb6a2273d8f41279ec836e547eeea2ab03bf13311be91e89d39f",
+      "svg_sha256": "02039f8fa8f141d9a4ad3d2c28d866dfd4b305d4d6386b4cf17ee64f90d20a9f",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_info_test_008": {
       "input_sha256": "c13a9c3c76401c3ff5de035781565a4807c4c677e8d06e867823eb523dba960e",
-      "svg_sha256": "e9bad39f6930dcc26b9b0d44fb91ee160b81b51c0828fa97453238d2ad4d5b94",
+      "svg_sha256": "591a5844249ce8a788e9a406400e62c879775432487226bc8077f9b05f2b0b01",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_info_test_009": {
       "input_sha256": "6264a9bbe3c3b8ffb66cf7ac046fdb62c5425b478cf8fd80ca38baef24ed145a",
-      "svg_sha256": "669c4a1924a4675e972742eaea5510ba5e9ef6dc0f9973df7fc8bc1bb512edf3",
+      "svg_sha256": "63b2ae6901324438a19c61bcb6b41d086bb31618937ab43b37168dab786bfe35",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_info_test_010": {
       "input_sha256": "a183bdad0f94681d82524d225e3fc82475a42cb09296f51409330f3d67ce1a70",
-      "svg_sha256": "ac00edb815cbcd011869e4d92eefb448cd14e728e83d8d722dec022b1cc7791c",
+      "svg_sha256": "8d30fdcd5e37e4fce9a2775d006b36941eb256df9904aa39715f37d3c8eba4c8",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_info_test_011": {
       "input_sha256": "a65b9c4d5bf8580dd1d2005e0520f0b32030166434bc6af0d50d73f39fd3bc4f",
-      "svg_sha256": "6da50ea9fe9737b5054c4a4ec3816899d5cd1d928a3cfe3818bd237246869882",
+      "svg_sha256": "5e91bc159e4131ea30eb35087c29996daff73dba2e1e1415a2c99967aeb9b023",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_info_test_012": {
       "input_sha256": "6ceebc0af77acff1ec6c5de464ca27bf5b95ca617c18e6b53f3248e2767863a3",
-      "svg_sha256": "52223136ecd3dbc55cc82e228b01f56744aa87f64f0890803f84ee719984c27e",
+      "svg_sha256": "a3713be7fb4437c700e4cf69574cd78d11b09f8648e3fe8cc3d2c8e9f4e89073",
       "renderer_profile": "mmdc-default"
     }
   },

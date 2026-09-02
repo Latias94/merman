@@ -1,3 +1,9 @@
+//! Headless adaptation of `non-layered-tidy-tree-layout` 2.0.2.
+//!
+//! The contour, thread, extreme, and two-walk algorithms are translated from the MIT-licensed
+//! upstream source at commit `63852fb7646eb079ce0e1976044d54545de273e8`, then adapted to
+//! Merman's typed model, iterative traversal, resource limits, and Mermaid layout conventions.
+
 use super::{MindmapEdgeModel, MindmapNodeModel};
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
 use crate::{Error, Result};

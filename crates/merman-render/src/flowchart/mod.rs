@@ -57,6 +57,14 @@ impl<'a> FlowchartRenderModelRef<'a> {
             .effective_subgraph_css(declaration_ordinal, subgraph)
     }
 
+    pub(crate) fn is_subgraph_collapsed(&self, id: &str) -> bool {
+        self.render_context.is_subgraph_collapsed(id)
+    }
+
+    pub(crate) fn collapsed_replacement(&self, id: &str) -> Option<&str> {
+        self.render_context.collapsed_replacement(id)
+    }
+
     pub(crate) fn requires_math(&self) -> bool {
         self.nodes
             .iter()
@@ -74,6 +82,32 @@ impl<'a> FlowchartRenderModelRef<'a> {
             )
             .any(crate::math::contains_delimited_math)
     }
+}
+
+/// Projects a logical Flowchart edge through Mermaid's collapsed-subgraph view. The typed model
+/// remains lossless; render/layout callers use this helper to hide fully internal edges and route
+/// boundary edges to the visible collapsed node.
+pub(crate) fn project_flowchart_edge(
+    edge: &FlowEdge,
+    render_context: &FlowchartRenderContext,
+) -> Option<FlowEdge> {
+    let from = render_context
+        .collapsed_replacement(edge.from.as_str())
+        .unwrap_or(edge.from.as_str());
+    let to = render_context
+        .collapsed_replacement(edge.to.as_str())
+        .unwrap_or(edge.to.as_str());
+    let changed = from != edge.from || to != edge.to;
+    if from == to && changed {
+        return None;
+    }
+    if !changed {
+        return Some(edge.clone());
+    }
+    let mut projected = edge.clone();
+    projected.from = from.to_string();
+    projected.to = to.to_string();
+    Some(projected)
 }
 
 impl Deref for FlowchartRenderModelRef<'_> {

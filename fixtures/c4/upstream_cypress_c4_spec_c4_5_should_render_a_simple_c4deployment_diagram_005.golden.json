@@ -14,42 +14,43 @@
     "shapes": [
       {
         "alias": "mobile",
+        "parentBoundary": "mob",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "Mobile App"
         },
+        "wrap": false,
         "techn": {
           "text": "Xamarin"
         },
         "descr": {
           "text": "Provides a limited subset of the Internet Banking functionality to customers via their mobile device."
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "mob",
-        "wrap": false
+        }
       },
       {
         "alias": "api",
+        "parentBoundary": "apache",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "API Application"
         },
+        "wrap": false,
         "techn": {
           "text": "Java and Spring MVC"
         },
         "descr": {
           "text": "Provides Internet Banking functionality via a JSON/HTTPS API."
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "apache",
-        "wrap": false
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -57,11 +58,11 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       },
       {
         "alias": "mob",
+        "parentBoundary": "global",
         "label": {
           "text": "Customer's mobile device"
         },
@@ -71,12 +72,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "global",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "plc",
+        "parentBoundary": "global",
         "label": {
           "text": "Big Bank plc"
         },
@@ -86,12 +87,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "global",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "dn",
+        "parentBoundary": "plc",
         "label": {
           "text": "bigbank-api*** x8"
         },
@@ -101,12 +102,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "plc",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "apache",
+        "parentBoundary": "dn",
         "label": {
           "text": "Apache Tomcat"
         },
@@ -116,16 +117,15 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "dn",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "mobile",
         "to": "api",
+        "type": "rel",
         "label": {
           "text": "Makes API calls to"
         },
