@@ -36,10 +36,7 @@ struct TreemapSourceTextStyle {
     font_size_px: TreemapSourceTextOverride<f64>,
     font_weight: TreemapSourceTextOverride<Box<str>>,
     font_style: TreemapSourceTextOverride<Box<str>>,
-    text_transform_unverified: bool,
-    letter_spacing_unverified: bool,
-    word_spacing_unverified: bool,
-    white_space_unverified: bool,
+    has_unverified_typography: bool,
 }
 
 impl TreemapSourceTextStyle {
@@ -96,10 +93,7 @@ impl TreemapSourceTextStyle {
                 generated_font_style.map(str::to_owned)
             }
         };
-        verified &= !self.text_transform_unverified
-            && !self.letter_spacing_unverified
-            && !self.word_spacing_unverified
-            && !self.white_space_unverified;
+        verified &= !self.has_unverified_typography;
 
         TreemapResolvedTextStyle {
             style: crate::text::TextStyle {
@@ -663,10 +657,9 @@ fn resolve_treemap_source_text_style(
                         "font-size" => style.font_size_px = TreemapSourceTextOverride::Unverified,
                         "font-weight" => style.font_weight = TreemapSourceTextOverride::Unverified,
                         "font-style" => style.font_style = TreemapSourceTextOverride::Unverified,
-                        "text-transform" => style.text_transform_unverified = true,
-                        "letter-spacing" => style.letter_spacing_unverified = true,
-                        "word-spacing" => style.word_spacing_unverified = true,
-                        "white-space" => style.white_space_unverified = true,
+                        "text-transform" | "letter-spacing" | "word-spacing" | "white-space" => {
+                            style.has_unverified_typography = true
+                        }
                         _ => {}
                     }
                     return Ok(true);
@@ -735,24 +728,24 @@ fn resolve_treemap_source_text_style(
                         };
                     }
                     "text-transform" => {
-                        style.text_transform_unverified = declaration.important()
+                        style.has_unverified_typography |= declaration.important()
                             || !(declaration.inherits_property_value()
                                 || declaration.value().eq_ignore_ascii_case("none"));
                     }
                     "letter-spacing" => {
-                        style.letter_spacing_unverified = declaration.important()
+                        style.has_unverified_typography |= declaration.important()
                             || !(declaration.inherits_property_value()
                                 || declaration.value().eq_ignore_ascii_case("normal")
                                 || declaration.svg_number_or_px() == Some(0.0));
                     }
                     "word-spacing" => {
-                        style.word_spacing_unverified = declaration.important()
+                        style.has_unverified_typography |= declaration.important()
                             || !(declaration.inherits_property_value()
                                 || declaration.value().eq_ignore_ascii_case("normal")
                                 || declaration.svg_number_or_px() == Some(0.0));
                     }
                     "white-space" => {
-                        style.white_space_unverified = declaration.important()
+                        style.has_unverified_typography |= declaration.important()
                             || !(declaration.inherits_property_value()
                                 || declaration.value().eq_ignore_ascii_case("normal"));
                     }

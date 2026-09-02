@@ -57,9 +57,8 @@ impl CountingTreemapHost {
         self.observations
             .lock()
             .expect("text measurement recorder is not poisoned")
-            .clone()
-            .into_iter()
-            .map(|(_, style)| style)
+            .iter()
+            .map(|(_, style)| style.clone())
             .collect()
     }
 

@@ -9,12 +9,9 @@ fn measure_treemap_computed_length(
     measurer: &dyn crate::text::TextMeasurer,
     text: &str,
     style: &crate::text::TextStyle,
-    expected_style: &crate::treemap::TreemapResolvedTextStyle,
     work_meter: &crate::resources::OperationWorkMeter,
-    measurement_matches: &mut bool,
 ) -> Result<f64> {
     work_meter.charge(1usize.saturating_add(text.len().div_ceil(64)))?;
-    *measurement_matches &= expected_style.matches_measurement(style);
     Ok(measurer.measure_svg_text_computed_length_px(text, style))
 }
 
@@ -299,29 +296,26 @@ pub(crate) fn render_treemap_diagram_svg(
     let title = layout.title.as_deref().filter(|t| !t.trim().is_empty());
     let mut typography_theme_receipt = typography_theme.begin_terminal_receipt(layout);
     let title_shift_y = layout.title_height;
-    options
-        .work_meter()
-        .charge(1usize.saturating_add(theme.title_font_size.len().div_ceil(64)))?;
-    let title_text_style = typography_theme.title_text_style(&theme.title_font_size);
-    let mut title_measurement_matches = true;
-    if let Some(title) = title {
+    let (title_text_style, title_bbox) = if let Some(title) = title {
+        options
+            .work_meter()
+            .charge(1usize.saturating_add(theme.title_font_size.len().div_ceil(64)))?;
+        let title_text_style = typography_theme.title_text_style(&theme.title_font_size);
         let measurement_work = 1usize.saturating_add(title.len().div_ceil(64));
         options
             .work_meter()
             .charge(measurement_work.saturating_mul(2))?;
-    }
-    let title_bbox = title.map(|t| {
         let style = title_text_style.style();
-        title_measurement_matches &= title_text_style.matches_measurement(style);
         let w = measurer
-            .measure_svg_simple_text_bbox_width_px(t, style)
+            .measure_svg_simple_text_bbox_width_px(title, style)
             .max(0.0);
-        title_measurement_matches &= title_text_style.matches_measurement(style);
         let h = measurer
-            .measure_svg_simple_text_bbox_height_px(t, style)
+            .measure_svg_simple_text_bbox_height_px(title, style)
             .max(0.0);
-        (w, h)
-    });
+        (Some(title_text_style), Some((w, h)))
+    } else {
+        (None, None)
+    };
 
     #[derive(Debug, Clone, Copy)]
     struct TreemapRect {
@@ -513,8 +507,10 @@ pub(crate) fn render_treemap_diagram_svg(
             receipt.record_text(
                 crate::treemap::TreemapTextRole::Title,
                 true,
-                &title_text_style,
-                title_measurement_matches,
+                title_text_style
+                    .as_ref()
+                    .expect("a visible Treemap title has a resolved text style"),
+                true,
             );
         }
     }
@@ -579,8 +575,6 @@ pub(crate) fn render_treemap_diagram_svg(
         let compiled = treemap_styles2_string(section_css, options.work_meter())?;
         let section_label_text_style =
             typography_theme.section_text_style(i, section_label_font_size, Some("bold"), None);
-        let section_value_text_style =
-            typography_theme.section_text_style(i, section_value_font_size, None, Some("italic"));
         let section_style = if section.depth == 0 {
             "display: none;".to_string()
         } else {
@@ -654,15 +648,11 @@ pub(crate) fn render_treemap_diagram_svg(
                 section_label_min_visible_width.max(space_for_text_content);
 
             let style = section_label_text_style.style();
-            let mut measurement_matches = true;
-
             if measure_treemap_computed_length(
                 &computed_length_measurer,
                 &label_text,
                 style,
-                &section_label_text_style,
                 options.work_meter(),
-                &mut measurement_matches,
             )? > actual_available_width
             {
                 let ellipsis = "...";
@@ -682,9 +672,7 @@ pub(crate) fn render_treemap_diagram_svg(
                             &computed_length_measurer,
                             ellipsis,
                             style,
-                            &section_label_text_style,
                             options.work_meter(),
-                            &mut measurement_matches,
                         )? > actual_available_width
                         {
                             label_text.clear();
@@ -698,9 +686,7 @@ pub(crate) fn render_treemap_diagram_svg(
                         &computed_length_measurer,
                         &candidate,
                         style,
-                        &section_label_text_style,
                         options.work_meter(),
-                        &mut measurement_matches,
                     )? <= actual_available_width
                     {
                         label_text = candidate;
@@ -731,12 +717,18 @@ pub(crate) fn render_treemap_diagram_svg(
                     crate::treemap::TreemapTextRole::SectionLabel,
                     true,
                     &section_label_text_style,
-                    measurement_matches,
+                    true,
                 );
             }
         }
 
         if layout.show_values {
+            let section_value_text_style = typography_theme.section_text_style(
+                i,
+                section_value_font_size,
+                None,
+                Some("italic"),
+            );
             let value_text = if section.value != 0.0 {
                 format_value(section.value, &layout.value_format)
             } else {
@@ -815,11 +807,15 @@ pub(crate) fn render_treemap_diagram_svg(
         let fill = color_scale.get(fill_key);
 
         let leaf_css: &[String] = leaf.css_compiled_styles.as_deref().unwrap_or(&[]);
-        let compiled = treemap_styles2_string(leaf_css, options.work_meter())?;
-        let leaf_rect_style = compiled.node_styles.clone();
-        let label_styles_suffix = replace_first(&compiled.label_styles, "color:", "fill:");
+        let TreemapCompiledStyles {
+            label_styles,
+            label_styles_without_font_size,
+            node_styles: leaf_rect_style,
+            border_styles: _,
+        } = treemap_styles2_string(leaf_css, options.work_meter())?;
+        let label_styles_suffix = replace_first(&label_styles, "color:", "fill:");
         let label_styles_without_font_size_suffix =
-            replace_first(&compiled.label_styles_without_font_size, "color:", "fill:");
+            replace_first(&label_styles_without_font_size, "color:", "fill:");
         let leaf_label_fill = theme.readable_leaf_label_fill(
             &fill,
             &leaf_rect_style,
@@ -864,13 +860,12 @@ pub(crate) fn render_treemap_diagram_svg(
             let mut expected_style = leaf_label_initial_style.clone();
 
             loop {
+                label_measurement_matches &= expected_style.matches_measurement(&style);
                 if measure_treemap_computed_length(
                     &computed_length_measurer,
                     &leaf.name,
                     &style,
-                    &expected_style,
                     options.work_meter(),
-                    &mut label_measurement_matches,
                 )? <= available_w
                     || label_font_size <= min_label_font_size
                 {
@@ -906,13 +901,12 @@ pub(crate) fn render_treemap_diagram_svg(
                     label_hidden = true;
                 }
             } else {
+                label_measurement_matches &= expected_style.matches_measurement(&style);
                 if measure_treemap_computed_length(
                     &computed_length_measurer,
                     &leaf.name,
                     &style,
-                    &expected_style,
                     options.work_meter(),
-                    &mut label_measurement_matches,
                 )? > available_w
                     || label_font_size < min_label_font_size
                     || available_h < label_font_size
@@ -988,8 +982,6 @@ pub(crate) fn render_treemap_diagram_svg(
             let mut value_font_size = base_value_font_size;
             let mut value_y = h / 2.0; // placeholder (overwritten when label is visible)
             let mut value_hidden = true;
-            let mut value_font_size_mutated = false;
-            let mut value_measurement_matches = true;
 
             if !label_hidden {
                 let actual_value_font_size = (label_font_size * value_scale_factor)
@@ -997,7 +989,6 @@ pub(crate) fn render_treemap_diagram_svg(
                     .min(base_value_font_size)
                     .max(min_value_font_size);
                 value_font_size = actual_value_font_size;
-                value_font_size_mutated = true;
                 final_value_text_style =
                     leaf_value_initial_style.with_font_size_px(value_font_size);
 
@@ -1013,9 +1004,7 @@ pub(crate) fn render_treemap_diagram_svg(
                     &computed_length_measurer,
                     &value_text,
                     final_value_text_style.style(),
-                    &final_value_text_style,
                     options.work_meter(),
-                    &mut value_measurement_matches,
                 )?;
                 if value_w_px <= available_w_for_value
                     && value_y + value_font_size <= max_value_bottom_y
@@ -1025,7 +1014,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 }
             }
 
-            let mut value_style = if value_font_size_mutated {
+            let mut value_style = if !label_hidden {
                 let fill = normalize_dom_style_color(&leaf_label_fill);
                 format!(
                     "text-anchor: middle; dominant-baseline: hanging; font-size: {fs}px; fill: {fill};",
@@ -1043,7 +1032,7 @@ pub(crate) fn render_treemap_diagram_svg(
             if value_hidden {
                 value_style.push_str(" display: none;");
             }
-            if value_font_size_mutated && !label_styles_without_font_size_suffix.is_empty() {
+            if !label_hidden && !label_styles_without_font_size_suffix.is_empty() {
                 value_style.push_str(&label_styles_without_font_size_suffix);
             }
 
@@ -1071,9 +1060,9 @@ pub(crate) fn render_treemap_diagram_svg(
             if let Some(receipt) = typography_theme_receipt.as_mut() {
                 receipt.record_text(
                     crate::treemap::TreemapTextRole::LeafValue,
-                    value_font_size_mutated && !value_text.is_empty(),
+                    !label_hidden && !value_text.is_empty(),
                     &final_value_text_style,
-                    value_measurement_matches,
+                    true,
                 );
             }
         }

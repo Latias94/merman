@@ -17,7 +17,7 @@ mod theme;
 use config::TreemapConfigView;
 
 pub(crate) use theme::{
-    TreemapResolvedTextStyle, TreemapTextRole, TreemapTitleThemePlan, TreemapTypographyCssEmission,
+    TreemapTextRole, TreemapTitleThemePlan, TreemapTypographyCssEmission,
     TreemapTypographyThemePlan,
 };
 
@@ -433,22 +433,9 @@ fn position_node(
     }
     padding_stack[depth + 1] = p;
 
-    let has_children = true;
-    let padding_top = if has_children {
-        TREEMAP_SECTION_HEADER_HEIGHT_PX + TREEMAP_SECTION_INNER_PADDING_PX
-    } else {
-        0.0
-    };
-    let padding_lr = if has_children {
-        TREEMAP_SECTION_INNER_PADDING_PX
-    } else {
-        0.0
-    };
-    let padding_bottom = if has_children {
-        TREEMAP_SECTION_INNER_PADDING_PX
-    } else {
-        0.0
-    };
+    let padding_top = TREEMAP_SECTION_HEADER_HEIGHT_PX + TREEMAP_SECTION_INNER_PADDING_PX;
+    let padding_lr = TREEMAP_SECTION_INNER_PADDING_PX;
+    let padding_bottom = TREEMAP_SECTION_INNER_PADDING_PX;
 
     x0 += padding_lr - p;
     y0 += padding_top - p;
