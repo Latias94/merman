@@ -121,6 +121,7 @@ unicode-linebreak = "0.1.5"
 unicode-segmentation = { version = "1.13.3", default-features = false }
 unicode-general-category = "1.1.0"
 unicode-normalization = "0.1.25"
+unicase = "2.9.0"
 wasm-bindgen = "0.2"
 web-time = "1.1.0"
 wasm-minimal-protocol = "0.2.0"
