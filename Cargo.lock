@@ -2479,6 +2479,7 @@ dependencies = [
  "svgtypes 0.16.1",
  "thiserror 2.0.19",
  "tiny-skia",
+ "unicase",
  "usvg",
 ]
 
