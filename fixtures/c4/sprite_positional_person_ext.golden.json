@@ -14,39 +14,40 @@
     "shapes": [
       {
         "alias": "p1",
-        "label": {
-          "text": "External Customer"
-        },
-        "descr": {
-          "text": "A customer of the bank."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "external_person"
         },
-        "parentBoundary": "global",
+        "label": {
+          "text": "External Customer"
+        },
         "wrap": false,
         "sprite": "users",
         "tags": "external",
-        "link": "https://example.com/external-customer"
+        "link": "https://example.com/external-customer",
+        "descr": {
+          "text": "A customer of the bank."
+        }
       },
       {
         "alias": "s1",
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "descr": {
-          "text": "Allows customers to view account data."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "system"
         },
-        "parentBoundary": "global",
-        "wrap": false
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Allows customers to view account data."
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -54,15 +55,14 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "p1",
         "to": "s1",
+        "type": "rel",
         "label": {
           "text": "Uses"
         },

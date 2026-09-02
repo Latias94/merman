@@ -316,11 +316,27 @@ pub(crate) fn parse_treemap_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_treemap_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<TreemapDiagramRenderModel> {
     Ok(parse_treemap_semantic_source(code, meta)?.render_model())
+}
+
+pub(crate) fn parse_treemap_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<TreemapDiagramRenderModel>> {
+    let parsed = parse_treemap_outcome_controlled(code, control)?;
+    let parsed = match parsed.into_strict(meta) {
+        Ok(parsed) => parsed,
+        Err(error) => return Ok(Err(error)),
+    };
+    let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
+    control.checkpoint()?;
+    Ok(Ok(source.render_model()))
 }
 
 pub(crate) fn render_model_to_compat_json(

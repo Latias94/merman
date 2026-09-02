@@ -1,7 +1,7 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "model": {
-    "type": "class",
+    "type": "classDiagram",
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -80,7 +80,6 @@
         "explicit": true
       }
     },
-    "styleClasses": {},
     "constants": {
       "lineType": {
         "line": 0,
@@ -94,6 +93,7 @@
         "dependency": 3,
         "lollipop": 4
       }
-    }
+    },
+    "styleClasses": {}
   }
 }

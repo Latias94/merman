@@ -758,6 +758,29 @@ MermanOperationMetadata decodeMermanOperationMetadata(String rawJson) {
 MermanOutputPlan _decodeMermanOutputPlan(Map<String, Object?> plan) {
   final kind = _requiredGeneratedString(plan, 'kind');
   return switch (kind) {
+    'ascii' => MermanAsciiOutputPlan(
+        schemaVersion: _requiredGeneratedUint16(plan, 'schema_version'),
+        family: _requiredGeneratedString(plan, 'family'),
+        projection: _requiredGeneratedString(plan, 'projection'),
+        encoding: _requiredGeneratedString(plan, 'encoding'),
+        primaryWidth: _requiredGeneratedUint64(plan, 'primary_width'),
+        primaryHeight: _requiredGeneratedUint64(plan, 'primary_height'),
+        emittedWidth: _requiredGeneratedUint64(plan, 'emitted_width'),
+        emittedHeight: _requiredGeneratedUint64(plan, 'emitted_height'),
+        widthProfile: _requiredGeneratedString(plan, 'width_profile'),
+        layoutProfile: _requiredGeneratedString(plan, 'layout_profile'),
+        requestedMaxWidth:
+            _optionalGeneratedUint64(plan, 'requested_max_width'),
+        overflowed: _requiredGeneratedBool(plan, 'overflowed'),
+        outcome: _requiredGeneratedString(plan, 'outcome'),
+        fallbackCapability:
+            _requiredGeneratedString(plan, 'fallback_capability'),
+        fallbackAttempted:
+            _requiredGeneratedBool(plan, 'fallback_attempted'),
+        fallbackReason: _optionalGeneratedString(plan, 'fallback_reason'),
+        trimmed: _requiredGeneratedBool(plan, 'trimmed'),
+        lossiness: _requiredGeneratedString(plan, 'lossiness'),
+      ),
     'raster' => MermanRasterOutputPlan(
         requestedWidthPx: _requiredGeneratedDouble(plan, 'requested_width_px'),
         requestedHeightPx:
@@ -817,6 +840,16 @@ int _requiredGeneratedUint32(Map<String, Object?> value, String key) {
   return field;
 }
 
+int _requiredGeneratedUint16(Map<String, Object?> value, String key) {
+  final field = _requiredGeneratedUint64(value, key);
+  if (field > 0xffff) {
+    throw FormatException(
+      'operation metadata field `$key` exceeds unsigned 16-bit range',
+    );
+  }
+  return field;
+}
+
 int _requiredGeneratedUint64(Map<String, Object?> value, String key) {
   final field = value[key];
   if (field is! int || field < 0) {
@@ -825,6 +858,20 @@ int _requiredGeneratedUint64(Map<String, Object?> value, String key) {
     );
   }
   return field;
+}
+
+int? _optionalGeneratedUint64(Map<String, Object?> value, String key) {
+  if (value[key] == null) {
+    return null;
+  }
+  return _requiredGeneratedUint64(value, key);
+}
+
+String? _optionalGeneratedString(Map<String, Object?> value, String key) {
+  if (value[key] == null) {
+    return null;
+  }
+  return _requiredGeneratedString(value, key);
 }
 
 double _requiredGeneratedDouble(Map<String, Object?> value, String key) {

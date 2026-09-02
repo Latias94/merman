@@ -592,6 +592,7 @@ impl ArchitectureLayoutDirection {
 fn strip_inline_comment(line: &str) -> &str {
     let mut in_quote = false;
     let mut quote_char: Option<char> = None;
+    let mut in_title = false;
     let mut it = line.char_indices().peekable();
     while let Some((idx, ch)) = it.next() {
         if in_quote {
@@ -610,7 +611,15 @@ fn strip_inline_comment(line: &str) -> &str {
             quote_char = Some(ch);
             continue;
         }
-        if ch == '%' && it.peek().is_some_and(|(_, next)| *next == '%') {
+        if ch == '[' {
+            in_title = true;
+            continue;
+        }
+        if ch == ']' {
+            in_title = false;
+            continue;
+        }
+        if !in_title && ch == '%' && it.peek().is_some_and(|(_, next)| *next == '%') {
             return &line[..idx];
         }
     }
@@ -938,11 +947,20 @@ pub struct ArchitectureRenderLayoutHint {
     pub members: Vec<String>,
 }
 
+#[cfg(test)]
 pub(crate) fn parse_architecture_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<ArchitectureDiagramRenderModel> {
     Ok(parse::parse_semantic_source(code, meta)?.render_model())
+}
+
+pub(crate) fn parse_architecture_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ArchitectureDiagramRenderModel>> {
+    parse::parse_model_for_render_controlled(code, meta, control)
 }
 
 #[cfg(test)]
@@ -1368,6 +1386,22 @@ service caption(server)[\"title %% kept\"]\n",
 
         assert_eq!(model["services"][0]["iconText"], "before %% after");
         assert_eq!(model["services"][1]["title"], "title %% kept");
+    }
+
+    #[test]
+    fn architecture_unquoted_titles_accept_unicode_punctuation_and_percent_markers() {
+        let model = parse(
+            "architecture-beta\n\
+ group root(cloud)[采集器]\n\
+ service api(server)[Structure + Src %% v6] in root %% trailing comment\n\
+ service db(database)[Café]\n\
+ api:R -[TCP/IP: v6 %% path]- L:db %% trailing comment\n",
+        );
+
+        assert_eq!(model["groups"][0]["title"], "采集器");
+        assert_eq!(model["services"][0]["title"], "Structure + Src %% v6");
+        assert_eq!(model["services"][1]["title"], "Café");
+        assert_eq!(model["edges"][0]["title"], "TCP/IP: v6 %% path");
     }
 
     #[test]

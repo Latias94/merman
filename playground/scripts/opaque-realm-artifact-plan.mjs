@@ -22,7 +22,10 @@ export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
       entry: "src/runtime/realm/engines/mermaid-engine-artifact-entry.ts",
       outputBase: "mermaid-engine",
       publish: true,
-      maxBytes: 12 * 1024 * 1024,
+      // Mermaid 11.17.2's minified browser engine is about 14 MiB. Keep a
+      // small amount of headroom for patch releases without making the
+      // transport budget the build-time artifact budget.
+      maxBytes: 16 * 1024 * 1024,
       resourcePolicy: "none-v1",
       exports: ["benchmarkEngineAdapter", "renderWithMermaid"],
     },

@@ -4,8 +4,6 @@ use super::super::SvgDiagramId;
 use super::super::root_svg;
 use super::super::util::escape_xml_into;
 
-const MINIMUM_PAINT_INSET_PX: f64 = 1.0;
-
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub family_kind: crate::family::RenderFamilyKind,
     pub diagram_id: SvgDiagramId<'a>,
@@ -80,21 +78,7 @@ fn flowchart_root_bounds(
     max_y: f64,
     diagram_padding: f64,
 ) -> root_svg::DiagramBounds {
-    // Flowchart paint can cross geometry extrema by roughly one CSS pixel because of the default
-    // stroke and rasterization. Supplement finite user padding below that threshold so the total
-    // inset is at least one pixel, while leaving invalid non-finite values to root validation.
-    let paint_guard = if diagram_padding.is_finite() {
-        (MINIMUM_PAINT_INSET_PX - diagram_padding.max(0.0)).max(0.0)
-    } else {
-        0.0
-    };
-    root_svg::DiagramBounds::from_extents(
-        min_x - paint_guard,
-        min_y - paint_guard,
-        max_x + paint_guard,
-        max_y + paint_guard,
-        diagram_padding,
-    )
+    root_svg::DiagramBounds::from_extents(min_x, min_y, max_x, max_y, diagram_padding)
 }
 
 impl FlowchartSvgDocument<'_> {
@@ -135,18 +119,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn small_padding_keeps_a_family_local_minimum_paint_inset() {
-        let guarded = flowchart_root_bounds(10.0, 20.0, 110.0, 220.0, 0.0);
-        assert_eq!(guarded.min_x, 9.0);
-        assert_eq!(guarded.min_y, 19.0);
-        assert_eq!(guarded.width, 102.0);
-        assert_eq!(guarded.height, 202.0);
+    fn diagram_padding_is_applied_without_a_family_guard() {
+        let zero = flowchart_root_bounds(10.0, 20.0, 110.0, 220.0, 0.0);
+        assert_eq!(zero.min_x, 10.0);
+        assert_eq!(zero.min_y, 20.0);
+        assert_eq!(zero.width, 100.0);
+        assert_eq!(zero.height, 200.0);
 
         let fractional = flowchart_root_bounds(10.0, 20.0, 110.0, 220.0, 0.25);
-        assert_eq!(fractional.min_x, 9.0);
-        assert_eq!(fractional.min_y, 19.0);
-        assert_eq!(fractional.width, 102.0);
-        assert_eq!(fractional.height, 202.0);
+        assert_eq!(fractional.min_x, 9.75);
+        assert_eq!(fractional.min_y, 19.75);
+        assert_eq!(fractional.width, 100.5);
+        assert_eq!(fractional.height, 200.5);
 
         let padded = flowchart_root_bounds(10.0, 20.0, 110.0, 220.0, 8.0);
         assert_eq!(padded.min_x, 2.0);

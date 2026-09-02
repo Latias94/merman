@@ -89,6 +89,7 @@ pub(crate) fn render_model_to_compat_json(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn parse_info_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -96,6 +97,18 @@ pub(crate) fn parse_info_model_for_render(
     Ok(info_output_into_render_model(
         parse_info_semantic_source(code, meta)?.output,
     ))
+}
+
+pub(crate) fn parse_info_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<InfoDiagramRenderModel>> {
+    let construction = construct_info_semantic_source_controlled(code, meta, control)?;
+    match construction {
+        Ok(source) => Ok(Ok(info_output_into_render_model(source.output))),
+        Err(failure) => Ok(Err(failure.into_error())),
+    }
 }
 
 fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSemanticSource> {

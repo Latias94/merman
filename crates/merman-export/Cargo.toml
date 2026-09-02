@@ -28,6 +28,7 @@ png = [
     "dep:svgtypes",
     "dep:thiserror",
     "dep:tiny-skia",
+    "dep:unicase",
     "dep:usvg",
 ]
 jpeg = [
@@ -41,6 +42,7 @@ jpeg = [
     "dep:svgtypes",
     "dep:thiserror",
     "dep:tiny-skia",
+    "dep:unicase",
     "dep:usvg",
 ]
 pdf = [
@@ -51,6 +53,7 @@ pdf = [
     "dep:merman-render",
     "dep:quick-xml",
     "dep:thiserror",
+    "dep:unicase",
     "dep:usvg",
 ]
 
@@ -67,6 +70,7 @@ resvg = { workspace = true, optional = true, features = ["raster-images"] }
 svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
+unicase = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true, features = ["system-fonts", "text"] }
 
 [dev-dependencies]

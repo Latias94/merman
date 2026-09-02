@@ -6,18 +6,10 @@
 > before relying on an alpha.5 API or capability. The later Web and Node npm alpha.5 packages were
 > bootstrapped from verified workflow artifacts built at a reviewed commit newer than the workspace
 > tag and are not byte-identical tag artifacts. Those bootstrap registry artifacts do not expose npm
-> provenance attestations. Source integrations following the default branch after alpha.5 must
-> also apply the [unreleased upgrade guide](UNRELEASED_UPGRADE_GUIDE.md), and final release
-> benchmarks must be regenerated against the tagged release commit.
+> provenance attestations. Source integrations moving from alpha.5 to the prepared alpha.6 candidate must also apply the [alpha.5 to alpha.6 upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md), and final release benchmarks must be regenerated against the tagged release commit.
 
 Alpha.5 is a broad prerelease upgrade, not a drop-in patch. It expands the Mermaid baseline to
-11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with
-observable capabilities, splits the browser SDK into standalone packages, and finalizes separate
-native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 2, the
-browser transport uses API 5, and Apple/Python use UniFFI API 4 in the current source candidate.
-Published artifacts may advance on their own channel; always compare the loaded runtime catalog
-before mixing a generated wrapper with a native library. Current API 5 Web wrappers reject API 4
-WASM modules during initialization rather than continuing with a mixed transport.
+11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with observable capabilities, splits the browser SDK into standalone packages, and finalizes separate alpha.5 native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 1, the browser transport uses API 3, and Apple/Python use UniFFI API 3. Published artifacts may advance on their own channel; always compare the loaded runtime catalog before mixing a generated wrapper with a native library.
 
 The practical upgrade rule is:
 
@@ -42,7 +34,7 @@ The practical upgrade rule is:
 | `assertSafeSvgForDom()` | Choose an explicit self-contained or navigable browser capability and retain its opaque admission until the real mount document is known. |
 | Typed State render links | Keep handling `StateDiagramRenderLinks::{One, Many}`. Mermaid 11.16 preserves repeated `click` declarations in source order because each parsed `idStatement` is a distinct runtime key; repeated links render as nested anchors. |
 | Node.js or SSR | Install the experimental `@mermanjs/node@alpha` channel-only package on Node.js 22 or newer, or keep using the tagged `merman-cli` subprocess when exact workspace-tag source identity is required. |
-| Typst | Treat it as an independent release track. Typst Universe currently publishes `@preview/merman:0.1.0`; the source-tree `0.2.0` wrapper is not yet published. |
+| Typst | Treat it as an independent release track. The `0.1.0` registry statement applied at the time of the alpha.5 guide; verify the current registry version separately from the source-tree wrapper. |
 
 ## Choose the alpha.5 surface
 

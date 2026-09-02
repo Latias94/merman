@@ -2894,7 +2894,7 @@ class Formula["$$x^2$$"]
             Error::MissingCapability {
                 capability: RenderCapability::Math,
                 ref diagram_type,
-            } if diagram_type == "class"
+            } if diagram_type == "classDiagram"
         ));
     }
 

@@ -23,6 +23,7 @@ export 'src/generated/text_measurement_protocol.dart'
         MermanTextWrapMode;
 export 'src/operation_metadata.dart'
     show
+        MermanAsciiOutputPlan,
         MermanOperationMetadata,
         MermanOutputPlan,
         MermanPdfFilterImagesOutputPlan,

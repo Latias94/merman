@@ -14,36 +14,37 @@
     "shapes": [
       {
         "alias": "p1",
-        "label": {
-          "text": "Customer"
-        },
-        "descr": {
-          "text": "A customer of the bank."
-        },
+        "parentBoundary": "b1",
         "typeC4Shape": {
           "text": "person"
         },
-        "parentBoundary": "b1",
-        "wrap": false
+        "label": {
+          "text": "Customer"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A customer of the bank."
+        }
       },
       {
         "alias": "s1",
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "descr": {
-          "text": "Allows customers to view account data."
-        },
+        "parentBoundary": "b1",
         "typeC4Shape": {
           "text": "system"
         },
-        "parentBoundary": "b1",
-        "wrap": false
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Allows customers to view account data."
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -51,28 +52,27 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       },
       {
         "alias": "b1",
+        "parentBoundary": "global",
         "label": {
           "text": "Bank Boundary"
         },
         "type": {
           "text": "company"
         },
+        "wrap": false,
         "sprite": "users",
-        "tags": "bank",
-        "parentBoundary": "global",
-        "wrap": false
+        "tags": "bank"
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "p1",
         "to": "s1",
+        "type": "rel",
         "label": {
           "text": "Uses"
         },

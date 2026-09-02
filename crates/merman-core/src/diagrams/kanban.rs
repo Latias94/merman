@@ -1557,12 +1557,28 @@ fn kanban_nodes_to_json(model: &KanbanDiagramRenderModel, config: &MermaidConfig
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn parse_kanban_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<KanbanDiagramRenderModel> {
     let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
     Ok(kanban_db_into_render_model(&source.db, meta))
+}
+
+pub(crate) fn parse_kanban_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<KanbanDiagramRenderModel>> {
+    let construction = construct_kanban_semantic_source_controlled(code, meta, control)?;
+    match construction {
+        Ok(source) => {
+            control.checkpoint()?;
+            Ok(Ok(kanban_db_into_render_model(&source.db, meta)))
+        }
+        Err(failure) => Ok(Err(*failure.error)),
+    }
 }
 
 #[cfg(test)]

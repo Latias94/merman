@@ -604,29 +604,46 @@ macro_rules! render_parser {
     };
 }
 
+macro_rules! render_parser_controlled {
+    ($fn_name:ident, $parser:path, $variant:path) => {
+        fn $fn_name(
+            code: &str,
+            meta: &ParseMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+            control.checkpoint()?;
+            let result = $parser(code, meta, control)?
+                .map($variant)
+                .map(RenderSemanticParseOutput::new);
+            control.checkpoint()?;
+            Ok(result)
+        }
+    };
+}
+
 render_parser!(
     render_error,
     crate::diagrams::error_diagram::parse_error_model_for_render,
     RenderSemanticModel::Error
 );
-render_parser!(
+render_parser_controlled!(
     render_mindmap,
-    crate::diagrams::mindmap::parse_mindmap_model_for_render,
+    crate::diagrams::mindmap::parse_mindmap_model_for_render_controlled,
     RenderSemanticModel::Mindmap
 );
-render_parser!(
+render_parser_controlled!(
     render_state,
-    crate::diagrams::state::parse_state_model_for_render,
+    crate::diagrams::state::parse_state_model_for_render_controlled,
     RenderSemanticModel::State
 );
-render_parser!(
+render_parser_controlled!(
     render_zenuml,
-    crate::diagrams::zenuml::parse_zenuml_model_for_render,
+    crate::diagrams::zenuml::parse_zenuml_model_for_render_controlled,
     RenderSemanticModel::Zenuml
 );
-render_parser!(
+render_parser_controlled!(
     render_sequence,
-    crate::diagrams::sequence::parse_sequence_model_for_render,
+    crate::diagrams::sequence::parse_sequence_model_for_render_controlled,
     RenderSemanticModel::Sequence
 );
 fn render_flowchart(
@@ -640,149 +657,149 @@ fn render_flowchart(
     Ok(result
         .map(|(model, label_sources)| RenderSemanticParseOutput::flowchart(model, label_sources)))
 }
-render_parser!(
+render_parser_controlled!(
     render_class,
-    crate::diagrams::class::parse_class_typed,
+    crate::diagrams::class::parse_class_typed_controlled,
     RenderSemanticModel::Class
 );
-render_parser!(
+render_parser_controlled!(
     render_c4,
-    crate::diagrams::c4::parse_c4_model_for_render,
+    crate::diagrams::c4::parse_c4_model_for_render_controlled,
     RenderSemanticModel::C4
 );
-render_parser!(
+render_parser_controlled!(
     render_cynefin,
-    crate::diagrams::cynefin::parse_cynefin_model_for_render,
+    crate::diagrams::cynefin::parse_cynefin_model_for_render_controlled,
     RenderSemanticModel::Cynefin
 );
-render_parser!(
+render_parser_controlled!(
     render_railroad,
-    crate::diagrams::railroad::parse_railroad_model_for_render,
+    crate::diagrams::railroad::parse_railroad_model_for_render_controlled,
     RenderSemanticModel::Railroad
 );
-render_parser!(
+render_parser_controlled!(
     render_railroad_ebnf,
-    crate::diagrams::railroad::parse_railroad_ebnf_model_for_render,
+    crate::diagrams::railroad::parse_railroad_ebnf_model_for_render_controlled,
     RenderSemanticModel::Railroad
 );
-render_parser!(
+render_parser_controlled!(
     render_railroad_abnf,
-    crate::diagrams::railroad::parse_railroad_abnf_model_for_render,
+    crate::diagrams::railroad::parse_railroad_abnf_model_for_render_controlled,
     RenderSemanticModel::Railroad
 );
-render_parser!(
+render_parser_controlled!(
     render_railroad_peg,
-    crate::diagrams::railroad::parse_railroad_peg_model_for_render,
+    crate::diagrams::railroad::parse_railroad_peg_model_for_render_controlled,
     RenderSemanticModel::Railroad
 );
-render_parser!(
+render_parser_controlled!(
     render_architecture,
-    crate::diagrams::architecture::parse_architecture_model_for_render,
+    crate::diagrams::architecture::parse_architecture_model_for_render_controlled,
     RenderSemanticModel::Architecture
 );
-render_parser!(
+render_parser_controlled!(
     render_kanban,
-    crate::diagrams::kanban::parse_kanban_model_for_render,
+    crate::diagrams::kanban::parse_kanban_model_for_render_controlled,
     RenderSemanticModel::Kanban
 );
-render_parser!(
+render_parser_controlled!(
     render_gantt,
-    crate::diagrams::gantt::parse_gantt_model_for_render,
+    crate::diagrams::gantt::parse_gantt_model_for_render_controlled,
     RenderSemanticModel::Gantt
 );
-render_parser!(
+render_parser_controlled!(
     render_pie,
-    crate::diagrams::pie::parse_pie_model_for_render,
+    crate::diagrams::pie::parse_pie_model_for_render_controlled,
     RenderSemanticModel::Pie
 );
-render_parser!(
+render_parser_controlled!(
     render_packet,
-    crate::diagrams::packet::parse_packet_model_for_render,
+    crate::diagrams::packet::parse_packet_model_for_render_controlled,
     RenderSemanticModel::Packet
 );
-render_parser!(
+render_parser_controlled!(
     render_timeline,
-    crate::diagrams::timeline::parse_timeline_model_for_render,
+    crate::diagrams::timeline::parse_timeline_model_for_render_controlled,
     RenderSemanticModel::Timeline
 );
-render_parser!(
+render_parser_controlled!(
     render_journey,
-    crate::diagrams::journey::parse_journey_model_for_render,
+    crate::diagrams::journey::parse_journey_model_for_render_controlled,
     RenderSemanticModel::Journey
 );
-render_parser!(
+render_parser_controlled!(
     render_requirement,
-    crate::diagrams::requirement::parse_requirement_model_for_render,
+    crate::diagrams::requirement::parse_requirement_model_for_render_controlled,
     RenderSemanticModel::Requirement
 );
-render_parser!(
+render_parser_controlled!(
     render_sankey,
-    crate::diagrams::sankey::parse_sankey_model_for_render,
+    crate::diagrams::sankey::parse_sankey_model_for_render_controlled,
     RenderSemanticModel::Sankey
 );
-render_parser!(
+render_parser_controlled!(
     render_radar,
-    crate::diagrams::radar::parse_radar_model_for_render,
+    crate::diagrams::radar::parse_radar_model_for_render_controlled,
     RenderSemanticModel::Radar
 );
-render_parser!(
+render_parser_controlled!(
     render_info,
-    crate::diagrams::info::parse_info_model_for_render,
+    crate::diagrams::info::parse_info_model_for_render_controlled,
     RenderSemanticModel::Info
 );
-render_parser!(
+render_parser_controlled!(
     render_treemap,
-    crate::diagrams::treemap::parse_treemap_model_for_render,
+    crate::diagrams::treemap::parse_treemap_model_for_render_controlled,
     RenderSemanticModel::Treemap
 );
-render_parser!(
+render_parser_controlled!(
     render_block,
-    crate::diagrams::block::parse_block_model_for_render,
+    crate::diagrams::block::parse_block_model_for_render_controlled,
     RenderSemanticModel::Block
 );
-render_parser!(
+render_parser_controlled!(
     render_er,
-    crate::diagrams::er::parse_er_model_for_render,
+    crate::diagrams::er::parse_er_model_for_render_controlled,
     RenderSemanticModel::Er
 );
-render_parser!(
+render_parser_controlled!(
     render_quadrant_chart,
-    crate::diagrams::quadrant_chart::parse_quadrant_chart_model_for_render,
+    crate::diagrams::quadrant_chart::parse_quadrant_chart_model_for_render_controlled,
     RenderSemanticModel::QuadrantChart
 );
-render_parser!(
+render_parser_controlled!(
     render_xychart,
-    crate::diagrams::xychart::parse_xychart_model_for_render,
+    crate::diagrams::xychart::parse_xychart_model_for_render_controlled,
     RenderSemanticModel::XyChart
 );
-render_parser!(
+render_parser_controlled!(
     render_git_graph,
-    crate::diagrams::git_graph::parse_git_graph_model_for_render,
+    crate::diagrams::git_graph::parse_git_graph_model_for_render_controlled,
     RenderSemanticModel::GitGraph
 );
-render_parser!(
+render_parser_controlled!(
     render_tree_view,
-    crate::diagrams::tree_view::parse_tree_view_model_for_render,
+    crate::diagrams::tree_view::parse_tree_view_model_for_render_controlled,
     RenderSemanticModel::TreeView
 );
-render_parser!(
+render_parser_controlled!(
     render_ishikawa,
-    crate::diagrams::ishikawa::parse_ishikawa_model_for_render,
+    crate::diagrams::ishikawa::parse_ishikawa_model_for_render_controlled,
     RenderSemanticModel::Ishikawa
 );
-render_parser!(
+render_parser_controlled!(
     render_eventmodeling,
-    crate::diagrams::eventmodeling::parse_eventmodeling_model_for_render,
+    crate::diagrams::eventmodeling::parse_eventmodeling_model_for_render_controlled,
     RenderSemanticModel::EventModeling
 );
-render_parser!(
+render_parser_controlled!(
     render_venn,
-    crate::diagrams::venn::parse_venn_model_for_render,
+    crate::diagrams::venn::parse_venn_model_for_render_controlled,
     RenderSemanticModel::Venn
 );
-render_parser!(
+render_parser_controlled!(
     render_wardley,
-    crate::diagrams::wardley::parse_wardley_model_for_render,
+    crate::diagrams::wardley::parse_wardley_model_for_render_controlled,
     RenderSemanticModel::Wardley
 );
 

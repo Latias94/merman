@@ -14,45 +14,46 @@
     "shapes": [
       {
         "alias": "api",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "component"
+        },
         "label": {
           "text": "API"
         },
+        "wrap": false,
+        "sprite": "users",
+        "tags": "backend",
+        "link": "https://example.com/api",
         "techn": {
           "text": "Rust"
         },
         "descr": {
           "text": "Handles requests."
-        },
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "parentBoundary": "global",
-        "wrap": false,
-        "sprite": "users",
-        "tags": "backend",
-        "link": "https://example.com/api"
+        }
       },
       {
         "alias": "db",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "component_db"
+        },
         "label": {
           "text": "DB"
         },
+        "wrap": false,
         "techn": {
           "text": "Postgres"
         },
         "descr": {
           "text": "Stores data."
-        },
-        "typeC4Shape": {
-          "text": "component_db"
-        },
-        "parentBoundary": "global",
-        "wrap": false
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -60,15 +61,14 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "api",
         "to": "db",
+        "type": "rel",
         "label": {
           "text": "queries"
         },

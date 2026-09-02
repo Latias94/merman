@@ -251,6 +251,11 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     charge_adapter_work(&mut work_control, model.subgraphs.len())?;
     let mut clusters = Vec::new();
     for sg in &model.subgraphs {
+        if model.collapsed_replacement(sg.id.as_str()).is_some()
+            || model.is_subgraph_collapsed(sg.id.as_str())
+        {
+            continue;
+        }
         let Some(node) = layout_node_by_id.get(sg.id.as_str()).copied() else {
             return Err(Error::InvalidModel {
                 message: format!("missing ELK layout cluster {}", sg.id),
@@ -631,6 +636,109 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     mut work_control: Option<&mut ElkOperationWorkControl>,
 ) -> Result<elk::Graph> {
+    // Mermaid's FlowDB projects collapsed subgraphs before handing data to any layout backend.
+    // Keep the public typed model lossless, but give ELK the same visible graph. The projected
+    // model retains subgraph declaration ordinals so source-backed title bindings remain valid.
+    if let Some(projected_model) =
+        project_collapsed_flowchart_model(model, render_label_sources, &mut work_control)?
+    {
+        return build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
+            &projected_model,
+            render_label_sources,
+            effective_config,
+            measurer,
+            math_renderer,
+            None,
+            work_control,
+        );
+    }
+
+    build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
+        model,
+        render_label_sources,
+        effective_config,
+        measurer,
+        math_renderer,
+        svg_label_sidecar,
+        work_control,
+    )
+}
+
+fn project_collapsed_flowchart_model(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderContext,
+    work_control: &mut Option<&mut ElkOperationWorkControl>,
+) -> Result<Option<FlowchartModel>> {
+    let has_collapsed_projection = model.subgraphs.iter().any(|subgraph| {
+        render_label_sources.is_subgraph_collapsed(subgraph.id.as_str())
+            || render_label_sources
+                .collapsed_replacement(subgraph.id.as_str())
+                .is_some()
+    });
+    if !has_collapsed_projection {
+        return Ok(None);
+    }
+
+    let projection_work = checked_adapter_add(
+        work_control,
+        model.nodes.len(),
+        checked_adapter_add(
+            work_control,
+            model.edges.len(),
+            checked_adapter_add(
+                work_control,
+                model.subgraphs.len(),
+                model.vertex_calls.len(),
+            )?,
+        )?,
+    )?;
+    charge_adapter_work(work_control, projection_work)?;
+
+    let mut projected = model.clone();
+    projected.nodes.retain(|node| {
+        render_label_sources
+            .collapsed_replacement(node.id.as_str())
+            .is_none()
+    });
+    projected.edges = model
+        .edges
+        .iter()
+        .filter_map(|edge| super::project_flowchart_edge(edge, render_label_sources))
+        .collect();
+    // Keep the original subgraph vector length/order. Render-label sources are keyed by the
+    // declaration ordinal, and filtering hidden descendants here would make later titles read
+    // the wrong source-backed spelling (especially for nested collapsed subgraphs).
+    projected.subgraphs = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| {
+            let mut projected = subgraph.clone();
+            projected.nodes.retain(|id| {
+                render_label_sources
+                    .collapsed_replacement(id.as_str())
+                    .is_none()
+            });
+            projected
+        })
+        .collect();
+    projected.vertex_calls.retain(|id| {
+        render_label_sources
+            .collapsed_replacement(id.as_str())
+            .is_none()
+    });
+
+    Ok(Some(projected))
+}
+
+fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderContext,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
+    mut work_control: Option<&mut ElkOperationWorkControl>,
+) -> Result<elk::Graph> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
     // Shape validation only walks nodes. Charge that tranche before the validation scan; the
@@ -726,6 +834,12 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     for subgraph_index in (0..model.subgraphs.len()).rev() {
         let sg = &model.subgraphs[subgraph_index];
         charge_adapter_work(&mut work_control, 1)?;
+        if render_label_sources
+            .collapsed_replacement(sg.id.as_str())
+            .is_some()
+        {
+            continue;
+        }
         if !inserted_ids.insert(sg.id.as_str()) {
             continue;
         }
@@ -1745,6 +1859,24 @@ fn subgraph_to_elk_node(
     include_children_groups: &HashSet<&str>,
     ctx: &ElkMeasureContext<'_>,
 ) -> elk::Node {
+    if ctx.model.is_subgraph_collapsed(sg.id.as_str()) {
+        let label = subgraph_label(declaration_ordinal, sg, ctx);
+        let (width, height) = label
+            .map(|label| ((label.width + 16.0).max(80.0), label.height + 46.0))
+            .unwrap_or((80.0, 44.0));
+        return elk::Node {
+            id: sg.id.clone(),
+            kind: elk::NodeKind::Leaf,
+            width,
+            height,
+            parent,
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            label,
+        };
+    }
+
     elk::Node {
         id: sg.id.clone(),
         kind: elk::NodeKind::Group,

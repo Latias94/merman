@@ -134,6 +134,7 @@ struct FlowchartSemanticSource {
     edges: Vec<Edge>,
     subgraphs: Vec<FlowSubGraph>,
     subgraph_vertex_styles: FlowchartRenderStyleSources,
+    collapsed_subgraphs: rustc_hash::FxHashSet<String>,
     warning_facts: Vec<DiagramWarningFact>,
 }
 
@@ -379,6 +380,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
 
     let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
     let mut subgraph_vertex_styles = FlowchartRenderStyleSources::default();
+    let mut collapsed_subgraphs = rustc_hash::FxHashSet::default();
     let mut vertex_calls = Vec::new();
     let mut warning_facts = Vec::new();
     let mut tooltips: HashMap<String, String> = HashMap::new();
@@ -402,6 +404,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
             edges: &mut edges,
             subgraphs: &mut builder.subgraphs,
             subgraph_vertex_styles: &mut subgraph_vertex_styles,
+            collapsed_subgraphs: &mut collapsed_subgraphs,
             vertex_calls: &mut vertex_calls,
             warning_facts: &mut warning_facts,
             class_defs: &mut class_defs,
@@ -434,6 +437,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         edges,
         subgraphs: builder.subgraphs,
         subgraph_vertex_styles,
+        collapsed_subgraphs,
         warning_facts,
     }))
 }
@@ -1569,6 +1573,7 @@ impl FlowchartSemanticSource {
             edges,
             subgraphs,
             subgraph_vertex_styles,
+            collapsed_subgraphs,
             warning_facts,
             tooltips,
             keyword,
@@ -1643,10 +1648,13 @@ impl FlowchartSemanticSource {
             tooltips: render_tooltips,
             warning_facts,
         };
-        Ok(Ok((
-            model,
-            FlowchartRenderContext::new(render_label_sources, subgraph_vertex_styles),
-        )))
+        let render_context = FlowchartRenderContext::new(
+            render_label_sources,
+            subgraph_vertex_styles,
+            collapsed_subgraphs,
+            &model.subgraphs,
+        );
+        Ok(Ok((model, render_context)))
     }
 }
 
@@ -1774,7 +1782,7 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
 }
 
 fn layout_shape_for_node(n: &Node) -> String {
-    // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at the pinned Mermaid 11.16.1 baseline.
+    // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at the pinned Mermaid baseline.
     if n.img.is_some() {
         return "imageSquare".to_string();
     }
@@ -1941,6 +1949,21 @@ mod tests {
         assert_eq!(node.provenance, FlowNodeProvenance::Authored);
         assert_eq!(node.shape.as_deref(), Some("stadium"));
         assert_eq!(node.label.as_deref(), Some("Authored G"));
+    }
+
+    #[test]
+    fn collapsed_subgraph_shape_data_is_retained_in_render_context() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (model, context) = parse_flowchart_model_with_render_context(
+            "flowchart TD\nsubgraph one[My Group]\n  A --> B\nend\nC --> A\none@{ view: collapsed }\n",
+            &meta,
+        )
+        .expect("collapsed subgraph should parse");
+        assert!(context.is_subgraph_collapsed("one"));
+        assert_eq!(context.collapsed_replacement("A"), Some("one"));
+        assert_eq!(context.collapsed_replacement("B"), Some("one"));
+        assert_eq!(context.collapsed_replacement("one"), None);
+        assert!(model.subgraphs.iter().any(|sg| sg.id == "one"));
     }
 
     #[test]

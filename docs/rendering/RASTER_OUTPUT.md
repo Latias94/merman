@@ -1,5 +1,9 @@
 # SVG, PNG, JPEG, and PDF Output
 
+> This guide targets the prepared `0.8.0-alpha.6` source candidate. The versioned registry
+> examples below are source-contract examples; use the exact published version only after the
+> corresponding release channel has been verified.
+
 Merman exposes four output contracts from the same headless render operation. SVG is the pure
 vector path. PNG and JPEG allocate a final pixel buffer. PDF keeps ordinary SVG geometry as vector
 content and rasterizes only operations such as filters that require a bitmap.
@@ -111,7 +115,7 @@ The following example uses both `png` and `pdf`:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["png", "pdf"] }
+merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["png", "pdf"] }
 ```
 
 ```rust
@@ -171,9 +175,9 @@ encoders accept only the sealed `ResvgCompatibleSvg` artifact:
 
 ```toml
 [dependencies]
-merman-core = { version = "=0.8.0-alpha.5", default-features = false }
-merman-render = { version = "=0.8.0-alpha.5", default-features = false }
-merman-export = { version = "=0.8.0-alpha.5", default-features = false, features = ["png", "jpeg", "pdf"] }
+merman-core = { version = "=0.8.0-alpha.6", default-features = false }
+merman-render = { version = "=0.8.0-alpha.6", default-features = false }
+merman-export = { version = "=0.8.0-alpha.6", default-features = false, features = ["png", "jpeg", "pdf"] }
 ```
 
 ```rust

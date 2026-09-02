@@ -76,6 +76,43 @@ class PublishMetadataTests(unittest.TestCase):
             ("default-publish", "explicit-crates-io"),
         )
 
+    def test_independent_packages_are_excluded_from_lockstep_graph(self) -> None:
+        metadata = workspace_metadata(
+            package("tree-sitter-mermaid"),
+            package("merman-lsp", dependency("tree-sitter-mermaid")),
+            package("merman-core"),
+            independent=("tree-sitter-mermaid",),
+        )
+
+        self.assertEqual(
+            publish_tool.crates_io_publish_batches(metadata),
+            (("merman-core", "merman-lsp"),),
+        )
+
+    def test_independent_package_declarations_must_name_publishable_members(self) -> None:
+        metadata = workspace_metadata(
+            package("private", publish=[]),
+            independent=("private",),
+        )
+
+        with self.assertRaisesRegex(
+            publish_tool.PublishGraphError,
+            "independent packages must allow crates.io publication.*private",
+        ):
+            publish_tool.crates_io_publish_batches(metadata)
+
+    def test_unknown_independent_package_is_rejected(self) -> None:
+        metadata = workspace_metadata(
+            package("merman-core"),
+            independent=("missing",),
+        )
+
+        with self.assertRaisesRegex(
+            publish_tool.PublishGraphError,
+            "independent packages are not workspace members.*missing",
+        ):
+            publish_tool.crates_io_publish_batches(metadata)
+
 
 class PublishGraphTests(unittest.TestCase):
     def test_independent_packages_share_lexically_sorted_batches(self) -> None:
@@ -142,11 +179,19 @@ class PublishGraphTests(unittest.TestCase):
             publish_tool.crates_io_publish_batches(metadata)
 
 
-def workspace_metadata(*packages: dict[str, object]) -> dict[str, object]:
-    return {
+def workspace_metadata(
+    *packages: dict[str, object],
+    independent: tuple[str, ...] = (),
+) -> dict[str, object]:
+    metadata: dict[str, object] = {
         "workspace_members": [package["id"] for package in packages],
         "packages": list(packages),
     }
+    if independent:
+        metadata["metadata"] = {
+            "merman-release": {"independent-packages": list(independent)}
+        }
+    return metadata
 
 
 def package(

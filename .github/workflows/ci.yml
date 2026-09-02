@@ -25,7 +25,8 @@ jobs:
     name: ci-plan
     runs-on: ubuntu-24.04
     outputs:
-      plan: ${{ steps.plan.outputs.plan }}
+      # Keep cross-job data bounded; the detailed plan contains every changed path.
+      owners: ${{ steps.plan.outputs.owners }}
       cli: ${{ steps.plan.outputs.cli }}
       core: ${{ steps.plan.outputs.core }}
       fuzz: ${{ steps.plan.outputs.fuzz }}
@@ -225,7 +226,7 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@v2.87.0
         with:
           tool: nextest
 
@@ -399,7 +400,7 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@v2.87.0
         with:
           tool: nextest
 
@@ -736,7 +737,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@v2.87.0
         with:
           tool: wasm-tools
 
@@ -817,7 +818,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@v2.87.0
         with:
           tool: wasm-tools
 
@@ -956,7 +957,7 @@ jobs:
           cache-targets: false
 
       - name: Setup JDK
-        uses: actions/setup-java@v5.7.0
+        uses: actions/setup-java@v6.0.0
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}
@@ -1239,7 +1240,8 @@ jobs:
 
       - name: Aggregate selected owner results
         env:
-          CI_PLAN_JSON: ${{ needs.ci-plan.outputs.plan }}
+          # Do not pass the detailed plan through the runner environment.
+          CI_OWNER_SELECTIONS_JSON: ${{ needs.ci-plan.outputs.owners }}
           CI_JOBS_JSON: |
             {"workflow-analysis":{"owner":"workflow","required":true,"result":"${{ needs.workflow-analysis.result }}"},
             "hygiene":{"owner":"hygiene","required":true,"result":"${{ needs.hygiene.result }}"},
@@ -1264,4 +1266,4 @@ jobs:
             "web-owner":{"owner":"web","required":true,"result":"${{ needs.web-owner.result }}"},
             "vscode-owner":{"owner":"vscode","required":true,"result":"${{ needs.vscode-owner.result }}"},
             "performance-contracts":{"owner":"performance","required":true,"result":"${{ needs.performance-contracts.result }}"}}
-        run: python3 scripts/ci_plan.py gate --plan-json "$CI_PLAN_JSON" --jobs-json "$CI_JOBS_JSON"
+        run: python3 scripts/ci_plan.py gate --owners-json "$CI_OWNER_SELECTIONS_JSON" --jobs-json "$CI_JOBS_JSON"

@@ -33,11 +33,20 @@ pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str>
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ClassMarkerProfile {
+    /// Mermaid 11.17.2's host marker helper used by the Dagre renderer.
+    Mermaid1172,
+    /// The marker helper bundled into the selected `@mermaid-js/layout-elk@0.2.3` release.
+    LayoutElk023,
+}
+
 pub(super) fn class_markers(
     out: &mut String,
     diagram_id: SvgDiagramId<'_>,
     diagram_marker_class: &str,
     include_margin_markers: bool,
+    profile: ClassMarkerProfile,
 ) {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
     struct MarkerContext<'a> {
@@ -68,6 +77,11 @@ pub(super) fn class_markers(
         wrap_defs: bool,
         shape: MarkerShape<'a>,
     }
+
+    let ordinary_marker_units = match profile {
+        ClassMarkerProfile::Mermaid1172 => Some("userSpaceOnUse"),
+        ClassMarkerProfile::LayoutElk023 => None,
+    };
 
     fn marker(ctx: &mut MarkerContext<'_>, spec: MarkerSpec<'_>) {
         if spec.wrap_defs {
@@ -189,7 +203,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
@@ -204,7 +218,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
@@ -273,7 +287,10 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: None,
+            marker_units: match profile {
+                ClassMarkerProfile::Mermaid1172 => Some("userSpaceOnUse"),
+                ClassMarkerProfile::LayoutElk023 => None,
+            },
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 1,1 V 13 L18,7 Z"),
@@ -321,7 +338,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
@@ -336,7 +353,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
@@ -384,7 +401,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
@@ -399,7 +416,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
@@ -447,7 +464,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Circle {
@@ -465,7 +482,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Circle {

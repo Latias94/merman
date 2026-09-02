@@ -197,8 +197,10 @@ metadata with rendered or analyzed output when reproducibility matters.
 
 PNG and JPEG operations also include an `output_plan` object with requested and effective pixel
 dimensions and scale. PDF operations include requested and effective filter-image scale and pixel
-counts. A true `limited` flag means the selected resource ceiling reduced the requested plan; hosts
-should report the effective values rather than assuming the request was applied unchanged.
+counts. ASCII operations include the selected projection and encoding, primary and emitted
+dimensions, width/layout profiles, and viewport fallback outcome. A true `limited` flag means the
+selected resource ceiling reduced a raster or filter-image plan; hosts should report the effective
+values rather than assuming the request was applied unchanged.
 
 ## Fixed Time Options
 
@@ -381,7 +383,7 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | `ascii.xychart_category_band_width` / `ascii.xychartCategoryBandWidth` | positive integer | `3` | Compact vertical XYChart category width. |
 | `ascii.xychart_horizontal_plot_width` / `ascii.xychartHorizontalPlotWidth` | positive integer | `10` | Compact horizontal XYChart value axis width. |
 | `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` readability fallbacks include a `reason:` row such as `crossing`, `route_collision`, or `overlay_collision`. Resource limits return structured errors instead. |
-| `ascii.max_width` / `ascii.maxWidth` | positive integer | none | Optional terminal display-cell bound applied after normal layout. It is independent from ASCII resource limits. |
+| `ascii.max_width` / `ascii.maxWidth` | positive integer | none | Optional terminal display-cell bound applied after normal layout. It is independent from ASCII resource limits and must not exceed `9007199254740991`, the portable JSON integer limit shared by generated bindings. |
 | `ascii.overflow` | string | `allow` | `allow` emits the complete wide primary projection, `fallback` selects one complete typed structured projection when available, and `error` returns a width diagnostic. |
 | `ascii.trim_trailing_spaces` / `ascii.trimTrailingSpaces` | boolean | `false` | Explicitly removes only trailing spaces/tabs from emitted rows; the primary width gate remains based on the untrimmed projection. |
 
@@ -785,7 +787,7 @@ Invalid options produce binding errors:
 | Feature-gated operation disabled | `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` |
 | Resource budget exceeded | `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED` |
 
-Resource failures add an optional `details.resource` object to the existing error JSON. It contains `cause`, `limit_id`, `phase`, `actual`, `max`, and `profile`. The stable `cause` is `ceiling` when an effective maximum was exceeded and `arithmetic_overflow` when safe work accounting could not represent the required amount. Node, Web/WASM, Android JNI, and native ABI error JSON project `actual` and `max` into a lossless representation: values through `9007199254740991` (`Number.MAX_SAFE_INTEGER`) are numbers, while larger `u64` values are canonical unsigned decimal strings without leading zeroes, up to `18446744073709551615`. Consumers must accept both forms and must not coerce the string form through a floating-point number; typed non-JSON binding payloads retain their unsigned-integer fields. Parser and ASCII renderer failures may additionally expose a bounded `details.diagnostic` object with stable `code`, optional byte `span` (`start`, `end`, `kind`), and safe `field`/`diagram_type` context. These fields are machine-readable and must not be recovered by parsing the human-facing `message`; complete source text is never embedded by default. Consumers that understand payload schema `1` should tolerate these additive objects; errors without structured details omit `details`, preserving the previous shape.
+Resource failures add an optional `details.resource` object to the existing error JSON. It contains `cause`, `limit_id`, `phase`, `actual`, `max`, and `profile`. The stable `cause` is `ceiling` when an effective maximum was exceeded and `arithmetic_overflow` when safe work accounting could not represent the required amount. Node, Web/WASM, Android JNI, and native ABI error JSON project `actual` and `max` into a lossless representation: values through `9007199254740991` (`Number.MAX_SAFE_INTEGER`) are numbers, while larger `u64` values are canonical unsigned decimal strings without leading zeroes, up to `18446744073709551615`. Consumers must accept both forms and must not coerce the string form through a floating-point number; typed non-JSON binding payloads retain their unsigned-integer fields. Parser and ASCII renderer failures may additionally expose a bounded `details.diagnostic` object with stable `code`, optional byte `span` (`start`, `end`, `kind`), and safe `field`/`diagram_type` context. ASCII width diagnostics may add `requested_max_width`, `actual_width`, `width_profile`, and `fallback_reason`. These fields are machine-readable and must not be recovered by parsing the human-facing `message`; complete source text is never embedded by default. Consumers that understand payload schema `1` should tolerate these additive objects; errors without structured details omit `details`, preserving the previous shape.
 
 Platform wrappers surface those errors through their native exception type:
 

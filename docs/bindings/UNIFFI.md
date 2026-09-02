@@ -184,7 +184,9 @@ contract.
   cycles.
 - Use result-returning binary methods when callers need operation metadata or the effective output
   plan; byte-returning conveniences remain available. `MermanOutputPlan` is an open record: switch
-  on `kind`, use the optional known payload, and preserve `raw_json` for future kinds.
+  on `kind`, use the optional `raster`, `pdf_filter_images`, or `ascii` payload, and preserve
+  `raw_json` for future kinds. The ASCII payload records projection, encoding, emitted dimensions,
+  and viewport fallback outcome.
 - Treat runtime operation, metadata, option-group, constructor-service, and resource-limit IDs as
   open discovery values. Closed request-input vocabularies remain generated enums/value sets.
 - Move generated API 5 wrappers and libraries together to API 6 before consuming ASCII capability

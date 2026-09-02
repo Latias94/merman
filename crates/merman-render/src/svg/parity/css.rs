@@ -636,6 +636,11 @@ where
     let error_text = theme.color("errorTextColor", "#552222");
     let main_bkg = theme.color("mainBkg", "#ECECFF");
     let node_border = theme.color("nodeBorder", "#9370DB");
+    let cluster_bkg = theme.color("clusterBkg", &main_bkg);
+    let cluster_border = theme.color("clusterBorder", &node_border);
+    let title_color = theme
+        .optional_color("titleColor")
+        .unwrap_or_else(|| text_color.clone());
     let node_text_color = theme
         .optional_color("nodeTextColor")
         .unwrap_or_else(|| text_color.clone());
@@ -723,6 +728,16 @@ where
         &mut out,
         r#"#{} .marker{{fill:none!important;stroke:{}!important;stroke-width:1;}}"#,
         id, line_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} [data-look=neo].labelBkg{{background-color:{};}}"#,
+        id, label_background
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster-label text{{fill:{};}}"#,
+        id, cluster_bkg, cluster_border, id, title_color, id, title_color
     );
     write_mermaid_common_neo_css(&mut out, id, effective_config);
     out.push_str(&mermaid_base_css_root_rule(id, &font));

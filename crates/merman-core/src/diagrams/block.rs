@@ -779,6 +779,7 @@ fn construct_block_semantic_source(
     Ok(Ok(BlockSemanticSource { db, editor_facts }))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_block_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -787,6 +788,20 @@ pub(crate) fn parse_block_model_for_render(
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| *failure.error)?;
     Ok(block_db_to_render_model(&source.db))
+}
+
+pub(crate) fn parse_block_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<BlockDiagramRenderModel>> {
+    let construction = construct_block_semantic_source(code, meta, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(*failure.error)),
+    };
+    control.checkpoint()?;
+    Ok(Ok(block_db_to_render_model(&source.db)))
 }
 
 fn type_str_to_type(type_str: &str) -> String {

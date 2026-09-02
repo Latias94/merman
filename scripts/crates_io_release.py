@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.publish import (
     PackageInfo,
     PublishPlan,
+    _workspace_packages_by_name,
     cargo_metadata,
     crates_io_publish_plan,
     print_error,
@@ -660,16 +661,27 @@ def preflight_initial_batch(
     registry_api: str = CRATES_IO_API,
 ) -> None:
     plan = crates_io_publish_plan(metadata)
+    target_directory_raw = metadata.get("target_directory")
+    if not isinstance(target_directory_raw, str) or not target_directory_raw:
+        raise CratesIoPublishError("cargo metadata is missing target_directory")
+    target_directory = Path(target_directory_raw).resolve()
     environment = dict(os.environ)
     environment.pop("CARGO_REGISTRY_TOKEN", None)
     environment.pop("CARGO_REGISTRIES_CRATES_IO_TOKEN", None)
     for name in plan.batches[0]:
         package = plan.packages[name]
-        if fetch_crates_io_checksum(
+        registry_checksum = fetch_crates_io_checksum(
             name,
             package.version,
             api_url=registry_api,
-        ) is not None:
+        )
+        if registry_checksum is not None:
+            prepared = _prepare_crate(repo_root, target_directory, package)
+            if registry_checksum != prepared.artifact_sha256:
+                raise CratesIoPublishError(
+                    f"registry checksum mismatch for {name} {package.version}: "
+                    f"local {prepared.artifact_sha256}, registry {registry_checksum}"
+                )
             print(
                 f"Skipping {name} {package.version}; the exact version already exists"
             )
@@ -694,12 +706,103 @@ def preflight_initial_batch(
             )
 
 
+def _workspace_package(metadata: dict, package_name: str) -> PackageInfo:
+    plan = crates_io_publish_plan(metadata)
+    package = plan.packages.get(package_name)
+    if package is not None:
+        return package
+    workspace = _workspace_packages_by_name(metadata)
+    raw = workspace.get(package_name)
+    if raw is None:
+        raise CratesIoPublishError(f"unknown workspace package: {package_name}")
+    manifest_path = raw.get("manifest_path")
+    version = raw.get("version")
+    if not isinstance(manifest_path, str) or not isinstance(version, str):
+        raise CratesIoPublishError(
+            f"workspace package metadata is incomplete for {package_name}"
+        )
+    return PackageInfo(
+        name=package_name,
+        version=version,
+        manifest_path=Path(manifest_path),
+        internal_deps=(),
+    )
+
+
+def preflight_independent_crate(
+    repo_root: Path,
+    metadata: dict,
+    *,
+    package_name: str,
+    expected_version: str,
+    registry_api: str = CRATES_IO_API,
+) -> bool:
+    """Verify one independently owned crate and return whether it already exists.
+
+    Existing registry versions are accepted only when the locally packaged
+    archive has the exact registry checksum.  Missing versions must pass a
+    credential-free publish dry-run.  The package is intentionally resolved
+    outside the coupled publish graph.
+    """
+    package = _workspace_package(metadata, package_name)
+    if package.version != expected_version:
+        raise CratesIoPublishError(
+            f"{package_name} version {package.version} does not match requested "
+            f"version {expected_version}"
+        )
+    target_directory_raw = metadata.get("target_directory")
+    if not isinstance(target_directory_raw, str) or not target_directory_raw:
+        raise CratesIoPublishError("cargo metadata is missing target_directory")
+    prepared = _prepare_crate(repo_root, Path(target_directory_raw).resolve(), package)
+    registry_checksum = fetch_crates_io_checksum(
+        package.name,
+        package.version,
+        api_url=registry_api,
+    )
+    if registry_checksum is not None:
+        if registry_checksum != prepared.artifact_sha256:
+            raise CratesIoPublishError(
+                f"registry checksum mismatch for {package.name} {package.version}: "
+                f"local {prepared.artifact_sha256}, registry {registry_checksum}"
+            )
+        print(
+            f"Skipping {package.name} {package.version}; the exact version already exists"
+        )
+        return True
+
+    environment = dict(os.environ)
+    environment.pop("CARGO_REGISTRY_TOKEN", None)
+    environment.pop("CARGO_REGISTRIES_CRATES_IO_TOKEN", None)
+    completed = run_command(
+        [
+            "cargo",
+            "publish",
+            "-p",
+            package.name,
+            "--locked",
+            "--dry-run",
+            "--registry",
+            "crates-io",
+        ],
+        cwd=repo_root,
+        env=environment,
+    )
+    if completed.returncode != 0:
+        raise CratesIoPublishError(
+            f"independent publish dry-run failed for {package.name} {package.version}"
+        )
+    print(f"{package.name} {package.version} is not yet published; dry-run passed")
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=["preflight-initial", "publish-receipted"],
+        choices=["preflight-initial", "preflight-independent", "publish-receipted"],
     )
+    parser.add_argument("--package")
+    parser.add_argument("--version")
     parser.add_argument("--source-sha")
     parser.add_argument("--source-tree")
     parser.add_argument("--receipts-dir", type=Path)
@@ -731,6 +834,22 @@ def main() -> int:
             preflight_initial_batch(
                 repo_root,
                 metadata,
+                registry_api=args.registry_api,
+            )
+        except (CratesIoPublishError, OSError, ValueError) as error:
+            print_error(str(error))
+            return 1
+        return 0
+
+    if args.command == "preflight-independent":
+        if not args.package or not args.version:
+            parser.error("preflight-independent requires --package and --version")
+        try:
+            preflight_independent_crate(
+                repo_root,
+                metadata,
+                package_name=args.package,
+                expected_version=args.version,
                 registry_api=args.registry_api,
             )
         except (CratesIoPublishError, OSError, ValueError) as error:

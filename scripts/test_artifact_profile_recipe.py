@@ -52,6 +52,34 @@ def posix_recipe_shell(
 
 
 class ArtifactProfileRecipeTests(unittest.TestCase):
+    def test_python_wheel_timestamp_uses_configured_non_negative_epoch(self) -> None:
+        with mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "1700000000"}, clear=False):
+            self.assertEqual(wheel_builder.source_date_epoch(), "1700000000")
+
+        with (
+            mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "-1"}, clear=False),
+            self.assertRaisesRegex(RuntimeError, "non-negative integer"),
+        ):
+            wheel_builder.source_date_epoch()
+
+    def test_python_wheel_timestamp_falls_back_to_head_commit_time(self) -> None:
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch.object(
+                wheel_builder.subprocess,
+                "run",
+                return_value=SimpleNamespace(stdout="1700000001\n"),
+            ) as run,
+        ):
+            self.assertEqual(wheel_builder.source_date_epoch(), "1700000001")
+
+        self.assertEqual(
+            run.call_args.args[0],
+            ["git", "show", "-s", "--format=%ct", "HEAD"],
+        )
+        self.assertTrue(run.call_args.kwargs["check"])
+        self.assertTrue(run.call_args.kwargs["capture_output"])
+
     def test_native_distribution_profiles_own_their_release_optimization_policies(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         with (repo_root / "Cargo.toml").open("rb") as handle:
@@ -545,6 +573,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             )
 
             with (
+                mock.patch.dict(
+                    os.environ,
+                    {"SOURCE_DATE_EPOCH": "1700000000"},
+                    clear=False,
+                ),
                 mock.patch.object(wheel_builder, "REPO_ROOT", root),
                 mock.patch.object(wheel_builder, "parse_args", return_value=args),
                 mock.patch.object(

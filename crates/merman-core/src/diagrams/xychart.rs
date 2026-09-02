@@ -5,7 +5,7 @@ use crate::{
     EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
     family::CombinedSemanticFailure,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Number, Value, json};
 #[cfg(test)]
 use std::cell::Cell;
@@ -58,7 +58,7 @@ pub enum XyChartPlotType {
 pub struct XyChartPlotRenderModel {
     #[serde(rename = "type")]
     pub plot_type: XyChartPlotType,
-    #[serde(default)]
+    #[serde(default, serialize_with = "serialize_xychart_plot_title")]
     pub title: Option<String>,
     pub values: Vec<f64>,
     pub data: Vec<(String, Option<f64>)>,
@@ -200,6 +200,16 @@ fn option_string_value(value: &Option<String>) -> Value {
         .unwrap_or(Value::Null)
 }
 
+fn serialize_xychart_plot_title<S>(
+    title: &Option<String>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(title.as_deref().unwrap_or_default())
+}
+
 fn optional_f64_value(value: Option<f64>) -> Value {
     value
         .and_then(Number::from_f64)
@@ -244,6 +254,10 @@ fn plot_value(plot: &XyChartPlotRenderModel) -> Value {
     out.insert(
         "type".to_string(),
         Value::String(plot_type_name(plot.plot_type)),
+    );
+    out.insert(
+        "title".to_string(),
+        Value::String(plot.title.clone().unwrap_or_default()),
     );
     out.insert(
         "values".to_string(),
@@ -939,6 +953,7 @@ pub(crate) fn parse_xychart_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_xychart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -947,6 +962,20 @@ pub(crate) fn parse_xychart_model_for_render(
         .into_strict_result()
         .map(|source| source.model.unwrap_or_else(empty_render_model))
         .map_err(CombinedSemanticFailure::into_error)
+}
+
+pub(crate) fn parse_xychart_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<XyChartDiagramRenderModel>> {
+    let outcome = construct_xychart_semantic_source_controlled(code, meta, control)?;
+    let source = match outcome.into_strict_result() {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(failure.into_error())),
+    };
+    control.checkpoint()?;
+    Ok(Ok(source.model.unwrap_or_else(empty_render_model)))
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -2333,7 +2362,7 @@ bar [1, 2]
         let compat_plots = combined_json["plots"].as_array().expect("compat plots");
         assert_eq!(typed_plots.len(), compat_plots.len());
         for (typed, compat) in typed_plots.iter().zip(compat_plots) {
-            for field in ["type", "values", "data", "pointLabels"] {
+            for field in ["type", "title", "values", "data", "pointLabels"] {
                 assert_eq!(
                     typed.get(field),
                     compat.get(field),
@@ -2363,6 +2392,24 @@ bar [1, 2]
         assert_eq!(projection["title"], Value::Null);
         assert_eq!(projection["accTitle"], Value::Null);
         assert_eq!(projection["accDescr"], Value::Null);
+        assert_eq!(projection["plots"][0]["title"], json!(""));
+    }
+
+    #[test]
+    fn xychart_plot_titles_are_sanitized_and_projected_for_legends() {
+        let text = "xychart\nx-axis [Q1, Q2]\nline \" avg \" [1, 2]\nbar \" p95 \" [2, 3]\n";
+        let engine = Engine::new();
+        let parsed = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect("XYChart compatibility parse succeeds")
+            .expect("XYChart compatibility parse returns a diagram");
+        let typed = parse_xychart_model_for_render(text, &parsed.meta)
+            .expect("XYChart typed parse succeeds");
+
+        assert_eq!(typed.plots[0].title.as_deref(), Some("avg"));
+        assert_eq!(typed.plots[1].title.as_deref(), Some("p95"));
+        assert_eq!(parsed.model["plots"][0]["title"], json!("avg"));
+        assert_eq!(parsed.model["plots"][1]["title"], json!("p95"));
     }
 
     #[test]

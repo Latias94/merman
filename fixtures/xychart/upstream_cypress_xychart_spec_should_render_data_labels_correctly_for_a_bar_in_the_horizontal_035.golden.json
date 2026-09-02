@@ -21,6 +21,7 @@
     "plots": [
       {
         "type": "bar",
+        "title": "",
         "values": [
           4000.0
         ],

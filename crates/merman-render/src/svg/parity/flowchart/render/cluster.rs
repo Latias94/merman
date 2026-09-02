@@ -2,7 +2,6 @@
 
 use super::super::*;
 use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
-use std::borrow::Cow;
 
 const FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH: f64 = 200.0;
 const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
@@ -173,11 +172,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let rect_w = cluster.width.max(1.0);
     let rect_h = cluster.height.max(1.0);
     let label_top = top + cluster.title_margin_top.max(0.0);
-    let cluster_dom_id = if ctx.uses_elk_adapter_dom {
-        Cow::Borrowed("[object Object]")
-    } else {
-        Cow::Owned(format!("{}-{}", ctx.diagram_id, cluster.id))
-    };
+    let cluster_dom_id = format!("{}-{}", ctx.diagram_id, cluster.id);
     ctx.checkpoint_emit()?;
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");

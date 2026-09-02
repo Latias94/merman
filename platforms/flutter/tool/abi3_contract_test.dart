@@ -267,27 +267,16 @@ void projectsCurrentAbi3TableBoundaries() {
         native.MERMAN_NATIVE_STATUS_CANCELLED == 17,
     'cancelled must append after every pre-existing ABI 3 status',
   );
+  final currentTableSize = ffi.sizeOf<native.MermanNativeApi>();
   _expect(
-    !ffi_transport.nativeApiHasCurrentTableForTesting(
-          native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE - 1,
-        ) &&
-        ffi_transport.nativeApiHasCurrentTableForTesting(
-          native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
-        ),
-    'consumers must require the complete controlled-execution table prefix',
+    !ffi_transport.nativeApiHasCurrentTableForTesting(currentTableSize - 1) &&
+        ffi_transport.nativeApiHasCurrentTableForTesting(currentTableSize),
+    'consumers must require the complete target-architecture table',
   );
   _expect(
-    native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE <
-            native.MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE &&
-        native.MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE <
-            native.MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE &&
-        native.MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE <
-            native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE &&
-        native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE <
-            native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE &&
-        native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE ==
-            ffi.sizeOf<native.MermanNativeApi>(),
-    'each appended control or execution slot must end at one complete table prefix',
+    ffi_transport.nativeApiHasCurrentTableForTesting(100, 100) &&
+        !ffi_transport.nativeApiHasCurrentTableForTesting(99, 100),
+    '32-bit consumers must validate the producer against their own table size',
   );
 
   final request = calloc<native.MermanNativeApiRequest>();
@@ -929,6 +918,92 @@ void decodesTypedOperationMetadata() {
     'generated metadata decoder must project raster plans and preserve raw JSON',
   );
 
+  final ascii = binding.decodeMermanOperationMetadata(
+    jsonEncode({
+      'version': 1,
+      'operation_id': 'ascii',
+      'media_type': 'text/plain; charset=utf-8',
+      'runtime_policy': 'deterministic',
+      'byte_length': 96,
+      'output_plan': {
+        'kind': 'ascii',
+        'schema_version': 2,
+        'family': 'flowchart-v2',
+        'projection': 'unicode',
+        'encoding': 'utf-8',
+        'primary_width': 42,
+        'primary_height': 8,
+        'emitted_width': 40,
+        'emitted_height': 8,
+        'width_profile': 'unicode',
+        'layout_profile': 'compact',
+        'requested_max_width': 40,
+        'overflowed': true,
+        'outcome': 'fallback',
+        'fallback_capability': 'ascii',
+        'fallback_attempted': true,
+        'fallback_reason': 'primary_overflow',
+        'trimmed': true,
+        'lossiness': 'fallback',
+      },
+    }),
+  );
+  final asciiPlan = ascii.outputPlan;
+  _expect(
+    asciiPlan is MermanAsciiOutputPlan &&
+        asciiPlan.schemaVersion == 2 &&
+        asciiPlan.family == 'flowchart-v2' &&
+        asciiPlan.projection == 'unicode' &&
+        asciiPlan.encoding == 'utf-8' &&
+        asciiPlan.primaryWidth == 42 &&
+        asciiPlan.primaryHeight == 8 &&
+        asciiPlan.emittedWidth == 40 &&
+        asciiPlan.emittedHeight == 8 &&
+        asciiPlan.widthProfile == 'unicode' &&
+        asciiPlan.layoutProfile == 'compact' &&
+        asciiPlan.requestedMaxWidth == 40 &&
+        asciiPlan.overflowed &&
+        asciiPlan.outcome == 'fallback' &&
+        asciiPlan.fallbackCapability == 'ascii' &&
+        asciiPlan.fallbackAttempted &&
+        asciiPlan.fallbackReason == 'primary_overflow' &&
+        asciiPlan.trimmed &&
+        asciiPlan.lossiness == 'fallback',
+    'generated metadata decoder must project ASCII plans',
+  );
+  _expectThrows<FormatException>(
+    () => binding.decodeMermanOperationMetadata(
+      jsonEncode({
+        'version': 1,
+        'operation_id': 'ascii',
+        'media_type': 'text/plain; charset=utf-8',
+        'runtime_policy': 'deterministic',
+        'byte_length': 1,
+        'output_plan': {
+          'kind': 'ascii',
+          'schema_version': 65536,
+          'family': 'flowchart-v2',
+          'projection': 'unicode',
+          'encoding': 'utf-8',
+          'primary_width': 1,
+          'primary_height': 1,
+          'emitted_width': 1,
+          'emitted_height': 1,
+          'width_profile': 'unicode',
+          'layout_profile': 'canonical',
+          'requested_max_width': null,
+          'overflowed': false,
+          'outcome': 'primary',
+          'fallback_capability': 'none',
+          'fallback_attempted': false,
+          'fallback_reason': null,
+          'trimmed': false,
+          'lossiness': 'none',
+        },
+      }),
+    ),
+  );
+
   final pdf = binding.decodeMermanOperationMetadata(
     jsonEncode({
       'version': 1,
@@ -1511,6 +1586,10 @@ void decodesMachineReadableNativeErrors() {
     span: MermanDiagnosticSpan(start: 3, end: 8, kind: 'exact'),
     field: 'edge',
     diagramType: 'flowchart-v2',
+    requestedMaxWidth: 10,
+    actualWidth: 42,
+    widthProfile: 'unicode',
+    fallbackReason: 'primary_overflow',
   );
   Map<String, Object?> diagnosticJson() => {
     'code': expectedDiagnostic.code,
@@ -1522,6 +1601,10 @@ void decodesMachineReadableNativeErrors() {
     },
     'field': expectedDiagnostic.field,
     'diagram_type': expectedDiagnostic.diagramType,
+    'requested_max_width': expectedDiagnostic.requestedMaxWidth,
+    'actual_width': expectedDiagnostic.actualWidth,
+    'width_profile': expectedDiagnostic.widthProfile,
+    'fallback_reason': expectedDiagnostic.fallbackReason,
     'future_diagnostic_field': true,
   };
   bool preservesExpectedDiagnostic(MermanException error) =>
@@ -1530,7 +1613,14 @@ void decodesMachineReadableNativeErrors() {
       error.diagnosticDetails?.span?.end == expectedDiagnostic.span?.end &&
       error.diagnosticDetails?.span?.kind == expectedDiagnostic.span?.kind &&
       error.diagnosticDetails?.field == expectedDiagnostic.field &&
-      error.diagnosticDetails?.diagramType == expectedDiagnostic.diagramType;
+      error.diagnosticDetails?.diagramType == expectedDiagnostic.diagramType &&
+      error.diagnosticDetails?.requestedMaxWidth ==
+          expectedDiagnostic.requestedMaxWidth &&
+      error.diagnosticDetails?.actualWidth == expectedDiagnostic.actualWidth &&
+      error.diagnosticDetails?.widthProfile ==
+          expectedDiagnostic.widthProfile &&
+      error.diagnosticDetails?.fallbackReason ==
+          expectedDiagnostic.fallbackReason;
 
   final diagnostic = MermanException.fromNative(
     native.MERMAN_NATIVE_STATUS_PARSE_ERROR,
@@ -1994,6 +2084,34 @@ void rejectsMalformedNativeDiagnosticDetails() {
     },
     {'code': 'merman.test', 'span': null, 'field': 7, 'diagram_type': null},
     {'code': 'merman.test', 'span': null, 'field': null, 'diagram_type': false},
+    {
+      'code': 'merman.test',
+      'span': null,
+      'field': null,
+      'diagram_type': null,
+      'requested_max_width': -1,
+    },
+    {
+      'code': 'merman.test',
+      'span': null,
+      'field': null,
+      'diagram_type': null,
+      'actual_width': '42',
+    },
+    {
+      'code': 'merman.test',
+      'span': null,
+      'field': null,
+      'diagram_type': null,
+      'width_profile': 7,
+    },
+    {
+      'code': 'merman.test',
+      'span': null,
+      'field': null,
+      'diagram_type': null,
+      'fallback_reason': false,
+    },
   ]) {
     final error = MermanException.fromNative(
       native.MERMAN_NATIVE_STATUS_PARSE_ERROR,

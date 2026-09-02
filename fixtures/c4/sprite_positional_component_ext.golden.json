@@ -14,45 +14,46 @@
     "shapes": [
       {
         "alias": "api",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "component"
+        },
         "label": {
           "text": "API"
         },
+        "wrap": false,
         "techn": {
           "text": "Rust"
         },
         "descr": {
           "text": "Handles requests."
-        },
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "parentBoundary": "global",
-        "wrap": false
+        }
       },
       {
         "alias": "ext",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "external_component"
+        },
         "label": {
           "text": "External Service"
         },
+        "wrap": false,
+        "sprite": "users",
+        "tags": "external",
+        "link": "https://example.com/external-service",
         "techn": {
           "text": "HTTPS"
         },
         "descr": {
           "text": "Third-party dependency."
-        },
-        "typeC4Shape": {
-          "text": "external_component"
-        },
-        "parentBoundary": "global",
-        "wrap": false,
-        "sprite": "users",
-        "tags": "external",
-        "link": "https://example.com/external-service"
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -60,15 +61,14 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "api",
         "to": "ext",
+        "type": "rel",
         "label": {
           "text": "Calls"
         },

@@ -144,6 +144,10 @@ export interface BindingDiagnosticErrorDetails {
   span: BindingDiagnosticSpan | null;
   field: string | null;
   diagram_type: string | null;
+  requested_max_width?: number | null;
+  actual_width?: number | null;
+  width_profile?: string | null;
+  fallback_reason?: string | null;
 }
 
 export interface BindingCancellationErrorDetails {
@@ -349,6 +353,12 @@ function isBindingResourceCount(value: unknown): value is BindingResourceCount {
     compareCanonicalUnsignedDecimals(value, U64_MAX_DECIMAL) <= 0;
 }
 
+function isOptionalDiagnosticUnsignedInteger(value: unknown): boolean {
+  return value === undefined ||
+    value === null ||
+    (Number.isSafeInteger(value) && Number(value) >= 0);
+}
+
 function compareCanonicalUnsignedDecimals(left: string, right: string): number {
   if (left.length !== right.length) return left.length < right.length ? -1 : 1;
   if (left === right) return 0;
@@ -415,7 +425,17 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
       (diagnosticRecord.field === null ||
         typeof diagnosticRecord.field === "string") &&
       (diagnosticRecord.diagram_type === null ||
-        typeof diagnosticRecord.diagram_type === "string"));
+        typeof diagnosticRecord.diagram_type === "string") &&
+      isOptionalDiagnosticUnsignedInteger(
+        diagnosticRecord.requested_max_width
+      ) &&
+      isOptionalDiagnosticUnsignedInteger(diagnosticRecord.actual_width) &&
+      (diagnosticRecord.width_profile === undefined ||
+        diagnosticRecord.width_profile === null ||
+        typeof diagnosticRecord.width_profile === "string") &&
+      (diagnosticRecord.fallback_reason === undefined ||
+        diagnosticRecord.fallback_reason === null ||
+        typeof diagnosticRecord.fallback_reason === "string"));
   const validCancellation =
     cancellation === undefined ||
     (() => {

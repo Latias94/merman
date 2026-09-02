@@ -231,6 +231,26 @@ internal fun decodeMermanOperationMetadata(json: String): MermanOperationMetadat
 private fun decodeMermanOutputPlan(plan: JSONObject): MermanOutputPlan {
     val kind = plan.requiredGeneratedString("kind")
     return when (kind) {
+        "ascii" -> MermanAsciiOutputPlan(
+            schemaVersion = plan.requiredGeneratedUnsignedShort("schema_version"),
+            family = plan.requiredGeneratedString("family"),
+            projection = plan.requiredGeneratedString("projection"),
+            encoding = plan.requiredGeneratedString("encoding"),
+            primaryWidth = plan.requiredGeneratedLong("primary_width"),
+            primaryHeight = plan.requiredGeneratedLong("primary_height"),
+            emittedWidth = plan.requiredGeneratedLong("emitted_width"),
+            emittedHeight = plan.requiredGeneratedLong("emitted_height"),
+            widthProfile = plan.requiredGeneratedString("width_profile"),
+            layoutProfile = plan.requiredGeneratedString("layout_profile"),
+            requestedMaxWidth = plan.optionalGeneratedLong("requested_max_width"),
+            overflowed = plan.requiredGeneratedBoolean("overflowed"),
+            outcome = plan.requiredGeneratedString("outcome"),
+            fallbackCapability = plan.requiredGeneratedString("fallback_capability"),
+            fallbackAttempted = plan.requiredGeneratedBoolean("fallback_attempted"),
+            fallbackReason = plan.optionalGeneratedString("fallback_reason"),
+            trimmed = plan.requiredGeneratedBoolean("trimmed"),
+            lossiness = plan.requiredGeneratedString("lossiness"),
+        )
         "raster" -> MermanRasterOutputPlan(
             requestedWidthPx = plan.requiredGeneratedDouble("requested_width_px"),
             requestedHeightPx = plan.requiredGeneratedDouble("requested_height_px"),
@@ -274,10 +294,32 @@ private fun JSONObject.requiredGeneratedLong(key: String): Long {
     return value
 }
 
+private fun JSONObject.optionalGeneratedLong(key: String): Long? =
+    when (opt(key)) {
+        null, JSONObject.NULL -> null
+        else -> requiredGeneratedLong(key)
+    }
+
+private fun JSONObject.optionalGeneratedString(key: String): String? =
+    when (opt(key)) {
+        null, JSONObject.NULL -> null
+        else -> requiredGeneratedString(key)
+    }
+
 private fun JSONObject.requiredGeneratedInt(key: String): Int {
     val value = requiredGeneratedLong(key)
     if (value > Int.MAX_VALUE.toLong()) {
         throw MermanException("Merman operation metadata field `$key` exceeds Int range")
+    }
+    return value.toInt()
+}
+
+private fun JSONObject.requiredGeneratedUnsignedShort(key: String): Int {
+    val value = requiredGeneratedLong(key)
+    if (value > UShort.MAX_VALUE.toLong()) {
+        throw MermanException(
+            "Merman operation metadata field `$key` exceeds unsigned 16-bit range",
+        )
     }
     return value.toInt()
 }

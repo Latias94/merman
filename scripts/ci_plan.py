@@ -98,7 +98,7 @@ _CRATE_OWNER_RULES = (
     ),
     ("crates/merman-cli/", {"cli", "core", "hygiene"}),
     ("crates/merman-export/", {"cli", "core", "hygiene"}),
-    ("crates/merman-ffi/", {"core", "hygiene", "platform"}),
+    ("crates/merman-ffi/", {"core", "fuzz", "hygiene", "platform"}),
     ("crates/merman-node/", {"core", "hygiene", "node", "npm", "security"}),
     ("crates/merman-typst-plugin/", {"core", "hygiene", "typst"}),
     ("crates/merman-uniffi/", {"core", "hygiene", "platform", "python"}),
@@ -112,7 +112,7 @@ _CRATE_OWNER_RULES = (
         {"core", "hygiene", "npm", "vscode", "web"},
     ),
     ("crates/merman-lsp/", {"core", "hygiene", "npm", "vscode", "web"}),
-    ("crates/merman/", {"core", "hygiene"}),
+    ("crates/merman/", {"core", "fuzz", "hygiene"}),
     ("crates/dugong/", _CORE_OWNERS),
     ("crates/dugong-graphlib/", _CORE_OWNERS),
     ("crates/manatee/", _CORE_OWNERS),
@@ -121,7 +121,7 @@ _CRATE_OWNER_RULES = (
     ("crates/merman-elk-layered/", _CORE_OWNERS),
     ("crates/merman-fixture-render-context/", _CORE_OWNERS),
     ("crates/merman-layout-elk/", _CORE_OWNERS),
-    ("crates/merman-render/", _CORE_OWNERS),
+    ("crates/merman-render/", {"core", "fuzz", "hygiene"}),
     ("crates/merman-rustdoc/", _CORE_OWNERS),
     ("crates/roughr/", _CORE_OWNERS),
     ("crates/xtask/src/cmd/typst_", {"core", "hygiene", "typst"}),
@@ -139,12 +139,27 @@ _CRATE_OWNER_RULES = (
 _SCRIPT_EXACT_OWNER_RULES = {
     "scripts/audit_plan.py": frozenset({"hygiene", "npm", "security"}),
     "scripts/artifact_profile_recipe.py": frozenset(
-        {"cli", "core", "hygiene", "platform", "python"}
+        {
+            "cli",
+            "core",
+            "hygiene",
+            "platform",
+            "python",
+            "security",
+            "typst",
+            "vscode",
+        }
     ),
-    "scripts/strict_json.py": frozenset({"hygiene"}),
+    "scripts/generate-rust-license-report.py": frozenset(
+        {"hygiene", "security"}
+    ),
+    "scripts/strict_json.py": frozenset({"hygiene", "security"}),
     "scripts/test_audit_plan.py": frozenset({"hygiene", "npm", "security"}),
     "scripts/test_build_android.py": frozenset({"hygiene", "platform"}),
     "scripts/test_publish.py": frozenset({"hygiene"}),
+    "scripts/verify_artifact_dependency_closures.py": frozenset(
+        {"hygiene", "security", "typst"}
+    ),
 }
 _SCRIPT_PREFIX_OWNER_RULES = (
     ("scripts/build-python-", {"hygiene", "python"}),
@@ -223,6 +238,18 @@ _GENERATED_CONTRACT_EXACT_RULES = {
 _PLAYGROUND_EXAMPLE_CATALOG_OWNERS = frozenset({"core", "hygiene", "npm", "web"})
 _PLAYGROUND_EXAMPLE_CATALOG_INPUT_PREFIX = "playground/examples/"
 _PLAYGROUND_EXAMPLE_CATALOG_OUTPUT = "playground/src/generated/examples.ts"
+_PACKAGE_DOCUMENT_OWNER_RULES = (
+    ("distribution/cli/", {"cli", "hygiene"}),
+    ("distribution/tree-sitter-mermaid/", {"grammar", "hygiene"}),
+    ("distribution/typst/", {"hygiene", "typst"}),
+    ("platforms/android/", {"hygiene", "platform"}),
+    ("platforms/apple/", {"hygiene", "platform"}),
+    ("platforms/flutter/", {"hygiene", "platform"}),
+    ("platforms/node/", {"hygiene", "node"}),
+    ("platforms/python/", {"hygiene", "python"}),
+    ("platforms/web/", {"hygiene", "web"}),
+    ("tools/vscode-extension/", {"hygiene", "vscode"}),
+)
 _HYGIENE_SCRIPT_PREFIXES = (
     "scripts/adr_",
     "scripts/artifact_",
@@ -446,10 +473,19 @@ def plan_selected(
     )
 
 
-def evaluate_gate(plan: Mapping[str, Any], jobs: Mapping[str, Any]) -> dict[str, Any]:
+def _validate_owner_selection(owners: Mapping[str, Any]) -> dict[str, bool]:
+    if not isinstance(owners, Mapping) or set(owners) != _ALL_OWNERS:
+        raise GateError("owner selection has an incomplete owner map")
+    for owner in OWNER_NAMES:
+        if not isinstance(owners[owner], bool):
+            raise GateError(f"owner selection {owner} is not boolean")
+    return dict(owners)
+
+
+def evaluate_gate(owners: Mapping[str, Any], jobs: Mapping[str, Any]) -> dict[str, Any]:
     """Fail closed unless every selected owner has a successful required job."""
 
-    normalized_plan = _validate_plan(plan)
+    normalized_owners = _validate_owner_selection(owners)
     if not isinstance(jobs, Mapping):
         raise GateError("job results must be a JSON object")
 
@@ -480,7 +516,7 @@ def evaluate_gate(plan: Mapping[str, Any], jobs: Mapping[str, Any]) -> dict[str,
         if result in {"cancelled", "failure"}:
             failures.append(f"{job_name} ended with {result}")
 
-    for owner, selected in normalized_plan["owners"].items():
+    for owner, selected in normalized_owners.items():
         entries = owner_jobs[owner]
         if not selected:
             skipped.extend(
@@ -548,6 +584,19 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path in {"Cargo.lock", "Cargo.toml", "rust-toolchain.toml", "dist-workspace.toml"}:
         return _ALL_OWNERS, f"shared Rust authority changed: {path}", True
+    if posixpath.basename(path) in {"README.md", "CHANGELOG.md"}:
+        for prefix, selected in _PACKAGE_DOCUMENT_OWNER_RULES:
+            if path.startswith(prefix):
+                return (
+                    frozenset(selected),
+                    f"package documentation changed: {path}",
+                    False,
+                )
+        return (
+            frozenset({"hygiene"}),
+            f"package documentation changed: {path}",
+            False,
+        )
     if path in {
         "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm",
         "distribution/tree-sitter-mermaid/queries/portable/highlights.scm",
@@ -560,6 +609,15 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path.startswith("distribution/tree-sitter-mermaid/"):
         owners = {"grammar", "hygiene"}
+        if path == "distribution/tree-sitter-mermaid/Cargo.toml" or path.startswith(
+            (
+                "distribution/tree-sitter-mermaid/bindings/rust/",
+                "distribution/tree-sitter-mermaid/fuzz/corpus/",
+                "distribution/tree-sitter-mermaid/grammar/",
+                "distribution/tree-sitter-mermaid/src/",
+            )
+        ) or path == "distribution/tree-sitter-mermaid/grammar.js":
+            owners.add("fuzz")
         if path.endswith(("package.json", "package-lock.json")):
             owners.update({"npm", "security"})
         elif (
@@ -576,7 +634,7 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         return _ALL_OWNERS, f"shared capability schema changed: {path}", True
     if path == "crates/merman/Cargo.toml":
         return (
-            frozenset({"core", "hygiene", "performance"}),
+            frozenset({"core", "fuzz", "hygiene", "performance"}),
             f"benchmark manifest changed: {path}",
             False,
         )
@@ -724,7 +782,7 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
     if path.startswith(("tools/mermaid-cli/", "tools/debug/", "tools/preview/")):
         return _ALL_OWNERS, f"shared tool changed: {path}", True
 
-    if path in {"README.md", "CHANGELOG.md", "CONTEXT.md", "AGENTS.md", ".agents"}:
+    if path in {"CONTEXT.md", "AGENTS.md", ".agents"}:
         return frozenset({"hygiene"}), f"repository documentation changed: {path}", False
     if path.startswith(".agents/"):
         return frozenset({"hygiene"}), f"agent documentation changed: {path}", False
@@ -913,7 +971,7 @@ def _compact_json(document: Any) -> str:
 
 
 def _write_github_outputs(path: Path, plan: Mapping[str, Any]) -> None:
-    lines = [f"plan={_compact_json(plan)}"]
+    lines = [f"owners={_compact_json(plan['owners'])}"]
     lines.extend(f"{owner}={str(plan['owners'][owner]).lower()}" for owner in OWNER_NAMES)
     lines.append(f"svg_parity={str(plan['svg_parity']).lower()}")
     with path.open("a", encoding="utf-8", newline="\n") as output:
@@ -952,7 +1010,7 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--github-output", type=Path)
 
     gate_parser = subparsers.add_parser("gate", help="aggregate same-run owner results")
-    gate_parser.add_argument("--plan-json", required=True)
+    gate_parser.add_argument("--owners-json", required=True)
     gate_parser.add_argument("--jobs-json", required=True)
     return parser
 
@@ -976,6 +1034,11 @@ def main(argv: Iterable[str] | None = None) -> int:
             )
         else:
             plan = plan_repository_diff(args.repository, args.base, args.head)
+        try:
+            plan = _validate_plan(plan)
+        except GateError as exc:
+            print(f"ci-plan failed closed: {exc}", file=sys.stderr)
+            return 1
         encoded = _compact_json(plan)
         print(encoded)
         if args.github_output is not None:
@@ -983,9 +1046,9 @@ def main(argv: Iterable[str] | None = None) -> int:
         return 0
 
     try:
-        plan = _parse_json_argument(args.plan_json, label="planner output")
+        owners = _parse_json_argument(args.owners_json, label="owner selection")
         jobs = _parse_json_argument(args.jobs_json, label="job results")
-        summary = evaluate_gate(plan, jobs)
+        summary = evaluate_gate(owners, jobs)
     except GateError as exc:
         print(f"pr-gate failed closed: {exc}", file=sys.stderr)
         return 1

@@ -4,8 +4,8 @@
     "mermaid": {
       "path": "repo-ref/mermaid",
       "url": "https://github.com/mermaid-js/mermaid.git",
-      "ref": "mermaid@11.16.1",
-      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf"
+      "ref": "mermaid@11.17.2",
+      "commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3"
     },
     "monaqa-tree-sitter-mermaid": {
       "path": "repo-ref/tree-sitter-mermaid-monaqa",
@@ -102,6 +102,12 @@
       "url": "https://github.com/dagrejs/graphlib.git",
       "ref": "v2.2.4",
       "commit": "380d5efa1f4ab0904539f046bdba583d14ac2add"
+    },
+    "non-layered-tidy-tree-layout": {
+      "path": "repo-ref/non-layered-tidy-tree-layout",
+      "url": "https://github.com/stetrevor/non-layered-tidy-tree-layout.git",
+      "ref": "v2.0.2",
+      "commit": "63852fb7646eb079ce0e1976044d54545de273e8"
     },
     "dompurify": {
       "path": "repo-ref/dompurify",

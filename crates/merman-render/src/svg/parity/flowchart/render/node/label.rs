@@ -21,6 +21,45 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     compiled_styles: &FlowchartCompiledStyles,
     details: &mut FlowchartRenderDetails,
 ) {
+    render_flowchart_node_label_with_wrapper(
+        out,
+        ctx,
+        common,
+        label,
+        compiled_styles,
+        details,
+        true,
+    );
+}
+
+pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_label_before_tail(
+    out: &mut String,
+    ctx: &FlowchartRenderCtx<'_>,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    label: &super::FlowchartNodeLabelState<'_>,
+    compiled_styles: &FlowchartCompiledStyles,
+    details: &mut FlowchartRenderDetails,
+) {
+    render_flowchart_node_label_with_wrapper(
+        out,
+        ctx,
+        common,
+        label,
+        compiled_styles,
+        details,
+        false,
+    );
+}
+
+fn render_flowchart_node_label_with_wrapper(
+    out: &mut String,
+    ctx: &FlowchartRenderCtx<'_>,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    label: &super::FlowchartNodeLabelState<'_>,
+    compiled_styles: &FlowchartCompiledStyles,
+    details: &mut FlowchartRenderDetails,
+    close_node_wrapper: bool,
+) {
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
         &ctx.html_label_text_style
     } else {
@@ -154,7 +193,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 .wrapped_lines();
             write_flowchart_svg_source_word_lines(out, &wrapped, true);
         }
-        out.push_str("</g></g></g>");
+        out.push_str("</g></g>");
     } else {
         let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
             flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
@@ -227,7 +266,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         }
         let _ = write!(
             out,
-            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g></g>"#,
+            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g>"#,
             label_group_class,
             escape_xml_display(&compiled_styles.label_style),
             fmt_display(-metrics.width / 2.0 + label.dx),
@@ -241,8 +280,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             label_html
         );
     }
-    if common.wrapped_in_a {
-        out.push_str("</a>");
+    if close_node_wrapper {
+        out.push_str("</g>");
+        if common.wrapped_in_a {
+            out.push_str("</a>");
+        }
     }
 }
 

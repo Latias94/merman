@@ -167,6 +167,66 @@ fn xychart_horizontal_line_point_label_offsets_from_the_screen_point() {
 }
 
 #[test]
+fn xychart_named_plots_render_a_configurable_legend() {
+    let text = r##"---
+config:
+  themeVariables:
+    xyChart:
+      legendTextColor: "#123456"
+---
+xychart
+  x-axis [Q1, Q2]
+  y-axis 0 --> 100
+  line "avg" [40, 50]
+  bar "p95" [80, 90]
+  line [30, 35]
+"##;
+    let layout = layout_xychart_from_text(text);
+
+    let legend_labels = layout
+        .drawables
+        .iter()
+        .find_map(|drawable| match drawable {
+            XyChartDrawableElem::Text { group_texts, data }
+                if group_texts == &["legend".to_string(), "label".to_string()] =>
+            {
+                Some(data)
+            }
+            _ => None,
+        })
+        .expect("legend labels");
+    assert_eq!(
+        legend_labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>(),
+        ["avg", "p95"]
+    );
+    assert!(legend_labels.iter().all(|label| label.fill == "#123456"));
+
+    let disabled = layout_xychart_from_text(
+        r#"---
+config:
+  xyChart:
+    showLegend: false
+---
+xychart
+  x-axis [Q1, Q2]
+  y-axis 0 --> 100
+  line "avg" [40, 50]
+  bar "p95" [80, 90]
+"#,
+    );
+    assert!(!disabled.drawables.iter().any(|drawable| match drawable {
+        XyChartDrawableElem::Rect { group_texts, .. }
+        | XyChartDrawableElem::Text { group_texts, .. }
+        | XyChartDrawableElem::Path { group_texts, .. } => {
+            group_texts.first().is_some_and(|group| group == "legend")
+        }
+    }));
+}
+
+#[test]
 fn xychart_vertical_bar_data_label_can_render_outside_with_configured_color() {
     let svg = render_xychart_svg_from_text(
         r##"---

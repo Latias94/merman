@@ -27,6 +27,7 @@
     "plots": [
       {
         "type": "bar",
+        "title": "sample bar",
         "values": [
           52.0,
           96.0,

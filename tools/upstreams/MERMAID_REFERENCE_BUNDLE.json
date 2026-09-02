@@ -3,21 +3,21 @@
   "projectionSchemaVersion": 3,
   "selectionDecision": {
     "path": "tools/upstreams/MERMAID_SELECTION_DECISION.json",
-    "sha256": "e3421aa286ef6e7957b81e7f001d493ff34ca3353deb57ef0f46d1d9f6a3b9be"
+    "sha256": "65556504ee5df1c0a6e714f5347f01f5bd56bfb0e03c642613e71d0d12b192da"
   },
   "release": {
     "id": "mermaid",
     "role": "core",
     "package": "mermaid",
-    "version": "11.16.1",
-    "declaredRange": "11.16.1",
-    "integrity": "sha512-TQsq6u22fAn3rek5VOubrhKPo1g5hwC3FXUN9hiyupTckcYiGuuKGkNQrKYwGJkXUxZdojwRG46gsSCFZMDp4g==",
-    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-11.16.1.tgz",
-    "installedContentSha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
+    "version": "11.17.2",
+    "declaredRange": "11.17.2",
+    "integrity": "sha512-V6K3C8EBdEsPFZXSKMJe6ppQOENxuHARr9GvHX4hh47lAbhMRD9qf4oEK7LoaRQxULMa80/qt5gHO73aCleBBg==",
+    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-11.17.2.tgz",
+    "installedContentSha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
     "source": {
       "repository": "https://github.com/mermaid-js/mermaid.git",
-      "reference": "mermaid@11.16.1",
-      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+      "reference": "mermaid@11.17.2",
+      "commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
       "checkoutPath": "repo-ref/mermaid",
       "packagePath": "packages/mermaid"
     },
@@ -35,16 +35,16 @@
     "id": "mermaid-parser",
     "role": "parser",
     "package": "@mermaid-js/parser",
-    "version": "1.2.0",
-    "declaredRange": "^1.2.0",
-    "integrity": "sha512-oYPyv8A4As1yH5Bx+04iQEQxXuIQDe0GKCNSRgao6z8AM9jixXIfP0vsppRLvGf+nKIOb9/LdpWA4YuJiVvESA==",
-    "tarballUrl": "https://registry.npmjs.org/@mermaid-js/parser/-/parser-1.2.0.tgz",
-    "installedContentSha256": "a4fe4881a4713c581d9d9c20bab1fc72e573ca43b46c8abad26d834ed59400d2",
+    "version": "1.2.1",
+    "declaredRange": "^1.2.1",
+    "integrity": "sha512-n12NohV3mrUyUL2o93IgG/ifeW9FTyeJn3zDxkhwa8MJ9Fxg3HQMlA3RiGmD/3UnJvheztkjjQAjA2T4LmUcpw==",
+    "tarballUrl": "https://registry.npmjs.org/@mermaid-js/parser/-/parser-1.2.1.tgz",
+    "installedContentSha256": "04ce4799e856599a1ba4958277a4688dbea67d2740b378adc06eee7ccc7f5480",
     "source": {
       "repository": "https://github.com/mermaid-js/mermaid.git",
-      "reference": "mermaid@11.16.1",
-      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-      "checkoutPath": "repo-ref/mermaid",
+      "reference": "@mermaid-js/parser@1.2.1",
+      "commit": "293b1c153a6f94c3a4a1d9cd5eae4dde609f1ec4",
+      "checkoutPath": null,
       "packagePath": "packages/parser"
     },
     "requiredSurfaces": [
@@ -124,7 +124,7 @@
     },
     "layouts": {
       "sourcePath": "packages/mermaid/src/rendering-util/render.ts",
-      "sourceSha256": "d99ee8b93f4c667d45ccdb694492f4f8e5f5fca3cf25503a67bf2e6b3aa5dc1f",
+      "sourceSha256": "3f43ae973bfd76f37d37e9fe883bdc9169ffa624415199f476b12d840fe2a484",
       "ids": [
         "dagre",
         "swimlane",
@@ -155,9 +155,9 @@
         },
         "source": {
           "repository": "https://github.com/mermaid-js/mermaid.git",
-          "reference": "mermaid@11.16.1",
-          "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-          "checkoutPath": "repo-ref/mermaid",
+          "reference": "@mermaid-js/mermaid-zenuml@0.2.3",
+          "commit": "41646dfd43ac83f001b03c70605feb036afae46d",
+          "checkoutPath": null,
           "packagePath": "packages/mermaid-zenuml"
         },
         "requiredSurfaces": [
@@ -194,11 +194,11 @@
       "id": "layout-elk",
       "role": "external-layout",
       "package": "@mermaid-js/layout-elk",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "declaredRange": "^0.2.0",
-      "integrity": "sha512-vnH3gtqfhyBiRVKNpT8iDENTw18q/OF0GF/SfYfHN43KZpu+6eZDEOMHTfNYAkpmUWJNgtRQFIS6BTc7vH/DYQ==",
-      "tarballUrl": "https://registry.npmjs.org/@mermaid-js/layout-elk/-/layout-elk-0.2.2.tgz",
-      "installedContentSha256": "ee2117a028c24b6bafdf5854457f0a1aae16c1eec85a98fdd66357c3f4fdb05d",
+      "integrity": "sha512-m46RVGfvKK1PSMdAFGDz2nksI4jusEkFxvf0lb48bYWmqLQxZpjtpruiw29MbOy9rlWJtuMf9EzG9fAF8CVZbg==",
+      "tarballUrl": "https://registry.npmjs.org/@mermaid-js/layout-elk/-/layout-elk-0.2.3.tgz",
+      "installedContentSha256": "349aeec48d73d55f621e1b0d8178b42f1277759d734b9d480b420f4f03139868",
       "runtimeRegistration": {
         "moduleId": "elk",
         "diagramAliases": [],
@@ -214,9 +214,9 @@
       },
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid.git",
-        "reference": "mermaid@11.16.1",
-        "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-        "checkoutPath": "repo-ref/mermaid",
+        "reference": "@mermaid-js/layout-elk@0.2.3",
+        "commit": "293b1c153a6f94c3a4a1d9cd5eae4dde609f1ec4",
+        "checkoutPath": null,
         "packagePath": "packages/mermaid-layout-elk"
       },
       "requiredSurfaces": [
@@ -246,9 +246,9 @@
       },
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid.git",
-        "reference": "mermaid@11.16.1",
-        "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-        "checkoutPath": "repo-ref/mermaid",
+        "reference": "@mermaid-js/layout-tidy-tree@0.2.2",
+        "commit": "f4bf04b5db8bed603e40ed3d5ce5228d6b07754e",
+        "checkoutPath": null,
         "packagePath": "packages/mermaid-layout-tidy-tree"
       },
       "requiredSurfaces": [
@@ -285,8 +285,8 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "9298a915a40b6057827e8add6044309143f836b8dbca73c34ffba5b21a762ac5",
-    "packageLockSha256": "0ee640d994c7986b67919b663a0fec2fc6baa51becf106d5e0161678294e9b7b",
+    "packageJsonSha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
+    "packageLockSha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
   "rendererTools": [

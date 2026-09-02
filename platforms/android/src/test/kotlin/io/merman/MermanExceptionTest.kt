@@ -105,7 +105,7 @@ class MermanExceptionTest {
     @Test
     fun parsesStructuredDiagnosticFailureDetails() {
         val error = MermanException(
-            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":{"start":3,"end":8,"kind":"exact"},"field":null,"diagram_type":"flowchart-v2"}},"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":{"start":3,"end":8,"kind":"exact"},"field":null,"diagram_type":"flowchart-v2","requested_max_width":10,"actual_width":42,"width_profile":"unicode","fallback_reason":"primary_overflow"}},"message":"invalid flowchart"}""",
         )
 
         assertEquals(
@@ -114,9 +114,23 @@ class MermanExceptionTest {
                 span = MermanDiagnosticSpan(start = 3, end = 8, kind = "exact"),
                 field = null,
                 diagramType = "flowchart-v2",
+                requestedMaxWidth = 10,
+                actualWidth = 42,
+                widthProfile = "unicode",
+                fallbackReason = "primary_overflow",
             ),
             error.diagnosticDetails,
         )
+    }
+
+    @Test
+    fun rejectsMalformedOptionalDiagnosticFields() {
+        listOf(
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":null,"field":null,"diagram_type":null,"requested_max_width":-1}},"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":null,"field":null,"diagram_type":null,"actual_width":"42"}},"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":null,"field":null,"diagram_type":null,"width_profile":7}},"message":"invalid flowchart"}""",
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":null,"field":null,"diagram_type":null,"fallback_reason":false}},"message":"invalid flowchart"}""",
+        ).forEach(::assertInvalidNativeErrorPayload)
     }
 
     @Test

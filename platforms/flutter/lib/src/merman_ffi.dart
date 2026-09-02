@@ -201,12 +201,20 @@ class MermanDiagnosticErrorDetails {
     required this.span,
     required this.field,
     required this.diagramType,
+    this.requestedMaxWidth,
+    this.actualWidth,
+    this.widthProfile,
+    this.fallbackReason,
   });
 
   final String code;
   final MermanDiagnosticSpan? span;
   final String? field;
   final String? diagramType;
+  final int? requestedMaxWidth;
+  final int? actualWidth;
+  final String? widthProfile;
+  final String? fallbackReason;
 }
 
 /// Error returned by the native ABI or by a local contract validation failure.
@@ -614,11 +622,26 @@ MermanDiagnosticErrorDetails? _parseDiagnosticErrorDetails(
       (diagramType != null && diagramType is! String)) {
     return null;
   }
+  final requestedMaxWidth = diagnostic['requested_max_width'];
+  final actualWidth = diagnostic['actual_width'];
+  final widthProfile = diagnostic['width_profile'];
+  final fallbackReason = diagnostic['fallback_reason'];
+  if ((requestedMaxWidth != null &&
+          (requestedMaxWidth is! int || requestedMaxWidth < 0)) ||
+      (actualWidth != null && (actualWidth is! int || actualWidth < 0)) ||
+      (widthProfile != null && widthProfile is! String) ||
+      (fallbackReason != null && fallbackReason is! String)) {
+    return null;
+  }
   return MermanDiagnosticErrorDetails(
     code: code,
     span: span,
     field: field as String?,
     diagramType: diagramType as String?,
+    requestedMaxWidth: requestedMaxWidth as int?,
+    actualWidth: actualWidth as int?,
+    widthProfile: widthProfile as String?,
+    fallbackReason: fallbackReason as String?,
   );
 }
 
@@ -2698,12 +2721,6 @@ class _NativeApi {
       request.ref.struct_size = ffi.sizeOf<native.MermanNativeApiRequest>();
       request.ref.expected_abi_version = native.MERMAN_NATIVE_ABI_VERSION;
       final consumerTableSize = ffi.sizeOf<native.MermanNativeApi>();
-      if (consumerTableSize <
-          native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE) {
-        throw MermanException.contract(
-          'generated native API table is smaller than the current ABI 3 table',
-        );
-      }
       api.ref.struct_size = consumerTableSize;
 
       final status = getNativeApi(request, api);
@@ -3189,12 +3206,17 @@ void validateNativeResultForTesting(
 
 /// Reports whether a producer-written ABI table includes the complete current
 /// table without reading beyond that prefix.
-bool nativeApiHasCurrentTableForTesting(int producerTableSize) =>
-    _nativeApiHasCurrentTable(producerTableSize);
+bool nativeApiHasCurrentTableForTesting(
+  int producerTableSize, [
+  int? consumerTableSize,
+]) => _nativeApiHasCurrentTable(producerTableSize, consumerTableSize);
 
-bool _nativeApiHasCurrentTable(int producerTableSize) =>
+bool _nativeApiHasCurrentTable(
+  int producerTableSize, [
+  int? consumerTableSize,
+]) =>
     producerTableSize >=
-    native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE;
+    (consumerTableSize ?? ffi.sizeOf<native.MermanNativeApi>());
 
 void _requireNativeResultWritten(
   native.MermanNativeResult result,

@@ -1265,6 +1265,7 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_quadrant_chart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -1272,6 +1273,18 @@ pub(crate) fn parse_quadrant_chart_model_for_render(
     construct_quadrant_chart_semantic_source(code, meta)
         .map(|source| source.model)
         .map_err(CombinedSemanticFailure::into_error)
+}
+
+pub(crate) fn parse_quadrant_chart_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<QuadrantChartRenderModel>> {
+    let construction = construct_quadrant_chart_semantic_source_controlled(code, meta, control)?;
+    match construction {
+        Ok(source) => Ok(Ok(source.model)),
+        Err(failure) => Ok(Err(failure.into_error())),
+    }
 }
 
 #[cfg(test)]

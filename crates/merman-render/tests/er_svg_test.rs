@@ -107,7 +107,7 @@ fn er_svg_renders_entities_and_relationships() {
 }
 
 #[test]
-fn er_svg_recursive_relationship_keeps_three_segments_and_one_label() {
+fn er_svg_recursive_relationship_is_one_logical_edge_and_one_label() {
     let path = workspace_root()
         .join("fixtures")
         .join("er")
@@ -118,20 +118,12 @@ fn er_svg_recursive_relationship_keeps_three_segments_and_one_label() {
 
     let svg = render_er_svg_from_text(&text, &SvgRenderOptions::default());
 
-    for edge_id in [
-        "entity-CUSTOMER-0-cyclic-special-1",
-        "entity-CUSTOMER-0-cyclic-special-mid",
-        "entity-CUSTOMER-0-cyclic-special-2",
-    ] {
-        assert!(
-            svg.contains(&format!(r#"data-id="{edge_id}""#)),
-            "missing recursive ER edge segment {edge_id}: {svg}"
-        );
-    }
+    assert!(svg.contains(r#"data-id="id_entity-CUSTOMER-0_entity-CUSTOMER-0_0""#));
+    assert!(!svg.contains("cyclic-special"));
     assert_eq!(
         svg.matches(">refers<").count(),
         1,
-        "only the middle recursive segment should own the relationship label: {svg}"
+        "the logical recursive relationship should own one relationship label: {svg}"
     );
 }
 

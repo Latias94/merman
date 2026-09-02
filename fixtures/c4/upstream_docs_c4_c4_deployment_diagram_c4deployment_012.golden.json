@@ -14,110 +14,111 @@
     "shapes": [
       {
         "alias": "mobile",
+        "parentBoundary": "mob",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "Mobile App"
         },
+        "wrap": false,
         "techn": {
           "text": "Xamarin"
         },
         "descr": {
           "text": "Provides a limited subset of the Internet Banking functionality to customers via their mobile device."
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "mob",
-        "wrap": false
+        }
       },
       {
         "alias": "spa",
+        "parentBoundary": "browser",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "Single Page Application"
         },
+        "wrap": false,
         "techn": {
           "text": "JavaScript and Angular"
         },
         "descr": {
           "text": "Provides all of the Internet Banking functionality to customers via their web browser."
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "browser",
-        "wrap": false
+        }
       },
       {
         "alias": "api",
+        "parentBoundary": "apache",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "API Application"
         },
+        "wrap": false,
         "techn": {
           "text": "Java and Spring MVC"
         },
         "descr": {
           "text": "Provides Internet Banking functionality via a JSON/HTTPS API."
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "apache",
-        "wrap": false
+        }
       },
       {
         "alias": "web",
+        "parentBoundary": "apache2",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "Web Application"
         },
+        "wrap": false,
         "techn": {
           "text": "Java and Spring MVC"
         },
         "descr": {
           "text": "Delivers the static content and the Internet Banking single page application."
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "apache2",
-        "wrap": false
+        }
       },
       {
         "alias": "db",
+        "parentBoundary": "oracle",
+        "typeC4Shape": {
+          "text": "container_db"
+        },
         "label": {
           "text": "Database"
         },
+        "wrap": false,
         "techn": {
           "text": "Relational Database Schema"
         },
         "descr": {
           "text": "Stores user registration information, hashed authentication credentials, access logs, etc."
-        },
-        "typeC4Shape": {
-          "text": "container_db"
-        },
-        "parentBoundary": "oracle",
-        "wrap": false
+        }
       },
       {
         "alias": "db2",
+        "parentBoundary": "oracle2",
+        "typeC4Shape": {
+          "text": "container_db"
+        },
         "label": {
           "text": "Database"
         },
+        "wrap": false,
         "techn": {
           "text": "Relational Database Schema"
         },
         "descr": {
           "text": "Stores user registration information, hashed authentication credentials, access logs, etc."
-        },
-        "typeC4Shape": {
-          "text": "container_db"
-        },
-        "parentBoundary": "oracle2",
-        "wrap": false
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -125,11 +126,11 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       },
       {
         "alias": "mob",
+        "parentBoundary": "global",
         "label": {
           "text": "Customer's mobile device"
         },
@@ -139,12 +140,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "global",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "comp",
+        "parentBoundary": "global",
         "label": {
           "text": "Customer's computer"
         },
@@ -154,12 +155,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "global",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "browser",
+        "parentBoundary": "comp",
         "label": {
           "text": "Web Browser"
         },
@@ -169,12 +170,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "comp",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "plc",
+        "parentBoundary": "global",
         "label": {
           "text": "Big Bank plc"
         },
@@ -184,12 +185,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "global",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "dn",
+        "parentBoundary": "plc",
         "label": {
           "text": "bigbank-api*** x8"
         },
@@ -199,12 +200,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "plc",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "apache",
+        "parentBoundary": "dn",
         "label": {
           "text": "Apache Tomcat"
         },
@@ -214,12 +215,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "dn",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "bb2",
+        "parentBoundary": "plc",
         "label": {
           "text": "bigbank-web*** x4"
         },
@@ -229,12 +230,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "plc",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "apache2",
+        "parentBoundary": "bb2",
         "label": {
           "text": "Apache Tomcat"
         },
@@ -244,12 +245,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "bb2",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "bigbankdb01",
+        "parentBoundary": "plc",
         "label": {
           "text": "bigbank-db01"
         },
@@ -259,12 +260,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "plc",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "oracle",
+        "parentBoundary": "bigbankdb01",
         "label": {
           "text": "Oracle - Primary"
         },
@@ -274,12 +275,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "bigbankdb01",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "bigbankdb02",
+        "parentBoundary": "plc",
         "label": {
           "text": "bigbank-db02"
         },
@@ -289,12 +290,12 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "plc",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       },
       {
         "alias": "oracle2",
+        "parentBoundary": "bigbankdb02",
         "label": {
           "text": "Oracle - Secondary"
         },
@@ -304,16 +305,15 @@
         "descr": {
           "text": ""
         },
-        "nodeType": "node",
-        "parentBoundary": "bigbankdb02",
-        "wrap": false
+        "wrap": false,
+        "nodeType": "node"
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "mobile",
         "to": "api",
+        "type": "rel",
         "label": {
           "text": "Makes API calls to"
         },
@@ -326,9 +326,9 @@
         "wrap": false
       },
       {
-        "type": "rel",
         "from": "spa",
         "to": "api",
+        "type": "rel",
         "label": {
           "text": "Makes API calls to"
         },
@@ -342,9 +342,9 @@
         "offsetY": -40
       },
       {
-        "type": "rel_u",
         "from": "web",
         "to": "spa",
+        "type": "rel_u",
         "label": {
           "text": "Delivers to the customer's web browser"
         },
@@ -358,9 +358,9 @@
         "offsetY": -40
       },
       {
-        "type": "rel",
         "from": "api",
         "to": "db",
+        "type": "rel",
         "label": {
           "text": "Reads from and writes to"
         },
@@ -371,13 +371,13 @@
           "text": ""
         },
         "wrap": false,
-        "offsetY": -20,
-        "offsetX": 5
+        "offsetX": 5,
+        "offsetY": -20
       },
       {
-        "type": "rel",
         "from": "api",
         "to": "db2",
+        "type": "rel",
         "label": {
           "text": "Reads from and writes to"
         },
@@ -392,9 +392,9 @@
         "offsetY": -20
       },
       {
-        "type": "rel_r",
         "from": "db",
         "to": "db2",
+        "type": "rel_r",
         "label": {
           "text": "Replicates data to"
         },

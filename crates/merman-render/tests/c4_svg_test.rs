@@ -1,14 +1,9 @@
 use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity,
-};
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::C4DiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
-use std::sync::Arc;
 
 fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment) -> String {
     let parsed = Engine::new()
@@ -42,25 +37,6 @@ fn svg_text_content(node: roxmltree::Node<'_, '_>) -> String {
         .filter(|descendant| descendant.is_text())
         .filter_map(|descendant| descendant.text())
         .collect()
-}
-
-#[derive(Debug)]
-struct C4TypeWidthProbe;
-
-impl TextMeasurer for C4TypeWidthProbe {
-    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-        let width = match text {
-            "«person»" => 151.0,
-            "«system»" => 252.0,
-            "«external_person»" => 399.0,
-            _ => 80.0,
-        };
-        TextMetrics {
-            width,
-            height: style.font_size.max(1.0),
-            line_count: 1,
-        }
-    }
 }
 
 fn deep_c4_boundary_chain(depth: usize) -> String {
@@ -109,39 +85,45 @@ fn c4_public_layout_and_svg_render_handle_deep_boundary_chain() {
 }
 
 #[test]
-fn c4_type_text_length_comes_from_canonical_text_measurement() {
-    let identity = TextMeasurementProfileIdentity::new(
-        MeasurementProfileId::new("test.c4-type-width").unwrap(),
-        "test",
-    )
-    .unwrap();
-    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
-        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
-            identity,
-            Arc::new(C4TypeWidthProbe),
-        )),
-    );
+fn c4_unified_shapes_render_canonical_labels() {
     let svg = render_c4_svg_with_environment(
         r#"C4Context
 Person(person, "Person")
-System(system, "System")
+Container(system, "System", "Rust", "A short description")
 Person_Ext(external, "External")
+System(framed, "Framed", "A component-shaped system", $shape="component")
 "#,
-        &environment,
+        &RenderEnvironment::deterministic(),
     );
     let document = roxmltree::Document::parse(&svg).expect("valid SVG");
 
-    for (label, expected) in [
-        ("<<person>>", "151"),
-        ("<<system>>", "252"),
-        ("<<external_person>>", "399"),
-    ] {
-        let text = document
-            .descendants()
-            .find(|node| node.has_tag_name("text") && node.text() == Some(label))
-            .unwrap_or_else(|| panic!("missing C4 type label {label}: {svg}"));
-        assert_eq!(text.attribute("textLength"), Some(expected), "{label}");
+    for class in ["c4-name", "c4-type", "c4-descr"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| { node.has_tag_name("g") && node.attribute("class") == Some(class) }),
+            "missing unified C4 label section {class}: {svg}"
+        );
     }
+    let type_texts = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("c4-type"))
+        .map(svg_text_content)
+        .collect::<Vec<_>>();
+    assert!(type_texts.iter().any(|text| text == "[Person]"));
+    assert!(type_texts.iter().any(|text| text == "[Container: Rust]"));
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("c4-descr"))
+            .map(svg_text_content)
+            .any(|text| text == "A short description")
+    );
+    assert_eq!(svg.matches("<circle ").count(), 2);
+    assert_eq!(svg.matches("<polygon ").count(), 1);
+    assert!(!svg.contains("<<person>>"));
+    assert!(!svg.contains("<<system>>"));
+    assert!(!svg.contains("<<external_person>>"));
 }
 
 #[test]

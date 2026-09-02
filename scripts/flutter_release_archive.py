@@ -25,7 +25,8 @@ SCHEMA_VERSION = 1
 COPY_BYTES = 1024 * 1024
 REQUIRED_FILES = {"LICENSE", "THIRD_PARTY_NOTICES.md", "pubspec.yaml"}
 IGNORED_DIRECTORIES = {".dart_tool", ".git", "__pycache__", "build"}
-IGNORED_FILES = IGNORED_DIRECTORIES | {".DS_Store"}
+IGNORED_FILES = IGNORED_DIRECTORIES | {".DS_Store", ".gitignore", ".pubignore"}
+IGNORED_ROOT_FILES = {"build-native.py", "ffigen.yaml", "pubspec.lock"}
 SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
 VERSION_RE = re.compile(
     r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
@@ -194,7 +195,11 @@ def _collect_files(root: Path, limits: ArchiveLimits) -> list[tuple[Path, str, o
         dirnames[:] = sorted(kept_directories)
 
         for name in sorted(filenames):
-            if name in IGNORED_FILES or Path(name).suffix in {".pyc", ".pyo"}:
+            if (
+                name in IGNORED_FILES
+                or (current == root and name in IGNORED_ROOT_FILES)
+                or Path(name).suffix in {".pyc", ".pyo"}
+            ):
                 continue
             path = current / name
             relative = path.relative_to(root)

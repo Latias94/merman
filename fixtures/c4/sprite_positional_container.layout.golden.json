@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 814.0,
-        "max_y": 622.0
+        "max_x": 782.0,
+        "max_y": 650.61
       },
-      "width": 864.0,
-      "height": 632.0,
+      "width": 832.0,
+      "height": 660.61,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 664.0,
-          "height": 506.0,
+          "width": 632.0,
+          "height": 534.61,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -53,34 +53,34 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 134.0,
+          "height": 171.524,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Customer",
-            "y": 86.0,
-            "width": 63.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 55.44,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank.",
-            "y": 124.0,
-            "width": 140.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 114.57,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -90,52 +90,8 @@
           "type_c4_shape": "container",
           "x": 466.0,
           "y": 166.0,
-          "width": 248.0,
-          "height": 152.0,
-          "margin": 50.0,
-          "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
-          },
-          "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Single-Page App",
-            "y": 86.0,
-            "width": 103.0,
-            "height": 18.0,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": {
-            "text": "[JavaScript, Angular]",
-            "y": 109.0,
-            "width": 105.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "descr": {
-            "text": "Provides Internet banking functionality.",
-            "y": 142.0,
-            "width": 228.0,
-            "height": 15.0,
-            "line_count": 1.0
-          }
-        },
-        {
-          "alias": "db",
-          "parent_boundary": "global",
-          "type_c4_shape": "container_db",
-          "x": 150.0,
-          "y": 418.0,
           "width": 216.0,
-          "height": 104.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -143,32 +99,64 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container_db»",
-            "y": 20.0,
-            "width": 73.32,
-            "height": 14.0,
+            "text": "[Container: JavaScript, Angular]",
+            "y": 44.175,
+            "width": 139.545,
+            "height": 11.55,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Single-Page App",
+            "y": 27.7,
+            "width": 90.44,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": {
+            "text": "Provides Internet banking functionality.",
+            "y": 65.578,
+            "width": 119.507,
+            "height": 25.256,
+            "line_count": 2.0
+          }
+        },
+        {
+          "alias": "db",
+          "parent_boundary": "global",
+          "type_c4_shape": "container_db",
+          "x": 150.0,
+          "y": 437.524,
+          "width": 216.0,
+          "height": 113.085,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "[Container: PostgreSQL]",
+            "y": 44.175,
+            "width": 106.47,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Database",
-            "y": 38.0,
-            "width": 58.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 50.54,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[PostgreSQL]",
-            "y": 61.0,
-            "width": 68.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Stores account data.",
-            "y": 94.0,
-            "width": 118.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 96.662,
+            "height": 12.628,
             "line_count": 1.0
           }
         }
@@ -179,12 +167,12 @@
           "to": "c1",
           "rel_type": "rel",
           "start_point": {
-            "x": 366.0,
-            "y": 251.655
+            "x": 295.969,
+            "y": 247.357
           },
           "end_point": {
             "x": 466.0,
-            "y": 281.942
+            "y": 259.633
           },
           "offset_x": null,
           "offset_y": null,
@@ -209,12 +197,12 @@
           "to": "db",
           "rel_type": "rel",
           "start_point": {
-            "x": 538.0,
-            "y": 318.0
+            "x": 542.868,
+            "y": 264.206
           },
           "end_point": {
-            "x": 366.0,
-            "y": 426.8
+            "x": 365.787,
+            "y": 452.366
           },
           "offset_x": null,
           "offset_y": null,

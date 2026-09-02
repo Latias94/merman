@@ -1,7 +1,7 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "model": {
-    "type": "class",
+    "type": "classDiagram",
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -32,15 +32,6 @@
     "notes": [],
     "interfaces": [],
     "namespaces": {},
-    "styleClasses": {
-      "someclass": {
-        "id": "someclass",
-        "styles": [
-          "fill:#f96"
-        ],
-        "textStyles": []
-      }
-    },
     "constants": {
       "lineType": {
         "line": 0,
@@ -53,6 +44,15 @@
         "composition": 2,
         "dependency": 3,
         "lollipop": 4
+      }
+    },
+    "styleClasses": {
+      "someclass": {
+        "id": "someclass",
+        "styles": [
+          "fill:#f96"
+        ],
+        "textStyles": []
       }
     }
   }

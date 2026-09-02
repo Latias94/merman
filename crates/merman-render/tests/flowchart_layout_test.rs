@@ -172,6 +172,47 @@ A --> C
 }
 
 #[test]
+fn flowchart_collapsed_subgraph_layout_projects_hidden_members_and_boundary_edges() {
+    let layout = layout_flowchart(
+        r#"flowchart TD
+subgraph one[My Group]
+  A --> B
+end
+C --> A
+one@{ view: collapsed }
+"#,
+    );
+
+    let collapsed = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "one")
+        .expect("collapsed subgraph layout node");
+    assert!(!collapsed.is_cluster);
+    assert!(collapsed.width >= 80.0);
+    assert!(collapsed.height >= 44.0);
+    assert!(
+        layout
+            .nodes
+            .iter()
+            .all(|node| node.id != "A" && node.id != "B")
+    );
+
+    assert!(
+        layout
+            .edges
+            .iter()
+            .any(|edge| { edge.from == "C" && edge.to == "one" && edge.id == "L_C_A_0" })
+    );
+    assert!(
+        layout
+            .edges
+            .iter()
+            .all(|edge| !(edge.from == "one" && edge.to == "one"))
+    );
+}
+
+#[test]
 fn flowchart_rank_spacing_zero_falls_back_to_mermaid_default() {
     let default = layout_flowchart(
         r#"flowchart TB
@@ -751,12 +792,13 @@ fn flowchart_edge_label_is_included_in_subgraph_bounds() {
 }
 
 #[test]
-fn flowchart_subgraph_dir_is_applied_when_cluster_has_external_edges() {
+fn flowchart_subgraph_dir_does_not_override_parent_layout_for_external_cluster() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    // Mermaid 11.16 extracts clusters with an explicit direction even when an edge crosses the
-    // cluster boundary. The outer edge is rebound to the extracted cluster node.
+    // An explicit direction is retained as cluster metadata, but an external edge keeps the
+    // cluster in the parent graph instead of promoting it to a recursive root. The parent graph
+    // therefore controls the layout direction for this non-recursive cluster.
     let text = "flowchart TB\nsubgraph A\n  direction LR\n  a --> b\nend\na --> c\n";
 
     let engine = Engine::new();
@@ -768,6 +810,11 @@ fn flowchart_subgraph_dir_is_applied_when_cluster_has_external_edges() {
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout ok");
 
+    assert!(
+        !layout.dom_node_order_by_root.contains_key("A"),
+        "a cluster with external connections must remain in the parent render root"
+    );
+
     let nodes_by_id = layout
         .nodes
         .iter()
@@ -777,8 +824,8 @@ fn flowchart_subgraph_dir_is_applied_when_cluster_has_external_edges() {
     let (ax, ay) = nodes_by_id["a"];
     let (bx, by) = nodes_by_id["b"];
     assert!(
-        bx > ax + 5.0 && (by - ay).abs() <= 5.0,
-        "node b should be to the right of a (LR) despite cluster A having external edges"
+        by > ay + 5.0,
+        "a non-recursive cluster must use the parent TB layout direction: a=({ax},{ay}) b=({bx},{by})"
     );
 }
 
@@ -818,12 +865,16 @@ fn flowchart_safe_anchor_avoids_leaf_inside_extractable_sibling_cluster() {
 }
 
 #[test]
-fn flowchart_cross_boundary_edge_exposes_rebound_layout_endpoint() {
+fn flowchart_cross_boundary_edge_keeps_leaf_layout_endpoint_for_nonrecursive_cluster() {
     let layout =
         layout_flowchart("flowchart TD\nsubgraph C\n  direction LR\n  D1\nend\nD1 --> D2\n");
 
+    assert!(
+        !layout.dom_node_order_by_root.contains_key("C"),
+        "an external connection must keep cluster C in the parent render root"
+    );
     let edge = layout.edges.first().expect("cross-boundary edge");
-    assert_eq!(edge.from, "C");
+    assert_eq!(edge.from, "D1");
     assert_eq!(edge.to, "D2");
 }
 
@@ -848,7 +899,7 @@ fn flowchart_parallel_self_loops_match_graphlib_last_write_wins() {
 }
 
 #[test]
-fn flowchart_edge_to_ancestor_cluster_keeps_explicit_nested_directions() {
+fn flowchart_edge_to_ancestor_cluster_keeps_directioned_clusters_in_parent_root() {
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
@@ -869,37 +920,22 @@ fn flowchart_edge_to_ancestor_cluster_keeps_explicit_nested_directions() {
     let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
         .expect("layout ok");
 
-    let nodes_by_id = layout
-        .nodes
-        .iter()
-        .map(|n| (n.id.as_str(), (n.x, n.y)))
-        .collect::<std::collections::HashMap<_, _>>();
     let clusters_by_id = layout
         .clusters
         .iter()
         .map(|c| (c.id.as_str(), c))
         .collect::<std::collections::HashMap<_, _>>();
 
-    let (ax, ay) = nodes_by_id["a"];
-    let (bx, by) = nodes_by_id["b"];
-    let (_cx, cy) = nodes_by_id["c"];
     assert!(
-        bx > ax + 60.0 && (by - ay).abs() < 80.0,
-        "Inner should retain its explicit LR direction"
+        !layout.dom_node_order_by_root.contains_key("Outer")
+            && !layout.dom_node_order_by_root.contains_key("Inner"),
+        "external connections must keep both directioned clusters in the parent render root"
     );
-    assert!(
-        cy > ay.max(by) + 100.0,
-        "Outer should retain its explicit TB direction despite the edge to the ancestor cluster"
-    );
-
     let inner = clusters_by_id["Inner"];
     let outer = clusters_by_id["Outer"];
     assert_eq!(inner.effective_dir, "LR");
     assert_eq!(outer.effective_dir, "TB");
-    assert!(
-        inner.width > inner.height && outer.height > inner.height + 100.0,
-        "the nested LR cluster should be packed inside the taller TB ancestor"
-    );
+    assert!(layout.edges.iter().any(|edge| edge.id == "L_c_Outer_0"));
 }
 
 #[test]
@@ -1255,6 +1291,7 @@ V@{ shape: delay, label: "Label" }
 W@{ shape: lin-doc, label: "Label" }
 X@{ shape: tag-doc, label: "Label" }
 Y@{ shape: curved-trapezoid, label: "Label" }
+Z@{ shape: folder, label: "Label" }
 "#;
 
     let engine = Engine::new();
@@ -1524,6 +1561,15 @@ Y@{ shape: curved-trapezoid, label: "Label" }
         };
         assert_close(n.width, w, "cylinder width");
         assert_close(n.height, expected_h, "cylinder height");
+    }
+
+    // folder/directory
+    {
+        let n = nodes_by_id["Z"];
+        let content_height = th + 2.0 * p;
+        let tab_height = (content_height * 0.16).clamp(8.0, 14.0);
+        assert_close(n.width, (tw + 2.0 * p).max(90.0), "folder width");
+        assert_close(n.height, content_height + tab_height, "folder height");
     }
 
     // lined cylinder / disk storage

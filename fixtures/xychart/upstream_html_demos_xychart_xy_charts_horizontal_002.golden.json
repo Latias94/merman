@@ -24,6 +24,7 @@
     "plots": [
       {
         "type": "bar",
+        "title": "sample bat",
         "values": [
           52.0,
           96.0,
@@ -51,6 +52,7 @@
       },
       {
         "type": "line",
+        "title": "",
         "values": [
           23.0,
           46.0,

@@ -107,7 +107,7 @@ fn common_authoring_parse_errors_are_single_precise_or_explicit_fallback_diagnos
         Case {
             label: "dangling class inheritance",
             source: "classDiagram\nA <|--",
-            expected_diagram_type: "class",
+            expected_diagram_type: "classDiagram",
         },
         Case {
             label: "dangling er relationship label",

@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 666.0,
-        "max_y": 896.0
+        "max_y": 851.074
       },
       "width": 716.0,
-      "height": 906.0,
+      "height": 861.074,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 516.0,
-          "height": 780.0,
+          "height": 735.074,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -50,7 +50,7 @@
           "x": 150.0,
           "y": 122.0,
           "width": 416.0,
-          "height": 674.0,
+          "height": 629.074,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -76,9 +76,9 @@
           "alias": "b1",
           "parent_boundary": "n1",
           "x": 200.0,
-          "y": 510.0,
+          "y": 413.578,
           "width": 316.0,
-          "height": 236.0,
+          "height": 287.496,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -107,28 +107,28 @@
           "parent_boundary": "b1",
           "type_c4_shape": "person",
           "x": 250.0,
-          "y": 610.0,
+          "y": 513.578,
           "width": 216.0,
-          "height": 86.0,
+          "height": 137.496,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 30.0,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 86.0,
-            "width": 176.0,
+            "y": 0.0,
+            "width": 0.0,
             "height": 0.0,
-            "line_count": 1.0
+            "line_count": 0.0
           },
           "ty": null,
           "techn": null,
@@ -141,34 +141,34 @@
           "x": 200.0,
           "y": 222.0,
           "width": 216.0,
-          "height": 182.0,
+          "height": 85.578,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 78.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "P2",
-            "y": 134.0,
-            "width": 176.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 16.24,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "D2",
-            "y": 172.0,
-            "width": 176.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 13.317,
+            "height": 12.628,
             "line_count": 1.0
           }
         }
@@ -179,12 +179,12 @@
           "to": "p2",
           "rel_type": "rel_b",
           "start_point": {
-            "x": 366.397,
-            "y": 610.0
+            "x": 347.368,
+            "y": 514.807
           },
           "end_point": {
-            "x": 341.36,
-            "y": 404.0
+            "x": 326.763,
+            "y": 307.578
           },
           "offset_x": 10.0,
           "offset_y": 20.0,

@@ -8,9 +8,15 @@ Application developers should start with the [`@mermanjs/node` package guide](pa
 
 ## Quick start
 
+The npm `alpha` dist-tag is the published channel and currently trails the prepared alpha.6 source
+candidate. Use it for the published package, or build the exact reviewed commit when validating
+alpha.6 behavior.
+
 ```sh
 npm install @mermanjs/node@alpha
 ```
+
+When validating alpha.6 from source, pin the exact commit accepted by release preflight rather than a moving branch.
 
 ```js
 import { createNodeEngine } from "@mermanjs/node";

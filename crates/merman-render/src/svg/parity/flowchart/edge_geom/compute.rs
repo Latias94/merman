@@ -78,14 +78,20 @@ pub(super) fn flowchart_compute_edge_path_geom(
         // passes those graph endpoints to `insertEdge` for shape lookup and clipping.
         let layout_from = le.from.as_str();
         let layout_to = le.to.as_str();
-        let tail_shape = ctx
-            .nodes_by_id
-            .get(layout_from)
-            .and_then(|n| n.layout_shape.as_deref());
-        let head_shape = ctx
-            .nodes_by_id
-            .get(layout_to)
-            .and_then(|n| n.layout_shape.as_deref());
+        let tail_shape = if ctx.is_subgraph_collapsed(layout_from) {
+            Some("collapsedGroup")
+        } else {
+            ctx.nodes_by_id
+                .get(layout_from)
+                .and_then(|n| n.layout_shape.as_deref())
+        };
+        let head_shape = if ctx.is_subgraph_collapsed(layout_to) {
+            Some("collapsedGroup")
+        } else {
+            ctx.nodes_by_id
+                .get(layout_to)
+                .and_then(|n| n.layout_shape.as_deref())
+        };
         if let (Some(tail), Some(head)) = (
             boundary_for_node(ctx, layout_from, origin_x, origin_y),
             boundary_for_node(ctx, layout_to, origin_x, origin_y),

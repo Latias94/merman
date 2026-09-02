@@ -14,22 +14,23 @@
     "shapes": [
       {
         "alias": "default",
-        "label": {
-          "text": "default"
-        },
-        "descr": {
-          "text": "default"
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "person"
         },
-        "parentBoundary": "global",
-        "wrap": false
+        "label": {
+          "text": "default"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "default"
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -37,8 +38,7 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": []

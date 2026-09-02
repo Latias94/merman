@@ -1,6 +1,6 @@
 use crate::{DiagramWarningFact, SourceSpan};
 use indexmap::IndexMap;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,14 +193,24 @@ impl FlowchartRenderStyleSources {
 pub struct FlowchartRenderContext {
     labels: FlowchartRenderLabelSources,
     styles: FlowchartRenderStyleSources,
+    collapsed_subgraphs: FxHashSet<String>,
+    collapsed_replacements: FxHashMap<String, String>,
 }
 
 impl FlowchartRenderContext {
     pub(crate) fn new(
         labels: FlowchartRenderLabelSources,
         styles: FlowchartRenderStyleSources,
+        collapsed_subgraphs: FxHashSet<String>,
+        subgraphs: &[FlowSubgraph],
     ) -> Self {
-        Self { labels, styles }
+        let collapsed_replacements = build_collapsed_replacements(&collapsed_subgraphs, subgraphs);
+        Self {
+            labels,
+            styles,
+            collapsed_subgraphs,
+            collapsed_replacements,
+        }
     }
 
     #[doc(hidden)]
@@ -238,11 +248,91 @@ impl FlowchartRenderContext {
         self.styles.contains_subgraph_vertex(id)
     }
 
+    /// Returns whether the parser attached Mermaid's collapsed view to this subgraph.
+    #[doc(hidden)]
+    pub fn is_subgraph_collapsed(&self, id: &str) -> bool {
+        self.collapsed_subgraphs.contains(id)
+    }
+
+    /// Returns the visible collapsed subgraph that replaces this node, when the node is hidden
+    /// beneath a collapsed subgraph. The visible collapsed subgraph itself is not replaced.
+    #[doc(hidden)]
+    pub fn collapsed_replacement(&self, id: &str) -> Option<&str> {
+        self.collapsed_replacements.get(id).map(String::as_str)
+    }
+
     pub(crate) fn retained_bytes(&self) -> usize {
         self.labels
             .retained_bytes()
             .saturating_add(self.styles.retained_bytes())
+            .saturating_add(
+                self.collapsed_subgraphs
+                    .iter()
+                    .map(String::len)
+                    .sum::<usize>(),
+            )
+            .saturating_add(self.collapsed_replacements.iter().fold(
+                0usize,
+                |total, (id, replacement)| {
+                    total
+                        .saturating_add(id.len())
+                        .saturating_add(replacement.len())
+                },
+            ))
     }
+}
+
+fn build_collapsed_replacements(
+    collapsed_subgraphs: &FxHashSet<String>,
+    subgraphs: &[FlowSubgraph],
+) -> FxHashMap<String, String> {
+    let subgraph_ids: FxHashSet<&str> = subgraphs.iter().map(|sg| sg.id.as_str()).collect();
+    let mut parent_by_id: FxHashMap<&str, &str> = FxHashMap::default();
+    for subgraph in subgraphs {
+        for child in &subgraph.nodes {
+            if subgraph_ids.contains(child.as_str()) {
+                parent_by_id.insert(child.as_str(), subgraph.id.as_str());
+            }
+        }
+    }
+
+    fn outermost_collapsed<'a>(
+        id: &'a str,
+        collapsed_subgraphs: &FxHashSet<String>,
+        parent_by_id: &FxHashMap<&'a str, &'a str>,
+    ) -> Option<&'a str> {
+        let mut current = Some(id);
+        let mut result = None;
+        let mut seen: FxHashSet<&str> = FxHashSet::default();
+        while let Some(candidate) = current {
+            if !seen.insert(candidate) {
+                break;
+            }
+            if collapsed_subgraphs.contains(candidate) {
+                result = Some(candidate);
+            }
+            current = parent_by_id.get(candidate).copied();
+        }
+        result
+    }
+
+    let mut replacements = FxHashMap::default();
+    for subgraph in subgraphs {
+        let Some(ancestor) =
+            outermost_collapsed(subgraph.id.as_str(), collapsed_subgraphs, &parent_by_id)
+        else {
+            continue;
+        };
+        if subgraph.id != ancestor {
+            replacements.insert(subgraph.id.clone(), ancestor.to_string());
+        }
+        for child in &subgraph.nodes {
+            if child != ancestor {
+                replacements.insert(child.clone(), ancestor.to_string());
+            }
+        }
+    }
+    replacements
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

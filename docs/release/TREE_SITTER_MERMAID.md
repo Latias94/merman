@@ -83,7 +83,7 @@ merge the resulting `prebuilds/**` directories before `npm pack`. The package ke
 `TREE_SITTER_MERMAID_REQUIRE_PREBUILDS=1` so a missing prebuild cannot be mistaken for a complete
 npm candidate.
 
-## Publication and recovery
+## Publication and retry
 
 The crates.io package is `tree-sitter-mermaid`; the npm package is
 `@mermanjs/tree-sitter-mermaid`. Ordinary publication uses the protected workflow and the exact
@@ -107,6 +107,10 @@ For `0.1.0`, crates.io and npm publication completed on 2026-08-18 from
 `tree-sitter-mermaid-v0.1.0`. npm used a manual 2FA bootstrap and therefore has no npm provenance.
 Trusted Publishing is configured for later versions through `release-tree-sitter-mermaid.yml` and
 the `npm` environment. The standalone GitHub Release is intentionally deferred.
+
+For a failed publication run, re-run the failed jobs from the same workflow run. Native prebuilds are
+run-scoped artifacts and are deliberately not imported from another run; if the run's artifacts have
+expired or are unavailable, start a new tagged run and treat it as a new candidate.
 
 Downstream Neovim, Helix, and Zed changes happen only after the immutable GitHub release exists.
 Those repositories pin the release commit and their own query copies; they do not consume the npm

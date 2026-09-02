@@ -208,6 +208,7 @@ pub(crate) fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
     Ok(parse_class_semantic_source(code, meta)?.db.into_model(meta))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_class_typed(
     code: &str,
     meta: &ParseMetadata,
@@ -215,6 +216,18 @@ pub(crate) fn parse_class_typed(
     Ok(parse_class_semantic_source(code, meta)?
         .db
         .into_typed_model(meta))
+}
+
+pub(crate) fn parse_class_typed_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<class_typed::ClassDiagram>> {
+    let construction = construct_class_semantic_source(code, meta, control)?;
+    match construction {
+        Ok(source) => Ok(Ok(source.db.into_typed_model(meta))),
+        Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
+    }
 }
 
 pub(crate) fn parse_class_json_and_editor_facts(

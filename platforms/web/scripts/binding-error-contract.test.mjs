@@ -138,3 +138,56 @@ test("binding error contract accepts operation statuses and cancellation-only de
     true,
   );
 });
+
+test("binding error contract preserves optional ASCII diagnostic context", () => {
+  const diagnostic = {
+    code: "merman.ascii.width_overflow",
+    span: null,
+    field: null,
+    diagram_type: "flowchart-v2",
+    requested_max_width: 10,
+    actual_width: 42,
+    width_profile: "unicode",
+    fallback_reason: null,
+  };
+  const error = {
+    version: 1,
+    ok: false,
+    code: 6,
+    code_name: "MERMAN_RENDER_ERROR",
+    kind: "generic",
+    capability_id: null,
+    details: { diagnostic },
+    message: "ASCII output exceeds the requested width",
+  };
+
+  assert.equal(isBindingErrorPayload(error), true);
+  assert.equal(
+    isBindingErrorPayload({
+      ...error,
+      details: {
+        diagnostic: {
+          code: diagnostic.code,
+          span: diagnostic.span,
+          field: diagnostic.field,
+          diagram_type: diagnostic.diagram_type,
+        },
+      },
+    }),
+    true,
+  );
+  for (const invalidDiagnostic of [
+    { ...diagnostic, requested_max_width: -1 },
+    { ...diagnostic, actual_width: 42.5 },
+    { ...diagnostic, width_profile: 7 },
+    { ...diagnostic, fallback_reason: false },
+  ]) {
+    assert.equal(
+      isBindingErrorPayload({
+        ...error,
+        details: { diagnostic: invalidDiagnostic },
+      }),
+      false,
+    );
+  }
+});

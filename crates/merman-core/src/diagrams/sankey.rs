@@ -210,6 +210,7 @@ pub(crate) fn parse_sankey_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_sankey_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -217,6 +218,20 @@ pub(crate) fn parse_sankey_model_for_render(
     Ok(parse_sankey_semantic_source(code, meta)?
         .into_db(meta)
         .into_render_model())
+}
+
+pub(crate) fn parse_sankey_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<SankeyDiagramRenderModel>> {
+    let construction = construct_sankey_semantic_source_controlled(code, meta, control)?;
+    let source = match construction {
+        Ok(construction) => construction.source,
+        Err(failure) => return Ok(Err(failure.into_error())),
+    };
+    control.checkpoint()?;
+    Ok(Ok(source.into_db(meta).into_render_model()))
 }
 
 fn parse_sankey_semantic_source(code: &str, meta: &ParseMetadata) -> Result<SankeySemanticSource> {
