@@ -1,20 +1,23 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-08-30
+Last updated: 2026-09-02
 
 ## Version Decision
 
-Published workspace prerelease baseline: `0.8.0-alpha.5`.
+Published workspace prerelease baseline: `0.8.0-alpha.6`.
 
-The prepared workspace candidate is `0.8.0-alpha.6`. This local source state does not authorize a
-tag, workflow dispatch, registry publication, or GitHub Release mutation. The browser and
-Node package groups were published as an authorized alpha-channel test at `0.8.0-alpha.5` from
-reviewed commit `d4365ca4860b6b4d51c421e775daab92a815c667`, newer than the workspace
-`v0.8.0-alpha.5` tag. Their verified package-group manifests and workflow artifacts identify that
-commit. Because the first publication was a manual bootstrap, those npm registry artifacts do not
-expose npm provenance attestations; documentation must not imply either an attestation or
-cross-channel byte identity.
+The workspace release is published from immutable tag `v0.8.0-alpha.6` at commit
+`d529f858ea3d337a1bdc8fe12e44e1403ededf2e`. The crates.io workflow published all 20 workspace
+crates, and the GitHub Release published the CLI/LSP archives and their verification assets. The
+browser, Node.js, Flutter, Python, Apple, Android, and Typst package groups remain independent
+publication tracks; their alpha.6 availability must be established by their owning workflow or
+registry rather than inferred from the workspace tag. The browser and Node package groups were
+previously published as an authorized alpha-channel test at `0.8.0-alpha.5` from reviewed commit
+`d4365ca4860b6b4d51c421e775daab92a815c667`, newer than the workspace `v0.8.0-alpha.5` tag. Their
+verified package-group manifests and workflow artifacts identify that commit. Because that first
+publication was a manual bootstrap, those npm registry artifacts do not expose npm provenance
+attestations; documentation must not imply either an attestation or cross-channel byte identity.
 
 Rationale:
 
@@ -25,11 +28,12 @@ Rationale:
   integrations test one coherent version graph. The unpublished VS Code extension follows its own
   `0.1.x` version track and records the bundled workspace runtime separately.
 
-Workspace-coupled manifests are aligned to the prepared `0.8.0-alpha.6` candidate. Python package
-metadata uses the PEP 440 spelling `0.8.0a6`, but manifest alignment does not prove that a surface reached its
-registry or that separately published alpha.5 channels share one source snapshot. The
-independently versioned VS Code extension, Typst wrapper, and `roughr-merman` remain on their own
-release axes. The `tree-sitter-mermaid` language distribution also has an independent version axis.
+Workspace Cargo manifests were published as `0.8.0-alpha.6`. Python package metadata uses the PEP
+440 spelling `0.8.0a6`, but that version remains an independent publication decision; likewise,
+separately published alpha.5 channels do not share a source snapshot with the workspace release by
+implication. The independently versioned VS Code extension, Typst wrapper, and `roughr-merman`
+remain on their own release axes. The `tree-sitter-mermaid` language distribution also has an
+independent version axis.
 Version `0.1.0` is published on crates.io and npm from tag `tree-sitter-mermaid-v0.1.0`, commit
 `34ddaccbfb8b4a7a502e67122b2cd709b4989e19`. Its standalone GitHub Release is intentionally
 deferred so it can be announced alongside the next Merman product release; the two releases retain
@@ -37,7 +41,7 @@ their own tags and version identities.
 
 ## Typst Package Surface
 
-The Typst wrapper is an independent publication surface. The current candidate is `@preview/merman:0.3.0`, built from the prepared Merman `0.8.0-alpha.6` source line and Typst compiler `0.15.0`. It is not published by crates.io: `merman-typst-plugin@0.8.0-alpha.6` is the Cargo transport crate, while `@preview/merman:0.3.0` is the user-facing Typst package containing the frozen wrapper, size-optimized WASM artifact, and third-party legal materials. Build provenance remains in the private artifact directory and is not part of the registry package.
+The Typst wrapper is an independent publication surface. The current candidate is `@preview/merman:0.3.0`, built from the prepared Merman `0.8.0-alpha.6` source line and Typst compiler `0.15.0`. It is not published by crates.io: `merman-typst-plugin@0.8.0-alpha.6` is the published Cargo transport crate, while `@preview/merman:0.3.0` is the user-facing Typst package containing the frozen wrapper, size-optimized WASM artifact, and third-party legal materials. Build provenance remains in the private artifact directory and is not part of the registry package.
 
 Version `0.3.0` is the first Typst package rebuilt after the text-measurement closure reduction. ICU4X collation data and generated font-metric tables are no longer linked into the production artifact; the plugin keeps deterministic measurement and the existing ABI 2 exports. The package version changes because the shipped implementation closure and size characteristics are materially different, while the wrapper protocol remains compatible.
 

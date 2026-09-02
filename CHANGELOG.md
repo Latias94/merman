@@ -6,7 +6,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [0.8.0-alpha.6] - 2026-09-02
 
-Alpha.6 is a deliberately breaking prerelease and the first 0.8 release aligned with Mermaid `11.17.2`. It unifies operation control across Rust and first-party bindings, expands terminal and editor workflows, and brings the native, Web, Node.js, Flutter, Python, Apple, Android, and Typst surfaces onto explicit contracts. This entry remains a source candidate until release preflight and the independently owned publication surfaces are complete. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md).
+Alpha.6 is a deliberately breaking prerelease and the first 0.8 release aligned with Mermaid `11.17.2`. It unifies operation control across Rust and first-party bindings, expands terminal and editor workflows, and brings the native, Web, Node.js, Flutter, Python, Apple, Android, and Typst surfaces onto explicit contracts. The workspace crates and CLI/LSP archives are published from immutable tag `v0.8.0-alpha.6`; Web, Node.js, Flutter, Python, Apple, Android, and Typst remain independent publication tracks whose availability must be checked separately. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md).
 
 ### Highlights
 
@@ -77,7 +77,7 @@ The detailed contracts remain in **Breaking changes** below. Before mixing alpha
 
 ### Availability and known limitations
 
-- Alpha.6 is a breaking prerelease. Workspace version, source candidate, and registry/package availability are separate; install or deploy matching generated bindings and native/WebAssembly artifacts together.
+- The workspace crates and CLI/LSP archives are published as `0.8.0-alpha.6` from immutable tag `v0.8.0-alpha.6`. Web, Node.js, Flutter, Python, Apple, Android, and Typst are independent channels and may still target alpha.5 or require a separate authorized publication; verify each channel before installing it.
 - The default Android, Apple, Python, and Flutter profiles intentionally omit math, PNG, JPEG, PDF, and native runtime adapters. Use the runtime catalog or a custom artifact when those capabilities are required; ELK requires `complete-svg-elk` or `layout-elk`.
 - The Node.js package group and Typst `0.3.0` package remain experimental and follow independent publication tracks. Their channels may lag the workspace release and must not be inferred from the alpha.6 version alone.
 
