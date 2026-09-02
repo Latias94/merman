@@ -10698,6 +10698,10 @@ fn session_report_accounts_for_every_metered_layout_family() {
             "venn-beta\nset A[\"Core\"]:20\nset B[\"Editor\"]:14\nunion A,B[\"Shared\"]:4\n",
             DiagramFamilyId::VENN,
         ),
+        (
+            "treemap\n\"Section\"\n  \"Leaf\": 4\n",
+            DiagramFamilyId::TREEMAP,
+        ),
     ];
 
     #[cfg(feature = "layout-cytoscape")]
@@ -10732,6 +10736,10 @@ fn prepared_text_retained_budget_has_an_exact_family_boundary() {
         (
             "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart LR\nA -->|portable label| B\n",
             DiagramFamilyId::FLOWCHART,
+        ),
+        (
+            "treemap\nclassDef styled font-family:Excalifont,font-size:18px;\n\"Section\":::styled\n  \"Leaf\": 4:::styled\n",
+            DiagramFamilyId::TREEMAP,
         ),
     ];
 

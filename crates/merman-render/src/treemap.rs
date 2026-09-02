@@ -1,5 +1,6 @@
 use crate::config::json_f64;
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
+use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
 use merman_core::diagrams::treemap::{
     TreemapDiagramRenderModel, TreemapNodeRenderModel as TreemapNode,
@@ -16,8 +17,8 @@ mod theme;
 use config::TreemapConfigView;
 
 pub(crate) use theme::{
-    TreemapTextRole, TreemapTitleThemePlan, TreemapTypographyCssEmission,
-    TreemapTypographyThemePlan, TreemapTypographyThemeReceipt,
+    TreemapResolvedTextStyle, TreemapTextRole, TreemapTitleThemePlan, TreemapTypographyCssEmission,
+    TreemapTypographyThemePlan,
 };
 
 #[derive(Debug, Clone)]
@@ -36,9 +37,21 @@ struct HierNode {
     y1: f64,
 }
 
-fn push_node(nodes: &mut Vec<HierNode>, node: &TreemapNode, parent: Option<usize>, depth: usize) {
+fn push_node(
+    nodes: &mut Vec<HierNode>,
+    node: &TreemapNode,
+    parent: Option<usize>,
+    depth: usize,
+    work_meter: &OperationWorkMeter,
+) -> Result<()> {
     let mut stack = vec![(node, parent, depth)];
     while let Some((current, parent_idx, current_depth)) = stack.pop() {
+        let children = current.children.as_deref().unwrap_or(&[]);
+        work_meter.charge(
+            1usize
+                .checked_add(children.len())
+                .ok_or_else(|| work_meter.arithmetic_overflow())?,
+        )?;
         let own_value = current.value.as_ref().and_then(json_f64).unwrap_or(0.0);
         let idx = nodes.len();
         nodes.push(HierNode {
@@ -62,22 +75,24 @@ fn push_node(nodes: &mut Vec<HierNode>, node: &TreemapNode, parent: Option<usize
             parent_node.children.push(idx);
         }
 
-        if let Some(children) = current.children.as_ref() {
-            for child in children.iter().rev() {
-                stack.push((child, Some(idx), current_depth.saturating_add(1)));
-            }
+        for child in children.iter().rev() {
+            stack.push((child, Some(idx), current_depth.saturating_add(1)));
         }
     }
+
+    Ok(())
 }
 
-fn compute_sum(nodes: &mut [HierNode], idx: usize) -> f64 {
+fn compute_sum(nodes: &mut [HierNode], idx: usize, work_meter: &OperationWorkMeter) -> Result<f64> {
     let mut stack = vec![(idx, false)];
     while let Some((node_idx, visited)) = stack.pop() {
+        work_meter.charge(1)?;
         let Some(node) = nodes.get(node_idx) else {
             continue;
         };
 
         if visited {
+            work_meter.charge(node.children.len())?;
             let sum = node.own_value
                 + node
                     .children
@@ -95,16 +110,37 @@ fn compute_sum(nodes: &mut [HierNode], idx: usize) -> f64 {
         }
     }
 
-    nodes.get(idx).map(|node| node.value).unwrap_or(0.0)
+    Ok(nodes.get(idx).map(|node| node.value).unwrap_or(0.0))
 }
 
-fn sort_children_by_value(nodes: &mut [HierNode], idx: usize) {
+fn checked_sort_work(item_count: usize, work_meter: &OperationWorkMeter) -> Result<usize> {
+    if item_count <= 1 {
+        return Ok(0);
+    }
+    item_count
+        .checked_mul(item_count.ilog2() as usize + 1)
+        .ok_or_else(|| work_meter.arithmetic_overflow().into())
+}
+
+fn sort_children_by_value(
+    nodes: &mut [HierNode],
+    idx: usize,
+    work_meter: &OperationWorkMeter,
+) -> Result<()> {
     let mut stack = vec![idx];
     while let Some(node_idx) = stack.pop() {
+        work_meter.charge(1)?;
         if node_idx >= nodes.len() {
             continue;
         }
 
+        let child_count = nodes[node_idx].children.len();
+        let sort_work = checked_sort_work(child_count, work_meter)?;
+        let preparation_work = child_count
+            .checked_mul(2)
+            .and_then(|work| work.checked_add(sort_work))
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+        work_meter.charge(preparation_work)?;
         let mut items = nodes[node_idx]
             .children
             .iter()
@@ -126,22 +162,59 @@ fn sort_children_by_value(nodes: &mut [HierNode], idx: usize) {
             stack.push(child_idx);
         }
     }
+
+    Ok(())
 }
 
-fn each_before(nodes: &[HierNode], root: usize) -> Vec<usize> {
+fn each_before(
+    nodes: &[HierNode],
+    root: usize,
+    work_meter: &OperationWorkMeter,
+) -> Result<Vec<usize>> {
     let mut out = Vec::new();
     let mut stack = vec![root];
     while let Some(idx) = stack.pop() {
-        out.push(idx);
         let children = &nodes[idx].children;
+        work_meter.charge(
+            1usize
+                .checked_add(children.len())
+                .ok_or_else(|| work_meter.arithmetic_overflow())?,
+        )?;
+        out.push(idx);
         for &c in children.iter().rev() {
             stack.push(c);
         }
     }
-    out
+    Ok(out)
 }
 
-fn descendants_bfs(nodes: &[HierNode], root: usize) -> Vec<usize> {
+fn hier_node_materialization_work(
+    node: &HierNode,
+    work_meter: &OperationWorkMeter,
+) -> Result<usize> {
+    let mut work = 1usize
+        .checked_add(node.name.len().div_ceil(64))
+        .and_then(|value| {
+            value.checked_add(
+                node.class_selector
+                    .as_deref()
+                    .map_or(0, |selector| selector.len().div_ceil(64)),
+            )
+        })
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    for style in node.css_compiled_styles.as_deref().unwrap_or(&[]) {
+        work = work
+            .checked_add(1usize.saturating_add(style.len().div_ceil(64)))
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    }
+    Ok(work)
+}
+
+fn descendants_bfs(
+    nodes: &[HierNode],
+    root: usize,
+    work_meter: &OperationWorkMeter,
+) -> Result<Vec<usize>> {
     let mut out = Vec::new();
     let mut next = vec![root];
     while !next.is_empty() {
@@ -149,23 +222,18 @@ fn descendants_bfs(nodes: &[HierNode], root: usize) -> Vec<usize> {
         current.reverse();
         next = Vec::new();
         while let Some(idx) = current.pop() {
+            work_meter.charge(
+                1usize
+                    .checked_add(nodes[idx].children.len())
+                    .ok_or_else(|| work_meter.arithmetic_overflow())?,
+            )?;
             out.push(idx);
             for &c in &nodes[idx].children {
                 next.push(c);
             }
         }
     }
-    out
-}
-
-fn leaves_each_before(nodes: &[HierNode], root: usize) -> Vec<usize> {
-    let mut out = Vec::new();
-    for idx in each_before(nodes, root) {
-        if nodes[idx].children.is_empty() {
-            out.push(idx);
-        }
-    }
-    out
+    Ok(out)
 }
 
 fn treemap_round_node(nodes: &mut [HierNode], idx: usize) {
@@ -183,7 +251,9 @@ fn treemap_dice(
     y0: f64,
     x1: f64,
     y1: f64,
-) {
+    work_meter: &OperationWorkMeter,
+) -> Result<()> {
+    work_meter.charge(children.len())?;
     let mut x = x0;
     let k = if row_value != 0.0 {
         (x1 - x0) / row_value
@@ -197,6 +267,8 @@ fn treemap_dice(
         x += nodes[child].value * k;
         nodes[child].x1 = x;
     }
+
+    Ok(())
 }
 
 fn treemap_slice(
@@ -207,7 +279,9 @@ fn treemap_slice(
     y0: f64,
     x1: f64,
     y1: f64,
-) {
+    work_meter: &OperationWorkMeter,
+) -> Result<()> {
+    work_meter.charge(children.len())?;
     let mut y = y0;
     let k = if row_value != 0.0 {
         (y1 - y0) / row_value
@@ -221,15 +295,26 @@ fn treemap_slice(
         y += nodes[child].value * k;
         nodes[child].y1 = y;
     }
+
+    Ok(())
 }
 
-fn squarify(nodes: &mut [HierNode], parent: usize, mut x0: f64, mut y0: f64, x1: f64, y1: f64) {
+fn squarify(
+    nodes: &mut [HierNode],
+    parent: usize,
+    mut x0: f64,
+    mut y0: f64,
+    x1: f64,
+    y1: f64,
+    work_meter: &OperationWorkMeter,
+) -> Result<()> {
     const PHI: f64 = (1.0 + 2.23606797749979) / 2.0;
     let ratio = PHI;
 
+    work_meter.charge(nodes[parent].children.len())?;
     let children = nodes[parent].children.clone();
     if children.is_empty() {
-        return;
+        return Ok(());
     }
 
     let n = children.len();
@@ -244,8 +329,9 @@ fn squarify(nodes: &mut [HierNode], parent: usize, mut x0: f64, mut y0: f64, x1:
         let mut sum_value;
         loop {
             if i1 >= n {
-                return;
+                return Ok(());
             }
+            work_meter.charge(1)?;
             sum_value = nodes[children[i1]].value;
             i1 += 1;
             if sum_value != 0.0 || i1 >= n {
@@ -261,6 +347,7 @@ fn squarify(nodes: &mut [HierNode], parent: usize, mut x0: f64, mut y0: f64, x1:
         let mut min_ratio = (max_value / beta).max(beta / min_value);
 
         while i1 < n {
+            work_meter.charge(1)?;
             let node_value = nodes[children[i1]].value;
             sum_value += node_value;
             if node_value < min_value {
@@ -287,7 +374,7 @@ fn squarify(nodes: &mut [HierNode], parent: usize, mut x0: f64, mut y0: f64, x1:
             } else {
                 y1
             };
-            treemap_dice(nodes, row_children, sum_value, x0, y0, x1, y2);
+            treemap_dice(nodes, row_children, sum_value, x0, y0, x1, y2, work_meter)?;
             y0 = y2;
         } else {
             let x2 = if value != 0.0 {
@@ -295,13 +382,15 @@ fn squarify(nodes: &mut [HierNode], parent: usize, mut x0: f64, mut y0: f64, x1:
             } else {
                 x1
             };
-            treemap_slice(nodes, row_children, sum_value, x0, y0, x2, y1);
+            treemap_slice(nodes, row_children, sum_value, x0, y0, x2, y1, work_meter)?;
             x0 = x2;
         }
 
         value -= sum_value;
         i0 = i1;
     }
+
+    Ok(())
 }
 
 fn position_node(
@@ -309,7 +398,9 @@ fn position_node(
     idx: usize,
     padding_stack: &mut Vec<f64>,
     padding_inner: f64,
-) {
+    work_meter: &OperationWorkMeter,
+) -> Result<()> {
+    work_meter.charge(1)?;
     let depth = nodes[idx].depth;
     if padding_stack.len() <= depth {
         padding_stack.resize(depth + 1, 0.0);
@@ -333,7 +424,7 @@ fn position_node(
     nodes[idx].y1 = y1;
 
     if nodes[idx].children.is_empty() {
-        return;
+        return Ok(());
     }
 
     p = padding_inner / 2.0;
@@ -372,15 +463,16 @@ fn position_node(
         y1 = y0;
     }
 
-    squarify(nodes, idx, x0, y0, x1, y1);
+    squarify(nodes, idx, x0, y0, x1, y1, work_meter)
 }
 
-pub(crate) fn layout_treemap_diagram_typed(
+pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
     model: &TreemapDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
-    _measurer: &dyn crate::text::TextMeasurer,
+    work_meter: &OperationWorkMeter,
 ) -> Result<TreemapDiagramLayout> {
+    work_meter.charge(1)?;
     let cfg = TreemapConfigView::new(effective_config).layout_settings();
     let title = model
         .title
@@ -408,7 +500,7 @@ pub(crate) fn layout_treemap_diagram_typed(
     };
 
     let mut nodes: Vec<HierNode> = Vec::new();
-    push_node(&mut nodes, &model.root, None, 0);
+    push_node(&mut nodes, &model.root, None, 0, work_meter)?;
     if nodes.is_empty() {
         return Err(Error::InvalidModel {
             message: "treemap root produced no nodes".to_string(),
@@ -416,32 +508,39 @@ pub(crate) fn layout_treemap_diagram_typed(
     }
     let root_idx = 0usize;
 
-    compute_sum(&mut nodes, root_idx);
-    sort_children_by_value(&mut nodes, root_idx);
+    compute_sum(&mut nodes, root_idx, work_meter)?;
+    sort_children_by_value(&mut nodes, root_idx, work_meter)?;
 
     nodes[root_idx].x0 = 0.0;
     nodes[root_idx].y0 = 0.0;
     nodes[root_idx].x1 = width;
     nodes[root_idx].y1 = height;
 
+    let preorder = each_before(&nodes, root_idx, work_meter)?;
     let mut padding_stack = vec![0.0];
-    for idx in each_before(&nodes, root_idx) {
-        position_node(&mut nodes, idx, &mut padding_stack, cfg.padding.max(0.0));
+    for &idx in &preorder {
+        position_node(
+            &mut nodes,
+            idx,
+            &mut padding_stack,
+            cfg.padding.max(0.0),
+            work_meter,
+        )?;
     }
 
-    for idx in each_before(&nodes, root_idx) {
+    work_meter.charge(preorder.len())?;
+    for &idx in &preorder {
         treemap_round_node(&mut nodes, idx);
     }
 
-    let branch_nodes = descendants_bfs(&nodes, root_idx)
+    let branch_nodes = descendants_bfs(&nodes, root_idx, work_meter)?
         .into_iter()
         .filter(|&idx| !nodes[idx].children.is_empty())
         .collect::<Vec<_>>();
 
-    let leaf_nodes = leaves_each_before(&nodes, root_idx);
-
-    let mut sections = Vec::new();
+    let mut sections = Vec::with_capacity(branch_nodes.len());
     for idx in &branch_nodes {
+        work_meter.charge(hier_node_materialization_work(&nodes[*idx], work_meter)?)?;
         let n = &nodes[*idx];
         sections.push(TreemapSectionLayout {
             name: n.name.clone(),
@@ -456,9 +555,13 @@ pub(crate) fn layout_treemap_diagram_typed(
         });
     }
 
-    let mut leaves = Vec::new();
-    for idx in &leaf_nodes {
-        let n = &nodes[*idx];
+    let mut leaves = Vec::with_capacity(preorder.len().saturating_sub(branch_nodes.len()));
+    for &idx in &preorder {
+        if !nodes[idx].children.is_empty() {
+            continue;
+        }
+        work_meter.charge(hier_node_materialization_work(&nodes[idx], work_meter)?)?;
+        let n = &nodes[idx];
         leaves.push(TreemapLeafLayout {
             name: n.name.clone(),
             value: n.value,
@@ -490,9 +593,91 @@ pub(crate) fn layout_treemap_diagram_typed(
 
 #[cfg(test)]
 mod tests {
+    use merman_core::diagrams::treemap::{TreemapDiagramRenderModel, TreemapNodeRenderModel};
+
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    fn work_budget_fixture() -> TreemapDiagramRenderModel {
+        TreemapDiagramRenderModel {
+            root: TreemapNodeRenderModel {
+                name: "root".to_string(),
+                children: Some(vec![TreemapNodeRenderModel {
+                    name: "Section".to_string(),
+                    children: Some(vec![
+                        TreemapNodeRenderModel {
+                            name: "Alpha".to_string(),
+                            value: Some(serde_json::json!(3)),
+                            ..TreemapNodeRenderModel::default()
+                        },
+                        TreemapNodeRenderModel {
+                            name: "Beta".to_string(),
+                            value: Some(serde_json::json!(2)),
+                            ..TreemapNodeRenderModel::default()
+                        },
+                    ]),
+                    ..TreemapNodeRenderModel::default()
+                }]),
+                ..TreemapNodeRenderModel::default()
+            },
+            ..TreemapDiagramRenderModel::default()
+        }
+    }
+
     #[test]
     fn treemap_geometry_constants_match_mermaid() {
         assert_eq!(super::TREEMAP_SECTION_INNER_PADDING_PX, 10.0);
         assert_eq!(super::TREEMAP_SECTION_HEADER_HEIGHT_PX, 25.0);
+    }
+
+    #[test]
+    fn treemap_layout_obeys_the_cumulative_work_budget_at_the_exact_boundary() {
+        let model = work_budget_fixture();
+        let config = serde_json::json!({});
+        let baseline_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let baseline = super::layout_treemap_diagram_typed_with_work_meter(
+            &model,
+            None,
+            &config,
+            &baseline_meter,
+        )
+        .expect("unbounded Treemap layout");
+        let exact_work = baseline_meter.used();
+        assert!(exact_work > 1);
+        assert_eq!(baseline.sections.len(), 2);
+        assert_eq!(baseline.leaves.len(), 2);
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("valid exact Treemap work ceiling");
+        let exact_meter = OperationWorkMeter::new(exact_policy);
+        let exact = super::layout_treemap_diagram_typed_with_work_meter(
+            &model,
+            None,
+            &config,
+            &exact_meter,
+        )
+        .expect("exact Treemap work ceiling");
+        assert_eq!(exact.sections.len(), baseline.sections.len());
+        assert_eq!(exact.leaves.len(), baseline.leaves.len());
+        assert_eq!(exact_meter.used(), exact_work);
+
+        let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+            .expect("valid below-exact Treemap work ceiling");
+        let below_meter = OperationWorkMeter::new(below_policy);
+        let error = super::layout_treemap_diagram_typed_with_work_meter(
+            &model,
+            None,
+            &config,
+            &below_meter,
+        )
+        .expect_err("below-exact Treemap work ceiling must fail");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected Treemap layout work rejection, got {error}");
+        };
+        assert_eq!(limit.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+        assert_eq!(limit.max, exact_work - 1);
+        assert!(limit.actual > limit.max);
     }
 }

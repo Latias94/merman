@@ -675,11 +675,11 @@ fn prepare_treemap_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let layout = crate::treemap::layout_treemap_diagram_typed(
+    let layout = crate::treemap::layout_treemap_diagram_typed_with_work_meter(
         &model,
         meta.title.as_deref(),
         meta.effective_config.as_value(),
-        execution.text_measurer(),
+        execution.work_meter_ref(),
     )?;
     let title_theme = crate::treemap::TreemapTitleThemePlan::resolve(
         execution.resolved_theme(),
@@ -691,7 +691,8 @@ fn prepare_treemap_family(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
-    );
+        execution.work_meter(),
+    )?;
     Ok(BuiltinFamilyArtifact::Treemap(Box::new(
         TreemapFamilyArtifact {
             pair: FamilyPair::new(model, layout),
