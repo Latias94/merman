@@ -1095,6 +1095,7 @@ dependencies = [
  "svgtypes",
  "thiserror 2.0.19",
  "tiny-skia",
+ "unicase",
  "usvg",
 ]
 
