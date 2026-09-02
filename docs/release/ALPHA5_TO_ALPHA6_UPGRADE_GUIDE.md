@@ -1,7 +1,7 @@
 # Upgrade from 0.8.0-alpha.5 to 0.8.0-alpha.6
 
 > [!IMPORTANT]
-> Alpha.6 is a prepared prerelease candidate. This document does not imply that a registry package, tag, or platform artifact has been published. Use the exact reviewed source revision for candidate integrations and upgrade each generated binding together with its matching native or WebAssembly artifact.
+> Alpha.6 is published for the workspace crates and CLI/LSP archives from immutable tag `v0.8.0-alpha.6`. Web, Node.js, Flutter, Python, Apple, Android, and Typst remain independent publication tracks; verify the matching channel before installing a generated binding or native/WebAssembly artifact.
 
 Alpha.6 is intentionally breaking across the Rust rendering, analysis/editor, and native transport surfaces. The migration is organized by contract owner so a host can update one boundary at a time without relying on compatibility aliases that no longer exist.
 
@@ -55,7 +55,7 @@ Generated bindings and native artifacts are version-coupled. Runtime catalogs an
 - Flutter now uses Dart `package_ffi` and Native Assets with Dart `3.10` / Flutter `3.38` minimums; legacy plugin registrars, platform wrapper glue, and `openMermanLibrary()` are removed, while `Merman.open()` remains the default facade.
 - The default Android, Apple, Python, and Flutter artifacts bundle SVG, Cytoscape/ELK layout, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native clock/time-zone/random adapters; inspect the runtime catalog before calling optional operations.
 - Typst package `0.3.0` is an independently versioned alpha.6 candidate and is not implied to be present in Typst Universe; the published registry line remains `0.2.0` until the manual package submission is authorized.
-- The alpha.6 source README and package changelogs distinguish published alpha.5 channels from the unreleased candidate; registry installs are not evidence that a package has been rebuilt from the alpha.6 source revision.
+- The alpha.6 source README and package changelogs distinguish the published workspace/crates.io/CLI surfaces from independent alpha.5 channels; a registry install on one channel is not evidence that another package has been rebuilt from the alpha.6 source revision.
 
 ## Capability and output compatibility
 
@@ -72,4 +72,4 @@ Generated bindings and native artifacts are version-coupled. Runtime catalogs an
 2. Regenerate analysis facts, UniFFI projections, Web/WASM glue, and Android JNI sources from the alpha.6 source revision.
 3. Refresh ASCII/SVG snapshots and capability decoders, paying particular attention to viewBox padding and structured-text fallback metadata.
 4. Install the matching native/WebAssembly artifact in each host and verify runtime-catalog identity, binding/transport API versions, and resource schemas before enabling optional outputs.
-5. Treat registry package versions and independent package workflows as separate publication events; do not infer alpha.6 availability from a lockstep workspace version alone.
+5. Treat registry package versions and independent package workflows as separate publication events; the workspace tag confirms only the workspace/crates.io/CLI release surfaces, not every alpha.6 package channel.

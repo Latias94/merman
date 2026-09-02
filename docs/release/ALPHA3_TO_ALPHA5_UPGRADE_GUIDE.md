@@ -6,7 +6,7 @@
 > before relying on an alpha.5 API or capability. The later Web and Node npm alpha.5 packages were
 > bootstrapped from verified workflow artifacts built at a reviewed commit newer than the workspace
 > tag and are not byte-identical tag artifacts. Those bootstrap registry artifacts do not expose npm
-> provenance attestations. Source integrations moving from alpha.5 to the prepared alpha.6 candidate must also apply the [alpha.5 to alpha.6 upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md), and final release benchmarks must be regenerated against the tagged release commit.
+> provenance attestations. Source integrations moving from alpha.5 to the published alpha.6 workspace release must also apply the [alpha.5 to alpha.6 upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md), and final release benchmarks must be regenerated against the tagged release commit.
 
 Alpha.5 is a broad prerelease upgrade, not a drop-in patch. It expands the Mermaid baseline to
 11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with observable capabilities, splits the browser SDK into standalone packages, and finalizes separate alpha.5 native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 1, the browser transport uses API 3, and Apple/Python use UniFFI API 3. Published artifacts may advance on their own channel; always compare the loaded runtime catalog before mixing a generated wrapper with a native library.
