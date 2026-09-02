@@ -535,7 +535,7 @@ fn initialize_flowchart_root_frame<'a>(
 
     let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
     let edge_group_class = if ctx.swimlane_direction.is_some() {
-        "edges edgePaths"
+        "edges edgePath"
     } else {
         "edgePaths"
     };
