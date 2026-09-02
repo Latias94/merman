@@ -72,6 +72,7 @@ The detailed contracts remain in **Breaking changes** below. Start with these mi
 ### Fixed
 
 - Made deterministic SVG text measurement font-family agnostic and grapheme-aware, centered Flowchart edge labels from emitted text bounds, preserved empty Pie canvases, and applied Flowchart `diagramPadding` directly for zero and fractional values.
+- Fixed native PNG, JPEG, and PDF text export to match font-family names with Unicode default case folding while preserving CSS family-stack order, so lowercase Mermaid defaults no longer bypass the requested font. #113
 - Restored `merman-rustdoc` browser-parity SVG defaults without duplicate visible fallback text; explicit `readable` and `resvg-safe` pipelines remain available. #81
 - Restored `roughr-merman` 0.12 source compatibility for Merman 0.7 while preserving operation-owned randomness for current releases.
 - Fixed Flutter Native Assets assembly across Linux, Windows, Apple dylib install names/signatures, and package verification; the source package no longer depends on duplicated legacy wrappers. #55 #56 #57
