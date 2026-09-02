@@ -148,8 +148,8 @@ block
         "expected shared Mermaid edge thickness CSS to reach visible Block edges: {svg}"
     );
     assert!(
-        svg.contains(r#"#merman .edgePaths .path{stroke:#112233;stroke-width:2.0px;}"#),
-        "expected Block edge-path CSS to use Mermaid's edgePaths contract: {svg}"
+        svg.contains(r#"#merman .edgePath .path{stroke:#112233;stroke-width:2.0px;}"#),
+        "expected Block edge-path CSS to use Mermaid's edgePath contract: {svg}"
     );
     assert!(
         svg.contains(r#"class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1""#),
