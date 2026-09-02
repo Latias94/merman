@@ -4,7 +4,7 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0a6] - Unreleased
+## [0.8.0a6] - 2026-09-02
 
 This section describes the prepared alpha.6 source candidate. The PyPI prerelease channel remains independently published and may still resolve an earlier package until the matching wheel and native artifact are authorized.
 

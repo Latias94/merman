@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.8.0-alpha.6] - Unreleased
+## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes the prepared alpha.6 source candidate. The pub.dev channel remains independently published and may still resolve alpha.5 until the alpha.6 package and native asset matrix are authorized.
 
