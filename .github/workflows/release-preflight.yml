@@ -161,7 +161,7 @@ jobs:
             --dependent merman-render=0.8.0-alpha.5
 
       - name: Prefetch locked Rust dependencies for offline metadata and license reports
-        run: cargo fetch --locked --target all
+        run: cargo fetch --locked --target
 
       - name: Verify artifact dependency boundaries
         run: python3 scripts/verify_artifact_dependency_closures.py
