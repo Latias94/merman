@@ -125,7 +125,7 @@ struct TombstonePattern {
     selectors: &'static [ThemeLegacyRouteSelector],
 }
 
-const EXPECTED_KTD23_TOMBSTONE_COUNT: usize = 56;
+const EXPECTED_KTD23_TOMBSTONE_COUNT: usize = 58;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -333,11 +333,19 @@ const GIT_GRAPH_TOMBSTONES: &[TombstonePattern] = &[
     ),
 ];
 
+const ER_TOMBSTONES: &[TombstonePattern] = &[pattern(
+    DiagramFamilyId::ER,
+    ThemeTarget::Title,
+    ThemeLegacyRouteFacet::Fill,
+    UNQUALIFIED_AND_DEFAULT,
+)];
+
 const TOMBSTONE_GROUPS: &[&[TombstonePattern]] = &[
     CLASS_TOMBSTONES,
     MINDMAP_TOMBSTONES,
     TREE_VIEW_TOMBSTONES,
     GIT_GRAPH_TOMBSTONES,
+    ER_TOMBSTONES,
 ];
 
 const fn pattern(
@@ -402,6 +410,18 @@ mod tests {
                     == ThemeLegacyRouteSelector::StaticVariant(ThemeVariant::Default)
                 && route.facet() == ThemeLegacyRouteFacet::Stroke
         }));
+        assert_eq!(
+            routes
+                .iter()
+                .filter(|route| {
+                    route.family_id() == DiagramFamilyId::ER
+                        && route.target() == ThemeTarget::Title
+                        && route.facet() == ThemeLegacyRouteFacet::Fill
+                })
+                .map(|route| route.selector())
+                .collect::<Vec<_>>(),
+            UNQUALIFIED_AND_DEFAULT,
+        );
     }
 
     #[test]

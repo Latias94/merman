@@ -9,8 +9,9 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
     let authorization = runner()
         .expect("KTD23 must compare current probes with the independent historical witness");
 
-    assert_eq!(authorization.retirement_count(), 56);
-    assert_eq!(authorization.value_probe_count(), 112);
+    assert_eq!(authorization.manifest_version(), 2);
+    assert_eq!(authorization.retirement_count(), 58);
+    assert_eq!(authorization.value_probe_count(), 116);
     assert_ne!(authorization.manifest_digest(), &[0; 32]);
     assert_ne!(authorization.historical_witness_digest(), &[0; 32]);
     assert_ne!(authorization.production_inventory_digest(), &[0; 32]);

@@ -659,6 +659,13 @@ impl ErEntityThemePlan {
                         ThemeVariant::Default,
                     ),
                 ),
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Title,
+                    TerminalVariantDomain::uniform(
+                        usize::from(diagram_title.is_some()),
+                        ThemeVariant::Default,
+                    ),
+                ),
             ],
             work_meter,
         )?;

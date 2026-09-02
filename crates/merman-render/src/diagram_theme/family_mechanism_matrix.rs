@@ -1194,7 +1194,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
 /// This is deliberately independent from KTD23's historical before/after witness. Editing the
 /// retirement manifest cannot change runtime classification, and editing this classification
 /// cannot authorize its own historical projection deletion.
-fn terminal_absent_legacy_paint_route(
+fn legacy_paint_route_without_writer_consumer(
     family: DiagramFamilyId,
     target: ThemeTarget,
     selector: FamilyThemeSelectorShape,
@@ -1252,10 +1252,10 @@ fn terminal_absent_legacy_paint_route(
                 && unqualified_or_default
                 && fill
         }
+        DiagramFamilyId::ER => target == ThemeTarget::Title && unqualified_or_default && fill,
         DiagramFamilyId::ARCHITECTURE
         | DiagramFamilyId::C4
         | DiagramFamilyId::CYNEFIN
-        | DiagramFamilyId::RAILROAD
         | DiagramFamilyId::SANKEY => target == ThemeTarget::Title && unqualified_or_default && fill,
         _ => false,
     }
@@ -1554,7 +1554,7 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if terminal_absent_legacy_paint_route(family, target, selector, facet) {
+    if legacy_paint_route_without_writer_consumer(family, target, selector, facet) {
         return FamilyThemeDisposition::Unsupported;
     }
     if family == DiagramFamilyId::CLASS
@@ -2204,7 +2204,7 @@ fn legacy_paint_variants(
         },
         Family::ER => match (target, channel) {
             (Target::Relation, Fill | Stroke) => DEFAULT,
-            (Target::Text | Target::Title, Fill) => DEFAULT,
+            (Target::Text, Fill) => DEFAULT,
             (Target::Table, Fill) => ODD_EVEN,
             _ => &[],
         },
@@ -6002,7 +6002,7 @@ mod tests {
             DiagramFamilyId::ARCHITECTURE,
             DiagramFamilyId::C4,
             DiagramFamilyId::CYNEFIN,
-            DiagramFamilyId::RAILROAD,
+            DiagramFamilyId::ER,
             DiagramFamilyId::SANKEY,
         ] {
             for paint_kind in [
@@ -6023,11 +6023,12 @@ mod tests {
                 }
             }
 
-            let expected_text_disposition = if family == DiagramFamilyId::ARCHITECTURE {
-                FamilyThemeDisposition::TypedAdapter
-            } else {
-                FamilyThemeDisposition::LegacyCompatibility
-            };
+            let expected_text_disposition =
+                if matches!(family, DiagramFamilyId::ARCHITECTURE | DiagramFamilyId::ER) {
+                    FamilyThemeDisposition::TypedAdapter
+                } else {
+                    FamilyThemeDisposition::LegacyCompatibility
+                };
             assert_eq!(
                 classify_rule_facet(
                     family,

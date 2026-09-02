@@ -1999,10 +1999,7 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
             ThemeStylePatch::default().with_stroke(CanvasPaint::Pattern(pattern)),
         ),
     ];
-    let legacy_cases = [
-        ThemeRule::new(ThemeTarget::Relation, fill()),
-        ThemeRule::new(ThemeTarget::Title, fill()),
-    ];
+    let legacy_cases = [ThemeRule::new(ThemeTarget::Relation, fill())];
 
     for rule in unsupported_cases {
         let theme = er_relation_rules_theme([rule]);
@@ -2045,6 +2042,77 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
             other => panic!("expected ER legacy compatibility residual, got {other}"),
         }
     }
+}
+
+#[test]
+fn er_title_fill_is_unsupported_and_reconciles_title_presence() {
+    let theme = er_relation_rules_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#654321").expect("valid ER title fill")),
+    )]);
+    let titled_source = r#"---
+title: ER title
+---
+erDiagram
+  A ||--o{ B : owns
+"#;
+
+    let best_effort = try_prepare_er_family_with_theme_and_engine_requirement(
+        titled_source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("prepare ER title fill in best-effort mode")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render ER title fill in best-effort mode");
+    assert!(best_effort.svg().contains(r#"class="erDiagramTitleText""#));
+    let evidence =
+        merman_render::__private::family_evidence(best_effort.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let strict_result = try_prepare_er_family_with_theme_and_engine_requirement(
+        titled_source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .and_then(|artifact| {
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    });
+    let strict_error = match strict_result {
+        Ok(_) => panic!("strict ER title fill must fail closed"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        strict_error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::ER, 1))
+    );
+
+    let untitled_source = "erDiagram\n  A ||--o{ B : owns\n";
+    let untitled = try_prepare_er_family_with_theme_and_engine_requirement(
+        untitled_source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("ER title fill without a title is not applicable")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render ER without a title");
+    let untitled_evidence =
+        merman_render::__private::family_evidence(untitled.into_completion().report());
+    assert_eq!(untitled_evidence.required_count(), 1);
+    assert_eq!(untitled_evidence.accounted_count(), 1);
+    assert_eq!(untitled_evidence.applied_count(), 0);
+    assert_eq!(untitled_evidence.not_applicable_count(), 1);
+    assert_eq!(untitled_evidence.theme_residual_count(), 0);
+    assert_eq!(untitled_evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

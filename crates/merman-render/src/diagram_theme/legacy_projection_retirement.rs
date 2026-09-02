@@ -344,7 +344,7 @@ struct LegacyProjectionRetirementPattern {
     former_projections: &'static [ThemeLegacyProjectionKey],
 }
 
-const EXPECTED_RETIREMENT_COUNT: usize = 56;
+const EXPECTED_RETIREMENT_COUNT: usize = 58;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -652,11 +652,20 @@ const GIT_GRAPH_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
     ),
 ];
 
+const ER_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[pattern(
+    DiagramFamilyId::ER,
+    ThemeTarget::Title,
+    ThemeLegacyRouteFacet::Fill,
+    UNQUALIFIED_AND_DEFAULT,
+    TITLE_FILL,
+)];
+
 const RETIREMENT_PATTERN_GROUPS: &[&[LegacyProjectionRetirementPattern]] = &[
     CLASS_RETIREMENT_PATTERNS,
     MINDMAP_RETIREMENT_PATTERNS,
     TREE_VIEW_RETIREMENT_PATTERNS,
     GIT_GRAPH_RETIREMENT_PATTERNS,
+    ER_RETIREMENT_PATTERNS,
 ];
 
 const fn projection(
@@ -924,6 +933,33 @@ mod tests {
             descriptor.id().family_id() != DiagramFamilyId::CLASS
                 || descriptor.id().target() != ThemeTarget::Title
         }));
+    }
+
+    #[test]
+    fn er_title_fill_is_in_the_v2_ktd23_inventory() {
+        let descriptors = legacy_projection_retirement_inventory().expect("valid KTD23 inventory");
+        let er_title = descriptors
+            .iter()
+            .filter(|descriptor| {
+                descriptor.id().family_id() == DiagramFamilyId::ER
+                    && descriptor.id().target() == ThemeTarget::Title
+                    && descriptor.id().facet() == ThemeLegacyRouteFacet::Fill
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(er_title.len(), 2);
+        assert_eq!(
+            er_title
+                .iter()
+                .map(|descriptor| descriptor.id().selector())
+                .collect::<Vec<_>>(),
+            UNQUALIFIED_AND_DEFAULT,
+        );
+        assert!(
+            er_title
+                .iter()
+                .all(|descriptor| { descriptor.former_projections() == TITLE_FILL })
+        );
     }
 
     #[test]

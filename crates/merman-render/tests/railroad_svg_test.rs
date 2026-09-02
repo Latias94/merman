@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
-    ThemeTextStyle, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -121,6 +122,21 @@ fn railroad_typography_theme(font_stack: FontStack, font_size_px: f32) -> Diagra
             TypographySpec::default().with_family_style(DiagramFamilyId::RAILROAD, typography),
         ))
         .expect("compile Railroad typography theme")
+}
+
+fn railroad_title_fill_theme(variant: Option<ThemeVariant>) -> DiagramTheme {
+    let mut rule = ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#c026d3").expect("valid Railroad title fill")),
+    )
+    .for_family(DiagramFamilyId::RAILROAD);
+    if let Some(variant) = variant {
+        rule = rule.with_variant(variant);
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Railroad title theme")
 }
 
 fn try_render_railroad_source_with_theme(
@@ -674,4 +690,67 @@ fn railroad_typed_typography_is_not_applicable_for_an_empty_diagram() {
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+}
+
+#[test]
+fn railroad_title_fill_reaches_rule_name_through_legacy_compatibility() {
+    for (case, variant) in [
+        ("unqualified", None),
+        ("default", Some(ThemeVariant::Default)),
+    ] {
+        let theme = railroad_title_fill_theme(variant);
+        let best_effort = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort);
+        let diagram_id = format!("railroad-title-fill-{case}");
+        let (_, rendered) = try_render_railroad_source_with_theme(
+            RAILROAD_SOURCE,
+            &theme,
+            Engine::new(),
+            &best_effort,
+            &diagram_id,
+        )
+        .expect("BestEffort preserves the Railroad title compatibility route");
+
+        let style = railroad_style(rendered.svg());
+        let rule_name_body = railroad_rule_body(style, &diagram_id, ".railroad-rule-name");
+        assert!(
+            rule_name_body.contains("fill:#c026d3;"),
+            "Railroad rule-name terminal did not receive {case} title.fill: {rule_name_body}"
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Railroad SVG");
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class") == Some("railroad-rule-name")
+                && node.text() == Some("expr =")
+        }));
+        drop(document);
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 0, "case={case}");
+        assert_eq!(evidence.accounted_count(), 0, "case={case}");
+        assert_eq!(evidence.applied_count(), 0, "case={case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
+        assert_eq!(evidence.compatibility_residual_count(), 1, "case={case}");
+
+        let strict = try_render_railroad_source_with_theme(
+            RAILROAD_SOURCE,
+            &theme,
+            Engine::new(),
+            &portable_railroad_environment(),
+            &format!("railroad-title-fill-{case}-strict"),
+        );
+        match strict {
+            Ok(_) => panic!("strict Railroad {case} title.fill must retain compatibility"),
+            Err(merman_render::Error::LegacyFamilyThemeCompatibility {
+                family_id,
+                residual_count,
+            }) => {
+                assert_eq!(family_id, DiagramFamilyId::RAILROAD);
+                assert_eq!(residual_count, 1);
+            }
+            Err(error) => panic!("expected Railroad compatibility residual, got {error}"),
+        }
+    }
 }

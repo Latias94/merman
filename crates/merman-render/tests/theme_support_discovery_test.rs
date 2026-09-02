@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 30);
+    assert_eq!(support.claim_revision(), 31);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -216,7 +216,7 @@ fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
         DiagramFamilyId::ARCHITECTURE,
         DiagramFamilyId::C4,
         DiagramFamilyId::CYNEFIN,
-        DiagramFamilyId::RAILROAD,
+        DiagramFamilyId::ER,
         DiagramFamilyId::SANKEY,
     ] {
         let query = ThemeSupportQueryV1::known(
@@ -239,6 +239,27 @@ fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
             assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
         }
     }
+}
+
+#[test]
+fn railroad_title_paint_remains_a_conditional_compatibility_surface() {
+    let query = ThemeSupportQueryV1::known(
+        DiagramFamilyId::RAILROAD.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::Title.id(),
+        ThemeRuleFacetV1::Fill,
+    );
+
+    let support = describe_theme_support(&query);
+
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        support.reason_ids(),
+        [
+            "theme-support.legacy-compatibility-only",
+            "theme-support.public-value-domain-partial",
+        ]
+    );
 }
 
 #[test]

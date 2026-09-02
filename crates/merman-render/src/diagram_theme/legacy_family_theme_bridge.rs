@@ -869,10 +869,6 @@ fn compile_er_family(builder: &mut OverlayBuilder, reader: &FamilyStyleReader) -
         ],
     );
     contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::TitleFill.contribution_id(),
-        [("titleColor", reader.text_fill(ThemeTarget::Title))],
-    );
-    contributions.add_theme_variables(
         ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
         [("lineColor", reader.stroke_or_fill(ThemeTarget::Relation))],
     );
@@ -2139,6 +2135,32 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_er_title_fill_has_no_legacy_projection() {
+        const CONTRIBUTION_ID: &str = "merman.legacy-family-theme.v1.er.title.fill";
+
+        for variant in [None, Some(ThemeVariant::Default)] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(solid("#334155")),
+            )
+            .for_family(DiagramFamilyId::ER);
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(DiagramFamilyId::ER);
+
+            assert!(artifact.overlay.is_empty(), "variant={variant:?}");
+            assert!(artifact.contribution_ids.is_empty(), "variant={variant:?}");
+            assert!(
+                !bridge.owns_contribution_id(CONTRIBUTION_ID),
+                "variant={variant:?}"
+            );
+        }
+    }
+
+    #[test]
     fn er_base_typography_is_property_local() {
         const SOURCE: &str = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
 
@@ -2293,7 +2315,6 @@ mod tests {
             DiagramFamilyId::ARCHITECTURE,
             DiagramFamilyId::C4,
             DiagramFamilyId::CYNEFIN,
-            DiagramFamilyId::RAILROAD,
             DiagramFamilyId::SANKEY,
         ] {
             for variant in [None, Some(ThemeVariant::Default)] {
@@ -2339,6 +2360,31 @@ mod tests {
                     "{family} must not recreate the terminal-less title projection for variant={variant:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn railroad_title_fill_remains_a_real_legacy_projection() {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+            )
+            .for_family(DiagramFamilyId::RAILROAD);
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(DiagramFamilyId::RAILROAD);
+
+            assert!(!artifact.overlay.is_empty(), "variant={variant:?}");
+            assert!(
+                artifact
+                    .contribution_ids
+                    .contains("merman.legacy-family-theme.v1.railroad.title.fill"),
+                "variant={variant:?}"
+            );
         }
     }
 
