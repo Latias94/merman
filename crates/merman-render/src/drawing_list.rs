@@ -4,6 +4,8 @@
 //! internal value. SVG-only structure stays beside it so a native host never has to understand
 //! DOM details, while the SVG serializer can continue to preserve Mermaid's source-backed shape.
 
+mod flowchart;
+
 use crate::environment::RenderSession;
 use crate::family::{BuiltinFamilyArtifact, RenderFamilyKind};
 use crate::model::ErrorDiagramLayout;
@@ -23,6 +25,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use svgtypes::{PathParser, PathSegment as SvgPathSegment};
 
+use flowchart::{FlowchartSvgBody, build_flowchart_document};
+
 /// The private SVG projection kept beside the public renderer-neutral document.
 #[derive(Debug, Clone)]
 pub(crate) struct SvgStructureSidecar {
@@ -33,6 +37,7 @@ pub(crate) struct SvgStructureSidecar {
 #[derive(Debug, Clone)]
 pub(crate) enum SvgStructureBody {
     Error(ErrorSvgBody),
+    Flowchart(FlowchartSvgBody),
 }
 
 /// A complete canonical render document.
@@ -45,11 +50,15 @@ pub(crate) struct RenderDocument {
 impl RenderDocument {
     pub(crate) fn into_public(self) -> DrawingListDocument {
         let SvgStructureSidecar { family, body } = &self.svg;
-        debug_assert!(matches!(
-            (family, body),
-            (RenderFamilyKind::Error, SvgStructureBody::Error(error))
-                if !error.version_text.is_empty()
-        ));
+        debug_assert!(match (family, body) {
+            (RenderFamilyKind::Error, SvgStructureBody::Error(error)) => {
+                !error.version_text.is_empty()
+            }
+            (RenderFamilyKind::Flowchart, SvgStructureBody::Flowchart(flowchart)) => {
+                !flowchart.diagram_type.is_empty()
+            }
+            _ => false,
+        });
         self.public
     }
 }
@@ -107,6 +116,9 @@ pub(crate) fn build_for_family(
     match family {
         BuiltinFamilyArtifact::Error(pair) => {
             build_error_document(pair.layout(), metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Flowchart(artifact) => {
+            build_flowchart_document(artifact, metadata, policy, session)
         }
         _ => Err(Error::DrawingListUnavailable {
             family: family.kind().as_str().to_string(),

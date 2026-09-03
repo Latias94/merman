@@ -35,6 +35,52 @@ fn error_diagram_has_a_complete_renderer_neutral_output() {
 }
 
 #[test]
+fn flowchart_emits_typed_routes_shapes_and_semantics() {
+    let source = r#"flowchart TD
+        classDef hot fill:#ffe4e6,stroke:#be123c,stroke-width:2px,color:#881337
+        A[Parse]:::hot -->|next| B{Layout}
+        B --> C([Done])
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Flowchart should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    assert_eq!(output.document().viewport.bounds.width > 0.0, true);
+    assert!(
+        output
+            .document()
+            .resources
+            .iter()
+            .any(|resource| matches!(resource, merman_display_list::DrawingResource::Path(_)))
+    );
+    assert!(output.document().commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { .. }
+    )));
+    assert!(
+        output
+            .document()
+            .semantics
+            .iter()
+            .any(|semantic| semantic.role == merman_display_list::SemanticRole::Node)
+    );
+    assert!(
+        output
+            .document()
+            .semantics
+            .iter()
+            .any(|semantic| semantic.role == merman_display_list::SemanticRole::Edge)
+    );
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
