@@ -159,6 +159,135 @@
           ]
         },
         {
+          "type": "barDataLabel",
+          "groupTexts": [
+            "plot",
+            "bar-plot-0"
+          ],
+          "data": [
+            {
+              "text": "5000",
+              "x": 106.8,
+              "y": 497.014,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "6000",
+              "x": 176.818,
+              "y": 424.129,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "7500",
+              "x": 246.836,
+              "y": 314.8,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "8200",
+              "x": 316.855,
+              "y": 263.78,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "9500",
+              "x": 386.873,
+              "y": 169.029,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "10500",
+              "x": 456.891,
+              "y": 96.143,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "11000",
+              "x": 526.909,
+              "y": 59.7,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "10200",
+              "x": 596.927,
+              "y": 118.009,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "9200",
+              "x": 666.945,
+              "y": 190.894,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "8500",
+              "x": 736.964,
+              "y": 241.914,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "7000",
+              "x": 806.982,
+              "y": 351.243,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "6000",
+              "x": 877.0,
+              "y": 424.129,
+              "fill": "#131300",
+              "fontSize": 12.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            }
+          ]
+        },
+        {
           "type": "path",
           "groupTexts": [
             "plot",

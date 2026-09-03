@@ -3,66 +3,6 @@ use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 
 // XYChart diagram SVG renderer implementation (split from parity.rs).
 
-/// Mermaid uses JavaScript's `String#length` for XYChart bar labels, which counts UTF-16 code
-/// units rather than Unicode scalar values.
-fn javascript_string_length(text: &str) -> f64 {
-    text.encode_utf16().count() as f64
-}
-
-/// Computes the result of Mermaid's one-pixel decrement loop without iterating once per pixel.
-///
-/// The upstream renderer decrements a candidate font size until it fits. That is observable for
-/// ordinary dimensions, but a finite value such as `1e308` cannot make numerical progress when
-/// subtracting one, so the browser algorithm never terminates. The fit predicates are monotonic;
-/// solving their upper bound directly preserves the same discrete candidate for normal values and
-/// makes extreme finite dimensions terminate in constant time.
-fn font_size_after_unit_decrements(initial: f64, maximum_that_fits: f64) -> f64 {
-    if !(initial.is_finite() && initial > 0.0) || maximum_that_fits.is_nan() {
-        return 0.0;
-    }
-    if maximum_that_fits >= initial {
-        return initial;
-    }
-    if maximum_that_fits <= 0.0 {
-        return 0.0;
-    }
-
-    let decrements = (initial - maximum_that_fits).ceil();
-    let candidate = initial - decrements;
-    if candidate.is_finite() && candidate > 0.0 {
-        candidate
-    } else {
-        0.0
-    }
-}
-
-fn horizontal_label_font_size(item_width: f64, label: &str, initial: f64, inset_px: f64) -> f64 {
-    let denominator = javascript_string_length(label) * 0.7;
-    let maximum_that_fits = if denominator > 0.0 {
-        (item_width - inset_px) / denominator
-    } else {
-        f64::INFINITY
-    };
-    font_size_after_unit_decrements(initial, maximum_that_fits)
-}
-
-fn vertical_label_font_size(
-    item_width: f64,
-    item_height: f64,
-    label: &str,
-    initial: f64,
-    y_offset: f64,
-) -> f64 {
-    let denominator = javascript_string_length(label) * 0.7;
-    let horizontal_maximum = if denominator > 0.0 {
-        item_width / denominator
-    } else {
-        f64::INFINITY
-    };
-    let maximum_that_fits = horizontal_maximum.min(item_height - y_offset);
-    font_size_after_unit_decrements(initial, maximum_that_fits)
-}
-
 pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
     model: &XyChartDiagramRenderModel,
@@ -122,14 +62,6 @@ pub(crate) fn render_xychart_diagram_svg(
         let _ = write!(out, "</{}>", n.tag);
     }
 
-    fn text_anchor(horizontal_pos: &str) -> &'static str {
-        match horizontal_pos {
-            "left" => "start",
-            "right" => "end",
-            _ => "middle",
-        }
-    }
-
     fn ensure_group_path<'a>(
         arena: &mut Vec<Node>,
         groups_by_path: &mut FxHashMap<(usize, &'a str), usize>,
@@ -153,14 +85,6 @@ pub(crate) fn render_xychart_diagram_svg(
         parent
     }
 
-    fn dominant_baseline(vertical_pos: &str) -> &'static str {
-        if vertical_pos == "top" {
-            "text-before-edge"
-        } else {
-            "middle"
-        }
-    }
-
     fn fmt_xy(v: f64) -> String {
         if v.is_nan() {
             return "NaN".to_string();
@@ -169,16 +93,6 @@ pub(crate) fn render_xychart_diagram_svg(
             return "NaN".to_string();
         }
         fmt_string(v)
-    }
-
-    fn data_label_color(effective_config: &serde_json::Value) -> String {
-        let configured = config_string(
-            effective_config,
-            &["themeVariables", "xyChart", "dataLabelColor"],
-        );
-        configured
-            .or_else(|| config_string(effective_config, &["themeVariables", "primaryTextColor"]))
-            .unwrap_or_else(|| "black".to_string())
     }
 
     let diagram_id = options.diagram_id_or("xychart");
@@ -194,15 +108,6 @@ pub(crate) fn render_xychart_diagram_svg(
         .filter(|description| !description.trim().is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let data_label_config = if layout.show_data_label {
-        Some((
-            layout.show_data_label_outside_bar,
-            data_label_color(_effective_config),
-        ))
-    } else {
-        None
-    };
-
     let mut out = String::new();
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
     let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
@@ -279,115 +184,6 @@ pub(crate) fn render_xychart_diagram_svg(
                     n.attr("stroke-width", fmt_xy(r.stroke_width));
                     push_child(&mut arena, parent, n);
                 }
-
-                // Optional bar data labels (Mermaid emits these in the renderer, not the DB).
-                if let Some((show_data_label_outside_bar, data_label_color)) = &data_label_config {
-                    let bar_data_label_scale_factor = 0.7;
-                    let bar_data_label_inset_px = 10.0;
-
-                    #[derive(Clone)]
-                    struct BarItem<'a> {
-                        rect: &'a crate::model::XyChartRectData,
-                        label: &'a str,
-                    }
-
-                    let mut valid_items: Vec<BarItem<'_>> = Vec::with_capacity(data.len());
-                    for (idx, r) in data.iter().enumerate() {
-                        let Some(label) = layout.label_data.get(idx) else {
-                            continue;
-                        };
-                        if r.width > 0.0 && r.height > 0.0 {
-                            valid_items.push(BarItem { rect: r, label });
-                        }
-                    }
-
-                    if !valid_items.is_empty() {
-                        if layout.chart_orientation == "horizontal" {
-                            let mut min_font = f64::INFINITY;
-                            for item in &valid_items {
-                                let fs = horizontal_label_font_size(
-                                    item.rect.width,
-                                    item.label,
-                                    item.rect.height * bar_data_label_scale_factor,
-                                    bar_data_label_inset_px,
-                                );
-                                min_font = min_font.min(fs);
-                            }
-                            let uniform = if min_font.is_finite() { min_font } else { 0.0 }
-                                .floor()
-                                .max(0.0);
-                            for item in &valid_items {
-                                let mut t = node("text");
-                                let x = if *show_data_label_outside_bar {
-                                    item.rect.x + item.rect.width + bar_data_label_inset_px
-                                } else {
-                                    item.rect.x + item.rect.width - bar_data_label_inset_px
-                                };
-                                t.attr("x", fmt_xy(x));
-                                t.attr("y", fmt_xy(item.rect.y + item.rect.height / 2.0));
-                                t.attr(
-                                    "text-anchor",
-                                    if *show_data_label_outside_bar {
-                                        "start"
-                                    } else {
-                                        "end"
-                                    },
-                                );
-                                t.attr("dominant-baseline", "middle");
-                                t.attr("fill", escape_xml(data_label_color));
-                                t.attr("font-size", format!("{}px", fmt_xy(uniform)));
-                                t.text = Some(escape_xml(item.label));
-                                push_child(&mut arena, parent, t);
-                            }
-                        } else {
-                            let y_offset = bar_data_label_inset_px;
-                            let mut min_font = f64::INFINITY;
-                            for item in &valid_items {
-                                let denominator = javascript_string_length(item.label)
-                                    * bar_data_label_scale_factor;
-                                let initial = if denominator <= 0.0 {
-                                    0.0
-                                } else {
-                                    item.rect.width / denominator
-                                };
-                                let fs = vertical_label_font_size(
-                                    item.rect.width,
-                                    item.rect.height,
-                                    item.label,
-                                    initial,
-                                    y_offset,
-                                );
-                                min_font = min_font.min(fs);
-                            }
-                            let uniform = if min_font.is_finite() { min_font } else { 0.0 }
-                                .floor()
-                                .max(0.0);
-                            for item in &valid_items {
-                                let mut t = node("text");
-                                t.attr("x", fmt_xy(item.rect.x + item.rect.width / 2.0));
-                                let y = if *show_data_label_outside_bar {
-                                    item.rect.y - y_offset
-                                } else {
-                                    item.rect.y + y_offset
-                                };
-                                t.attr("y", fmt_xy(y));
-                                t.attr("text-anchor", "middle");
-                                t.attr(
-                                    "dominant-baseline",
-                                    if *show_data_label_outside_bar {
-                                        "auto"
-                                    } else {
-                                        "hanging"
-                                    },
-                                );
-                                t.attr("fill", escape_xml(data_label_color));
-                                t.attr("font-size", format!("{}px", fmt_xy(uniform)));
-                                t.text = Some(escape_xml(item.label));
-                                push_child(&mut arena, parent, t);
-                            }
-                        }
-                    }
-                }
             }
             crate::model::XyChartDrawableElem::Text { group_texts, data } => {
                 if data.is_empty() {
@@ -401,8 +197,14 @@ pub(crate) fn render_xychart_diagram_svg(
                     n.attr("y", "0");
                     n.attr("fill", escape_xml(&t.fill));
                     n.attr("font-size", fmt_string(t.font_size));
-                    n.attr("dominant-baseline", dominant_baseline(&t.vertical_pos));
-                    n.attr("text-anchor", text_anchor(&t.horizontal_pos));
+                    n.attr(
+                        "dominant-baseline",
+                        crate::xychart::xychart_text_baseline(&t.vertical_pos).as_svg(),
+                    );
+                    n.attr(
+                        "text-anchor",
+                        crate::xychart::xychart_text_anchor(&t.horizontal_pos).as_svg(),
+                    );
                     let rot = t.rotation;
                     n.attr(
                         "transform",
@@ -413,6 +215,30 @@ pub(crate) fn render_xychart_diagram_svg(
                             fmt_xy(rot)
                         ),
                     );
+                    n.text = Some(escape_xml(&t.text));
+                    push_child(&mut arena, parent, n);
+                }
+            }
+            crate::model::XyChartDrawableElem::BarDataLabel { group_texts, data } => {
+                if data.is_empty() {
+                    continue;
+                }
+                let parent = ensure_group_path(&mut arena, &mut groups_by_path, group_texts);
+
+                for t in data {
+                    let mut n = node("text");
+                    n.attr("x", fmt_xy(t.x));
+                    n.attr("y", fmt_xy(t.y));
+                    n.attr(
+                        "text-anchor",
+                        crate::xychart::xychart_text_anchor(&t.horizontal_pos).as_svg(),
+                    );
+                    n.attr(
+                        "dominant-baseline",
+                        crate::xychart::xychart_text_baseline(&t.vertical_pos).as_svg(),
+                    );
+                    n.attr("fill", escape_xml(&t.fill));
+                    n.attr("font-size", format!("{}px", fmt_xy(t.font_size)));
                     n.text = Some(escape_xml(&t.text));
                     push_child(&mut arena, parent, n);
                 }
@@ -440,45 +266,4 @@ pub(crate) fn render_xychart_diagram_svg(
     out.push_str("</svg>\n");
     options.checkpoint_emit()?;
     root_document.complete(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn upstream_decrement(initial: f64, maximum_that_fits: f64) -> f64 {
-        let mut font_size = initial;
-        while font_size > maximum_that_fits && font_size > 0.0 {
-            font_size -= 1.0;
-        }
-        font_size
-    }
-
-    #[test]
-    fn closed_form_font_sizing_matches_mermaid_for_normal_dimensions() {
-        for (initial, maximum_that_fits) in [(10.2, 8.0), (10.0, 8.8), (8.0, 8.0), (0.5, 0.0)] {
-            assert_eq!(
-                font_size_after_unit_decrements(initial, maximum_that_fits)
-                    .floor()
-                    .max(0.0),
-                upstream_decrement(initial, maximum_that_fits)
-                    .floor()
-                    .max(0.0),
-            );
-        }
-    }
-
-    #[test]
-    fn huge_finite_bar_dimensions_complete_without_a_decrement_loop() {
-        let font_size = horizontal_label_font_size(1e308, "123", 7e307, 10.0);
-
-        assert!(font_size.is_finite());
-        assert!(font_size > 0.0);
-    }
-
-    #[test]
-    fn bar_label_length_uses_javascript_utf16_code_units() {
-        assert_eq!(javascript_string_length("A"), 1.0);
-        assert_eq!(javascript_string_length("\u{1F469}\u{200D}\u{1F4BB}"), 5.0);
-    }
 }

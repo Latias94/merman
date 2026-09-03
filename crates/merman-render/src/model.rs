@@ -476,6 +476,12 @@ pub enum XyChartDrawableElem {
         group_texts: Vec<String>,
         data: Vec<XyChartTextData>,
     },
+    #[serde(rename = "barDataLabel")]
+    BarDataLabel {
+        #[serde(rename = "groupTexts")]
+        group_texts: Vec<String>,
+        data: Vec<XyChartTextData>,
+    },
     #[serde(rename = "path")]
     Path {
         #[serde(rename = "groupTexts")]

@@ -159,6 +159,135 @@
           ]
         },
         {
+          "type": "barDataLabel",
+          "groupTexts": [
+            "plot",
+            "bar-plot-0"
+          ],
+          "data": [
+            {
+              "text": "5000",
+              "x": 100.8,
+              "y": 387.643,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "6000",
+              "x": 153.727,
+              "y": 332.986,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "7500",
+              "x": 206.655,
+              "y": 251.0,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "8200",
+              "x": 259.582,
+              "y": 212.74,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "9500",
+              "x": 312.509,
+              "y": 141.686,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "10500",
+              "x": 365.436,
+              "y": 87.029,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "11000",
+              "x": 418.364,
+              "y": 59.7,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "10200",
+              "x": 471.291,
+              "y": 103.426,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "9200",
+              "x": 524.218,
+              "y": 158.083,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "8500",
+              "x": 577.145,
+              "y": 196.343,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "7000",
+              "x": 630.073,
+              "y": 278.329,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "6000",
+              "x": 683.0,
+              "y": 332.986,
+              "fill": "#131300",
+              "fontSize": 9.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            }
+          ]
+        },
+        {
           "type": "path",
           "groupTexts": [
             "bottom-axis",

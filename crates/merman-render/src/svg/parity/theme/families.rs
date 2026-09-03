@@ -32,9 +32,9 @@ impl<'a> PresentationTheme<'a> {
             .optional_nested_color("xyChart", "backgroundColor")
             .or_else(|| self.raw.optional_color("background"))
             .unwrap_or_else(|| "white".to_string());
-        let primary_text = self
-            .raw
-            .optional_color("primaryTextColor")
+        let configured_primary_text = self.raw.optional_color("primaryTextColor");
+        let primary_text = configured_primary_text
+            .clone()
             .unwrap_or_else(|| "#131300".to_string());
 
         XyChartTheme {
@@ -43,6 +43,11 @@ impl<'a> PresentationTheme<'a> {
                 .raw
                 .optional_nested_color("xyChart", "titleColor")
                 .unwrap_or_else(|| primary_text.clone()),
+            data_label_color: self
+                .raw
+                .optional_nested_color("xyChart", "dataLabelColor")
+                .or(configured_primary_text)
+                .unwrap_or_else(|| "black".to_string()),
             legend_text_color: self
                 .raw
                 .optional_nested_color("xyChart", "legendTextColor")

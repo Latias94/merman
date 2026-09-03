@@ -69,6 +69,45 @@
           ]
         },
         {
+          "type": "barDataLabel",
+          "groupTexts": [
+            "plot",
+            "bar-plot-0"
+          ],
+          "data": [
+            {
+              "text": "5000",
+              "x": 152.8,
+              "y": 394.475,
+              "fill": "#131300",
+              "fontSize": 44.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "6000",
+              "x": 391.9,
+              "y": 346.65,
+              "fill": "#131300",
+              "fontSize": 44.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            },
+            {
+              "text": "7500",
+              "x": 631.0,
+              "y": 274.913,
+              "fill": "#131300",
+              "fontSize": 44.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            }
+          ]
+        },
+        {
           "type": "path",
           "groupTexts": [
             "bottom-axis",

@@ -153,6 +153,7 @@ pub(crate) struct PieDrawingTheme {
 pub(crate) struct XyChartTheme {
     pub(crate) background_color: String,
     pub(crate) title_color: String,
+    pub(crate) data_label_color: String,
     pub(crate) legend_text_color: String,
     pub(crate) x_axis_title_color: String,
     pub(crate) x_axis_label_color: String,
