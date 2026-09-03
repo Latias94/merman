@@ -1548,6 +1548,84 @@ data ItemAddedData {
 }
 
 #[test]
+fn cynefin_emits_domains_boundaries_transitions_and_overflow_items() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"cynefin-beta
+  title Team Practices
+  clear
+    "Runbook"
+  complex
+    "Retrospective"
+  confusion
+    "A"
+    "B"
+    "C"
+    "D"
+  clear --> complex : "Probe"
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Cynefin should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert_eq!(document.viewport.bounds.width, 880.0);
+    assert_eq!(document.viewport.bounds.height, 680.0);
+    for path_id in [
+        "cynefin.boundary.fold",
+        "cynefin.boundary.horizontal",
+        "cynefin.boundary.cliff",
+        "cynefin.domain.confusion.background",
+        "cynefin.transition.0.line",
+        "cynefin.transition.0.arrowhead",
+    ] {
+        assert!(
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+            )),
+            "missing path {path_id}"
+        );
+    }
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "cynefin.boundary.fold"
+                && path.segments.iter().any(|segment| matches!(
+                    segment,
+                    merman_display_list::PathSegment::CubicTo { .. }
+                ))
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::SetOpacity { opacity }
+            if (*opacity - 0.4).abs() <= f64::EPSILON
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "+1 more"
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Probe" && run.baseline == merman_display_list::TextBaseline::Alphabetic
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Label
+            && semantic.title.as_deref() == Some("Team Practices")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.description.as_deref() == Some("clear → complex")
+    }));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
