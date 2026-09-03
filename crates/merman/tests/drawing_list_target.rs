@@ -202,10 +202,70 @@ fn state_rejects_roughjs_shapes_instead_of_substituting_regular_geometry() {
 }
 
 #[test]
+fn pie_emits_typed_donut_slices_static_highlight_and_legend() {
+    let source = r#"%%{init: {"pie": {"donutHole": 0.4, "highlightSlice": "Alpha"}}}%%
+pie showData title Releases
+    "Stable" : 3
+    "Alpha" : 1
+"#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Pie should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "pie.slice.1.shape"
+                && path.segments.iter().any(|segment| matches!(
+                    segment,
+                    merman_display_list::PathSegment::ArcTo { sweep_clockwise: false, .. }
+                ))
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::ConcatTransform { transform }
+            if (transform.a - 1.05).abs() <= f64::EPSILON
+                && (transform.d - 1.05).abs() <= f64::EPSILON
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Alpha [1]"
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Alpha")
+    }));
+}
+
+#[test]
+fn pie_rejects_hover_highlighting_without_an_interaction_contract() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"%%{init: {"pie": {"highlightSlice": "hover"}}}%%
+pie
+    "A" : 1
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("hover highlighting must not disappear from DrawingList output");
+    assert!(error.to_string().contains("interaction state machine"));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
-            "pie\n    \"A\": 1",
+            "packet-beta\n    0-7: \"Header\"",
             OperationControl::new(),
             DrawingListRequest::default(),
         ))
