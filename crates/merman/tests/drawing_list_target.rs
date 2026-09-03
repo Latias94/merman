@@ -548,6 +548,190 @@ fn radar_emits_grids_series_axes_legends_and_title_with_separate_fill_opacity() 
 }
 
 #[test]
+fn ishikawa_emits_classic_fishbone_geometry_markers_labels_and_semantics() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r##"---
+config:
+  fontSize: 18px
+  themeVariables:
+    lineColor: '#008800'
+    mainBkg: '#ffffff'
+    textColor: '#111111'
+---
+ishikawa-beta
+    Blurry Photo
+    Process
+        Out of focus
+        Shutter speed too slow
+    User
+        Shaky hands
+"##,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("classic Ishikawa should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "ishikawa.head.shape"
+                && path.segments.iter().any(|segment| matches!(
+                    segment,
+                    merman_display_list::PathSegment::QuadTo { .. }
+                ))
+    )));
+    for path_id in [
+        "ishikawa.branch.0.upper.line.marker.start",
+        "ishikawa.branch.0.upper.cause.0.line.marker.start",
+        "ishikawa.branch.0.upper.label-box",
+    ] {
+        assert!(document.resources.iter().any(|resource| matches!(
+            resource,
+            merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+        )));
+    }
+
+    let background_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "ishikawa.background"
+            )
+        })
+        .expect("Ishikawa root background should be drawn");
+    let spine_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "ishikawa.spine.path"
+            )
+        })
+        .expect("Ishikawa spine should be drawn");
+    assert!(background_command < spine_command);
+
+    let branch_line_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "ishikawa.branch.0.upper.line.path"
+            )
+        })
+        .expect("Ishikawa branch should be drawn");
+    let branch_marker_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "ishikawa.branch.0.upper.line.marker.start"
+            )
+        })
+        .expect("Ishikawa branch marker should be drawn");
+    assert!(branch_line_command < branch_marker_command);
+
+    let branch_stroke_width = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "ishikawa.branch.0.upper.line.path" =>
+            {
+                style.stroke.as_ref().map(|stroke| stroke.width)
+            }
+            _ => None,
+        })
+        .expect("Ishikawa branch should retain its stroke");
+    let sub_branch_stroke_width = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "ishikawa.branch.0.upper.cause.0.line.path" =>
+            {
+                style.stroke.as_ref().map(|stroke| stroke.width)
+            }
+            _ => None,
+        })
+        .expect("Ishikawa sub-branch should retain its stroke");
+    assert_eq!(branch_stroke_width, 2.0);
+    assert_eq!(sub_branch_stroke_width, 1.0);
+
+    for text in ["Blurry", "Photo"] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run }
+                if run.text == text
+                    && run.style.font.weight == 600
+                    && run.style.font_size == 14.0
+                    && run.anchor == merman_display_list::TextAnchor::Middle
+                    && run.baseline == merman_display_list::TextBaseline::Middle
+        )));
+    }
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Process"
+                && run.anchor == merman_display_list::TextAnchor::Middle
+                && run.baseline == merman_display_list::TextBaseline::Middle
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Out of focus"
+                && run.anchor == merman_display_list::TextAnchor::End
+                && run.baseline == merman_display_list::TextBaseline::Middle
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Process")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Out of focus")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.id == "ishikawa.branch.0.upper.line"
+    }));
+}
+
+#[test]
+fn ishikawa_rejects_roughjs_output_instead_of_substituting_classic_geometry() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"---
+config:
+  look: handDrawn
+---
+ishikawa-beta
+    Effect
+    Cause
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("hand-drawn Ishikawa must not become classic geometry silently");
+    assert!(error.to_string().contains("RoughJS paths"));
+}
+
+#[test]
 fn quadrantchart_emits_regions_points_rotated_axes_and_semantics() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
