@@ -16,6 +16,7 @@ mod railroad;
 mod sankey;
 mod state;
 mod support;
+mod tree_view;
 mod venn;
 mod xychart;
 
@@ -61,6 +62,7 @@ pub(crate) enum SvgStructureBody {
     Railroad(RailroadSvgBody),
     Sankey(SankeySvgBody),
     State(StateSvgBody),
+    TreeView(TreeViewSvgBody),
     Venn(VennSvgBody),
     XyChart(XyChartSvgBody),
 }
@@ -108,6 +110,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::State, SvgStructureBody::State(state)) => {
                 !state.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::TreeView, SvgStructureBody::TreeView(tree_view)) => {
+                !tree_view.diagram_type.is_empty()
             }
             (RenderFamilyKind::Venn, SvgStructureBody::Venn(venn)) => {
                 !venn.diagram_type.is_empty()
@@ -187,6 +192,12 @@ pub(crate) struct SankeySvgBody {
 /// SVG-only metadata retained beside the public State document.
 #[derive(Debug, Clone)]
 pub(crate) struct StateSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the public TreeView document.
+#[derive(Debug, Clone)]
+pub(crate) struct TreeViewSvgBody {
     pub(crate) diagram_type: String,
 }
 
@@ -279,6 +290,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::State(pair) => {
             state::build_state_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::TreeView(pair) => {
+            tree_view::build_tree_view_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Venn(pair) => {
             venn::build_venn_document(pair, metadata, policy, session)

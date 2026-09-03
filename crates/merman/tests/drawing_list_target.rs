@@ -1029,6 +1029,148 @@ union A,B
 }
 
 #[test]
+fn tree_view_emits_ordered_lines_builtin_icons_highlights_and_descriptions() {
+    let site_config = MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "treeView": {
+                "labelFontSize": "20px",
+                "labelColor": "#112233",
+                "lineColor": "#334455",
+                "iconColor": "#556677",
+                "descriptionColor": "#778899",
+                "highlightBg": "rgba(255, 193, 7, 0.15)",
+                "highlightStroke": "#ffc107"
+            }
+        }
+    }));
+    let output = Renderer::new()
+        .with_engine(Engine::new().with_site_config(site_config))
+        .render(RenderRequest::drawing_list(
+            r#"treeView-beta
+src/ :::highlight icon(folder) ## source directory
+    main.rs icon(file)
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable TreeView should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert_eq!(document.viewport.bounds.x, -0.5);
+    assert!(document.viewport.bounds.width > 0.0);
+    for path_id in [
+        "treeView.background",
+        "treeView.node.1.highlight",
+        "treeView.node.1.icon",
+        "treeView.node.2.icon",
+        "treeView.line.0.path",
+    ] {
+        assert!(document.resources.iter().any(|resource| matches!(
+            resource,
+            merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+        )));
+    }
+
+    let highlight_style = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "treeView.node.1.highlight" =>
+            {
+                Some(style)
+            }
+            _ => None,
+        })
+        .expect("highlight should be painted");
+    assert_eq!(
+        highlight_style.fill,
+        Some(merman_display_list::Paint::solid(
+            merman_display_list::Color::rgba(255, 193, 7, 38)
+        ))
+    );
+    assert_eq!(
+        highlight_style
+            .stroke
+            .as_ref()
+            .expect("highlight should retain its stroke")
+            .paint,
+        merman_display_list::Paint::solid(merman_display_list::Color::rgba(0xff, 0xc1, 0x07, 0xff))
+    );
+
+    let line_style = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "treeView.line.0.path" =>
+            {
+                Some(style)
+            }
+            _ => None,
+        })
+        .expect("connector should be painted");
+    assert_eq!(
+        line_style
+            .stroke
+            .as_ref()
+            .expect("connector should retain its stroke")
+            .paint,
+        merman_display_list::Paint::solid(merman_display_list::Color::rgba(0x33, 0x44, 0x55, 0xff))
+    );
+
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::ConcatTransform { transform }
+            if (transform.a - 14.0 / 24.0).abs() <= f64::EPSILON
+                && (transform.d - 14.0 / 24.0).abs() <= f64::EPSILON
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "src"
+                && run.style.font_size == 20.0
+                && run.style.font.weight == 700
+                && run.style.fill == merman_display_list::Paint::solid(
+                    merman_display_list::Color::rgba(0x11, 0x22, 0x33, 0xff)
+                )
+                && run.baseline == merman_display_list::TextBaseline::Middle
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "source directory"
+                && run.style.font.style == merman_display_list::FontStyle::Italic
+                && run.style.fill == merman_display_list::Paint::solid(
+                    merman_display_list::Color::rgba(0x77, 0x88, 0x99, 0xff)
+                )
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("src")
+            && semantic.description.as_deref() == Some("source directory")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge && semantic.id == "treeView.line.0"
+    }));
+}
+
+#[test]
+fn tree_view_rejects_registry_svg_icons_instead_of_substituting_fallback_art() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "treeView-beta\nRoot icon(logos:react)\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("registry TreeView icons must remain an explicit capability boundary");
+    assert!(error.to_string().contains("non-builtin icon `logos:react`"));
+}
+
+#[test]
 fn quadrantchart_emits_regions_points_rotated_axes_and_semantics() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
