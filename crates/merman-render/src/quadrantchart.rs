@@ -58,6 +58,46 @@ pub(crate) fn quadrant_text_baseline(horizontal_pos: &str) -> QuadrantTextBaseli
     }
 }
 
+pub(crate) const QUADRANT_BROWSER_POINT_FILL: &str = "#000000";
+pub(crate) const QUADRANT_BROWSER_POINT_STROKE: &str = "none";
+
+/// Identifies Mermaid's source-backed missing-amount HSL token for QuadrantChart points.
+///
+/// Browsers ignore this invalid presentation attribute. The family-specific browser-visible
+/// projection therefore uses SVG's initial black fill or no stroke, while parity SVG retains the
+/// upstream token verbatim.
+pub(crate) fn is_mermaid_missing_amount_hsl(value: &str) -> bool {
+    let Some(body) = value
+        .trim()
+        .strip_prefix("hsl(")
+        .and_then(|value| value.strip_suffix(')'))
+    else {
+        return false;
+    };
+    let mut channels = body.split(',');
+    let (Some(hue), Some(saturation), Some(lightness), None) = (
+        channels.next(),
+        channels.next(),
+        channels.next(),
+        channels.next(),
+    ) else {
+        return false;
+    };
+
+    is_finite_css_number(hue) && is_finite_css_percentage(saturation) && lightness.trim() == "NaN%"
+}
+
+fn is_finite_css_number(value: &str) -> bool {
+    value.trim().parse::<f64>().is_ok_and(f64::is_finite)
+}
+
+fn is_finite_css_percentage(value: &str) -> bool {
+    value
+        .trim()
+        .strip_suffix('%')
+        .is_some_and(is_finite_css_number)
+}
+
 fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {
     PresentationTheme::new(effective_config).quadrantchart()
 }

@@ -5,11 +5,11 @@ use std::borrow::Cow;
 use std::convert::Infallible;
 
 use super::css_sanitize::sanitize_css_value_with_checkpoints;
-use super::presentation_fallback::is_mermaid_missing_amount_hsl;
 use super::util::{
     SvgTagScanner, checkpoint_loop, escape_xml_attr, find_with_checkpoints, next_svg_quoted_attr,
     next_svg_quoted_attr_with_checkpoints, start_tag_name,
 };
+use crate::quadrantchart::is_mermaid_missing_amount_hsl;
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
