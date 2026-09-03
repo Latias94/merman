@@ -20,6 +20,7 @@ mod railroad;
 mod sankey;
 mod state;
 mod support;
+mod timeline;
 mod tree_view;
 mod treemap;
 mod venn;
@@ -76,6 +77,7 @@ pub(crate) enum SvgStructureBody {
     Cynefin(CynefinSvgBody),
     Gantt(GanttSvgBody),
     GitGraph(GitGraphSvgBody),
+    Timeline(TimelineSvgBody),
     Wardley(WardleySvgBody),
 }
 
@@ -146,6 +148,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::GitGraph, SvgStructureBody::GitGraph(gitgraph)) => {
                 !gitgraph.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Timeline, SvgStructureBody::Timeline(timeline)) => {
+                !timeline.diagram_type.is_empty()
             }
             (RenderFamilyKind::Wardley, SvgStructureBody::Wardley(wardley)) => {
                 !wardley.diagram_type.is_empty()
@@ -273,6 +278,12 @@ pub(crate) struct GitGraphSvgBody {
     pub(crate) diagram_type: String,
 }
 
+/// SVG-only metadata retained beside the renderer-neutral Timeline document.
+#[derive(Debug, Clone)]
+pub(crate) struct TimelineSvgBody {
+    pub(crate) diagram_type: String,
+}
+
 /// SVG-only metadata retained beside the renderer-neutral Wardley document.
 #[derive(Debug, Clone)]
 pub(crate) struct WardleySvgBody {
@@ -380,6 +391,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::GitGraph(pair) => {
             gitgraph::build_gitgraph_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Timeline(pair) => {
+            timeline::build_timeline_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Wardley(pair) => {
             wardley::build_wardley_document(pair, metadata, policy, session)

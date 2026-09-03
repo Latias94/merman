@@ -376,6 +376,10 @@ pub(crate) struct TimelineSectionTheme {
 
 #[derive(Debug, Clone)]
 pub(crate) struct TimelineTheme {
+    pub(crate) font_family: String,
+    pub(crate) font_size_px: f64,
+    pub(crate) text_color: String,
+    pub(crate) line_color: String,
     pub(crate) is_redux_theme: bool,
     pub(crate) is_dark_theme: bool,
     pub(crate) is_color_theme: bool,

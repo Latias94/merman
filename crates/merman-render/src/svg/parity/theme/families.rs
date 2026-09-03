@@ -502,6 +502,10 @@ impl<'a> PresentationTheme<'a> {
             .collect();
 
         TimelineTheme {
+            font_family: self.common.font_family_css.clone(),
+            font_size_px: self.common.font_size_px,
+            text_color: self.common.text_color.clone(),
+            line_color: self.common.line_color.clone(),
             is_redux_theme: theme_name.contains("redux"),
             is_dark_theme: theme_name.contains("dark"),
             is_color_theme: theme_name.contains("color"),

@@ -1839,17 +1839,72 @@ fn gitgraph_emits_branches_commits_tags_and_parent_arrows() {
 }
 
 #[test]
-fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
+fn timeline_emits_sections_tasks_events_connectors_and_title() {
+    let source = r#"timeline
+        title Release history
+        section Planning
+            Plan : Build
+            Ship : Done
+    "#;
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
-            "timeline\n  section Release\n    Plan : Build\n",
+            source,
             OperationControl::new(),
             DrawingListRequest::default(),
         ))
-        .expect_err("unmigrated families must fail closed");
-    assert!(
-        output
-            .to_string()
-            .contains("has not been migrated to the canonical document seam")
-    );
+        .expect("Timeline should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    for path_id in [
+        "timeline.section.0.node.background",
+        "timeline.section.0.node.divider",
+        "timeline.task.0.node.background",
+        "timeline.task.0.event.0.node.background",
+        "timeline.task.0.connector.0.line",
+        "timeline.task.0.connector.0.arrowhead",
+        "timeline.activity.line",
+        "timeline.activity.arrowhead",
+    ] {
+        assert!(
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+            )),
+            "missing path {path_id}"
+        );
+    }
+    for label in [
+        "Release history",
+        "Planning",
+        "Plan",
+        "Build",
+        "Ship",
+        "Done",
+    ] {
+        assert!(
+            document.commands.iter().any(|command| matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawText { run } if run.text == label
+            )),
+            "missing text {label}"
+        );
+    }
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.id == "timeline.section.0"
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.id == "timeline.task.0.event.0"
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.id == "timeline.task.0.connector.0"
+    }));
+    assert!(document.fallbacks.is_empty());
 }
