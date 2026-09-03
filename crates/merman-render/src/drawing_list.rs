@@ -7,6 +7,7 @@
 mod flowchart;
 mod info;
 mod mindmap;
+mod packet;
 mod pie;
 mod state;
 mod support;
@@ -45,6 +46,7 @@ pub(crate) enum SvgStructureBody {
     Flowchart(FlowchartSvgBody),
     Info(InfoSvgBody),
     Mindmap(MindmapSvgBody),
+    Packet(PacketSvgBody),
     Pie(PieSvgBody),
     State(StateSvgBody),
 }
@@ -71,6 +73,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Mindmap, SvgStructureBody::Mindmap(mindmap)) => {
                 !mindmap.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Packet, SvgStructureBody::Packet(packet)) => {
+                !packet.diagram_type.is_empty()
             }
             (RenderFamilyKind::Pie, SvgStructureBody::Pie(pie)) => !pie.diagram_type.is_empty(),
             (RenderFamilyKind::State, SvgStructureBody::State(state)) => {
@@ -106,6 +111,12 @@ pub(crate) struct InfoSvgBody {
 /// SVG-only metadata retained beside the public Pie document.
 #[derive(Debug, Clone)]
 pub(crate) struct PieSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the public Packet document.
+#[derive(Debug, Clone)]
+pub(crate) struct PacketSvgBody {
     pub(crate) diagram_type: String,
 }
 
@@ -168,6 +179,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Mindmap(pair) => {
             mindmap::build_mindmap_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Packet(pair) => {
+            packet::build_packet_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Pie(pair) => {
             pie::build_pie_document(pair, metadata, policy, session)

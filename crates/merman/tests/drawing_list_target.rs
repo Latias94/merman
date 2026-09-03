@@ -1,6 +1,9 @@
 #![cfg(feature = "svg")]
 
-use merman::{DrawingListRequest, OperationControl, RenderOutput, RenderRequest, Renderer};
+use merman::{
+    DrawingListRequest, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
+    Renderer,
+};
 use merman_display_list::DrawingListPolicy;
 
 #[test]
@@ -262,10 +265,80 @@ pie
 }
 
 #[test]
+fn packet_emits_typed_blocks_bit_numbers_title_and_styles() {
+    let source = r#"packet
+    title Header
+    0-7: "Version"
+    8-15: "Length"
+"#;
+    let site_config = MermaidConfig::from_value(serde_json::json!({
+        "packet": {
+            "bitsPerRow": 16,
+            "blockFillColor": "#123456",
+            "blockStrokeWidth": 2
+        }
+    }));
+    let output = Renderer::new()
+        .with_engine(Engine::new().with_site_config(site_config))
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Packet should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "packet.block.0.0.shape"
+    )));
+    let block_style = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "packet.block.0.0.shape" =>
+            {
+                Some(style)
+            }
+            _ => None,
+        })
+        .expect("first Packet block should be drawn");
+    assert_eq!(
+        block_style.fill,
+        Some(merman_display_list::Paint::solid(
+            merman_display_list::Color::rgba(0x12, 0x34, 0x56, 0xff)
+        ))
+    );
+    assert_eq!(
+        block_style
+            .stroke
+            .as_ref()
+            .expect("Packet block should retain its stroke")
+            .width,
+        2.0
+    );
+    for text in ["Version", "0", "7", "Header"] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run } if run.text == text
+        )));
+    }
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Version")
+    }));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
-            "packet-beta\n    0-7: \"Header\"",
+            "timeline\n  section Release\n    Plan : Build\n",
             OperationControl::new(),
             DrawingListRequest::default(),
         ))
