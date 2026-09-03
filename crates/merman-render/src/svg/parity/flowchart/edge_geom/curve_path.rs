@@ -28,23 +28,30 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
             | "rounded"
     );
 
-    if curve_is_basis {
-        let (d, raw_pb) = crate::svg::parity::curve::curve_basis_path_d_and_bounds(line_data);
+    let shared_curve = if curve_is_basis {
+        Some(crate::render_geometry::FlowchartCurveKind::Basis)
+    } else {
+        crate::render_geometry::FlowchartCurveKind::from_mermaid_name(interpolate)
+    };
+
+    if let Some(shared_curve) = shared_curve {
+        let segments = crate::render_geometry::flowchart_curve_segments(
+            line_data,
+            shared_curve,
+            rounded_radius,
+            compact_edge_corners,
+            rounded_corner_mask,
+        );
+        let d = crate::svg::parity::curve::drawing_path_segments_d(&segments);
         let d = maybe_close_single_point_path(d, line_data);
-        let pb = svg_path_bounds_from_d(&d).or(raw_pb);
+        let pb = svg_path_bounds_from_d(&d);
         (d, pb, false)
     } else {
         let (d, pb) = match interpolate {
-            "linear" => crate::svg::parity::curve::curve_linear_path_d_and_bounds(line_data),
             "natural" => crate::svg::parity::curve::curve_natural_path_d_and_bounds(line_data),
             "bumpY" => crate::svg::parity::curve::curve_bump_y_path_d_and_bounds(line_data),
             "catmullRom" => {
                 crate::svg::parity::curve::curve_catmull_rom_path_d_and_bounds(line_data)
-            }
-            "step" => crate::svg::parity::curve::curve_step_path_d_and_bounds(line_data),
-            "stepAfter" => crate::svg::parity::curve::curve_step_after_path_d_and_bounds(line_data),
-            "stepBefore" => {
-                crate::svg::parity::curve::curve_step_before_path_d_and_bounds(line_data)
             }
             "cardinal" => {
                 crate::svg::parity::curve::curve_cardinal_path_d_and_bounds(line_data, 0.0)
@@ -55,12 +62,6 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
             "monotoneY" => {
                 crate::svg::parity::curve::curve_monotone_path_d_and_bounds(line_data, true)
             }
-            "rounded" => crate::svg::parity::curve::curve_rounded_path_d_and_bounds(
-                line_data,
-                rounded_radius,
-                compact_edge_corners,
-                rounded_corner_mask,
-            ),
             // Unknown curve names fall back to Mermaid's historical `basis` behavior.
             _ => crate::svg::parity::curve::curve_basis_path_d_and_bounds(line_data),
         };

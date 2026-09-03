@@ -43,6 +43,7 @@ pub mod presentation;
 pub mod quadrantchart;
 pub mod radar;
 pub mod railroad;
+pub(crate) mod render_geometry;
 pub mod requirement;
 pub mod resources;
 pub mod sankey;
