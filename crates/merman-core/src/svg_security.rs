@@ -1,4 +1,4 @@
-use crate::entities::decode_mermaid_entity_placeholders;
+use crate::entities::{decode_html_entities_to_unicode, decode_mermaid_entity_placeholders};
 
 /// Identifies the representation layer of an SVG URI attribute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +61,30 @@ pub fn prepare_mermaid_navigation_href(
     ))
 }
 
+/// Applies Mermaid's navigation cleanup and returns the resulting logical URI value.
+///
+/// Unlike [`prepare_mermaid_navigation_href`], this boundary is renderer-neutral: the returned
+/// string is suitable for a native navigation field and contains no SVG attribute escaping.
+/// Mermaid-authored entity placeholders are still interpreted exactly once, while ordinary
+/// entity-looking source text remains literal because the renderer first serializes it.
+pub fn prepare_mermaid_navigation_uri(
+    value: &str,
+    security: MermaidNavigationSecurity,
+) -> Option<String> {
+    let serialized_before_cleanup = serialize_svg_attribute_value(value);
+    let cleaned_serialized = decode_mermaid_entity_placeholders(&serialized_before_cleanup);
+
+    match security {
+        MermaidNavigationSecurity::Loose => {
+            Some(decode_html_entities_to_unicode(cleaned_serialized.as_ref()).into_owned())
+        }
+        MermaidNavigationSecurity::Sanitized => admit_mermaid_svg_uri_attribute(
+            cleaned_serialized.as_ref(),
+            MermaidSvgUriRepresentation::SerializedSvg,
+        ),
+    }
+}
+
 /// Normalizes a URI attribute at a declared SVG representation boundary.
 pub fn admit_mermaid_svg_uri_attribute(
     value: &str,
@@ -113,7 +137,7 @@ fn is_xml_1_0_char(ch: char) -> bool {
 mod tests {
     use super::{
         MermaidNavigationSecurity, MermaidSvgUriRepresentation, admit_mermaid_svg_uri_attribute,
-        prepare_mermaid_navigation_href,
+        prepare_mermaid_navigation_href, prepare_mermaid_navigation_uri,
     };
 
     fn strict(value: &str) -> Option<String> {
@@ -126,6 +150,10 @@ mod tests {
             .expect("loose security preserves renderer-created navigation")
             .as_serialized_str()
             .to_string()
+    }
+
+    fn logical(value: &str, security: MermaidNavigationSecurity) -> Option<String> {
+        prepare_mermaid_navigation_uri(value, security)
     }
 
     #[test]
@@ -176,6 +204,32 @@ mod tests {
                 MermaidSvgUriRepresentation::DomValue,
             ),
             Some("javascript&amp;colon;ticket".into())
+        );
+    }
+
+    #[test]
+    fn renderer_neutral_navigation_returns_a_dom_value_without_svg_escaping() {
+        assert_eq!(
+            logical("A&B", MermaidNavigationSecurity::Loose),
+            Some("A&B".into())
+        );
+        assert_eq!(
+            logical(
+                "httpsﬂ°colon¶ß//example.test/a?x=1&y=2",
+                MermaidNavigationSecurity::Loose,
+            ),
+            Some("https://example.test/a?x=1&y=2".into())
+        );
+        assert_eq!(
+            logical(
+                "jav&#x61;script:ticket",
+                MermaidNavigationSecurity::Sanitized,
+            ),
+            Some("jav&#x61;script:ticket".into())
+        );
+        assert_eq!(
+            logical("javascript:ticket", MermaidNavigationSecurity::Sanitized),
+            None
         );
     }
 }

@@ -24,7 +24,7 @@ use crate::{Error, Result};
 use merman_core::diagrams::flowchart::{
     FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNodeProvenance,
 };
-use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
+use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_uri};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
     BlendMode, Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
@@ -67,7 +67,6 @@ struct FlowchartBuilder<'a> {
     node_border: Color,
     node_text: Color,
     line_color: Color,
-    arrow_color: Color,
     cluster_fill: Color,
     cluster_border: Color,
     cluster_text: Color,
@@ -145,11 +144,6 @@ impl<'a> FlowchartBuilder<'a> {
             "#333",
         )?;
         let line_color = theme_color(metadata.effective_config.as_value(), "lineColor", "#333")?;
-        let arrow_color = theme_color(
-            metadata.effective_config.as_value(),
-            "arrowheadColor",
-            "#333",
-        )?;
         let cluster_fill = theme_color(
             metadata.effective_config.as_value(),
             "clusterBkg",
@@ -205,6 +199,7 @@ impl<'a> FlowchartBuilder<'a> {
                     .or_else(|| config.render_curve())
             })
             .unwrap_or_else(|| "basis".to_string());
+        ensure_curve_supported(&default_curve)?;
         let presentation = artifact.policy().unwrap_or_default();
 
         let nodes_by_id = semantic
@@ -246,7 +241,6 @@ impl<'a> FlowchartBuilder<'a> {
             node_border,
             node_text,
             line_color,
-            arrow_color,
             cluster_fill,
             cluster_border,
             cluster_text,
@@ -669,16 +663,16 @@ impl<'a> FlowchartBuilder<'a> {
             self.emit_marker(
                 &format!("{semantic_id}.start-marker"),
                 edge.start_marker,
-                marker_point(&layout_edge.points, true),
+                marker_point(&layout_edge.points, MarkerPosition::Start),
                 stroke_color,
-                style.stroke_width,
+                self.line_color,
             )?;
             self.emit_marker(
                 &format!("{semantic_id}.end-marker"),
                 edge.end_marker,
-                marker_point(&layout_edge.points, false),
-                self.arrow_color,
-                style.stroke_width,
+                marker_point(&layout_edge.points, MarkerPosition::End),
+                stroke_color,
+                self.line_color,
             )?;
         }
 
@@ -813,17 +807,18 @@ impl<'a> FlowchartBuilder<'a> {
         if !label_text.is_empty() {
             self.commands.push(DrawingCommand::DrawText { run });
         }
-        if node.have_callback
-            || node
-                .link_target
-                .as_deref()
-                .is_some_and(|target| !target.trim().is_empty())
-        {
+        let target = self
+            .security_level_loose
+            .then_some(node.link_target.as_deref())
+            .flatten()
+            .map(str::trim)
+            .filter(|target| !target.is_empty());
+        if node.have_callback || target.is_some() {
             self.interaction_nodes.push(json!({
                 "semantic_id": semantic_id,
                 "source_id": node.id,
                 "callback": node.have_callback,
-                "target": node.link_target,
+                "target": target,
             }));
         }
         self.end_group(style.opacity != 1.0 || style.blend_mode != BlendMode::Normal);
@@ -864,12 +859,13 @@ impl<'a> FlowchartBuilder<'a> {
     ) -> Result<TextRun> {
         let text = flowchart_label_plain_text_for_layout(raw_label, label_type, html_labels);
         let render_style = &style.text_style;
+        let font = font_descriptor_from_style(&self.font, render_style)?;
         Ok(TextRun {
             text,
             origin,
             bounds,
             style: TextStyle {
-                font: font_descriptor_from_style(&self.font, render_style),
+                font,
                 font_size: render_style.font_size,
                 letter_spacing: style.letter_spacing,
                 line_height: style.line_height,
@@ -939,13 +935,15 @@ impl<'a> FlowchartBuilder<'a> {
         id: &str,
         marker: FlowEdgeMarker,
         endpoint: Option<MarkerEndpoint>,
-        color: Color,
-        width: f64,
+        stroke_color: Color,
+        base_fill_color: Color,
     ) -> Result<()> {
         let Some(endpoint) = endpoint else {
             return Ok(());
         };
-        let Some((segments, fill, stroke)) = marker_segments(marker, endpoint, color, width) else {
+        let Some((segments, fill, stroke)) =
+            marker_segments(marker, endpoint, stroke_color, base_fill_color)
+        else {
             return Ok(());
         };
         self.add_path(
@@ -1065,11 +1063,10 @@ impl<'a> FlowchartBuilder<'a> {
 
     fn node_semantic(&self, node: &FlowNode, id: String) -> SemanticAnnotation {
         let link = node.link.as_deref().and_then(|raw| {
-            prepare_mermaid_navigation_href(
+            prepare_mermaid_navigation_uri(
                 raw,
                 MermaidNavigationSecurity::from_security_level_loose(self.security_level_loose),
             )
-            .map(|href| href.as_serialized_str().to_string())
         });
         SemanticAnnotation {
             id,
@@ -1165,7 +1162,13 @@ impl ResolvedStyle {
             "stroke-dashoffset" => self.dash_offset = parse_css_number(value, "stroke-dashoffset")?,
             "stroke-linecap" => self.line_cap = parse_line_cap(value)?,
             "stroke-linejoin" => self.line_join = parse_line_join(value)?,
-            "stroke-miterlimit" => self.miter_limit = parse_css_number(value, "stroke-miterlimit")?,
+            "stroke-miterlimit" => {
+                let limit = parse_css_number(value, "stroke-miterlimit")?;
+                if limit <= 0.0 {
+                    return Err(unavailable("stroke-miterlimit must be greater than zero"));
+                }
+                self.miter_limit = limit;
+            }
             "opacity" => self.opacity = parse_unit(value, "opacity")?,
             "fill-opacity" => self.fill_opacity = parse_unit(value, "fill-opacity")?,
             "stroke-opacity" => self.stroke_opacity = parse_unit(value, "stroke-opacity")?,
@@ -1192,8 +1195,14 @@ impl ResolvedStyle {
                     self.line_height = size * 1.5;
                 }
             }
-            "font-weight" => self.text_style.font_weight = Some(value.to_string()),
-            "font-style" => self.text_style.font_style = Some(value.to_string()),
+            "font-weight" => {
+                parse_font_weight(value)?;
+                self.text_style.font_weight = Some(value.to_string());
+            }
+            "font-style" => {
+                parse_font_style(value)?;
+                self.text_style.font_style = Some(value.to_string());
+            }
             "letter-spacing" => {
                 self.letter_spacing = parse_css_number_allow_normal(value, "letter-spacing")?
             }
@@ -1621,13 +1630,62 @@ fn curve_segments(
     compact: bool,
 ) -> Result<Vec<PathSegment>> {
     match curve.trim().to_ascii_lowercase().as_str() {
-        "linear" | "step" | "stepbefore" | "stepafter" => Ok(linear_segments(points)),
+        "linear" => Ok(linear_segments(points)),
+        "step" => Ok(step_segments(points, StepCurve::Midpoint)),
+        "stepbefore" => Ok(step_segments(points, StepCurve::Before)),
+        "stepafter" => Ok(step_segments(points, StepCurve::After)),
         "basis" => Ok(basis_segments(points)),
         "rounded" => Ok(rounded_segments(points, radius, compact)),
         other => Err(unavailable(format!(
             "edge curve `{other}` has no typed v1 adapter"
         ))),
     }
+}
+
+#[derive(Clone, Copy)]
+enum StepCurve {
+    Before,
+    Midpoint,
+    After,
+}
+
+fn step_segments(points: &[crate::model::LayoutPoint], curve: StepCurve) -> Vec<PathSegment> {
+    let Some(first) = points.first() else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(points.len().saturating_mul(3));
+    out.push(PathSegment::MoveTo {
+        to: Point::new(first.x, first.y),
+    });
+    let mut previous = first;
+    for point in points.iter().skip(1) {
+        match curve {
+            StepCurve::Before => {
+                out.push(PathSegment::LineTo {
+                    to: Point::new(previous.x, point.y),
+                });
+            }
+            StepCurve::Midpoint => {
+                let mid_x = (previous.x + point.x) / 2.0;
+                out.push(PathSegment::LineTo {
+                    to: Point::new(mid_x, previous.y),
+                });
+                out.push(PathSegment::LineTo {
+                    to: Point::new(mid_x, point.y),
+                });
+            }
+            StepCurve::After => {
+                out.push(PathSegment::LineTo {
+                    to: Point::new(point.x, previous.y),
+                });
+            }
+        }
+        out.push(PathSegment::LineTo {
+            to: Point::new(point.x, point.y),
+        });
+        previous = point;
+    }
+    out
 }
 
 fn ensure_curve_supported(curve: &str) -> Result<()> {
@@ -1766,115 +1824,125 @@ fn rounded_segments(
 struct MarkerEndpoint {
     point: Point,
     direction: Point,
+    position: MarkerPosition,
 }
 
-fn marker_point(points: &[crate::model::LayoutPoint], start: bool) -> Option<MarkerEndpoint> {
+#[derive(Clone, Copy)]
+enum MarkerPosition {
+    Start,
+    End,
+}
+
+fn marker_point(
+    points: &[crate::model::LayoutPoint],
+    position: MarkerPosition,
+) -> Option<MarkerEndpoint> {
     if points.len() < 2 {
         return None;
     }
-    if start {
-        let point = Point::new(points[0].x, points[0].y);
-        let next = Point::new(points[1].x, points[1].y);
-        Some(MarkerEndpoint {
-            point,
-            direction: normalize(next.x - point.x, next.y - point.y),
-        })
-    } else {
-        let point = Point::new(points[points.len() - 1].x, points[points.len() - 1].y);
-        let previous = Point::new(points[points.len() - 2].x, points[points.len() - 2].y);
-        Some(MarkerEndpoint {
-            point,
-            direction: normalize(point.x - previous.x, point.y - previous.y),
-        })
-    }
+    let (point, direction) = match position {
+        MarkerPosition::Start => {
+            let point = Point::new(points[0].x, points[0].y);
+            let next = Point::new(points[1].x, points[1].y);
+            (point, normalize(next.x - point.x, next.y - point.y))
+        }
+        MarkerPosition::End => {
+            let point = Point::new(points[points.len() - 1].x, points[points.len() - 1].y);
+            let previous = Point::new(points[points.len() - 2].x, points[points.len() - 2].y);
+            (point, normalize(point.x - previous.x, point.y - previous.y))
+        }
+    };
+    Some(MarkerEndpoint {
+        point,
+        direction,
+        position,
+    })
 }
 
 fn marker_segments(
     marker: FlowEdgeMarker,
     endpoint: MarkerEndpoint,
-    color: Color,
-    width: f64,
+    stroke_color: Color,
+    base_fill_color: Color,
 ) -> Option<(Vec<PathSegment>, Option<Paint>, Option<StrokeStyle>)> {
-    let size = width.max(1.0) * 4.0;
-    let normal = Point::new(-endpoint.direction.y, endpoint.direction.x);
+    let marker_point = |x: f64, y: f64, ref_x: f64, ref_y: f64, scale: f64| {
+        let normal = Point::new(-endpoint.direction.y, endpoint.direction.x);
+        let dx = (x - ref_x) * scale;
+        let dy = (y - ref_y) * scale;
+        Point::new(
+            endpoint.point.x + endpoint.direction.x * dx + normal.x * dy,
+            endpoint.point.y + endpoint.direction.y * dx + normal.y * dy,
+        )
+    };
     match marker {
         FlowEdgeMarker::None => None,
         FlowEdgeMarker::Point => {
-            let base = Point::new(
-                endpoint.point.x - endpoint.direction.x * size,
-                endpoint.point.y - endpoint.direction.y * size,
-            );
-            let left = Point::new(
-                base.x + normal.x * size * 0.55,
-                base.y + normal.y * size * 0.55,
-            );
-            let right = Point::new(
-                base.x - normal.x * size * 0.55,
-                base.y - normal.y * size * 0.55,
-            );
+            let points = match endpoint.position {
+                MarkerPosition::Start => [
+                    marker_point(0.0, 5.0, 4.5, 5.0, 0.8),
+                    marker_point(10.0, 10.0, 4.5, 5.0, 0.8),
+                    marker_point(10.0, 0.0, 4.5, 5.0, 0.8),
+                ],
+                MarkerPosition::End => [
+                    marker_point(0.0, 0.0, 5.0, 5.0, 0.8),
+                    marker_point(10.0, 5.0, 5.0, 5.0, 0.8),
+                    marker_point(0.0, 10.0, 5.0, 5.0, 0.8),
+                ],
+            };
             Some((
-                polygon_path(&[endpoint.point, left, right]),
-                Some(Paint::solid(color)),
-                None,
+                polygon_path(&points),
+                Some(Paint::solid(stroke_color)),
+                Some(marker_stroke(stroke_color, 1.0)),
             ))
         }
         FlowEdgeMarker::Circle => {
-            let radius = size * 0.55;
+            let ref_x = match endpoint.position {
+                MarkerPosition::Start => -1.0,
+                MarkerPosition::End => 11.0,
+            };
+            let center = marker_point(5.0, 5.0, ref_x, 5.0, 1.1);
             Some((
-                ellipse_path(endpoint.point.x, endpoint.point.y, radius, radius),
-                None,
-                Some(StrokeStyle {
-                    paint: Paint::solid(color),
-                    width: width.max(1.0),
-                    dash_array: Vec::new(),
-                    dash_offset: 0.0,
-                    line_cap: LineCap::Round,
-                    line_join: LineJoin::Round,
-                    miter_limit: 4.0,
-                }),
+                ellipse_path(center.x, center.y, 5.5, 5.5),
+                Some(Paint::solid(base_fill_color)),
+                Some(marker_stroke(stroke_color, 1.0)),
             ))
         }
         FlowEdgeMarker::Cross => {
-            let radius = size * 0.65;
+            let ref_x = match endpoint.position {
+                MarkerPosition::Start => -1.0,
+                MarkerPosition::End => 12.0,
+            };
             Some((
                 vec![
                     PathSegment::MoveTo {
-                        to: Point::new(
-                            endpoint.point.x - normal.x * radius - endpoint.direction.x * radius,
-                            endpoint.point.y - normal.y * radius - endpoint.direction.y * radius,
-                        ),
+                        to: marker_point(1.0, 1.0, ref_x, 5.2, 1.0),
                     },
                     PathSegment::LineTo {
-                        to: Point::new(
-                            endpoint.point.x + normal.x * radius + endpoint.direction.x * radius,
-                            endpoint.point.y + normal.y * radius + endpoint.direction.y * radius,
-                        ),
+                        to: marker_point(10.0, 10.0, ref_x, 5.2, 1.0),
                     },
                     PathSegment::MoveTo {
-                        to: Point::new(
-                            endpoint.point.x - normal.x * radius + endpoint.direction.x * radius,
-                            endpoint.point.y - normal.y * radius + endpoint.direction.y * radius,
-                        ),
+                        to: marker_point(10.0, 1.0, ref_x, 5.2, 1.0),
                     },
                     PathSegment::LineTo {
-                        to: Point::new(
-                            endpoint.point.x + normal.x * radius - endpoint.direction.x * radius,
-                            endpoint.point.y + normal.y * radius - endpoint.direction.y * radius,
-                        ),
+                        to: marker_point(1.0, 10.0, ref_x, 5.2, 1.0),
                     },
                 ],
                 None,
-                Some(StrokeStyle {
-                    paint: Paint::solid(color),
-                    width: width.max(1.0),
-                    dash_array: Vec::new(),
-                    dash_offset: 0.0,
-                    line_cap: LineCap::Round,
-                    line_join: LineJoin::Round,
-                    miter_limit: 4.0,
-                }),
+                Some(marker_stroke(stroke_color, 2.0)),
             ))
         }
+    }
+}
+
+fn marker_stroke(color: Color, width: f64) -> StrokeStyle {
+    StrokeStyle {
+        paint: Paint::solid(color),
+        width,
+        dash_array: vec![1.0, 0.0],
+        dash_offset: 0.0,
+        line_cap: LineCap::Butt,
+        line_join: LineJoin::Miter,
+        miter_limit: 4.0,
     }
 }
 
@@ -1951,14 +2019,17 @@ fn parse_css_color(value: &str, property: &str) -> Result<Option<Color>> {
 
 fn parse_css_number(value: &str, property: &str) -> Result<f64> {
     let trimmed = value.trim();
-    let numeric = trimmed
-        .strip_suffix("px")
-        .or_else(|| trimmed.strip_suffix("pt"))
-        .unwrap_or(trimmed)
-        .trim();
+    let (numeric, scale) = if let Some(numeric) = trimmed.strip_suffix("px") {
+        (numeric.trim(), 1.0)
+    } else if let Some(numeric) = trimmed.strip_suffix("pt") {
+        (numeric.trim(), 4.0 / 3.0)
+    } else {
+        (trimmed, 1.0)
+    };
     let parsed = numeric
         .parse::<f64>()
         .map_err(|_| unavailable(format!("{property} `{value}` is not a finite number")))?;
+    let parsed = parsed * scale;
     if !parsed.is_finite() || parsed < 0.0 {
         return Err(unavailable(format!(
             "{property} `{value}` is outside the portable range"
@@ -2063,26 +2134,42 @@ fn parse_blend_mode(value: &str) -> Result<BlendMode> {
     }
 }
 
-fn font_descriptor_from_style(base: &FontDescriptor, style: &RenderTextStyle) -> FontDescriptor {
+fn parse_font_weight(value: &str) -> Result<u16> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "normal" => Ok(400),
+        "bold" => Ok(700),
+        value => value
+            .parse::<u16>()
+            .ok()
+            .filter(|weight| (1..=1000).contains(weight))
+            .ok_or_else(|| unavailable(format!("font-weight `{value}` is unsupported"))),
+    }
+}
+
+fn parse_font_style(value: &str) -> Result<FontStyle> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "normal" => Ok(FontStyle::Normal),
+        "italic" => Ok(FontStyle::Italic),
+        "oblique" => Ok(FontStyle::Oblique),
+        _ => Err(unavailable(format!("font-style `{value}` is unsupported"))),
+    }
+}
+
+fn font_descriptor_from_style(
+    base: &FontDescriptor,
+    style: &RenderTextStyle,
+) -> Result<FontDescriptor> {
     let mut font = base.clone();
     if let Some(family) = style.font_family.as_deref() {
         font.families = parse_font_families(family.to_string());
     }
     if let Some(weight) = style.font_weight.as_deref() {
-        font.weight = match weight.trim().to_ascii_lowercase().as_str() {
-            "normal" => 400,
-            "bold" => 700,
-            value => value.parse::<u16>().unwrap_or(400).clamp(1, 1000),
-        };
+        font.weight = parse_font_weight(weight)?;
     }
     if let Some(font_style) = style.font_style.as_deref() {
-        font.style = match font_style.trim().to_ascii_lowercase().as_str() {
-            "italic" => FontStyle::Italic,
-            "oblique" => FontStyle::Oblique,
-            _ => FontStyle::Normal,
-        };
+        font.style = parse_font_style(font_style)?;
     }
-    font
+    Ok(font)
 }
 
 fn with_alpha(color: Color, opacity: f64) -> Color {
@@ -2153,5 +2240,76 @@ fn unavailable(message: impl Display) -> Error {
     Error::DrawingListUnavailable {
         family: "flowchart".to_string(),
         reason: message.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn point(x: f64, y: f64) -> crate::model::LayoutPoint {
+        crate::model::LayoutPoint { x, y }
+    }
+
+    #[test]
+    fn step_curves_keep_their_d3_axis_order() {
+        let points = [point(0.0, 0.0), point(10.0, 20.0)];
+        assert_eq!(
+            step_segments(&points, StepCurve::Before),
+            vec![
+                PathSegment::MoveTo {
+                    to: Point::new(0.0, 0.0)
+                },
+                PathSegment::LineTo {
+                    to: Point::new(0.0, 20.0)
+                },
+                PathSegment::LineTo {
+                    to: Point::new(10.0, 20.0)
+                },
+            ]
+        );
+        assert_eq!(
+            step_segments(&points, StepCurve::After),
+            vec![
+                PathSegment::MoveTo {
+                    to: Point::new(0.0, 0.0)
+                },
+                PathSegment::LineTo {
+                    to: Point::new(10.0, 0.0)
+                },
+                PathSegment::LineTo {
+                    to: Point::new(10.0, 20.0)
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn marker_geometry_uses_mermaid_user_space_dimensions() {
+        let points = [point(0.0, 0.0), point(20.0, 0.0)];
+        let endpoint = marker_point(&points, MarkerPosition::End).unwrap();
+        let (segments, _, _) = marker_segments(
+            FlowEdgeMarker::Point,
+            endpoint,
+            Color::rgba(0, 0, 0, 255),
+            Color::rgba(0, 0, 0, 255),
+        )
+        .expect("point marker");
+        assert_eq!(
+            segments,
+            polygon_path(&[
+                Point::new(16.0, -4.0),
+                Point::new(24.0, 0.0),
+                Point::new(16.0, 4.0),
+            ])
+        );
+    }
+
+    #[test]
+    fn portable_css_units_and_font_values_fail_or_convert_explicitly() {
+        assert_eq!(parse_css_number("3pt", "stroke-width").unwrap(), 4.0);
+        assert_eq!(parse_font_weight("600").unwrap(), 600);
+        assert!(parse_font_weight("heavy").is_err());
+        assert!(parse_font_style("oblique 12deg").is_err());
     }
 }
