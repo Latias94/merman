@@ -14,7 +14,7 @@ use config::{TreeViewConfigView, TreeViewLayoutSettings};
 
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 const TREE_VIEW_FILE_NODE_TYPE: &str = "file";
-const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
+pub(crate) const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
 pub(crate) const TREE_VIEW_ICON_SIZE: f64 = 14.0;
 const TREE_VIEW_ICON_GAP: f64 = 4.0;
 const TREE_VIEW_DESCRIPTION_GAP: f64 = 16.0;
@@ -25,6 +25,101 @@ pub(crate) const TREE_VIEW_HIGHLIGHT_RECT_EXTENSION: f64 = 8.0;
 pub(crate) const TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE: f64 = 2.0;
 pub(crate) const TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH: f64 =
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION + TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TreeViewHighlightLayout {
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum TreeViewRenderItem {
+    Node {
+        node_index: usize,
+        highlight: Option<TreeViewHighlightLayout>,
+    },
+    Line {
+        line_index: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TreeViewBuiltinIcon {
+    pub(crate) path_data: &'static str,
+    pub(crate) even_odd: bool,
+}
+
+pub(crate) fn tree_view_render_items(layout: &TreeViewDiagramLayout) -> Vec<TreeViewRenderItem> {
+    let highlighted_node_count = layout
+        .nodes
+        .iter()
+        .filter(|node| is_tree_view_highlight_class(node.css_class.as_deref()))
+        .count();
+    let mut width_before_highlight =
+        layout.total_width - highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
+    let mut next_node = 0usize;
+    let mut items = Vec::with_capacity(layout.nodes.len() + layout.lines.len());
+
+    for (line_index, line) in layout.lines.iter().enumerate() {
+        if line.kind == "horizontal"
+            && let Some(node) = layout.nodes.get(next_node)
+        {
+            items.push(TreeViewRenderItem::Node {
+                node_index: next_node,
+                highlight: tree_view_highlight_layout(node, &mut width_before_highlight),
+            });
+            next_node += 1;
+        }
+        items.push(TreeViewRenderItem::Line { line_index });
+    }
+    for (node_index, node) in layout.nodes.iter().enumerate().skip(next_node) {
+        items.push(TreeViewRenderItem::Node {
+            node_index,
+            highlight: tree_view_highlight_layout(node, &mut width_before_highlight),
+        });
+    }
+    items
+}
+
+fn tree_view_highlight_layout(
+    node: &TreeViewNodeLayout,
+    width_before_highlight: &mut f64,
+) -> Option<TreeViewHighlightLayout> {
+    if !is_tree_view_highlight_class(node.css_class.as_deref()) {
+        return None;
+    }
+    let highlight = TreeViewHighlightLayout {
+        x: node.x,
+        y: node.y + 1.0,
+        width: (*width_before_highlight - node.x + TREE_VIEW_HIGHLIGHT_RECT_EXTENSION).max(0.0),
+        height: (node.height - 2.0).max(0.0),
+    };
+    *width_before_highlight += TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
+    Some(highlight)
+}
+
+pub(crate) fn tree_view_node_is_directory(node: &TreeViewNodeLayout) -> bool {
+    node.node_type == TREE_VIEW_DIRECTORY_NODE_TYPE
+}
+
+pub(crate) fn tree_view_builtin_icon(icon: &str) -> Option<TreeViewBuiltinIcon> {
+    match icon
+        .strip_prefix(TREE_VIEW_ICON_PREFIX)?
+        .strip_prefix(':')?
+    {
+        "folder" => Some(TreeViewBuiltinIcon {
+            path_data: "M10.59 4.59A2 2 0 0 0 9.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.17z",
+            even_odd: false,
+        }),
+        "file" => Some(TreeViewBuiltinIcon {
+            path_data: "M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8.83a2 2 0 0 0-.59-1.42l-4.82-4.82A2 2 0 0 0 13.17 2H6Zm7.5 1.9l4.6 4.6h-3.6a1 1 0 0 1-1-1V3.9Z",
+            even_odd: true,
+        }),
+        _ => None,
+    }
+}
 
 pub(crate) fn layout_tree_view_diagram_typed(
     model: &TreeViewDiagramRenderModel,
