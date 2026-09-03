@@ -829,21 +829,19 @@ where
     // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
     let id = diagram_id;
     let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let theme = crate::sankey::SankeyDrawingTheme::new(effective_config);
     let mut out = parts.css_prefix;
-    let label_background = config_string(effective_config, &["themeVariables", "mainBkg"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "background"]))
-        .unwrap_or_else(|| "#fff".to_string());
     let _ = write!(
         &mut out,
         r#"#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:{};stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:{};}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:multiply;}}"#,
         id,
-        parts.font_family,
+        theme.font_family_css,
         id,
-        parts.font_family,
+        theme.font_family_css,
         id,
-        label_background,
+        theme.label_background,
         id,
-        parts.text_color,
+        theme.text_color,
         id,
         id
     );

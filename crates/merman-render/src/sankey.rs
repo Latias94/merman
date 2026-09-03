@@ -57,9 +57,15 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 
 mod config;
+mod visual;
 
 pub(crate) use config::SankeyConfigView;
 use config::{NodeAlign, SankeyLayoutSettings};
+pub(crate) use visual::{
+    SANKEY_LABEL_ASCENT_EM, SANKEY_LABEL_DESCENT_EM, SANKEY_LABEL_FONT_SIZE_PX, SankeyDrawingTheme,
+    SankeyLabelAnchor, SankeyVisualLink, SankeyVisualLinkPaint, SankeyVisualPlan,
+    build_sankey_visual_plan,
+};
 
 #[derive(Debug, Clone)]
 struct Node {
