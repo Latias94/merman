@@ -201,29 +201,49 @@ fn emit_cmd_cubic_impl(out: &mut String, bounds: Option<&mut BoundsBuilder>, cub
 pub(in crate::svg::parity) fn drawing_path_segments_d(
     segments: &[merman_display_list::PathSegment],
 ) -> String {
+    drawing_path_segments_d_with(segments, fmt_path_into)
+}
+
+/// Serializes typed geometry with Mermaid's ordinary JavaScript-number spelling rather than
+/// D3-path's three-decimal projection. Pie's hand-built arc strings use this form upstream.
+pub(in crate::svg::parity) fn drawing_path_segments_d_unrounded(
+    segments: &[merman_display_list::PathSegment],
+) -> String {
+    drawing_path_segments_d_with(segments, fmt_into)
+}
+
+fn drawing_path_segments_d_with(
+    segments: &[merman_display_list::PathSegment],
+    write_number: fn(&mut String, f64),
+) -> String {
     use merman_display_list::PathSegment;
 
-    fn write_point(out: &mut String, command: char, point: merman_display_list::Point) {
+    fn write_point(
+        out: &mut String,
+        command: char,
+        point: merman_display_list::Point,
+        write_number: fn(&mut String, f64),
+    ) {
         out.push(command);
-        fmt_path_into(out, point.x);
+        write_number(out, point.x);
         out.push(',');
-        fmt_path_into(out, point.y);
+        write_number(out, point.y);
     }
 
     let mut out = String::with_capacity(segments.len().saturating_mul(48));
     for segment in segments {
         match *segment {
-            PathSegment::MoveTo { to } => write_point(&mut out, 'M', to),
-            PathSegment::LineTo { to } => write_point(&mut out, 'L', to),
+            PathSegment::MoveTo { to } => write_point(&mut out, 'M', to, write_number),
+            PathSegment::LineTo { to } => write_point(&mut out, 'L', to, write_number),
             PathSegment::QuadTo { control, to } => {
                 out.push('Q');
-                fmt_path_into(&mut out, control.x);
+                write_number(&mut out, control.x);
                 out.push(',');
-                fmt_path_into(&mut out, control.y);
+                write_number(&mut out, control.y);
                 out.push(' ');
-                fmt_path_into(&mut out, to.x);
+                write_number(&mut out, to.x);
                 out.push(',');
-                fmt_path_into(&mut out, to.y);
+                write_number(&mut out, to.y);
             }
             PathSegment::CubicTo {
                 control1,
@@ -238,7 +258,7 @@ pub(in crate::svg::parity) fn drawing_path_segments_d(
                     if index > 0 {
                         out.push(',');
                     }
-                    fmt_path_into(&mut out, value);
+                    write_number(&mut out, value);
                 }
             }
             PathSegment::ArcTo {
@@ -251,16 +271,16 @@ pub(in crate::svg::parity) fn drawing_path_segments_d(
             } => {
                 out.push('A');
                 for value in [radius_x, radius_y, x_axis_rotation_degrees] {
-                    fmt_path_into(&mut out, value);
+                    write_number(&mut out, value);
                     out.push(',');
                 }
                 out.push(if large_arc { '1' } else { '0' });
                 out.push(',');
                 out.push(if sweep_clockwise { '1' } else { '0' });
                 out.push(',');
-                fmt_path_into(&mut out, to.x);
+                write_number(&mut out, to.x);
                 out.push(',');
-                fmt_path_into(&mut out, to.y);
+                write_number(&mut out, to.y);
             }
             PathSegment::Close => out.push('Z'),
         }

@@ -2,6 +2,30 @@ use super::*;
 use merman_core::theme_color::{darken, invert, is_dark, lighten};
 
 impl<'a> PresentationTheme<'a> {
+    pub(crate) fn pie_drawing(&self) -> PieDrawingTheme {
+        let task_text_dark_color = self.raw.color("taskTextDarkColor", "black");
+        PieDrawingTheme {
+            font_family_css: self.common.font_family_css.clone(),
+            slice_stroke_color: self.raw.css_value("pieStrokeColor", "black"),
+            slice_stroke_width: self.raw.css_value("pieStrokeWidth", "2px"),
+            slice_opacity: self.raw.css_value("pieOpacity", "0.7"),
+            outer_stroke_color: self.raw.css_value("pieOuterStrokeColor", "black"),
+            outer_stroke_width: self.raw.css_value("pieOuterStrokeWidth", "2px"),
+            title_text_size: self.raw.css_value("pieTitleTextSize", "25px"),
+            title_text_color: self
+                .raw
+                .color("pieTitleTextColor", task_text_dark_color.as_str()),
+            section_text_size: self.raw.css_value("pieSectionTextSize", "17px"),
+            section_text_color: self
+                .raw
+                .color("pieSectionTextColor", self.common.text_color.as_str()),
+            legend_text_size: self.raw.css_value("pieLegendTextSize", "17px"),
+            legend_text_color: self
+                .raw
+                .color("pieLegendTextColor", task_text_dark_color.as_str()),
+        }
+    }
+
     pub(crate) fn xychart(&self) -> XyChartTheme {
         let background = self
             .raw

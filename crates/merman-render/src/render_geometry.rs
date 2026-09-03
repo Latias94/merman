@@ -70,6 +70,124 @@ pub(crate) fn state_curve_points(
     state_line_with_end_marker_offset_points(&rounded, arrow_type_end)
 }
 
+/// Builds one Mermaid Pie slice around the local origin.
+///
+/// Angles use Mermaid's convention: zero points upward and positive angles advance clockwise in
+/// the y-down coordinate system. Donut holes are represented by a counter-clockwise inner
+/// subpath so the default non-zero fill rule preserves the hole.
+pub(crate) fn pie_slice_segments(
+    radius: f64,
+    inner_radius: f64,
+    start_angle: f64,
+    end_angle: f64,
+    is_full_circle: bool,
+) -> Option<Vec<PathSegment>> {
+    if ![radius, inner_radius, start_angle, end_angle]
+        .into_iter()
+        .all(f64::is_finite)
+        || radius <= 0.0
+        || inner_radius < 0.0
+        || inner_radius >= radius
+        || (!is_full_circle && end_angle <= start_angle)
+    {
+        return None;
+    }
+
+    if is_full_circle {
+        let outer_top = Point::new(0.0, -radius);
+        let outer_bottom = Point::new(0.0, radius);
+        let mut segments = vec![
+            PathSegment::MoveTo { to: outer_top },
+            PathSegment::ArcTo {
+                radius_x: radius,
+                radius_y: radius,
+                x_axis_rotation_degrees: 0.0,
+                large_arc: true,
+                sweep_clockwise: true,
+                to: outer_bottom,
+            },
+            PathSegment::ArcTo {
+                radius_x: radius,
+                radius_y: radius,
+                x_axis_rotation_degrees: 0.0,
+                large_arc: true,
+                sweep_clockwise: true,
+                to: outer_top,
+            },
+        ];
+        if inner_radius > 0.0 {
+            let inner_top = Point::new(0.0, -inner_radius);
+            let inner_bottom = Point::new(0.0, inner_radius);
+            segments.extend([
+                PathSegment::MoveTo { to: inner_top },
+                PathSegment::ArcTo {
+                    radius_x: inner_radius,
+                    radius_y: inner_radius,
+                    x_axis_rotation_degrees: 0.0,
+                    large_arc: true,
+                    sweep_clockwise: false,
+                    to: inner_bottom,
+                },
+                PathSegment::ArcTo {
+                    radius_x: inner_radius,
+                    radius_y: inner_radius,
+                    x_axis_rotation_degrees: 0.0,
+                    large_arc: true,
+                    sweep_clockwise: false,
+                    to: inner_top,
+                },
+                PathSegment::Close,
+            ]);
+        } else {
+            segments.push(PathSegment::Close);
+        }
+        return Some(segments);
+    }
+
+    let outer_start = pie_polar_point(radius, start_angle);
+    let outer_end = pie_polar_point(radius, end_angle);
+    let large_arc = end_angle - start_angle > std::f64::consts::PI;
+    let mut segments = vec![
+        PathSegment::MoveTo { to: outer_start },
+        PathSegment::ArcTo {
+            radius_x: radius,
+            radius_y: radius,
+            x_axis_rotation_degrees: 0.0,
+            large_arc,
+            sweep_clockwise: true,
+            to: outer_end,
+        },
+    ];
+    if inner_radius > 0.0 {
+        let inner_end = pie_polar_point(inner_radius, end_angle);
+        let inner_start = pie_polar_point(inner_radius, start_angle);
+        segments.extend([
+            PathSegment::LineTo { to: inner_end },
+            PathSegment::ArcTo {
+                radius_x: inner_radius,
+                radius_y: inner_radius,
+                x_axis_rotation_degrees: 0.0,
+                large_arc,
+                sweep_clockwise: false,
+                to: inner_start,
+            },
+            PathSegment::Close,
+        ]);
+    } else {
+        segments.extend([
+            PathSegment::LineTo {
+                to: Point::new(0.0, 0.0),
+            },
+            PathSegment::Close,
+        ]);
+    }
+    Some(segments)
+}
+
+fn pie_polar_point(radius: f64, angle: f64) -> Point {
+    Point::new(radius * angle.sin(), -radius * angle.cos())
+}
+
 fn state_find_adjacent_point(
     point_a: &LayoutPoint,
     point_b: &LayoutPoint,

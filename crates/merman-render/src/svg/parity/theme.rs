@@ -132,6 +132,23 @@ pub(crate) struct StateDrawingTheme {
     pub(crate) stroke_width: String,
 }
 
+/// Resolved Pie roles shared by SVG and renderer-neutral drawing backends.
+#[derive(Debug, Clone)]
+pub(crate) struct PieDrawingTheme {
+    pub(crate) font_family_css: String,
+    pub(crate) slice_stroke_color: String,
+    pub(crate) slice_stroke_width: String,
+    pub(crate) slice_opacity: String,
+    pub(crate) outer_stroke_color: String,
+    pub(crate) outer_stroke_width: String,
+    pub(crate) title_text_size: String,
+    pub(crate) title_text_color: String,
+    pub(crate) section_text_size: String,
+    pub(crate) section_text_color: String,
+    pub(crate) legend_text_size: String,
+    pub(crate) legend_text_color: String,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct XyChartTheme {
     pub(crate) background_color: String,
