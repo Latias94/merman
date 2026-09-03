@@ -10,12 +10,15 @@ use super::{
 };
 use crate::config::config_string;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path};
-use crate::environment::{RenderSession, TextMeasurementPhase, TextMeasurementSource};
+use crate::drawing_list::support::{
+    PortableStyleResolver, stroke, svg_plain_text, text_obligation,
+};
+use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, PieDiagramLayout};
 use crate::pie::{
     PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX, PIE_TITLE_Y, PieConfigView, PieLegendPosition,
-    pie_content_offset, pie_css_px, pie_legend_text,
+    pie_content_offset, pie_legend_text,
 };
 use crate::render_geometry::pie_slice_segments;
 use crate::text::{TextMeasurer as _, TextStyle as MeasurementTextStyle};
@@ -24,13 +27,11 @@ use crate::{Error, Result};
 use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::pie::PieDiagramRenderModel;
-use merman_core::theme_color::{ColorChannel, ThemeColor};
 use merman_display_list::{
     Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, MeasurementProvenance,
-    Paint, PathResource, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
-    TextStyle, Transform, Viewport,
+    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -61,6 +62,7 @@ struct PieBuilder<'a> {
     font_family_css: String,
     font: FontDescriptor,
     text_obligation: TextObligation,
+    styles: PortableStyleResolver,
     slice_stroke: Option<Color>,
     slice_stroke_width: f64,
     slice_opacity: f64,
@@ -109,6 +111,7 @@ impl<'a> PieBuilder<'a> {
         validate_layout(layout, model)?;
         let settings = PieConfigView::new(config).render_settings();
         let theme = PresentationTheme::new(config).pie_drawing();
+        let styles = PortableStyleResolver::new("pie");
         let font_family_css = theme.font_family_css.clone();
         let font = FontDescriptor {
             families: parse_font_families(theme.font_family_css),
@@ -129,30 +132,22 @@ impl<'a> PieBuilder<'a> {
             highlight_slice,
             font_family_css,
             font,
-            text_obligation: text_obligation(session),
-            slice_stroke: parse_optional_color(&theme.slice_stroke_color, "pieStrokeColor")?,
-            slice_stroke_width: required_css_px(
-                &theme.slice_stroke_width,
-                "pieStrokeWidth",
-                false,
-            )?,
-            slice_opacity: parse_opacity(&theme.slice_opacity, "pieOpacity")?,
-            outer_stroke: parse_optional_color(&theme.outer_stroke_color, "pieOuterStrokeColor")?,
-            outer_stroke_width: required_css_px(
-                &theme.outer_stroke_width,
-                "pieOuterStrokeWidth",
-                false,
-            )?,
-            title_font_size: required_css_px(&theme.title_text_size, "pieTitleTextSize", true)?,
-            title_color: required_text_color(&theme.title_text_color, "pieTitleTextColor")?,
-            section_font_size: required_css_px(
-                &theme.section_text_size,
-                "pieSectionTextSize",
-                true,
-            )?,
-            section_color: required_text_color(&theme.section_text_color, "pieSectionTextColor")?,
-            legend_font_size: required_css_px(&theme.legend_text_size, "pieLegendTextSize", true)?,
-            legend_color: required_text_color(&theme.legend_text_color, "pieLegendTextColor")?,
+            text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
+            styles,
+            slice_stroke: styles.optional_color("pieStrokeColor", &theme.slice_stroke_color)?,
+            slice_stroke_width: styles.length("pieStrokeWidth", &theme.slice_stroke_width)?,
+            slice_opacity: styles.opacity("pieOpacity", &theme.slice_opacity)?,
+            outer_stroke: styles
+                .optional_color("pieOuterStrokeColor", &theme.outer_stroke_color)?,
+            outer_stroke_width: styles.length("pieOuterStrokeWidth", &theme.outer_stroke_width)?,
+            title_font_size: styles.positive_length("pieTitleTextSize", &theme.title_text_size)?,
+            title_color: styles.color("pieTitleTextColor", &theme.title_text_color)?,
+            section_font_size: styles
+                .positive_length("pieSectionTextSize", &theme.section_text_size)?,
+            section_color: styles.color("pieSectionTextColor", &theme.section_text_color)?,
+            legend_font_size: styles
+                .positive_length("pieLegendTextSize", &theme.legend_text_size)?,
+            legend_color: styles.color("pieLegendTextColor", &theme.legend_text_color)?,
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -268,7 +263,7 @@ impl<'a> PieBuilder<'a> {
         for (index, slice) in self.layout.slices.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let semantic_id = format!("pie.slice.{index}");
-            let fill = parse_optional_color(&slice.fill, "pie slice fill")?;
+            let fill = self.styles.optional_color("pie slice fill", &slice.fill)?;
             let stroke = self
                 .slice_stroke
                 .map(|color| stroke(color, self.slice_stroke_width));
@@ -392,7 +387,7 @@ impl<'a> PieBuilder<'a> {
                 item.value,
                 self.model.show_data,
             ));
-            let color = parse_optional_color(&item.fill, "pie legend fill")?;
+            let color = self.styles.optional_color("pie legend fill", &item.fill)?;
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -570,96 +565,6 @@ fn validate_bounds(bounds: &Bounds) -> Result<()> {
     Ok(())
 }
 
-fn required_css_px(value: &str, property: &str, positive: bool) -> Result<f64> {
-    let parsed = pie_css_px(value).ok_or_else(|| {
-        unavailable(format!(
-            "Pie theme property `{property}` uses non-portable length `{value}`"
-        ))
-    })?;
-    if positive && parsed <= 0.0 {
-        return Err(unavailable(format!(
-            "Pie theme property `{property}` must be greater than zero"
-        )));
-    }
-    Ok(parsed)
-}
-
-fn parse_opacity(value: &str, property: &str) -> Result<f64> {
-    let value = css_token(value);
-    let parsed = if let Some(percent) = value.strip_suffix('%') {
-        percent
-            .trim()
-            .parse::<f64>()
-            .ok()
-            .map(|value| value / 100.0)
-    } else {
-        value.parse::<f64>().ok()
-    }
-    .ok_or_else(|| {
-        unavailable(format!(
-            "Pie theme property `{property}` uses non-portable opacity `{value}`"
-        ))
-    })?;
-    if !parsed.is_finite() || !(0.0..=1.0).contains(&parsed) {
-        return Err(unavailable(format!(
-            "Pie theme property `{property}` is outside 0..=1"
-        )));
-    }
-    Ok(parsed)
-}
-
-fn parse_optional_color(value: &str, property: &str) -> Result<Option<Color>> {
-    let value = css_token(value);
-    if value.eq_ignore_ascii_case("none") {
-        return Ok(None);
-    }
-    if value.eq_ignore_ascii_case("transparent") {
-        return Ok(Some(Color::rgba(0, 0, 0, 0)));
-    }
-    let parsed = ThemeColor::parse(value).map_err(|error| {
-        unavailable(format!(
-            "Pie theme property `{property}` uses non-portable color `{value}`: {error}"
-        ))
-    })?;
-    let channel = |kind| parsed.channel(kind).round().clamp(0.0, 255.0) as u8;
-    Ok(Some(Color::rgba(
-        channel(ColorChannel::Red),
-        channel(ColorChannel::Green),
-        channel(ColorChannel::Blue),
-        (parsed.channel(ColorChannel::Alpha) * 255.0)
-            .round()
-            .clamp(0.0, 255.0) as u8,
-    )))
-}
-
-fn required_text_color(value: &str, property: &str) -> Result<Color> {
-    parse_optional_color(value, property)?.ok_or_else(|| {
-        unavailable(format!(
-            "Pie text property `{property}` cannot be `none` in DrawingList v1"
-        ))
-    })
-}
-
-fn css_token(value: &str) -> &str {
-    let value = value.trim().trim_end_matches(';').trim();
-    value
-        .strip_suffix("!important")
-        .map(str::trim)
-        .unwrap_or(value)
-}
-
-fn stroke(color: Color, width: f64) -> StrokeStyle {
-    StrokeStyle {
-        paint: Paint::solid(color),
-        width,
-        dash_array: Vec::new(),
-        dash_offset: 0.0,
-        line_cap: merman_display_list::LineCap::Butt,
-        line_join: merman_display_list::LineJoin::Miter,
-        miter_limit: 4.0,
-    }
-}
-
 fn translate(x: f64, y: f64) -> Transform {
     Transform {
         a: 1.0,
@@ -680,42 +585,6 @@ fn scale(value: f64) -> Transform {
         e: 0.0,
         f: 0.0,
     }
-}
-
-fn svg_plain_text(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    let mut pending_space = false;
-    for character in value.chars() {
-        if crate::text::is_html_collapsible_ascii_whitespace(character) {
-            pending_space = !output.is_empty();
-            continue;
-        }
-        if pending_space {
-            output.push(' ');
-            pending_space = false;
-        }
-        output.push(character);
-    }
-    output
-}
-
-fn text_obligation(session: &RenderSession) -> TextObligation {
-    let route = session.text_measurement_route(TextMeasurementPhase::SvgBBox);
-    let profile = profile_identity(&route.primary);
-    let measurement = match route.primary_source {
-        TextMeasurementSource::Host => MeasurementProvenance::HostCallback { profile },
-        TextMeasurementSource::Profile => MeasurementProvenance::DeterministicFallback { profile },
-    };
-    TextObligation::HostText { measurement }
-}
-
-fn profile_identity(identity: &crate::environment::TextMeasurementProfileIdentity) -> String {
-    let mut value = format!("{}@{}", identity.profile().as_str(), identity.version());
-    for decorator in identity.decorators() {
-        value.push('+');
-        value.push_str(decorator);
-    }
-    value
 }
 
 fn legend_position_name(position: PieLegendPosition) -> &'static str {

@@ -9,6 +9,7 @@ mod info;
 mod mindmap;
 mod pie;
 mod state;
+mod support;
 
 use crate::environment::RenderSession;
 use crate::family::{BuiltinFamilyArtifact, RenderFamilyKind};

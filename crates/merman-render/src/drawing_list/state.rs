@@ -12,7 +12,8 @@ use crate::config::{
     MERMAID_DEFAULT_FONT_FAMILY_CSS, config_diagram_look, normalize_css_font_family,
 };
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
-use crate::environment::{RenderSession, TextMeasurementPhase, TextMeasurementSource};
+use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
+use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, LayoutEdge, LayoutNode, StateDiagramLayout};
 use crate::render_geometry::{FlowchartCurveKind, flowchart_curve_segments, state_curve_points};
@@ -24,13 +25,11 @@ use merman_core::ParseMetadata;
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
-use merman_core::theme_color::{ColorChannel, ThemeColor};
 use merman_display_list::{
     Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, LineCap, LineJoin,
-    MeasurementProvenance, Paint, PathResource, PathSegment, PathStyle, Point, Rect, ResourceId,
-    SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
-    TextObligation, TextRun, TextStyle, Viewport,
+    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -144,16 +143,18 @@ impl<'a> StateBuilder<'a> {
         };
 
         let theme = PresentationTheme::new(config).state_drawing();
-        let state_fill = parse_color(&theme.state_bkg, "stateBkg")?;
-        let state_border = parse_color(&theme.state_border, "stateBorder")?;
-        let state_label = parse_color(&theme.state_label_color, "stateLabelColor")?;
-        let special_state = parse_color(&theme.special_state_color, "specialStateColor")?;
-        let transition = parse_color(&theme.transition_color, "transitionColor")?;
-        let transition_label = parse_color(&theme.transition_label_color, "transitionLabelColor")?;
-        let marker_fill = parse_color(&theme.marker_fill, "lineColor")?;
+        let styles = PortableStyleResolver::new("state");
+        let state_fill = styles.color("stateBkg", &theme.state_bkg)?;
+        let state_border = styles.color("stateBorder", &theme.state_border)?;
+        let state_label = styles.color("stateLabelColor", &theme.state_label_color)?;
+        let special_state = styles.color("specialStateColor", &theme.special_state_color)?;
+        let transition = styles.color("transitionColor", &theme.transition_color)?;
+        let transition_label =
+            styles.color("transitionLabelColor", &theme.transition_label_color)?;
+        let marker_fill = styles.color("lineColor", &theme.marker_fill)?;
         let edge_label_background =
-            parse_color(&theme.edge_label_background, "edgeLabelBackground")?;
-        let stroke_width = parse_css_length(&theme.stroke_width, "strokeWidth")?;
+            styles.color("edgeLabelBackground", &theme.edge_label_background)?;
+        let stroke_width = styles.length("strokeWidth", &theme.stroke_width)?;
 
         let nodes_by_id = unique_layout_nodes(layout)?;
         let edges_by_id = unique_layout_edges(layout)?;
@@ -174,7 +175,7 @@ impl<'a> StateBuilder<'a> {
             },
             html_labels: render_settings.html_labels,
             state_padding: render_settings.state_padding,
-            text_obligation: text_obligation(session),
+            text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
             state_fill,
             state_border,
             state_label,
@@ -790,70 +791,6 @@ fn validate_label_bounds(label: &crate::model::LayoutLabel, edge_id: &str) -> Re
         )));
     }
     Ok(())
-}
-
-fn stroke(color: Color, width: f64) -> StrokeStyle {
-    StrokeStyle {
-        paint: Paint::solid(color),
-        width,
-        dash_array: Vec::new(),
-        dash_offset: 0.0,
-        line_cap: LineCap::Butt,
-        line_join: LineJoin::Miter,
-        miter_limit: 4.0,
-    }
-}
-
-fn parse_color(value: &str, role: &str) -> Result<Color> {
-    let parsed = ThemeColor::parse(value).map_err(|error| {
-        unavailable(format!(
-            "State theme role `{role}` uses non-portable color `{value}`: {error}"
-        ))
-    })?;
-    let rgb = |channel: ColorChannel| parsed.channel(channel).round().clamp(0.0, 255.0) as u8;
-    Ok(Color::rgba(
-        rgb(ColorChannel::Red),
-        rgb(ColorChannel::Green),
-        rgb(ColorChannel::Blue),
-        (parsed.channel(ColorChannel::Alpha) * 255.0)
-            .round()
-            .clamp(0.0, 255.0) as u8,
-    ))
-}
-
-fn parse_css_length(value: &str, role: &str) -> Result<f64> {
-    let value = value.trim();
-    let numeric = value.strip_suffix("px").unwrap_or(value).trim();
-    let parsed = numeric.parse::<f64>().map_err(|_| {
-        unavailable(format!(
-            "State theme role `{role}` uses non-portable length `{value}`"
-        ))
-    })?;
-    if !parsed.is_finite() || parsed < 0.0 {
-        return Err(unavailable(format!(
-            "State theme role `{role}` is outside the portable numeric range"
-        )));
-    }
-    Ok(parsed)
-}
-
-fn text_obligation(session: &RenderSession) -> TextObligation {
-    let route = session.text_measurement_route(TextMeasurementPhase::Layout);
-    let profile = profile_identity(&route.primary);
-    let measurement = match route.primary_source {
-        TextMeasurementSource::Host => MeasurementProvenance::HostCallback { profile },
-        TextMeasurementSource::Profile => MeasurementProvenance::DeterministicFallback { profile },
-    };
-    TextObligation::HostText { measurement }
-}
-
-fn profile_identity(identity: &crate::environment::TextMeasurementProfileIdentity) -> String {
-    let mut value = format!("{}@{}", identity.profile().as_str(), identity.version());
-    for decorator in identity.decorators() {
-        value.push('+');
-        value.push_str(decorator);
-    }
-    value
 }
 
 fn normalize(x: f64, y: f64) -> Point {

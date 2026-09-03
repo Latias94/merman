@@ -9,7 +9,8 @@ use super::{
     theme_color,
 };
 use crate::config::config_font_family_css;
-use crate::environment::{RenderSession, TextMeasurementPhase, TextMeasurementSource};
+use crate::drawing_list::support::text_obligation;
+use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::{Error, Result};
@@ -18,9 +19,8 @@ use merman_core::ParseMetadata;
 use merman_core::diagrams::info::InfoDiagramRenderModel;
 use merman_display_list::{
     CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument, DrawingListPolicy,
-    FontDescriptor, FontStyle, MeasurementProvenance, Paint, Point, Rect, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
-    Viewport,
+    FontDescriptor, FontStyle, Paint, Point, Rect, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextRun, TextStyle, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -62,7 +62,7 @@ pub(crate) fn build_info_document(
         resource: None,
     };
     let text_color = theme_color(config, "textColor", "#333")?;
-    let text_obligation = text_obligation(session);
+    let text_obligation = text_obligation(session, TextMeasurementPhase::Layout);
 
     let mut commands = vec![
         DrawingCommand::Save,
@@ -155,25 +155,6 @@ fn validate_bounds(bounds: &Bounds) -> Result<()> {
         return Err(invalid("Info layout bounds are invalid"));
     }
     Ok(())
-}
-
-fn text_obligation(session: &RenderSession) -> TextObligation {
-    let route = session.text_measurement_route(TextMeasurementPhase::Layout);
-    let profile = profile_identity(&route.primary);
-    let measurement = match route.primary_source {
-        TextMeasurementSource::Host => MeasurementProvenance::HostCallback { profile },
-        TextMeasurementSource::Profile => MeasurementProvenance::DeterministicFallback { profile },
-    };
-    TextObligation::HostText { measurement }
-}
-
-fn profile_identity(identity: &crate::environment::TextMeasurementProfileIdentity) -> String {
-    let mut value = format!("{}@{}", identity.profile().as_str(), identity.version());
-    for decorator in identity.decorators() {
-        value.push('+');
-        value.push_str(decorator);
-    }
-    value
 }
 
 fn invalid(message: impl Into<String>) -> Error {
