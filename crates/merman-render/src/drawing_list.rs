@@ -5,6 +5,7 @@
 //! DOM details, while the SVG serializer can continue to preserve Mermaid's source-backed shape.
 
 mod flowchart;
+mod mindmap;
 
 use crate::environment::RenderSession;
 use crate::family::{BuiltinFamilyArtifact, RenderFamilyKind};
@@ -38,6 +39,7 @@ pub(crate) struct SvgStructureSidecar {
 pub(crate) enum SvgStructureBody {
     Error(ErrorSvgBody),
     Flowchart(FlowchartSvgBody),
+    Mindmap(MindmapSvgBody),
 }
 
 /// A complete canonical render document.
@@ -57,6 +59,9 @@ impl RenderDocument {
             (RenderFamilyKind::Flowchart, SvgStructureBody::Flowchart(flowchart)) => {
                 !flowchart.diagram_type.is_empty()
             }
+            (RenderFamilyKind::Mindmap, SvgStructureBody::Mindmap(mindmap)) => {
+                !mindmap.diagram_type.is_empty()
+            }
             _ => false,
         });
         self.public
@@ -70,6 +75,12 @@ impl RenderDocument {
 #[derive(Debug, Clone)]
 pub(crate) struct ErrorSvgBody {
     pub(crate) version_text: String,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Mindmap document.
+#[derive(Debug, Clone)]
+pub(crate) struct MindmapSvgBody {
+    pub(crate) diagram_type: String,
 }
 
 pub(crate) const ERROR_ICON_PATHS: [&str; 6] = [
@@ -119,6 +130,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Flowchart(artifact) => {
             build_flowchart_document(artifact, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Mindmap(pair) => {
+            mindmap::build_mindmap_document(pair, metadata, policy, session)
         }
         _ => Err(Error::DrawingListUnavailable {
             family: family.kind().as_str().to_string(),
@@ -317,7 +331,7 @@ fn push_font_family(families: &mut Vec<String>, value: &str) {
     }
 }
 
-fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
+pub(crate) fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
     let mut cursor = PathCursor::default();
     let mut output = Vec::new();
     for segment in PathParser::from(data) {

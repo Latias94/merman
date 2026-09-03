@@ -81,6 +81,57 @@ fn flowchart_emits_typed_routes_shapes_and_semantics() {
 }
 
 #[test]
+fn mindmap_emits_typed_shapes_routes_text_and_semantics() {
+    let source = r#"mindmap
+        root((Merman))
+            Parser
+            Renderer[Render]
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Mindmap should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("mindmap.node")
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { .. }
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.id.starts_with("mindmap.node.")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.id.starts_with("mindmap.edge.")
+    }));
+}
+
+#[test]
+fn mindmap_rejects_styled_markdown_instead_of_flattening_it_silently() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "mindmap\n  root[**bold root**]\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("styled Mindmap labels must not be flattened silently");
+    assert!(error.to_string().contains("cannot preserve"));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(

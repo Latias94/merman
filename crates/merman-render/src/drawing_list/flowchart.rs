@@ -1405,7 +1405,7 @@ fn node_paths(
     Ok(result)
 }
 
-fn rectangle_path(
+pub(crate) fn rectangle_path(
     x: f64,
     y: f64,
     width: f64,
@@ -1431,7 +1431,13 @@ fn rectangle_path(
     Some(rounded_rect_path(x, y, width, height, radius))
 }
 
-fn rounded_rect_path(x: f64, y: f64, width: f64, height: f64, radius: f64) -> Vec<PathSegment> {
+pub(crate) fn rounded_rect_path(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    radius: f64,
+) -> Vec<PathSegment> {
     let r = radius.min(width / 2.0).min(height / 2.0).max(0.0);
     let left = x - width / 2.0;
     let right = x + width / 2.0;
@@ -1497,7 +1503,7 @@ fn rounded_rect_path(x: f64, y: f64, width: f64, height: f64, radius: f64) -> Ve
     ]
 }
 
-fn polygon_path(points: &[Point]) -> Vec<PathSegment> {
+pub(crate) fn polygon_path(points: &[Point]) -> Vec<PathSegment> {
     let mut segments = Vec::with_capacity(points.len() + 1);
     if let Some(first) = points.first().copied() {
         segments.push(PathSegment::MoveTo { to: first });
@@ -1513,7 +1519,7 @@ fn polygon_path(points: &[Point]) -> Vec<PathSegment> {
     segments
 }
 
-fn ellipse_path(x: f64, y: f64, radius_x: f64, radius_y: f64) -> Vec<PathSegment> {
+pub(crate) fn ellipse_path(x: f64, y: f64, radius_x: f64, radius_y: f64) -> Vec<PathSegment> {
     let start = Point::new(x + radius_x, y);
     vec![
         PathSegment::MoveTo { to: start },
