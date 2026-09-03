@@ -1778,6 +1778,67 @@ deaccelerator "Legacy Data" [0.45, 0.35]
 }
 
 #[test]
+fn gitgraph_emits_branches_commits_tags_and_parent_arrows() {
+    let source = r#"gitGraph
+  commit id: "base"
+  branch feature
+  checkout feature
+  commit id: "highlight" type: HIGHLIGHT tag: "v1"
+  commit id: "reverse" type: REVERSE
+  checkout main
+  merge feature id: "release"
+  cherry-pick id: "highlight" tag: "backport"
+"#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("GitGraph should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    for path_id in [
+        "gitgraph.branch.0.line",
+        "gitgraph.branch.0.label.background",
+        "gitgraph.arrow.0.path",
+        "gitgraph.commit.0.circle",
+        "gitgraph.commit.1.highlight.outer",
+        "gitgraph.commit.2.reverse.cross",
+        "gitgraph.commit.3.merge.inner",
+        "gitgraph.commit.4.cherry-pick.left",
+        "gitgraph.commit.1.tag.0.background",
+    ] {
+        assert!(
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+            )),
+            "missing path {path_id}"
+        );
+    }
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "release"
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("highlight")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.title.as_deref() == Some("base → highlight")
+    }));
+    assert!(document.fallbacks.is_empty());
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(

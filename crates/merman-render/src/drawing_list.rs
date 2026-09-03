@@ -8,6 +8,7 @@ mod cynefin;
 mod eventmodeling;
 mod flowchart;
 mod gantt;
+mod gitgraph;
 mod info;
 mod ishikawa;
 mod mindmap;
@@ -74,6 +75,7 @@ pub(crate) enum SvgStructureBody {
     EventModeling(EventModelingSvgBody),
     Cynefin(CynefinSvgBody),
     Gantt(GanttSvgBody),
+    GitGraph(GitGraphSvgBody),
     Wardley(WardleySvgBody),
 }
 
@@ -141,6 +143,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Gantt, SvgStructureBody::Gantt(gantt)) => {
                 !gantt.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::GitGraph, SvgStructureBody::GitGraph(gitgraph)) => {
+                !gitgraph.diagram_type.is_empty()
             }
             (RenderFamilyKind::Wardley, SvgStructureBody::Wardley(wardley)) => {
                 !wardley.diagram_type.is_empty()
@@ -262,6 +267,12 @@ pub(crate) struct GanttSvgBody {
     pub(crate) diagram_type: String,
 }
 
+/// SVG-only metadata retained beside the renderer-neutral GitGraph document.
+#[derive(Debug, Clone)]
+pub(crate) struct GitGraphSvgBody {
+    pub(crate) diagram_type: String,
+}
+
 /// SVG-only metadata retained beside the renderer-neutral Wardley document.
 #[derive(Debug, Clone)]
 pub(crate) struct WardleySvgBody {
@@ -366,6 +377,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Gantt(pair) => {
             gantt::build_gantt_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::GitGraph(pair) => {
+            gitgraph::build_gitgraph_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Wardley(pair) => {
             wardley::build_wardley_document(pair, metadata, policy, session)
