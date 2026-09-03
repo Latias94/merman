@@ -1626,6 +1626,73 @@ fn cynefin_emits_domains_boundaries_transitions_and_overflow_items() {
 }
 
 #[test]
+fn gantt_emits_axes_rows_task_states_and_semantics() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"gantt
+  title Release Plan
+  dateFormat YYYY-MM-DD
+  topAxis
+  todayMarker off
+  section Core
+  Build :a1, 2026-01-01, 4d
+  Ship :crit, milestone, 2026-01-05, 1d
+  section Follow-up
+  Docs :done, 2026-01-06, 2d
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Gantt should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    for path_id in [
+        "gantt.background",
+        "gantt.axis.bottom.domain",
+        "gantt.axis.top.domain",
+        "gantt.row.0",
+        "gantt.task.0.bar",
+        "gantt.task.1.bar",
+        "gantt.task.2.bar",
+    ] {
+        assert!(
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+            )),
+            "missing path {path_id}"
+        );
+    }
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Release Plan" && run.style.font_size == 18.0
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text.trim() == "Ship"
+                && run.style.font.style == merman_display_list::FontStyle::Italic
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic
+                .title
+                .as_deref()
+                .is_some_and(|title| title.trim() == "Docs")
+    }));
+    assert!(
+        document.fallbacks.is_empty(),
+        "Gantt's built-in vector primitives must not rasterize"
+    );
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(

@@ -413,7 +413,11 @@ impl<'a> CynefinBuilder<'a> {
                         if item.overflow { 0.6 } else { 0.95 },
                     ))),
                     stroke: Some(StrokeStyle {
-                        dash_array: item.overflow.then(|| vec![3.0, 2.0]).unwrap_or_default(),
+                        dash_array: if item.overflow {
+                            vec![3.0, 2.0]
+                        } else {
+                            Vec::new()
+                        },
                         ..stroke(self.boundary_color, 1.0)
                     }),
                 },
@@ -549,7 +553,6 @@ impl<'a> CynefinBuilder<'a> {
                 || semantic_id.contains(".practice")
                 || semantic_id.ends_with(".subtitle"))
             .then(|| "italic".to_string()),
-            ..Default::default()
         };
         let measurer = self
             .session

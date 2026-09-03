@@ -7,6 +7,7 @@
 mod cynefin;
 mod eventmodeling;
 mod flowchart;
+mod gantt;
 mod info;
 mod ishikawa;
 mod mindmap;
@@ -71,6 +72,7 @@ pub(crate) enum SvgStructureBody {
     XyChart(XyChartSvgBody),
     EventModeling(EventModelingSvgBody),
     Cynefin(CynefinSvgBody),
+    Gantt(GanttSvgBody),
 }
 
 /// A complete canonical render document.
@@ -134,6 +136,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Cynefin, SvgStructureBody::Cynefin(cynefin)) => {
                 !cynefin.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Gantt, SvgStructureBody::Gantt(gantt)) => {
+                !gantt.diagram_type.is_empty()
             }
             _ => false,
         });
@@ -246,6 +251,12 @@ pub(crate) struct CynefinSvgBody {
     pub(crate) diagram_type: String,
 }
 
+/// SVG-only metadata retained beside the renderer-neutral Gantt document.
+#[derive(Debug, Clone)]
+pub(crate) struct GanttSvgBody {
+    pub(crate) diagram_type: String,
+}
+
 pub(crate) const ERROR_ICON_PATHS: [&str; 6] = [
     "m411.313,123.313c6.25-6.25 6.25-16.375 0-22.625s-16.375-6.25-22.625,0l-32,32-9.375,9.375-20.688-20.688c-12.484-12.5-32.766-12.5-45.25,0l-16,16c-1.261,1.261-2.304,2.648-3.31,4.051-21.739-8.561-45.324-13.426-70.065-13.426-105.867,0-192,86.133-192,192s86.133,192 192,192 192-86.133 192-192c0-24.741-4.864-48.327-13.426-70.065 1.402-1.007 2.79-2.049 4.051-3.31l16-16c12.5-12.492 12.5-32.758 0-45.25l-20.688-20.688 9.375-9.375 32.001-31.999zm-219.313,100.687c-52.938,0-96,43.063-96,96 0,8.836-7.164,16-16,16s-16-7.164-16-16c0-70.578 57.422-128 128-128 8.836,0 16,7.164,16,16s-7.164,16-16,16z",
     "m459.02,148.98c-6.25-6.25-16.375-6.25-22.625,0s-6.25,16.375 0,22.625l16,16c3.125,3.125 7.219,4.688 11.313,4.688 4.094,0 8.188-1.563 11.313-4.688 6.25-6.25 6.25-16.375 0-22.625l-16.001-16z",
@@ -341,6 +352,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Cynefin(pair) => {
             cynefin::build_cynefin_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Gantt(pair) => {
+            gantt::build_gantt_document(pair, metadata, policy, session)
         }
         _ => Err(Error::DrawingListUnavailable {
             family: family.kind().as_str().to_string(),
