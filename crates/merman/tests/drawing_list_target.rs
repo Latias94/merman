@@ -1986,3 +1986,73 @@ fn journey_emits_actors_sections_tasks_faces_and_activity_axis() {
     }));
     assert!(document.fallbacks.is_empty());
 }
+
+#[test]
+fn kanban_emits_sections_cards_metadata_and_ticket_semantics() {
+    let source = r##"%%{init: {"kanban": {"ticketBaseUrl": "https://example.invalid/tickets/#TICKET#"}}}%%
+kanban
+  todo[Todo]
+    task[Task]@{ ticket: K-1, assigned: "Ada", priority: "High" }
+"##;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Kanban should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    for path_id in ["kanban.section.0.background", "kanban.item.0.background"] {
+        assert!(document.resources.iter().any(|resource| matches!(
+            resource,
+            merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+        )));
+    }
+    for label in ["Todo", "Task", "K-1", "Ada"] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run } if run.text == label
+        )));
+    }
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "kanban.item.0.priority"
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.id == "kanban.section.0"
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.id == "kanban.item.0"
+            && semantic.link.as_deref() == Some("https://example.invalid/tickets/K-1")
+    }));
+    assert!(document.fallbacks.is_empty());
+}
+
+#[test]
+fn kanban_rejects_rich_markdown_and_icons_without_silent_loss() {
+    for source in [
+        "kanban\n  todo[**Todo**]\n    task[Task]\n",
+        "kanban\n  todo[Todo]\n    task[Task]@{ icon: star }\n",
+    ] {
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .expect_err("unsupported Kanban presentation must stay explicit");
+        assert!(
+            error.to_string().contains("DrawingList") || error.to_string().contains("icon"),
+            "unexpected error: {error}"
+        );
+    }
+}
