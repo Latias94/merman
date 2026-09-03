@@ -1693,6 +1693,91 @@ fn gantt_emits_axes_rows_task_states_and_semantics() {
 }
 
 #[test]
+fn wardley_emits_axes_pipeline_markers_overlays_and_semantics() {
+    let source = r#"---
+config:
+  wardley-beta:
+    showGrid: true
+---
+wardley-beta
+title Platform Strategy
+accTitle: Platform map
+accDescr: Strategic platform evolution
+anchor Customer [0.90, 0.95]
+component API [0.70, 0.65] (buy)
+component Database [0.50, 0.45] (inertia)
+pipeline Database {
+  component File System [0.25]
+  component SQL DB [0.50]
+}
+Customer +> API
+API -> Database
+evolve API 0.85
+note "Build mobile-first" [0.85, 0.90]
+annotations [0.10, 0.20]
+annotation 1,[0.78, 0.82] "User touchpoints"
+accelerator "Cloud Native" [0.20, 0.85]
+deaccelerator "Legacy Data" [0.45, 0.35]
+"#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Wardley should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    for path_id in [
+        "wardley.background",
+        "wardley.axis.x",
+        "wardley.axis.y",
+        "wardley.grid.0.vertical",
+        "wardley.pipeline.0.box",
+        "wardley.pipeline.0.link",
+        "wardley.link.0.line",
+        "wardley.link.0.end",
+        "wardley.trend.0.line",
+        "wardley.trend.0.end",
+        "wardley.node.1.shape",
+        "wardley.node.1.overlay.buy",
+        "wardley.annotation.0.point.0",
+        "wardley.accelerator.0.shape",
+        "wardley.deaccelerator.0.shape",
+    ] {
+        assert!(
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+            )),
+            "missing path {path_id}"
+        );
+    }
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::ConcatTransform { .. }
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Platform Strategy"
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("API")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.description.as_deref() == Some("Customer → API")
+    }));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
