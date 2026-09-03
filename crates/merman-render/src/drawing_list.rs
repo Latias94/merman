@@ -5,6 +5,7 @@
 //! DOM details, while the SVG serializer can continue to preserve Mermaid's source-backed shape.
 
 mod flowchart;
+mod info;
 mod mindmap;
 
 use crate::environment::RenderSession;
@@ -39,6 +40,7 @@ pub(crate) struct SvgStructureSidecar {
 pub(crate) enum SvgStructureBody {
     Error(ErrorSvgBody),
     Flowchart(FlowchartSvgBody),
+    Info(InfoSvgBody),
     Mindmap(MindmapSvgBody),
 }
 
@@ -58,6 +60,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Flowchart, SvgStructureBody::Flowchart(flowchart)) => {
                 !flowchart.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Info, SvgStructureBody::Info(info)) => {
+                !info.version.is_empty()
             }
             (RenderFamilyKind::Mindmap, SvgStructureBody::Mindmap(mindmap)) => {
                 !mindmap.diagram_type.is_empty()
@@ -81,6 +86,12 @@ pub(crate) struct ErrorSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct MindmapSvgBody {
     pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the public Info document.
+#[derive(Debug, Clone)]
+pub(crate) struct InfoSvgBody {
+    pub(crate) version: String,
 }
 
 pub(crate) const ERROR_ICON_PATHS: [&str; 6] = [
@@ -130,6 +141,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Flowchart(artifact) => {
             build_flowchart_document(artifact, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Info(pair) => {
+            info::build_info_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Mindmap(pair) => {
             mindmap::build_mindmap_document(pair, metadata, policy, session)

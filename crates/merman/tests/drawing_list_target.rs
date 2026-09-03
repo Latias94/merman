@@ -132,10 +132,35 @@ fn mindmap_rejects_styled_markdown_instead_of_flattening_it_silently() {
 }
 
 #[test]
-fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
+fn info_emits_typed_version_text_and_semantics() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
             "info",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Info should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    assert_eq!(output.document().viewport.bounds.width, 400.0);
+    assert_eq!(output.document().viewport.bounds.height, 100.0);
+    assert!(output.document().commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text.starts_with('v') && run.origin.x == 100.0 && run.origin.y == 40.0
+    )));
+    assert!(output.document().semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Label && semantic.id == "info.version"
+    }));
+}
+
+#[test]
+fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "pie\n    \"A\": 1",
             OperationControl::new(),
             DrawingListRequest::default(),
         ))
