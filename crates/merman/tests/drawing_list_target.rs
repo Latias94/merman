@@ -1171,6 +1171,122 @@ fn tree_view_rejects_registry_svg_icons_instead_of_substituting_fallback_art() {
 }
 
 #[test]
+fn treemap_emits_sections_clipped_leaves_formatted_values_and_class_styles() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r##"---
+config:
+  treemap:
+    valueFormat: "$,.2f"
+---
+treemap-beta
+title Allocation
+"Engineering"
+  "Frontend": 1234.5:::important
+  "Backend": 500
+classDef important fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:3px,stroke-dasharray:5 5;
+"##,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Treemap should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    for path_id in [
+        "treemap.background",
+        "treemap.section.1.shape",
+        "treemap.leaf.0.shape",
+        "treemap.leaf.0.label.clip",
+        "treemap.leaf.0.value.clip",
+    ] {
+        assert!(document.resources.iter().any(|resource| matches!(
+            resource,
+            merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+        )));
+    }
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::ClipPath { path, .. }
+            if path.as_str() == "treemap.leaf.0.label.clip"
+    )));
+
+    let leaf_paints = document
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "treemap.leaf.0.shape" =>
+            {
+                Some(style)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(leaf_paints.len(), 2);
+    assert_eq!(
+        leaf_paints[0].fill,
+        Some(merman_display_list::Paint::solid(
+            merman_display_list::Color::rgba(0xe7, 0x4c, 0x3c, 77)
+        ))
+    );
+    let stroke = leaf_paints[1]
+        .stroke
+        .as_ref()
+        .expect("styled Treemap leaf should retain its stroke");
+    assert_eq!(stroke.width, 3.0);
+    assert_eq!(stroke.dash_array, vec![5.0, 5.0]);
+    assert_eq!(
+        stroke.paint,
+        merman_display_list::Paint::solid(merman_display_list::Color::rgba(0xc0, 0x39, 0x2b, 0xff))
+    );
+
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Frontend"
+                && run.style.fill == merman_display_list::Paint::solid(
+                    merman_display_list::Color::rgba(0xff, 0xff, 0xff, 0xff)
+                )
+                && run.anchor == merman_display_list::TextAnchor::Middle
+                && run.baseline == merman_display_list::TextBaseline::Middle
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "$1.2e+3"
+                && run.baseline == merman_display_list::TextBaseline::Hanging
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.title.as_deref() == Some("Engineering")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Frontend")
+    }));
+}
+
+#[test]
+fn treemap_rejects_unmapped_class_effects_instead_of_dropping_them() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"treemap-beta
+"Engineering"
+  "Frontend": 1:::glow
+classDef glow fill:#123456,filter:blur(2px);
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("Treemap filters must remain an explicit capability boundary");
+    assert!(error.to_string().contains("classDef property `filter`"));
+}
+
+#[test]
 fn quadrantchart_emits_regions_points_rotated_axes_and_semantics() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
