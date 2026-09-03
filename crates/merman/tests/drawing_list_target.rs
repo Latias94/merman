@@ -408,6 +408,108 @@ A,B,10
 }
 
 #[test]
+fn quadrantchart_emits_regions_points_rotated_axes_and_semantics() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"quadrantChart
+  title Portfolio
+  x-axis Low --> High
+  y-axis Bottom --> Top
+  quadrant-1 Invest
+  quadrant-2 Explore
+  quadrant-3 Retire
+  quadrant-4 Maintain
+  Styled: [0.7, 0.8] color: #ff3300, radius: 10, stroke-color: #0ea5e9, stroke-width: 3px
+  Default: [0.3, 0.2]
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("QuadrantChart should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "quadrantchart.quadrant.0.shape"
+    )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "quadrantchart.point.1.shape"
+                && path.segments.iter().any(|segment| matches!(
+                    segment,
+                    merman_display_list::PathSegment::ArcTo { .. }
+                ))
+    )));
+    let point_style = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "quadrantchart.point.1.shape" =>
+            {
+                Some(style)
+            }
+            _ => None,
+        })
+        .expect("styled point should be drawn");
+    assert_eq!(
+        point_style.fill,
+        Some(merman_display_list::Paint::solid(
+            merman_display_list::Color::rgba(0xff, 0x33, 0x00, 0xff)
+        ))
+    );
+    assert_eq!(
+        point_style
+            .stroke
+            .as_ref()
+            .expect("styled point should retain its stroke")
+            .width,
+        3.0
+    );
+    let default_point_style = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "quadrantchart.point.0.shape" =>
+            {
+                Some(style)
+            }
+            _ => None,
+        })
+        .expect("default point should use the browser-visible fallback");
+    assert_eq!(
+        default_point_style.fill,
+        Some(merman_display_list::Paint::solid(
+            merman_display_list::Color::rgba(0, 0, 0, 0xff)
+        ))
+    );
+    assert_eq!(default_point_style.stroke, None);
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::ConcatTransform { transform }
+            if transform.b.abs() > 0.99 && transform.c.abs() > 0.99
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.title.as_deref() == Some("Invest")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Styled")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Label
+            && semantic.title.as_deref() == Some("Portfolio")
+    }));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
