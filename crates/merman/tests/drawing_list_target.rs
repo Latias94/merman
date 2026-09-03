@@ -510,6 +510,97 @@ fn quadrantchart_emits_regions_points_rotated_axes_and_semantics() {
 }
 
 #[test]
+fn xychart_emits_bars_lines_labels_legends_and_rotated_axes_in_paint_order() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"---
+config:
+  xyChart:
+    showDataLabel: true
+---
+xychart
+  title "Releases"
+  x-axis "Quarter" [Q1, Q2]
+  y-axis "Units" 0 --> 100
+  bar "Actual" [20, 40]
+  line "Target" [30, 50]
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("XYChart should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    let background_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "xychart.background"
+            )
+        })
+        .expect("XYChart background should be drawn");
+    let first_bar_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str().starts_with("xychart.rect.")
+            )
+        })
+        .expect("XYChart bars should be drawn");
+    assert!(background_command < first_bar_command);
+
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().starts_with("xychart.path.")
+                && path.segments.iter().any(|segment| matches!(
+                    segment,
+                    merman_display_list::PathSegment::LineTo { .. }
+                ))
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "20"
+                && run.anchor == merman_display_list::TextAnchor::Middle
+                && run.baseline == merman_display_list::TextBaseline::Hanging
+    )));
+    for text in ["Actual", "Target"] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run } if run.text == text
+        )));
+    }
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::ConcatTransform { transform }
+            if transform.b.abs() > 0.99 && transform.c.abs() > 0.99
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Q1: 20")
+            && semantic.description.as_deref() == Some("Actual")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.title.as_deref() == Some("Target")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Label
+            && semantic.title.as_deref() == Some("Releases")
+    }));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(

@@ -13,6 +13,7 @@ mod quadrantchart;
 mod sankey;
 mod state;
 mod support;
+mod xychart;
 
 use crate::environment::RenderSession;
 use crate::family::{BuiltinFamilyArtifact, RenderFamilyKind};
@@ -53,6 +54,7 @@ pub(crate) enum SvgStructureBody {
     QuadrantChart(QuadrantChartSvgBody),
     Sankey(SankeySvgBody),
     State(StateSvgBody),
+    XyChart(XyChartSvgBody),
 }
 
 /// A complete canonical render document.
@@ -89,6 +91,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::State, SvgStructureBody::State(state)) => {
                 !state.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::XyChart, SvgStructureBody::XyChart(xychart)) => {
+                !xychart.diagram_type.is_empty()
             }
             _ => false,
         });
@@ -144,6 +149,12 @@ pub(crate) struct SankeySvgBody {
 /// SVG-only metadata retained beside the public State document.
 #[derive(Debug, Clone)]
 pub(crate) struct StateSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the public XYChart document.
+#[derive(Debug, Clone)]
+pub(crate) struct XyChartSvgBody {
     pub(crate) diagram_type: String,
 }
 
@@ -215,6 +226,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::State(pair) => {
             state::build_state_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::XyChart(pair) => {
+            xychart::build_xychart_document(pair, metadata, policy, session)
         }
         _ => Err(Error::DrawingListUnavailable {
             family: family.kind().as_str().to_string(),
