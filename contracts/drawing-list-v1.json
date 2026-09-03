@@ -1,0 +1,537 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://merman.dev/contracts/drawing-list-v1.json",
+  "title": "Merman DrawingList v1",
+  "description": "Versioned renderer-neutral drawing instructions. Unknown visual commands and resources are invalid; x-* extensions are non-visual metadata only.",
+  "type": "object",
+  "required": [
+    "version",
+    "coordinate_system",
+    "viewport",
+    "policy",
+    "resources",
+    "commands",
+    "semantics",
+    "fallbacks",
+    "extensions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "coordinate_system": { "const": "logical_pixels_y_down" },
+    "viewport": { "$ref": "#/$defs/viewport" },
+    "policy": { "enum": ["allow_raster_subtree", "vector_only"] },
+    "resources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resource" }
+    },
+    "commands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/command" }
+    },
+    "semantics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/semantic" }
+    },
+    "fallbacks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/raster_fallback" }
+    },
+    "extensions": {
+      "type": "object",
+      "patternProperties": { "^x-": {} },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "point": {
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "rect": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "type": "number", "minimum": 0 },
+        "height": { "type": "number", "minimum": 0 }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "required": ["a", "b", "c", "d", "e", "f"],
+      "additionalProperties": false,
+      "properties": {
+        "a": { "type": "number" },
+        "b": { "type": "number" },
+        "c": { "type": "number" },
+        "d": { "type": "number" },
+        "e": { "type": "number" },
+        "f": { "type": "number" }
+      }
+    },
+    "color": {
+      "type": "object",
+      "required": ["red", "green", "blue", "alpha"],
+      "additionalProperties": false,
+      "properties": {
+        "red": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "green": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "blue": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "alpha": { "type": "integer", "minimum": 0, "maximum": 255 }
+      }
+    },
+    "viewport": {
+      "type": "object",
+      "required": ["bounds"],
+      "additionalProperties": false,
+      "properties": {
+        "bounds": { "$ref": "#/$defs/rect" }
+      }
+    },
+    "path_segment": {
+      "oneOf": [
+        { "$ref": "#/$defs/move_to" },
+        { "$ref": "#/$defs/line_to" },
+        { "$ref": "#/$defs/quad_to" },
+        { "$ref": "#/$defs/cubic_to" },
+        { "$ref": "#/$defs/close" }
+      ]
+    },
+    "move_to": {
+      "type": "object",
+      "required": ["kind", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "move_to" },
+        "to": { "$ref": "#/$defs/point" }
+      }
+    },
+    "line_to": {
+      "type": "object",
+      "required": ["kind", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "line_to" },
+        "to": { "$ref": "#/$defs/point" }
+      }
+    },
+    "quad_to": {
+      "type": "object",
+      "required": ["kind", "control", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "quad_to" },
+        "control": { "$ref": "#/$defs/point" },
+        "to": { "$ref": "#/$defs/point" }
+      }
+    },
+    "cubic_to": {
+      "type": "object",
+      "required": ["kind", "control1", "control2", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "cubic_to" },
+        "control1": { "$ref": "#/$defs/point" },
+        "control2": { "$ref": "#/$defs/point" },
+        "to": { "$ref": "#/$defs/point" }
+      }
+    },
+    "close": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "close" }
+      }
+    },
+    "path_resource": {
+      "type": "object",
+      "required": ["kind", "id", "segments"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "path" },
+        "id": { "$ref": "#/$defs/resource_id" },
+        "segments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/path_segment" }
+        }
+      }
+    },
+    "gradient_stop": {
+      "type": "object",
+      "required": ["offset", "color"],
+      "additionalProperties": false,
+      "properties": {
+        "offset": { "type": "number", "minimum": 0, "maximum": 1 },
+        "color": { "$ref": "#/$defs/color" }
+      }
+    },
+    "linear_gradient_resource": {
+      "type": "object",
+      "required": ["kind", "id", "start", "end", "stops"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "linear_gradient" },
+        "id": { "$ref": "#/$defs/resource_id" },
+        "start": { "$ref": "#/$defs/point" },
+        "end": { "$ref": "#/$defs/point" },
+        "stops": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/gradient_stop" }
+        }
+      }
+    },
+    "encoded_image": {
+      "type": "object",
+      "required": ["media_type", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "media_type": { "type": "string", "pattern": "^image/" },
+        "data": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
+      }
+    },
+    "image_resource": {
+      "type": "object",
+      "required": ["kind", "id", "image", "pixel_width", "pixel_height"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "image" },
+        "id": { "$ref": "#/$defs/resource_id" },
+        "image": { "$ref": "#/$defs/encoded_image" },
+        "pixel_width": { "type": "integer", "minimum": 1 },
+        "pixel_height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "resource": {
+      "oneOf": [
+        { "$ref": "#/$defs/path_resource" },
+        { "$ref": "#/$defs/linear_gradient_resource" },
+        { "$ref": "#/$defs/image_resource" }
+      ]
+    },
+    "paint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "color"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "solid" },
+            "color": { "$ref": "#/$defs/color" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "resource" },
+            "id": { "$ref": "#/$defs/resource_id" }
+          }
+        }
+      ]
+    },
+    "stroke_style": {
+      "type": "object",
+      "required": ["paint", "width", "dash_array", "line_cap", "line_join", "miter_limit"],
+      "additionalProperties": false,
+      "properties": {
+        "paint": { "$ref": "#/$defs/paint" },
+        "width": { "type": "number", "minimum": 0 },
+        "dash_array": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0 }
+        },
+        "line_cap": { "enum": ["butt", "round", "square"] },
+        "line_join": { "enum": ["miter", "round", "bevel"] },
+        "miter_limit": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "path_style": {
+      "type": "object",
+      "required": ["fill", "stroke"],
+      "additionalProperties": false,
+      "properties": {
+        "fill": { "anyOf": [{ "$ref": "#/$defs/paint" }, { "type": "null" }] },
+        "stroke": { "anyOf": [{ "$ref": "#/$defs/stroke_style" }, { "type": "null" }] }
+      },
+      "anyOf": [
+        { "properties": { "fill": { "$ref": "#/$defs/paint" } } },
+        { "properties": { "stroke": { "$ref": "#/$defs/stroke_style" } } }
+      ]
+    },
+    "font_descriptor": {
+      "type": "object",
+      "required": ["families", "weight", "style"],
+      "additionalProperties": false,
+      "properties": {
+        "families": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "weight": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "style": { "enum": ["normal", "italic", "oblique"] }
+      }
+    },
+    "measurement_provenance": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "profile"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "host_callback" },
+            "profile": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "profile"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "deterministic_fallback" },
+            "profile": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "glyph_geometry" }
+          }
+        }
+      ]
+    },
+    "text_obligation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "measurement"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "host_text" },
+            "measurement": { "$ref": "#/$defs/measurement_provenance" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "glyphs"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "glyph_run" },
+            "glyphs": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "path"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "outline" },
+            "path": { "$ref": "#/$defs/resource_id" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "fallback_id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "raster_fallback" },
+            "fallback_id": { "$ref": "#/$defs/resource_id" }
+          }
+        }
+      ]
+    },
+    "text_style": {
+      "type": "object",
+      "required": ["font", "font_size", "letter_spacing", "line_height", "fill"],
+      "additionalProperties": false,
+      "properties": {
+        "font": { "$ref": "#/$defs/font_descriptor" },
+        "font_size": { "type": "number", "exclusiveMinimum": 0 },
+        "letter_spacing": { "type": "number" },
+        "line_height": { "type": "number", "exclusiveMinimum": 0 },
+        "fill": { "$ref": "#/$defs/paint" }
+      }
+    },
+    "text_run": {
+      "type": "object",
+      "required": ["text", "origin", "bounds", "style", "obligation"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string" },
+        "origin": { "$ref": "#/$defs/point" },
+        "bounds": { "$ref": "#/$defs/rect" },
+        "style": { "$ref": "#/$defs/text_style" },
+        "obligation": { "$ref": "#/$defs/text_obligation" }
+      }
+    },
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "save" } }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "restore" } }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "opacity"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "set_opacity" },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "blend_mode"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "set_blend_mode" },
+            "blend_mode": { "enum": ["normal", "multiply", "screen", "overlay"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "transform"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "concat_transform" },
+            "transform": { "$ref": "#/$defs/transform" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "path", "style"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "draw_path" },
+            "path": { "$ref": "#/$defs/resource_id" },
+            "style": { "$ref": "#/$defs/path_style" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "image", "bounds", "opacity"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "draw_image" },
+            "image": { "$ref": "#/$defs/resource_id" },
+            "bounds": { "$ref": "#/$defs/rect" },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "semantic_id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "begin_semantic_group" },
+            "semantic_id": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "end_semantic_group" } }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "run"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "draw_text" },
+            "run": { "$ref": "#/$defs/text_run" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "fallback_id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "draw_raster_subtree" },
+            "fallback_id": { "$ref": "#/$defs/resource_id" }
+          }
+        }
+      ]
+    },
+    "semantic": {
+      "type": "object",
+      "required": ["id", "role", "title", "description", "link"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "role": { "enum": ["document", "node", "edge", "group", "label"] },
+        "title": { "type": ["string", "null"] },
+        "description": { "type": ["string", "null"] },
+        "link": { "type": ["string", "null"] }
+      }
+    },
+    "visual_source": {
+      "type": "object",
+      "required": ["family", "element_id", "effect"],
+      "additionalProperties": false,
+      "properties": {
+        "family": { "type": "string", "minLength": 1 },
+        "element_id": { "type": ["string", "null"] },
+        "effect": { "type": "string", "minLength": 1 }
+      }
+    },
+    "raster_fallback": {
+      "type": "object",
+      "required": [
+        "id",
+        "image",
+        "bounds",
+        "pixel_width",
+        "pixel_height",
+        "reason",
+        "source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "image": { "$ref": "#/$defs/resource_id" },
+        "bounds": { "$ref": "#/$defs/rect" },
+        "pixel_width": { "type": "integer", "minimum": 1 },
+        "pixel_height": { "type": "integer", "minimum": 1 },
+        "reason": {
+          "enum": [
+            "foreign_object",
+            "filter",
+            "mask",
+            "unsupported_effect",
+            "text_shaping",
+            "embedded_graphic",
+            "host_resource"
+          ]
+        },
+        "source": { "$ref": "#/$defs/visual_source" }
+      }
+    }
+  }
+}

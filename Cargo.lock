@@ -2446,6 +2446,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-display-list"
+version = "0.8.0-alpha.6"
+dependencies = [
+ "base64 0.22.1",
+ "jsonschema",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "merman-editor-core"
 version = "0.8.0-alpha.6"
 dependencies = [
