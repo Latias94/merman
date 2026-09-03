@@ -17,6 +17,7 @@ pub mod class;
 mod config;
 pub mod cynefin;
 mod dagre;
+mod drawing_list;
 mod entities;
 pub mod environment;
 pub mod er;
@@ -184,6 +185,10 @@ pub enum Error {
     },
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
+    #[error("DrawingList is unavailable for render family `{family}`: {reason}")]
+    DrawingListUnavailable { family: String, reason: String },
+    #[error(transparent)]
+    DrawingListContract(#[from] merman_display_list::DrawingListError),
     #[error(
         "custom JSON model `{model_name}` from {provenance:?} cannot render diagram type `{diagram_type}`"
     )]

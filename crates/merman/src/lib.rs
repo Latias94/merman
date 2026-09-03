@@ -105,6 +105,8 @@ pub use render::PngRequest;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub use render::RasterOutput;
 #[cfg(feature = "svg")]
+pub use render::{DrawingListOutput, DrawingListRequest};
+#[cfg(feature = "svg")]
 pub use render::{
     OperationExecutionPath, RenderEvidence, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
 };

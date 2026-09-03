@@ -50,6 +50,7 @@ libm.workspace = true
 manatee = { workspace = true, optional = true }
 merman-layout-elk = { workspace = true, optional = true }
 merman-core.workspace = true
+merman-display-list.workspace = true
 pulldown-cmark.workspace = true
 ratex-layout = { workspace = true, optional = true }
 ratex-parser = { workspace = true, optional = true }

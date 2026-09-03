@@ -72,6 +72,7 @@ merman-core.workspace = true
 merman-analysis = { workspace = true, optional = true }
 merman-ascii = { workspace = true, optional = true }
 merman-editor-core = { workspace = true, optional = true }
+merman-display-list.workspace = true
 merman-export = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 serde_json.workspace = true
@@ -91,6 +92,10 @@ usvg = { workspace = true, features = ["system-fonts", "text"] }
 
 [[test]]
 name = "prepared_render"
+required-features = ["svg"]
+
+[[test]]
+name = "drawing_list_target"
 required-features = ["svg"]
 
 [[test]]

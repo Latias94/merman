@@ -15,6 +15,7 @@ use merman_core::OperationPhase;
 use merman_core::diagrams;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{BuiltinRenderSemantic, ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
+use merman_display_list::{DRAWING_LIST_MEDIA_TYPE, DrawingListDocument, DrawingListPolicy};
 use std::fmt;
 use std::sync::OnceLock;
 
@@ -553,6 +554,66 @@ pub struct FamilyRenderArtifact {
     session: RenderSession,
 }
 
+/// A completed renderer-neutral DrawingList produced from one typed family artifact.
+pub struct RenderedDrawingList {
+    document: DrawingListDocument,
+    json: Vec<u8>,
+    family_kind: RenderFamilyKind,
+    metadata: ParseMetadata,
+    required_capabilities: Vec<RenderCapability>,
+    session: RenderSession,
+}
+
+impl RenderedDrawingList {
+    pub fn document(&self) -> &DrawingListDocument {
+        &self.document
+    }
+
+    pub fn json(&self) -> &[u8] {
+        &self.json
+    }
+
+    pub const fn media_type(&self) -> &'static str {
+        DRAWING_LIST_MEDIA_TYPE
+    }
+
+    pub fn metadata(&self) -> &ParseMetadata {
+        &self.metadata
+    }
+
+    pub fn family_kind(&self) -> RenderFamilyKind {
+        self.family_kind
+    }
+
+    pub fn required_capabilities(&self) -> &[RenderCapability] {
+        &self.required_capabilities
+    }
+
+    pub fn session(&self) -> &RenderSession {
+        &self.session
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        DrawingListDocument,
+        Vec<u8>,
+        RenderFamilyKind,
+        ParseMetadata,
+        Vec<RenderCapability>,
+        RenderSession,
+    ) {
+        (
+            self.document,
+            self.json,
+            self.family_kind,
+            self.metadata,
+            self.required_capabilities,
+            self.session,
+        )
+    }
+}
+
 /// Owned projection of the Gantt time scale used by comparison tooling.
 ///
 /// The projection deliberately hides the full family layout. Its inverse uses the same rounded
@@ -791,6 +852,44 @@ impl FamilyRenderArtifact {
             return None;
         };
         GanttTimeAxisDiagnostics::from_layout(pair.layout())
+    }
+
+    /// Builds the complete canonical document and encodes its public DrawingList projection.
+    ///
+    /// Construction is all-or-nothing: the family adapter must return a validated document
+    /// before any bytes are exposed to a caller. Families that have not crossed the migration
+    /// gate return a structured capability error instead of an incomplete list.
+    pub fn render_drawing_list(self, policy: DrawingListPolicy) -> Result<RenderedDrawingList> {
+        self.session.checkpoint(OperationPhase::Emit)?;
+        let document = crate::drawing_list::build_for_family(
+            &self.family,
+            &self.metadata,
+            policy,
+            &self.session,
+        )?;
+        self.session.checkpoint(OperationPhase::Emit)?;
+        let json = document
+            .public
+            .canonical_json_bytes()
+            .map_err(Error::DrawingListContract)?;
+        self.session.checkpoint(OperationPhase::Emit)?;
+        let public = document.into_public();
+        let family_kind = self.family.kind();
+        let Self {
+            metadata,
+            compatibility_projection: _,
+            family: _,
+            required_capabilities,
+            session,
+        } = self;
+        Ok(RenderedDrawingList {
+            document: public,
+            json,
+            family_kind,
+            metadata,
+            required_capabilities,
+            session,
+        })
     }
 
     pub fn layout_json(&self) -> Result<serde_json::Value> {

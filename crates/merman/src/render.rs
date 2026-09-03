@@ -20,6 +20,8 @@ use crate::{TerminalDiagnostic, TerminalRuntimePolicyError, operation_runner::Op
 use merman_ascii::{
     AsciiError, AsciiOutput, AsciiRenderOptions, AsciiResourcePolicy, AsciiViewportPolicy,
 };
+#[cfg(feature = "svg")]
+use merman_display_list::{DRAWING_LIST_MEDIA_TYPE, DrawingListDocument, DrawingListPolicy};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_export::ExportError;
 #[cfg(feature = "svg")]
@@ -214,6 +216,51 @@ impl RenderEvidence {
 pub struct SvgOutput {
     svg: String,
     evidence: RenderEvidence,
+}
+
+/// Successful renderer-neutral DrawingList output and the evidence for its operation.
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, PartialEq)]
+pub struct DrawingListOutput {
+    document: DrawingListDocument,
+    json: Vec<u8>,
+    evidence: RenderEvidence,
+}
+
+#[cfg(feature = "svg")]
+impl DrawingListOutput {
+    fn new(
+        document: DrawingListDocument,
+        json: Vec<u8>,
+        session: merman_render::environment::RenderSession,
+        required_capabilities: Vec<RenderCapability>,
+    ) -> Self {
+        Self {
+            document,
+            json,
+            evidence: RenderEvidence::from_session(session, required_capabilities),
+        }
+    }
+
+    pub fn document(&self) -> &DrawingListDocument {
+        &self.document
+    }
+
+    pub fn json(&self) -> &[u8] {
+        &self.json
+    }
+
+    pub const fn media_type(&self) -> &'static str {
+        DRAWING_LIST_MEDIA_TYPE
+    }
+
+    pub fn evidence(&self) -> &RenderEvidence {
+        &self.evidence
+    }
+
+    pub fn into_parts(self) -> (DrawingListDocument, Vec<u8>, RenderEvidence) {
+        (self.document, self.json, self.evidence)
+    }
 }
 
 #[cfg(feature = "svg")]
@@ -537,6 +584,8 @@ pub enum RenderTarget {
     #[cfg(feature = "svg")]
     Svg(SvgRequest),
     #[cfg(feature = "svg")]
+    DrawingList(DrawingListRequest),
+    #[cfg(feature = "svg")]
     LayoutJson(SvgRequest),
     #[cfg(feature = "svg")]
     SvgPlan(SvgRequest),
@@ -559,6 +608,27 @@ pub struct SvgRequest {
     pub debug: SvgDebugOptions,
     pub pipeline: Option<SvgPipeline>,
     pub presentation: PresentationRenderPolicy,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone)]
+pub struct DrawingListRequest {
+    pub environment: SvgEnvironment,
+    pub layout: LayoutOptions,
+    pub policy: DrawingListPolicy,
+    pub presentation: PresentationRenderPolicy,
+}
+
+#[cfg(feature = "svg")]
+impl Default for DrawingListRequest {
+    fn default() -> Self {
+        Self {
+            environment: SvgEnvironment::deterministic(),
+            layout: LayoutOptions::headless_svg_defaults(),
+            policy: DrawingListPolicy::AllowRasterSubtree,
+            presentation: PresentationRenderPolicy::default(),
+        }
+    }
 }
 
 #[cfg(feature = "svg")]
@@ -656,6 +726,15 @@ impl<'a> RenderRequest<'a> {
     }
 
     #[cfg(feature = "svg")]
+    pub fn drawing_list(
+        source: &'a str,
+        control: OperationControl,
+        request: DrawingListRequest,
+    ) -> Self {
+        Self::new(source, RenderTarget::DrawingList(request), control)
+    }
+
+    #[cfg(feature = "svg")]
     pub fn layout_json(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
         Self::new(source, RenderTarget::LayoutJson(request), control)
     }
@@ -702,6 +781,8 @@ pub enum RenderOutput {
     Semantic(Option<SemanticArtifact>),
     #[cfg(feature = "svg")]
     Svg(Option<SvgOutput>),
+    #[cfg(feature = "svg")]
+    DrawingList(Option<DrawingListOutput>),
     #[cfg(feature = "svg")]
     LayoutJson(Option<SvgLayoutOutput>),
     #[cfg(feature = "svg")]
@@ -836,6 +917,10 @@ impl SemanticArtifact {
             #[cfg(feature = "svg")]
             RenderTarget::Svg(request) => render_svg_target(self, request).map(RenderOutput::Svg),
             #[cfg(feature = "svg")]
+            RenderTarget::DrawingList(request) => {
+                render_drawing_list_target(self, request).map(RenderOutput::DrawingList)
+            }
+            #[cfg(feature = "svg")]
             RenderTarget::LayoutJson(request) => {
                 render_layout_json_target(self, request).map(RenderOutput::LayoutJson)
             }
@@ -865,6 +950,8 @@ impl RenderOutput {
             RenderTarget::Semantic => Self::Semantic(None),
             #[cfg(feature = "svg")]
             RenderTarget::Svg(_) => Self::Svg(None),
+            #[cfg(feature = "svg")]
+            RenderTarget::DrawingList(_) => Self::DrawingList(None),
             #[cfg(feature = "svg")]
             RenderTarget::LayoutJson(_) => Self::LayoutJson(None),
             #[cfg(feature = "svg")]
@@ -909,6 +996,35 @@ fn render_svg_target(
     let required_capabilities = rendered.required_capabilities().to_vec();
     let (svg, _, _, session) = rendered.into_parts();
     Ok(Some(SvgOutput::new(svg, session, required_capabilities)))
+}
+
+#[cfg(feature = "svg")]
+fn render_drawing_list_target(
+    semantic: SemanticArtifact,
+    request: DrawingListRequest,
+) -> Result<Option<DrawingListOutput>, RenderError> {
+    let (parsed, operation) = semantic.into_parts();
+    let session = request
+        .environment
+        .begin_session_in_context(operation.context, operation.control);
+    let artifact = merman_render::family::prepare_with_render_policy(
+        parsed,
+        &request.layout,
+        session,
+        request.presentation,
+    )
+    .map_err(RenderError::from)?;
+    let rendered = artifact
+        .render_drawing_list(request.policy)
+        .map_err(RenderError::from)?;
+    let required_capabilities = rendered.required_capabilities().to_vec();
+    let (document, json, _, _, _, session) = rendered.into_parts();
+    Ok(Some(DrawingListOutput::new(
+        document,
+        json,
+        session,
+        required_capabilities,
+    )))
 }
 
 #[cfg(feature = "svg")]
