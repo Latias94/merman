@@ -205,6 +205,87 @@ fn state_rejects_roughjs_shapes_instead_of_substituting_regular_geometry() {
 }
 
 #[test]
+fn requirement_emits_typed_nodes_relationships_markers_labels_and_semantics() {
+    let source = r#"requirementDiagram
+        direction LR
+        requirement req1 {
+            id: REQ-1
+            text: Login
+            risk: high
+            verifymethod: test
+        }
+        element system {
+            type: service
+            docref: docs
+        }
+        system - satisfies -> req1
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Requirement should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "requirement.edge.0.route"
+                && path.segments.iter().any(|segment| matches!(
+                    segment,
+                    merman_display_list::PathSegment::CubicTo { .. }
+                ))
+    )));
+    for path_id in [
+        "requirement.edge.0.marker.end",
+        "requirement.node.0.shape",
+        "requirement.node.1.shape",
+    ] {
+        assert!(document.resources.iter().any(|resource| matches!(
+            resource,
+            merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+        )));
+    }
+    for text in ["req1", "system", "<<satisfies>>"] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run } if run.text == text
+        )));
+    }
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("req1")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.title.as_deref() == Some("<<satisfies>>")
+    }));
+}
+
+#[test]
+fn requirement_rejects_rich_markdown_instead_of_flattening_it_silently() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"requirementDiagram
+        requirement req1 {
+            text: **bold** requirement
+        }
+    "#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("rich Requirement labels must remain an explicit capability boundary");
+    assert!(error.to_string().contains("cannot preserve"));
+}
+
+#[test]
 fn pie_emits_typed_donut_slices_static_highlight_and_legend() {
     let source = r#"%%{init: {"pie": {"donutHole": 0.4, "highlightSlice": "Alpha"}}}%%
 pie showData title Releases

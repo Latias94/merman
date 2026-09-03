@@ -19,6 +19,7 @@ mod pie;
 mod quadrantchart;
 mod radar;
 mod railroad;
+mod requirement;
 mod sankey;
 mod state;
 mod support;
@@ -71,6 +72,7 @@ pub(crate) enum SvgStructureBody {
     QuadrantChart(QuadrantChartSvgBody),
     Radar(RadarSvgBody),
     Railroad(RailroadSvgBody),
+    Requirement(RequirementSvgBody),
     Sankey(SankeySvgBody),
     State(StateSvgBody),
     Treemap(TreemapSvgBody),
@@ -128,6 +130,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Railroad, SvgStructureBody::Railroad(railroad)) => {
                 !railroad.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Requirement, SvgStructureBody::Requirement(requirement)) => {
+                !requirement.diagram_type.is_empty()
             }
             (RenderFamilyKind::Sankey, SvgStructureBody::Sankey(sankey)) => {
                 !sankey.diagram_type.is_empty()
@@ -237,6 +242,12 @@ pub(crate) struct RadarSvgBody {
 /// SVG-only metadata retained beside the public Railroad document.
 #[derive(Debug, Clone)]
 pub(crate) struct RailroadSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Requirement document.
+#[derive(Debug, Clone)]
+pub(crate) struct RequirementSvgBody {
     pub(crate) diagram_type: String,
 }
 
@@ -389,6 +400,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Railroad(pair) => {
             railroad::build_railroad_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Requirement(pair) => {
+            requirement::build_requirement_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Sankey(pair) => {
             sankey::build_sankey_document(pair, metadata, policy, session)
