@@ -907,6 +907,128 @@ expr = sequence(nonterminal("term"), terminal("+"), zeroOrMore(special("guard"))
 }
 
 #[test]
+fn venn_emits_classic_paths_independent_opacity_labels_and_semantics() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r##"venn-beta
+title Product Surface
+set A["Core"]:20
+set B["Editor"]:14
+union A,B["Shared"]:4
+style A fill:#ff6b6b, color:#101010, stroke:#202020, stroke-width:7, fill-opacity:0.42
+style A,B fill:#00ffcc, color:#003333
+"##,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("classic Venn should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert_eq!(document.viewport.bounds.width, 800.0);
+    assert_eq!(document.viewport.bounds.height, 450.0);
+    for path_id in [
+        "venn.background",
+        "venn.area.0.shape",
+        "venn.area.1.shape",
+        "venn.area.2.shape",
+    ] {
+        assert!(document.resources.iter().any(|resource| matches!(
+            resource,
+            merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+        )));
+    }
+    assert_eq!(
+        document
+            .commands
+            .iter()
+            .filter(|command| matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "venn.area.0.shape"
+            ))
+            .count(),
+        2,
+        "Venn fill and stroke opacity must remain independently painted"
+    );
+    for opacity in [0.42, 0.95] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::SetOpacity { opacity: actual }
+                if (*actual - opacity).abs() <= f64::EPSILON
+        )));
+    }
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::ConcatTransform { transform }
+            if transform.e == 0.0 && transform.f == 24.0
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Product Surface"
+                && run.style.font_size == 32.0
+                && run.anchor == merman_display_list::TextAnchor::Middle
+                && run.baseline == merman_display_list::TextBaseline::Middle
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Core"
+                && run.style.font_size == 24.0
+                && run.anchor == merman_display_list::TextAnchor::Middle
+                && run.baseline == merman_display_list::TextBaseline::Alphabetic
+    )));
+    for title in ["Core", "Editor", "Shared"] {
+        assert!(document.semantics.iter().any(|semantic| {
+            semantic.role == merman_display_list::SemanticRole::Node
+                && semantic.title.as_deref() == Some(title)
+        }));
+    }
+}
+
+#[test]
+fn venn_rejects_foreign_object_text_nodes_instead_of_dropping_them() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"venn-beta
+set A["Frontend"]:20
+  text A1["React"]
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("Venn browser-wrapped text nodes must not disappear silently");
+    assert!(
+        error
+            .to_string()
+            .contains("foreignObject and browser wrapping")
+    );
+}
+
+#[test]
+fn venn_rejects_roughjs_output_instead_of_substituting_classic_geometry() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"---
+config:
+  look: handDrawn
+---
+venn-beta
+set A
+set B
+union A,B
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("hand-drawn Venn must not become classic geometry silently");
+    assert!(error.to_string().contains("RoughJS paths"));
+}
+
+#[test]
 fn quadrantchart_emits_regions_points_rotated_axes_and_semantics() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
