@@ -11,6 +11,7 @@ mod gantt;
 mod gitgraph;
 mod info;
 mod ishikawa;
+mod journey;
 mod mindmap;
 mod packet;
 mod pie;
@@ -61,6 +62,7 @@ pub(crate) enum SvgStructureBody {
     Flowchart(FlowchartSvgBody),
     Info(InfoSvgBody),
     Ishikawa(IshikawaSvgBody),
+    Journey(JourneySvgBody),
     Mindmap(MindmapSvgBody),
     Packet(PacketSvgBody),
     Pie(PieSvgBody),
@@ -103,6 +105,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Ishikawa, SvgStructureBody::Ishikawa(ishikawa)) => {
                 !ishikawa.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Journey, SvgStructureBody::Journey(journey)) => {
+                !journey.diagram_type.is_empty()
             }
             (RenderFamilyKind::Mindmap, SvgStructureBody::Mindmap(mindmap)) => {
                 !mindmap.diagram_type.is_empty()
@@ -185,6 +190,12 @@ pub(crate) struct InfoSvgBody {
 /// SVG-only metadata retained beside the public Ishikawa document.
 #[derive(Debug, Clone)]
 pub(crate) struct IshikawaSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Journey document.
+#[derive(Debug, Clone)]
+pub(crate) struct JourneySvgBody {
     pub(crate) diagram_type: String,
 }
 
@@ -343,6 +354,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Ishikawa(pair) => {
             ishikawa::build_ishikawa_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Journey(pair) => {
+            journey::build_journey_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Mindmap(pair) => {
             mindmap::build_mindmap_document(pair, metadata, policy, session)

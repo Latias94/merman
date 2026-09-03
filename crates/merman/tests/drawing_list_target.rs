@@ -1908,3 +1908,81 @@ fn timeline_emits_sections_tasks_events_connectors_and_title() {
     }));
     assert!(document.fallbacks.is_empty());
 }
+
+#[test]
+fn journey_emits_actors_sections_tasks_faces_and_activity_axis() {
+    let source = r#"journey
+        title User checkout
+        section Checkout
+            Sign Up: 5: Alice
+            Pay: 3: Bob
+            Review: 1: Alice
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Journey should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    for path_id in [
+        "journey.actor.0.circle",
+        "journey.actor.1.circle",
+        "journey.section.0.background",
+        "journey.task.0.line",
+        "journey.task.0.face",
+        "journey.task.0.face.left_eye",
+        "journey.task.0.face.right_eye",
+        "journey.task.0.face.mouth",
+        "journey.task.0.background",
+        "journey.task.0.actor.0.circle",
+        "journey.activity.line",
+        "journey.activity.arrowhead",
+    ] {
+        assert!(
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+            )),
+            "missing path {path_id}"
+        );
+    }
+    for label in [
+        "User checkout",
+        "Checkout",
+        "Sign Up",
+        "Pay",
+        "Review",
+        "Alice",
+        "Bob",
+    ] {
+        assert!(
+            document.commands.iter().any(|command| matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawText { run } if run.text == label
+            )),
+            "missing text {label}"
+        );
+    }
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.id == "journey.section.0"
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.id == "journey.task.1"
+            && semantic.title.as_deref() == Some("Pay")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.id == "journey.activity"
+    }));
+    assert!(document.fallbacks.is_empty());
+}

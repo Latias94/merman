@@ -85,6 +85,12 @@ pub(crate) fn parse_css_font_size_px(raw: &str, inherited_px: f64) -> Option<f64
     if let Some(v) = lower.strip_suffix("em") {
         return parse_positive_f64(v).map(|scale| inherited_px * scale);
     }
+    if let Some(v) = lower.strip_suffix("ex") {
+        // CSS `ex` is the x-height of the current font.  The renderer-neutral seam has no font
+        // rasterizer at this layer, so use the same stable half-em approximation as Mermaid's
+        // deterministic measurement profile.
+        return parse_positive_f64(v).map(|scale| inherited_px * scale * 0.5);
+    }
 
     match lower.as_str() {
         "xx-small" => Some(inherited_px * 0.6),

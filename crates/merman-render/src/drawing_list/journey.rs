@@ -1,0 +1,1040 @@
+//! Renderer-neutral Journey adapter.
+//!
+//! Journey layout owns the chart's final coordinates.  This adapter makes the visible circles,
+//! rounded rectangles, faces, labels, and axis line explicit so native renderers do not need to
+//! replay Mermaid's HTML/SVG wrapper tree or CSS selectors.
+
+use super::{
+    JourneySvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+};
+use crate::config::{config_font_family_css, config_theme_font_size_css_or_root_number_px};
+use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
+use crate::drawing_list::support::{
+    PortableStyleResolver, stroke, svg_plain_text, text_obligation,
+};
+use crate::environment::{RenderSession, TextMeasurementPhase};
+use crate::family::{FamilyPair, RenderFamilyKind};
+use crate::journey::{JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JourneyConfigView};
+use crate::model::{
+    Bounds, JourneyActorLegendItemLayout, JourneyDiagramLayout, JourneyLineLayout,
+    JourneyMouthKind, JourneySectionLayout, JourneyTaskActorCircleLayout, JourneyTaskLayout,
+};
+use crate::text::{TextMeasurer as _, TextStyle as MeasurementTextStyle};
+use crate::{Error, Result};
+use merman_core::OperationPhase;
+use merman_core::ParseMetadata;
+use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+use merman_display_list::{
+    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
+    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
+    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle as DisplayTextStyle, Viewport,
+};
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
+
+type JourneyPair = FamilyPair<JourneyDiagramRenderModel, JourneyDiagramLayout>;
+
+const BORDER_COLOR: Color = Color::rgba(102, 102, 102, 255);
+const FACE_STROKE_COLOR: Color = Color::rgba(153, 153, 153, 255);
+const BLACK: Color = Color::rgba(0, 0, 0, 255);
+const EYE_RADIUS_PX: f64 = 1.5;
+const EYE_OFFSET_PX: f64 = JOURNEY_FACE_RADIUS_PX / 3.0;
+
+pub(crate) fn build_journey_document(
+    pair: &JourneyPair,
+    metadata: &ParseMetadata,
+    policy: DrawingListPolicy,
+    session: &RenderSession,
+) -> Result<RenderDocument> {
+    JourneyBuilder::new(pair, metadata, policy, session)?.build()
+}
+
+struct JourneyBuilder<'a> {
+    metadata: &'a ParseMetadata,
+    session: &'a RenderSession,
+    policy: DrawingListPolicy,
+    model: &'a JourneyDiagramRenderModel,
+    layout: &'a JourneyDiagramLayout,
+    task_font: FontDescriptor,
+    task_font_size: f64,
+    legend_font: FontDescriptor,
+    legend_font_size: f64,
+    title_font: FontDescriptor,
+    title_font_size: f64,
+    text_color: Color,
+    line_color: Color,
+    face_color: Color,
+    title_color: Color,
+    actor_color_overrides: Vec<Option<Color>>,
+    text_obligation: TextObligation,
+    resources: Vec<DrawingResource>,
+    commands: Vec<DrawingCommand>,
+    semantics: Vec<SemanticAnnotation>,
+}
+
+impl<'a> JourneyBuilder<'a> {
+    fn new(
+        pair: &'a JourneyPair,
+        metadata: &'a ParseMetadata,
+        policy: DrawingListPolicy,
+        session: &'a RenderSession,
+    ) -> Result<Self> {
+        session.checkpoint(OperationPhase::Emit)?;
+        let config = metadata.effective_config.as_value();
+        if config
+            .get("themeCSS")
+            .and_then(Value::as_str)
+            .is_some_and(|css| !css.trim().is_empty())
+        {
+            return Err(unavailable(
+                "themeCSS is an unresolved SVG cascade input for Journey DrawingList output",
+            ));
+        }
+
+        let model = pair.semantic();
+        let layout = pair.layout();
+        validate_layout(layout)?;
+
+        let theme = crate::svg::render_theme::PresentationTheme::new(config).journey();
+        let settings = JourneyConfigView::new(config).render_settings();
+        let styles = PortableStyleResolver::new("journey");
+        let text_color = styles.color("textColor", &theme.text_color)?;
+        let line_color = text_color;
+        let face_color = styles.color("faceColor", &theme.face_color)?;
+        let title_color = if settings.title_color.trim().is_empty() {
+            text_color
+        } else {
+            styles.color("titleColor", &settings.title_color)?
+        };
+
+        let task_font_family = settings
+            .task_text_style
+            .font_family
+            .clone()
+            .filter(|family| !family.trim().is_empty())
+            .unwrap_or_else(|| config_font_family_css(config));
+        let task_font_size = settings.task_text_style.font_size.max(1.0);
+        let title_font_family = if settings.title_font_family.trim().is_empty() {
+            theme.font_family_css.clone()
+        } else {
+            settings.title_font_family.clone()
+        };
+        let title_font_size =
+            crate::mermaid_style::parse_css_font_size_px(&settings.title_font_size, task_font_size)
+                .ok_or_else(|| {
+                    unavailable(format!(
+                        "Journey titleFontSize `{}` is not a portable CSS font size",
+                        settings.title_font_size
+                    ))
+                })?;
+        let legend_font_size = config_theme_font_size_css_or_root_number_px(config, 16.0).max(1.0);
+
+        let actor_color_overrides = theme
+            .actor_colors
+            .iter()
+            .enumerate()
+            .map(|(index, color)| {
+                color
+                    .as_deref()
+                    .map(|value| styles.color(&format!("actor{index}"), value))
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let legend_font_family = theme.font_family_css.clone();
+
+        Ok(Self {
+            metadata,
+            session,
+            policy,
+            model,
+            layout,
+            task_font: FontDescriptor {
+                families: parse_font_families(task_font_family),
+                weight: 400,
+                style: FontStyle::Normal,
+                postscript_name: None,
+                resource: None,
+            },
+            task_font_size,
+            legend_font: FontDescriptor {
+                families: parse_font_families(legend_font_family),
+                weight: 400,
+                style: FontStyle::Normal,
+                postscript_name: None,
+                resource: None,
+            },
+            legend_font_size,
+            title_font: FontDescriptor {
+                families: parse_font_families(title_font_family),
+                weight: 700,
+                style: FontStyle::Normal,
+                postscript_name: None,
+                resource: None,
+            },
+            title_font_size,
+            text_color,
+            line_color,
+            face_color,
+            title_color,
+            actor_color_overrides,
+            text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
+            resources: Vec::new(),
+            commands: vec![
+                DrawingCommand::Save,
+                DrawingCommand::BeginSemanticGroup {
+                    semantic_id: "journey.document".to_string(),
+                },
+            ],
+            semantics: Vec::new(),
+        })
+    }
+
+    fn build(mut self) -> Result<RenderDocument> {
+        let title = self
+            .layout
+            .title
+            .clone()
+            .or_else(|| self.metadata.title.clone())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        self.semantics.push(SemanticAnnotation {
+            id: "journey.document".to_string(),
+            role: SemanticRole::Document,
+            title: self
+                .model
+                .acc_title
+                .clone()
+                .or_else(|| title.clone())
+                .or_else(|| Some(self.metadata.diagram_type.clone())),
+            description: self.model.acc_descr.clone(),
+            link: None,
+        });
+
+        self.emit_actor_legend()?;
+        self.emit_sections()?;
+        self.emit_tasks()?;
+        if let Some(title) = title.as_deref() {
+            self.emit_title(title)?;
+        }
+        self.emit_activity_line()?;
+
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.commands.push(DrawingCommand::Restore);
+
+        let bounds = self
+            .layout
+            .bounds
+            .as_ref()
+            .ok_or_else(|| invalid("Journey layout did not provide root bounds"))?;
+        let title_from_metadata = self.layout.title.is_none() && title.is_some();
+        let max_y = if title_from_metadata {
+            bounds.max_y + JOURNEY_TITLE_EXTRA_HEIGHT_PX
+        } else {
+            bounds.max_y
+        };
+        let viewport = Rect::new(
+            bounds.min_x,
+            bounds.min_y,
+            bounds.max_x - bounds.min_x,
+            max_y - bounds.min_y,
+        );
+        let document = DrawingListDocument {
+            version: DRAWING_LIST_VERSION,
+            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
+            viewport: Viewport::new(viewport),
+            policy: self.policy,
+            resources: self.resources,
+            commands: self.commands,
+            semantics: self.semantics,
+            fallbacks: Vec::new(),
+            extensions: BTreeMap::from([(
+                "x-merman-journey".to_string(),
+                json!({
+                    "diagram_type": self.metadata.diagram_type,
+                    "text_mode": "plain_host_text",
+                    "markup": "br_only",
+                    "use_max_width": self.layout.use_max_width,
+                    "actor_count": self.layout.actor_legend.len(),
+                    "title_from_metadata": title_from_metadata,
+                }),
+            )]),
+        };
+        document.validate().map_err(Error::DrawingListContract)?;
+
+        Ok(RenderDocument {
+            public: document,
+            svg: SvgStructureSidecar {
+                family: RenderFamilyKind::Journey,
+                body: SvgStructureBody::Journey(JourneySvgBody {
+                    diagram_type: self.metadata.diagram_type.clone(),
+                }),
+            },
+        })
+    }
+
+    fn emit_actor_legend(&mut self) -> Result<()> {
+        let legend_font = self.legend_font.clone();
+        for (index, item) in self.layout.actor_legend.iter().enumerate() {
+            let semantic_id = format!("journey.actor.{index}");
+            self.commands.push(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            });
+            self.add_path(
+                format!("{semantic_id}.circle"),
+                ellipse_path(item.circle_cx, item.circle_cy, item.circle_r, item.circle_r),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(self.actor_color(item.pos, &item.color)?)),
+                    stroke: Some(stroke(BLACK, 1.0)),
+                },
+            )?;
+            for (line_index, line) in item.label_lines.iter().enumerate() {
+                self.emit_text(
+                    format!("{semantic_id}.label.{line_index}"),
+                    &line.text,
+                    Point::new(line.tspan_x, line.y),
+                    self.legend_font_size,
+                    400,
+                    self.text_color,
+                    &legend_font,
+                    TextAnchor::Start,
+                    TextBaseline::Alphabetic,
+                )?;
+            }
+            self.commands.push(DrawingCommand::EndSemanticGroup);
+            self.semantics.push(SemanticAnnotation {
+                id: semantic_id,
+                role: SemanticRole::Label,
+                title: Some(item.actor.clone()),
+                description: Some("Journey actor".to_string()),
+                link: None,
+            });
+        }
+        Ok(())
+    }
+
+    fn emit_sections(&mut self) -> Result<()> {
+        for (index, section) in self.layout.sections.iter().enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let semantic_id = format!("journey.section.{index}");
+            self.commands.push(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            });
+            let fill =
+                PortableStyleResolver::new("journey").color("section.fill", &section.fill)?;
+            self.add_path(
+                format!("{semantic_id}.background"),
+                rounded_rect_path(
+                    section.x + section.width / 2.0,
+                    section.y + section.height / 2.0,
+                    section.width,
+                    section.height,
+                    3.0,
+                ),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(fill)),
+                    stroke: Some(stroke(BORDER_COLOR, 1.0)),
+                },
+            )?;
+            self.emit_box_text(
+                &format!("{semantic_id}.label"),
+                &section.section,
+                section.x,
+                section.y,
+                section.width,
+                section.height,
+            )?;
+            self.commands.push(DrawingCommand::EndSemanticGroup);
+            self.semantics.push(SemanticAnnotation {
+                id: semantic_id,
+                role: SemanticRole::Group,
+                title: Some(visible_journey_text(&section.section)),
+                description: Some("Journey section".to_string()),
+                link: None,
+            });
+        }
+        Ok(())
+    }
+
+    fn emit_tasks(&mut self) -> Result<()> {
+        for (index, task) in self.layout.tasks.iter().enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let semantic_id = format!("journey.task.{index}");
+            self.commands.push(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            });
+            self.add_path(
+                format!("{semantic_id}.line"),
+                line_path(
+                    Point::new(task.line_x1, task.line_y1),
+                    Point::new(task.line_x2, task.line_y2),
+                ),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: None,
+                    stroke: Some(StrokeStyle {
+                        dash_array: vec![4.0, 2.0],
+                        ..stroke(self.line_color, 1.0)
+                    }),
+                },
+            )?;
+
+            let face_y = task
+                .face_cy
+                .ok_or_else(|| unavailable("Journey score produced non-finite face geometry"))?;
+            self.add_path(
+                format!("{semantic_id}.face"),
+                ellipse_path(
+                    task.face_cx,
+                    face_y,
+                    JOURNEY_FACE_RADIUS_PX,
+                    JOURNEY_FACE_RADIUS_PX,
+                ),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(self.face_color)),
+                    stroke: Some(stroke(FACE_STROKE_COLOR, 1.0)),
+                },
+            )?;
+            self.add_path(
+                format!("{semantic_id}.face.left_eye"),
+                ellipse_path(
+                    task.face_cx - EYE_OFFSET_PX,
+                    face_y - EYE_OFFSET_PX,
+                    EYE_RADIUS_PX,
+                    EYE_RADIUS_PX,
+                ),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(BORDER_COLOR)),
+                    stroke: Some(stroke(BORDER_COLOR, 2.0)),
+                },
+            )?;
+            self.add_path(
+                format!("{semantic_id}.face.right_eye"),
+                ellipse_path(
+                    task.face_cx + EYE_OFFSET_PX,
+                    face_y - EYE_OFFSET_PX,
+                    EYE_RADIUS_PX,
+                    EYE_RADIUS_PX,
+                ),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(BORDER_COLOR)),
+                    stroke: Some(stroke(BORDER_COLOR, 2.0)),
+                },
+            )?;
+            self.emit_mouth(
+                &format!("{semantic_id}.face.mouth"),
+                task.mouth.clone(),
+                task.face_cx,
+                face_y,
+            )?;
+
+            let fill = PortableStyleResolver::new("journey").color("task.fill", &task.fill)?;
+            self.add_path(
+                format!("{semantic_id}.background"),
+                rounded_rect_path(
+                    task.x + task.width / 2.0,
+                    task.y + task.height / 2.0,
+                    task.width,
+                    task.height,
+                    3.0,
+                ),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(fill)),
+                    stroke: Some(stroke(BORDER_COLOR, 1.0)),
+                },
+            )?;
+
+            for (actor_index, actor) in task.actor_circles.iter().enumerate() {
+                self.emit_task_actor(&semantic_id, actor_index, actor)?;
+            }
+            self.emit_box_text(
+                &format!("{semantic_id}.label"),
+                &task.task,
+                task.x,
+                task.y,
+                task.width,
+                task.height,
+            )?;
+
+            self.commands.push(DrawingCommand::EndSemanticGroup);
+            self.semantics.push(SemanticAnnotation {
+                id: semantic_id,
+                role: SemanticRole::Node,
+                title: Some(visible_journey_text(&task.task)),
+                description: Some(format!(
+                    "Journey task in {} with score {}",
+                    task.section, task.score
+                )),
+                link: None,
+            });
+        }
+        Ok(())
+    }
+
+    fn emit_task_actor(
+        &mut self,
+        task_id: &str,
+        index: usize,
+        actor: &JourneyTaskActorCircleLayout,
+    ) -> Result<()> {
+        let semantic_id = format!("{task_id}.actor.{index}");
+        self.add_path(
+            format!("{semantic_id}.circle"),
+            ellipse_path(actor.cx, actor.cy, actor.r, actor.r),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(self.actor_color(actor.pos, &actor.color)?)),
+                stroke: Some(stroke(BLACK, 1.0)),
+            },
+        )?;
+        self.semantics.push(SemanticAnnotation {
+            id: semantic_id,
+            role: SemanticRole::Label,
+            title: Some(actor.actor.clone()),
+            description: Some("Journey task actor".to_string()),
+            link: None,
+        });
+        Ok(())
+    }
+
+    fn emit_mouth(&mut self, id: &str, mouth: JourneyMouthKind, cx: f64, cy: f64) -> Result<()> {
+        match mouth {
+            JourneyMouthKind::Smile => self.add_path(
+                id,
+                smile_path(cx, cy + 2.0),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(BLACK)),
+                    stroke: Some(stroke(BORDER_COLOR, 1.0)),
+                },
+            ),
+            JourneyMouthKind::Sad => self.add_path(
+                id,
+                sad_path(cx, cy + 7.0),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(BLACK)),
+                    stroke: Some(stroke(BORDER_COLOR, 1.0)),
+                },
+            ),
+            JourneyMouthKind::Ambivalent => self.add_path(
+                id,
+                line_path(
+                    Point::new(cx - 5.0, cy + 7.0),
+                    Point::new(cx + 5.0, cy + 7.0),
+                ),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: None,
+                    stroke: Some(stroke(BORDER_COLOR, 1.0)),
+                },
+            ),
+        }
+    }
+
+    fn emit_box_text(
+        &mut self,
+        prefix: &str,
+        text: &str,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> Result<()> {
+        let lines = split_journey_text(text)?;
+        let line_count = lines.len().max(1) as f64;
+        let center = Point::new(x + width / 2.0, y + height / 2.0);
+        let task_font = self.task_font.clone();
+        for (index, line) in lines.iter().enumerate() {
+            let offset =
+                index as f64 * self.task_font_size - self.task_font_size * (line_count - 1.0) / 2.0;
+            self.emit_text(
+                format!("{prefix}.{index}"),
+                line,
+                Point::new(center.x, center.y + offset),
+                self.task_font_size,
+                400,
+                self.text_color,
+                &task_font,
+                TextAnchor::Middle,
+                TextBaseline::Middle,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn emit_title(&mut self, title: &str) -> Result<()> {
+        let title = svg_plain_text(title);
+        if title.is_empty() {
+            return Ok(());
+        }
+        let title_font = self.title_font.clone();
+        let title_origin = Point::new(self.layout.title_x, self.layout.title_y);
+        self.emit_text(
+            "journey.title",
+            &title,
+            title_origin,
+            self.title_font_size,
+            700,
+            self.title_color,
+            &title_font,
+            TextAnchor::Start,
+            TextBaseline::Alphabetic,
+        )?;
+        self.semantics.push(SemanticAnnotation {
+            id: "journey.title".to_string(),
+            role: SemanticRole::Label,
+            title: Some(title),
+            description: None,
+            link: None,
+        });
+        Ok(())
+    }
+
+    fn emit_activity_line(&mut self) -> Result<()> {
+        let line = &self.layout.activity_line;
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "journey.activity".to_string(),
+        });
+        self.add_path(
+            "journey.activity.line",
+            line_path(Point::new(line.x1, line.y1), Point::new(line.x2, line.y2)),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: None,
+                stroke: Some(stroke(self.line_color, 4.0)),
+            },
+        )?;
+        self.add_path(
+            "journey.activity.arrowhead",
+            arrowhead_path(line.x1, line.y1, line.x2, line.y2, 4.0)?,
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(BLACK)),
+                stroke: None,
+            },
+        )?;
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.semantics.push(SemanticAnnotation {
+            id: "journey.activity".to_string(),
+            role: SemanticRole::Edge,
+            title: None,
+            description: Some("Journey activity axis".to_string()),
+            link: None,
+        });
+        Ok(())
+    }
+
+    fn emit_text(
+        &mut self,
+        id: impl Into<String>,
+        value: &str,
+        origin: Point,
+        font_size: f64,
+        weight: u16,
+        color: Color,
+        font: &FontDescriptor,
+        anchor: TextAnchor,
+        baseline: TextBaseline,
+    ) -> Result<()> {
+        let value = svg_plain_text(value);
+        if value.is_empty() {
+            return Ok(());
+        }
+        let measurement_style = MeasurementTextStyle {
+            font_family: Some(font.families.join(", ")),
+            font_size,
+            font_weight: Some(weight.to_string()),
+            font_style: None,
+        };
+        let measurer = self
+            .session
+            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+        let width = measurer
+            .measure_svg_raw_text_bbox_width_px(&value, &measurement_style)
+            .max(1.0);
+        let height = measurer
+            .measure_svg_simple_text_bbox_height_px(&value, &measurement_style)
+            .max(1.0);
+        let left = match anchor {
+            TextAnchor::Start => origin.x,
+            TextAnchor::Middle => origin.x - width / 2.0,
+            TextAnchor::End => origin.x - width,
+        };
+        let top = match baseline {
+            TextBaseline::Alphabetic => origin.y - height,
+            TextBaseline::Middle => origin.y - height / 2.0,
+            TextBaseline::Hanging => origin.y,
+            TextBaseline::Ideographic
+            | TextBaseline::TextBeforeEdge
+            | TextBaseline::TextAfterEdge => origin.y - height,
+        };
+        self.commands.push(DrawingCommand::DrawText {
+            run: TextRun {
+                text: value,
+                origin,
+                bounds: Rect::new(left, top, width, height),
+                style: DisplayTextStyle {
+                    font: FontDescriptor {
+                        weight,
+                        ..font.clone()
+                    },
+                    font_size,
+                    letter_spacing: 0.0,
+                    line_height: font_size,
+                    fill: Paint::solid(color),
+                },
+                anchor,
+                baseline,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: self.text_obligation.clone(),
+            },
+        });
+        let _ = id;
+        Ok(())
+    }
+
+    fn actor_color(&self, pos: i64, layout_color: &str) -> Result<Color> {
+        if pos < 0 {
+            return Err(invalid("Journey actor position is negative"));
+        }
+        self.actor_color_overrides
+            .get(pos as usize)
+            .and_then(|color| *color)
+            .map_or_else(
+                || PortableStyleResolver::new("journey").color("actor.fill", layout_color),
+                Ok,
+            )
+    }
+
+    fn add_path(
+        &mut self,
+        id: impl Into<String>,
+        segments: Vec<PathSegment>,
+        style: PathStyle,
+    ) -> Result<()> {
+        if segments.is_empty() {
+            return Err(invalid("Journey path has no geometry"));
+        }
+        let id = ResourceId::new(id.into());
+        self.resources.push(DrawingResource::Path(PathResource {
+            id: id.clone(),
+            segments,
+        }));
+        self.commands
+            .push(DrawingCommand::DrawPath { path: id, style });
+        Ok(())
+    }
+}
+
+fn split_journey_text(text: &str) -> Result<Vec<String>> {
+    let bytes = text.as_bytes();
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] == b'<'
+            && let Some(end) = journey_break_tag_end(bytes, index)
+        {
+            lines.push(svg_plain_text(&current));
+            current.clear();
+            index = end;
+            continue;
+        }
+        let Some(character) = text.get(index..).and_then(|rest| rest.chars().next()) else {
+            break;
+        };
+        current.push(character);
+        index += character.len_utf8();
+    }
+    lines.push(svg_plain_text(&current));
+    if lines.iter().any(|line| line.contains(['<', '>'])) {
+        return Err(unavailable(
+            "Journey labels contain HTML markup other than <br>, which DrawingList v1 cannot preserve",
+        ));
+    }
+    Ok(lines)
+}
+
+fn visible_journey_text(text: &str) -> String {
+    split_journey_text(text)
+        .map(|lines| lines.join(" "))
+        .unwrap_or_else(|_| svg_plain_text(text))
+}
+
+fn journey_break_tag_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut index = start + 1;
+    if bytes.get(index) == Some(&b'/') {
+        index += 1;
+    }
+    if !bytes
+        .get(index..index + 2)
+        .is_some_and(|name| name.eq_ignore_ascii_case(b"br"))
+    {
+        return None;
+    }
+    index += 2;
+    while bytes
+        .get(index)
+        .is_some_and(|byte| byte.is_ascii_whitespace())
+    {
+        index += 1;
+    }
+    if bytes.get(index) == Some(&b'/') {
+        index += 1;
+        while bytes
+            .get(index)
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+        {
+            index += 1;
+        }
+    }
+    (bytes.get(index) == Some(&b'>')).then_some(index + 1)
+}
+
+fn line_path(from: Point, to: Point) -> Vec<PathSegment> {
+    vec![PathSegment::MoveTo { to: from }, PathSegment::LineTo { to }]
+}
+
+fn smile_path(cx: f64, cy: f64) -> Vec<PathSegment> {
+    vec![
+        PathSegment::MoveTo {
+            to: Point::new(cx + 7.5, cy),
+        },
+        PathSegment::ArcTo {
+            radius_x: 7.5,
+            radius_y: 7.5,
+            x_axis_rotation_degrees: 0.0,
+            large_arc: true,
+            sweep_clockwise: true,
+            to: Point::new(cx - 7.5, cy),
+        },
+        PathSegment::LineTo {
+            to: Point::new(cx - 6.818, cy),
+        },
+        PathSegment::ArcTo {
+            radius_x: 6.818,
+            radius_y: 6.818,
+            x_axis_rotation_degrees: 0.0,
+            large_arc: true,
+            sweep_clockwise: false,
+            to: Point::new(cx + 6.818, cy),
+        },
+        PathSegment::Close,
+    ]
+}
+
+fn sad_path(cx: f64, cy: f64) -> Vec<PathSegment> {
+    vec![
+        PathSegment::MoveTo {
+            to: Point::new(cx - 7.5, cy),
+        },
+        PathSegment::ArcTo {
+            radius_x: 7.5,
+            radius_y: 7.5,
+            x_axis_rotation_degrees: 0.0,
+            large_arc: true,
+            sweep_clockwise: true,
+            to: Point::new(cx + 7.5, cy),
+        },
+        PathSegment::LineTo {
+            to: Point::new(cx + 6.818, cy),
+        },
+        PathSegment::ArcTo {
+            radius_x: 6.818,
+            radius_y: 6.818,
+            x_axis_rotation_degrees: 0.0,
+            large_arc: true,
+            sweep_clockwise: false,
+            to: Point::new(cx - 6.818, cy),
+        },
+        PathSegment::Close,
+    ]
+}
+
+fn arrowhead_path(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    stroke_width: f64,
+) -> Result<Vec<PathSegment>> {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let length = dx.hypot(dy);
+    if !length.is_finite() || length <= f64::EPSILON {
+        return Err(invalid("Journey activity line has no arrowhead tangent"));
+    }
+    let ux = dx / length;
+    let uy = dy / length;
+    let nx = -uy;
+    let ny = ux;
+    let scale = stroke_width.max(0.1);
+    let base_x = x2 - ux * 6.0 * scale;
+    let base_y = y2 - uy * 6.0 * scale;
+    let half_width = 2.0 * scale;
+    Ok(polygon_path(&[
+        Point::new(x2, y2),
+        Point::new(base_x + nx * half_width, base_y + ny * half_width),
+        Point::new(base_x - nx * half_width, base_y - ny * half_width),
+    ]))
+}
+
+fn validate_layout(layout: &JourneyDiagramLayout) -> Result<()> {
+    let bounds = layout
+        .bounds
+        .as_ref()
+        .ok_or_else(|| invalid("Journey layout did not provide root bounds"))?;
+    validate_bounds(bounds)?;
+    if [
+        layout.left_margin,
+        layout.max_actor_label_width,
+        layout.width,
+        layout.height,
+        layout.svg_height,
+        layout.title_x,
+        layout.title_y,
+    ]
+    .iter()
+    .any(|value| !value.is_finite())
+        || layout.width <= 0.0
+        || layout.height <= 0.0
+        || layout.svg_height <= 0.0
+    {
+        return Err(invalid("Journey root metrics are invalid"));
+    }
+    for actor in &layout.actor_legend {
+        validate_actor_legend(actor)?;
+    }
+    for section in &layout.sections {
+        validate_section(section)?;
+    }
+    for task in &layout.tasks {
+        validate_task(task)?;
+    }
+    validate_line(&layout.activity_line)
+}
+
+fn validate_actor_legend(actor: &JourneyActorLegendItemLayout) -> Result<()> {
+    if actor.pos < 0
+        || [actor.circle_cx, actor.circle_cy, actor.circle_r]
+            .iter()
+            .any(|value| !value.is_finite())
+        || actor.circle_r <= 0.0
+    {
+        return Err(invalid("Journey actor legend geometry is invalid"));
+    }
+    for line in &actor.label_lines {
+        if [line.x, line.y, line.tspan_x, line.text_margin]
+            .iter()
+            .any(|value| !value.is_finite())
+        {
+            return Err(invalid("Journey actor legend label geometry is invalid"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_section(section: &JourneySectionLayout) -> Result<()> {
+    if [
+        section.x,
+        section.y,
+        section.width,
+        section.height,
+        section.num as f64,
+        section.task_count as f64,
+    ]
+    .iter()
+    .any(|value| !value.is_finite())
+        || section.width <= 0.0
+        || section.height <= 0.0
+        || section.num < 0
+        || section.task_count < 0
+    {
+        return Err(invalid("Journey section geometry is invalid"));
+    }
+    Ok(())
+}
+
+fn validate_task(task: &JourneyTaskLayout) -> Result<()> {
+    if [
+        task.x,
+        task.y,
+        task.width,
+        task.height,
+        task.num as f64,
+        task.line_x1,
+        task.line_y1,
+        task.line_x2,
+        task.line_y2,
+        task.face_cx,
+    ]
+    .iter()
+    .any(|value| !value.is_finite())
+        || task.width <= 0.0
+        || task.height <= 0.0
+        || task.num < 0
+    {
+        return Err(invalid("Journey task geometry is invalid"));
+    }
+    let face_y = task
+        .face_cy
+        .ok_or_else(|| unavailable("Journey score produced non-finite face geometry"))?;
+    if !face_y.is_finite() {
+        return Err(invalid("Journey task face geometry is invalid"));
+    }
+    for actor in &task.actor_circles {
+        if actor.pos < 0
+            || [actor.cx, actor.cy, actor.r]
+                .iter()
+                .any(|value| !value.is_finite())
+            || actor.r <= 0.0
+        {
+            return Err(invalid("Journey task actor geometry is invalid"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_line(line: &JourneyLineLayout) -> Result<()> {
+    if [line.x1, line.y1, line.x2, line.y2]
+        .iter()
+        .any(|value| !value.is_finite())
+    {
+        return Err(invalid("Journey line geometry is invalid"));
+    }
+    Ok(())
+}
+
+fn validate_bounds(bounds: &Bounds) -> Result<()> {
+    if [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y]
+        .iter()
+        .any(|value| !value.is_finite())
+        || bounds.max_x <= bounds.min_x
+        || bounds.max_y <= bounds.min_y
+    {
+        return Err(invalid("Journey bounds are invalid"));
+    }
+    Ok(())
+}
+
+fn invalid(message: impl Into<String>) -> Error {
+    Error::InvalidModel {
+        message: message.into(),
+    }
+}
+
+fn unavailable(message: impl Into<String>) -> Error {
+    Error::DrawingListUnavailable {
+        family: "journey".to_string(),
+        reason: message.into(),
+    }
+}
