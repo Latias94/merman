@@ -2137,3 +2137,137 @@ fn kanban_rejects_rich_markdown_and_icons_without_silent_loss() {
         );
     }
 }
+
+#[test]
+fn sequence_emits_typed_participants_lifelines_signals_markers_and_labels() {
+    let source = r#"sequenceDiagram
+        accTitle: Authentication flow
+        accDescr: A request is sent and acknowledged
+        participant Client
+        participant Server
+        Client->>Server: request
+        Server-->>Client: response
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Sequence should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    for path_id in [
+        "sequence.actor.0.top.shape",
+        "sequence.actor.0.lifeline",
+        "sequence.message.0.route",
+        "sequence.message.0.marker.end",
+        "sequence.message.1.route",
+    ] {
+        assert!(
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+            )),
+            "missing path {path_id}"
+        );
+    }
+    for text in ["Client", "Server", "request", "response"] {
+        assert!(
+            document.commands.iter().any(|command| matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawText { run } if run.text == text
+            )),
+            "missing text {text}"
+        );
+    }
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Document
+            && semantic.id == "sequence.document"
+            && semantic.title.as_deref() == Some("Authentication flow")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.id == "sequence.message.0"
+            && semantic.title.as_deref() == Some("request")
+    }));
+    assert!(document.fallbacks.is_empty());
+}
+
+#[test]
+fn sequence_rejects_rich_labels_and_non_classic_shapes_without_silent_loss() {
+    for (index, source) in [
+        "sequenceDiagram\n  participant A\n  participant B\n  A->>B: **bold**\n",
+        "sequenceDiagram\n  actor A\n  participant B\n  A->>B: hello\n",
+        "%%{init: {\"look\": \"neo\"}}%%\nsequenceDiagram\n  participant A\n  participant B\n  A->>B: hello\n",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+        .expect_err("unsupported Sequence presentation must stay explicit");
+        assert!(
+            error.to_string().contains("DrawingList")
+                || error.to_string().contains("classic")
+                || error.to_string().contains("preserve"),
+            "unexpected error for case {index}: {error}"
+        );
+    }
+}
+
+#[test]
+fn sequence_emits_control_note_and_activation_semantics() {
+    let source = r#"sequenceDiagram
+        participant Client
+        participant Server
+        loop retry
+            Client->>+Server: request
+            Server-->>-Client: response
+        end
+        Note over Client,Server: observed
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Sequence control constructs should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    for path_id in [
+        "sequence.control.0.frame",
+        "sequence.control.0.label_box",
+        "sequence.activation.0.shape",
+        "sequence.note.6.shape",
+    ] {
+        assert!(
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+            )),
+            "missing path {path_id}"
+        );
+    }
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run } if run.text == "retry"
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run } if run.text == "observed"
+    )));
+}

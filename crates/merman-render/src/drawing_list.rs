@@ -21,6 +21,7 @@ mod radar;
 mod railroad;
 mod requirement;
 mod sankey;
+mod sequence;
 mod state;
 mod support;
 mod timeline;
@@ -74,6 +75,7 @@ pub(crate) enum SvgStructureBody {
     Railroad(RailroadSvgBody),
     Requirement(RequirementSvgBody),
     Sankey(SankeySvgBody),
+    Sequence(SequenceSvgBody),
     State(StateSvgBody),
     Treemap(TreemapSvgBody),
     TreeView(TreeViewSvgBody),
@@ -136,6 +138,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Sankey, SvgStructureBody::Sankey(sankey)) => {
                 !sankey.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Sequence, SvgStructureBody::Sequence(sequence)) => {
+                !sequence.diagram_type.is_empty()
             }
             (RenderFamilyKind::State, SvgStructureBody::State(state)) => {
                 !state.diagram_type.is_empty()
@@ -254,6 +259,12 @@ pub(crate) struct RequirementSvgBody {
 /// SVG-only metadata retained beside the public Sankey document.
 #[derive(Debug, Clone)]
 pub(crate) struct SankeySvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Sequence document.
+#[derive(Debug, Clone)]
+pub(crate) struct SequenceSvgBody {
     pub(crate) diagram_type: String,
 }
 
@@ -406,6 +417,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Sankey(pair) => {
             sankey::build_sankey_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Sequence(pair) => {
+            sequence::build_sequence_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::State(pair) => {
             state::build_state_document(pair, metadata, policy, session)
