@@ -1480,6 +1480,74 @@ xychart
 }
 
 #[test]
+fn eventmodeling_emits_swimlanes_boxes_relations_and_explicit_text_runs() {
+    let source = r#"eventmodeling
+tf 01 ui Shop.Cart
+tf 02 cmd Ordering.AddItem ->> 01 { sku: "SKU-1" }
+tf 03 evt Cart.ItemAdded ->> 02 [[ItemAddedData]]
+rf 04 rmo Read.CartSummary
+tf 05 evt Checkout.CheckedOut
+
+data ItemAddedData {
+  sku: "SKU-1"
+  quantity: 1
+}
+"#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("EventModeling should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "eventmodeling.swimlane.1.shape"
+    )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "eventmodeling.box.2.shape"
+    )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "eventmodeling.relation.0.arrowhead"
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "AddItem" && run.style.font.weight == 700
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text.contains("quantity")
+                && run.style.font.families.iter().any(|family| family == "monospace")
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.id == "eventmodeling.swimlane.101"
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("ItemAdded")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.description.as_deref() == Some("01 → 02")
+    }));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
