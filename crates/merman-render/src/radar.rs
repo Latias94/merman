@@ -15,6 +15,96 @@ mod config;
 
 pub(crate) use config::RadarConfigView;
 
+const RADAR_AXIS_LABEL_PADDING_PX: f64 = 4.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RadarTextAnchor {
+    Start,
+    Middle,
+    End,
+}
+
+impl RadarTextAnchor {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Middle => "middle",
+            Self::End => "end",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RadarTextBaseline {
+    Alphabetic,
+    Hanging,
+    Middle,
+}
+
+impl RadarTextBaseline {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Alphabetic => "auto",
+            Self::Hanging => "hanging",
+            Self::Middle => "central",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct RadarAxisLabelPlacement {
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+    pub(crate) anchor: RadarTextAnchor,
+    pub(crate) baseline: RadarTextBaseline,
+}
+
+pub(crate) fn radar_axis_label_placement(axis: &RadarAxisLayout) -> RadarAxisLabelPlacement {
+    let cos_angle = axis.angle.cos();
+    let sin_angle = axis.angle.sin();
+    RadarAxisLabelPlacement {
+        x: axis.label_x + RADAR_AXIS_LABEL_PADDING_PX * cos_angle,
+        y: axis.label_y + RADAR_AXIS_LABEL_PADDING_PX * sin_angle,
+        anchor: if cos_angle > 0.01 {
+            RadarTextAnchor::Start
+        } else if cos_angle < -0.01 {
+            RadarTextAnchor::End
+        } else {
+            RadarTextAnchor::Middle
+        },
+        baseline: if sin_angle > 0.01 {
+            RadarTextBaseline::Hanging
+        } else if sin_angle < -0.01 {
+            RadarTextBaseline::Alphabetic
+        } else {
+            RadarTextBaseline::Middle
+        },
+    }
+}
+
+pub(crate) fn radar_curves_use_polygon(layout: &RadarDiagramLayout) -> bool {
+    layout
+        .graticules
+        .first()
+        .is_some_and(|graticule| graticule.kind.trim() == "polygon")
+}
+
+pub(crate) fn radar_title<'a>(
+    model: &'a RadarDiagramRenderModel,
+    diagram_title: Option<&'a str>,
+) -> Option<&'a str> {
+    model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RadarLayoutWork {
     axes: usize,

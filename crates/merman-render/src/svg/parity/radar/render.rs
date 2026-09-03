@@ -216,23 +216,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     }
 
     for a in &layout.axes {
-        let cos_a = a.angle.cos();
-        let sin_a = a.angle.sin();
-        let text_anchor = if cos_a > 0.01 {
-            "start"
-        } else if cos_a < -0.01 {
-            "end"
-        } else {
-            "middle"
-        };
-        let dominant_baseline = if sin_a > 0.01 {
-            "hanging"
-        } else if sin_a < -0.01 {
-            "auto"
-        } else {
-            "central"
-        };
-        let label_padding = 4.0;
+        let placement = crate::radar::radar_axis_label_placement(a);
         let _ = write!(
             &mut out,
             r#"<line x1="0" y1="0" x2="{x2}" y2="{y2}" class="radarAxisLine"/>"#,
@@ -242,16 +226,15 @@ pub(crate) fn render_radar_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="{y}" text-anchor="{text_anchor}" dominant-baseline="{dominant_baseline}" class="radarAxisLabel">{label}</text>"#,
-            x = fmt_display(a.label_x + label_padding * cos_a),
-            y = fmt_display(a.label_y + label_padding * sin_a),
+            x = fmt_display(placement.x),
+            y = fmt_display(placement.y),
+            text_anchor = placement.anchor.as_svg(),
+            dominant_baseline = placement.baseline.as_svg(),
             label = escape_xml(&a.label)
         );
     }
 
-    let polygon_curves = layout
-        .graticules
-        .first()
-        .is_some_and(|g| g.kind.trim() == "polygon");
+    let polygon_curves = crate::radar::radar_curves_use_polygon(layout);
     for c in &layout.curves {
         if polygon_curves && !c.points.is_empty() {
             let points = fmt_points(&c.points);
@@ -284,32 +267,17 @@ pub(crate) fn render_radar_diagram_svg_model(
             size = fmt_display(12.0),
             idx = item.class_index
         );
-        let label = model
-            .curves
-            .get(item.class_index as usize)
-            .map(|c| c.label.as_str())
-            .unwrap_or("");
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="{y}" class="radarLegendText">{text}</text>"#,
             x = fmt_display(16.0),
             y = fmt_display(0.0),
-            text = escape_xml(label)
+            text = escape_xml(&item.label)
         );
         out.push_str("</g>");
     }
 
-    let title = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .or_else(|| {
-            diagram_title
-                .map(str::trim)
-                .filter(|title| !title.is_empty())
-        });
-    match title {
+    match crate::radar::radar_title(model, diagram_title) {
         Some(t) => {
             let _ = write!(
                 &mut out,
