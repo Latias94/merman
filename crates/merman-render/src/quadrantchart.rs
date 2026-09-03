@@ -12,6 +12,52 @@ mod config;
 
 pub(crate) use config::QuadrantChartConfigView;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuadrantTextAnchor {
+    Start,
+    Middle,
+}
+
+impl QuadrantTextAnchor {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Middle => "middle",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuadrantTextBaseline {
+    Hanging,
+    Middle,
+}
+
+impl QuadrantTextBaseline {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Hanging => "hanging",
+            Self::Middle => "middle",
+        }
+    }
+}
+
+pub(crate) fn quadrant_text_anchor(vertical_pos: &str) -> QuadrantTextAnchor {
+    if vertical_pos == "left" {
+        QuadrantTextAnchor::Start
+    } else {
+        QuadrantTextAnchor::Middle
+    }
+}
+
+pub(crate) fn quadrant_text_baseline(horizontal_pos: &str) -> QuadrantTextBaseline {
+    if horizontal_pos == "top" {
+        QuadrantTextBaseline::Hanging
+    } else {
+        QuadrantTextBaseline::Middle
+    }
+}
+
 fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {
     PresentationTheme::new(effective_config).quadrantchart()
 }
