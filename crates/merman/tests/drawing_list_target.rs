@@ -157,6 +157,51 @@ fn info_emits_typed_version_text_and_semantics() {
 }
 
 #[test]
+fn state_emits_typed_nodes_transitions_markers_and_labels() {
+    let source = r#"stateDiagram-v2
+        [*] --> Idle: start
+        Idle --> Done: finish
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable State subset should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("state.edge.0.marker.end")
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Idle")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.title.as_deref() == Some("finish")
+    }));
+}
+
+#[test]
+fn state_rejects_roughjs_shapes_instead_of_substituting_regular_geometry() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "stateDiagram-v2\n  A --> [*]\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("State end markers must remain explicit until RoughJS is canonical");
+    assert!(error.to_string().contains("RoughJS path generation"));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(

@@ -230,172 +230,6 @@ fn state_edge_clip_self_loop_points_to_node(
     Some(out)
 }
 
-fn state_edge_find_adjacent_point(
-    point_a: &crate::model::LayoutPoint,
-    point_b: &crate::model::LayoutPoint,
-    distance: f64,
-) -> crate::model::LayoutPoint {
-    let x_diff = point_b.x - point_a.x;
-    let y_diff = point_b.y - point_a.y;
-    let length = (x_diff * x_diff + y_diff * y_diff).sqrt();
-    let ratio = distance / length;
-    crate::model::LayoutPoint {
-        x: point_b.x - ratio * x_diff,
-        y: point_b.y - ratio * y_diff,
-    }
-}
-
-fn state_edge_is_corner_point(
-    prev: &crate::model::LayoutPoint,
-    curr: &crate::model::LayoutPoint,
-    next: &crate::model::LayoutPoint,
-) -> bool {
-    (prev.x == curr.x
-        && curr.y == next.y
-        && (curr.x - next.x).abs() > 5.0
-        && (curr.y - prev.y).abs() > 5.0)
-        || (prev.y == curr.y
-            && curr.x == next.x
-            && (curr.x - prev.x).abs() > 5.0
-            && (curr.y - next.y).abs() > 5.0)
-}
-
-fn state_edge_fix_corners(
-    line_data: &[crate::model::LayoutPoint],
-) -> Vec<crate::model::LayoutPoint> {
-    if line_data.len() < 3 {
-        return line_data.to_vec();
-    }
-
-    let mut out = Vec::with_capacity(line_data.len());
-    for (idx, point) in line_data.iter().enumerate() {
-        let is_corner = idx > 0
-            && idx + 1 < line_data.len()
-            && state_edge_is_corner_point(&line_data[idx - 1], point, &line_data[idx + 1]);
-
-        if !is_corner {
-            out.push(point.clone());
-            continue;
-        }
-
-        let prev_point = &line_data[idx - 1];
-        let next_point = &line_data[idx + 1];
-        let corner_point = point;
-        let new_prev_point = state_edge_find_adjacent_point(prev_point, corner_point, 5.0);
-        let new_next_point = state_edge_find_adjacent_point(next_point, corner_point, 5.0);
-        let x_diff = new_next_point.x - new_prev_point.x;
-        let y_diff = new_next_point.y - new_prev_point.y;
-        out.push(new_prev_point.clone());
-
-        let mut new_corner_point = corner_point.clone();
-        if (next_point.x - prev_point.x).abs() > 10.0 && (next_point.y - prev_point.y).abs() >= 10.0
-        {
-            let a = std::f64::consts::SQRT_2 * 2.0;
-            let r = 5.0;
-            if corner_point.x == new_prev_point.x {
-                new_corner_point = crate::model::LayoutPoint {
-                    x: if x_diff < 0.0 {
-                        new_prev_point.x - r + a
-                    } else {
-                        new_prev_point.x + r - a
-                    },
-                    y: if y_diff < 0.0 {
-                        new_prev_point.y - a
-                    } else {
-                        new_prev_point.y + a
-                    },
-                };
-            } else {
-                new_corner_point = crate::model::LayoutPoint {
-                    x: if x_diff < 0.0 {
-                        new_prev_point.x - a
-                    } else {
-                        new_prev_point.x + a
-                    },
-                    y: if y_diff < 0.0 {
-                        new_prev_point.y - r + a
-                    } else {
-                        new_prev_point.y + r - a
-                    },
-                };
-            }
-        }
-
-        out.push(new_corner_point);
-        out.push(new_next_point);
-    }
-    out
-}
-
-fn state_marker_offset_for(arrow_type_end: Option<&str>) -> Option<f64> {
-    match arrow_type_end {
-        Some("arrow_barb_neo") => Some(5.5),
-        _ => None,
-    }
-}
-
-fn state_line_with_end_marker_offset_points(
-    input: &[crate::model::LayoutPoint],
-    arrow_type_end: Option<&str>,
-) -> Vec<crate::model::LayoutPoint> {
-    fn calculate_delta_and_angle(
-        a: &crate::model::LayoutPoint,
-        b: &crate::model::LayoutPoint,
-    ) -> (f64, f64, f64) {
-        let delta_x = b.x - a.x;
-        let delta_y = b.y - a.y;
-        let angle = (delta_y / delta_x).atan();
-        (angle, delta_x, delta_y)
-    }
-
-    let Some(end_marker_height) = state_marker_offset_for(arrow_type_end) else {
-        return input.to_vec();
-    };
-    if input.len() < 2 {
-        return input.to_vec();
-    }
-
-    let start = &input[0];
-    let end = &input[input.len() - 1];
-    let x_direction_is_left = start.x < end.x;
-    let y_direction_is_down = start.y < end.y;
-    let extra_room = 1.0;
-
-    let mut out = Vec::with_capacity(input.len());
-    for (idx, point) in input.iter().enumerate() {
-        let mut offset_x = 0.0;
-        let mut offset_y = 0.0;
-
-        if idx == input.len() - 1 {
-            let (angle, delta_x, delta_y) =
-                calculate_delta_and_angle(&input[input.len() - 1], &input[input.len() - 2]);
-            offset_x = end_marker_height * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
-            offset_y =
-                end_marker_height * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
-        }
-
-        let diff_x = (point.x - end.x).abs();
-        let diff_y = (point.y - end.y).abs();
-        if diff_x < end_marker_height && diff_x > 0.0 && diff_y < end_marker_height {
-            let mut adjustment = end_marker_height + extra_room - diff_x;
-            adjustment *= if !x_direction_is_left { -1.0 } else { 1.0 };
-            offset_x -= adjustment;
-        }
-        if diff_y < end_marker_height && diff_y > 0.0 && diff_x < end_marker_height {
-            let mut adjustment = end_marker_height + extra_room - diff_y;
-            adjustment *= if !y_direction_is_down { -1.0 } else { 1.0 };
-            offset_y -= adjustment;
-        }
-
-        out.push(crate::model::LayoutPoint {
-            x: point.x + offset_x,
-            y: point.y + offset_y,
-        });
-    }
-
-    out
-}
-
 struct StatePreparedEdgeGeometry {
     data_points: Vec<crate::model::LayoutPoint>,
     label_path_points: Vec<crate::model::LayoutPoint>,
@@ -411,13 +245,8 @@ fn state_edge_finish_geometry(
 ) -> StatePreparedEdgeGeometry {
     // Mermaid keeps `paths.updatedPath` before `fixCorners`, marker offsets, and curve encoding.
     // Only the rendered SVG path consumes these projected curve points.
-    let mut points_for_curve = label_path_points
-        .iter()
-        .filter(|point| !point.y.is_nan())
-        .cloned()
-        .collect::<Vec<_>>();
-    points_for_curve = state_edge_fix_corners(&points_for_curve);
-    points_for_curve = state_line_with_end_marker_offset_points(&points_for_curve, arrow_type_end);
+    let points_for_curve =
+        crate::render_geometry::state_curve_points(&label_path_points, arrow_type_end);
 
     StatePreparedEdgeGeometry {
         data_points,
@@ -696,7 +525,7 @@ mod tests {
             crate::model::LayoutPoint { x: 10.0, y: 0.0 },
         ];
 
-        let output = state_line_with_end_marker_offset_points(&input, Some("arrow_barb_neo"));
+        let output = crate::render_geometry::state_curve_points(&input, Some("arrow_barb_neo"));
 
         assert_eq!(output.len(), 2);
         assert!((output[0].x - 0.0).abs() <= 1e-9);

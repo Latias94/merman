@@ -52,6 +52,164 @@ pub(crate) fn flowchart_curve_segments(
     }
 }
 
+/// Applies Mermaid State's renderer-owned curve preparation to layout points.
+///
+/// State layout owns endpoint intersection. The renderer then rounds orthogonal corners and, for
+/// the neo barb marker, shortens the terminal point. Keeping this transformation here gives SVG
+/// and DrawingList one typed geometry source.
+pub(crate) fn state_curve_points(
+    points: &[LayoutPoint],
+    arrow_type_end: Option<&str>,
+) -> Vec<LayoutPoint> {
+    let finite_points = points
+        .iter()
+        .filter(|point| !point.y.is_nan())
+        .cloned()
+        .collect::<Vec<_>>();
+    let rounded = state_fix_corners(&finite_points);
+    state_line_with_end_marker_offset_points(&rounded, arrow_type_end)
+}
+
+fn state_find_adjacent_point(
+    point_a: &LayoutPoint,
+    point_b: &LayoutPoint,
+    distance: f64,
+) -> LayoutPoint {
+    let x_diff = point_b.x - point_a.x;
+    let y_diff = point_b.y - point_a.y;
+    let length = (x_diff * x_diff + y_diff * y_diff).sqrt();
+    let ratio = distance / length;
+    LayoutPoint {
+        x: point_b.x - ratio * x_diff,
+        y: point_b.y - ratio * y_diff,
+    }
+}
+
+fn state_is_corner_point(prev: &LayoutPoint, curr: &LayoutPoint, next: &LayoutPoint) -> bool {
+    (prev.x == curr.x
+        && curr.y == next.y
+        && (curr.x - next.x).abs() > 5.0
+        && (curr.y - prev.y).abs() > 5.0)
+        || (prev.y == curr.y
+            && curr.x == next.x
+            && (curr.x - prev.x).abs() > 5.0
+            && (curr.y - next.y).abs() > 5.0)
+}
+
+fn state_fix_corners(line_data: &[LayoutPoint]) -> Vec<LayoutPoint> {
+    if line_data.len() < 3 {
+        return line_data.to_vec();
+    }
+
+    let mut out = Vec::with_capacity(line_data.len());
+    for (index, point) in line_data.iter().enumerate() {
+        let is_corner = index > 0
+            && index + 1 < line_data.len()
+            && state_is_corner_point(&line_data[index - 1], point, &line_data[index + 1]);
+        if !is_corner {
+            out.push(point.clone());
+            continue;
+        }
+
+        let previous = &line_data[index - 1];
+        let next = &line_data[index + 1];
+        let new_previous = state_find_adjacent_point(previous, point, 5.0);
+        let new_next = state_find_adjacent_point(next, point, 5.0);
+        let x_diff = new_next.x - new_previous.x;
+        let y_diff = new_next.y - new_previous.y;
+        out.push(new_previous.clone());
+
+        let mut rounded_corner = point.clone();
+        if (next.x - previous.x).abs() > 10.0 && (next.y - previous.y).abs() >= 10.0 {
+            let diagonal = std::f64::consts::SQRT_2 * 2.0;
+            let radius = 5.0;
+            rounded_corner = if point.x == new_previous.x {
+                LayoutPoint {
+                    x: if x_diff < 0.0 {
+                        new_previous.x - radius + diagonal
+                    } else {
+                        new_previous.x + radius - diagonal
+                    },
+                    y: if y_diff < 0.0 {
+                        new_previous.y - diagonal
+                    } else {
+                        new_previous.y + diagonal
+                    },
+                }
+            } else {
+                LayoutPoint {
+                    x: if x_diff < 0.0 {
+                        new_previous.x - diagonal
+                    } else {
+                        new_previous.x + diagonal
+                    },
+                    y: if y_diff < 0.0 {
+                        new_previous.y - radius + diagonal
+                    } else {
+                        new_previous.y + radius - diagonal
+                    },
+                }
+            };
+        }
+
+        out.push(rounded_corner);
+        out.push(new_next);
+    }
+    out
+}
+
+fn state_line_with_end_marker_offset_points(
+    input: &[LayoutPoint],
+    arrow_type_end: Option<&str>,
+) -> Vec<LayoutPoint> {
+    let Some(end_marker_height) = (arrow_type_end == Some("arrow_barb_neo")).then_some(5.5) else {
+        return input.to_vec();
+    };
+    if input.len() < 2 {
+        return input.to_vec();
+    }
+
+    let start = &input[0];
+    let end = &input[input.len() - 1];
+    let x_direction_is_left = start.x < end.x;
+    let y_direction_is_down = start.y < end.y;
+    let extra_room = 1.0;
+    let mut out = Vec::with_capacity(input.len());
+
+    for (index, point) in input.iter().enumerate() {
+        let mut offset_x = 0.0;
+        let mut offset_y = 0.0;
+        if index == input.len() - 1 {
+            let adjacent = &input[input.len() - 2];
+            let delta_x = adjacent.x - end.x;
+            let delta_y = adjacent.y - end.y;
+            let angle = (delta_y / delta_x).atan();
+            offset_x = end_marker_height * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
+            offset_y =
+                end_marker_height * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
+        }
+
+        let diff_x = (point.x - end.x).abs();
+        let diff_y = (point.y - end.y).abs();
+        if diff_x < end_marker_height && diff_x > 0.0 && diff_y < end_marker_height {
+            let adjustment = (end_marker_height + extra_room - diff_x)
+                * if !x_direction_is_left { -1.0 } else { 1.0 };
+            offset_x -= adjustment;
+        }
+        if diff_y < end_marker_height && diff_y > 0.0 && diff_x < end_marker_height {
+            let adjustment = (end_marker_height + extra_room - diff_y)
+                * if !y_direction_is_down { -1.0 } else { 1.0 };
+            offset_y -= adjustment;
+        }
+
+        out.push(LayoutPoint {
+            x: point.x + offset_x,
+            y: point.y + offset_y,
+        });
+    }
+    out
+}
+
 #[derive(Clone, Copy)]
 enum StepCurve {
     Before,
@@ -259,5 +417,17 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn state_curve_points_shorten_the_neo_barb_terminal_point() {
+        let input = [point(0.0, 0.0), point(10.0, 0.0)];
+        let output = state_curve_points(&input, Some("arrow_barb_neo"));
+
+        assert_eq!(output.len(), 2);
+        assert!((output[0].x - 0.0).abs() <= 1e-9);
+        assert!((output[0].y - 0.0).abs() <= 1e-9);
+        assert!((output[1].x - 4.5).abs() <= 1e-9);
+        assert!((output[1].y - 0.0).abs() <= 1e-9);
     }
 }

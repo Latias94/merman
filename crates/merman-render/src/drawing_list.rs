@@ -7,6 +7,7 @@
 mod flowchart;
 mod info;
 mod mindmap;
+mod state;
 
 use crate::environment::RenderSession;
 use crate::family::{BuiltinFamilyArtifact, RenderFamilyKind};
@@ -42,6 +43,7 @@ pub(crate) enum SvgStructureBody {
     Flowchart(FlowchartSvgBody),
     Info(InfoSvgBody),
     Mindmap(MindmapSvgBody),
+    State(StateSvgBody),
 }
 
 /// A complete canonical render document.
@@ -66,6 +68,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Mindmap, SvgStructureBody::Mindmap(mindmap)) => {
                 !mindmap.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::State, SvgStructureBody::State(state)) => {
+                !state.diagram_type.is_empty()
             }
             _ => false,
         });
@@ -92,6 +97,12 @@ pub(crate) struct MindmapSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct InfoSvgBody {
     pub(crate) version: String,
+}
+
+/// SVG-only metadata retained beside the public State document.
+#[derive(Debug, Clone)]
+pub(crate) struct StateSvgBody {
+    pub(crate) diagram_type: String,
 }
 
 pub(crate) const ERROR_ICON_PATHS: [&str; 6] = [
@@ -147,6 +158,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Mindmap(pair) => {
             mindmap::build_mindmap_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::State(pair) => {
+            state::build_state_document(pair, metadata, policy, session)
         }
         _ => Err(Error::DrawingListUnavailable {
             family: family.kind().as_str().to_string(),

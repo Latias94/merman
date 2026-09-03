@@ -685,4 +685,19 @@ impl<'a> PresentationTheme<'a> {
                 .unwrap_or_else(|| "none".to_string()),
         }
     }
+
+    pub(crate) fn state_drawing(&self) -> StateDrawingTheme {
+        let theme = self.state_diagram();
+        StateDrawingTheme {
+            state_bkg: theme.state_bkg,
+            state_border: theme.state_border,
+            state_label_color: theme.state_label_color,
+            special_state_color: theme.special_state_color,
+            transition_color: theme.transition_color,
+            transition_label_color: theme.transition_label_color,
+            marker_fill: theme.common.line_color,
+            edge_label_background: theme.edge_label_background,
+            stroke_width: theme.stroke_width,
+        }
+    }
 }

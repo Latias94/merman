@@ -118,6 +118,20 @@ pub(super) struct StateDiagramTheme {
     pub(super) drop_shadow: String,
 }
 
+/// Resolved State roles needed by renderer-neutral drawing backends.
+#[derive(Debug, Clone)]
+pub(crate) struct StateDrawingTheme {
+    pub(crate) state_bkg: String,
+    pub(crate) state_border: String,
+    pub(crate) state_label_color: String,
+    pub(crate) special_state_color: String,
+    pub(crate) transition_color: String,
+    pub(crate) transition_label_color: String,
+    pub(crate) marker_fill: String,
+    pub(crate) edge_label_background: String,
+    pub(crate) stroke_width: String,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct XyChartTheme {
     pub(crate) background_color: String,
