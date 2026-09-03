@@ -9,6 +9,7 @@ mod info;
 mod mindmap;
 mod packet;
 mod pie;
+mod sankey;
 mod state;
 mod support;
 
@@ -48,6 +49,7 @@ pub(crate) enum SvgStructureBody {
     Mindmap(MindmapSvgBody),
     Packet(PacketSvgBody),
     Pie(PieSvgBody),
+    Sankey(SankeySvgBody),
     State(StateSvgBody),
 }
 
@@ -78,6 +80,9 @@ impl RenderDocument {
                 !packet.diagram_type.is_empty()
             }
             (RenderFamilyKind::Pie, SvgStructureBody::Pie(pie)) => !pie.diagram_type.is_empty(),
+            (RenderFamilyKind::Sankey, SvgStructureBody::Sankey(sankey)) => {
+                !sankey.diagram_type.is_empty()
+            }
             (RenderFamilyKind::State, SvgStructureBody::State(state)) => {
                 !state.diagram_type.is_empty()
             }
@@ -117,6 +122,12 @@ pub(crate) struct PieSvgBody {
 /// SVG-only metadata retained beside the public Packet document.
 #[derive(Debug, Clone)]
 pub(crate) struct PacketSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the public Sankey document.
+#[derive(Debug, Clone)]
+pub(crate) struct SankeySvgBody {
     pub(crate) diagram_type: String,
 }
 
@@ -185,6 +196,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::Pie(pair) => {
             pie::build_pie_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Sankey(pair) => {
+            sankey::build_sankey_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::State(pair) => {
             state::build_state_document(pair, metadata, policy, session)

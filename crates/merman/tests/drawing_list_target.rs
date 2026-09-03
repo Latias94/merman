@@ -335,6 +335,79 @@ fn packet_emits_typed_blocks_bit_numbers_title_and_styles() {
 }
 
 #[test]
+fn sankey_emits_typed_nodes_gradient_links_blending_and_semantics() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "sankey\nSource,Target,10\nTarget,Done,4\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Sankey should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::LinearGradient(gradient)
+            if gradient.id.as_str() == "sankey.link.0.paint"
+    )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "sankey.link.0.path"
+                && path.segments.iter().any(|segment| matches!(
+                    segment,
+                    merman_display_list::PathSegment::CubicTo { .. }
+                ))
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::SetOpacity { opacity }
+            if (*opacity - 0.5).abs() <= f64::EPSILON
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::SetBlendMode {
+            blend_mode: merman_display_list::BlendMode::Multiply
+        }
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Source 10"
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Source")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.title.as_deref() == Some("Source → Target")
+    }));
+}
+
+#[test]
+fn sankey_rejects_outlined_labels_without_text_stroke_semantics() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"---
+config:
+  sankey:
+    labelStyle: outlined
+---
+sankey
+A,B,10
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("outlined Sankey labels must not become plain text silently");
+    assert!(error.to_string().contains("text stroke and paint-order"));
+}
+
+#[test]
 fn an_unmigrated_family_fails_without_partial_drawing_list_bytes() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
