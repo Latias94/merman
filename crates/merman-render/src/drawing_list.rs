@@ -10,6 +10,7 @@ mod mindmap;
 mod packet;
 mod pie;
 mod quadrantchart;
+mod radar;
 mod sankey;
 mod state;
 mod support;
@@ -52,6 +53,7 @@ pub(crate) enum SvgStructureBody {
     Packet(PacketSvgBody),
     Pie(PieSvgBody),
     QuadrantChart(QuadrantChartSvgBody),
+    Radar(RadarSvgBody),
     Sankey(SankeySvgBody),
     State(StateSvgBody),
     XyChart(XyChartSvgBody),
@@ -86,6 +88,9 @@ impl RenderDocument {
             (RenderFamilyKind::Pie, SvgStructureBody::Pie(pie)) => !pie.diagram_type.is_empty(),
             (RenderFamilyKind::QuadrantChart, SvgStructureBody::QuadrantChart(quadrantchart)) =>
                 !quadrantchart.diagram_type.is_empty(),
+            (RenderFamilyKind::Radar, SvgStructureBody::Radar(radar)) => {
+                !radar.diagram_type.is_empty()
+            }
             (RenderFamilyKind::Sankey, SvgStructureBody::Sankey(sankey)) => {
                 !sankey.diagram_type.is_empty()
             }
@@ -137,6 +142,12 @@ pub(crate) struct PacketSvgBody {
 /// SVG-only metadata retained beside the public QuadrantChart document.
 #[derive(Debug, Clone)]
 pub(crate) struct QuadrantChartSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the public Radar document.
+#[derive(Debug, Clone)]
+pub(crate) struct RadarSvgBody {
     pub(crate) diagram_type: String,
 }
 
@@ -220,6 +231,9 @@ pub(crate) fn build_for_family(
         }
         BuiltinFamilyArtifact::QuadrantChart(pair) => {
             quadrantchart::build_quadrantchart_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Radar(pair) => {
+            radar::build_radar_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Sankey(pair) => {
             sankey::build_sankey_document(pair, metadata, policy, session)

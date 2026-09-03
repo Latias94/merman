@@ -408,6 +408,146 @@ A,B,10
 }
 
 #[test]
+fn radar_emits_grids_series_axes_legends_and_title_with_separate_fill_opacity() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"radar-beta
+  title Release health
+  axis Speed, Quality, Reach
+  curve Current{80, 60, 90}
+  curve Target{90, 90, 90}
+  graticule circle
+  ticks 3
+  showLegend true
+"#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Radar should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert_eq!(document.viewport.bounds.width, 700.0);
+    assert_eq!(document.viewport.bounds.height, 700.0);
+
+    let background_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "radar.background"
+            )
+        })
+        .expect("Radar background should be drawn");
+    let first_grid_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "radar.graticule.0.shape"
+            )
+        })
+        .expect("Radar grid should be drawn");
+    assert!(background_command < first_grid_command);
+
+    let curve_path = document
+        .resources
+        .iter()
+        .find_map(|resource| match resource {
+            merman_display_list::DrawingResource::Path(path)
+                if path.id.as_str() == "radar.curve.0.shape" =>
+            {
+                Some(path)
+            }
+            _ => None,
+        })
+        .expect("Radar series should own typed path geometry");
+    assert!(
+        curve_path
+            .segments
+            .iter()
+            .any(|segment| matches!(segment, merman_display_list::PathSegment::CubicTo { .. }))
+    );
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "radar.graticule.0.shape"
+                && path.segments.iter().any(|segment| matches!(
+                    segment,
+                    merman_display_list::PathSegment::ArcTo { .. }
+                ))
+    )));
+    assert!(
+        curve_path
+            .segments
+            .iter()
+            .any(|segment| matches!(segment, merman_display_list::PathSegment::Close))
+    );
+    assert_eq!(
+        document
+            .commands
+            .iter()
+            .filter(|command| matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "radar.curve.0.shape"
+            ))
+            .count(),
+        2,
+        "series fill and stroke must remain independently painted"
+    );
+    for opacity in [0.3, 0.5] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::SetOpacity { opacity: actual }
+                if (*actual - opacity).abs() <= f64::EPSILON
+        )));
+    }
+
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Speed"
+                && run.anchor == merman_display_list::TextAnchor::Middle
+                && run.baseline == merman_display_list::TextBaseline::Alphabetic
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Current"
+                && run.anchor == merman_display_list::TextAnchor::Start
+                && run.baseline == merman_display_list::TextBaseline::Hanging
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "Release health"
+                && run.anchor == merman_display_list::TextAnchor::Middle
+                && run.baseline == merman_display_list::TextBaseline::Hanging
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.id == "radar.axis.0"
+            && semantic.title.as_deref() == Some("Speed")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.id == "radar.curve.0"
+            && semantic.title.as_deref() == Some("Current")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Label
+            && semantic.title.as_deref() == Some("Release health")
+    }));
+}
+
+#[test]
 fn quadrantchart_emits_regions_points_rotated_axes_and_semantics() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
