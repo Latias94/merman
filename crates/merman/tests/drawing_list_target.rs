@@ -732,6 +732,181 @@ ishikawa-beta
 }
 
 #[test]
+fn railroad_emits_ordered_grammar_shapes_arcs_markers_text_and_semantics() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r##"---
+config:
+  railroad:
+    terminalFill: '#123456'
+    terminalStroke: '#abcdef'
+    specialFill: '#fedcba'
+    specialStroke: '#654321'
+    lineColor: '#112233'
+    markerFill: '#445566'
+    strokeWidth: 3
+    fontSize: 18
+---
+railroad-beta
+expr = sequence(nonterminal("term"), terminal("+"), zeroOrMore(special("guard"))) ;
+"##,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Railroad should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.viewport.bounds.height > 0.0);
+    for path_id in [
+        "railroad.rule.0.start.shape",
+        "railroad.rule.0.end.shape",
+        "railroad.rule.0.element.0.shape",
+        "railroad.rule.0.element.1.shape",
+        "railroad.rule.0.element.2.shape",
+        "railroad.rule.0.connector.start.path",
+        "railroad.rule.0.connector.end.path",
+    ] {
+        assert!(document.resources.iter().any(|resource| matches!(
+            resource,
+            merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+        )));
+    }
+
+    let terminal_path = document
+        .resources
+        .iter()
+        .find_map(|resource| match resource {
+            merman_display_list::DrawingResource::Path(path)
+                if path.id.as_str() == "railroad.rule.0.element.1.shape" =>
+            {
+                Some(path)
+            }
+            _ => None,
+        })
+        .expect("terminal should own a rounded rectangle path");
+    assert!(
+        terminal_path
+            .segments
+            .iter()
+            .any(|segment| matches!(segment, merman_display_list::PathSegment::ArcTo { .. }))
+    );
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().starts_with("railroad.rule.0.path.")
+                && path.segments.iter().any(|segment| matches!(
+                    segment,
+                    merman_display_list::PathSegment::ArcTo { .. }
+                ))
+    )));
+
+    let terminal_style = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "railroad.rule.0.element.1.shape" =>
+            {
+                Some(style)
+            }
+            _ => None,
+        })
+        .expect("terminal should be painted");
+    assert_eq!(
+        terminal_style.fill,
+        Some(merman_display_list::Paint::solid(
+            merman_display_list::Color::rgba(0x12, 0x34, 0x56, 0xff)
+        ))
+    );
+    assert_eq!(
+        terminal_style
+            .stroke
+            .as_ref()
+            .expect("terminal should retain its stroke")
+            .width,
+        3.0
+    );
+    let special_style = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == "railroad.rule.0.element.2.shape" =>
+            {
+                Some(style)
+            }
+            _ => None,
+        })
+        .expect("special element should be painted");
+    assert_eq!(
+        special_style
+            .stroke
+            .as_ref()
+            .expect("special element should retain its stroke")
+            .dash_array,
+        vec![5.0, 3.0]
+    );
+
+    for text in ["term", "+", "? guard ?"] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run }
+                if run.text == text
+                    && run.anchor == merman_display_list::TextAnchor::Middle
+                    && run.baseline == merman_display_list::TextBaseline::Middle
+        )));
+    }
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text == "expr ="
+                && run.style.font.weight == 700
+                && run.anchor == merman_display_list::TextAnchor::Start
+                && run.baseline == merman_display_list::TextBaseline::Alphabetic
+    )));
+
+    let background_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "railroad.background"
+            )
+        })
+        .expect("Railroad background should be drawn");
+    let first_element_command = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "railroad.rule.0.element.0.shape"
+            )
+        })
+        .expect("Railroad grammar element should be drawn");
+    assert!(background_command < first_element_command);
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.title.as_deref() == Some("expr")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("? guard ?")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.id.starts_with("railroad.rule.0.path.")
+    }));
+}
+
+#[test]
 fn quadrantchart_emits_regions_points_rotated_axes_and_semantics() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
