@@ -13,11 +13,12 @@ use crate::model::{
 use crate::resources::OperationWorkMeter;
 #[cfg(test)]
 use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+use crate::theme::VennTheme;
 use crate::{Error, Result};
 use indexmap::IndexMap;
 use merman_core::diagrams::venn::VennDiagramRenderModel;
 use ryu_js::Buffer;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::f64::consts::{PI, TAU};
 
 const SMALL: f64 = 1e-10;
@@ -26,6 +27,134 @@ const REFERENCE_WIDTH: f64 = 1600.0;
 mod config;
 
 use config::VennConfigView;
+
+pub(crate) type VennStyleByKey = HashMap<String, BTreeMap<String, String>>;
+
+/// One stroke-width source after Venn style resolution.
+///
+/// Authored CSS remains a token until a target decides whether it can represent that unit. The
+/// layout-derived default is already expressed in logical pixels and needs no CSS parsing.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum VennStrokeWidth {
+    Css(String),
+    LogicalPixels(f64),
+}
+
+/// Target-neutral presentation selected for one Venn area.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct VennAreaPresentation {
+    pub(crate) fill_color: String,
+    pub(crate) fill_opacity: String,
+    pub(crate) stroke_color: Option<String>,
+    pub(crate) stroke_width: Option<VennStrokeWidth>,
+    pub(crate) stroke_opacity: Option<f64>,
+    pub(crate) text_color: String,
+    pub(crate) has_custom_fill: bool,
+}
+
+pub(crate) fn venn_title<'a>(
+    model: &'a VennDiagramRenderModel,
+    diagram_title: Option<&'a str>,
+) -> Option<&'a str> {
+    model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+}
+
+pub(crate) fn venn_stable_sets_key(sets: &[String]) -> String {
+    sets.join("|")
+}
+
+pub(crate) fn venn_style_by_key(model: &VennDiagramRenderModel) -> VennStyleByKey {
+    let mut out = HashMap::new();
+    for entry in &model.style_entries {
+        let key = venn_stable_sets_key(&entry.targets);
+        out.entry(key)
+            .or_insert_with(BTreeMap::new)
+            .extend(entry.styles.clone());
+    }
+    out
+}
+
+pub(crate) fn venn_style_value<'a>(
+    styles: Option<&'a BTreeMap<String, String>>,
+    key: &str,
+) -> Option<&'a str> {
+    styles
+        .and_then(|styles| styles.get(key))
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())
+}
+
+pub(crate) fn venn_area_label(area: &VennAreaLayout) -> &str {
+    if let Some(label) = area.label.as_deref().filter(|label| !label.is_empty()) {
+        label
+    } else if area.sets.len() == 1 {
+        area.sets[0].as_str()
+    } else {
+        ""
+    }
+}
+
+pub(crate) fn venn_area_presentation(
+    area: &VennAreaLayout,
+    circle_index: usize,
+    styles: Option<&BTreeMap<String, String>>,
+    theme: &VennTheme,
+    scale: f64,
+) -> Result<VennAreaPresentation> {
+    let custom_fill = venn_style_value(styles, "fill");
+    if area.sets.len() == 1 {
+        let fill_color = custom_fill.map(str::to_string).unwrap_or_else(|| {
+            theme
+                .circle_colors
+                .get(circle_index % theme.circle_colors.len().max(1))
+                .cloned()
+                .unwrap_or_else(|| theme.primary_color.clone())
+        });
+        let fill_opacity = venn_style_value(styles, "fill-opacity")
+            .unwrap_or("0.1")
+            .to_string();
+        let stroke_color = venn_style_value(styles, "stroke")
+            .unwrap_or(fill_color.as_str())
+            .to_string();
+        let stroke_width = venn_style_value(styles, "stroke-width")
+            .map(|value| VennStrokeWidth::Css(value.to_string()))
+            .unwrap_or(VennStrokeWidth::LogicalPixels(5.0 * scale));
+        let text_color = match venn_style_value(styles, "color") {
+            Some(color) => color.to_string(),
+            None => theme.circle_text_color(&fill_color)?,
+        };
+        Ok(VennAreaPresentation {
+            fill_color,
+            fill_opacity,
+            stroke_color: Some(stroke_color),
+            stroke_width: Some(stroke_width),
+            stroke_opacity: Some(0.95),
+            text_color,
+            has_custom_fill: custom_fill.is_some(),
+        })
+    } else {
+        Ok(VennAreaPresentation {
+            fill_color: custom_fill.unwrap_or("transparent").to_string(),
+            fill_opacity: if custom_fill.is_some() { "1" } else { "0" }.to_string(),
+            stroke_color: None,
+            stroke_width: None,
+            stroke_opacity: None,
+            text_color: venn_style_value(styles, "color")
+                .unwrap_or(theme.set_text_color.as_str())
+                .to_string(),
+            has_custom_fill: custom_fill.is_some(),
+        })
+    }
+}
 
 #[cfg(test)]
 pub(crate) fn layout_venn_diagram_typed(
@@ -45,16 +174,7 @@ pub(crate) fn layout_venn_diagram_typed_with_work_meter(
     work_meter: &OperationWorkMeter,
 ) -> Result<VennDiagramLayout> {
     let cfg = VennConfigView::new(effective_config).layout_settings();
-    let title = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .or_else(|| {
-            diagram_title
-                .map(str::trim)
-                .filter(|title| !title.is_empty())
-        });
+    let title = venn_title(model, diagram_title);
     let scale = cfg.width / REFERENCE_WIDTH;
     let title_height = if title.is_some() { 48.0 * scale } else { 0.0 };
     let diagram_height = (cfg.height - title_height).max(1.0);
@@ -111,7 +231,7 @@ pub(crate) fn layout_venn_diagram_typed_with_work_meter(
         .collect::<Vec<_>>();
     let layout_by_key = layout_areas
         .iter()
-        .map(|area| (stable_sets_key(&area.data.sets), area))
+        .map(|area| (venn_stable_sets_key(&area.data.sets), area))
         .collect::<HashMap<_, _>>();
     let (text_areas, text_nodes) =
         layout_text_nodes(model, &layout_by_key, scale, cfg.use_debug_layout);
@@ -149,7 +269,7 @@ fn layout_text_nodes(
     > = IndexMap::new();
     for node in &model.text_nodes {
         nodes_by_area
-            .entry(stable_sets_key(&node.sets))
+            .entry(venn_stable_sets_key(&node.sets))
             .or_default()
             .push(node);
     }
@@ -250,10 +370,6 @@ fn layout_text_nodes(
     }
 
     (text_areas, text_nodes)
-}
-
-fn stable_sets_key(sets: &[String]) -> String {
-    sets.join("|")
 }
 
 fn ensure_pairwise_subsets_for_layout(
@@ -2598,7 +2714,7 @@ mod tests {
             expanded
                 .iter()
                 .filter(|area| area.sets.len() == 2)
-                .map(|area| stable_sets_key(&area.sets))
+                .map(|area| venn_stable_sets_key(&area.sets))
                 .collect::<Vec<_>>(),
             ["A|A", "A|B", "A|C", "B|B", "B|C"]
         );
