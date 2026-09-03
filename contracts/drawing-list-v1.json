@@ -106,6 +106,7 @@
         { "$ref": "#/$defs/line_to" },
         { "$ref": "#/$defs/quad_to" },
         { "$ref": "#/$defs/cubic_to" },
+        { "$ref": "#/$defs/arc_to" },
         { "$ref": "#/$defs/close" }
       ]
     },
@@ -148,6 +149,28 @@
         "to": { "$ref": "#/$defs/point" }
       }
     },
+    "arc_to": {
+      "type": "object",
+      "required": [
+        "kind",
+        "radius_x",
+        "radius_y",
+        "x_axis_rotation_degrees",
+        "large_arc",
+        "sweep_clockwise",
+        "to"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "arc_to" },
+        "radius_x": { "type": "number", "minimum": 0 },
+        "radius_y": { "type": "number", "minimum": 0 },
+        "x_axis_rotation_degrees": { "type": "number" },
+        "large_arc": { "type": "boolean" },
+        "sweep_clockwise": { "type": "boolean" },
+        "to": { "$ref": "#/$defs/point" }
+      }
+    },
     "close": {
       "type": "object",
       "required": ["kind"],
@@ -181,13 +204,15 @@
     },
     "linear_gradient_resource": {
       "type": "object",
-      "required": ["kind", "id", "start", "end", "stops"],
+      "required": ["kind", "id", "start", "end", "transform", "spread", "stops"],
       "additionalProperties": false,
       "properties": {
         "kind": { "const": "linear_gradient" },
         "id": { "$ref": "#/$defs/resource_id" },
         "start": { "$ref": "#/$defs/point" },
         "end": { "$ref": "#/$defs/point" },
+        "transform": { "$ref": "#/$defs/transform" },
+        "spread": { "$ref": "#/$defs/gradient_spread" },
         "stops": {
           "type": "array",
           "minItems": 1,
@@ -195,32 +220,87 @@
         }
       }
     },
-    "encoded_image": {
+    "gradient_spread": {
+      "enum": ["pad", "repeat", "reflect"]
+    },
+    "radial_gradient_resource": {
+      "type": "object",
+      "required": ["kind", "id", "center", "focal", "radius", "transform", "spread", "stops"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "radial_gradient" },
+        "id": { "$ref": "#/$defs/resource_id" },
+        "center": { "$ref": "#/$defs/point" },
+        "focal": { "$ref": "#/$defs/point" },
+        "radius": { "type": "number", "exclusiveMinimum": 0 },
+        "transform": { "$ref": "#/$defs/transform" },
+        "spread": { "$ref": "#/$defs/gradient_spread" },
+        "stops": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/gradient_stop" }
+        }
+      }
+    },
+    "encoded_asset": {
       "type": "object",
       "required": ["media_type", "data"],
       "additionalProperties": false,
       "properties": {
-        "media_type": { "type": "string", "pattern": "^image/" },
+        "media_type": { "type": "string", "minLength": 1 },
         "data": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
       }
     },
     "image_resource": {
       "type": "object",
-      "required": ["kind", "id", "image", "pixel_width", "pixel_height"],
+      "required": ["kind", "id", "image", "pixel_width", "pixel_height", "has_alpha"],
       "additionalProperties": false,
       "properties": {
         "kind": { "const": "image" },
         "id": { "$ref": "#/$defs/resource_id" },
-        "image": { "$ref": "#/$defs/encoded_image" },
+        "image": {
+          "$ref": "#/$defs/encoded_asset",
+          "contentMediaType": "image/*"
+        },
         "pixel_width": { "type": "integer", "minimum": 1 },
-        "pixel_height": { "type": "integer", "minimum": 1 }
+        "pixel_height": { "type": "integer", "minimum": 1 },
+        "has_alpha": { "type": "boolean" }
+      }
+    },
+    "pattern_repeat": {
+      "enum": ["repeat", "repeat_x", "repeat_y", "no_repeat"]
+    },
+    "pattern_resource": {
+      "type": "object",
+      "required": ["kind", "id", "image", "tile", "transform", "repetition"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "pattern" },
+        "id": { "$ref": "#/$defs/resource_id" },
+        "image": { "$ref": "#/$defs/resource_id" },
+        "tile": { "$ref": "#/$defs/rect" },
+        "transform": { "$ref": "#/$defs/transform" },
+        "repetition": { "$ref": "#/$defs/pattern_repeat" }
+      }
+    },
+    "font_resource": {
+      "type": "object",
+      "required": ["kind", "id", "font"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "font" },
+        "id": { "$ref": "#/$defs/resource_id" },
+        "font": { "$ref": "#/$defs/encoded_asset" }
       }
     },
     "resource": {
       "oneOf": [
         { "$ref": "#/$defs/path_resource" },
         { "$ref": "#/$defs/linear_gradient_resource" },
-        { "$ref": "#/$defs/image_resource" }
+        { "$ref": "#/$defs/radial_gradient_resource" },
+        { "$ref": "#/$defs/image_resource" },
+        { "$ref": "#/$defs/pattern_resource" },
+        { "$ref": "#/$defs/font_resource" }
       ]
     },
     "paint": {
@@ -247,7 +327,7 @@
     },
     "stroke_style": {
       "type": "object",
-      "required": ["paint", "width", "dash_array", "line_cap", "line_join", "miter_limit"],
+      "required": ["paint", "width", "dash_array", "dash_offset", "line_cap", "line_join", "miter_limit"],
       "additionalProperties": false,
       "properties": {
         "paint": { "$ref": "#/$defs/paint" },
@@ -256,6 +336,7 @@
           "type": "array",
           "items": { "type": "number", "minimum": 0 }
         },
+        "dash_offset": { "type": "number" },
         "line_cap": { "enum": ["butt", "round", "square"] },
         "line_join": { "enum": ["miter", "round", "bevel"] },
         "miter_limit": { "type": "number", "exclusiveMinimum": 0 }
@@ -263,9 +344,10 @@
     },
     "path_style": {
       "type": "object",
-      "required": ["fill", "stroke"],
+      "required": ["fill_rule", "fill", "stroke"],
       "additionalProperties": false,
       "properties": {
+        "fill_rule": { "$ref": "#/$defs/fill_rule" },
         "fill": { "anyOf": [{ "$ref": "#/$defs/paint" }, { "type": "null" }] },
         "stroke": { "anyOf": [{ "$ref": "#/$defs/stroke_style" }, { "type": "null" }] }
       },
@@ -274,9 +356,12 @@
         { "properties": { "stroke": { "$ref": "#/$defs/stroke_style" } } }
       ]
     },
+    "fill_rule": {
+      "enum": ["non_zero", "even_odd"]
+    },
     "font_descriptor": {
       "type": "object",
-      "required": ["families", "weight", "style"],
+      "required": ["families", "weight", "style", "postscript_name", "resource"],
       "additionalProperties": false,
       "properties": {
         "families": {
@@ -285,7 +370,21 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "weight": { "type": "integer", "minimum": 1, "maximum": 65535 },
-        "style": { "enum": ["normal", "italic", "oblique"] }
+        "style": { "enum": ["normal", "italic", "oblique"] },
+        "postscript_name": { "type": ["string", "null"] },
+        "resource": {
+          "anyOf": [{ "$ref": "#/$defs/resource_id" }, { "type": "null" }]
+        }
+      }
+    },
+    "positioned_glyph": {
+      "type": "object",
+      "required": ["glyph_id", "origin", "advance"],
+      "additionalProperties": false,
+      "properties": {
+        "glyph_id": { "type": "integer", "minimum": 0 },
+        "origin": { "$ref": "#/$defs/point" },
+        "advance": { "$ref": "#/$defs/point" }
       }
     },
     "measurement_provenance": {
@@ -335,7 +434,10 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "glyph_run" },
-            "glyphs": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
+            "glyphs": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/positioned_glyph" }
+            }
           }
         },
         {
@@ -372,13 +474,36 @@
     },
     "text_run": {
       "type": "object",
-      "required": ["text", "origin", "bounds", "style", "obligation"],
+      "required": [
+        "text",
+        "origin",
+        "bounds",
+        "style",
+        "anchor",
+        "baseline",
+        "direction",
+        "language",
+        "obligation"
+      ],
       "additionalProperties": false,
       "properties": {
         "text": { "type": "string" },
         "origin": { "$ref": "#/$defs/point" },
         "bounds": { "$ref": "#/$defs/rect" },
         "style": { "$ref": "#/$defs/text_style" },
+        "anchor": { "enum": ["start", "middle", "end"] },
+        "baseline": {
+          "enum": [
+            "alphabetic",
+            "hanging",
+            "ideographic",
+            "middle",
+            "text_before_edge",
+            "text_after_edge"
+          ]
+        },
+        "direction": { "enum": ["auto", "ltr", "rtl"] },
+        "language": { "type": ["string", "null"] },
         "obligation": { "$ref": "#/$defs/text_obligation" }
       }
     },
@@ -411,7 +536,22 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "set_blend_mode" },
-            "blend_mode": { "enum": ["normal", "multiply", "screen", "overlay"] }
+            "blend_mode": {
+              "enum": [
+                "normal",
+                "multiply",
+                "screen",
+                "overlay",
+                "darken",
+                "lighten",
+                "color_dodge",
+                "color_burn",
+                "hard_light",
+                "soft_light",
+                "difference",
+                "exclusion"
+              ]
+            }
           }
         },
         {
@@ -425,12 +565,54 @@
         },
         {
           "type": "object",
+          "required": ["kind", "bounds", "opacity", "blend_mode"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "begin_layer" },
+            "bounds": { "$ref": "#/$defs/rect" },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "blend_mode": {
+              "enum": [
+                "normal",
+                "multiply",
+                "screen",
+                "overlay",
+                "darken",
+                "lighten",
+                "color_dodge",
+                "color_burn",
+                "hard_light",
+                "soft_light",
+                "difference",
+                "exclusion"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "end_layer" } }
+        },
+        {
+          "type": "object",
           "required": ["kind", "path", "style"],
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "draw_path" },
             "path": { "$ref": "#/$defs/resource_id" },
             "style": { "$ref": "#/$defs/path_style" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "path", "fill_rule"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "clip_path" },
+            "path": { "$ref": "#/$defs/resource_id" },
+            "fill_rule": { "$ref": "#/$defs/fill_rule" }
           }
         },
         {
@@ -509,6 +691,9 @@
         "bounds",
         "pixel_width",
         "pixel_height",
+        "scale",
+        "format",
+        "alpha",
         "reason",
         "source"
       ],
@@ -519,6 +704,9 @@
         "bounds": { "$ref": "#/$defs/rect" },
         "pixel_width": { "type": "integer", "minimum": 1 },
         "pixel_height": { "type": "integer", "minimum": 1 },
+        "scale": { "type": "number", "exclusiveMinimum": 0 },
+        "format": { "enum": ["png", "jpeg", "webp", "avif"] },
+        "alpha": { "enum": ["opaque", "straight", "premultiplied"] },
         "reason": {
           "enum": [
             "foreign_object",
@@ -527,7 +715,11 @@
             "unsupported_effect",
             "text_shaping",
             "embedded_graphic",
-            "host_resource"
+            "host_resource",
+            "pattern",
+            "math",
+            "icon",
+            "hand_drawn"
           ]
         },
         "source": { "$ref": "#/$defs/visual_source" }

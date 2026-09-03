@@ -2,8 +2,9 @@ mod common;
 
 use common::sample_document;
 use merman_display_list::{
-    DrawingCommand, DrawingListDocument, DrawingListPolicy, DrawingResource, EncodedImage,
-    FallbackReason, ImageResource, RasterFallback, Rect, ResourceId, VisualSource,
+    AlphaMode, DrawingCommand, DrawingListDocument, DrawingListPolicy, DrawingResource,
+    EncodedImage, FallbackReason, ImageResource, RasterFallback, RasterFormat, Rect, ResourceId,
+    VisualSource,
 };
 use serde_json::json;
 
@@ -56,8 +57,9 @@ fn document_with_raster_fallback() -> DrawingListDocument {
         .push(DrawingResource::Image(ImageResource {
             id: image.clone(),
             image: EncodedImage::new("image/png", vec![0x89, b'P', b'N', b'G']),
-            pixel_width: 48,
-            pixel_height: 24,
+            pixel_width: 96,
+            pixel_height: 48,
+            has_alpha: true,
         }));
     document.fallbacks.push(RasterFallback {
         id: "fallback.foreign-object".into(),
@@ -65,6 +67,9 @@ fn document_with_raster_fallback() -> DrawingListDocument {
         bounds: Rect::new(24.0, 28.0, 72.0, 24.0),
         pixel_width: 96,
         pixel_height: 48,
+        scale: 1.3333333333,
+        format: RasterFormat::Png,
+        alpha: AlphaMode::Straight,
         reason: FallbackReason::ForeignObject,
         source: VisualSource {
             family: "flowchart".into(),

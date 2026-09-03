@@ -1,6 +1,6 @@
 mod common;
 
-use common::sample_document;
+use common::{extended_document, sample_document};
 use merman_display_list::DrawingListDocument;
 use serde_json::{Value, json};
 
@@ -48,4 +48,10 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
     let mut unknown_extension = value;
     unknown_extension["extensions"] = json!({ "future": true });
     assert!(!validator.is_valid(&unknown_extension));
+
+    let extended = serde_json::to_value(extended_document()).expect("extended fixture serializes");
+    assert!(
+        validator.is_valid(&extended),
+        "published schema rejected extended runtime document: {extended}"
+    );
 }

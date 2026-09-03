@@ -60,8 +60,42 @@ pub struct RasterFallback {
     pub bounds: Rect,
     pub pixel_width: u32,
     pub pixel_height: u32,
+    pub scale: f64,
+    pub format: RasterFormat,
+    pub alpha: AlphaMode,
     pub reason: FallbackReason,
     pub source: VisualSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RasterFormat {
+    Png,
+    Jpeg,
+    Webp,
+    Avif,
+}
+
+impl RasterFormat {
+    pub(crate) fn matches_media_type(self, media_type: &str) -> bool {
+        match self {
+            Self::Png => media_type.eq_ignore_ascii_case("image/png"),
+            Self::Jpeg => {
+                media_type.eq_ignore_ascii_case("image/jpeg")
+                    || media_type.eq_ignore_ascii_case("image/jpg")
+            }
+            Self::Webp => media_type.eq_ignore_ascii_case("image/webp"),
+            Self::Avif => media_type.eq_ignore_ascii_case("image/avif"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlphaMode {
+    Opaque,
+    Straight,
+    Premultiplied,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,6 +108,10 @@ pub enum FallbackReason {
     TextShaping,
     EmbeddedGraphic,
     HostResource,
+    Pattern,
+    Math,
+    Icon,
+    HandDrawn,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -98,8 +136,12 @@ pub struct DrawingListLimits {
     pub max_path_segments: usize,
     pub max_image_bytes: usize,
     pub max_image_pixels: usize,
+    pub max_fallback_pixels: usize,
+    pub max_font_bytes: usize,
     pub max_nesting_depth: usize,
     pub max_fallbacks: usize,
+    pub max_text_bytes: usize,
+    pub max_glyphs: usize,
 }
 
 impl Default for DrawingListLimits {
@@ -111,8 +153,12 @@ impl Default for DrawingListLimits {
             max_path_segments: 2_000_000,
             max_image_bytes: 64 * 1024 * 1024,
             max_image_pixels: 64 * 1024 * 1024,
+            max_fallback_pixels: 64 * 1024 * 1024,
+            max_font_bytes: 16 * 1024 * 1024,
             max_nesting_depth: 256,
             max_fallbacks: 100_000,
+            max_text_bytes: 16 * 1024 * 1024,
+            max_glyphs: 10_000_000,
         }
     }
 }
@@ -142,6 +188,7 @@ impl DrawingListDocument {
 
         let mut resource_ids = BTreeSet::new();
         let mut paint_ids = BTreeSet::new();
+        let mut font_ids = BTreeSet::new();
         let mut image_pixels = 0usize;
         for resource in &self.resources {
             if !resource_ids.insert(resource.id().clone()) {
@@ -150,9 +197,25 @@ impl DrawingListDocument {
                     resource.id().as_str()
                 )));
             }
-            resource.validate(limits.max_path_segments, limits.max_image_bytes)?;
-            if let DrawingResource::LinearGradient(gradient) = resource {
-                paint_ids.insert(gradient.id.clone());
+            resource.validate(
+                limits.max_path_segments,
+                limits.max_image_bytes,
+                limits.max_font_bytes,
+            )?;
+            match resource {
+                DrawingResource::LinearGradient(gradient) => {
+                    paint_ids.insert(gradient.id.clone());
+                }
+                DrawingResource::RadialGradient(gradient) => {
+                    paint_ids.insert(gradient.id.clone());
+                }
+                DrawingResource::Pattern(pattern) => {
+                    paint_ids.insert(pattern.id.clone());
+                }
+                DrawingResource::Font(font) => {
+                    font_ids.insert(font.id.clone());
+                }
+                DrawingResource::Path(_) | DrawingResource::Image(_) => {}
             }
             if let DrawingResource::Image(image) = resource {
                 image_pixels = image_pixels
@@ -172,6 +235,17 @@ impl DrawingListDocument {
                 _ => None,
             })
             .collect::<BTreeSet<_>>();
+        for resource in &self.resources {
+            if let DrawingResource::Pattern(pattern) = resource {
+                if !image_ids.contains(&pattern.image) {
+                    return Err(DrawingListError::invalid(format!(
+                        "pattern {} references unknown image {}",
+                        pattern.id.as_str(),
+                        pattern.image.as_str()
+                    )));
+                }
+            }
+        }
         let path_ids = self
             .resources
             .iter()
@@ -191,6 +265,7 @@ impl DrawingListDocument {
         }
 
         let mut fallback_ids = BTreeSet::new();
+        let mut fallback_pixels = 0usize;
         for fallback in &self.fallbacks {
             if fallback.id.is_empty() || !fallback_ids.insert(fallback.id.as_str()) {
                 return Err(DrawingListError::invalid(
@@ -203,26 +278,48 @@ impl DrawingListDocument {
                     fallback.id
                 )));
             }
+            let image = self.resources.iter().find_map(|resource| match resource {
+                DrawingResource::Image(image) if image.id == fallback.image => Some(image),
+                _ => None,
+            });
+            let Some(image) = image else {
+                return Err(DrawingListError::invalid(format!(
+                    "fallback {} references a non-image resource",
+                    fallback.id
+                )));
+            };
             if !fallback.bounds.is_valid()
                 || fallback.pixel_width == 0
                 || fallback.pixel_height == 0
+                || !fallback.scale.is_finite()
+                || fallback.scale <= 0.0
                 || fallback.source.family.is_empty()
                 || fallback.source.effect.is_empty()
+                || image.pixel_width != fallback.pixel_width
+                || image.pixel_height != fallback.pixel_height
+                || !fallback.format.matches_media_type(&image.image.media_type)
             {
                 return Err(DrawingListError::invalid(format!(
-                    "fallback {} is missing bounds, pixels, reason provenance, or source identity",
+                    "fallback {} is missing valid bounds, pixels, scale, format, reason provenance, or source identity",
                     fallback.id
                 )));
             }
-            image_pixels = image_pixels
+            fallback_pixels = fallback_pixels
                 .checked_add(pixel_count(fallback.pixel_width, fallback.pixel_height)?)
-                .ok_or_else(|| DrawingListError::invalid("image pixel count overflows usize"))?;
-            validate_count("image_pixels", image_pixels, limits.max_image_pixels)?;
+                .ok_or_else(|| DrawingListError::invalid("fallback pixel count overflows usize"))?;
+            validate_count(
+                "fallback_pixels",
+                fallback_pixels,
+                limits.max_fallback_pixels,
+            )?;
         }
 
         let mut referenced_fallbacks = BTreeSet::new();
         let mut state_depth = 0usize;
         let mut semantic_depth = 0usize;
+        let mut layer_depth = 0usize;
+        let mut text_bytes = 0usize;
+        let mut glyph_count = 0usize;
         for command in &self.commands {
             command.validate_numbers()?;
             match command {
@@ -237,6 +334,17 @@ impl DrawingListDocument {
                         DrawingListError::invalid("restore without matching save")
                     })?;
                 }
+                DrawingCommand::BeginLayer { .. } => {
+                    layer_depth = layer_depth
+                        .checked_add(1)
+                        .ok_or_else(|| DrawingListError::invalid("layer depth overflows usize"))?;
+                    validate_count("nesting_depth", layer_depth, limits.max_nesting_depth)?;
+                }
+                DrawingCommand::EndLayer => {
+                    layer_depth = layer_depth.checked_sub(1).ok_or_else(|| {
+                        DrawingListError::invalid("layer end without matching begin")
+                    })?;
+                }
                 DrawingCommand::DrawPath { path, style } => {
                     if !path_ids.contains(path) {
                         return Err(DrawingListError::invalid(format!(
@@ -247,6 +355,14 @@ impl DrawingListDocument {
                     validate_paint(style.fill.as_ref(), &paint_ids)?;
                     if let Some(stroke) = &style.stroke {
                         validate_paint(Some(&stroke.paint), &paint_ids)?;
+                    }
+                }
+                DrawingCommand::ClipPath { path, .. } => {
+                    if !path_ids.contains(path) {
+                        return Err(DrawingListError::invalid(format!(
+                            "clip_path references unknown path {}",
+                            path.as_str()
+                        )));
                     }
                 }
                 DrawingCommand::DrawImage { image, .. } => {
@@ -282,7 +398,19 @@ impl DrawingListDocument {
                     referenced_fallbacks.insert(fallback_id.as_str());
                 }
                 DrawingCommand::DrawText { run } => {
+                    text_bytes = text_bytes.checked_add(run.text.len()).ok_or_else(|| {
+                        DrawingListError::invalid("text byte count overflows usize")
+                    })?;
+                    validate_count("text_bytes", text_bytes, limits.max_text_bytes)?;
                     validate_paint(Some(&run.style.fill), &paint_ids)?;
+                    if let Some(font) = &run.style.font.resource {
+                        if !font_ids.contains(font) {
+                            return Err(DrawingListError::invalid(format!(
+                                "text references unknown font resource {}",
+                                font.as_str()
+                            )));
+                        }
+                    }
                     match &run.obligation {
                         TextObligation::Outline { path } => {
                             if !path_ids.contains(path) {
@@ -300,7 +428,14 @@ impl DrawingListDocument {
                             }
                             referenced_fallbacks.insert(fallback_id.as_str());
                         }
-                        TextObligation::HostText { .. } | TextObligation::GlyphRun { .. } => {}
+                        TextObligation::GlyphRun { glyphs } => {
+                            glyph_count =
+                                glyph_count.checked_add(glyphs.len()).ok_or_else(|| {
+                                    DrawingListError::invalid("glyph count overflows usize")
+                                })?;
+                            validate_count("glyphs", glyph_count, limits.max_glyphs)?;
+                        }
+                        TextObligation::HostText { .. } => {}
                     }
                 }
                 DrawingCommand::SetOpacity { .. }
@@ -315,6 +450,9 @@ impl DrawingListDocument {
         }
         if semantic_depth != 0 {
             return Err(DrawingListError::invalid("semantic groups are unbalanced"));
+        }
+        if layer_depth != 0 {
+            return Err(DrawingListError::invalid("layers are unbalanced"));
         }
         if referenced_fallbacks.len() != fallback_ids.len() {
             return Err(DrawingListError::invalid(
@@ -425,7 +563,9 @@ fn pixel_count(width: u32, height: u32) -> Result<usize, DrawingListError> {
 fn _path_segment_point(segment: &PathSegment) -> Option<Point> {
     match segment {
         PathSegment::MoveTo { to } | PathSegment::LineTo { to } => Some(*to),
-        PathSegment::QuadTo { to, .. } | PathSegment::CubicTo { to, .. } => Some(*to),
+        PathSegment::QuadTo { to, .. }
+        | PathSegment::CubicTo { to, .. }
+        | PathSegment::ArcTo { to, .. } => Some(*to),
         PathSegment::Close => None,
     }
 }

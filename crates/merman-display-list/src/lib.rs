@@ -12,18 +12,20 @@ mod geometry;
 mod resources;
 
 pub use commands::{
-    BlendMode, DrawingCommand, DrawingListPolicy, FontDescriptor, FontStyle, LineCap, LineJoin,
-    MeasurementProvenance, PathStyle, StrokeStyle, TextObligation, TextRun, TextStyle,
+    BlendMode, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, LineCap,
+    LineJoin, MeasurementProvenance, PathStyle, PositionedGlyph, StrokeStyle, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
 };
 pub use document::{
-    CoordinateSystem, DrawingListDocument, DrawingListLimits, FallbackReason, RasterFallback,
-    SemanticAnnotation, SemanticRole, Viewport, VisualSource,
+    AlphaMode, CoordinateSystem, DrawingListDocument, DrawingListLimits, FallbackReason,
+    RasterFallback, RasterFormat, SemanticAnnotation, SemanticRole, Viewport, VisualSource,
 };
 pub use error::DrawingListError;
 pub use geometry::{Color, Point, Rect, Transform};
 pub use resources::{
-    DrawingResource, EncodedImage, GradientStop, ImageResource, LinearGradientResource, Paint,
-    PathResource, PathSegment, ResourceId,
+    DrawingResource, EncodedAsset, EncodedImage, FontResource, GradientSpread, GradientStop,
+    ImagePatternResource, ImageResource, LinearGradientResource, Paint, PathResource, PathSegment,
+    PatternRepeat, PatternResource, RadialGradientResource, ResourceId,
 };
 
 /// The current public DrawingList wire schema version.

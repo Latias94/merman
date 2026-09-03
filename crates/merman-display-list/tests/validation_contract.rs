@@ -1,8 +1,8 @@
 mod common;
 
-use common::sample_document;
+use common::{extended_document, sample_document};
 use merman_display_list::{
-    DrawingCommand, DrawingListLimits, Paint, PathSegment, Point, ResourceId,
+    DrawingCommand, DrawingListLimits, FillRule, Paint, PathSegment, Point, ResourceId,
 };
 
 #[test]
@@ -27,6 +27,7 @@ fn validator_rejects_unbalanced_state_and_wrong_resource_kind() {
     document.commands[3] = DrawingCommand::DrawPath {
         path: path_id,
         style: merman_display_list::PathStyle {
+            fill_rule: FillRule::NonZero,
             fill: Some(Paint::resource(ResourceId::new("path.node-a"))),
             stroke: None,
         },
@@ -70,4 +71,18 @@ fn validator_enforces_exact_command_and_numeric_boundaries() {
         merman_display_list::DrawingListDocument::from_json_bytes_with_limits(&encoded, &too_small)
             .is_err()
     );
+}
+
+#[test]
+fn extended_visual_vocabulary_validates_as_one_document() {
+    let document = extended_document();
+    document
+        .validate()
+        .expect("extended visual vocabulary is valid");
+    let bytes = document
+        .canonical_json_bytes()
+        .expect("extended document serializes canonically");
+    let decoded = merman_display_list::DrawingListDocument::from_json_bytes(&bytes)
+        .expect("extended document round-trips");
+    assert_eq!(decoded.canonical_json_bytes().unwrap(), bytes);
 }

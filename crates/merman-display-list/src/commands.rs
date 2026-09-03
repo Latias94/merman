@@ -15,6 +15,21 @@ pub enum BlendMode {
     Multiply,
     Screen,
     Overlay,
+    Darken,
+    Lighten,
+    ColorDodge,
+    ColorBurn,
+    HardLight,
+    SoftLight,
+    Difference,
+    Exclusion,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FillRule {
+    NonZero,
+    EvenOdd,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +54,7 @@ pub struct StrokeStyle {
     pub paint: crate::Paint,
     pub width: f64,
     pub dash_array: Vec<f64>,
+    pub dash_offset: f64,
     pub line_cap: LineCap,
     pub line_join: LineJoin,
     pub miter_limit: f64,
@@ -50,6 +66,7 @@ impl StrokeStyle {
             || self.width < 0.0
             || !self.miter_limit.is_finite()
             || self.miter_limit <= 0.0
+            || !self.dash_offset.is_finite()
             || self
                 .dash_array
                 .iter()
@@ -66,6 +83,7 @@ impl StrokeStyle {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PathStyle {
+    pub fill_rule: FillRule,
     pub fill: Option<crate::Paint>,
     pub stroke: Option<StrokeStyle>,
 }
@@ -98,9 +116,19 @@ pub enum DrawingCommand {
     ConcatTransform {
         transform: Transform,
     },
+    BeginLayer {
+        bounds: Rect,
+        opacity: f64,
+        blend_mode: BlendMode,
+    },
+    EndLayer,
     DrawPath {
         path: ResourceId,
         style: PathStyle,
+    },
+    ClipPath {
+        path: ResourceId,
+        fill_rule: FillRule,
     },
     DrawImage {
         image: ResourceId,
@@ -126,6 +154,10 @@ pub struct TextRun {
     pub origin: Point,
     pub bounds: Rect,
     pub style: TextStyle,
+    pub anchor: TextAnchor,
+    pub baseline: TextBaseline,
+    pub direction: TextDirection,
+    pub language: Option<String>,
     pub obligation: TextObligation,
 }
 
@@ -145,6 +177,8 @@ pub struct FontDescriptor {
     pub families: Vec<String>,
     pub weight: u16,
     pub style: FontStyle,
+    pub postscript_name: Option<String>,
+    pub resource: Option<ResourceId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,11 +189,46 @@ pub enum FontStyle {
     Oblique,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextAnchor {
+    Start,
+    Middle,
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextBaseline {
+    Alphabetic,
+    Hanging,
+    Ideographic,
+    Middle,
+    TextBeforeEdge,
+    TextAfterEdge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextDirection {
+    Auto,
+    Ltr,
+    Rtl,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PositionedGlyph {
+    pub glyph_id: u32,
+    pub origin: Point,
+    pub advance: Point,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TextObligation {
     HostText { measurement: MeasurementProvenance },
-    GlyphRun { glyphs: Vec<u32> },
+    GlyphRun { glyphs: Vec<PositionedGlyph> },
     Outline { path: ResourceId },
     RasterFallback { fallback_id: String },
 }
@@ -185,7 +254,16 @@ impl DrawingCommand {
                     ))
                 }
             }
+            Self::BeginLayer {
+                bounds, opacity, ..
+            } => {
+                if !bounds.is_valid() {
+                    return Err(DrawingListError::invalid("layer bounds are invalid"));
+                }
+                validate_unit(*opacity, "layer opacity")
+            }
             Self::DrawPath { style, .. } => style.validate(),
+            Self::ClipPath { .. } => Ok(()),
             Self::DrawImage {
                 bounds, opacity, ..
             } => {
@@ -198,6 +276,7 @@ impl DrawingCommand {
             Self::Save
             | Self::Restore
             | Self::SetBlendMode { .. }
+            | Self::EndLayer
             | Self::BeginSemanticGroup { .. }
             | Self::EndSemanticGroup
             | Self::DrawRasterSubtree { .. } => Ok(()),
@@ -209,6 +288,11 @@ impl TextRun {
     fn validate(&self) -> Result<(), DrawingListError> {
         if !self.origin.is_finite() || !self.bounds.is_valid() {
             return Err(DrawingListError::invalid("text run geometry is invalid"));
+        }
+        if self.language.as_deref().is_some_and(str::is_empty) {
+            return Err(DrawingListError::invalid(
+                "text language must not be empty when present",
+            ));
         }
         if !self.style.font_size.is_finite()
             || self.style.font_size <= 0.0
@@ -223,6 +307,18 @@ impl TextRun {
         if self.style.font.families.is_empty()
             || self.style.font.families.iter().any(String::is_empty)
             || self.style.font.weight == 0
+            || self
+                .style
+                .font
+                .postscript_name
+                .as_deref()
+                .is_some_and(str::is_empty)
+            || self
+                .style
+                .font
+                .resource
+                .as_ref()
+                .is_some_and(|resource| resource.as_str().is_empty())
         {
             return Err(DrawingListError::invalid(
                 "text font descriptor is incomplete",
@@ -238,9 +334,17 @@ impl TextRun {
                     ));
                 }
             }
-            TextObligation::GlyphRun { .. }
-            | TextObligation::Outline { .. }
-            | TextObligation::RasterFallback { .. } => {}
+            TextObligation::GlyphRun { glyphs } => {
+                if glyphs
+                    .iter()
+                    .any(|glyph| !glyph.origin.is_finite() || !glyph.advance.is_finite())
+                {
+                    return Err(DrawingListError::invalid(
+                        "glyph run contains non-finite positioning",
+                    ));
+                }
+            }
+            TextObligation::Outline { .. } | TextObligation::RasterFallback { .. } => {}
         }
         Ok(())
     }
