@@ -542,3 +542,48 @@ fn ishikawa_canonical_svg_keeps_fishbone_geometry_and_semantic_labels() {
     );
     assert!(!svg.contains("<marker") && !svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn cynefin_canonical_svg_keeps_domains_transitions_and_accessibility() {
+    let svg = render_svg(
+        "cynefin-beta\n  complex\n    \"Observe\"\n  complicated\n    \"Analyze\"\n  complex --> complicated : \"move\"\n",
+        "cynefin-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Cynefin SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("cynefin"));
+    assert!(root.attribute("viewBox").is_some());
+    for class in [
+        "cynefin",
+        "cynefinDomain",
+        "cynefinBoundary",
+        "cynefinCliff",
+        "cynefinConfusion",
+        "cynefinDomainLabel",
+        "cynefinItem",
+        "cynefinItemText",
+        "cynefinArrowLine",
+        "cynefinArrowHead",
+        "cynefinArrowLabel",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical Cynefin class {class:?}"
+        );
+    }
+    assert!(
+        document.descendants().any(|node| {
+            node.attribute("data-merman-semantic-id") == Some("cynefin.transition.0")
+        })
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("text") && node.text() == Some("Observe") })
+    );
+    assert!(!svg.contains("<marker") && !svg.contains("NaN") && !svg.contains("Infinity"));
+}

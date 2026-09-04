@@ -351,6 +351,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 viewport_bounds,
                 body.use_max_width,
             )),
+            SvgStructureBody::Cynefin(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )),
             SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -435,6 +439,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
+            SvgStructureBody::Cynefin(_) => Some((
+                false,
+                super::cynefin::canonical_cynefin_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                ),
+            )),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -472,6 +483,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Railroad(_)
                 | SvgStructureBody::EventModeling(_)
                 | SvgStructureBody::Ishikawa(_)
+                | SvgStructureBody::Cynefin(_)
                 | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
@@ -496,6 +508,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::Venn(_)
             | SvgStructureBody::Railroad(_)
             | SvgStructureBody::EventModeling(_)
+            | SvgStructureBody::Cynefin(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -946,6 +959,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Ishikawa(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::Cynefin(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             SvgStructureBody::XyChart(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
@@ -1059,6 +1075,16 @@ impl<'a> DocumentSvgEncoder<'a> {
                 return self.emit_line(path_id, start, end, style);
             }
             if raw_id.ends_with(".label-box")
+                && let Some(bounds) = rectangle_from_path(path)
+            {
+                return self.emit_rect(path_id, bounds, style);
+            }
+        }
+        if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
+            let raw_id = path_id.as_str();
+            let path = self.path_resource(path_id)?;
+            if (raw_id == "cynefin.background"
+                || raw_id.starts_with("cynefin.domain.") && raw_id.ends_with(".background"))
                 && let Some(bounds) = rectangle_from_path(path)
             {
                 return self.emit_rect(path_id, bounds, style);
@@ -1317,6 +1343,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Cynefin(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1377,6 +1408,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::Ishikawa(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::Cynefin(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),

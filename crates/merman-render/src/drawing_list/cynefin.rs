@@ -59,6 +59,9 @@ struct CynefinBuilder<'a> {
     boundary_color: Color,
     cliff_color: Color,
     arrow_color: Color,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -115,6 +118,12 @@ impl<'a> CynefinBuilder<'a> {
             boundary_color: styles.color("cynefin.boundaryColor", &theme.boundary_color)?,
             cliff_color: styles.color("cynefin.cliffColor", &theme.cliff_color)?,
             arrow_color: styles.color("cynefin.arrowColor", &theme.arrow_color)?,
+            semantic_classes: BTreeMap::from([(
+                "cynefin.document".to_string(),
+                "cynefin".to_string(),
+            )]),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
             theme,
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
@@ -201,12 +210,20 @@ impl<'a> CynefinBuilder<'a> {
                 family: RenderFamilyKind::Cynefin,
                 body: SvgStructureBody::Cynefin(CynefinSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
                 }),
             },
         })
     }
 
     fn emit_background(&mut self) -> Result<()> {
+        self.path_classes.insert(
+            "cynefin.background".to_string(),
+            "cynefinBackground".to_string(),
+        );
         self.add_path(
             "cynefin.background",
             rectangle_path(0.0, 0.0, self.layout.total_width, self.layout.total_height),
@@ -228,6 +245,10 @@ impl<'a> CynefinBuilder<'a> {
                 .domain_fills
                 .get(*domain_name)
                 .ok_or_else(|| invalid(format!("unknown Cynefin domain `{domain_name}`")))?;
+            self.path_classes.insert(
+                format!("cynefin.domain.{domain_name}.background"),
+                "cynefinDomain".to_string(),
+            );
             self.commands.push(DrawingCommand::Save);
             self.commands
                 .push(DrawingCommand::SetOpacity { opacity: 0.4 });
@@ -247,6 +268,10 @@ impl<'a> CynefinBuilder<'a> {
 
     fn emit_boundaries(&mut self) -> Result<()> {
         let seed = resolve_seed(self.layout.seed, "cynefin");
+        self.path_classes.insert(
+            "cynefin.boundary.fold".to_string(),
+            "cynefinBoundary".to_string(),
+        );
         self.add_generated_path(
             "cynefin.boundary.fold",
             &generate_fold_path(
@@ -264,6 +289,10 @@ impl<'a> CynefinBuilder<'a> {
                 }),
             },
         )?;
+        self.path_classes.insert(
+            "cynefin.boundary.horizontal".to_string(),
+            "cynefinBoundary".to_string(),
+        );
         self.add_generated_path(
             "cynefin.boundary.horizontal",
             &generate_horizontal_boundary(
@@ -281,6 +310,10 @@ impl<'a> CynefinBuilder<'a> {
                 }),
             },
         )?;
+        self.path_classes.insert(
+            "cynefin.boundary.cliff".to_string(),
+            "cynefinCliff".to_string(),
+        );
         self.add_generated_path(
             "cynefin.boundary.cliff",
             &generate_cliff_path(self.layout.width, self.layout.height),
@@ -290,6 +323,10 @@ impl<'a> CynefinBuilder<'a> {
                 stroke: Some(stroke(self.cliff_color, self.theme.cliff_width)),
             },
         )?;
+        self.path_classes.insert(
+            "cynefin.domain.confusion.background".to_string(),
+            "cynefinConfusion".to_string(),
+        );
         self.add_generated_path(
             "cynefin.domain.confusion.background",
             &generate_confusion_path(
@@ -323,7 +360,7 @@ impl<'a> CynefinBuilder<'a> {
             } else {
                 domain.cy
             };
-            self.emit_text(
+            self.emit_label_text(
                 &format!("cynefin.domain.{domain_name}.label"),
                 domain_title(domain_name),
                 Point::new(domain.cx, y),
@@ -332,6 +369,7 @@ impl<'a> CynefinBuilder<'a> {
                 self.label_color,
                 TextAnchor::Middle,
                 TextBaseline::Middle,
+                "cynefinDomainLabel",
             )?;
         }
         let y = if self.layout.show_domain_descriptions {
@@ -339,7 +377,7 @@ impl<'a> CynefinBuilder<'a> {
         } else {
             self.layout.height / 2.0
         };
-        self.emit_text(
+        self.emit_label_text(
             "cynefin.domain.confusion.label",
             domain_title("confusion"),
             Point::new(self.layout.width / 2.0, y),
@@ -348,6 +386,7 @@ impl<'a> CynefinBuilder<'a> {
             self.label_color,
             TextAnchor::Middle,
             TextBaseline::Middle,
+            "cynefinDomainLabel",
         )?;
         Ok(())
     }
@@ -359,7 +398,7 @@ impl<'a> CynefinBuilder<'a> {
             };
             let (model, practice) = domain_model_and_practice(domain_name);
             let (cx, cy) = (domain.cx, domain.cy);
-            self.emit_text(
+            self.emit_label_text(
                 &format!("cynefin.domain.{domain_name}.model"),
                 model,
                 Point::new(cx, cy - 10.0),
@@ -368,8 +407,9 @@ impl<'a> CynefinBuilder<'a> {
                 self.text_color,
                 TextAnchor::Middle,
                 TextBaseline::Middle,
+                "cynefinSubtitle",
             )?;
-            self.emit_text(
+            self.emit_label_text(
                 &format!("cynefin.domain.{domain_name}.practice"),
                 practice,
                 Point::new(cx, cy + 5.0),
@@ -378,9 +418,10 @@ impl<'a> CynefinBuilder<'a> {
                 self.text_color,
                 TextAnchor::Middle,
                 TextBaseline::Middle,
+                "cynefinSubtitle",
             )?;
         }
-        self.emit_text(
+        self.emit_label_text(
             "cynefin.domain.confusion.subtitle",
             "Disorder",
             Point::new(self.layout.width / 2.0, self.layout.height / 2.0 + 8.0),
@@ -389,6 +430,7 @@ impl<'a> CynefinBuilder<'a> {
             self.text_color,
             TextAnchor::Middle,
             TextBaseline::Middle,
+            "cynefinSubtitle",
         )?;
         Ok(())
     }
@@ -400,6 +442,19 @@ impl<'a> CynefinBuilder<'a> {
                 .domain_fills
                 .get(&item.domain)
                 .ok_or_else(|| invalid(format!("unknown Cynefin item domain `{}`", item.domain)))?;
+            self.semantic_classes
+                .insert(semantic_id.clone(), "cynefin-item".to_string());
+            self.path_classes.insert(
+                format!("{semantic_id}.shape"),
+                if item.overflow {
+                    "cynefinItemOverflow"
+                } else {
+                    "cynefinItem"
+                }
+                .to_string(),
+            );
+            self.text_classes
+                .insert(semantic_id.clone(), "cynefinItemText".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -447,6 +502,18 @@ impl<'a> CynefinBuilder<'a> {
     fn emit_transitions(&mut self) -> Result<()> {
         for (index, transition) in self.layout.transitions.iter().enumerate() {
             let semantic_id = format!("cynefin.transition.{index}");
+            self.semantic_classes
+                .insert(semantic_id.clone(), "cynefin-transition".to_string());
+            self.path_classes.insert(
+                format!("{semantic_id}.line"),
+                "cynefinArrowLine".to_string(),
+            );
+            self.path_classes.insert(
+                format!("{semantic_id}.arrowhead"),
+                "cynefinArrowHead".to_string(),
+            );
+            self.text_classes
+                .insert(semantic_id.clone(), "cynefinArrowLabel".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -511,6 +578,13 @@ impl<'a> CynefinBuilder<'a> {
     }
 
     fn emit_title(&mut self, title: &str) -> Result<()> {
+        self.semantic_classes
+            .insert("cynefin.title".to_string(), "cynefin-title".to_string());
+        self.text_classes
+            .insert("cynefin.title".to_string(), "cynefinTitle".to_string());
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "cynefin.title".to_string(),
+        });
         self.emit_text(
             "cynefin.title",
             title,
@@ -521,10 +595,51 @@ impl<'a> CynefinBuilder<'a> {
             TextAnchor::Middle,
             TextBaseline::Middle,
         )?;
+        self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
             id: "cynefin.title".to_string(),
             role: SemanticRole::Label,
             title: Some(title.to_string()),
+            description: None,
+            link: None,
+        });
+        Ok(())
+    }
+
+    fn emit_label_text(
+        &mut self,
+        semantic_id: &str,
+        text: &str,
+        origin: Point,
+        font_size: f64,
+        weight: u16,
+        color: Color,
+        anchor: TextAnchor,
+        baseline: TextBaseline,
+        class_name: &str,
+    ) -> Result<()> {
+        self.semantic_classes
+            .insert(semantic_id.to_string(), "cynefin-label".to_string());
+        self.text_classes
+            .insert(semantic_id.to_string(), class_name.to_string());
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: semantic_id.to_string(),
+        });
+        self.emit_text(
+            semantic_id,
+            text,
+            origin,
+            font_size,
+            weight,
+            color,
+            anchor,
+            baseline,
+        )?;
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.semantics.push(SemanticAnnotation {
+            id: semantic_id.to_string(),
+            role: SemanticRole::Label,
+            title: Some(text.to_string()),
             description: None,
             link: None,
         });

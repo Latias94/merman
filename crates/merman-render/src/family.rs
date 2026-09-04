@@ -1138,6 +1138,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Railroad
             | RenderFamilyKind::EventModeling
             | RenderFamilyKind::Ishikawa
+            | RenderFamilyKind::Cynefin
             | RenderFamilyKind::XyChart
     )
 }
